@@ -22,41 +22,50 @@ Section loader vstart=7C00h align=1
     xchg bx, bx
 lp:
     xor dl, dl
-    mov rbx, rbp
-    mov eax, 82FFh  ;LBA read
-    mov ecx, 100h
+    mov ah, 82h
+    mov al, 52  ;Read 52 sectors
+    mov ecx, 33 ;Start at sector 33
+    mov rbx, 200000h    ;Start at 2Mb range
     int 33h
     jc exit
 
-    mov ah, 04h
-    int 30h
-    mov rbp, msg1
-    mov eax, 1304h
-    int 30h
-
     xor dl, dl
-    mov rbx, rbp
-    mov eax, 83FFh
-    mov ecx, 100h
-    int 33h
-    jc exit   
-
-    mov ah, 04h
-    int 30h
-    mov rbp, msg2
-    mov eax, 1304h
-    int 30h
-
-    xor dl, dl
-    mov rbx, rbp
-    mov eax, 84FFh
-    mov ecx, 100h
+    mov ah, 83h
+    mov al, 52  ;Write 52 sectors
+    mov ecx, 100h ;Start at sector 256
+    mov rbx, 200000h    ;Start at 2Mb range
     int 33h
     jc exit
 
-    mov ah, 04h
-    int 30h
-    mov rbp, msg3
+    mov ecx, 0D00h ;Number of qwords in 52 sectors
+    xor eax, eax
+    mov rdi, 200000h
+    rep stosq   ;Clear buffer
+
+    xor dl, dl
+    mov ah, 82h
+    mov al, 52  ;Read 52 sectors
+    mov ecx, 33 ;Start at sector 33
+    mov rbx, 200000h    ;Start at 2Mb range
+    int 33h
+    jc exit
+
+    xor dl, dl
+    mov ah, 82h
+    mov al, 52  ;Read 52 sectors
+    mov ecx, 100h ;Start at sector 256
+    mov rbx, 300000h    ;Start at 3Mb range
+    int 33h
+    jc exit
+
+    mov ecx, 0D00h ;Number of qwords in 52 sectors
+    mov rdi, 200000h
+    mov rsi, 300000h
+    repe cmpsq   ;Clear buffer
+    test ecx, ecx
+    jnz exit1
+lp0:
+    mov rbp, strngok
     mov eax, 1304h
     int 30h
 lp1:
@@ -64,11 +73,14 @@ lp1:
     mov eax, 1304h
     int 30h
     jmp $
+exit1:
+    mov rbp, strngok
+    mov eax, 1304h
+    int 30h
 exit:
     xchg bx, bx
     jmp short lp1
 startmsg db "Starting SCP/DOS...",0Ah,0Dh,0
 strng db 0Ah, 0Dh,"Invalid IO.SYS. System Halting.",0
-msg1  db "h Sectors Read",0Ah,0Dh,0
-msg2  db "h Sectors Written", 0Ah, 0Dh, 0
-msg3  db "h Sectors Verified", 0
+strngok db 0Ah, 0Dh, "Success!",0
+strngnok db 0Ah, 0Dh, "Fail!",0
