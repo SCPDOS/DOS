@@ -3,108 +3,109 @@
 
 STRUC   bpb         ;FAT 12 and 16 BPB
 
-    .btjmp  resb 3
-    .osname resb 8  ;OEM name
-    .bypsec resw 1  ;Bytes per sector
-    .secpcl resb 1  ;Sectors per cluster
-    .ressec resw 1  ;Number of reserved sectors
-    .numFAT resb 1  ;Number of FATs on media
-    .nortdr resw 1  ;Number of entries in Root directory
-    .nosect resw 1  ;Number of sectors on medium
-    .medesc resb 1  ;Media descriptor byte
-    .FATsec resw 1  ;Number of sectors per FAT
-    .sectrc resw 1  ;Number of sectors per "track"
-    .numhed resw 1  ;Number of read "heads"
-    .numhsc resd 1  ;Number of hidden sectors
-    .nsec32 resd 1  ;32 bit count of sectors
+    .jmpBoot    resb 3
+    .oemName    resb 8  ;OEM name
+    .bytsPerSec resw 1  ;Bytes per sector
+    .secPerClus resb 1  ;Sectors per cluster
+    .revdSecCnt resw 1  ;Number of reserved sectors
+    .numFATs    resb 1  ;Number of FATs on media
+    .rootEntCnt resw 1  ;Number of entries in Root directory
+    .totSec16   resw 1  ;Number of sectors on medium
+    .media      resb 1  ;Media descriptor byte
+    .FATsz16    resw 1  ;Number of sectors per FAT
+    .secPerTrk  resw 1  ;Number of sectors per "track"
+    .numHeads   resw 1  ;Number of read "heads"
+    .hiddSec    resd 1  ;Number of hidden sectors
+    .totSec32   resd 1  ;32 bit count of sectors
 
-    .ldrvnu resb 1  ;Logical drive number (00h or 80h)
-    .resbyt resb 1  ;Reserved byte
-    .extsig resb 1  ;Extended boot signature (29h)
-    .sernum resd 1  ;Volume serial number
-    .vollbl resb 11 ;Volume label string
-    .fstype resb 8  ;File system type string
+    .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    .reserved1  resb 1  ;Reserved byte
+    .bootSig    resb 1  ;Extended boot signature (29h)
+    .volID      resd 1  ;Volume serial number
+    .volLab     resb 11 ;Volume label string
+    .filSysType resb 8  ;File system type string
 
 ENDSTRUC
 
 STRUC   bpb32       ;FAT 32 BPB
 
-    .btjmp  resb 3
-    .osname resb 8  ;OEM name
-    .bypsec resw 1  ;Bytes per sector
-    .secpcl resb 1  ;Sectors per cluster
-    .ressec resw 1  ;Number of reserved sectors
-    .numFAT resb 1  ;Number of FATs on media
-    .nortdr resw 1  ;Number of entries in Root directory
-    .nosect resw 1  ;Number of sectors on medium
-    .medesc resb 1  ;Media descriptor byte
-    .FATsec resw 1  ;Number of sectors per FAT
-    .sectrc resw 1  ;Number of sectors per "track"
-    .numhed resw 1  ;Number of read "heads"
-    .numhsc resd 1  ;Number of hidden sectors
-    .nsec32 resd 1  ;32 bit count of sectors
+    .jmpBoot    resb 3
+    .oemName    resb 8  ;OEM name
+    .bytsPerSec resw 1  ;Bytes per sector
+    .secPerClus resb 1  ;Sectors per cluster
+    .revdSecCnt resw 1  ;Number of reserved sectors
+    .numFATs    resb 1  ;Number of FATs on media
+    .rootEntCnt resw 1  ;Number of entries in Root directory
+    .totSec16   resw 1  ;Number of sectors on medium
+    .media      resb 1  ;Media descriptor byte
+    .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
+    .secPerTrk  resw 1  ;Number of sectors per "track"
+    .numHeads   resw 1  ;Number of read "heads"
+    .hiddSec    resd 1  ;Number of hidden sectors
+    .totSec32   resd 1  ;32 bit count of sectors
 
-    .nFAT32 resd 1  ;32 bit count of sectors occupied by one FAT
-    .extflg resw 1  ;Extended Flags word
-    .FSvers resw 1  ;File system version word, must be 0
-    .rtclus resd 1  ;First Cluster of Root Directory
-    .FSinfo resw 1  ;Sector number of FSINFO structure, usually 1
-    .bpbbkp resw 1  ;Backup Boot sector, either 0 or 6
-    .res1   resb 12 ;Reserved 12 bytes
+    .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
+    .extFlags   resw 1  ;Extended Flags word
+    .FSver      resw 1  ;File system version word, must be 0
+    .RootClus   resd 1  ;First Cluster of Root Directory
+    .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
+    .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
+    .reserved   resb 12 ;Reserved 12 bytes
 
-    .ldrvnu resb 1  ;Logical drive number (00h or 80h)
-    .resbyt resb 1  ;Reserved byte
-    .extsig resb 1  ;Extended boot signature (29h)
-    .sernum resd 1  ;Volume serial number
-    .vollbl resb 11 ;Volume label string
-    .fstype resb 8  ;File system type string
+    .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    .reserved1  resb 1  ;Reserved byte
+    .bootSig    resb 1  ;Extended boot signature (29h)
+    .volID      resd 1  ;Volume serial number
+    .volLab     resb 11 ;Volume label string
+    .filSysType resb 8  ;File system type string
 
 ENDSTRUC
 
 STRUC   bpbEx       ;exFAT BPB
 
-    .btjmp  resb 3 
-    .osname resb 8  ;OEM name
-    .zerobt resb 53 ;Must be 0, 53 bytes
-    .ptnoff resq 1  ;Partition offset in sectors, 0 means ignore this field
-    .vollen resq 1  ;Volume Length in sectors
-    .FAToff resd 1  ;Volume relative offset of first FAT, in sectors
-    .FATlen resd 1  ;FAT length, in sectors
-    .clsoff resd 1  ;Cluster Heap Offset (start of data area), in sectors
-    .clscnt resd 1  ;Cluster count, number of clusters on medium
-    .rtdir  resd 1  ;First Cluster of Root Directory, min 2
-    .volser resd 1  ;Volume Serial Number
-    .fsrev  resw 1  ;File System Revision word, should be 0001 (v1.00)
-    .volflg resw 1  ;Volume Flags, refer to documentation
-    .bpssft resb 1  ;Byte per sector shift, min 9 (512 bps), max 12 (4096 bps)
-    .spcsft resb 1  ;Sector per cluster shift, result of log_2(N) for N=sec/clus
-    .numFAT resb 1  ;Number of FATs, only 1 or 2
-    .drvsel resb 1  ;Drive Select, 0 or 80h (Int 13h)
-    .pctuse resb 1  ;Percent of volume in use, rounded down. FFh means unknown
-    .resrvd resb 7  ;Reserved for alignment
+    .jmpBoot                resb 3 
+    .oemName                resb 8  ;OEM name
+    .MustBeZero             resb 53 ;Must be 0, 53 bytes
+    .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
+    .volumeLength           resq 1  ;Volume Length in sectors
+    .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
+    .FATlength              resd 1  ;FAT length, in sectors
+    .clusterHeapOffset      resd 1  ;Start of data area, in sectors
+    .clusterCount           resd 1  ;Number of clusters on medium
+    .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
+    .volumeSerialNum        resd 1  ;Volume Serial Number
+    .FSrevision             resw 1  ;Should be 0001 (v1.00)
+    .volumeFlags            resw 1  ;Volume Flags, refer to documentation
+    .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+    .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
+    .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
+    .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
+    .percentInUse           resb 1  ;Rounded down. FFh means unknown
+    .reserved               resb 7  ;Reserved for alignment
 
 ENDSTRUC
 
 STRUC   dpb         ;Drive Parameter Block
 
-    .bDrvnum resb 1  ;Drive number
-    .bUntnum resb 1  ;Unit number in device
-    .bBypsec resb 1  ;Bytes per sector shift (N in 2^N)
-    .bSecpcl resb 1  ;Sectors per cluster - 1
-    .bSpclsh resb 1  ;Shift factor for sectors per cluster
-    .dFAToff resd 1  ;Volume relative offset of first FAT, in sectors
-    .bNumFAT resb 1  ;Number of FATs
-    .wNortdr resw 1  ;Number of root directory entries, in sectors
-    .wNodtsc resw 1  ;Start of data area, in sectors
-    .dMaxclu resd 1  ;Total number of clusters
-    .dSecFAT resd 1  ;FAT length, in sectors
-    .dRtclus resd 1  ;First Cluster of Root Directory
-    .qPtrdrv resq 1  ;Pointer to device driver header
-    .bMedesc resb 1  ;Media descriptor
-    .bAccflg resb 1  ;Access Flag (0 if accessed, else -1)
-    .qPtrnxt resq 1  ;Pointer to next DPB, -1 if at the end of chain
-    .dFrecls resd 1  ;Starting cluster of free space search
-    .dNfrcls resd 1  ;Number of free clusters, -1 unknown
+    .bDriveNumber               resb 1  ;Drive number
+    .bUnitNumber                resb 1  ;Unit number in device
+    .bBytesPerSectorShift       resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+    .bMaxSectorInCluster        resb 1  ;(Maximum sector in cluster) - 1
+;                                        i.e. (2^bSectorsPerClusterShift) - 1
+    .bSectorsPerClusterShift    resb 1  ;Sectors per cluster exponent
+    .dFAToffset                 resd 1  ;Vol rel offset of first FAT, in sectors
+    .bNumberOfFATs              resb 1  ;Number of FATs
+    .wNumberRootDirEntries      resw 1  ;In sectors
+    .dClusterHeapOffset         resd 1  ;Start of data area, in sectors
+    .dClusterCount              resd 1  ;Total number of clusters (volume size)
+    .dFATlength                 resd 1  ;FAT length, in sectors
+    .dFirstClusterOfRootDir     resd 1  ;First Cluster of Root Directory, min 2
+    .qDriverHeaderPtr           resq 1  ;Pointer to device driver header
+    .bMediaDescriptor           resb 1  ;Media descriptor
+    .bAccessFlag                resb 1  ;Access Flag (0 if accessed, else -1)
+    .qNextDPBPtr                resq 1  ;Pointer to next DPB, -1 if at end
+    .dFirstFreeCluster          resd 1  ;Starting cluster of free space search
+    .dNumberOfFreeClusters      resd 1  ;Number of free clusters, -1 unknown
 
 ENDSTRUC
 
