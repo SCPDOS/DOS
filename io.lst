@@ -1,324 +1,589 @@
-     1                                      DEFAULT REL
-     2                                      [map all io.map]
-     3                                  
-     4                                  STRUC   bpb         ;FAT 12 and 16 BPB
-     5                                  
-     6 00000000 ??????                      .jmpBoot    resb 3
-     7 00000003 ????????????????            .oemName    resb 8  ;OEM name
-     8 0000000B ????                        .bytsPerSec resw 1  ;Bytes per sector
-     9 0000000D ??                          .secPerClus resb 1  ;Sectors per cluster
-    10 0000000E ????                        .revdSecCnt resw 1  ;Number of reserved sectors
-    11 00000010 ??                          .numFATs    resb 1  ;Number of FATs on media
-    12 00000011 ????                        .rootEntCnt resw 1  ;Number of entries in Root directory
-    13 00000013 ????                        .totSec16   resw 1  ;Number of sectors on medium
-    14 00000015 ??                          .media      resb 1  ;Media descriptor byte
-    15 00000016 ????                        .FATsz16    resw 1  ;Number of sectors per FAT
-    16 00000018 ????                        .secPerTrk  resw 1  ;Number of sectors per "track"
-    17 0000001A ????                        .numHeads   resw 1  ;Number of read "heads"
-    18 0000001C ????????                    .hiddSec    resd 1  ;Number of hidden sectors
-    19 00000020 ????????                    .totSec32   resd 1  ;32 bit count of sectors
-    20                                  
-    21 00000024 ??                          .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    22 00000025 ??                          .reserved1  resb 1  ;Reserved byte
-    23 00000026 ??                          .bootSig    resb 1  ;Extended boot signature (29h)
-    24 00000027 ????????                    .volID      resd 1  ;Volume serial number
-    25 0000002B <res Bh>                    .volLab     resb 11 ;Volume label string
-    26 00000036 ????????????????            .filSysType resb 8  ;File system type string
-    27                                  
-    28                                  ENDSTRUC
-    29                                  
-    30                                  STRUC   bpb32       ;FAT 32 BPB
-    31                                  
-    32 00000000 ??????                      .jmpBoot    resb 3
-    33 00000003 ????????????????            .oemName    resb 8  ;OEM name
-    34 0000000B ????                        .bytsPerSec resw 1  ;Bytes per sector
-    35 0000000D ??                          .secPerClus resb 1  ;Sectors per cluster
-    36 0000000E ????                        .revdSecCnt resw 1  ;Number of reserved sectors
-    37 00000010 ??                          .numFATs    resb 1  ;Number of FATs on media
-    38 00000011 ????                        .rootEntCnt resw 1  ;Number of entries in Root directory
-    39 00000013 ????                        .totSec16   resw 1  ;Number of sectors on medium
-    40 00000015 ??                          .media      resb 1  ;Media descriptor byte
-    41 00000016 ????                        .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
-    42 00000018 ????                        .secPerTrk  resw 1  ;Number of sectors per "track"
-    43 0000001A ????                        .numHeads   resw 1  ;Number of read "heads"
-    44 0000001C ????????                    .hiddSec    resd 1  ;Number of hidden sectors
-    45 00000020 ????????                    .totSec32   resd 1  ;32 bit count of sectors
-    46                                  
-    47 00000024 ????????                    .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
-    48 00000028 ????                        .extFlags   resw 1  ;Extended Flags word
-    49 0000002A ????                        .FSver      resw 1  ;File system version word, must be 0
-    50 0000002C ????????                    .RootClus   resd 1  ;First Cluster of Root Directory
-    51 00000030 ????                        .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
-    52 00000032 ????                        .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
-    53 00000034 <res Ch>                    .reserved   resb 12 ;Reserved 12 bytes
-    54                                  
-    55 00000040 ??                          .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    56 00000041 ??                          .reserved1  resb 1  ;Reserved byte
-    57 00000042 ??                          .bootSig    resb 1  ;Extended boot signature (29h)
-    58 00000043 ????????                    .volID      resd 1  ;Volume serial number
-    59 00000047 <res Bh>                    .volLab     resb 11 ;Volume label string
-    60 00000052 ????????????????            .filSysType resb 8  ;File system type string
-    61                                  
-    62                                  ENDSTRUC
-    63                                  
-    64                                  STRUC   bpbEx       ;exFAT BPB
-    65                                  
-    66 00000000 ??????                      .jmpBoot                resb 3 
-    67 00000003 ????????????????            .oemName                resb 8  ;OEM name
-    68 0000000B <res 35h>                   .MustBeZero             resb 53 ;Must be 0, 53 bytes
-    69 00000040 ????????????????            .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
-    70 00000048 ????????????????            .volumeLength           resq 1  ;Volume Length in sectors
-    71 00000050 ????????                    .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
-    72 00000054 ????????                    .FATlength              resd 1  ;FAT length, in sectors
-    73 00000058 ????????                    .clusterHeapOffset      resd 1  ;Start of data area, in sectors
-    74 0000005C ????????                    .clusterCount           resd 1  ;Number of clusters on medium
-    75 00000060 ????????                    .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
-    76 00000064 ????????                    .volumeSerialNum        resd 1  ;Volume Serial Number
-    77 00000068 ????                        .FSrevision             resw 1  ;Should be 0001 (v1.00)
-    78 0000006A ????                        .volumeFlags            resw 1  ;Volume Flags, refer to documentation
-    79 0000006C ??                          .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
-    80 0000006D ??                          .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
-    81 0000006E ??                          .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
-    82 0000006F ??                          .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
-    83 00000070 ??                          .percentInUse           resb 1  ;Rounded down. FFh means unknown
-    84 00000071 ??????????????              .reserved               resb 7  ;Reserved for alignment
-    85                                  
-    86                                  ENDSTRUC
-    87                                  
-    88                                  STRUC   dpb         ;Drive Parameter Block
-    89                                  
-    90 00000000 ??                          .bDriveNumber               resb 1  ;Drive number
-    91 00000001 ??                          .bUnitNumber                resb 1  ;Unit number in device
-    92 00000002 ??                          .bBytesPerSectorShift       resb 1  ;min 9 (512 bps), max 12 (4096 bps)
-    93 00000003 ??                          .bMaxSectorInCluster        resb 1  ;(Maximum sector in cluster) - 1
-    94                                  ;                                        i.e. (2^bSectorsPerClusterShift) - 1
-    95 00000004 ??                          .bSectorsPerClusterShift    resb 1  ;Sectors per cluster exponent
-    96 00000005 ????????                    .dFAToffset                 resd 1  ;Vol rel offset of first FAT, in sectors
-    97 00000009 ??                          .bNumberOfFATs              resb 1  ;Number of FATs
-    98 0000000A ????                        .wNumberRootDirEntries      resw 1  ;In sectors
-    99 0000000C ????????                    .dClusterHeapOffset         resd 1  ;Start of data area, in sectors
-   100 00000010 ????????                    .dClusterCount              resd 1  ;Total number of clusters (volume size)
-   101 00000014 ????????                    .dFATlength                 resd 1  ;FAT length, in sectors
-   102 00000018 ????????                    .dFirstClusterOfRootDir     resd 1  ;First Cluster of Root Directory, min 2
-   103 0000001C ????????????????            .qDriverHeaderPtr           resq 1  ;Pointer to device driver header
-   104 00000024 ??                          .bMediaDescriptor           resb 1  ;Media descriptor
-   105 00000025 ??                          .bAccessFlag                resb 1  ;Access Flag (0 if accessed, else -1)
-   106 00000026 ????????????????            .qNextDPBPtr                resq 1  ;Pointer to next DPB, -1 if at end
-   107 0000002E ????????                    .dFirstFreeCluster          resd 1  ;Starting cluster of free space search
-   108 00000032 ????????                    .dNumberOfFreeClusters      resd 1  ;Number of free clusters, -1 unknown
-   109                                  
-   110                                  ENDSTRUC
-   111                                  
-   112                                  STRUC   drvHdr      ;Device Driver Header for character and block devices
-   113                                  
-   114 00000000 ????????????????            .qPtrnxt resq 1  ;Pointer to the next driver header, -1 if at the end
-   115 00000008 ????                        .wAttrib resw 1  ;Attribute Word
-   116 0000000A ????????????????            .qStratp resq 1  ;Strategy Entry Pointer
-   117 00000012 ????????????????            .qInterp resq 1  ;Interrupt Entry Pointer
-   118                                      .bUntnum:        ;Unit number byte (Block Only)
-   119 0000001A ????????????????            .vDrvnam resb 8  ;Driver name (Character Only)
-   120                                  
-   121                                  ENDSTRUC
-   122                                  
-   123                                  STRUC   drvReqHdr   ;Driver Request Header
-   124                                  
-   125 00000000 ??                          .length resb 1  ;Length of the request header
-   126 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   127 00000002 ??                          .cmdcde resb 1  ;Command code
-   128 00000003 ????                        .status resw 1  ;Status word
-   129 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   130 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   131                                  
-   132                                  ENDSTRUC
-   133                                  
-   134                                  STRUC   initReqPkt   ;Init Request Packet
-   135                                  
-   136 00000000 ??                          .length resb 1  ;Length of the request header
-   137 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   138 00000002 ??                          .cmdcde resb 1  ;Command code
-   139 00000003 ????                        .status resw 1  ;Status word
-   140 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   141 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   142                                  
-   143 00000015 ??                          .numunt resb 1  ;Number of logical units (Block only, 0 for char)
-   144 00000016 ????????????????            .endptr resq 1  ;Pointer to first free byte after driver
-   145 0000001E ????????????????            .optptr resq 1  ;Pointer to the BPB array (block) or optional args (char)
-   146 00000026 ??                          .drvnum resb 1  ;Drive number
-   147                                  
-   148                                  ENDSTRUC
-   149                                  
-   150                                  STRUC mediaCheckReqPkt  ;Media Check Request Packet
-   151                                  
-   152 00000000 ??                          .length resb 1  ;Length of the request header
-   153 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   154 00000002 ??                          .cmdcde resb 1  ;Command code
-   155 00000003 ????                        .status resw 1  ;Status word
-   156 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   157 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   158                                  
-   159 00000015 ??                          .medesc resb 1  ;DOS media descriptor
-   160 00000016 ??                          .medret resb 1  ;Return byte (Has media been changed?)
-   161 00000017 ????????????????            .desptr resq 1  ;Pointer to a valid volume id field
-   162                                  
-   163                                  ENDSTRUC
-   164                                  
-   165                                  STRUC bpbBuildReqPkt   ;Build BPB Request Packet
-   166                                  
-   167 00000000 ??                          .length resb 1  ;Length of the request header
-   168 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   169 00000002 ??                          .cmdcde resb 1  ;Command code
-   170 00000003 ????                        .status resw 1  ;Status word
-   171 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   172 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   173                                  
-   174 00000015 ??                          .medesc resb 1  ;DOS media descriptor
-   175 00000016 ????????????????            .bufptr resq 1  ;Transfer buffer
-   176 0000001E ????????????????            .bpbptr resq 1  ;Pointer to the BPB
-   177                                  
-   178                                  ENDSTRUC
-   179                                  
-   180                                  
-   181                                  STRUC ioReqPkt      ;IO Request Packet
-   182                                  
-   183 00000000 ??                          .length resb 1  ;Length of the request header
-   184 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   185 00000002 ??                          .cmdcde resb 1  ;Command code
-   186 00000003 ????                        .status resw 1  ;Status word
-   187 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   188 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   189                                  
-   190 00000015 ??                          .medesc resb 1  ;DOS media descriptor
-   191 00000016 ????????????????            .bufptr resq 1  ;Transfer buffer
-   192 0000001E ????                        .tfrlen resw 1  ;Number of Sectors/bytes to transfer
-   193 00000020 ????????????????            .strtsc resq 1  ;Starting sector for transfer
-   194 00000028 ????????????????            .desptr resq 1  ;Pointer to a valid volume id field if error
-   195                                  
-   196                                  ENDSTRUC
-   197                                  
-   198                                  STRUC nonDestInNoWaitReqPkt   ;Nondestructive Input No Wait Request Packet
-   199                                      
-   200 00000000 ??                          .length resb 1  ;Length of the request header
-   201 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   202 00000002 ??                          .cmdcde resb 1  ;Command code
-   203 00000003 ????                        .status resw 1  ;Status word
-   204 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   205 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   206                                  
-   207 00000015 ??                          .retbyt resb 1  ;Byte read non destructively
-   208                                  
-   209                                  ENDSTRUC
-   210                                  
-   211                                  STRUC statusReqPkt  ;Status Request Packet
-   212                                      
-   213 00000000 ??                          .length resb 1  ;Length of the request header
-   214 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   215 00000002 ??                          .cmdcde resb 1  ;Command code
-   216 00000003 ????                        .status resw 1  ;Status word
-   217 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   218 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   219                                  
-   220                                  ENDSTRUC
-   221                                  
-   222                                  STRUC flushReqPkt   ;Flush Request Packet, terminate all pending requests
-   223                                      
-   224 00000000 ??                          .length resb 1  ;Length of the request header
-   225 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   226 00000002 ??                          .cmdcde resb 1  ;Command code
-   227 00000003 ????                        .status resw 1  ;Status word
-   228 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   229 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   230                                  
-   231                                  ENDSTRUC
-   232                                  
-   233                                  STRUC openReqPkt    ;Open Device Request Packet
-   234                                      
-   235 00000000 ??                          .length resb 1  ;Length of the request header
-   236 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   237 00000002 ??                          .cmdcde resb 1  ;Command code
-   238 00000003 ????                        .status resw 1  ;Status word
-   239 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   240 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   241                                  
-   242                                  ENDSTRUC
-   243                                  
-   244                                  STRUC closeReqPkt   ;Close Device Request Packet
-   245                                      
-   246 00000000 ??                          .length resb 1  ;Length of the request header
-   247 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   248 00000002 ??                          .cmdcde resb 1  ;Command code
-   249 00000003 ????                        .status resw 1  ;Status word
-   250 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   251 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   252                                  
-   253                                  ENDSTRUC
-   254                                  
-   255                                  STRUC remMediaReqPkt    ;Removeable Media? Request Packet
-   256                                      
-   257 00000000 ??                          .length resb 1  ;Length of the request header
-   258 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   259 00000002 ??                          .cmdcde resb 1  ;Command code
-   260 00000003 ????                        .status resw 1  ;Status word
-   261 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   262 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   263                                  
-   264                                  ENDSTRUC
-   265                                  
-   266                                  STRUC ioctlReqPkt   ;Generic IOCTL Request Packet
-   267                                      
-   268 00000000 ??                          .length resb 1  ;Length of the request header
-   269 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   270 00000002 ??                          .cmdcde resb 1  ;Command code
-   271 00000003 ????                        .status resw 1  ;Status word
-   272 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   273 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   274                                  
-   275 00000015 ??                          .majfun resb 1  ;Major function number
-   276 00000016 ??                          .minfun resb 1  ;Minor function number
-   277 00000017 ????????????????            .rsival resq 1  ;Contents of RSI
-   278 0000001F ????????????????            .rdival resq 1  ;Contents of RDI
-   279 00000027 ????????????????            .ctlptr resq 1  ;Pointer to Generic IOCTL Request Packet
-   280                                  
-   281                                  ENDSTRUC
-   282                                  
-   283                                  STRUC getDevReqPkt  ;Get Logical Device Request Packet
-   284                                      
-   285 00000000 ??                          .length resb 1  ;Length of the request header
-   286 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   287 00000002 ??                          .cmdcde resb 1  ;Command code
-   288 00000003 ????                        .status resw 1  ;Status word
-   289 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   290 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   291                                  
-   292 00000015 ??                          .getcmd resb 1  ;Command code
-   293 00000016 ????                        .cmdsts resw 1  ;Command status word
-   294                                  
-   295                                  ENDSTRUC
-   296                                  
-   297                                  STRUC setDevReqPkt  ;Set Logical Device Request Packet
-   298                                      
-   299 00000000 ??                          .length resb 1  ;Length of the request header
-   300 00000001 ??                          .unitnm resb 1  ;Unit number, meaningless for character devs
-   301 00000002 ??                          .cmdcde resb 1  ;Command code
-   302 00000003 ????                        .status resw 1  ;Status word
-   303 00000005 ????????????????            .dosptr resq 1  ;DOS queue pointer field
-   304 0000000D ????????????????            .devptr resq 1  ;Device queue pointer field
-   305                                  
-   306 00000015 ??                          .setcmd resb 1  ;Command code
-   307 00000016 ????                        .cmdsts resw 1  ;Command status word
-   308                                  
-   309                                  ENDSTRUC
-   310                                  
-   311                                      BITS 64
-   312                                  Section loader vstart=7C00h align=1
-   313 00000000 55AA                        dw 0AA55h           ;Initial signature
-   314 00000002 48BD-                       mov rbp, startmsg
-   314 00000004 [0000000000000000] 
-   315 0000000C B804130000                  mov eax, 1304h
-   316 00000011 CD30                        int 30h
-   317                                  
-   318 00000013 EBFE                        jmp short $
-   319                                  
-   320                                  Section loaderData vfollows=loader align=4
-   321 00000000 0A0D5374617274696E-     startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-   321 00000009 67205343502F444F53-
-   321 00000012 2E2E2E0A0D00       
+JWasm v2.11, Oct 20 2013
+io.asm
+                                    
+                                    .x64p
+
+00000000                        bpb STRUC          ;FAT 12 and 16 BPB
+
+00000000                            jmpBoot    db 3 dup (?)
+00000003                            oemName    db 8 dup (?)  ;OEM name
+0000000B                            bytsPerSec dw ?  ;Bytes per sector
+0000000D                            secPerClus db ?  ;Sectors per cluster
+0000000E                            revdSecCnt dw ?  ;Number of reserved sectors
+00000010                            numFATs    db ?  ;Number of FATs on media
+00000011                            rootEntCnt dw ?  ;Number of entries in Root directory
+00000013                            totSec16   dw ?  ;Number of sectors on medium
+00000015                            media      db ?  ;Media descriptor byte
+00000016                            FATsz16    dw ?  ;Number of sectors per FAT
+00000018                            secPerTrk  dw ?  ;Number of sectors per "track"
+0000001A                            numHeads   dw ?  ;Number of read "heads"
+0000001C                            hiddSec    dd ?  ;Number of hidden sectors
+00000020                            totSec32   dd ?  ;32 bit count of sectors
+
+00000024                            drvNum     db ?  ;Logical drive number (00h or 80h)
+00000025                            reserved1  db ?  ;Reserved byte
+00000026                            bootSig    db ?  ;Extended boot signature (29h)
+00000027                            volID      dd ?  ;Volume serial number
+0000002B                            volLab     db 11 dup (?) ;Volume label string
+00000036                            filSysType db 8 dup (?)  ;File system type string
+
+0000003E                        bpb ENDS
+
+00000000                        bpb32 STRUC       ;FAT 32 BPB
+
+00000000                            jmpBoot    db 3 dup (?)
+00000003                            oemName    db 8 dup (?)  ;OEM name
+0000000B                            bytsPerSec dw ?  ;Bytes per sector
+0000000D                            secPerClus db ?  ;Sectors per cluster
+0000000E                            revdSecCnt dw ?  ;Number of reserved sectors
+00000010                            numFATs    db ?  ;Number of FATs on media
+00000011                            rootEntCnt dw ?  ;Number of entries in Root directory
+00000013                            totSec16   dw ?  ;Number of sectors on medium
+00000015                            media      db ?  ;Media descriptor byte
+00000016                            FATsz16    dw ?  ;Number of sectors per FAT, must be 0 for FAT 32
+00000018                            secPerTrk  dw ?  ;Number of sectors per "track"
+0000001A                            numHeads   dw ?  ;Number of read "heads"
+0000001C                            hiddSec    dd ?  ;Number of hidden sectors
+00000020                            totSec32   dd ?  ;32 bit count of sectors
+
+00000024                            FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
+00000028                            extFlags   dw ?  ;Extended Flags word
+0000002A                            FSver      dw ?  ;File system version word, must be 0
+0000002C                            RootClus   dd ?  ;First Cluster of Root Directory
+00000030                            FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
+00000032                            BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
+00000034                            reserved   db 12 dup (?) ;Reserved 12 bytes
+
+00000040                            drvNum     db ?  ;Logical drive number (00h or 80h)
+00000041                            reserved1  db ?  ;Reserved byte
+00000042                            bootSig    db ?  ;Extended boot signature (29h)
+00000043                            volID      dd ?  ;Volume serial number
+00000047                            volLab     db 11 dup (?) ;Volume label string
+00000052                            filSysType db 8 dup (?)  ;File system type string
+
+0000005A                        bpb32 ENDS
+
+
+00000000                        bpbEx STRUC   ;exFAT BPB
+
+00000000                            jmpBoot                db 3 dup (?) 
+00000003                            oemName                db 8 dup (?) ;OEM name
+0000000B                            MustBeZero             db 53 dup (?) ;Must be 0, 53 bytes
+00000040                            partitionOffset        dq ?  ;in sectors, 0 means ignore this field
+00000048                            volumeLength           dq ?  ;Volume Length in sectors
+00000050                            FAToffset              dd ?  ;Volume rel offset of first FAT, in sectors
+00000054                            FATlength              dd ?  ;FAT length, in sectors
+00000058                            clusterHeapOffset      dd ?  ;Start of data area, in sectors
+0000005C                            clusterCount           dd ?  ;Number of clusters on medium
+00000060                            firstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
+00000064                            volumeSerialNum        dd ?  ;Volume Serial Number
+00000068                            FSrevision             dw ?  ;Should be 0001 (v1.00)
+0000006A                            volumeFlags            dw ?  ;Volume Flags, refer to documentation
+0000006C                            bytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
+0000006D                            sectorsPerClusterShift db ?  ;Result of log_2(N) for N=sec per clus
+0000006E                            numberOfFATs           db ?  ;Number of FATs, only 1 or 2
+0000006F                            driveSelect            db ?  ;Drive Select, 0 or 80h (Int 13h)
+00000070                            percentInUse           db ?  ;Rounded down. FFh means unknown
+00000071                            reserved               db 7 dup (?)  ;Reserved for alignment
+
+00000078                        bpbEx ENDS
+
+00000000                        dpb STRUC        ;Drive Parameter Block
+
+00000000                            bDriveNumber               db ?  ;Drive number
+00000001                            bUnitNumber                db ?  ;Unit number in device
+00000002                            bBytesPerSectorShift       db ?  ;min 9 (512 bps), max 12 (4096 bps)
+00000003                            bMaxSectorInCluster        db ?  ;(Maximum sector in cluster) - 1
+                                ;                                       i.e. (2^bSectorsPerClusterShift) - 1
+00000004                            bSectorsPerClusterShift    db ?  ;Sectors per cluster exponent
+00000005                            dFAToffset                 dd ?  ;Vol rel offset of first FAT, in sectors
+00000009                            bNumberOfFATs              db ?  ;Number of FATs
+0000000A                            wNumberRootDirEntries      dw ?  ;In sectors
+0000000C                            dClusterHeapOffset         dd ?  ;Start of data area, in sectors
+00000010                            dClusterCount              dd ?  ;Total number of clusters (volume size)
+00000014                            dFATlength                 dd ?  ;FAT length, in sectors
+00000018                            dFirstClusterOfRootDir     dd ?  ;First Cluster of Root Directory, min 2
+0000001C                            qDriverHeaderPtr           dq ?  ;Pointer to device driver header
+00000024                            bMediaDescriptor           db ?  ;Media descriptor
+00000025                            bAccessFlag                db ?  ;Access Flag (0 if accessed, else -1)
+00000026                            qNextDPBPtr                dq ?  ;Pointer to next DPB, -1 if at end
+0000002E                            dFirstFreeCluster          dd ?  ;Starting cluster of free space search
+00000032                            dNumberOfFreeClusters      dd ?  ;Number of free clusters, -1 unknown
+
+00000036                        dpb ENDS
+
+00000000                        drvHdr STRUC  ;Device Driver Header for character and block devices
+
+00000000                            qPtrnxt dq ?  ;Pointer to the next driver header, -1 if at the end
+00000008                            wAttrib dw ?  ;Attribute Word
+0000000A                            qStratp dq ?  ;Strategy Entry Pointer
+00000012                            qInterp dq ?  ;Interrupt Entry Pointer
+0000001A                            vDrvnam db 8 dup (?)  ;Driver name (Character Only)
+
+00000022                        drvHdr ENDS
+ = 1A                               bUntnum equ drvHdr.vDrvnam  ;Unit number byte (Block Only)
+
+00000000                        drvReqHdr STRUC  ;Driver Request Header
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+
+00000015                        drvReqHdr ENDS
+
+00000000                        initReqPkt STRUC  ;Init Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            numunt db ? ;Number of logical units (Block only, 0 for char)
+00000016                            endptr dq ?  ;Pointer to first free byte after driver
+0000001E                            optptr dq ?  ;Pointer to the BPB array (block) or optional args (char)
+00000026                            drvnum db ?  ;Drive number
+
+00000027                        initReqPkt ENDS
+
+00000000                        mediaCheckReqPkt STRUC ;Media Check Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            medesc db ?  ;DOS media descriptor
+00000016                            medret db ?  ;Return byte (Has media been changed?)
+00000017                            desptr dq ?  ;Pointer to a valid volume id field
+
+0000001F                        mediaCheckReqPkt ENDS
+
+00000000                        bpbBuildReqPkt STRUC  ;Build BPB Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            medesc db ?  ;DOS media descriptor
+00000016                            bufptr dq ?  ;Transfer buffer
+0000001E                            bpbptr dq ?  ;Pointer to the BPB
+
+00000026                        bpbBuildReqPkt ENDS
+
+00000000                        ioReqPkt STRUC   ;IO Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            medesc db ?  ;DOS media descriptor
+00000016                            bufptr dq ?  ;Transfer buffer
+0000001E                            tfrlen dw ?  ;Number of Sectors/bytes to transfer
+00000020                            strtsc dq ?  ;Starting sector for transfer
+00000028                            desptr dq ?  ;Pointer to a valid volume id field if error
+
+00000030                        ioReqPkt ENDS
+
+00000000                        nonDestInNoWaitReqPkt STRUC    ;Nondestructive Input No Wait Request Packet
+                                    
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            retbyt db ?  ;Byte read non destructively
+
+00000016                        nonDestInNoWaitReqPkt ENDS
+
+00000000                        statusReqPkt STRUC   ;Status Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+
+00000015                        statusReqPkt ENDS
+
+00000000                        flushReqPkt STRUC ;Flush Request Packet, terminate all pending requests
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+
+00000015                        flushReqPkt ENDS
+
+00000000                        openReqPkt STRUC ;Open Device Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+
+00000015                        openReqPkt ENDS
+
+00000000                        closeReqPkt STRUC ;Close Device Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+
+00000015                        closeReqPkt ENDS
+
+00000000                        remMediaReqPkt STRUC ;Removeable Media? Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+
+00000015                        remMediaReqPkt ENDS
+
+00000000                        ioctlReqPkt STRUC    ;Generic IOCTL Request Packet
+
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            majfun db ?  ;Major function number
+00000016                            minfun db ?  ;Minor function number
+00000017                            rsival dq ?  ;Contents of RSI
+0000001F                            rdival dq ?  ;Contents of RDI
+00000027                            ctlptr dq ?  ;Pointer to Generic IOCTL Request Packet
+
+0000002F                        ioctlReqPkt ENDS
+
+00000000                        getDevReqPkt STRUC ;Get Logical Device Request Packet
+                                    
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            getcmd db ?  ;Command code
+00000016                            cmdsts dw ?  ;Command status word
+
+00000018                        getDevReqPkt ENDS
+
+00000000                        setDevReqPkt STRUC ;Set Logical Device Request Packet
+                                    
+00000000                            hdrlen db ?  ;Length of the request header
+00000001                            unitnm db ?  ;Unit number, meaningless for character devs
+00000002                            cmdcde db ?  ;Command code
+00000003                            status dw ?  ;Status word
+00000005                            dosptr dq ?  ;DOS queue pointer field
+0000000D                            devptr dq ?  ;Device queue pointer field
+                                    
+00000015                            setcmd db ?  ;Command code
+00000016                            cmdsts dw ?  ;Command status word
+
+00000018                        setDevReqPkt ENDS
+
+
+00000000                        loader SEGMENT USE64
+                                    ORG 7C00h
+                                    ASSUME ds:FLAT, es:FLAT
+
+00007C00  55AA                      dw 0AA55h           ;Initial signature
+00007C02  48BD00000000000000        mov rbp, OFFSET startmsg
+00007C0C  B804130000                mov eax, 1304h
+00007C11  CD30                      int 30h
+
+00007C13  EBFE                      jmp short $
+
+00007C15  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+00007C2D                        loader ENDS
+
+                                END
+
+
+Binary Map:
+
+Segment                  Pos(file)     RVA  Size(fil) Size(mem)
+---------------------------------------------------------------
+loader                          0     7C00        2D        2D
+---------------------------------------------------------------
+                                                  2D        2D
+
+
+Macros:
+
+                N a m e                 Type
+
+@CatStr  . . . . . . . . . . . .        Func
+@Environ . . . . . . . . . . . .        Func
+@InStr . . . . . . . . . . . . .        Func
+@SizeStr . . . . . . . . . . . .        Func
+@SubStr  . . . . . . . . . . . .        Func
+
+
+Structures and Unions:
+
+                N a m e                 Size/Ofs   Type
+
+bpb  . . . . . . . . . . . . . .              3E
+  jmpBoot  . . . . . . . . . . .               0   Byte[3]
+  oemName  . . . . . . . . . . .               3   Byte[8]
+  bytsPerSec . . . . . . . . . .               B   Word
+  secPerClus . . . . . . . . . .               D   Byte
+  revdSecCnt . . . . . . . . . .               E   Word
+  numFATs  . . . . . . . . . . .              10   Byte
+  rootEntCnt . . . . . . . . . .              11   Word
+  totSec16 . . . . . . . . . . .              13   Word
+  media  . . . . . . . . . . . .              15   Byte
+  FATsz16  . . . . . . . . . . .              16   Word
+  secPerTrk  . . . . . . . . . .              18   Word
+  numHeads . . . . . . . . . . .              1A   Word
+  hiddSec  . . . . . . . . . . .              1C   DWord
+  totSec32 . . . . . . . . . . .              20   DWord
+  drvNum . . . . . . . . . . . .              24   Byte
+  reserved1  . . . . . . . . . .              25   Byte
+  bootSig  . . . . . . . . . . .              26   Byte
+  volID  . . . . . . . . . . . .              27   DWord
+  volLab . . . . . . . . . . . .              2B   Byte[11]
+  filSysType . . . . . . . . . .              36   Byte[8]
+bpb32  . . . . . . . . . . . . .              5A
+  jmpBoot  . . . . . . . . . . .               0   Byte[3]
+  oemName  . . . . . . . . . . .               3   Byte[8]
+  bytsPerSec . . . . . . . . . .               B   Word
+  secPerClus . . . . . . . . . .               D   Byte
+  revdSecCnt . . . . . . . . . .               E   Word
+  numFATs  . . . . . . . . . . .              10   Byte
+  rootEntCnt . . . . . . . . . .              11   Word
+  totSec16 . . . . . . . . . . .              13   Word
+  media  . . . . . . . . . . . .              15   Byte
+  FATsz16  . . . . . . . . . . .              16   Word
+  secPerTrk  . . . . . . . . . .              18   Word
+  numHeads . . . . . . . . . . .              1A   Word
+  hiddSec  . . . . . . . . . . .              1C   DWord
+  totSec32 . . . . . . . . . . .              20   DWord
+  FATsz32  . . . . . . . . . . .              24   DWord
+  extFlags . . . . . . . . . . .              28   Word
+  FSver  . . . . . . . . . . . .              2A   Word
+  RootClus . . . . . . . . . . .              2C   DWord
+  FSinfo . . . . . . . . . . . .              30   Word
+  BkBootSec  . . . . . . . . . .              32   Word
+  reserved . . . . . . . . . . .              34   Byte[12]
+  drvNum . . . . . . . . . . . .              40   Byte
+  reserved1  . . . . . . . . . .              41   Byte
+  bootSig  . . . . . . . . . . .              42   Byte
+  volID  . . . . . . . . . . . .              43   DWord
+  volLab . . . . . . . . . . . .              47   Byte[11]
+  filSysType . . . . . . . . . .              52   Byte[8]
+bpbBuildReqPkt . . . . . . . . .              26
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  medesc . . . . . . . . . . . .              15   Byte
+  bufptr . . . . . . . . . . . .              16   QWord
+  bpbptr . . . . . . . . . . . .              1E   QWord
+bpbEx  . . . . . . . . . . . . .              78
+  jmpBoot  . . . . . . . . . . .               0   Byte[3]
+  oemName  . . . . . . . . . . .               3   Byte[8]
+  MustBeZero . . . . . . . . . .               B   Byte[53]
+  partitionOffset  . . . . . . .              40   QWord
+  volumeLength . . . . . . . . .              48   QWord
+  FAToffset  . . . . . . . . . .              50   DWord
+  FATlength  . . . . . . . . . .              54   DWord
+  clusterHeapOffset  . . . . . .              58   DWord
+  clusterCount . . . . . . . . .              5C   DWord
+  firstClusterOfRootDir  . . . .              60   DWord
+  volumeSerialNum  . . . . . . .              64   DWord
+  FSrevision . . . . . . . . . .              68   Word
+  volumeFlags  . . . . . . . . .              6A   Word
+  bytesPerSectorShift  . . . . .              6C   Byte
+  sectorsPerClusterShift . . . .              6D   Byte
+  numberOfFATs . . . . . . . . .              6E   Byte
+  driveSelect  . . . . . . . . .              6F   Byte
+  percentInUse . . . . . . . . .              70   Byte
+  reserved . . . . . . . . . . .              71   Byte[7]
+closeReqPkt  . . . . . . . . . .              15
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+dpb  . . . . . . . . . . . . . .              36
+  bDriveNumber . . . . . . . . .               0   Byte
+  bUnitNumber  . . . . . . . . .               1   Byte
+  bBytesPerSectorShift . . . . .               2   Byte
+  bMaxSectorInCluster  . . . . .               3   Byte
+  bSectorsPerClusterShift  . . .               4   Byte
+  dFAToffset . . . . . . . . . .               5   DWord
+  bNumberOfFATs  . . . . . . . .               9   Byte
+  wNumberRootDirEntries  . . . .               A   Word
+  dClusterHeapOffset . . . . . .               C   DWord
+  dClusterCount  . . . . . . . .              10   DWord
+  dFATlength . . . . . . . . . .              14   DWord
+  dFirstClusterOfRootDir . . . .              18   DWord
+  qDriverHeaderPtr . . . . . . .              1C   QWord
+  bMediaDescriptor . . . . . . .              24   Byte
+  bAccessFlag  . . . . . . . . .              25   Byte
+  qNextDPBPtr  . . . . . . . . .              26   QWord
+  dFirstFreeCluster  . . . . . .              2E   DWord
+  dNumberOfFreeClusters  . . . .              32   DWord
+drvHdr . . . . . . . . . . . . .              22
+  qPtrnxt  . . . . . . . . . . .               0   QWord
+  wAttrib  . . . . . . . . . . .               8   Word
+  qStratp  . . . . . . . . . . .               A   QWord
+  qInterp  . . . . . . . . . . .              12   QWord
+  vDrvnam  . . . . . . . . . . .              1A   Byte[8]
+drvReqHdr  . . . . . . . . . . .              15
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+flushReqPkt  . . . . . . . . . .              15
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+getDevReqPkt . . . . . . . . . .              18
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  getcmd . . . . . . . . . . . .              15   Byte
+  cmdsts . . . . . . . . . . . .              16   Word
+initReqPkt . . . . . . . . . . .              27
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  numunt . . . . . . . . . . . .              15   Byte
+  endptr . . . . . . . . . . . .              16   QWord
+  optptr . . . . . . . . . . . .              1E   QWord
+  drvnum . . . . . . . . . . . .              26   Byte
+ioReqPkt . . . . . . . . . . . .              30
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  medesc . . . . . . . . . . . .              15   Byte
+  bufptr . . . . . . . . . . . .              16   QWord
+  tfrlen . . . . . . . . . . . .              1E   Word
+  strtsc . . . . . . . . . . . .              20   QWord
+  desptr . . . . . . . . . . . .              28   QWord
+ioctlReqPkt  . . . . . . . . . .              2F
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  majfun . . . . . . . . . . . .              15   Byte
+  minfun . . . . . . . . . . . .              16   Byte
+  rsival . . . . . . . . . . . .              17   QWord
+  rdival . . . . . . . . . . . .              1F   QWord
+  ctlptr . . . . . . . . . . . .              27   QWord
+mediaCheckReqPkt . . . . . . . .              1F
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  medesc . . . . . . . . . . . .              15   Byte
+  medret . . . . . . . . . . . .              16   Byte
+  desptr . . . . . . . . . . . .              17   QWord
+nonDestInNoWaitReqPkt  . . . . .              16
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  retbyt . . . . . . . . . . . .              15   Byte
+openReqPkt . . . . . . . . . . .              15
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+remMediaReqPkt . . . . . . . . .              15
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+setDevReqPkt . . . . . . . . . .              18
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+  setcmd . . . . . . . . . . . .              15   Byte
+  cmdsts . . . . . . . . . . . .              16   Word
+statusReqPkt . . . . . . . . . .              15
+  hdrlen . . . . . . . . . . . .               0   Byte
+  unitnm . . . . . . . . . . . .               1   Byte
+  cmdcde . . . . . . . . . . . .               2   Byte
+  status . . . . . . . . . . . .               3   Word
+  dosptr . . . . . . . . . . . .               5   QWord
+  devptr . . . . . . . . . . . .               D   QWord
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+loader . . . . . . . . . . . . .        64 Bit   00007C2D Para    Private ''
+FLAT . . . . . . . . . . . . . .        GROUP
+
+
+Symbols:
+
+                N a m e                 Type       Value     Attr
+
+bUntnum  . . . . . . . . . . . .        Byte              1Ah 
+startmsg . . . . . . . . . . . .        Byte[24]        7C15h loader 
+
+io.asm: 326 lines, 2 passes, 0 ms, 0 warnings, 0 errors
