@@ -4,6 +4,13 @@ io.asm
                                     .x64p
 
                                     INCLUDE fatStruc.inc
+                              C 
+                              C ;-------------------------------------------------------;
+                              C ; This include file contains miscellaneous FAT driver   ;
+                              C ; structures. exFAT will have it's own files at a later ;
+                              C ; stage.                                                ;
+                              C ;-------------------------------------------------------;
+                              C 
 00000000                      C bpb STRUC          ;FAT 12 and 16 BPB
                               C 
 00000000                      C     jmpBoot    db 3 dup (?)
@@ -89,30 +96,141 @@ io.asm
                               C 
 00000078                      C bpbEx ENDS
                                     INCLUDE dosStruc.inc
+                              C 
+                              C ;-------------------------------------------------------;
+                              C ; This include file contains miscellaneous internal     ;
+                              C ; SCP/DOS structures.                                   ;
+                              C ;-------------------------------------------------------;
+                              C 
+                              C ;------------------------------------------------------------------------;
+                              C ; Each mass storage device up to LASTDRIVE gets a DPB, describing 
+                              C ; its file system structure. This is used to locate files and structures
+                              C ; on the device itself and to translate file requests to cluster chains
+                              C ; to LBAs to pass to the disk driver..
+                              C ; The DPBs form a linked list, with each DPB formed after the devices 
+                              C ; drivers Initialise routine has been called.
+                              C ;------------------------------------------------------------------------;
 00000000                      C dpb STRUC        ;Drive Parameter Block
                               C 
-00000000                      C     bDriveNumber               db ?  ;Drive number
-00000001                      C     bUnitNumber                db ?  ;Unit number in device
-00000002                      C     bBytesPerSectorShift       db ?  ;min 9 (512 bps), max 12 (4096 bps)
-00000003                      C     bMaxSectorInCluster        db ?  ;(Maximum sector in cluster) - 1
+00000000                      C     bDriveNumber            db ?  ;Drive number
+00000001                      C     bUnitNumber             db ?  ;Unit number in device
+00000002                      C     bBytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
+00000003                      C     bMaxSectorInCluster     db ?  ;(Maximum sector in cluster) - 1
                               C ;                                       i.e. (2^bSectorsPerClusterShift) - 1
-00000004                      C     bSectorsPerClusterShift    db ?  ;Sectors per cluster exponent
-00000005                      C     dFAToffset                 dd ?  ;Vol rel offset of first FAT, in sectors
-00000009                      C     bNumberOfFATs              db ?  ;Number of FATs
-0000000A                      C     wNumberRootDirEntries      dw ?  ;In sectors
-0000000C                      C     dClusterHeapOffset         dd ?  ;Start of data area, in sectors
-00000010                      C     dClusterCount              dd ?  ;Total number of clusters (volume size)
-00000014                      C     dFATlength                 dd ?  ;FAT length, in sectors
-00000018                      C     dFirstClusterOfRootDir     dd ?  ;First Cluster of Root Directory, min 2
-0000001C                      C     qDriverHeaderPtr           dq ?  ;Pointer to device driver header
-00000024                      C     bMediaDescriptor           db ?  ;Media descriptor
-00000025                      C     bAccessFlag                db ?  ;Access Flag (0 if accessed, else -1)
-00000026                      C     qNextDPBPtr                dq ?  ;Pointer to next DPB, -1 if at end
-0000002E                      C     dFirstFreeCluster          dd ?  ;Starting cluster of free space search
-00000032                      C     dNumberOfFreeClusters      dd ?  ;Number of free clusters, -1 unknown
+00000004                      C     bSectorsPerClusterShift db ?  ;Sectors per cluster exponent
+00000005                      C     dFAToffset              dd ?  ;Vol rel offset of first FAT, in sectors
+00000009                      C     bNumberOfFATs           db ?  ;Number of FATs
+0000000A                      C     wNumberRootDirEntries   dw ?  ;In sectors
+0000000C                      C     dClusterHeapOffset      dd ?  ;Start of data area, in sectors
+00000010                      C     dClusterCount           dd ?  ;Total number of clusters (volume size)
+00000014                      C     dFATlength              dd ?  ;FAT length, in sectors
+00000018                      C     dFirstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
+0000001C                      C     qDriverHeaderPtr        dq ?  ;Pointer to device driver header
+00000024                      C     bMediaDescriptor        db ?  ;Media descriptor
+00000025                      C     bAccessFlag             db ?  ;Access Flag (0 if accessed, else -1)
+00000026                      C     qNextDPBPtr             dq ?  ;Pointer to next DPB, -1 if at end
+0000002E                      C     dFirstFreeCluster       dd ?  ;Starting cluster of free space search
+00000032                      C     dNumberOfFreeClusters   dd ?  ;Number of free clusters, -1 unknown
                               C 
 00000036                      C dpb ENDS
+                              C 
+                              C ;------------------------------------------------------------------------;
+                              C ; Each mass storage device up to LASTDRIVE has a CDS associated with it.
+                              C ; All disk pathing requests go via the CDS for that drive.
+                              C ; The default drive is the last accessed drive, this number is stored
+                              C ; in the DOS data area.
+                              C ; The CDS is stored as an array with the offset into the array being 
+                              C ; given by the drive letter's offset into the alphabet (with A=0).
+                              C ;------------------------------------------------------------------------;
+00000000                      C cds STRUC       ;Current Directory Structure
+00000000                      C     sCurrentPath        db 67 dup(?)    ;Current Directory Path String
+00000043                      C     wFlags              dw ? ;CDS Flags - 
+00000045                      C     qDPBPtr             dq ? ;Ptr to the DPB of the dev using this CDS
+0000004D                      C     dStartCluster       dd ? ;Starting cluster of the directory on disk
+00000051                      C     qReserved           dq ? ;Reserved for future expansions
+00000059                      C     wBackslashOffset    dw ? ;How many chars to the start of current dir in the 
+                              C ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
+                              C ; another, we save the number of chars to skip to that deep level).
+                              C ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
+                              C ; Flags: Bit 15 set = Network drive
+                              C ;        Bit 14 set = Physical drive
+                              C ;        Bit 13 set = JOIN'ed drive
+                              C ;        Bit 12 set = SUBST'ed drive
+                              C ;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
+0000005B                      C cds ENDS
+                              C 
+                              C ;------------------------------------------------------------------------;
+                              C ; The SFT is a way to allow applications to open file handles to files 
+                              C ; and devices. As things stand, the SFT chain will have 5 file handles
+                              C ; under the first header, and then a second header will be linked to the 
+                              C ; first one after CONFIG.SYS has been read, to allow for FILES= to specify
+                              C ; a size for the second SFT (default 10 files). Same for System FCBs, 
+                              C ; using the FCBS= command. Default FCBS=5.
+                              C ;
+                              C ; A file handle describes the file, and the location within the file that
+                              C ; we are reading. The file handle can be manipulated without the file
+                              C ; being in memory, thus allowing the user to access data without needing 
+                              C ; to take up large portions of memory. Similarly, file handles allow for
+                              C ; accessing devices, by treating them as files with their drivers 
+                              C ; responding and translating the manipulations of the file handle itself.
+                              C ; Neither the driver nor the application should see or use the SFT for
+                              C ; the handle, as it is subject to change (and will change when file 
+                              C ; sharing provisions are included). The DOS will make requests to the 
+                              C ; driver in a generic way and the driver will respond, with DOS keeping
+                              C ; track of the information in the SFT entry for that handle. 
+                              C ;
+                              C ; One SFT entry can have multiple handles and multiple SFT entries
+                              C ; can point to the same file. It all depends on what the applications 
+                              C ; want to do with the File.
+                              C ;
+                              C ; !!!!IMPORTANT!!!!
+                              C ; Currently there are plans for File Sharing, but I include minimal 
+                              C ; provisions for it. I really just wanna get a DOS out the door.
+                              C ;
+                              C ;Each SFT may look like this:
+                              C ;sysvars-->sfth------------>sfth------------>|ENDOFLIST|
+                              C ;            |                |
+                              C ;       wNumFiles*sft    wNumFiles*sft
+                              C ;
+                              C ; Two SFT chains are built; one for files, and a one for so called 
+                              C ; System FCBs.
+                              C ;
+                              C ; Each SFT header has an array of SFT's below it, with the number of 
+                              C ; SFTs given by wNumFiles. The SFT headers form a linked list.
+                              C ;------------------------------------------------------------------------;
+00000000                      C sfth STRUC   ;System file table header
+                              C ; This is the SFT header.
+                              C ; This structure comes before the start of the first file in the array/table.
+00000000                      C     qNextSFTPtr dq ?    ;Pointer to the next SFT
+00000008                      C     wNumFiles   dw ?    ;Number of files in this table
+0000000A                      C sfth ENDS
+                              C 
+00000000                      C sft STRUC
+                              C ;This is the file struc itself
+00000000                      C     wNumHandles dw ?    ;Number of handles pointing to this file
+00000002                      C     wOpenMode   dw ?    ;Bit 15 set if opened via FCB
+00000004                      C     bFileAttrib db ?    ;Regular File Attributes
+00000005                      C     wDeviceInfo dw ?    ;Includes Device number
+00000007                      C     qPtr        dq ?    ;IF char, ptr to device driver, ELSE DPBptr
+0000000F                      C     dStartClust dd ?    ;Start cluster of file
+00000013                      C     wTime       dw ?    ;File Time
+00000015                      C     wDate       dw ?    ;File Date
+00000017                      C     dFileSize   dd ?    ;File Size, in bytes
+0000001B                      C     dCurntOff   dd ?    ;Current Offset in file, in bytes
+0000001F                      C     wRelClust   dw ?    ;Relative cluster in file of the last cluster accessed
+00000021                      C     dDirSect    dd ?    ;Relative number of sector containing directory entry 
+00000025                      C     bNumDirEnt  db ?    ;Number of dir entry within sector (byte offset/32)
+00000026                      C     sFCBName    db 11 dup(?)    ;8.3 Filename
+00000031                      C     qPSPOwner   dq ?    ;Address of PSP of program which first opened this file
+00000039                      C     dAbsClusr   dd ?    ;Absolute cluster of last cluster accessed
+0000003D                      C sft ENDS
                                     INCLUDE driverStruc.inc
+                              C 
+                              C ;-------------------------------------------------------;
+                              C ; This include file contains miscellaneous SCP/DOS      ;
+                              C ; device driver related structures.                     ;
+                              C ;-------------------------------------------------------;
+                              C 
 00000000                      C drvHdr STRUC  ;Device Driver Header for character and block devices
                               C 
 00000000                      C     nxtPtr dq ?  ;Pointer to the next driver header, -1 if at the end
@@ -336,16 +454,32 @@ io.asm
 00000005  488D2D00000000            lea rbp, startmsg   ;Get the RIP relative address of message
 0000000C  B804130000                mov eax, 1304h
 00000011  CD30                      int 30h
+00000013  8BEA                      mov ebp, edx        ;Save the boot drive in bp
+00000015  B9000100C0                mov ecx, 0C0000100h ;Read MSR
+0000001A  0F32                      rdmsr
+0000001C  8BFA                      mov edi, edx        ;Get the hi dword, and clear the upper bytes
+0000001E  48C1E720                  shl rdi, 20h        ;Shift high
+00000022  8BF8                      mov edi, eax        ;Get the low dword in
+00000024  488D3500000000            lea rsi, dataSegPtr
+0000002B  48893E                    mov qword ptr [rsi], rdi    ;Save the pointer to the data segment 
+0000002E  48C7C100100000            mov rcx, 1000h      ;Move 32Kb high
+00000035  57                        push rdi
+00000036  F348A5                    rep movsq
+00000039  5F                        pop rdi
+0000003A  48033D08000000            add rdi, dataSegPtr + SIZEOF dataSegPtr  
+                                    ;Add the size to the offset of the last element in dataSeg
+00000041  FFE7                      jmp rdi
+00000043  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+0000005B                        loader ENDS
 
-00000013  B00D                      mov al, OFFSET bpb.secPerClus
-00000015  EBFE                      jmp short $
+00000000                        dataSeg SEGMENT BYTE USE64     
+00000000  0000000000000000          dataSegPtr  dq ?    ;Pointer to the data Segment itself
+00000008                        dataSeg ENDS
 
-00000017  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-0000002F                        loader ENDS
-
-00000000                        resident    SEGMENT USE64
-
-00000000                        resident    ENDS
+00000000                        resident    SEGMENT BYTE USE64
+                                    ASSUME ds:FLAT, es:FLAT
+00000000  EBFE                      jmp short $
+00000002                        resident    ENDS
 
                                 END
 
@@ -354,10 +488,11 @@ Binary Map:
 
 Segment                  Pos(file)     RVA  Size(fil) Size(mem)
 ---------------------------------------------------------------
-loader                          0        0        2F        2F
-resident                       30       30         0         0
+loader                          0        0        5B        5B
+dataSeg                        5B       5B         8         8
+resident                       63       63         2         2
 ---------------------------------------------------------------
-                                                  2F        30
+                                                  65        65
 
 
 Macros:
@@ -454,6 +589,13 @@ bpbEx  . . . . . . . . . . . . .              78
   driveSelect  . . . . . . . . .              6F   Byte
   percentInUse . . . . . . . . .              70   Byte
   reserved . . . . . . . . . . .              71   Byte[7]
+cds  . . . . . . . . . . . . . .              5B
+  sCurrentPath . . . . . . . . .               0   Byte[67]
+  wFlags . . . . . . . . . . . .              43   Word
+  qDPBPtr  . . . . . . . . . . .              45   QWord
+  dStartCluster  . . . . . . . .              4D   DWord
+  qReserved  . . . . . . . . . .              51   QWord
+  wBackslashOffset . . . . . . .              59   Word
 closeReqPkt  . . . . . . . . . .               D
   hdrlen . . . . . . . . . . . .               0   Byte
   unitnm . . . . . . . . . . . .               1   Byte
@@ -567,6 +709,26 @@ setDevReqPkt . . . . . . . . . .              10
   devptr . . . . . . . . . . . .               5   QWord
   setcmd . . . . . . . . . . . .               D   Byte
   cmdsts . . . . . . . . . . . .               E   Word
+sft  . . . . . . . . . . . . . .              3D
+  wNumHandles  . . . . . . . . .               0   Word
+  wOpenMode  . . . . . . . . . .               2   Word
+  bFileAttrib  . . . . . . . . .               4   Byte
+  wDeviceInfo  . . . . . . . . .               5   Word
+  qPtr . . . . . . . . . . . . .               7   QWord
+  dStartClust  . . . . . . . . .               F   DWord
+  wTime  . . . . . . . . . . . .              13   Word
+  wDate  . . . . . . . . . . . .              15   Word
+  dFileSize  . . . . . . . . . .              17   DWord
+  dCurntOff  . . . . . . . . . .              1B   DWord
+  wRelClust  . . . . . . . . . .              1F   Word
+  dDirSect . . . . . . . . . . .              21   DWord
+  bNumDirEnt . . . . . . . . . .              25   Byte
+  sFCBName . . . . . . . . . . .              26   Byte[11]
+  qPSPOwner  . . . . . . . . . .              31   QWord
+  dAbsClusr  . . . . . . . . . .              39   DWord
+sfth . . . . . . . . . . . . . .               A
+  qNextSFTPtr  . . . . . . . . .               0   QWord
+  wNumFiles  . . . . . . . . . .               8   Word
 statusReqPkt . . . . . . . . . .               D
   hdrlen . . . . . . . . . . . .               0   Byte
   unitnm . . . . . . . . . . . .               1   Byte
@@ -579,8 +741,9 @@ Segments and Groups:
 
                 N a m e                 Size     Length   Align   Combine Class
 
-loader . . . . . . . . . . . . .        64 Bit   0000002F Para    Private ''
-resident . . . . . . . . . . . .        64 Bit   00000000 Para    Private ''
+dataSeg  . . . . . . . . . . . .        64 Bit   00000008 Byte    Private ''
+loader . . . . . . . . . . . . .        64 Bit   0000005B Para    Private ''
+resident . . . . . . . . . . . .        64 Bit   00000002 Byte    Private ''
 FLAT . . . . . . . . . . . . . .        GROUP
 
 
@@ -588,6 +751,7 @@ Symbols:
 
                 N a m e                 Type       Value     Attr
 
-startmsg . . . . . . . . . . . .        Byte[24]          17h loader 
+dataSegPtr . . . . . . . . . . .        QWord              0h dataSeg 
+startmsg . . . . . . . . . . . .        Byte[24]          43h loader 
 
-io.asm: 28 lines, 3 passes, 15 ms, 0 warnings, 0 errors
+io.asm: 44 lines, 3 passes, 0 ms, 0 warnings, 0 errors
