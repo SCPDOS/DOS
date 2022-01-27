@@ -7,7 +7,7 @@
     INCLUDE dosData.inc
 
 loadCode SEGMENT USE64
-    ASSUME ds:FLAT, es:FLAT, fs:NOTHING
+    ASSUME ds:FLAT, es:FLAT
 ; We arrive here with the following values in the registers.
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
