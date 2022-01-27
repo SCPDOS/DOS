@@ -455,72 +455,77 @@ io.asm
 0000000E                      C     cmdsts dw ?  ;Command status word
                               C 
 00000010                      C setDevReqPkt ENDS
-
+                                    INCLUDE dosData.inc
+                              C ; This file contains the structure of the DOS Data area
+00000000                      C dSeg STRUC 
+00000000                      C     dataSegPtr  dq ?    ;Pointer to the data Segment itself
+00000008                      C     codeSegPtr  dq ?    ;Pointer to the start of the resident Code segment
+00000010                      C     bootDrive   db ?    ;The Int 33h device we booted from
+00000011                      C     requestHdr  drvReqHdr    <,,,,>   ;The device driver header
+0000001E                      C                 db 20 dup (?)    ;Reserve xtra space for cmd data, with padding
+00000032                      C     sysVarsPtr  dq ?    ;Pointer to dpbHeadPtr, head of Sys Vars structure below
+0000003A                      C     mcbChainPtr dq ?    ;Pointer to the MCB chain
+00000042                      C     dpbHeadPtr  dq ?    ;Pointer to the first DPB in the DPB chain
+0000004A                      C     sftHeadPtr  dq ?    ;Pointer to the first SFT header in SFT chain
+00000052                      C     clockPtr    dq ?    ;Pointer to the current active CLOCK$ device
+0000005A                      C     conPtr      dq ?    ;Pointer to the current active CON device
+00000062                      C     maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)
+00000064                      C     bufHeadPtr  dq ?    ;Pointer to the first disk buffer
+0000006C                      C     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
+00000074                      C     sfcbHeadPTr dq ?    ;Pointer to the head of the System FCB chain
+0000007C                      C     numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
+0000007E                      C     numInt33drv db ?    ;Number of Int 33h drives detected in system
+0000007F                      C     lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
+00000080                      C     numJoinDrv  db ?    ;Number of Joined Drives
+00000081                      C     nulDevHdr   drvHdr <,,,,>
+                              C 
+                              C 
+000000A3                      C     inDOS       db ?    ;Incremented on each DOS call, decremented when leaving
+000000A4                      C     breakFlag   db ?    ;If set, check for CTRL+C on all DOS calls
+000000A5                      C     defaultDrv  db ?    ;Default, last accessed drive
+                              C 
+000000A6                      C     critStack   dq 41 dup (?)
+000001EE                      C     critStakTop dq ?
+000001F6                      C     IOStack     dq 199 dup (?)
+0000082E                      C     IOStakTop   dq ?
+00000836                      C     DiskStack   dq 199 dup (?)
+00000E6E                      C     DiskStakTop dq ?
+00000E76                      C dSeg ENDS
 
 00000000                        loadCode SEGMENT USE64
-                                    ASSUME ds:FLAT, es:FLAT
-
+                                    ASSUME ds:FLAT, es:FLAT, fs:NOTHING
+                                ; We arrive here with the following values in the registers.
+                                ; rbx =  LBA of first Logical Block after SCP/BIOS
+                                ; dx  = Int 33h boot device number
+                                ; fs  = userbase pointer (pointer to first usable block of RAM)
 00000000  55AA                      dw 0AA55h           ;Initial signature
 00000002  6687DB                    xchg bx, bx
-00000005  488D2D00000000            lea rbp, startmsg   ;Get the RIP relative address of message
-0000000C  B804130000                mov eax, 1304h
-00000011  CD30                      int 30h
-00000013  8BEA                      mov ebp, edx        ;Save the boot drive in bp
-00000015  B9000100C0                mov ecx, 0C0000100h ;Read MSR
-0000001A  0F32                      rdmsr
-0000001C  8BFA                      mov edi, edx        ;Get the hi dword, and clear the upper bytes
-0000001E  48C1E720                  shl rdi, 20h        ;Shift high
-00000022  8BF8                      mov edi, eax        ;Get the low dword in
-00000024  488D3500000000            lea rsi, dataSegPtr
-0000002B  48893E                    mov qword ptr [rsi], rdi    ;Save the pointer to the data segment 
-0000002E  48C7C100100000            mov rcx, 1000h      ;Move 32Kb high
-00000035  57                        push rdi
-00000036  F348A5                    rep movsq
-00000039  5F                        pop rdi
-0000003A  48033D08000000            add rdi, DiskStakTop + SIZEOF DiskStakTop  ;Reserve space for data area
-                                    ;Add the size to the offset of the last element in dataSeg
-00000041  FFE7                      jmp rdi
-00000043  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-0000005B                        loadCode ENDS
+00000005  6488142510000000          mov byte ptr fs:[dSeg.bootDrive], dl ;Save the boot drive in memory
+
+0000000D  B9000100C0                mov ecx, 0C0000100h ;Read FS MSR
+00000012  0F32                      rdmsr
+00000014  8BFA                      mov edi, edx        ;Get the hi dword, and clear the upper bytes
+00000016  48C1E720                  shl rdi, 20h        ;Shift high
+0000001A  8BF8                      mov edi, eax        ;Get the low dword in
+
+0000001C  6448893C2500000000        mov qword ptr fs:[dSeg.dataSegPtr], rdi  
+00000025  4881C7760E0000            add rdi, SIZEOF dSeg
+0000002C  6448893C2508000000        mov qword ptr fs:[dSeg.codeSegPtr], rdi
+00000035  488D3500000000            lea rsi, resPtr
+0000003C  B900100000                mov ecx, 1000h
+00000041  F348A5                    rep movsq
+00000044  488D2D00000000            lea rbp, startmsg   ;Get the absolute address of message
+0000004B  B804130000                mov eax, 1304h
+00000050  CD30                      int 30h
+00000052  EBFE                      jmp short $
+00000054  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+0000006C                        resPtr:
+0000006C                        loadCode ENDS
 
 00000000                        resCode SEGMENT BYTE USE64
                                     ASSUME ds:FLAT, es:FLAT
 00000000  EBFE                      jmp short $
 00000002                        resCode ENDS
-
-00000000                        dataSeg SEGMENT BYTE
-00000000  0000000000000000          dataSegPtr  dq ?    ;Pointer to the data Segment itself
-00000008  00                        bootDrive   db ?    ;The Int 33h device we booted from
-00000009  000000000000000000        requestHdr  drvReqHdr    <,,,,>   ;The device driver header
-00000016  000000000000000000                    db 20 dup (?)    ;Reserve xtra space for cmd data, with padding
-0000002A  0000000000000000          sysVarsPtr  dq ?    ;Pointer to the below structure
-00000032  0000000000000000          mcbChainPtr dq ?    ;Pointer to the MCB chain
-0000003A  0000000000000000          dpbHeadPtr  dq ?    ;Pointer to the first DPB in the DPB chain
-00000042  0000000000000000          sftHeadPtr  dq ?    ;Pointer to the first SFT header in SFT chain
-0000004A  0000000000000000          clockPtr    dq ?    ;Pointer to the current active CLOCK$ device
-00000052  0000000000000000          conPtr      dq ?    ;Pointer to the current active CON device
-0000005A  0000                      maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)
-0000005C  0000000000000000          bufHeadPtr  dq ?    ;Pointer to the first disk buffer
-00000064  0000000000000000          cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
-0000006C  0000000000000000          sfcbHeadPTr dq ?    ;Pointer to the head of the System FCB chain
-00000074  0000                      numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
-00000076  00                        numInt33drv db ?    ;Number of Int 33h drives detected in system
-00000077  00                        lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
-00000078  00                        numJoinDrv  db ?    ;Number of Joined Drives
-00000079  000000000000000000        nulDevHdr   drvHdr <,,,,>
-
-
-0000009B  00                        inDOS       db ?    ;Incremented on each DOS call, decremented when leaving
-0000009C  00                        breakFlag   db ?    ;If set, check for CTRL+C on all DOS calls
-0000009D  00                        defaultDrv  db ?    ;Default, last accessed drive
-
-0000009E  000000000000000000        critStack   dq 40 dup (?)
-000001DE                            critStakTop LABEL QWORD 
-000001DE  000000000000000000        IOStack     dq 300 dup (?)
-00000B3E                            IOStakTop   LABEL QWORD 
-00000B3E  000000000000000000        DiskStack   dq 300 dup (?)
-0000149E                            DiskStakTop LABEL QWORD 
-0000149E                        dataSeg ENDS
 
                                 END
 
@@ -529,11 +534,10 @@ Binary Map:
 
 Segment                  Pos(file)     RVA  Size(fil) Size(mem)
 ---------------------------------------------------------------
-loadCode                        0        0        5B        5B
-resCode                        5B       5B         2         2
-dataSeg                        5D       5D         0      149E
+loadCode                        0        0        6C        6C
+resCode                        6C       6C         2         2
 ---------------------------------------------------------------
-                                                  5D      14FB
+                                                  6E        6E
 
 
 Macros:
@@ -643,6 +647,35 @@ closeReqPkt  . . . . . . . . . .               D
   cmdcde . . . . . . . . . . . .               2   Byte
   status . . . . . . . . . . . .               3   Word
   devptr . . . . . . . . . . . .               5   QWord
+dSeg . . . . . . . . . . . . . .             E76
+  dataSegPtr . . . . . . . . . .               0   QWord
+  codeSegPtr . . . . . . . . . .               8   QWord
+  bootDrive  . . . . . . . . . .              10   Byte
+  requestHdr . . . . . . . . . .              11   drvReqHdr
+  sysVarsPtr . . . . . . . . . .              32   QWord
+  mcbChainPtr  . . . . . . . . .              3A   QWord
+  dpbHeadPtr . . . . . . . . . .              42   QWord
+  sftHeadPtr . . . . . . . . . .              4A   QWord
+  clockPtr . . . . . . . . . . .              52   QWord
+  conPtr . . . . . . . . . . . .              5A   QWord
+  maxBytesSec  . . . . . . . . .              62   Word
+  bufHeadPtr . . . . . . . . . .              64   QWord
+  cdsHeadPtr . . . . . . . . . .              6C   QWord
+  sfcbHeadPTr  . . . . . . . . .              74   QWord
+  numSafeSFCB  . . . . . . . . .              7C   Word
+  numInt33drv  . . . . . . . . .              7E   Byte
+  lastdrvNum . . . . . . . . . .              7F   Byte
+  numJoinDrv . . . . . . . . . .              80   Byte
+  nulDevHdr  . . . . . . . . . .              81   drvHdr
+  inDOS  . . . . . . . . . . . .              A3   Byte
+  breakFlag  . . . . . . . . . .              A4   Byte
+  defaultDrv . . . . . . . . . .              A5   Byte
+  critStack  . . . . . . . . . .              A6   QWord[41]
+  critStakTop  . . . . . . . . .             1EE   QWord
+  IOStack  . . . . . . . . . . .             1F6   QWord[199]
+  IOStakTop  . . . . . . . . . .             82E   QWord
+  DiskStack  . . . . . . . . . .             836   QWord[199]
+  DiskStakTop  . . . . . . . . .             E6E   QWord
 dpb  . . . . . . . . . . . . . .              36
   bDriveNumber . . . . . . . . .               0   Byte
   bUnitNumber  . . . . . . . . .               1   Byte
@@ -788,8 +821,7 @@ Segments and Groups:
 
                 N a m e                 Size     Length   Align   Combine Class
 
-dataSeg  . . . . . . . . . . . .        64 Bit   0000149E Byte    Private ''
-loadCode . . . . . . . . . . . .        64 Bit   0000005B Para    Private ''
+loadCode . . . . . . . . . . . .        64 Bit   0000006C Para    Private ''
 resCode  . . . . . . . . . . . .        64 Bit   00000002 Byte    Private ''
 FLAT . . . . . . . . . . . . . .        GROUP
 
@@ -798,33 +830,7 @@ Symbols:
 
                 N a m e                 Type       Value     Attr
 
-DiskStack  . . . . . . . . . . .        QWord[300]       B3Eh dataSeg 
-DiskStakTop  . . . . . . . . . .        QWord           149Eh dataSeg 
-IOStack  . . . . . . . . . . . .        QWord[300]       1DEh dataSeg 
-IOStakTop  . . . . . . . . . . .        QWord            B3Eh dataSeg 
-bootDrive  . . . . . . . . . . .        Byte               8h dataSeg 
-breakFlag  . . . . . . . . . . .        Byte              9Ch dataSeg 
-bufHeadPtr . . . . . . . . . . .        QWord             5Ch dataSeg 
-cdsHeadPtr . . . . . . . . . . .        QWord             64h dataSeg 
-clockPtr . . . . . . . . . . . .        QWord             4Ah dataSeg 
-conPtr . . . . . . . . . . . . .        QWord             52h dataSeg 
-critStack  . . . . . . . . . . .        QWord[40]         9Eh dataSeg 
-critStakTop  . . . . . . . . . .        QWord            1DEh dataSeg 
-dataSegPtr . . . . . . . . . . .        QWord              0h dataSeg 
-defaultDrv . . . . . . . . . . .        Byte              9Dh dataSeg 
-dpbHeadPtr . . . . . . . . . . .        QWord             3Ah dataSeg 
-inDOS  . . . . . . . . . . . . .        Byte              9Bh dataSeg 
-lastdrvNum . . . . . . . . . . .        Byte              77h dataSeg 
-maxBytesSec  . . . . . . . . . .        Word              5Ah dataSeg 
-mcbChainPtr  . . . . . . . . . .        QWord             32h dataSeg 
-nulDevHdr  . . . . . . . . . . .        drvHdr            79h dataSeg 
-numInt33drv  . . . . . . . . . .        Byte              76h dataSeg 
-numJoinDrv . . . . . . . . . . .        Byte              78h dataSeg 
-numSafeSFCB  . . . . . . . . . .        Word              74h dataSeg 
-requestHdr . . . . . . . . . . .        drvReqHdr          9h dataSeg 
-sfcbHeadPTr  . . . . . . . . . .        QWord             6Ch dataSeg 
-sftHeadPtr . . . . . . . . . . .        QWord             42h dataSeg 
-startmsg . . . . . . . . . . . .        Byte[24]          43h loadCode 
-sysVarsPtr . . . . . . . . . . .        QWord             2Ah dataSeg 
+resPtr . . . . . . . . . . . . .        L Near            6Ch loadCode 
+startmsg . . . . . . . . . . . .        Byte[24]          54h loadCode 
 
-io.asm: 74 lines, 3 passes, 0 ms, 0 warnings, 0 errors
+io.asm: 44 lines, 3 passes, 15 ms, 0 warnings, 0 errors
