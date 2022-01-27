@@ -25,7 +25,7 @@ loadCode SEGMENT USE64
     mov qword ptr fs:[dSeg.dataSegPtr], rdi  
     add rdi, SIZEOF dSeg
     mov qword ptr fs:[dSeg.codeSegPtr], rdi
-    lea rsi, resPtr
+    lea rsi, OFFSET resCode ;Get offset of the segment in the file into rsi
     mov ecx, 1000h
     rep movsq
     lea rbp, startmsg   ;Get the absolute address of message
@@ -33,7 +33,6 @@ loadCode SEGMENT USE64
     int 30h
     jmp short $
     startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-resPtr:
 loadCode ENDS
 
 resCode SEGMENT BYTE USE64
