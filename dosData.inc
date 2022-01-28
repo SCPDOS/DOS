@@ -9,8 +9,10 @@ dSeg STRUC
     mcbChainPtr dq ?    ;Pointer to the MCB chain
     dpbHeadPtr  dq ?    ;Pointer to the first DPB in the DPB chain
     sftHeadPtr  dq ?    ;Pointer to the first SFT header in SFT chain
-    clockPtr    dq ?    ;Pointer to the current active CLOCK$ device
-    conPtr      dq ?    ;Pointer to the current active CON device
+    clockPtr    dq ?    ;Pointer to the current active CLOCK$ device header
+    ;                    The last driver loaded with the CLOCK$ bit[3] set 
+    conPtr      dq ?    ;Pointer to the current active CON device header 
+    ;                    The last driver loaded with the STDIN bit[0] set
     maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)
     bufHeadPtr  dq ?    ;Pointer to the first disk buffer
     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
