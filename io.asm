@@ -57,7 +57,7 @@ conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
 auxHdr  drvHdr <prnHdr,  08000h, commonStrat, auxDriver, "AUX     ">
 prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, prnDriver, "PRN     ">
 clkHdr  drvHdr <msdHdr,  08008h, commonStrat, clkDriver, "CLOCK$  ">
-msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdDriver, <0,0,0,0,0,0,0,0>>
+msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdIntr, <0,0,0,0,0,0,0,0>>
 com1Hdr drvHdr <com2Hdr, 08000h, commonStrat, com1Intr, "COM1    ">
 com2Hdr drvHdr <com3Hdr, 08000h, commonStrat, com2Intr, "COM2    ">
 com3Hdr drvHdr <com4Hdr, 08000h, commonStrat, com3Intr, "COM3    ">
@@ -72,6 +72,7 @@ commonStrat PROC
     ret
 reqHdrPtr  dq -1    ;Where the default device drivers store the ReqPtr
 commonStrat ENDP
+
 nulDriver   PROC
     push rdi
     mov rdi, qword ptr [reqHdrPtr]
@@ -93,27 +94,79 @@ clkDriver   PROC
 clkDriver   ENDP
 
 msdDriver   PROC
-msdIntr:
-    mov rdi, qword ptr [reqHdrPtr]
-    cmp byte ptr [rdi + drvReqHdr.cmdcde], 24  ;Check cmd num is valid
+msdIntr     LABEL   BYTE
+    push rax
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+    mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
+    mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
+    cmp al, 24  ;Check cmd num is valid
     ja msdError
+    test al, al
+    jz commonInit
+    cmp al, 01
+    jz msdMedChk
+    cmp al, 02
+    jz msdBuildBPB
+    cmp al, 03
+    jz msdIOCTLRead
+    cmp al, 04
+    jz msdRead
+    cmp al, 08
+    jz msdWrite
+    cmp al, 09
+    jz msdWriteVerify
+    cmp al, 12
+    jz msdIOCTLWrite
+    cmp al, 13
+    jz msdDevOpen
+    cmp al, 14
+    jz msdDevClose
+    cmp al, 15
+    jz msdRemovableMedia
+    cmp al, 19
+    jz msdGenericIOCTL
+    cmp al, 23
+    jz msdGetLogicalDev
+    cmp al, 24
+    jz msdSetLogicalDev
     ret
 msdError:
-;This function returns a command done, and replaces the default msdInit function
-msdInit:
-msdMedChk:
-msdBuildBPB:
-msdIOCTLRead:
-msdRead:
-msdWrite:
-msdWriteVerify:
-msdIOCTLWrite:
-msdDevOpen:
-msdDevClose:
-msdRemovableMedia:
-msdGenericIOCTL:
-msdGetLogicalDev:
-msdSetLogicalDev:
+;Place Error, Unknown Command error in status field
+    mov word ptr [rdi + drvReqHdr.status], 8003h
+msdIntrExit:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rax
+    ret
+msdMedChk:          ;Function 1
+msdBuildBPB:        ;Function 2
+msdIOCTLRead:       ;Function 3
+msdRead:            ;Funciton 4
+msdWrite:           ;Function 8
+msdWriteVerify:     ;Function 9
+msdIOCTLWrite:      ;Function 12
+msdDevOpen:         ;Function 13
+msdDevClose:        ;Function 14
+msdRemovableMedia:  ;Function 15
+msdGenericIOCTL:    ;Function 19
+msdGetLogicalDev:   ;Function 23
+msdSetLogicalDev:   ;Function 24
+    jmp short msdIntrExit
 msdDriver   ENDP
 
 comDriver   PROC
@@ -138,6 +191,15 @@ lptIntr    LABEL   BYTE    ;LPT act as null device drivers
     ret
 lptDriver   ENDP
 
+driverDataPtr   LABEL   BYTE
+commonInit  PROC    ;Common Init (Function 0 for all drivers)
+    int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
+    movzx r10, r8b   ;Isolate the number of Int 33h devs only
+    mov r9, 2
+    cmp r10, 1
+    cmove r8, r9    ;If we have one device detected only, make it two!
+    mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
+commonInit  ENDP
 resCode ENDS
 
 END
