@@ -129,6 +129,8 @@ conWrite:
     ret
 conOutputStatus:
 conFlushOutputBuffers:
+    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+    ret
 conIOCTLWrite:
 conOpen:
 conClose:
@@ -136,18 +138,16 @@ conOutUntilBusy:
 conGenericIOCTL:
     mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
     ret
-int49hHook: ;Called with char to transfer in al
-    push rax
-    mov ah, 0Eh
-    int 30h
-    pop rax
-    iretq
+conWord dw  80D3h   ;Bit 5 set (20h) => Binary mode, else char mode
+conBuf  db  128 dup (?) ;Build a buffer of size 128 bytes
 conDriver   ENDP
 
 auxDriver   PROC
+auxWord dw  80C0h
 auxDriver   ENDP
 
 prnDriver   PROC
+prnWord dw  0A0C0h
 prnDriver   ENDP
 
 clkDriver   PROC
@@ -263,6 +263,14 @@ lptIntr     PROC    ;LPT act as null device drivers
     ret
 lptIntr     ENDP
 lptDriver   ENDP
+
+int49hHook  PROC ;Called with char to transfer in al
+    push rax
+    mov ah, 0Eh
+    int 30h
+    pop rax
+    iretq
+int49hHook  ENDP
 
 driverDataPtr   LABEL   BYTE
 drivers ENDP
