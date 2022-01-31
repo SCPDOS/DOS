@@ -141,6 +141,8 @@ io.asm
                               C ; in the DOS data area.
                               C ; The CDS is stored as an array with the offset into the array being 
                               C ; given by the drive letter's offset into the alphabet (with A=0).
+                              C ;
+                              C ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
                               C ;------------------------------------------------------------------------;
 00000000                      C cds STRUC       ;Current Directory Structure
 00000000                      C     sCurrentPath        db 67 dup(?)    ;Current Directory Path String
@@ -197,6 +199,9 @@ io.asm
                               C ;
                               C ; Each SFT header has an array of SFT's below it, with the number of 
                               C ; SFTs given by wNumFiles. The SFT headers form a linked list.
+                              C ;
+                              C ; DEFAULT FILES=15, MINIMUM FILES=5
+                              C ; DEFAULT FCBS=5, MINIMUM FCBS=5
                               C ;------------------------------------------------------------------------;
 00000000                      C sfth STRUC   ;System file table header
                               C ; This is the SFT header.
@@ -224,6 +229,30 @@ io.asm
 00000031                      C     qPSPOwner   dq ?    ;Address of PSP of program which first opened this file
 00000039                      C     dAbsClusr   dd ?    ;Absolute cluster of last cluster accessed
 0000003D                      C sft ENDS
+                              C 
+                              C ;------------------------------------------------------------------------;
+                              C ; Buffers allow for buffered drive IO, by first transferring a sector 
+                              C ; to an internal buffer, and then copying it to the specified location
+                              C ; in memory. The buffer is kept in the buffer chain,  in the event that 
+                              C ; another request for the same sector from the same device is made, so 
+                              C ; that is can be read from the device directly. Buffers are uniform in 
+                              C ; size, selected according to the largest detected sector size during 
+                              C ; the initial loadup.
+                              C ;
+                              C ; The buffer pointer in SysVars points to the oldest unused buffer
+                              C ;
+                              C ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
+                              C ;------------------------------------------------------------------------;
+                              C 
+00000000                      C bufferHdr   STRUC
+00000000                      C     nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
+00000008                      C     driveNumber db  ?   ;Drive number the buffer is used for
+00000009                      C     bufferFlags db  ?   ;Standard Flags
+0000000A                      C     bufferLBA   dd  ?   ;LBA the buffer contains
+0000000E                      C     bufFATcopy  db  ?   ;Number of copies of the FAT to write (1 if non-FAT)
+0000000F                      C     bufFAToff   db  ?   ;Sector offset of the backup copy of the FAT on disk
+00000010                      C     driveDPBPtr dq  ?   ;Pointer to the device DPB block
+00000018                      C bufferHdr   ENDS
                                     INCLUDE driverStruc.inc
                               C 
                               C ;-------------------------------------------------------;
@@ -472,7 +501,7 @@ io.asm
 0000005A                      C     conPtr      dq ?    ;Pointer to the current active CON device header 
                               C     ;                    The last driver loaded with the STDIN bit[0] set
 00000062                      C     maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)
-00000064                      C     bufHeadPtr  dq ?    ;Pointer to the first disk buffer
+00000064                      C     bufHeadPtr  dq ?    ;Pointer to next usable disk buffer
 0000006C                      C     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
 00000074                      C     sfcbHeadPTr dq ?    ;Pointer to the head of the System FCB chain
 0000007C                      C     numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
@@ -532,15 +561,19 @@ io.asm
 
 00000076  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
 0000008E                        nData   LABEL QWORD
-0000008E  FFFFFFFFFFFFFFFF          dq -1
+0000008E  0000000000000000          dq conHdr
 00000096  0480                      dw 08004h
-00000098  0000000000000000          dq commonStrat
-000000A0  0000000000000000          dq nulDriver
+00000098  0000000000000000          dq nulDriver
+000000A0  0000000000000000          dq nulIntr
 000000A8  4E554C2020202020          db "NUL     "
 000000B0                        loadCode ENDS
 
 00000000                        resCode SEGMENT BYTE USE64
                                     ASSUME ds:FLAT, es:FLAT
+00000000                        FATprocs    PROC
+00000000                        FATprocs    ENDP
+
+00000000                        drivers PROC
 00000000  000000000000000013    conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
 00000022  000000000000000000    auxHdr  drvHdr <prnHdr,  08000h, commonStrat, auxDriver, "AUX     ">
 00000044  000000000000000040    prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, prnDriver, "PRN     ">
@@ -562,133 +595,131 @@ io.asm
 000001A8                        commonStrat ENDP
 
 000001A8                        nulDriver   PROC
-000001A8  57                        push rdi
-000001A9  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]
-000001B0  66C747030001              mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
-000001B6  5F                        pop rdi
-000001B7                            ret
-000001B8                        nulDriver   ENDP
+000001A8  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+000001AE                        nulIntr LABEL BYTE
+000001AE                            ret
+000001AF                        nulDriver   ENDP
 
-000001B8                        conDriver   PROC
-000001B8                        conDriver   ENDP
+000001AF                        conDriver   PROC
+000001AF                        conDriver   ENDP
 
-000001B8                        auxDriver   PROC
-000001B8                        auxDriver   ENDP
+000001AF                        auxDriver   PROC
+000001AF                        auxDriver   ENDP
 
-000001B8                        prnDriver   PROC
-000001B8                        prnDriver   ENDP
+000001AF                        prnDriver   PROC
+000001AF                        prnDriver   ENDP
 
-000001B8                        clkDriver   PROC
-000001B8                        clkDriver   ENDP
+000001AF                        clkDriver   PROC
+000001AF                        clkDriver   ENDP
 
-000001B8                        msdDriver   PROC
-000001B8                        msdIntr     LABEL   BYTE
-000001B8  50                        push rax
-000001B9  57                        push rdi
-000001BA  4150                      push r8
-000001BC  4151                      push r9
-000001BE  4152                      push r10
-000001C0  4153                      push r11
-000001C2  4154                      push r12
-000001C4  4155                      push r13
-000001C6  4156                      push r14
-000001C8  4157                      push r15
-000001CA  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
-000001D1  8A4702                    mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
-000001D4  3C18                      cmp al, 24  ;Check cmd num is valid
-000001D6  7739                      ja msdError
-000001D8  84C0                      test al, al
-000001DA  7467                      jz commonInit
-000001DC  3C01                      cmp al, 01
-000001DE  744A                      jz msdMedChk
-000001E0  3C02                      cmp al, 02
-000001E2  7446                      jz msdBuildBPB
-000001E4  3C03                      cmp al, 03
-000001E6  7442                      jz msdIOCTLRead
-000001E8  3C04                      cmp al, 04
-000001EA  743E                      jz msdRead
-000001EC  3C08                      cmp al, 08
-000001EE  743A                      jz msdWrite
-000001F0  3C09                      cmp al, 09
-000001F2  7436                      jz msdWriteVerify
-000001F4  3C0C                      cmp al, 12
-000001F6  7432                      jz msdIOCTLWrite
-000001F8  3C0D                      cmp al, 13
-000001FA  742E                      jz msdDevOpen
-000001FC  3C0E                      cmp al, 14
-000001FE  742A                      jz msdDevClose
-00000200  3C0F                      cmp al, 15
-00000202  7426                      jz msdRemovableMedia
-00000204  3C13                      cmp al, 19
-00000206  7422                      jz msdGenericIOCTL
-00000208  3C17                      cmp al, 23
-0000020A  741E                      jz msdGetLogicalDev
-0000020C  3C18                      cmp al, 24
-0000020E  741A                      jz msdSetLogicalDev
-00000210                            ret
-00000211                        msdError:
+000001AF                        msdDriver   PROC
+000001AF                        msdIntr     LABEL   BYTE
+000001AF  50                        push rax
+000001B0  57                        push rdi
+000001B1  4150                      push r8
+000001B3  4151                      push r9
+000001B5  4152                      push r10
+000001B7  4153                      push r11
+000001B9  4154                      push r12
+000001BB  4155                      push r13
+000001BD  4156                      push r14
+000001BF  4157                      push r15
+000001C1  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
+000001C8  8A4702                    mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
+000001CB  3C18                      cmp al, 24  ;Check cmd num is valid
+000001CD  7738                      ja msdError
+000001CF  84C0                      test al, al
+000001D1  744D                      jz msdInit
+000001D3  3C01                      cmp al, 01
+000001D5  7465                      jz msdMedChk
+000001D7  3C02                      cmp al, 02
+000001D9  7461                      jz msdBuildBPB
+000001DB  3C03                      cmp al, 03
+000001DD  745D                      jz msdIOCTLRead
+000001DF  3C04                      cmp al, 04
+000001E1  7459                      jz msdRead
+000001E3  3C08                      cmp al, 08
+000001E5  7455                      jz msdWrite
+000001E7  3C09                      cmp al, 09
+000001E9  7451                      jz msdWriteVerify
+000001EB  3C0C                      cmp al, 12
+000001ED  744D                      jz msdIOCTLWrite
+000001EF  3C0D                      cmp al, 13
+000001F1  7449                      jz msdDevOpen
+000001F3  3C0E                      cmp al, 14
+000001F5  7445                      jz msdDevClose
+000001F7  3C0F                      cmp al, 15
+000001F9  7441                      jz msdRemovableMedia
+000001FB  3C13                      cmp al, 19
+000001FD  743D                      jz msdGenericIOCTL
+000001FF  3C17                      cmp al, 23
+00000201  7439                      jz msdGetLogicalDev
+00000203  3C18                      cmp al, 24
+00000205  7435                      jz msdSetLogicalDev
+00000207                        msdError:
                                 ;Place Error, Unknown Command error in status field
-00000211  66C747030380              mov word ptr [rdi + drvReqHdr.status], 8003h
-00000217                        msdIntrExit:
-00000217  415F                      pop r15
-00000219  415E                      pop r14
-0000021B  415D                      pop r13
-0000021D  415C                      pop r12
-0000021F  415B                      pop r11
-00000221  415A                      pop r10
-00000223  4159                      pop r9
-00000225  4158                      pop r8
-00000227  5F                        pop rdi
-00000228  58                        pop rax
-00000229                            ret
-0000022A                        msdMedChk:          ;Function 1
-0000022A                        msdBuildBPB:        ;Function 2
-0000022A                        msdIOCTLRead:       ;Function 3
-0000022A                        msdRead:            ;Funciton 4
-0000022A                        msdWrite:           ;Function 8
-0000022A                        msdWriteVerify:     ;Function 9
-0000022A                        msdIOCTLWrite:      ;Function 12
-0000022A                        msdDevOpen:         ;Function 13
-0000022A                        msdDevClose:        ;Function 14
-0000022A                        msdRemovableMedia:  ;Function 15
-0000022A                        msdGenericIOCTL:    ;Function 19
-0000022A                        msdGetLogicalDev:   ;Function 23
-0000022A                        msdSetLogicalDev:   ;Function 24
-0000022A  EBEB                      jmp short msdIntrExit
-0000022C                        msdDriver   ENDP
+00000207  66C747030380              mov word ptr [rdi + drvReqHdr.status], 8003h
+0000020D                        msdIntrExit:
+0000020D  415F                      pop r15
+0000020F  415E                      pop r14
+00000211  415D                      pop r13
+00000213  415C                      pop r12
+00000215  415B                      pop r11
+00000217  415A                      pop r10
+00000219  4159                      pop r9
+0000021B  4158                      pop r8
+0000021D  5F                        pop rdi
+0000021E  58                        pop rax
+0000021F                            ret
+00000220                        msdInit:            ;Function 0
+00000220  CD31                      int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
+00000222  4D0FB6D0                  movzx r10, r8b   ;Isolate the number of Int 33h devs only
+00000226  49C7C102000000            mov r9, 2
+0000022D  4983FA01                  cmp r10, 1
+00000231  4D0F44C1                  cmove r8, r9    ;If we have one device detected only, make it two!
+00000235  4488051A000000            mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
+0000023C                        msdMedChk:          ;Function 1
+0000023C                        msdBuildBPB:        ;Function 2
+0000023C                        msdIOCTLRead:       ;Function 3
+0000023C                        msdRead:            ;Funciton 4
+0000023C                        msdWrite:           ;Function 8
+0000023C                        msdWriteVerify:     ;Function 9
+0000023C                        msdIOCTLWrite:      ;Function 12
+0000023C                        msdDevOpen:         ;Function 13
+0000023C                        msdDevClose:        ;Function 14
+0000023C                        msdRemovableMedia:  ;Function 15
+0000023C                        msdGenericIOCTL:    ;Function 19
+0000023C                        msdGetLogicalDev:   ;Function 23
+0000023C                        msdSetLogicalDev:   ;Function 24
+0000023C  EBCF                      jmp short msdIntrExit
+0000023E                        msdDriver   ENDP
 
-0000022C                        comDriver   PROC
-0000022C                        com1Intr    LABEL   BYTE
-0000022C  EB04                      jmp short comIntr
-0000022E                        com2Intr    LABEL   BYTE
-0000022E  EB02                      jmp short comIntr
-00000230                        com3Intr    LABEL   BYTE
-00000230  EB00                      jmp short comIntr
-00000232                        com4Intr    LABEL   BYTE
-00000232                        comIntr:
-00000232                            ret
-00000233                        comDriver   ENDP
+0000023E                        comDriver   PROC
+0000023E                        com1Intr    LABEL   BYTE
+0000023E  EB04                      jmp short comIntr
+00000240                        com2Intr    LABEL   BYTE
+00000240  EB02                      jmp short comIntr
+00000242                        com3Intr    LABEL   BYTE
+00000242  EB00                      jmp short comIntr
+00000244                        com4Intr    LABEL   BYTE
+00000244                        comIntr:
+00000244                            ret
+00000245                        comDriver   ENDP
 
-00000233                        lptDriver   PROC    ;Drivers for LPT 1, 2, 3
+00000245                        lptDriver   PROC    ;Drivers for LPT 1, 2, 3
 
-00000233                        lptIntr    LABEL   BYTE    ;LPT act as null device drivers
-00000233  57                        push rdi
-00000234  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]
-0000023B  66C747030001              mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
-00000241  5F                        pop rdi
-00000242                            ret
-00000243                        lptDriver   ENDP
+00000245                        lptIntr    LABEL   BYTE    ;LPT act as null device drivers
+00000245  57                        push rdi
+00000246  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]
+0000024D  66C747030001              mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
+00000253  5F                        pop rdi
+00000254                            ret
+00000255                        lptDriver   ENDP
 
-00000243                        driverDataPtr   LABEL   BYTE
-00000243                        commonInit  PROC    ;Common Init (Function 0 for all drivers)
-00000243  CD31                      int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
-00000245  4D0FB6D0                  movzx r10, r8b   ;Isolate the number of Int 33h devs only
-00000249  49C7C102000000            mov r9, 2
-00000250  4983FA01                  cmp r10, 1
-00000254  4D0F44C1                  cmove r8, r9    ;If we have one device detected only, make it two!
-00000258  4488051A000000            mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
-0000025F                        commonInit  ENDP
-0000025F                        resCode ENDS
+00000255                        driverDataPtr   LABEL   BYTE
+00000255                        drivers ENDP
+
+00000255                        resCode ENDS
 
                                 END
 
@@ -698,9 +729,9 @@ Binary Map:
 Segment                  Pos(file)     RVA  Size(fil) Size(mem)
 ---------------------------------------------------------------
 loadCode                        0        0        B0        B0
-resCode                        B0       B0       25F       25F
+resCode                        B0       B0       255       255
 ---------------------------------------------------------------
-                                                 30F       30F
+                                                 305       305
 
 
 Macros:
@@ -797,6 +828,14 @@ bpbEx  . . . . . . . . . . . . .              78
   driveSelect  . . . . . . . . .              6F   Byte
   percentInUse . . . . . . . . .              70   Byte
   reserved . . . . . . . . . . .              71   Byte[7]
+bufferHdr  . . . . . . . . . . .              18
+  nextBufPtr . . . . . . . . . .               0   QWord
+  driveNumber  . . . . . . . . .               8   Byte
+  bufferFlags  . . . . . . . . .               9   Byte
+  bufferLBA  . . . . . . . . . .               A   DWord
+  bufFATcopy . . . . . . . . . .               E   Byte
+  bufFAToff  . . . . . . . . . .               F   Byte
+  driveDPBPtr  . . . . . . . . .              10   QWord
 cds  . . . . . . . . . . . . . .              5B
   sCurrentPath . . . . . . . . .               0   Byte[67]
   wFlags . . . . . . . . . . . .              43   Word
@@ -985,7 +1024,7 @@ Segments and Groups:
                 N a m e                 Size     Length   Align   Combine Class
 
 loadCode . . . . . . . . . . . .        64 Bit   000000B0 Para    Private ''
-resCode  . . . . . . . . . . . .        64 Bit   0000025F Byte    Private ''
+resCode  . . . . . . . . . . . .        64 Bit   00000255 Byte    Private ''
 FLAT . . . . . . . . . . . . . .        GROUP
 
 
@@ -993,32 +1032,34 @@ Procedures, parameters and locals:
 
                 N a m e                 Type     Value    Segment  Length
 
-auxDriver  . . . . . . . . . . .        P Near   000001B8 resCode  00000000 Public   
-clkDriver  . . . . . . . . . . .        P Near   000001B8 resCode  00000000 Public   
-comDriver  . . . . . . . . . . .        P Near   0000022C resCode  00000007 Public   
-  comIntr  . . . . . . . . . . .        L Near   00000232 resCode
-commonInit . . . . . . . . . . .        P Near   00000243 resCode  0000001C Public   
+FATprocs . . . . . . . . . . . .        P Near   00000000 resCode  00000000 Public   
+auxDriver  . . . . . . . . . . .        P Near   000001AF resCode  00000000 Public   
+clkDriver  . . . . . . . . . . .        P Near   000001AF resCode  00000000 Public   
+comDriver  . . . . . . . . . . .        P Near   0000023E resCode  00000007 Public   
+  comIntr  . . . . . . . . . . .        L Near   00000244 resCode
 commonStrat  . . . . . . . . . .        P Near   00000198 resCode  00000010 Public   
-conDriver  . . . . . . . . . . .        P Near   000001B8 resCode  00000000 Public   
-lptDriver  . . . . . . . . . . .        P Near   00000233 resCode  00000010 Public   
-msdDriver  . . . . . . . . . . .        P Near   000001B8 resCode  00000074 Public   
-  msdWriteVerify . . . . . . . .        L Near   0000022A resCode
-  msdDevOpen . . . . . . . . . .        L Near   0000022A resCode
-  msdDevClose  . . . . . . . . .        L Near   0000022A resCode
-  msdIOCTLRead . . . . . . . . .        L Near   0000022A resCode
-  msdBuildBPB  . . . . . . . . .        L Near   0000022A resCode
-  msdIOCTLWrite  . . . . . . . .        L Near   0000022A resCode
-  msdGetLogicalDev . . . . . . .        L Near   0000022A resCode
-  msdError . . . . . . . . . . .        L Near   00000211 resCode
-  msdSetLogicalDev . . . . . . .        L Near   0000022A resCode
-  msdRemovableMedia  . . . . . .        L Near   0000022A resCode
-  msdIntrExit  . . . . . . . . .        L Near   00000217 resCode
-  msdGenericIOCTL  . . . . . . .        L Near   0000022A resCode
-  msdWrite . . . . . . . . . . .        L Near   0000022A resCode
-  msdMedChk  . . . . . . . . . .        L Near   0000022A resCode
-  msdRead  . . . . . . . . . . .        L Near   0000022A resCode
-nulDriver  . . . . . . . . . . .        P Near   000001A8 resCode  00000010 Public   
-prnDriver  . . . . . . . . . . .        P Near   000001B8 resCode  00000000 Public   
+conDriver  . . . . . . . . . . .        P Near   000001AF resCode  00000000 Public   
+drivers  . . . . . . . . . . . .        P Near   00000000 resCode  00000255 Public   
+lptDriver  . . . . . . . . . . .        P Near   00000245 resCode  00000010 Public   
+msdDriver  . . . . . . . . . . .        P Near   000001AF resCode  0000008F Public   
+  msdWriteVerify . . . . . . . .        L Near   0000023C resCode
+  msdDevOpen . . . . . . . . . .        L Near   0000023C resCode
+  msdDevClose  . . . . . . . . .        L Near   0000023C resCode
+  msdIOCTLRead . . . . . . . . .        L Near   0000023C resCode
+  msdInit  . . . . . . . . . . .        L Near   00000220 resCode
+  msdBuildBPB  . . . . . . . . .        L Near   0000023C resCode
+  msdIOCTLWrite  . . . . . . . .        L Near   0000023C resCode
+  msdGetLogicalDev . . . . . . .        L Near   0000023C resCode
+  msdError . . . . . . . . . . .        L Near   00000207 resCode
+  msdSetLogicalDev . . . . . . .        L Near   0000023C resCode
+  msdRemovableMedia  . . . . . .        L Near   0000023C resCode
+  msdIntrExit  . . . . . . . . .        L Near   0000020D resCode
+  msdGenericIOCTL  . . . . . . .        L Near   0000023C resCode
+  msdWrite . . . . . . . . . . .        L Near   0000023C resCode
+  msdMedChk  . . . . . . . . . .        L Near   0000023C resCode
+  msdRead  . . . . . . . . . . .        L Near   0000023C resCode
+nulDriver  . . . . . . . . . . .        P Near   000001A8 resCode  00000007 Public   
+prnDriver  . . . . . . . . . . .        P Near   000001AF resCode  00000000 Public   
 
 
 Symbols:
@@ -1028,24 +1069,25 @@ Symbols:
 auxHdr . . . . . . . . . . . . .        drvHdr            22h resCode 
 clkHdr . . . . . . . . . . . . .        drvHdr            66h resCode 
 com1Hdr  . . . . . . . . . . . .        drvHdr            AAh resCode 
-com1Intr . . . . . . . . . . . .        Byte             22Ch resCode 
+com1Intr . . . . . . . . . . . .        Byte             23Eh resCode 
 com2Hdr  . . . . . . . . . . . .        drvHdr            CCh resCode 
-com2Intr . . . . . . . . . . . .        Byte             22Eh resCode 
+com2Intr . . . . . . . . . . . .        Byte             240h resCode 
 com3Hdr  . . . . . . . . . . . .        drvHdr            EEh resCode 
-com3Intr . . . . . . . . . . . .        Byte             230h resCode 
+com3Intr . . . . . . . . . . . .        Byte             242h resCode 
 com4Hdr  . . . . . . . . . . . .        drvHdr           110h resCode 
-com4Intr . . . . . . . . . . . .        Byte             232h resCode 
+com4Intr . . . . . . . . . . . .        Byte             244h resCode 
 conHdr . . . . . . . . . . . . .        drvHdr             0h resCode 
-driverDataPtr  . . . . . . . . .        Byte             243h resCode 
+driverDataPtr  . . . . . . . . .        Byte             255h resCode 
 lpt1Hdr  . . . . . . . . . . . .        drvHdr           132h resCode 
 lpt2Hdr  . . . . . . . . . . . .        drvHdr           154h resCode 
 lpt3Hdr  . . . . . . . . . . . .        drvHdr           176h resCode 
-lptIntr  . . . . . . . . . . . .        Byte             233h resCode 
+lptIntr  . . . . . . . . . . . .        Byte             245h resCode 
 msdHdr . . . . . . . . . . . . .        drvHdr            88h resCode 
-msdIntr  . . . . . . . . . . . .        Byte             1B8h resCode 
+msdIntr  . . . . . . . . . . . .        Byte             1AFh resCode 
 nData  . . . . . . . . . . . . .        QWord             8Eh loadCode 
+nulIntr  . . . . . . . . . . . .        Byte             1AEh resCode 
 prnHdr . . . . . . . . . . . . .        drvHdr            44h resCode 
 reqHdrPtr  . . . . . . . . . . .        QWord            1A0h resCode 
 startmsg . . . . . . . . . . . .        Byte[24]          76h loadCode 
 
-io.asm: 205 lines, 3 passes, 0 ms, 0 warnings, 0 errors
+io.asm: 207 lines, 3 passes, 0 ms, 0 warnings, 0 errors

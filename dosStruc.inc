@@ -43,6 +43,8 @@ dpb ENDS
 ; in the DOS data area.
 ; The CDS is stored as an array with the offset into the array being 
 ; given by the drive letter's offset into the alphabet (with A=0).
+;
+; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
 ;------------------------------------------------------------------------;
 cds STRUC       ;Current Directory Structure
     sCurrentPath        db 67 dup(?)    ;Current Directory Path String
@@ -99,6 +101,9 @@ cds ENDS
 ;
 ; Each SFT header has an array of SFT's below it, with the number of 
 ; SFTs given by wNumFiles. The SFT headers form a linked list.
+;
+; DEFAULT FILES=15, MINIMUM FILES=5
+; DEFAULT FCBS=5, MINIMUM FCBS=5
 ;------------------------------------------------------------------------;
 sfth STRUC   ;System file table header
 ; This is the SFT header.
@@ -126,3 +131,27 @@ sft STRUC
     qPSPOwner   dq ?    ;Address of PSP of program which first opened this file
     dAbsClusr   dd ?    ;Absolute cluster of last cluster accessed
 sft ENDS
+
+;------------------------------------------------------------------------;
+; Buffers allow for buffered drive IO, by first transferring a sector 
+; to an internal buffer, and then copying it to the specified location
+; in memory. The buffer is kept in the buffer chain,  in the event that 
+; another request for the same sector from the same device is made, so 
+; that is can be read from the device directly. Buffers are uniform in 
+; size, selected according to the largest detected sector size during 
+; the initial loadup.
+;
+; The buffer pointer in SysVars points to the oldest unused buffer
+;
+; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
+;------------------------------------------------------------------------;
+
+bufferHdr   STRUC
+    nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
+    driveNumber db  ?   ;Drive number the buffer is used for
+    bufferFlags db  ?   ;Standard Flags
+    bufferLBA   dd  ?   ;LBA the buffer contains
+    bufFATcopy  db  ?   ;Number of copies of the FAT to write (1 if non-FAT)
+    bufFAToff   db  ?   ;Sector offset of the backup copy of the FAT on disk
+    driveDPBPtr dq  ?   ;Pointer to the device DPB block
+bufferHdr   ENDS

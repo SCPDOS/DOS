@@ -44,15 +44,20 @@ loadCode SEGMENT USE64
 
     startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
 nData   LABEL QWORD
-    dq -1
+    dq conHdr
     dw 08004h
-    dq commonStrat
     dq nulDriver
+    dq nulIntr
     db "NUL     "
 loadCode ENDS
 
+;codeSegment points to the start of this segment!
 resCode SEGMENT BYTE USE64
     ASSUME ds:FLAT, es:FLAT
+FATprocs    PROC
+FATprocs    ENDP
+
+drivers PROC
 conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
 auxHdr  drvHdr <prnHdr,  08000h, commonStrat, auxDriver, "AUX     ">
 prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, prnDriver, "PRN     ">
@@ -74,14 +79,68 @@ reqHdrPtr  dq -1    ;Where the default device drivers store the ReqPtr
 commonStrat ENDP
 
 nulDriver   PROC
-    push rdi
-    mov rdi, qword ptr [reqHdrPtr]
-    mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
-    pop rdi
+    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+nulIntr LABEL BYTE
     ret
 nulDriver   ENDP
 
 conDriver   PROC
+    push rax
+    push rbx
+    mov rbx, qword ptr [reqHdrPtr]
+    mov al, byte ptr [rbx + drvReqHdr.cmdcde]
+    pop rbx
+    pop rax
+    ret
+conError:
+conInit:
+conIOCTLRead:
+    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+    ret
+conRead:
+    push rdi
+    push rcx
+    mov rdi, qword ptr [rbx + drvReqHdr.bufptr] ;Point rdi to destination buffer
+    mov ecx, dword ptr [rbx + drvReqHdr.tfrlen] ;Number of chars to read
+@@:
+    xor ax, ax  ;Wait for char input
+    int 36h     ;Get the ASCII char into al
+    stosb       ;Save al in buffer and inc rdi
+    loop @b
+    pop rcx
+    pop rdi
+    ret
+conNondestructiveRead:
+conInputStatus:
+conFlushInputBuffers:
+conWrite:
+    push rsi
+    push rcx
+    mov rsi, qword ptr [rbx + drvReqHdr.bufptr] ;Point rsi to buffer pointer
+    mov ecx, dword ptr [rbx + drvReqHdr.tfrlen] ;Number of chars to transfer
+@@: 
+    lodsb   ;Get char into al, and inc rsi
+    int 49h ;Fast print char
+    loop @b ;keep printing until ecx is zero
+    pop rcx
+    pop rsi
+    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Request complete
+    ret
+conOutputStatus:
+conFlushOutputBuffers:
+conIOCTLWrite:
+conOpen:
+conClose:
+conOutUntilBusy:
+conGenericIOCTL:
+    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+    ret
+int49hHook: ;Called with char to transfer in al
+    push rax
+    mov ah, 0Eh
+    int 30h
+    pop rax
+    iretq
 conDriver   ENDP
 
 auxDriver   PROC
@@ -110,7 +169,7 @@ msdIntr     LABEL   BYTE
     cmp al, 24  ;Check cmd num is valid
     ja msdError
     test al, al
-    jz commonInit
+    jz msdInit
     cmp al, 01
     jz msdMedChk
     cmp al, 02
@@ -137,7 +196,6 @@ msdIntr     LABEL   BYTE
     jz msdGetLogicalDev
     cmp al, 24
     jz msdSetLogicalDev
-    ret
 msdError:
 ;Place Error, Unknown Command error in status field
     mov word ptr [rdi + drvReqHdr.status], 8003h
@@ -153,6 +211,13 @@ msdIntrExit:
     pop rdi
     pop rax
     ret
+msdInit:            ;Function 0
+    int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
+    movzx r10, r8b   ;Isolate the number of Int 33h devs only
+    mov r9, 2
+    cmp r10, 1
+    cmove r8, r9    ;If we have one device detected only, make it two!
+    mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
 msdMedChk:          ;Function 1
 msdBuildBPB:        ;Function 2
 msdIOCTLRead:       ;Function 3
@@ -192,14 +257,8 @@ lptIntr    LABEL   BYTE    ;LPT act as null device drivers
 lptDriver   ENDP
 
 driverDataPtr   LABEL   BYTE
-commonInit  PROC    ;Common Init (Function 0 for all drivers)
-    int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
-    movzx r10, r8b   ;Isolate the number of Int 33h devs only
-    mov r9, 2
-    cmp r10, 1
-    cmove r8, r9    ;If we have one device detected only, make it two!
-    mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
-commonInit  ENDP
+drivers ENDP
+
 resCode ENDS
 
 END
