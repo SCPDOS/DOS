@@ -557,242 +557,295 @@ io.asm
 00000066  488D2D00000000            lea rbp, startmsg   ;Get the absolute address of message
 0000006D  B804130000                mov eax, 1304h
 00000072  CD30                      int 30h
-00000074  EBFE                      jmp short $
+00000074                        @@:
+00000074  6633C0                    xor ax, ax
+00000077  CD36                      int 36h
+00000079  B40E                      mov ah, 0Eh
+0000007B  CD30                      int 30h
+0000007D  EBF5                      jmp short @b
 
-00000076  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-0000008E                        nData   LABEL QWORD
-0000008E  0000000000000000          dq conHdr
-00000096  0480                      dw 08004h
-00000098  0000000000000000          dq nulStrat
-000000A0  0000000000000000          dq nulIntr
-000000A8  4E554C2020202020          db "NUL     "
-000000B0                        loadCode ENDS
+0000007F  0A0D5374617274696E        startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+00000097                        nData   LABEL QWORD
+00000097  0000000000000000          dq conHdr
+0000009F  0480                      dw 08004h
+000000A1  0000000000000000          dq nulStrat
+000000A9  0000000000000000          dq nulIntr
+000000B1  4E554C2020202020          db "NUL     "
+000000B9                        loadCode ENDS
 
                                 ;codeSegment points to the start of this segment!
 00000000                        resCode SEGMENT BYTE USE64
                                     ASSUME ds:FLAT, es:FLAT
+                                ;-----------------------------------:
+                                ;       File System routines        :
+                                ;-----------------------------------:
 00000000                        FATprocs    PROC
 00000000                        FATprocs    ENDP
 
-00000000                        drivers PROC
-00000000  000000000000000013    conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
-00000022  000000000000000000    auxHdr  drvHdr <prnHdr,  08000h, commonStrat, auxDriver, "AUX     ">
-00000044  000000000000000040    prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, prnDriver, "PRN     ">
-00000066  000000000000000008    clkHdr  drvHdr <msdHdr,  08008h, commonStrat, clkDriver, "CLOCK$  ">
-00000088  000000000000000040    msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdIntr, <0,0,0,0,0,0,0,0>>
-000000AA  000000000000000000    com1Hdr drvHdr <com2Hdr, 08000h, commonStrat, com1Intr, "COM1    ">
-000000CC  000000000000000000    com2Hdr drvHdr <com3Hdr, 08000h, commonStrat, com2Intr, "COM2    ">
-000000EE  000000000000000000    com3Hdr drvHdr <com4Hdr, 08000h, commonStrat, com3Intr, "COM3    ">
-00000110  000000000000000000    com4Hdr drvHdr <lpt1Hdr, 08000h, commonStrat, com4Intr, "COM4    ">
-00000132  000000000000000040    lpt1Hdr drvHdr <lpt2Hdr, 0A040h, commonStrat, lptIntr, "LPT1    ">
-00000154  000000000000000040    lpt2Hdr drvHdr <lpt3Hdr, 0A040h, commonStrat, lptIntr, "LPT2    ">
-00000176  FFFFFFFFFFFFFFFF40    lpt3Hdr drvHdr <-1, 0A040h, commonStrat, lptIntr, "LPT3    ">
-00000198                        commonStrat PROC
+                                ;-----------------------------------:
+                                ;        Interrupt routines         :
+                                ;-----------------------------------:
+00000000                        int49hHook  PROC ;Called with char to transfer in al
+00000000  50                        push rax
+00000001  B40E                      mov ah, 0Eh
+00000003  CD30                      int 30h
+00000005  58                        pop rax
+00000006                            iretq
+00000008                        int49hHook  ENDP
+
+                                ;-----------------------------------:
+                                ;          Driver routines          :
+                                ;-----------------------------------:
+
+00000008                        drivers PROC
+00000008  000000000000000013    conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
+0000002A  000000000000000000    auxHdr  drvHdr <prnHdr,  08000h, commonStrat, auxDriver, "AUX     ">
+0000004C  000000000000000040    prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, prnDriver, "PRN     ">
+0000006E  000000000000000008    clkHdr  drvHdr <msdHdr,  08008h, commonStrat, clkDriver, "CLOCK$  ">
+00000090  000000000000000040    msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdIntr, <0,0,0,0,0,0,0,0>>
+000000B2  000000000000000000    com1Hdr drvHdr <com2Hdr, 08000h, commonStrat, com1Intr, "COM1    ">
+000000D4  000000000000000000    com2Hdr drvHdr <com3Hdr, 08000h, commonStrat, com2Intr, "COM2    ">
+000000F6  000000000000000000    com3Hdr drvHdr <com4Hdr, 08000h, commonStrat, com3Intr, "COM3    ">
+00000118  000000000000000000    com4Hdr drvHdr <lpt1Hdr, 08000h, commonStrat, com4Intr, "COM4    ">
+0000013A  000000000000000040    lpt1Hdr drvHdr <lpt2Hdr, 0A040h, commonStrat, lptIntr, "LPT1    ">
+0000015C  000000000000000040    lpt2Hdr drvHdr <lpt3Hdr, 0A040h, commonStrat, lptIntr, "LPT2    ">
+0000017E  FFFFFFFFFFFFFFFF40    lpt3Hdr drvHdr <-1, 0A040h, commonStrat, lptIntr, "LPT3    ">
+000001A0                        commonStrat PROC
                                 ;DOS calls this function with rbx=Ptr to request header
                                 ;DOS also sets fs to point to its data segment when entered
-00000198  48891D00000000            mov qword ptr [reqHdrPtr], rbx
-0000019F                            ret
-000001A0  FFFFFFFFFFFFFFFF      reqHdrPtr  dq -1    ;Where the default device drivers store the ReqPtr
-000001A8                        commonStrat ENDP
+000001A0  48891D00000000            mov qword ptr [reqHdrPtr], rbx
+000001A7                            ret
+000001A8  FFFFFFFFFFFFFFFF      reqHdrPtr  dq -1    ;Where the default device drivers store the ReqPtr
+000001B0                        commonStrat ENDP
 
-000001A8                        nulStrat   PROC
-000001A8  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-000001AE                        nulIntr PROC
-000001AE                            ret
-000001AF                        nulIntr     ENDP
-000001AF                        nulStrat    ENDP
+000001B0                        nulStrat   PROC
+000001B0  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+000001B6                        nulIntr PROC
+000001B6                            ret
+000001B7                        nulIntr     ENDP
+000001B7                        nulStrat    ENDP
 
-000001AF                        conDriver   PROC
-000001AF  50                        push rax
-000001B0  53                        push rbx
-000001B1  488B1D00000000            mov rbx, qword ptr [reqHdrPtr]
-000001B8  8A4302                    mov al, byte ptr [rbx + drvReqHdr.cmdcde]
-000001BB  5B                        pop rbx
-000001BC  58                        pop rax
-000001BD                            ret
-000001BE                        conError:
-000001BE                        conInit:
-000001BE                        conIOCTLRead:
-000001BE  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-000001C4                            ret
-000001C5                        conRead:
-000001C5  57                        push rdi
-000001C6  51                        push rcx
-000001C7  488B7B0E                  mov rdi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rdi to destination buffer
-000001CB  8B4B16                    mov ecx, dword ptr [rbx + ioReqPkt.tfrlen] ;Number of chars to read
-000001CE                        @@:
-000001CE  6633C0                    xor ax, ax  ;Wait for char input
-000001D1  CD36                      int 36h     ;Get the ASCII char into al
-000001D3  AA                        stosb       ;Save al in buffer and inc rdi
-000001D4  E2F8                      loop @b
-000001D6  59                        pop rcx
-000001D7  5F                        pop rdi
-000001D8                            ret
-000001D9                        conNondestructiveRead:
-000001D9                        conInputStatus:
-000001D9                        conFlushInputBuffers:
-000001D9                        conWrite:
-000001D9  56                        push rsi
-000001DA  51                        push rcx
-000001DB  488B730E                  mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to buffer pointer
-000001DF  8B4B16                    mov ecx, dword ptr [rbx + ioReqPkt.tfrlen] ;Number of chars to transfer
-000001E2                        @@: 
-000001E2  AC                        lodsb   ;Get char into al, and inc rsi
-000001E3  CD49                      int 49h ;Fast print char
-000001E5  E2FB                      loop @b ;keep printing until ecx is zero
-000001E7  59                        pop rcx
-000001E8  5E                        pop rsi
-000001E9  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Request complete
-000001EF                            ret
-000001F0                        conOutputStatus:
-000001F0                        conFlushOutputBuffers:
-000001F0  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-000001F6                            ret
-000001F7                        conIOCTLWrite:
-000001F7                        conOpen:
-000001F7                        conClose:
-000001F7                        conOutUntilBusy:
-000001F7                        conGenericIOCTL:
-000001F7  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-000001FD                            ret
-000001FE  D380                  conWord dw  80D3h   ;Bit 5 set (20h) => Binary mode, else char mode
-00000200  000000000000000000    conBuf  db  128 dup (?) ;Build a buffer of size 128 bytes
-00000280                        conDriver   ENDP
+000001B7                        conDriver   PROC
+000001B7  50                        push rax
+000001B8  53                        push rbx
+000001B9  488B1D00000000            mov rbx, qword ptr [reqHdrPtr]
+000001C0  8A4302                    mov al, byte ptr [rbx + drvReqHdr.cmdcde]
+000001C3  32C0                      xor al, al
+000001C5  7421                      jz conInit
+000001C7  3C04                      cmp al, 4
+000001C9  7446                      jz conRead
+000001CB  3C05                      cmp al, 5
+000001CD  745F                      jz conNondestructiveRead
+000001CF  3C06                      cmp al, 6
+000001D1  740C                      jz conExit
+000001D3  3C07                      cmp al, 7
+000001D5  746A                      jz conFlushInputBuffers
+000001D7  3C08                      cmp al, 8
+000001D9  7472                      jz conWrite
+000001DB  3C09                      cmp al, 9
+000001DD  746E                      jz conWrite
+                                ;All other cases fall through here
+000001DF                        conExit:
+000001DF  66814B030001              or word ptr [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+000001E5  5B                        pop rbx
+000001E6  58                        pop rax
+000001E7                            ret
+000001E8                        conInit:    ;Function 0
+000001E8  52                        push rdx
+000001E9  E853000000                call conFlushInputBuffers  ;Call to flush keyboard buffer
+000001EE  B800050000                mov eax, 0500h  ;Set page zero as the default page
+000001F3  CD30                      int 30h
+000001F5  B402                      mov ah, 02h
+000001F7  33D2                      xor edx, edx    ;Set screen cursor to top right corner
+000001F9  8AFA                      mov bh, dl      ;Set cursor for page 0
+000001FB  CD30                      int 30h
+000001FD  B707                      mov bh, 07h     ;Grey/Black attribs
+000001FF  B800060000                mov eax, 0600h  ;Clear whole screen
+00000204  CD30                      int 30h
+00000206  5A                        pop rdx
+00000207  EBD6                      jmp short conExit
+00000209                        conIORead:
+00000209  66C743030380              mov word ptr [rbx + drvReqHdr.status], 8003h    ;Error, unknown command!
+0000020F  EBCE                      jmp short conExit
+00000211                        conRead:    ;Function 4
+00000211  57                        push rdi
+00000212  51                        push rcx
+00000213  488B7B0E                  mov rdi, qword ptr [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
+00000217  33C9                      xor ecx, ecx    ;Zero the char counter
+00000219                        @@:
+00000219  3B4B16                    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
+0000021C  7409                      je @f
+0000021E  33C0                      xor eax, eax
+00000220  CD36                      int 36h
+00000222  AA                        stosb   ;Store char in al into buffer and inc rdi
+00000223  FFC1                      inc ecx
+00000225  EBF2                      jmp short @b
+00000227                        @@:
+00000227  894B16                    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+0000022A  59                        pop rcx
+0000022B  5F                        pop rdi
+0000022C  EBB1                      jmp short conExit
+0000022E                        conNondestructiveRead:  ;Function 5
+0000022E  B401                      mov ah, 01h     ;Get key if exists
+00000230  CD36                      int 36h
+00000232  7405                      jz @f           ;If zero clear => no key, go forwards
+                                    ;Keystroke available
+00000234  88430D                    mov byte ptr [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
+00000237  EBA6                      jmp short conExit
+00000239                        @@: ;No keystroke available
+00000239  66C743030003              mov word ptr [rbx + nonDestInNoWaitReqPkt.status], 0300h   ;Set busy bit
+0000023F  EB9E                      jmp short conExit
+00000241                        conFlushInputBuffers:   ;Function 7
+00000241  B401                      mov ah, 01      ;Get buffer status
+00000243  CD36                      int 36h
+00000245  7498                      jz conExit      ;If zero clear => no more keys to read
+00000247  32E4                      xor ah, ah
+00000249  CD36                      int 36h ;Read key to flush from buffer
+0000024B  EBF4                      jmp short conFlushInputBuffers
+0000024D                        conWrite:   ;Function 8 and 9
+0000024D  56                        push rsi
+0000024E  51                        push rcx
+0000024F  488B730E                  mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
+00000253  33C9                      xor ecx, ecx    ;Zero the char counter
+00000255                        @@: 
+00000255  3B4B16                    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
+00000258  7407                      je @f
+0000025A  AC                        lodsb   ;Get char into al, and inc rsi
+0000025B  CD49                      int 49h ;Fast print char
+0000025D  FFC1                      inc ecx
+0000025F  EBF4                      jmp short @b ;keep printing until all chars printed
+00000261                        @@:
+00000261  894B16                    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+00000264  59                        pop rcx
+00000265  5E                        pop rsi
+00000266  E974FFFFFF                jmp conExit
+0000026B                        conDriver   ENDP
 
-00000280                        auxDriver   PROC
-00000280  C080                  auxWord dw  80C0h
-00000282                        auxDriver   ENDP
+0000026B                        auxDriver   PROC
+0000026B  C080                  auxWord dw  80C0h
+0000026D                        auxDriver   ENDP
 
-00000282                        prnDriver   PROC
-00000282  C0A0                  prnWord dw  0A0C0h
-00000284                        prnDriver   ENDP
+0000026D                        prnDriver   PROC
+0000026D  C0A0                  prnWord dw  0A0C0h
+0000026F                        prnDriver   ENDP
 
-00000284                        clkDriver   PROC
-00000284                        clkDriver   ENDP
+0000026F                        clkDriver   PROC
+0000026F                        clkDriver   ENDP
 
-00000284                        msdDriver   PROC
-00000284                        msdIntr     LABEL   BYTE
-00000284  50                        push rax
-00000285  57                        push rdi
-00000286  4150                      push r8
-00000288  4151                      push r9
-0000028A  4152                      push r10
-0000028C  4153                      push r11
-0000028E  4154                      push r12
-00000290  4155                      push r13
-00000292  4156                      push r14
-00000294  4157                      push r15
-00000296  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
-0000029D  8A4702                    mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
-000002A0  3C18                      cmp al, 24  ;Check cmd num is valid
-000002A2  7738                      ja msdError
-000002A4  84C0                      test al, al
-000002A6  744D                      jz msdInit
-000002A8  3C01                      cmp al, 01
-000002AA  7465                      jz msdMedChk
-000002AC  3C02                      cmp al, 02
-000002AE  7461                      jz msdBuildBPB
-000002B0  3C03                      cmp al, 03
-000002B2  745D                      jz msdIOCTLRead
-000002B4  3C04                      cmp al, 04
-000002B6  7459                      jz msdRead
-000002B8  3C08                      cmp al, 08
-000002BA  7455                      jz msdWrite
-000002BC  3C09                      cmp al, 09
-000002BE  7451                      jz msdWriteVerify
-000002C0  3C0C                      cmp al, 12
-000002C2  744D                      jz msdIOCTLWrite
-000002C4  3C0D                      cmp al, 13
-000002C6  7449                      jz msdDevOpen
-000002C8  3C0E                      cmp al, 14
-000002CA  7445                      jz msdDevClose
-000002CC  3C0F                      cmp al, 15
-000002CE  7441                      jz msdRemovableMedia
-000002D0  3C13                      cmp al, 19
-000002D2  743D                      jz msdGenericIOCTL
-000002D4  3C17                      cmp al, 23
-000002D6  7439                      jz msdGetLogicalDev
-000002D8  3C18                      cmp al, 24
-000002DA  7435                      jz msdSetLogicalDev
-000002DC                        msdError:
+0000026F                        msdDriver   PROC
+0000026F                        msdIntr     LABEL   BYTE
+0000026F  50                        push rax
+00000270  57                        push rdi
+00000271  4150                      push r8
+00000273  4151                      push r9
+00000275  4152                      push r10
+00000277  4153                      push r11
+00000279  4154                      push r12
+0000027B  4155                      push r13
+0000027D  4156                      push r14
+0000027F  4157                      push r15
+00000281  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
+00000288  8A4702                    mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
+0000028B  3C18                      cmp al, 24  ;Check cmd num is valid
+0000028D  7738                      ja msdError
+0000028F  84C0                      test al, al
+00000291  744D                      jz msdInit
+00000293  3C01                      cmp al, 01
+00000295  7465                      jz msdMedChk
+00000297  3C02                      cmp al, 02
+00000299  7461                      jz msdBuildBPB
+0000029B  3C03                      cmp al, 03
+0000029D  745D                      jz msdIOCTLRead
+0000029F  3C04                      cmp al, 04
+000002A1  7459                      jz msdRead
+000002A3  3C08                      cmp al, 08
+000002A5  7455                      jz msdWrite
+000002A7  3C09                      cmp al, 09
+000002A9  7451                      jz msdWriteVerify
+000002AB  3C0C                      cmp al, 12
+000002AD  744D                      jz msdIOCTLWrite
+000002AF  3C0D                      cmp al, 13
+000002B1  7449                      jz msdDevOpen
+000002B3  3C0E                      cmp al, 14
+000002B5  7445                      jz msdDevClose
+000002B7  3C0F                      cmp al, 15
+000002B9  7441                      jz msdRemovableMedia
+000002BB  3C13                      cmp al, 19
+000002BD  743D                      jz msdGenericIOCTL
+000002BF  3C17                      cmp al, 23
+000002C1  7439                      jz msdGetLogicalDev
+000002C3  3C18                      cmp al, 24
+000002C5  7435                      jz msdSetLogicalDev
+000002C7                        msdError:
                                 ;Place Error, Unknown Command error in status field
-000002DC  66C747030380              mov word ptr [rdi + drvReqHdr.status], 8003h
-000002E2                        msdIntrExit:
-000002E2  415F                      pop r15
-000002E4  415E                      pop r14
-000002E6  415D                      pop r13
-000002E8  415C                      pop r12
-000002EA  415B                      pop r11
-000002EC  415A                      pop r10
-000002EE  4159                      pop r9
-000002F0  4158                      pop r8
-000002F2  5F                        pop rdi
-000002F3  58                        pop rax
-000002F4                            ret
-000002F5                        msdInit:            ;Function 0
-000002F5  CD31                      int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
-000002F7  4D0FB6D0                  movzx r10, r8b   ;Isolate the number of Int 33h devs only
-000002FB  49C7C102000000            mov r9, 2
-00000302  4983FA01                  cmp r10, 1
-00000306  4D0F44C1                  cmove r8, r9    ;If we have one device detected only, make it two!
-0000030A  4488051A000000            mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
-00000311                        msdMedChk:          ;Function 1
-00000311                        msdBuildBPB:        ;Function 2
-00000311                        msdIOCTLRead:       ;Function 3
-00000311                        msdRead:            ;Funciton 4
-00000311                        msdWrite:           ;Function 8
-00000311                        msdWriteVerify:     ;Function 9
-00000311                        msdIOCTLWrite:      ;Function 12
-00000311                        msdDevOpen:         ;Function 13
-00000311                        msdDevClose:        ;Function 14
-00000311                        msdRemovableMedia:  ;Function 15
-00000311                        msdGenericIOCTL:    ;Function 19
-00000311                        msdGetLogicalDev:   ;Function 23
-00000311                        msdSetLogicalDev:   ;Function 24
-00000311  EBCF                      jmp short msdIntrExit
-00000313                        msdDriver   ENDP
+000002C7  66C747030380              mov word ptr [rdi + drvReqHdr.status], 8003h
+000002CD                        msdIntrExit:
+000002CD  415F                      pop r15
+000002CF  415E                      pop r14
+000002D1  415D                      pop r13
+000002D3  415C                      pop r12
+000002D5  415B                      pop r11
+000002D7  415A                      pop r10
+000002D9  4159                      pop r9
+000002DB  4158                      pop r8
+000002DD  5F                        pop rdi
+000002DE  58                        pop rax
+000002DF                            ret
+000002E0                        msdInit:            ;Function 0
+000002E0  CD31                      int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
+000002E2  4D0FB6D0                  movzx r10, r8b   ;Isolate the number of Int 33h devs only
+000002E6  49C7C102000000            mov r9, 2
+000002ED  4983FA01                  cmp r10, 1
+000002F1  4D0F44C1                  cmove r8, r9    ;If we have one device detected only, make it two!
+000002F5  4488051A000000            mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
+000002FC                        msdMedChk:          ;Function 1
+000002FC                        msdBuildBPB:        ;Function 2
+000002FC                        msdIOCTLRead:       ;Function 3
+000002FC                        msdRead:            ;Funciton 4
+000002FC                        msdWrite:           ;Function 8
+000002FC                        msdWriteVerify:     ;Function 9
+000002FC                        msdIOCTLWrite:      ;Function 12
+000002FC                        msdDevOpen:         ;Function 13
+000002FC                        msdDevClose:        ;Function 14
+000002FC                        msdRemovableMedia:  ;Function 15
+000002FC                        msdGenericIOCTL:    ;Function 19
+000002FC                        msdGetLogicalDev:   ;Function 23
+000002FC                        msdSetLogicalDev:   ;Function 24
+000002FC  EBCF                      jmp short msdIntrExit
+000002FE                        msdDriver   ENDP
 
-00000313                        comDriver   PROC
-00000313                        com1Intr    PROC
-00000313  EB04                      jmp short comIntr
-00000315                        com1Intr    ENDP
-00000315                        com2Intr    PROC
-00000315  EB02                      jmp short comIntr
-00000317                        com2Intr    ENDP
-00000317                        com3Intr    PROC
-00000317  EB00                      jmp short comIntr
-00000319                        com3Intr    ENDP
-00000319                        com4Intr    LABEL   BYTE
-00000319                        comIntr     PROC
-00000319                            ret
-0000031A                        comIntr     ENDP
+000002FE                        comDriver   PROC
+000002FE                        com1Intr    PROC
+000002FE  EB04                      jmp short comIntr
+00000300                        com1Intr    ENDP
+00000300                        com2Intr    PROC
+00000300  EB02                      jmp short comIntr
+00000302                        com2Intr    ENDP
+00000302                        com3Intr    PROC
+00000302  EB00                      jmp short comIntr
+00000304                        com3Intr    ENDP
+00000304                        com4Intr    LABEL   BYTE
+00000304                        comIntr     PROC
+00000304                            ret
+00000305                        comIntr     ENDP
                                     
 
-0000031A                        comDriver   ENDP
+00000305                        comDriver   ENDP
 
-0000031A                        lptDriver   PROC    ;Drivers for LPT 1, 2, 3
+00000305                        lptDriver   PROC    ;Drivers for LPT 1, 2, 3
 
-0000031A                        lptIntr     PROC    ;LPT act as null device drivers
-0000031A  57                        push rdi
-0000031B  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]
-00000322  66C747030001              mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
-00000328  5F                        pop rdi
-00000329                            ret
-0000032A                        lptIntr     ENDP
-0000032A                        lptDriver   ENDP
+00000305                        lptIntr     PROC    ;LPT act as null device drivers
+00000305  57                        push rdi
+00000306  488B3D00000000            mov rdi, qword ptr [reqHdrPtr]
+0000030D  66C747030001              mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
+00000313  5F                        pop rdi
+00000314                            ret
+00000315                        lptIntr     ENDP
+00000315                        lptDriver   ENDP
+00000315                        driverDataPtr   LABEL   BYTE
+00000315                        drivers ENDP
 
-0000032A                        int49hHook  PROC ;Called with char to transfer in al
-0000032A  50                        push rax
-0000032B  B40E                      mov ah, 0Eh
-0000032D  CD30                      int 30h
-0000032F  58                        pop rax
-00000330                            iretq
-00000332                        int49hHook  ENDP
-
-00000332                        driverDataPtr   LABEL   BYTE
-00000332                        drivers ENDP
-
-00000332                        resCode ENDS
+00000315                        resCode ENDS
 
                                 END
 
@@ -801,10 +854,10 @@ Binary Map:
 
 Segment                  Pos(file)     RVA  Size(fil) Size(mem)
 ---------------------------------------------------------------
-loadCode                        0        0        B0        B0
-resCode                        B0       B0       332       332
+loadCode                        0        0        B9        B9
+resCode                        B9       B9       315       315
 ---------------------------------------------------------------
-                                                 3E2       3E2
+                                                 3CE       3CE
 
 
 Macros:
@@ -1096,8 +1149,8 @@ Segments and Groups:
 
                 N a m e                 Size     Length   Align   Combine Class
 
-loadCode . . . . . . . . . . . .        64 Bit   000000B0 Para    Private ''
-resCode  . . . . . . . . . . . .        64 Bit   00000332 Byte    Private ''
+loadCode . . . . . . . . . . . .        64 Bit   000000B9 Para    Private ''
+resCode  . . . . . . . . . . . .        64 Bit   00000315 Byte    Private ''
 FLAT . . . . . . . . . . . . . .        GROUP
 
 
@@ -1106,83 +1159,77 @@ Procedures, parameters and locals:
                 N a m e                 Type     Value    Segment  Length
 
 FATprocs . . . . . . . . . . . .        P Near   00000000 resCode  00000000 Public   
-auxDriver  . . . . . . . . . . .        P Near   00000280 resCode  00000002 Public   
-clkDriver  . . . . . . . . . . .        P Near   00000284 resCode  00000000 Public   
-com1Intr . . . . . . . . . . . .        P Near   00000313 resCode  00000002 Public   
-com2Intr . . . . . . . . . . . .        P Near   00000315 resCode  00000002 Public   
-com3Intr . . . . . . . . . . . .        P Near   00000317 resCode  00000002 Public   
-comDriver  . . . . . . . . . . .        P Near   00000313 resCode  00000007 Public   
-comIntr  . . . . . . . . . . . .        P Near   00000319 resCode  00000001 Public   
-commonStrat  . . . . . . . . . .        P Near   00000198 resCode  00000010 Public   
-conDriver  . . . . . . . . . . .        P Near   000001AF resCode  000000D1 Public   
-  conNondestructiveRead  . . . .        L Near   000001D9 resCode
-  conInit  . . . . . . . . . . .        L Near   000001BE resCode
-  conFlushOutputBuffers  . . . .        L Near   000001F0 resCode
-  conOutUntilBusy  . . . . . . .        L Near   000001F7 resCode
-  L&_0002  . . . . . . . . . . .        L Near   000001E2 resCode
-  L&_0001  . . . . . . . . . . .        L Near   000001CE resCode
-  conOpen  . . . . . . . . . . .        L Near   000001F7 resCode
-  conIOCTLRead . . . . . . . . .        L Near   000001BE resCode
-  conError . . . . . . . . . . .        L Near   000001BE resCode
-  conClose . . . . . . . . . . .        L Near   000001F7 resCode
-  conWrite . . . . . . . . . . .        L Near   000001D9 resCode
-  conIOCTLWrite  . . . . . . . .        L Near   000001F7 resCode
-  conGenericIOCTL  . . . . . . .        L Near   000001F7 resCode
-  conFlushInputBuffers . . . . .        L Near   000001D9 resCode
-  conRead  . . . . . . . . . . .        L Near   000001C5 resCode
-  conInputStatus . . . . . . . .        L Near   000001D9 resCode
-  conOutputStatus  . . . . . . .        L Near   000001F0 resCode
-drivers  . . . . . . . . . . . .        P Near   00000000 resCode  00000332 Public   
-int49hHook . . . . . . . . . . .        P Near   0000032A resCode  00000008 Public   
-lptDriver  . . . . . . . . . . .        P Near   0000031A resCode  00000010 Public   
-lptIntr  . . . . . . . . . . . .        P Near   0000031A resCode  00000010 Public   
-msdDriver  . . . . . . . . . . .        P Near   00000284 resCode  0000008F Public   
-  msdWriteVerify . . . . . . . .        L Near   00000311 resCode
-  msdDevOpen . . . . . . . . . .        L Near   00000311 resCode
-  msdDevClose  . . . . . . . . .        L Near   00000311 resCode
-  msdIOCTLRead . . . . . . . . .        L Near   00000311 resCode
-  msdInit  . . . . . . . . . . .        L Near   000002F5 resCode
-  msdBuildBPB  . . . . . . . . .        L Near   00000311 resCode
-  msdIOCTLWrite  . . . . . . . .        L Near   00000311 resCode
-  msdGetLogicalDev . . . . . . .        L Near   00000311 resCode
-  msdError . . . . . . . . . . .        L Near   000002DC resCode
-  msdSetLogicalDev . . . . . . .        L Near   00000311 resCode
-  msdRemovableMedia  . . . . . .        L Near   00000311 resCode
-  msdIntrExit  . . . . . . . . .        L Near   000002E2 resCode
-  msdGenericIOCTL  . . . . . . .        L Near   00000311 resCode
-  msdWrite . . . . . . . . . . .        L Near   00000311 resCode
-  msdMedChk  . . . . . . . . . .        L Near   00000311 resCode
-  msdRead  . . . . . . . . . . .        L Near   00000311 resCode
-nulIntr  . . . . . . . . . . . .        P Near   000001AE resCode  00000001 Public   
-nulStrat . . . . . . . . . . . .        P Near   000001A8 resCode  00000007 Public   
-prnDriver  . . . . . . . . . . .        P Near   00000282 resCode  00000002 Public   
+auxDriver  . . . . . . . . . . .        P Near   0000026B resCode  00000002 Public   
+clkDriver  . . . . . . . . . . .        P Near   0000026F resCode  00000000 Public   
+com1Intr . . . . . . . . . . . .        P Near   000002FE resCode  00000002 Public   
+com2Intr . . . . . . . . . . . .        P Near   00000300 resCode  00000002 Public   
+com3Intr . . . . . . . . . . . .        P Near   00000302 resCode  00000002 Public   
+comDriver  . . . . . . . . . . .        P Near   000002FE resCode  00000007 Public   
+comIntr  . . . . . . . . . . . .        P Near   00000304 resCode  00000001 Public   
+commonStrat  . . . . . . . . . .        P Near   000001A0 resCode  00000010 Public   
+conDriver  . . . . . . . . . . .        P Near   000001B7 resCode  000000B4 Public   
+  conExit  . . . . . . . . . . .        L Near   000001DF resCode
+  conNondestructiveRead  . . . .        L Near   0000022E resCode
+  conInit  . . . . . . . . . . .        L Near   000001E8 resCode
+  L&_0006  . . . . . . . . . . .        L Near   00000261 resCode
+  L&_0004  . . . . . . . . . . .        L Near   00000239 resCode
+  L&_0005  . . . . . . . . . . .        L Near   00000255 resCode
+  L&_0002  . . . . . . . . . . .        L Near   00000219 resCode
+  L&_0003  . . . . . . . . . . .        L Near   00000227 resCode
+  conWrite . . . . . . . . . . .        L Near   0000024D resCode
+  conIORead  . . . . . . . . . .        L Near   00000209 resCode
+  conFlushInputBuffers . . . . .        L Near   00000241 resCode
+  conRead  . . . . . . . . . . .        L Near   00000211 resCode
+drivers  . . . . . . . . . . . .        P Near   00000008 resCode  0000030D Public   
+int49hHook . . . . . . . . . . .        P Near   00000000 resCode  00000008 Public   
+lptDriver  . . . . . . . . . . .        P Near   00000305 resCode  00000010 Public   
+lptIntr  . . . . . . . . . . . .        P Near   00000305 resCode  00000010 Public   
+msdDriver  . . . . . . . . . . .        P Near   0000026F resCode  0000008F Public   
+  msdWriteVerify . . . . . . . .        L Near   000002FC resCode
+  msdDevOpen . . . . . . . . . .        L Near   000002FC resCode
+  msdDevClose  . . . . . . . . .        L Near   000002FC resCode
+  msdIOCTLRead . . . . . . . . .        L Near   000002FC resCode
+  msdInit  . . . . . . . . . . .        L Near   000002E0 resCode
+  msdBuildBPB  . . . . . . . . .        L Near   000002FC resCode
+  msdIOCTLWrite  . . . . . . . .        L Near   000002FC resCode
+  msdGetLogicalDev . . . . . . .        L Near   000002FC resCode
+  msdError . . . . . . . . . . .        L Near   000002C7 resCode
+  msdSetLogicalDev . . . . . . .        L Near   000002FC resCode
+  msdRemovableMedia  . . . . . .        L Near   000002FC resCode
+  msdIntrExit  . . . . . . . . .        L Near   000002CD resCode
+  msdGenericIOCTL  . . . . . . .        L Near   000002FC resCode
+  msdWrite . . . . . . . . . . .        L Near   000002FC resCode
+  msdMedChk  . . . . . . . . . .        L Near   000002FC resCode
+  msdRead  . . . . . . . . . . .        L Near   000002FC resCode
+nulIntr  . . . . . . . . . . . .        P Near   000001B6 resCode  00000001 Public   
+nulStrat . . . . . . . . . . . .        P Near   000001B0 resCode  00000007 Public   
+prnDriver  . . . . . . . . . . .        P Near   0000026D resCode  00000002 Public   
 
 
 Symbols:
 
                 N a m e                 Type       Value     Attr
 
-auxHdr . . . . . . . . . . . . .        drvHdr            22h resCode 
-auxWord  . . . . . . . . . . . .        Word             280h resCode 
-clkHdr . . . . . . . . . . . . .        drvHdr            66h resCode 
-com1Hdr  . . . . . . . . . . . .        drvHdr            AAh resCode 
-com2Hdr  . . . . . . . . . . . .        drvHdr            CCh resCode 
-com3Hdr  . . . . . . . . . . . .        drvHdr            EEh resCode 
-com4Hdr  . . . . . . . . . . . .        drvHdr           110h resCode 
-com4Intr . . . . . . . . . . . .        Byte             319h resCode 
-conBuf . . . . . . . . . . . . .        Byte[128]        200h resCode 
-conHdr . . . . . . . . . . . . .        drvHdr             0h resCode 
-conWord  . . . . . . . . . . . .        Word             1FEh resCode 
-driverDataPtr  . . . . . . . . .        Byte             332h resCode 
-lpt1Hdr  . . . . . . . . . . . .        drvHdr           132h resCode 
-lpt2Hdr  . . . . . . . . . . . .        drvHdr           154h resCode 
-lpt3Hdr  . . . . . . . . . . . .        drvHdr           176h resCode 
-msdHdr . . . . . . . . . . . . .        drvHdr            88h resCode 
-msdIntr  . . . . . . . . . . . .        Byte             284h resCode 
-nData  . . . . . . . . . . . . .        QWord             8Eh loadCode 
-prnHdr . . . . . . . . . . . . .        drvHdr            44h resCode 
-prnWord  . . . . . . . . . . . .        Word             282h resCode 
-reqHdrPtr  . . . . . . . . . . .        QWord            1A0h resCode 
-startmsg . . . . . . . . . . . .        Byte[24]          76h loadCode 
+L&_0001  . . . . . . . . . . . .        L Near            74h loadCode 
+auxHdr . . . . . . . . . . . . .        drvHdr            2Ah resCode 
+auxWord  . . . . . . . . . . . .        Word             26Bh resCode 
+clkHdr . . . . . . . . . . . . .        drvHdr            6Eh resCode 
+com1Hdr  . . . . . . . . . . . .        drvHdr            B2h resCode 
+com2Hdr  . . . . . . . . . . . .        drvHdr            D4h resCode 
+com3Hdr  . . . . . . . . . . . .        drvHdr            F6h resCode 
+com4Hdr  . . . . . . . . . . . .        drvHdr           118h resCode 
+com4Intr . . . . . . . . . . . .        Byte             304h resCode 
+conHdr . . . . . . . . . . . . .        drvHdr             8h resCode 
+driverDataPtr  . . . . . . . . .        Byte             315h resCode 
+lpt1Hdr  . . . . . . . . . . . .        drvHdr           13Ah resCode 
+lpt2Hdr  . . . . . . . . . . . .        drvHdr           15Ch resCode 
+lpt3Hdr  . . . . . . . . . . . .        drvHdr           17Eh resCode 
+msdHdr . . . . . . . . . . . . .        drvHdr            90h resCode 
+msdIntr  . . . . . . . . . . . .        Byte             26Fh resCode 
+nData  . . . . . . . . . . . . .        QWord             97h loadCode 
+prnHdr . . . . . . . . . . . . .        drvHdr            4Ch resCode 
+prnWord  . . . . . . . . . . . .        Word             26Dh resCode 
+reqHdrPtr  . . . . . . . . . . .        QWord            1A8h resCode 
+startmsg . . . . . . . . . . . .        Byte[24]          7Fh loadCode 
 
-io.asm: 280 lines, 3 passes, 0 ms, 0 warnings, 0 errors
+io.asm: 333 lines, 3 passes, 0 ms, 0 warnings, 0 errors

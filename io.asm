@@ -40,7 +40,12 @@ loadCode SEGMENT USE64
     lea rbp, startmsg   ;Get the absolute address of message
     mov eax, 1304h
     int 30h
-    jmp short $
+@@:
+    xor ax, ax
+    int 36h
+    mov ah, 0Eh
+    int 30h
+    jmp short @b
 
     startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
 nData   LABEL QWORD
@@ -54,8 +59,26 @@ loadCode ENDS
 ;codeSegment points to the start of this segment!
 resCode SEGMENT BYTE USE64
     ASSUME ds:FLAT, es:FLAT
+;-----------------------------------:
+;       File System routines        :
+;-----------------------------------:
 FATprocs    PROC
 FATprocs    ENDP
+
+;-----------------------------------:
+;        Interrupt routines         :
+;-----------------------------------:
+int49hHook  PROC ;Called with char to transfer in al
+    push rax
+    mov ah, 0Eh
+    int 30h
+    pop rax
+    iretq
+int49hHook  ENDP
+
+;-----------------------------------:
+;          Driver routines          :
+;-----------------------------------:
 
 drivers PROC
 conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
@@ -90,56 +113,95 @@ conDriver   PROC
     push rbx
     mov rbx, qword ptr [reqHdrPtr]
     mov al, byte ptr [rbx + drvReqHdr.cmdcde]
+    xor al, al
+    jz conInit
+    cmp al, 4
+    jz conRead
+    cmp al, 5
+    jz conNondestructiveRead
+    cmp al, 6
+    jz conExit
+    cmp al, 7
+    jz conFlushInputBuffers
+    cmp al, 8
+    jz conWrite
+    cmp al, 9
+    jz conWrite
+;All other cases fall through here
+conExit:
+    or word ptr [rbx + drvReqHdr.status], 0100h    ;Merge done bit
     pop rbx
     pop rax
     ret
-conError:
-conInit:
-conIOCTLRead:
-    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-    ret
-conRead:
+conInit:    ;Function 0
+    push rdx
+    call conFlushInputBuffers  ;Call to flush keyboard buffer
+    mov eax, 0500h  ;Set page zero as the default page
+    int 30h
+    mov ah, 02h
+    xor edx, edx    ;Set screen cursor to top right corner
+    mov bh, dl      ;Set cursor for page 0
+    int 30h
+    mov bh, 07h     ;Grey/Black attribs
+    mov eax, 0600h  ;Clear whole screen
+    int 30h
+    pop rdx
+    jmp short conExit
+conIORead:
+    mov word ptr [rbx + drvReqHdr.status], 8003h    ;Error, unknown command!
+    jmp short conExit
+conRead:    ;Function 4
     push rdi
     push rcx
-    mov rdi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rdi to destination buffer
-    mov ecx, dword ptr [rbx + ioReqPkt.tfrlen] ;Number of chars to read
+    mov rdi, qword ptr [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
+    xor ecx, ecx    ;Zero the char counter
 @@:
-    xor ax, ax  ;Wait for char input
-    int 36h     ;Get the ASCII char into al
-    stosb       ;Save al in buffer and inc rdi
-    loop @b
+    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
+    je @f
+    xor eax, eax
+    int 36h
+    stosb   ;Store char in al into buffer and inc rdi
+    inc ecx
+    jmp short @b
+@@:
+    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rcx
     pop rdi
-    ret
-conNondestructiveRead:
-conInputStatus:
-conFlushInputBuffers:
-conWrite:
+    jmp short conExit
+conNondestructiveRead:  ;Function 5
+    mov ah, 01h     ;Get key if exists
+    int 36h
+    jz @f           ;If zero clear => no key, go forwards
+    ;Keystroke available
+    mov byte ptr [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
+    jmp short conExit
+@@: ;No keystroke available
+    mov word ptr [rbx + nonDestInNoWaitReqPkt.status], 0300h   ;Set busy bit
+    jmp short conExit
+conFlushInputBuffers:   ;Function 7
+    mov ah, 01      ;Get buffer status
+    int 36h
+    jz conExit      ;If zero clear => no more keys to read
+    xor ah, ah
+    int 36h ;Read key to flush from buffer
+    jmp short conFlushInputBuffers
+conWrite:   ;Function 8 and 9
     push rsi
     push rcx
-    mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to buffer pointer
-    mov ecx, dword ptr [rbx + ioReqPkt.tfrlen] ;Number of chars to transfer
+    mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
+    xor ecx, ecx    ;Zero the char counter
 @@: 
+    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
+    je @f
     lodsb   ;Get char into al, and inc rsi
     int 49h ;Fast print char
-    loop @b ;keep printing until ecx is zero
+    inc ecx
+    jmp short @b ;keep printing until all chars printed
+@@:
+    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rcx
     pop rsi
-    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Request complete
-    ret
-conOutputStatus:
-conFlushOutputBuffers:
-    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-    ret
-conIOCTLWrite:
-conOpen:
-conClose:
-conOutUntilBusy:
-conGenericIOCTL:
-    mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-    ret
-conWord dw  80D3h   ;Bit 5 set (20h) => Binary mode, else char mode
-conBuf  db  128 dup (?) ;Build a buffer of size 128 bytes
+    jmp conExit
 conDriver   ENDP
 
 auxDriver   PROC
@@ -263,15 +325,6 @@ lptIntr     PROC    ;LPT act as null device drivers
     ret
 lptIntr     ENDP
 lptDriver   ENDP
-
-int49hHook  PROC ;Called with char to transfer in al
-    push rax
-    mov ah, 0Eh
-    int 30h
-    pop rax
-    iretq
-int49hHook  ENDP
-
 driverDataPtr   LABEL   BYTE
 drivers ENDP
 
