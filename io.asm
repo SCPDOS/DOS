@@ -46,7 +46,7 @@ loadCode SEGMENT USE64
 nData   LABEL QWORD
     dq conHdr
     dw 08004h
-    dq nulDriver
+    dq nulStrat
     dq nulIntr
     db "NUL     "
 loadCode ENDS
@@ -78,11 +78,12 @@ commonStrat PROC
 reqHdrPtr  dq -1    ;Where the default device drivers store the ReqPtr
 commonStrat ENDP
 
-nulDriver   PROC
+nulStrat   PROC
     mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-nulIntr LABEL BYTE
+nulIntr PROC
     ret
-nulDriver   ENDP
+nulIntr     ENDP
+nulStrat    ENDP
 
 conDriver   PROC
     push rax
@@ -100,8 +101,8 @@ conIOCTLRead:
 conRead:
     push rdi
     push rcx
-    mov rdi, qword ptr [rbx + drvReqHdr.bufptr] ;Point rdi to destination buffer
-    mov ecx, dword ptr [rbx + drvReqHdr.tfrlen] ;Number of chars to read
+    mov rdi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rdi to destination buffer
+    mov ecx, dword ptr [rbx + ioReqPkt.tfrlen] ;Number of chars to read
 @@:
     xor ax, ax  ;Wait for char input
     int 36h     ;Get the ASCII char into al
@@ -116,8 +117,8 @@ conFlushInputBuffers:
 conWrite:
     push rsi
     push rcx
-    mov rsi, qword ptr [rbx + drvReqHdr.bufptr] ;Point rsi to buffer pointer
-    mov ecx, dword ptr [rbx + drvReqHdr.tfrlen] ;Number of chars to transfer
+    mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to buffer pointer
+    mov ecx, dword ptr [rbx + ioReqPkt.tfrlen] ;Number of chars to transfer
 @@: 
     lodsb   ;Get char into al, and inc rsi
     int 49h ;Fast print char
@@ -235,25 +236,32 @@ msdSetLogicalDev:   ;Function 24
 msdDriver   ENDP
 
 comDriver   PROC
-com1Intr    LABEL   BYTE
+com1Intr    PROC
     jmp short comIntr
-com2Intr    LABEL   BYTE
+com1Intr    ENDP
+com2Intr    PROC
     jmp short comIntr
-com3Intr    LABEL   BYTE
+com2Intr    ENDP
+com3Intr    PROC
     jmp short comIntr
+com3Intr    ENDP
 com4Intr    LABEL   BYTE
-comIntr:
+comIntr     PROC
     ret
+comIntr     ENDP
+    
+
 comDriver   ENDP
 
 lptDriver   PROC    ;Drivers for LPT 1, 2, 3
 
-lptIntr    LABEL   BYTE    ;LPT act as null device drivers
+lptIntr     PROC    ;LPT act as null device drivers
     push rdi
     mov rdi, qword ptr [reqHdrPtr]
     mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
     pop rdi
     ret
+lptIntr     ENDP
 lptDriver   ENDP
 
 driverDataPtr   LABEL   BYTE
