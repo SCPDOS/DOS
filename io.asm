@@ -68,7 +68,14 @@ FATprocs    ENDP
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
-int49hHook  PROC ;Called with char to transfer in al
+auxIntHook  PROC    ;To remove the BIOS default handler
+    push rax
+    mov al, 20h     ;EOI for PIC 1
+    out 020h, al    ;Send it to the command reg
+    pop rax
+    iretq
+auxIntHook  ENDP
+int49hHook  PROC    ;Called with char to transfer in al
     push rax
     mov ah, 0Eh
     int 30h
@@ -82,8 +89,8 @@ int49hHook  ENDP
 
 drivers PROC
 conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
-auxHdr  drvHdr <prnHdr,  08000h, commonStrat, auxDriver, "AUX     ">
-prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, prnDriver, "PRN     ">
+auxHdr  drvHdr <prnHdr,  08000h, commonStrat, com1Intr,  "AUX     ">
+prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, lpt1Hdr ,  "PRN     ">
 clkHdr  drvHdr <msdHdr,  08008h, commonStrat, clkDriver, "CLOCK$  ">
 msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdIntr, <0,0,0,0,0,0,0,0>>
 com1Hdr drvHdr <com2Hdr, 08000h, commonStrat, com1Intr, "COM1    ">
@@ -204,14 +211,6 @@ conWrite:   ;Function 8 and 9
     jmp conExit
 conDriver   ENDP
 
-auxDriver   PROC
-auxWord dw  80C0h
-auxDriver   ENDP
-
-prnDriver   PROC
-prnWord dw  0A0C0h
-prnDriver   ENDP
-
 clkDriver   PROC
 clkDriver   ENDP
 
@@ -299,19 +298,76 @@ msdDriver   ENDP
 
 comDriver   PROC
 com1Intr    PROC
+    mov byte ptr [comDevice], 0
     jmp short comIntr
 com1Intr    ENDP
 com2Intr    PROC
+    mov byte ptr [comDevice], 1
     jmp short comIntr
 com2Intr    ENDP
 com3Intr    PROC
+    mov byte ptr [comDevice], 2
     jmp short comIntr
 com3Intr    ENDP
-com4Intr    LABEL   BYTE
+com4Intr    PROC
+    mov byte ptr [comDevice], 3
+    jmp short comIntr
+com4Intr    ENDP
 comIntr     PROC
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    mov rbx, qword ptr [reqHdrPtr]
+    mov al, byte ptr [rbx + drvReqHdr.cmdcde]
+    xor al, al
+    jz comInit
+    cmp al, 4
+    jz comRead
+    cmp al, 5
+    jz comNondestructiveRead
+    cmp al, 6
+    jz comExit
+    cmp al, 7
+    jz comFlushInputBuffers
+    cmp al, 8
+    jz comWrite
+    cmp al, 9
+    jz comWrite
+;All other cases fall through here
+comExit:
+    or word ptr [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
     ret
-comIntr     ENDP
+comRead:
     
+comNondestructiveRead:
+comFlushInputBuffers:
+comWrite:
+comDevice   db ?
+comIntr     ENDP
+comInit     PROC
+; Replace INT 23h and 24h handlers first!
+
+    mov eax, 0F008h     ;Get old IDT descriptor segment selector and atrr word
+    mov bl, 23h         
+    int 35h
+    ;Seg select=ax, attr word=dx
+    mov si, ax      ;Segment selector in si
+    mov ecx, 23h    ;Interrupt 23h
+    lea rbx, qword ptr [auxIntHook] ;Get address
+    mov eax, 0F007h ;Write IDT entry 
+    int 35h ;dx has attribute word
+    inc cl
+    int 35h ;Interrupt 24h
+;Now flush buffer for each valid com device
+    ret
+comInit     ENDP
 
 comDriver   ENDP
 
