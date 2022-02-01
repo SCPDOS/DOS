@@ -60,6 +60,14 @@ loadCode ENDS
 resCode SEGMENT BYTE USE64
     ASSUME ds:FLAT, es:FLAT
 ;-----------------------------------:
+;        Data Area Instance         :
+;-----------------------------------:
+data LABEL dSeg ;Variable to point to start of data segment
+        ORG (SIZEOF dSeg) 
+;Offset all addresses below here by size of data area since it is uninitialised
+; to not take up space in the binary file.
+code LABEL BYTE
+;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
 FATprocs    PROC
@@ -98,7 +106,7 @@ commonStrat PROC
 ;DOS also sets fs to point to its data segment when entered
     mov qword ptr [reqHdrPtr], rbx
     ret
-reqHdrPtr  dq -1    ;Where the default device drivers store the ReqPtr
+reqHdrPtr  dq ?    ;Where the default device drivers store the ReqPtr
 commonStrat ENDP
 
 nulStrat   PROC
@@ -213,12 +221,6 @@ msdIntr     LABEL   BYTE
     push rdi
     push r8
     push r9
-    push r10
-    push r11
-    push r12
-    push r13
-    push r14
-    push r15
     mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
     mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
     cmp al, 24  ;Check cmd num is valid
@@ -255,12 +257,6 @@ msdError:
 ;Place Error, Unknown Command error in status field
     mov word ptr [rdi + drvReqHdr.status], 8003h
 msdIntrExit:
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop r11
-    pop r10
     pop r9
     pop r8
     pop rdi
@@ -275,11 +271,11 @@ msdInit:            ;Function 0
     mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
 msdMedChk:          ;Function 1
 msdBuildBPB:        ;Function 2
-msdIOCTLRead:       ;Function 3
+msdIOCTLRead:       ;Function 3, returns done
 msdRead:            ;Funciton 4
 msdWrite:           ;Function 8
-msdWriteVerify:     ;Function 9
-msdIOCTLWrite:      ;Function 12
+msdWriteVerify:     ;Function 9, writes sectors then verifies then
+msdIOCTLWrite:      ;Function 12, returns done
 msdDevOpen:         ;Function 13
 msdDevClose:        ;Function 14
 msdRemovableMedia:  ;Function 15

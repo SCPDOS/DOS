@@ -6,7 +6,7 @@
 #############################################################################
 # Assemble the file
 assemble:
-	cmd.exe /c jwasm -Fl=io.lst -bin io.asm
+	cmd.exe /c jwasm -Sa -Fl=io.lst -bin io.asm
 	mv ./io.BIN ./io.sys
 # io.sys should start at sector 88
 	dd if=./io.sys of=./MyDiskDOS.ima bs=512 seek=88 conv=notrunc

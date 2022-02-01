@@ -18,7 +18,7 @@ dSeg STRUC
     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
     sfcbHeadPTr dq ?    ;Pointer to the head of the System FCB chain
     numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
-    numInt33drv db ?    ;Number of Int 33h drives detected in system
+    numMSDdrv   db ?    ;Number of mass storage devices detected in system
     lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
     numJoinDrv  db ?    ;Number of Joined Drives
     nulDevHdr   drvHdr <,,,,>
