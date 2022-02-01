@@ -68,13 +68,6 @@ FATprocs    ENDP
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
-auxIntHook  PROC    ;To remove the BIOS default handler
-    push rax
-    mov al, 20h     ;EOI for PIC 1
-    out 020h, al    ;Send it to the command reg
-    pop rax
-    iretq
-auxIntHook  ENDP
 int49hHook  PROC    ;Called with char to transfer in al
     push rax
     mov ah, 0Eh
@@ -321,8 +314,6 @@ comIntr     PROC
     push rsi
     mov rbx, qword ptr [reqHdrPtr]
     mov al, byte ptr [rbx + drvReqHdr.cmdcde]
-    xor al, al
-    jz comInit
     cmp al, 4
     jz comRead
     cmp al, 5
@@ -377,23 +368,6 @@ comWrite:
     jmp short comExit
 comDevice   db ?
 comIntr     ENDP
-comInit     PROC
-; Replace INT 23h and 24h handlers first!
-
-    mov eax, 0F008h     ;Get old IDT descriptor segment selector and atrr word
-    mov bl, 23h         
-    int 35h
-    ;Seg select=ax, attr word=dx
-    mov si, ax      ;Segment selector in si
-    mov ecx, 23h    ;Interrupt 23h
-    lea rbx, qword ptr [auxIntHook] ;Get address
-    mov eax, 0F007h ;Write IDT entry 
-    int 35h ;dx has attribute word
-    inc cl
-    int 35h ;Interrupt 24h
-;Now flush buffer for each valid com device
-    ret
-comInit     ENDP
 
 comDriver   ENDP
 
