@@ -327,10 +327,6 @@ comIntr     PROC
     jz comRead
     cmp al, 5
     jz comNondestructiveRead
-    cmp al, 6
-    jz comExit
-    cmp al, 7
-    jz comFlushInputBuffers
     cmp al, 8
     jz comWrite
     cmp al, 9
@@ -345,10 +341,40 @@ comExit:
     pop rax
     ret
 comRead:
-    
+    push rdi
+    mov rdi, qword ptr [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
+    xor ecx, ecx    ;Zero the char counter
+@@:
+    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
+    je @f
+    mov eax, 02h    ;Recieve 
+    mov dx, word ptr [comDevice]    ;Get transacting com device
+    int 34h ;Recieve Char
+    stosb   ;Store char in al into buffer and inc rdi
+    inc ecx
+    jmp short @b
+@@:
+    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+    pop rdi
+    jmp short comExit
 comNondestructiveRead:
-comFlushInputBuffers:
+    mov word ptr [rbx + nonDestInNoWaitReqPkt.status], 0200h    ;Set busy bit 
+    jmp short comExit
 comWrite:
+ mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
+    xor ecx, ecx    ;Zero the char counter
+@@: 
+    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
+    je @f
+    lodsb   ;Get char into al, and inc rsi
+    mov ah, 01h ;Move function number into ah
+    mov dx, word ptr [comDevice]
+    int 34h ;Transmit char
+    inc ecx
+    jmp short @b ;keep printing until all chars printed
+@@:
+    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+    jmp short comExit
 comDevice   db ?
 comIntr     ENDP
 comInit     PROC
