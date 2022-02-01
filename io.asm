@@ -26,7 +26,7 @@ loadCode SEGMENT USE64
     add rdi, SIZEOF dSeg
     mov qword ptr fs:[dSeg.codeSegPtr], rdi
     mov rax, rdi    ;Save the codeSegment address in rax
-    lea rsi, OFFSET resCode ;Get offset of the segment in the file into rsi
+    lea rsi, OFFSET resCodeStart ;Get offset of the segment in the file into rsi
     mov ecx, 1000h
     rep movsq
     lea rsi, nData
@@ -62,11 +62,31 @@ resCode SEGMENT BYTE USE64
 ;-----------------------------------:
 ;        Data Area Instance         :
 ;-----------------------------------:
-data LABEL dSeg ;Variable to point to start of data segment
-        ORG (SIZEOF dSeg) 
+data dSeg <>    ;Initialise data area as BSS 
+        ORG $ 
 ;Offset all addresses below here by size of data area since it is uninitialised
 ; to not take up space in the binary file.
-code LABEL BYTE
+resCodeStart LABEL BYTE
+;-----------------------------------:
+;       Misc System routines        :
+;-----------------------------------:
+findLRUBuffer  PROC 
+;Finds least recently used buffer, links it and returns ptr to it in rbx
+    push rdx
+    mov rbx, qword ptr [data.bufHeadPtr]
+@@:
+    mov rdx, rbx    ;Save a ptr to the previous buffer header
+    mov rbx, qword ptr [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
+    cmp qword ptr [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
+    jne @b   ;If not LRU, keep walking, else process
+    mov qword ptr [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
+    mov rdx, qword ptr [data.bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
+    mov qword ptr [data.bufHeadPtr], rbx    ;Sysvars to point to new buffer
+    mov qword ptr [rbx + bufferHdr.nextBufPtr], rdx
+    pop rdx
+    ret
+findLRUBuffer  ENDP
+
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
@@ -218,11 +238,9 @@ clkDriver   ENDP
 msdDriver   PROC
 msdIntr     LABEL   BYTE
     push rax
-    push rdi
-    push r8
-    push r9
-    mov rdi, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
-    mov al, byte ptr [rdi + drvReqHdr.cmdcde]   ;Get command code in al
+    push rbx
+    mov rbx, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
+    mov al, byte ptr [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     cmp al, 24  ;Check cmd num is valid
     ja msdError
     test al, al
@@ -254,12 +272,9 @@ msdIntr     LABEL   BYTE
     cmp al, 24
     jz msdSetLogicalDev
 msdError:
-;Place Error, Unknown Command error in status field
-    mov word ptr [rdi + drvReqHdr.status], 8003h
 msdIntrExit:
-    pop r9
-    pop r8
-    pop rdi
+    or word ptr [rbx + drvReqHdr.status], 0100h ;Set done bit
+    pop rbx
     pop rax
     ret
 msdInit:            ;Function 0
@@ -274,7 +289,26 @@ msdBuildBPB:        ;Function 2
 msdIOCTLRead:       ;Function 3, returns done
 msdRead:            ;Funciton 4
 msdWrite:           ;Function 8
+    mov rdi, rbx
+    mov ebp, dword ptr [rdi + ioReqPkt.tfrlen] ;Get num of sectors to transfer
+    mov dword ptr [rdi + ioReqPkt.tfrlen], 0
+@@:
+    mov esi, 0FFh
+    cmp ebp, esi
+    mov eax, ebp    ;Default move remaining sectors into ax
+    cmova eax, esi  ;If FF is less than bp, move FF by default
+    mov rbx, qword ptr [rdi + ioReqPkt.bufptr]  ;Buffer head
+    mov rcx, qword ptr [rdi + ioReqPkt.strtsc]  ;Start sector
+    mov dl, byte ptr [rdi + ioReqPkt.unitnm]    ;Unit number for transfer
+    int 33h
+    jc @f
+    movzx eax, al   ;Zero extend number of sectors transferred
+    add dword ptr [rdi + ioReqPkt.bufptr], eax  ;Add number of 
+@@:
+
+
 msdWriteVerify:     ;Function 9, writes sectors then verifies then
+
 msdIOCTLWrite:      ;Function 12, returns done
 msdDevOpen:         ;Function 13
 msdDevClose:        ;Function 14
@@ -283,6 +317,7 @@ msdGenericIOCTL:    ;Function 19
 msdGetLogicalDev:   ;Function 23
 msdSetLogicalDev:   ;Function 24
     jmp short msdIntrExit
+msdDefLabel    db "NO NAME ",0 ;Default volume label
 msdDriver   ENDP
 
 comDriver   PROC

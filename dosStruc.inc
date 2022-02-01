@@ -141,7 +141,7 @@ sft ENDS
 ; size, selected according to the largest detected sector size during 
 ; the initial loadup.
 ;
-; The buffer pointer in SysVars points to the oldest unused buffer
+; The buffer pointer in SysVars points to most recently used Buffer
 ;
 ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
 ;------------------------------------------------------------------------;

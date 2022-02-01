@@ -14,7 +14,7 @@ dSeg STRUC
     conPtr      dq ?    ;Pointer to the current active CON device header 
     ;                    The last driver loaded with the STDIN bit[0] set
     maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)
-    bufHeadPtr  dq ?    ;Pointer to next usable disk buffer
+    bufHeadPtr  dq ?    ;Pointer to the head of the disk buffer chain
     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
     sfcbHeadPTr dq ?    ;Pointer to the head of the System FCB chain
     numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
