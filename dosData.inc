@@ -1,7 +1,6 @@
 ; This file contains the structure of the DOS Data area
-dSeg STRUC
-    dataSegPtr  dq ?    ;Pointer to the data Segment itself
-    codeSegPtr  dq ?    ;Pointer to the start of the resident Code segment
+dSeg STRUC 
+    dosSegPtr   dq ?    ;Pointer to the data Segment itself
     bootDrive   db ?    ;The Int 33h device we booted from
     requestHdr  drvReqHdr    <,,,,>   ;The device driver header
                 db 20 dup (?)    ;Reserve xtra space for cmd data, with padding

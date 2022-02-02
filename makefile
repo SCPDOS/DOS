@@ -5,10 +5,11 @@
 # this file as reserved in the FAT, for SCPBIOS!
 #############################################################################
 # Assemble the file
+# -Zp1 forces byte alignment of structures
 assemble:
-	cmd.exe /c jwasm -Sa -Fl=io.lst -bin io.asm
-	mv ./io.BIN ./io.sys
+	cmd.exe /c uasm -Zp1 -Sa -Fl=scpdos.lst -bin scpdos.asm
+	mv ./scpdos.BIN ./scpdos.sys
 # io.sys should start at sector 88
-	dd if=./io.sys of=./MyDiskDOS.ima bs=512 seek=88 conv=notrunc
+	dd if=./scpdos.sys of=./MyDiskDOS.ima bs=512 seek=88 conv=notrunc
 # Copy to make a fake USB device
 	cp ./MyDiskDOS.ima ./MyDiskDOSMSD.ima

@@ -6,7 +6,7 @@
     INCLUDE driverStruc.inc
     INCLUDE dosData.inc
 
-loadCode SEGMENT USE64
+loadCode SEGMENT BYTE USE64
     ASSUME ds:FLAT, es:FLAT
 ; We arrive here with the following values in the registers.
 ; rbx =  LBA of first Logical Block after SCP/BIOS
@@ -22,22 +22,22 @@ loadCode SEGMENT USE64
     shl rdi, 20h        ;Shift high
     mov edi, eax        ;Get the low dword in
 
-    mov qword ptr fs:[dSeg.dataSegPtr], rdi  
-    add rdi, SIZEOF dSeg
-    mov qword ptr fs:[dSeg.codeSegPtr], rdi
-    mov rax, rdi    ;Save the codeSegment address in rax
-    lea rsi, OFFSET resCode ;Get RIP relative address to copy high
+    mov qword ptr fs:[dSeg.dosSegPtr], rdi 
+    mov rdx, rdi    ;Save the start of dosSeg in rax 
+    add rdi, SIZEOF dSeg ;Move destination past end of data area
+    xchg bx, bx
+    lea rsi, OFFSET resCode  ;Get RIP relative address to copy high
     mov ecx, 1000h
     rep movsq
-    xchg bx, bx
-    mov rbx, msdDriver 
-    mov rcx, SIZEOF dSeg
-    sub rbx, rcx
-    lea rbx, qword ptr [rax + rbx]
+;Modify the pointers in nData before putting them in the data area
+    ;add qword ptr [nData.nxtPtr], rax
+    ;add qword ptr [nData.strPtr], rax
+    ;add qword ptr [nData.intPtr], rax
+    lea rbx, qword ptr [rdx + msdDriver]
     xor al, al
     call rbx
 
-    lea rbp, startmsg   ;Get the absolute address of message
+    lea rbp, qword ptr [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
     int 30h
 @@:
@@ -47,23 +47,17 @@ loadCode SEGMENT USE64
     int 30h
     jmp short @b
 
-    startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-nData   LABEL QWORD
-    dq conHdr
-    dw 08004h
-    dq nulStrat
-    dq nulIntr
-    db "NUL     "
+startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+nData drvHdr <conHdr,  08004h, nulStrat, nulIntr, "NUL     "> ;Default NUL data
 loadCode ENDS
 
-;codeSegment points to the start of this segment!
 resCode SEGMENT BYTE USE64
     ASSUME ds:FLAT, es:FLAT
 ;-----------------------------------:
 ;        Data Area Instance         :
 ;-----------------------------------:
 data dSeg <>    ;Initialise data area as BSS 
-        ORG $ 
+        ORG SIZEOF dSeg 
 ;Offset all addresses below here by size of data area since it is uninitialised
 ; to not take up space in the binary file.
 ;-----------------------------------:
@@ -136,14 +130,14 @@ conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
 auxHdr  drvHdr <prnHdr,  08000h, commonStrat, com1Intr,  "AUX     ">
 prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, lpt1Hdr ,  "PRN     ">
 clkHdr  drvHdr <msdHdr,  08008h, commonStrat, clkDriver, "CLOCK$  ">
-msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdIntr, <0,0,0,0,0,0,0,0>>
+msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdDriver, <0,0,0,0,0,0,0,0>>
 com1Hdr drvHdr <com2Hdr, 08000h, commonStrat, com1Intr, "COM1    ">
 com2Hdr drvHdr <com3Hdr, 08000h, commonStrat, com2Intr, "COM2    ">
 com3Hdr drvHdr <com4Hdr, 08000h, commonStrat, com3Intr, "COM3    ">
 com4Hdr drvHdr <lpt1Hdr, 08000h, commonStrat, com4Intr, "COM4    ">
-lpt1Hdr drvHdr <lpt2Hdr, 0A040h, commonStrat, lptIntr, "LPT1    ">
-lpt2Hdr drvHdr <lpt3Hdr, 0A040h, commonStrat, lptIntr, "LPT2    ">
-lpt3Hdr drvHdr <-1, 0A040h, commonStrat, lptIntr, "LPT3    ">
+lpt1Hdr drvHdr <lpt2Hdr, 0A040h, commonStrat, lptDriver, "LPT1    ">
+lpt2Hdr drvHdr <lpt3Hdr, 0A040h, commonStrat, lptDriver, "LPT2    ">
+lpt3Hdr drvHdr <-1, 0A040h, commonStrat, lptDriver, "LPT3    ">
 commonStrat PROC
 ;DOS calls this function with rbx=Ptr to request header
 ;DOS also sets fs to point to its data segment when entered
@@ -162,7 +156,7 @@ nulStrat    ENDP
 conDriver   PROC
     push rax
     push rbx
-    mov rbx, qword ptr [reqHdrPtr]
+    lea rbx, qword ptr [reqHdrPtr]
     mov al, byte ptr [rbx + drvReqHdr.cmdcde]
     xor al, al
     jz conInit
@@ -281,7 +275,7 @@ comIntr     PROC
     push rcx
     push rdx
     push rsi
-    mov rbx, qword ptr [reqHdrPtr]
+    lea rbx, qword ptr [reqHdrPtr]
     mov al, byte ptr [rbx + drvReqHdr.cmdcde]
     cmp al, 4
     jz comRead
@@ -341,23 +335,20 @@ comIntr     ENDP
 comDriver   ENDP
 
 lptDriver   PROC    ;Drivers for LPT 1, 2, 3
-
-lptIntr     PROC    ;LPT act as null device drivers
     push rdi
-    mov rdi, qword ptr [reqHdrPtr]
+    lea rdi, qword ptr [reqHdrPtr]
     mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
     pop rdi
     ret
-lptIntr     ENDP
 lptDriver   ENDP
+
 msdDriver   PROC
-msdIntr     LABEL   BYTE
     push rax
     push rbx
-    ;mov rbx, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
-    ;mov al, byte ptr [rbx + drvReqHdr.cmdcde]   ;Get command code in al
-    ;cmp al, 24  ;Check cmd num is valid
-    ;ja msdError
+    lea rbx, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
+    mov al, byte ptr [rbx + drvReqHdr.cmdcde]   ;Get command code in al
+    cmp al, 24  ;Check cmd num is valid
+    ja msdError
     test al, al
     jz msdInit
     cmp al, 01
@@ -387,7 +378,7 @@ msdIntr     LABEL   BYTE
     cmp al, 24
     jz msdSetLogicalDev
 msdError:
-msdIntrExit:
+msdDriverExit:
     or word ptr [rbx + drvReqHdr.status], 0100h ;Set done bit
     pop rbx
     pop rax
@@ -407,17 +398,17 @@ msdInit:            ;Function 0
     mov byte ptr [rbx + initReqPkt.numunt], al ;And in req packet
     add byte ptr [data.numMSDdrv], r8b ;Add the true number of devices to total
     xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
-    lea rdi, msdBPBblks
+    lea rdi, qword ptr [msdBPBblks]
     push rbx
 @@:
     mov edx, ebp
-    lea rbx, driverDataPtr  ;Get address of scratch space
+    lea rbx, qword ptr [driverDataPtr]  ;Get effective address of scratch space
     xor ecx, ecx    ;Sector 0
     mov eax, 8201h       ;Read 1 sector
     int 33h
     jc msdInitError
 
-    lea rsi, driverDataPtr  ;Point to start of data
+    lea rsi, qword ptr [driverDataPtr]  ;Point to start of data
     mov ecx, SIZEOF(bpbEx)/8
     rep movsq   ;Move the BPB data into the right block
 
@@ -425,8 +416,8 @@ msdInit:            ;Function 0
     cmp rbp, r8 ;Have we written the BPB for all physical drives?
     jne @b  ;No? Go again
 
-    lea rdi, msdBPBTbl  ;Point to start of table
-    lea rdx, msdBPBblks
+    lea rdi, qword ptr [msdBPBTbl]  ;Point to start of table
+    lea rdx, qword ptr [msdBPBblks]
 @@:
     mov qword ptr [rdi], rdx    ;Move the block entry ptr to rdi
     add rdx, SIZEOF(bpbEx)      ;Make rdx point to the next block entry
@@ -434,9 +425,9 @@ msdInit:            ;Function 0
     jnz @b  ;If not zero yet, go again
 
     pop rbx
-    lea rdx, msdBPBTbl  ;Get far pointer 
+    lea rdx, qword ptr [msdBPBTbl]  ;Get far pointer 
     mov qword ptr [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
-    lea rdx, driverDataPtr
+    lea rdx, qword ptr [driverDataPtr]
     mov qword ptr [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
 msdInitError:
     pop rbx
@@ -455,7 +446,7 @@ msdRemovableMedia:  ;Function 15
 msdGenericIOCTL:    ;Function 19
 msdGetLogicalDev:   ;Function 23
 msdSetLogicalDev:   ;Function 24
-    jmp msdIntrExit
+    jmp msdDriverExit
 msdDefLabel db "NO NAME ",0 ;Default volume label
 ;LASTDRIVE default is 5
 msdBIOSmap  db 5 dup (?)    ;Translates DOS drive number to BIOS number
