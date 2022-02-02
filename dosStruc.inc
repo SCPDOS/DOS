@@ -14,7 +14,7 @@
 ;------------------------------------------------------------------------;
 dpb STRUC        ;Drive Parameter Block
 
-    bDriveNumber            db ?  ;Drive number
+    bDriveNumber            db ?  ;Drive number (0=A, 1=B ...)
     bUnitNumber             db ?  ;Unit number in device
     bBytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
     bMaxSectorInCluster     db ?  ;(Maximum sector in cluster) - 1

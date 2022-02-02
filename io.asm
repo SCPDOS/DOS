@@ -13,7 +13,7 @@ loadCode SEGMENT USE64
 ; dx  = Int 33h boot device number
 ; fs  = userbase pointer (pointer to first usable block of RAM)
     dw 0AA55h           ;Initial signature
-    xchg bx, bx
+
     mov byte ptr fs:[dSeg.bootDrive], dl ;Save the boot drive in memory
 
     mov ecx, 0C0000100h ;Read FS MSR
@@ -26,16 +26,16 @@ loadCode SEGMENT USE64
     add rdi, SIZEOF dSeg
     mov qword ptr fs:[dSeg.codeSegPtr], rdi
     mov rax, rdi    ;Save the codeSegment address in rax
-    lea rsi, OFFSET resCodeStart ;Get offset of the segment in the file into rsi
+    lea rsi, OFFSET resCode ;Get RIP relative address to copy high
     mov ecx, 1000h
     rep movsq
-    lea rsi, nData
-    add qword ptr [rsi + 10h], rax  ;Add the code segment address to the ptrs
-    add qword ptr [rsi + 18h], rax
-    mov rdi, qword ptr fs:[dSeg.nulDevHdr]
-    mov ecx, 34
-    rep movsb
-
+    xchg bx, bx
+    mov rbx, msdDriver 
+    mov rcx, SIZEOF dSeg
+    sub rbx, rcx
+    lea rbx, qword ptr [rax + rbx]
+    xor al, al
+    call rbx
 
     lea rbp, startmsg   ;Get the absolute address of message
     mov eax, 1304h
@@ -66,14 +66,19 @@ data dSeg <>    ;Initialise data area as BSS
         ORG $ 
 ;Offset all addresses below here by size of data area since it is uninitialised
 ; to not take up space in the binary file.
-resCodeStart LABEL BYTE
 ;-----------------------------------:
 ;       Misc System routines        :
 ;-----------------------------------:
 findLRUBuffer  PROC 
 ;Finds least recently used buffer, links it and returns ptr to it in rbx
+;Input: Nothing
+;Output: rbx = Pointer to the buffer to use
     push rdx
     mov rbx, qword ptr [data.bufHeadPtr]
+    cmp qword ptr [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
+    jne @f
+    pop rdx
+    ret
 @@:
     mov rdx, rbx    ;Save a ptr to the previous buffer header
     mov rbx, qword ptr [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
@@ -86,6 +91,24 @@ findLRUBuffer  PROC
     pop rdx
     ret
 findLRUBuffer  ENDP
+findDPB     PROC
+;Finds the DPB for a given drive
+;Input:   dl = Drive number (0=A, 1=B etc...)
+;Output: al = 00, rbx = Pointer to the DPB
+;        al = -1, Failed, no DPB for device, rbx destroyed
+    mov rbx, qword ptr [data.dpbHeadPtr]
+@@:
+    xor al, al
+    cmp byte ptr [rbx + dpb.bDriveNumber], dl
+    je @f
+    mov rbx, qword ptr [rbx + dpb.qNextDPBPtr]
+    mov al, -1
+    cmp rbx, -1 ;If rbx followed last item in list, no DPB exists for dl
+    je @f
+    jmp short @b
+@@:
+    ret
+findDPB     ENDP
 
 ;-----------------------------------:
 ;       File System routines        :
@@ -235,91 +258,6 @@ conDriver   ENDP
 clkDriver   PROC
 clkDriver   ENDP
 
-msdDriver   PROC
-msdIntr     LABEL   BYTE
-    push rax
-    push rbx
-    mov rbx, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
-    mov al, byte ptr [rbx + drvReqHdr.cmdcde]   ;Get command code in al
-    cmp al, 24  ;Check cmd num is valid
-    ja msdError
-    test al, al
-    jz msdInit
-    cmp al, 01
-    jz msdMedChk
-    cmp al, 02
-    jz msdBuildBPB
-    cmp al, 03
-    jz msdIOCTLRead
-    cmp al, 04
-    jz msdRead
-    cmp al, 08
-    jz msdWrite
-    cmp al, 09
-    jz msdWriteVerify
-    cmp al, 12
-    jz msdIOCTLWrite
-    cmp al, 13
-    jz msdDevOpen
-    cmp al, 14
-    jz msdDevClose
-    cmp al, 15
-    jz msdRemovableMedia
-    cmp al, 19
-    jz msdGenericIOCTL
-    cmp al, 23
-    jz msdGetLogicalDev
-    cmp al, 24
-    jz msdSetLogicalDev
-msdError:
-msdIntrExit:
-    or word ptr [rbx + drvReqHdr.status], 0100h ;Set done bit
-    pop rbx
-    pop rax
-    ret
-msdInit:            ;Function 0
-    int 31h ;Get number of Int 33h devices in R8b, and aux devices in byte 3
-    movzx r10, r8b   ;Isolate the number of Int 33h devs only
-    mov r9, 2
-    cmp r10, 1
-    cmove r8, r9    ;If we have one device detected only, make it two!
-    mov byte ptr [msdHdr + drvHdr.drvNam], r8b ;Save num Int 33h devs here
-msdMedChk:          ;Function 1
-msdBuildBPB:        ;Function 2
-msdIOCTLRead:       ;Function 3, returns done
-msdRead:            ;Funciton 4
-msdWrite:           ;Function 8
-    mov rdi, rbx
-    mov ebp, dword ptr [rdi + ioReqPkt.tfrlen] ;Get num of sectors to transfer
-    mov dword ptr [rdi + ioReqPkt.tfrlen], 0
-@@:
-    mov esi, 0FFh
-    cmp ebp, esi
-    mov eax, ebp    ;Default move remaining sectors into ax
-    cmova eax, esi  ;If FF is less than bp, move FF by default
-    mov rbx, qword ptr [rdi + ioReqPkt.bufptr]  ;Buffer head
-    mov rcx, qword ptr [rdi + ioReqPkt.strtsc]  ;Start sector
-    mov dl, byte ptr [rdi + ioReqPkt.unitnm]    ;Unit number for transfer
-    int 33h
-    jc @f
-    movzx eax, al   ;Zero extend number of sectors transferred
-    add dword ptr [rdi + ioReqPkt.bufptr], eax  ;Add number of 
-@@:
-
-
-msdWriteVerify:     ;Function 9, writes sectors then verifies then
-
-msdIOCTLWrite:      ;Function 12, returns done
-msdDevOpen:         ;Function 13
-msdDevClose:        ;Function 14
-msdRemovableMedia:  ;Function 15
-msdGenericIOCTL:    ;Function 19
-msdGetLogicalDev:   ;Function 23
-msdSetLogicalDev:   ;Function 24
-    jmp short msdIntrExit
-msdDefLabel    db "NO NAME ",0 ;Default volume label
-msdDriver   ENDP
-
 comDriver   PROC
 com1Intr    PROC
     mov byte ptr [comDevice], 0
@@ -412,9 +350,121 @@ lptIntr     PROC    ;LPT act as null device drivers
     ret
 lptIntr     ENDP
 lptDriver   ENDP
+msdDriver   PROC
+msdIntr     LABEL   BYTE
+    push rax
+    push rbx
+    ;mov rbx, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
+    ;mov al, byte ptr [rbx + drvReqHdr.cmdcde]   ;Get command code in al
+    ;cmp al, 24  ;Check cmd num is valid
+    ;ja msdError
+    test al, al
+    jz msdInit
+    cmp al, 01
+    jz msdMedChk
+    cmp al, 02
+    jz msdBuildBPB
+    cmp al, 03
+    jz msdIOCTLRead
+    cmp al, 04
+    jz msdRead
+    cmp al, 08
+    jz msdWrite
+    cmp al, 09
+    jz msdWriteVerify
+    cmp al, 12
+    jz msdIOCTLWrite
+    cmp al, 13
+    jz msdDevOpen
+    cmp al, 14
+    jz msdDevClose
+    cmp al, 15
+    jz msdRemovableMedia
+    cmp al, 19
+    jz msdGenericIOCTL
+    cmp al, 23
+    jz msdGetLogicalDev
+    cmp al, 24
+    jz msdSetLogicalDev
+msdError:
+msdIntrExit:
+    or word ptr [rbx + drvReqHdr.status], 0100h ;Set done bit
+    pop rbx
+    pop rax
+    ret
+msdInit:            ;Function 0
+    int 31h ;Get number of Int 33h devices in r8b
+    movzx r8, r8b   ;Keeps real count
+    mov eax, r8d
+    cmp al, 1
+    ja @f
+    inc al ;Make it two
+@@:
+    mov edx, 5
+    cmp eax, edx
+    cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
+    mov byte ptr [msdHdr.drvNam], al ;Save num of drvs in drvr hdr
+    mov byte ptr [rbx + initReqPkt.numunt], al ;And in req packet
+    add byte ptr [data.numMSDdrv], r8b ;Add the true number of devices to total
+    xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
+    lea rdi, msdBPBblks
+    push rbx
+@@:
+    mov edx, ebp
+    lea rbx, driverDataPtr  ;Get address of scratch space
+    xor ecx, ecx    ;Sector 0
+    mov eax, 8201h       ;Read 1 sector
+    int 33h
+    jc msdInitError
+
+    lea rsi, driverDataPtr  ;Point to start of data
+    mov ecx, SIZEOF(bpbEx)/8
+    rep movsq   ;Move the BPB data into the right block
+
+    inc ebp
+    cmp rbp, r8 ;Have we written the BPB for all physical drives?
+    jne @b  ;No? Go again
+
+    lea rdi, msdBPBTbl  ;Point to start of table
+    lea rdx, msdBPBblks
+@@:
+    mov qword ptr [rdi], rdx    ;Move the block entry ptr to rdi
+    add rdx, SIZEOF(bpbEx)      ;Make rdx point to the next block entry
+    dec ebp
+    jnz @b  ;If not zero yet, go again
+
+    pop rbx
+    lea rdx, msdBPBTbl  ;Get far pointer 
+    mov qword ptr [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
+    lea rdx, driverDataPtr
+    mov qword ptr [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
+msdInitError:
+    pop rbx
+    ret
+msdMedChk:          ;Function 1
+msdBuildBPB:        ;Function 2
+msdIOCTLRead:       ;Function 3, returns done
+msdRead:            ;Funciton 4
+msdWrite:           ;Function 8
+msdWriteVerify:     ;Function 9, writes sectors then verifies then
+
+msdIOCTLWrite:      ;Function 12, returns done
+msdDevOpen:         ;Function 13
+msdDevClose:        ;Function 14
+msdRemovableMedia:  ;Function 15
+msdGenericIOCTL:    ;Function 19
+msdGetLogicalDev:   ;Function 23
+msdSetLogicalDev:   ;Function 24
+    jmp msdIntrExit
+msdDefLabel db "NO NAME ",0 ;Default volume label
+;LASTDRIVE default is 5
+msdBIOSmap  db 5 dup (?)    ;Translates DOS drive number to BIOS number
+msdHdlCnt   db 5 dup (?)    ;Keeps a count of open handles to drive N
+msdBPBTbl   dq 5 dup (?)    ;BPB pointer table to be returned
+msdBPBblks  db 5*SIZEOF(bpbEx) dup (?)    ;Keep up to 5 bpb records of exFAT bpb size
+msdDriver   ENDP
 driverDataPtr   LABEL   BYTE
 drivers ENDP
-
 resCode ENDS
 
 END

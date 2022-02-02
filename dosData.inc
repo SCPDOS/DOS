@@ -1,5 +1,5 @@
 ; This file contains the structure of the DOS Data area
-dSeg STRUC 
+dSeg STRUC
     dataSegPtr  dq ?    ;Pointer to the data Segment itself
     codeSegPtr  dq ?    ;Pointer to the start of the resident Code segment
     bootDrive   db ?    ;The Int 33h device we booted from

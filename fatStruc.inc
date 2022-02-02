@@ -5,7 +5,7 @@
 ; stage.                                                ;
 ;-------------------------------------------------------;
 
-bpb STRUC          ;FAT 12 and 16 BPB
+bpb STRUC          ;FAT 12 and 16 BPB, SIZE: 62 bytes
 
     jmpBoot    db 3 dup (?)
     oemName    db 8 dup (?)  ;OEM name
@@ -31,7 +31,7 @@ bpb STRUC          ;FAT 12 and 16 BPB
 
 bpb ENDS
 
-bpb32 STRUC       ;FAT 32 BPB
+bpb32 STRUC       ;FAT 32 BPB, SIZE: 90 bytes
 
     jmpBoot    db 3 dup (?)
     oemName    db 8 dup (?)  ;OEM name
@@ -66,7 +66,7 @@ bpb32 STRUC       ;FAT 32 BPB
 bpb32 ENDS
 
 
-bpbEx STRUC   ;exFAT BPB
+bpbEx STRUC   ;exFAT BPB, SIZE: 120 bytes
 
     jmpBoot                db 3 dup (?) 
     oemName                db 8 dup (?) ;OEM name

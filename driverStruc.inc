@@ -30,7 +30,7 @@ drvReqHdr   ENDS
 
 initReqPkt STRUC  ;Init Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqHdrM   ;Common Driver Header Macro
     numunt db ?  ;Number of logical units (Block only, 0 for char)
     endptr dq ?  ;Pointer to first free byte after driver
     optptr dq ?  ;Pointer to the BPB array (block) or optional args (char)
