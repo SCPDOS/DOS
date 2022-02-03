@@ -1,4 +1,3 @@
-    
     .x64p
 
     INCLUDE fatStruc.inc
@@ -7,7 +6,8 @@
     INCLUDE dosData.inc
 
 loadCode SEGMENT BYTE USE64
-    ASSUME ds:FLAT, es:FLAT
+    ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT,fs:NOTHING, gs:NOTHING
+    ORG 0
 ; We arrive here with the following values in the registers.
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
@@ -23,18 +23,19 @@ loadCode SEGMENT BYTE USE64
     mov edi, eax        ;Get the low dword in
 
     mov qword ptr fs:[dSeg.dosSegPtr], rdi 
-    mov rdx, rdi    ;Save the start of dosSeg in rax 
+    mov rdx, rdi    ;Save the start of dosSeg in rdx 
     add rdi, SIZEOF dSeg ;Move destination past end of data area
-    xchg bx, bx
     lea rsi, OFFSET resCode  ;Get RIP relative address to copy high
     mov ecx, 1000h
     rep movsq
 ;Modify the pointers in nData before putting them in the data area
-    ;add qword ptr [nData.nxtPtr], rax
-    ;add qword ptr [nData.strPtr], rax
-    ;add qword ptr [nData.intPtr], rax
-    lea rbx, qword ptr [rdx + msdDriver]
-    xor al, al
+    ;add qword ptr [nData.nxtPtr], rdx
+    ;add qword ptr [nData.strPtr], rdx
+    ;add qword ptr [nData.intPtr], rdx
+    xchg bx, bx
+    xor al, al 
+    mov rbx, msdDriver
+    add rbx, rdx
     call rbx
 
     lea rbp, qword ptr [startmsg]   ;Get the absolute address of message
@@ -49,15 +50,17 @@ loadCode SEGMENT BYTE USE64
 
 startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
 nData drvHdr <conHdr,  08004h, nulStrat, nulIntr, "NUL     "> ;Default NUL data
+
 loadCode ENDS
 
 resCode SEGMENT BYTE USE64
-    ASSUME ds:FLAT, es:FLAT
+    ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT,fs:NOTHING, gs:NOTHING
+    ORG 0
 ;-----------------------------------:
 ;        Data Area Instance         :
 ;-----------------------------------:
 data dSeg <>    ;Initialise data area as BSS 
-        ORG SIZEOF dSeg 
+    ORG SIZEOF dSeg 
 ;Offset all addresses below here by size of data area since it is uninitialised
 ; to not take up space in the binary file.
 ;-----------------------------------:
@@ -120,7 +123,6 @@ int49hHook  PROC    ;Called with char to transfer in al
     pop rax
     iretq
 int49hHook  ENDP
-
 ;-----------------------------------:
 ;          Driver routines          :
 ;-----------------------------------:
@@ -452,10 +454,11 @@ msdDefLabel db "NO NAME ",0 ;Default volume label
 msdBIOSmap  db 5 dup (?)    ;Translates DOS drive number to BIOS number
 msdHdlCnt   db 5 dup (?)    ;Keeps a count of open handles to drive N
 msdBPBTbl   dq 5 dup (?)    ;BPB pointer table to be returned
-msdBPBblks  db 5*SIZEOF(bpbEx) dup (?)    ;Keep up to 5 bpb records of exFAT bpb size
+msdBPBblks  db 5*SIZEOF(bpbEx) dup (?) ;Max 5 bpb records of exFAT bpb size
 msdDriver   ENDP
-driverDataPtr   LABEL   BYTE
+driverDataPtr   LABEL   QWORD
 drivers ENDP
+
 resCode ENDS
 
 END
