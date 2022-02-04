@@ -6,8 +6,9 @@
 #############################################################################
 # Assemble the file
 # -Zp1 forces byte alignment of structures, -Sp1 forces segment byte alignment
+#	cmd.exe /c uasm -Sa -Fl=scpdos.lst -bin scpdos.asm
 assemble:
-	cmd.exe /c uasm -Sa -Fl=scpdos.lst -bin scpdos.asm
+	nasm scpdos.asm -o scpdos.bin -f bin -l scpdos.lst -O0
 	mv ./scpdos.BIN ./scpdos.sys
 # io.sys should start at sector 88
 	dd if=./scpdos.sys of=./MyDiskDOS.ima bs=512 seek=88 conv=notrunc

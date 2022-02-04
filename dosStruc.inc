@@ -12,29 +12,29 @@
 ; The DPBs form a linked list, with each DPB formed after the devices 
 ; drivers Initialise routine has been called.
 ;------------------------------------------------------------------------;
-dpb STRUC        ;Drive Parameter Block
+struc dpb        ;Drive Parameter Block
 
-    bDriveNumber            db ?  ;Drive number (0=A, 1=B ...)
-    bUnitNumber             db ?  ;Unit number in device
-    bBytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
-    bMaxSectorInCluster     db ?  ;(Maximum sector in cluster) - 1
+    .bDriveNumber            resb 1  ;Drive number (0=A, 1=B ...)
+    .bUnitNumber             resb 1  ;Unit number in device
+    .bBytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+    .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1
 ;                                       i.e. (2^bSectorsPerClusterShift) - 1
-    bSectorsPerClusterShift db ?  ;Sectors per cluster exponent
-    dFAToffset              dd ?  ;Vol rel offset of first FAT, in sectors
-    bNumberOfFATs           db ?  ;Number of FATs
-    wNumberRootDirEntries   dw ?  ;In sectors
-    dClusterHeapOffset      dd ?  ;Start of data area, in sectors
-    dClusterCount           dd ?  ;Total number of clusters (volume size)
-    dFATlength              dd ?  ;FAT length, in sectors
-    dFirstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
-    qDriverHeaderPtr        dq ?  ;Pointer to device driver header
-    bMediaDescriptor        db ?  ;Media descriptor
-    bAccessFlag             db ?  ;Access Flag (0 if accessed, else -1)
-    qNextDPBPtr             dq ?  ;Pointer to next DPB, -1 if at end
-    dFirstFreeCluster       dd ?  ;Starting cluster of free space search
-    dNumberOfFreeClusters   dd ?  ;Number of free clusters, -1 unknown
+    .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent
+    .dFAToffset              resd 1  ;Vol rel offset of first FAT, in sectors
+    .bNumberOfFATs           resb 1  ;Number of FATs
+    .wNumberRootDirEntries   resw 1  ;In sectors
+    .dClusterHeapOffset      resd 1  ;Start of data area, in sectors
+    .dClusterCount           resd 1  ;Total number of clusters (volume size)
+    .dFATlength              resd 1  ;FAT length, in sectors
+    .dFirstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
+    .qDriverHeaderPtr        resq 1  ;Pointer to device driver header
+    .bMediaDescriptor        resb 1  ;Media descriptor
+    .bAccessFlag             resb 1  ;Access Flag (0 if accessed, else -1)
+    .qNextDPBPtr             resq 1  ;Pointer to next DPB, -1 if at end
+    .dFirstFreeCluster       resd 1  ;Starting cluster of free space search
+    .dNumberOfFreeClusters   resd 1  ;Number of free clusters, -1 unknown
 
-dpb ENDS
+endstruc
 
 ;------------------------------------------------------------------------;
 ; Each mass storage device up to LASTDRIVE has a CDS associated with it.
@@ -46,13 +46,13 @@ dpb ENDS
 ;
 ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
 ;------------------------------------------------------------------------;
-cds STRUC       ;Current Directory Structure
-    sCurrentPath        db 67 dup(?)    ;Current Directory Path String
-    wFlags              dw ? ;CDS Flags - 
-    qDPBPtr             dq ? ;Ptr to the DPB of the dev using this CDS
-    dStartCluster       dd ? ;Starting cluster of the directory on disk
-    qReserved           dq ? ;Reserved for future expansions
-    wBackslashOffset    dw ? ;How many chars to the start of current dir in the 
+struc cds       ;Current Directory structure
+    .sCurrentPath        resb 67    ;Current Directory Path String
+    .wFlags              resw 1 ;CDS Flags - 
+    .qDPBPtr             resq 1 ;Ptr to the DPB of the dev using this CDS
+    .dStartCluster       resd 1 ;Starting cluster of the directory on disk
+    .qReserved           resq 1 ;Reserved for future expansions
+    .wBackslashOffset    resw 1 ;How many chars to start of current dir in the 
 ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
 ; another, we save the number of chars to skip to that deep level).
 ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
@@ -61,7 +61,7 @@ cds STRUC       ;Current Directory Structure
 ;        Bit 13 set = JOIN'ed drive
 ;        Bit 12 set = SUBST'ed drive
 ;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
-cds ENDS
+endstruc
 
 ;------------------------------------------------------------------------;
 ; The SFT is a way to allow applications to open file handles to files 
@@ -105,32 +105,32 @@ cds ENDS
 ; DEFAULT FILES=15, MINIMUM FILES=5
 ; DEFAULT FCBS=5, MINIMUM FCBS=5
 ;------------------------------------------------------------------------;
-sfth STRUC   ;System file table header
+struc sfth   ;System file table header
 ; This is the SFT header.
 ; This structure comes before the start of the first file in the array/table.
-    qNextSFTPtr dq ?    ;Pointer to the next SFT
-    wNumFiles   dw ?    ;Number of files in this table
-sfth ENDS
+    .qNextSFTPtr resq 1    ;Pointer to the next SFT
+    .wNumFiles   resw 1    ;Number of files in this table
+endstruc
 
-sft STRUC
+struc sft
 ;This is the file struc itself
-    wNumHandles dw ?    ;Number of handles pointing to this file
-    wOpenMode   dw ?    ;Bit 15 set if opened via FCB
-    bFileAttrib db ?    ;Regular File Attributes
-    wDeviceInfo dw ?    ;Includes Device number
-    qPtr        dq ?    ;IF char, ptr to device driver, ELSE DPBptr
-    dStartClust dd ?    ;Start cluster of file
-    wTime       dw ?    ;File Time
-    wDate       dw ?    ;File Date
-    dFileSize   dd ?    ;File Size, in bytes
-    dCurntOff   dd ?    ;Current Offset in file, in bytes
-    wRelClust   dw ?    ;Relative cluster in file of the last cluster accessed
-    dDirSect    dd ?    ;Relative number of sector containing directory entry 
-    bNumDirEnt  db ?    ;Number of dir entry within sector (byte offset/32)
-    sFCBName    db 11 dup(?)    ;8.3 Filename
-    qPSPOwner   dq ?    ;Address of PSP of program which first opened this file
-    dAbsClusr   dd ?    ;Absolute cluster of last cluster accessed
-sft ENDS
+    .wNumHandles resw 1    ;Number of handles pointing to this file
+    .wOpenMode   resw 1    ;Bit 15 set if opened via FCB
+    .bFileAttrib resb 1    ;Regular File Attributes
+    .wDeviceInfo resw 1    ;Includes Device number
+    .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
+    .dStartClust resd 1    ;Start cluster of file
+    .wTime       resw 1    ;File Time
+    .wDate       resw 1    ;File Date
+    .dFileSize   resd 1    ;File Size, in bytes
+    .dCurntOff   resd 1    ;Current Offset in file, in bytes
+    .wRelClust   resw 1    ;Relative cluster in file of the last cluster accessed
+    .dDirSect    resd 1    ;Relative number of sector containing directory entry 
+    .bNumDirEnt  resb 1    ;Number of dir entry within sector (byte offset/32)
+    .sFCBName    resb 11   ;8.3 Filename
+    .qPSPOwner   resq 1    ;Address of PSP of program which first opened this file
+    .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
+endstruc
 
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 
@@ -146,12 +146,12 @@ sft ENDS
 ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
 ;------------------------------------------------------------------------;
 
-bufferHdr   STRUC
-    nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
-    driveNumber db  ?   ;Drive number the buffer is used for
-    bufferFlags db  ?   ;Standard Flags
-    bufferLBA   dd  ?   ;LBA the buffer contains
-    bufFATcopy  db  ?   ;Number of copies of the FAT to write (1 if non-FAT)
-    bufFAToff   db  ?   ;Sector offset of the backup copy of the FAT on disk
-    driveDPBPtr dq  ?   ;Pointer to the device DPB block
-bufferHdr   ENDS
+struc bufferHdr
+    .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
+    .driveNumber resb  1   ;Drive number the buffer is used for
+    .bufferFlags resb  1   ;Standard Flags
+    .bufferLBA   resd  1   ;LBA the buffer contains
+    .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
+    .bufFAToff   resb  1   ;Sector offset of the backup copy of the FAT on disk
+    .driveDPBPtr resq  1   ;Pointer to the device DPB block
+endstruc

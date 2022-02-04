@@ -5,87 +5,87 @@
 ; stage.                                                ;
 ;-------------------------------------------------------;
 
-bpb STRUC          ;FAT 12 and 16 BPB, SIZE: 62 bytes
+struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
 
-    jmpBoot    db 3 dup (?)
-    oemName    db 8 dup (?)  ;OEM name
-    bytsPerSec dw ?  ;Bytes per sector
-    secPerClus db ?  ;Sectors per cluster
-    revdSecCnt dw ?  ;Number of reserved sectors
-    numFATs    db ?  ;Number of FATs on media
-    rootEntCnt dw ?  ;Number of entries in Root directory
-    totSec16   dw ?  ;Number of sectors on medium
-    media      db ?  ;Media descriptor byte
-    FATsz16    dw ?  ;Number of sectors per FAT
-    secPerTrk  dw ?  ;Number of sectors per "track"
-    numHeads   dw ?  ;Number of read "heads"
-    hiddSec    dd ?  ;Number of hidden sectors
-    totSec32   dd ?  ;32 bit count of sectors
+    .jmpBoot    resb 3 
+    .oemName    resb 8  ;OEM name
+    .bytsPerSec resw 1  ;Bytes per sector
+    .secPerClus resb 1  ;Sectors per cluster
+    .revdSecCnt resw 1  ;Number of reserved sectors
+    .numFATs    resb 1  ;Number of FATs on media
+    .rootEntCnt resw 1  ;Number of entries in Root directory
+    .totSec16   resw 1  ;Number of sectors on medium
+    .media      resb 1  ;Media descriptor byte
+    .FATsz16    resw 1  ;Number of sectors per FAT
+    .secPerTrk  resw 1  ;Number of sectors per "track"
+    .numHeads   resw 1  ;Number of read "heads"
+    .hiddSec    resd 1  ;Number of hidden sectors
+    .totSec32   resd 1  ;32 bit count of sectors
 
-    drvNum     db ?  ;Logical drive number (00h or 80h)
-    reserved1  db ?  ;Reserved byte
-    bootSig    db ?  ;Extended boot signature (29h)
-    volID      dd ?  ;Volume serial number
-    volLab     db 11 dup (?) ;Volume label string
-    filSysType db 8 dup (?)  ;File system type string
+    .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    .reserved1  resb 1  ;Reserved byte
+    .bootSig    resb 1  ;Extended boot signature (29h)
+    .volID      resd 1  ;Volume serial number
+    .volLab     resb 11 ;Volume label string
+    .filSysType resb 8  ;File system type string
 
-bpb ENDS
+endstruc
 
-bpb32 STRUC       ;FAT 32 BPB, SIZE: 90 bytes
+struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
 
-    jmpBoot    db 3 dup (?)
-    oemName    db 8 dup (?)  ;OEM name
-    bytsPerSec dw ?  ;Bytes per sector
-    secPerClus db ?  ;Sectors per cluster
-    revdSecCnt dw ?  ;Number of reserved sectors
-    numFATs    db ?  ;Number of FATs on media
-    rootEntCnt dw ?  ;Number of entries in Root directory
-    totSec16   dw ?  ;Number of sectors on medium
-    media      db ?  ;Media descriptor byte
-    FATsz16    dw ?  ;Number of sectors per FAT, must be 0 for FAT 32
-    secPerTrk  dw ?  ;Number of sectors per "track"
-    numHeads   dw ?  ;Number of read "heads"
-    hiddSec    dd ?  ;Number of hidden sectors
-    totSec32   dd ?  ;32 bit count of sectors
+    .jmpBoot    resb 3
+    .oemName    resb 8  ;OEM name
+    .bytsPerSec resw 1  ;Bytes per sector
+    .secPerClus resb 1  ;Sectors per cluster
+    .revdSecCnt resw 1  ;Number of reserved sectors
+    .numFATs    resb 1  ;Number of FATs on media
+    .rootEntCnt resw 1  ;Number of entries in Root directory
+    .totSec16   resw 1  ;Number of sectors on medium
+    .media      resb 1  ;Media descriptor byte
+    .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
+    .secPerTrk  resw 1  ;Number of sectors per "track"
+    .numHeads   resw 1  ;Number of read "heads"
+    .hiddSec    resd 1  ;Number of hidden sectors
+    .totSec32   resd 1  ;32 bit count of sectors
 
-    FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
-    extFlags   dw ?  ;Extended Flags word
-    FSver      dw ?  ;File system version word, must be 0
-    RootClus   dd ?  ;First Cluster of Root Directory
-    FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
-    BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
-    reserved   db 12 dup (?) ;Reserved 12 bytes
+    .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
+    .extFlags   resw 1  ;Extended Flags word
+    .FSver      resw 1  ;File system version word, must be 0
+    .RootClus   resd 1  ;First Cluster of Root Directory
+    .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
+    .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
+    .reserved   resb 12 ;Reserved 12 bytes
 
-    drvNum     db ?  ;Logical drive number (00h or 80h)
-    reserved1  db ?  ;Reserved byte
-    bootSig    db ?  ;Extended boot signature (29h)
-    volID      dd ?  ;Volume serial number
-    volLab     db 11 dup (?) ;Volume label string
-    filSysType db 8 dup (?)  ;File system type string
+    .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    .reserved1  resb 1  ;Reserved byte
+    .bootSig    resb 1  ;Extended boot signature (29h)
+    .volID      resd 1  ;Volume serial number
+    .volLab     resb 11 ;Volume label string
+    .filSysType resb 8  ;File system type string
 
-bpb32 ENDS
+endstruc
 
 
-bpbEx STRUC   ;exFAT BPB, SIZE: 120 bytes
+struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
 
-    jmpBoot                db 3 dup (?) 
-    oemName                db 8 dup (?) ;OEM name
-    MustBeZero             db 53 dup (?) ;Must be 0, 53 bytes
-    partitionOffset        dq ?  ;in sectors, 0 means ignore this field
-    volumeLength           dq ?  ;Volume Length in sectors
-    FAToffset              dd ?  ;Volume rel offset of first FAT, in sectors
-    FATlength              dd ?  ;FAT length, in sectors
-    clusterHeapOffset      dd ?  ;Start of data area, in sectors
-    clusterCount           dd ?  ;Number of clusters on medium
-    firstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
-    volumeSerialNum        dd ?  ;Volume Serial Number
-    FSrevision             dw ?  ;Should be 0001 (v1.00)
-    volumeFlags            dw ?  ;Volume Flags, refer to documentation
-    bytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
-    sectorsPerClusterShift db ?  ;Result of log_2(N) for N=sec per clus
-    numberOfFATs           db ?  ;Number of FATs, only 1 or 2
-    driveSelect            db ?  ;Drive Select, 0 or 80h (Int 13h)
-    percentInUse           db ?  ;Rounded down. FFh means unknown
-    reserved               db 7 dup (?)  ;Reserved for alignment
-
-bpbEx ENDS
+    .jmpBoot                resb 3 
+    .oemName                resb 8  ;OEM name
+    .MustBeZero             resb 53 ;Must be 0, 53 bytes
+    .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
+    .volumeLength           resq 1  ;Volume Length in sectors
+    .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
+    .FATlength              resd 1  ;FAT length, in sectors
+    .clusterHeapOffset      resd 1  ;Start of data area, in sectors
+    .clusterCount           resd 1  ;Number of clusters on medium
+    .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
+    .volumeSerialNum        resd 1  ;Volume Serial Number
+    .FSrevision             resw 1  ;Should be 0001 (v1.00)
+    .volumeFlags            resw 1  ;Volume Flags, refer to documentation
+    .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+    .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
+    .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
+    .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
+    .percentInUse           resb 1  ;Rounded down. FFh means unknown
+    .reserved               resb 7  ;Reserved for alignment
+bpbExLen    equ $ - bpbEx
+endstruc

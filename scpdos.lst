@@ -1,1790 +1,1079 @@
-UASM v2.52, Apr  2 2021, Masm-compatible assembler.
-
-scpdos.asm
-                                    .x64p
-                                    .MODEL FLAT
-00000000                    *   _TEXT segment PARA FLAT PUBLIC 'CODE'
-                            *   _TEXT ends
-00000000                    *   _DATA segment PARA FLAT PUBLIC 'DATA'
-                            *   _DATA ends
-                            *   assume cs:flat,ds:flat,ss:flat,es:flat,fs:ERROR,gs:ERROR
-
-                                    INCLUDE fatStruc.inc
-                              C 
-                              C ;-------------------------------------------------------;
-                              C ; This include file contains miscellaneous FAT driver   ;
-                              C ; structures. exFAT will have it's own files at a later ;
-                              C ; stage.                                                ;
-                              C ;-------------------------------------------------------;
-                              C 
-00000000                      C bpb STRUC          ;FAT 12 and 16 BPB, SIZE: 62 bytes
-                              C 
-00000000                      C     jmpBoot    db 3 dup (?)
-00000003                      C     oemName    db 8 dup (?)  ;OEM name
-0000000B                      C     bytsPerSec dw ?  ;Bytes per sector
-0000000D                      C     secPerClus db ?  ;Sectors per cluster
-0000000E                      C     revdSecCnt dw ?  ;Number of reserved sectors
-00000010                      C     numFATs    db ?  ;Number of FATs on media
-00000011                      C     rootEntCnt dw ?  ;Number of entries in Root directory
-00000013                      C     totSec16   dw ?  ;Number of sectors on medium
-00000015                      C     media      db ?  ;Media descriptor byte
-00000016                      C     FATsz16    dw ?  ;Number of sectors per FAT
-00000018                      C     secPerTrk  dw ?  ;Number of sectors per "track"
-0000001A                      C     numHeads   dw ?  ;Number of read "heads"
-0000001C                      C     hiddSec    dd ?  ;Number of hidden sectors
-00000020                      C     totSec32   dd ?  ;32 bit count of sectors
-                              C 
-00000024                      C     drvNum     db ?  ;Logical drive number (00h or 80h)
-00000025                      C     reserved1  db ?  ;Reserved byte
-00000026                      C     bootSig    db ?  ;Extended boot signature (29h)
-00000027                      C     volID      dd ?  ;Volume serial number
-0000002B                      C     volLab     db 11 dup (?) ;Volume label string
-00000036                      C     filSysType db 8 dup (?)  ;File system type string
-                              C 
-0000003E                      C bpb ENDS
-                              C 
-00000000                      C bpb32 STRUC       ;FAT 32 BPB, SIZE: 90 bytes
-                              C 
-00000000                      C     jmpBoot    db 3 dup (?)
-00000003                      C     oemName    db 8 dup (?)  ;OEM name
-0000000B                      C     bytsPerSec dw ?  ;Bytes per sector
-0000000D                      C     secPerClus db ?  ;Sectors per cluster
-0000000E                      C     revdSecCnt dw ?  ;Number of reserved sectors
-00000010                      C     numFATs    db ?  ;Number of FATs on media
-00000011                      C     rootEntCnt dw ?  ;Number of entries in Root directory
-00000013                      C     totSec16   dw ?  ;Number of sectors on medium
-00000015                      C     media      db ?  ;Media descriptor byte
-00000016                      C     FATsz16    dw ?  ;Number of sectors per FAT, must be 0 for FAT 32
-00000018                      C     secPerTrk  dw ?  ;Number of sectors per "track"
-0000001A                      C     numHeads   dw ?  ;Number of read "heads"
-0000001C                      C     hiddSec    dd ?  ;Number of hidden sectors
-00000020                      C     totSec32   dd ?  ;32 bit count of sectors
-                              C 
-00000024                      C     FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
-00000028                      C     extFlags   dw ?  ;Extended Flags word
-0000002A                      C     FSver      dw ?  ;File system version word, must be 0
-0000002C                      C     RootClus   dd ?  ;First Cluster of Root Directory
-00000030                      C     FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
-00000032                      C     BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
-00000034                      C     reserved   db 12 dup (?) ;Reserved 12 bytes
-                              C 
-00000040                      C     drvNum     db ?  ;Logical drive number (00h or 80h)
-00000041                      C     reserved1  db ?  ;Reserved byte
-00000042                      C     bootSig    db ?  ;Extended boot signature (29h)
-00000043                      C     volID      dd ?  ;Volume serial number
-00000047                      C     volLab     db 11 dup (?) ;Volume label string
-00000052                      C     filSysType db 8 dup (?)  ;File system type string
-                              C 
-0000005A                      C bpb32 ENDS
-                              C 
-                              C 
-00000000                      C bpbEx STRUC   ;exFAT BPB, SIZE: 120 bytes
-                              C 
-00000000                      C     jmpBoot                db 3 dup (?) 
-00000003                      C     oemName                db 8 dup (?) ;OEM name
-0000000B                      C     MustBeZero             db 53 dup (?) ;Must be 0, 53 bytes
-00000040                      C     partitionOffset        dq ?  ;in sectors, 0 means ignore this field
-00000048                      C     volumeLength           dq ?  ;Volume Length in sectors
-00000050                      C     FAToffset              dd ?  ;Volume rel offset of first FAT, in sectors
-00000054                      C     FATlength              dd ?  ;FAT length, in sectors
-00000058                      C     clusterHeapOffset      dd ?  ;Start of data area, in sectors
-0000005C                      C     clusterCount           dd ?  ;Number of clusters on medium
-00000060                      C     firstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
-00000064                      C     volumeSerialNum        dd ?  ;Volume Serial Number
-00000068                      C     FSrevision             dw ?  ;Should be 0001 (v1.00)
-0000006A                      C     volumeFlags            dw ?  ;Volume Flags, refer to documentation
-0000006C                      C     bytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
-0000006D                      C     sectorsPerClusterShift db ?  ;Result of log_2(N) for N=sec per clus
-0000006E                      C     numberOfFATs           db ?  ;Number of FATs, only 1 or 2
-0000006F                      C     driveSelect            db ?  ;Drive Select, 0 or 80h (Int 13h)
-00000070                      C     percentInUse           db ?  ;Rounded down. FFh means unknown
-00000071                      C     reserved               db 7 dup (?)  ;Reserved for alignment
-                              C 
-00000078                      C bpbEx ENDS
-                                    INCLUDE dosStruc.inc
-                              C 
-                              C ;-------------------------------------------------------;
-                              C ; This include file contains miscellaneous internal     ;
-                              C ; SCP/DOS structures.                                   ;
-                              C ;-------------------------------------------------------;
-                              C 
-                              C ;------------------------------------------------------------------------;
-                              C ; Each mass storage device up to LASTDRIVE gets a DPB, describing 
-                              C ; its file system structure. This is used to locate files and structures
-                              C ; on the device itself and to translate file requests to cluster chains
-                              C ; to LBAs to pass to the disk driver..
-                              C ; The DPBs form a linked list, with each DPB formed after the devices 
-                              C ; drivers Initialise routine has been called.
-                              C ;------------------------------------------------------------------------;
-00000000                      C dpb STRUC        ;Drive Parameter Block
-                              C 
-00000000                      C     bDriveNumber            db ?  ;Drive number (0=A, 1=B ...)
-00000001                      C     bUnitNumber             db ?  ;Unit number in device
-00000002                      C     bBytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
-00000003                      C     bMaxSectorInCluster     db ?  ;(Maximum sector in cluster) - 1
-                              C ;                                       i.e. (2^bSectorsPerClusterShift) - 1
-00000004                      C     bSectorsPerClusterShift db ?  ;Sectors per cluster exponent
-00000005                      C     dFAToffset              dd ?  ;Vol rel offset of first FAT, in sectors
-00000009                      C     bNumberOfFATs           db ?  ;Number of FATs
-0000000A                      C     wNumberRootDirEntries   dw ?  ;In sectors
-0000000C                      C     dClusterHeapOffset      dd ?  ;Start of data area, in sectors
-00000010                      C     dClusterCount           dd ?  ;Total number of clusters (volume size)
-00000014                      C     dFATlength              dd ?  ;FAT length, in sectors
-00000018                      C     dFirstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
-0000001C                      C     qDriverHeaderPtr        dq ?  ;Pointer to device driver header
-00000024                      C     bMediaDescriptor        db ?  ;Media descriptor
-00000025                      C     bAccessFlag             db ?  ;Access Flag (0 if accessed, else -1)
-00000026                      C     qNextDPBPtr             dq ?  ;Pointer to next DPB, -1 if at end
-0000002E                      C     dFirstFreeCluster       dd ?  ;Starting cluster of free space search
-00000032                      C     dNumberOfFreeClusters   dd ?  ;Number of free clusters, -1 unknown
-                              C 
-00000036                      C dpb ENDS
-                              C 
-                              C ;------------------------------------------------------------------------;
-                              C ; Each mass storage device up to LASTDRIVE has a CDS associated with it.
-                              C ; All disk pathing requests go via the CDS for that drive.
-                              C ; The default drive is the last accessed drive, this number is stored
-                              C ; in the DOS data area.
-                              C ; The CDS is stored as an array with the offset into the array being 
-                              C ; given by the drive letter's offset into the alphabet (with A=0).
-                              C ;
-                              C ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
-                              C ;------------------------------------------------------------------------;
-00000000                      C cds STRUC       ;Current Directory Structure
-00000000                      C     sCurrentPath        db 67 dup(?)    ;Current Directory Path String
-00000043                      C     wFlags              dw ? ;CDS Flags - 
-00000045                      C     qDPBPtr             dq ? ;Ptr to the DPB of the dev using this CDS
-0000004D                      C     dStartCluster       dd ? ;Starting cluster of the directory on disk
-00000051                      C     qReserved           dq ? ;Reserved for future expansions
-00000059                      C     wBackslashOffset    dw ? ;How many chars to the start of current dir in the 
-                              C ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
-                              C ; another, we save the number of chars to skip to that deep level).
-                              C ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
-                              C ; Flags: Bit 15 set = Network drive
-                              C ;        Bit 14 set = Physical drive
-                              C ;        Bit 13 set = JOIN'ed drive
-                              C ;        Bit 12 set = SUBST'ed drive
-                              C ;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
-0000005B                      C cds ENDS
-                              C 
-                              C ;------------------------------------------------------------------------;
-                              C ; The SFT is a way to allow applications to open file handles to files 
-                              C ; and devices. As things stand, the SFT chain will have 5 file handles
-                              C ; under the first header, and then a second header will be linked to the 
-                              C ; first one after CONFIG.SYS has been read, to allow for FILES= to specify
-                              C ; a size for the second SFT (default 10 files). Same for System FCBs, 
-                              C ; using the FCBS= command. Default FCBS=5.
-                              C ;
-                              C ; A file handle describes the file, and the location within the file that
-                              C ; we are reading. The file handle can be manipulated without the file
-                              C ; being in memory, thus allowing the user to access data without needing 
-                              C ; to take up large portions of memory. Similarly, file handles allow for
-                              C ; accessing devices, by treating them as files with their drivers 
-                              C ; responding and translating the manipulations of the file handle itself.
-                              C ; Neither the driver nor the application should see or use the SFT for
-                              C ; the handle, as it is subject to change (and will change when file 
-                              C ; sharing provisions are included). The DOS will make requests to the 
-                              C ; driver in a generic way and the driver will respond, with DOS keeping
-                              C ; track of the information in the SFT entry for that handle. 
-                              C ;
-                              C ; One SFT entry can have multiple handles and multiple SFT entries
-                              C ; can point to the same file. It all depends on what the applications 
-                              C ; want to do with the File.
-                              C ;
-                              C ; !!!!IMPORTANT!!!!
-                              C ; Currently there are plans for File Sharing, but I include minimal 
-                              C ; provisions for it. I really just wanna get a DOS out the door.
-                              C ;
-                              C ;Each SFT may look like this:
-                              C ;sysvars-->sfth------------>sfth------------>|ENDOFLIST|
-                              C ;            |                |
-                              C ;       wNumFiles*sft    wNumFiles*sft
-                              C ;
-                              C ; Two SFT chains are built; one for files, and a one for so called 
-                              C ; System FCBs.
-                              C ;
-                              C ; Each SFT header has an array of SFT's below it, with the number of 
-                              C ; SFTs given by wNumFiles. The SFT headers form a linked list.
-                              C ;
-                              C ; DEFAULT FILES=15, MINIMUM FILES=5
-                              C ; DEFAULT FCBS=5, MINIMUM FCBS=5
-                              C ;------------------------------------------------------------------------;
-00000000                      C sfth STRUC   ;System file table header
-                              C ; This is the SFT header.
-                              C ; This structure comes before the start of the first file in the array/table.
-00000000                      C     qNextSFTPtr dq ?    ;Pointer to the next SFT
-00000008                      C     wNumFiles   dw ?    ;Number of files in this table
-0000000A                      C sfth ENDS
-                              C 
-00000000                      C sft STRUC
-                              C ;This is the file struc itself
-00000000                      C     wNumHandles dw ?    ;Number of handles pointing to this file
-00000002                      C     wOpenMode   dw ?    ;Bit 15 set if opened via FCB
-00000004                      C     bFileAttrib db ?    ;Regular File Attributes
-00000005                      C     wDeviceInfo dw ?    ;Includes Device number
-00000007                      C     qPtr        dq ?    ;IF char, ptr to device driver, ELSE DPBptr
-0000000F                      C     dStartClust dd ?    ;Start cluster of file
-00000013                      C     wTime       dw ?    ;File Time
-00000015                      C     wDate       dw ?    ;File Date
-00000017                      C     dFileSize   dd ?    ;File Size, in bytes
-0000001B                      C     dCurntOff   dd ?    ;Current Offset in file, in bytes
-0000001F                      C     wRelClust   dw ?    ;Relative cluster in file of the last cluster accessed
-00000021                      C     dDirSect    dd ?    ;Relative number of sector containing directory entry 
-00000025                      C     bNumDirEnt  db ?    ;Number of dir entry within sector (byte offset/32)
-00000026                      C     sFCBName    db 11 dup(?)    ;8.3 Filename
-00000031                      C     qPSPOwner   dq ?    ;Address of PSP of program which first opened this file
-00000039                      C     dAbsClusr   dd ?    ;Absolute cluster of last cluster accessed
-0000003D                      C sft ENDS
-                              C 
-                              C ;------------------------------------------------------------------------;
-                              C ; Buffers allow for buffered drive IO, by first transferring a sector 
-                              C ; to an internal buffer, and then copying it to the specified location
-                              C ; in memory. The buffer is kept in the buffer chain,  in the event that 
-                              C ; another request for the same sector from the same device is made, so 
-                              C ; that is can be read from the device directly. Buffers are uniform in 
-                              C ; size, selected according to the largest detected sector size during 
-                              C ; the initial loadup.
-                              C ;
-                              C ; The buffer pointer in SysVars points to most recently used Buffer
-                              C ;
-                              C ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
-                              C ;------------------------------------------------------------------------;
-                              C 
-00000000                      C bufferHdr   STRUC
-00000000                      C     nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
-00000008                      C     driveNumber db  ?   ;Drive number the buffer is used for
-00000009                      C     bufferFlags db  ?   ;Standard Flags
-0000000A                      C     bufferLBA   dd  ?   ;LBA the buffer contains
-0000000E                      C     bufFATcopy  db  ?   ;Number of copies of the FAT to write (1 if non-FAT)
-0000000F                      C     bufFAToff   db  ?   ;Sector offset of the backup copy of the FAT on disk
-00000010                      C     driveDPBPtr dq  ?   ;Pointer to the device DPB block
-00000018                      C bufferHdr   ENDS
-                                    INCLUDE driverStruc.inc
-                              C 
-                              C ;-------------------------------------------------------;
-                              C ; This include file contains miscellaneous SCP/DOS      ;
-                              C ; device driver related structures.                     ;
-                              C ;-------------------------------------------------------;
-                              C 
-00000000                      C drvHdr STRUC  ;Device Driver Header for character and block devices
-                              C 
-00000000                      C     nxtPtr dq ?  ;Pointer to the next driver header, -1 if at the end
-00000008                      C     atWord dw ?  ;Attribute Word
-0000000A                      C     strPtr dq ?  ;Strategy Entry Pointer
-00000012                      C     intPtr dq ?  ;Interrupt Entry Pointer
-0000001A                      C     drvNam db 8 dup (?)  ;Driver name (Char) or Unit number byte (Block)
-                              C 
-00000022                      C drvHdr ENDS
-                              C 
-                              C drvReqHdrM MACRO  ;Driver Request Header Macro
- >                            C   ;Driver Request Header Macro
- >                            C     hdrlen db ?  ;Length of the request header  ;Driver Request Header Macro
- >                            C     unitnm db ?  ;Unit number, meaningless for character devs  ;Driver Request Header Macro
- >                            C     cmdcde db ?  ;Command code  ;Driver Request Header Macro
- >                            C     status dw ?  ;Status word  ;Driver Request Header Macro
- >                            C     devptr dq ?  ;Device queue pointer field  ;Driver Request Header Macro
- >                            C   ;Driver Request Header Macro
- >                            C ENDM  ;Driver Request Header Macro
-                              C 
-00000000                      C drvReqHdr   STRUC
-                              C     drvReqHdrM
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C drvReqHdr   ENDS
-                              C 
-00000000                      C initReqPkt STRUC  ;Init Request Packet
-                              C 
-                              C     drvReqHdrM   ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     numunt db ?  ;Number of logical units (Block only, 0 for char)
-0000000E                      C     endptr dq ?  ;Pointer to first free byte after driver
-00000016                      C     optptr dq ?  ;Pointer to the BPB array (block) or optional args (char)
-0000001E                      C     drvnum db ?  ;Drive number
-                              C 
-0000001F                      C initReqPkt ENDS
-                              C 
-00000000                      C mediaCheckReqPkt STRUC ;Media Check Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     medesc db ?  ;DOS media descriptor
-0000000E                      C     medret db ?  ;Return byte (Has media been changed?)
-0000000F                      C     desptr dq ?  ;Pointer to a valid volume id field
-                              C 
-00000017                      C mediaCheckReqPkt ENDS
-                              C 
-00000000                      C bpbBuildReqPkt STRUC  ;Build BPB Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     medesc db ?  ;DOS media descriptor
-0000000E                      C     bufptr dq ?  ;Transfer buffer
-00000016                      C     bpbptr dq ?  ;Pointer to the BPB
-                              C 
-0000001E                      C bpbBuildReqPkt ENDS
-                              C 
-00000000                      C ioReqPkt STRUC   ;IO Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     medesc db ?  ;DOS media descriptor
-0000000E                      C     bufptr dq ?  ;Transfer buffer
-00000016                      C     tfrlen dd ?  ;Number of Sectors/bytes to transfer
-0000001A                      C     strtsc dq ?  ;Starting sector for transfer
-00000022                      C     desptr dq ?  ;Pointer to a valid volume id field if error
-                              C 
-0000002A                      C ioReqPkt ENDS
-                              C 
-00000000                      C nonDestInNoWaitReqPkt STRUC    ;Nondestructive Input No Wait Request Packet
-                              C     
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     retbyt db ?  ;Byte read non destructively
-                              C 
-0000000E                      C nonDestInNoWaitReqPkt ENDS
-                              C 
-00000000                      C statusReqPkt STRUC   ;Status Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-                              C 
-0000000D                      C statusReqPkt ENDS
-                              C 
-00000000                      C flushReqPkt STRUC ;Flush Request Packet, terminate all pending requests
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-                              C      
-0000000D                      C flushReqPkt ENDS
-                              C 
-00000000                      C openReqPkt STRUC ;Open Device Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-                              C      
-0000000D                      C openReqPkt ENDS
-                              C 
-00000000                      C closeReqPkt STRUC ;Close Device Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-                              C      
-0000000D                      C closeReqPkt ENDS
-                              C 
-00000000                      C remMediaReqPkt STRUC ;Removeable Media? Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-                              C      
-0000000D                      C remMediaReqPkt ENDS
-                              C 
-00000000                      C ioctlReqPkt STRUC    ;Generic IOCTL Request Packet
-                              C 
-                              C     drvReqHdrM    ;Common Driver Header Macro  
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     majfun db ?  ;Major function number
-0000000E                      C     minfun db ?  ;Minor function number
-0000000F                      C     rsival dq ?  ;Contents of RSI
-00000017                      C     rdival dq ?  ;Contents of RDI
-0000001F                      C     ctlptr dq ?  ;Pointer to Generic IOCTL Request Packet
-                              C 
-00000027                      C ioctlReqPkt ENDS
-                              C 
-00000000                      C getDevReqPkt STRUC ;Get Logical Device Request Packet
-                              C     
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     getcmd db ?  ;Command code
-0000000E                      C     cmdsts dw ?  ;Command status word
-                              C 
-00000010                      C getDevReqPkt ENDS
-                              C 
-00000000                      C setDevReqPkt STRUC ;Set Logical Device Request Packet
-                              C     
-                              C     drvReqHdrM    ;Common Driver Header Macro
-                             1C 
-00000000                     1C     hdrlen db ?  ;Length of the request header
-00000001                     1C     unitnm db ?  ;Unit number, meaningless for character devs
-00000002                     1C     cmdcde db ?  ;Command code
-00000003                     1C     status dw ?  ;Status word
-00000005                     1C     devptr dq ?  ;Device queue pointer field
-                             1C 
-0000000D                      C     setcmd db ?  ;Command code
-0000000E                      C     cmdsts dw ?  ;Command status word
-                              C 
-00000010                      C setDevReqPkt ENDS
-                                    INCLUDE dosData.inc
-                              C ; This file contains the structure of the DOS Data area
-00000000                      C dSeg STRUC 
-00000000                      C     dosSegPtr   dq ?    ;Pointer to the data Segment itself
-00000008                      C     bootDrive   db ?    ;The Int 33h device we booted from
-00000009                      C     requestHdr  drvReqHdr <>   ;The device driver header
-00000016                      C                 db 20 dup (?)    ;Reserve xtra space for cmd data, with padding
-0000002A                      C     sysVarsPtr  dq ?    ;Pointer to dpbHeadPtr, head of Sys Vars structure below
-00000032                      C     mcbChainPtr dq ?    ;Pointer to the MCB chain
-0000003A                      C     dpbHeadPtr  dq ?    ;Pointer to the first DPB in the DPB chain
-00000042                      C     sftHeadPtr  dq ?    ;Pointer to the first SFT header in SFT chain
-0000004A                      C     clockPtr    dq ?    ;Pointer to the current active CLOCK$ device header
-                              C     ;                    The last driver loaded with the CLOCK$ bit[3] set 
-00000052                      C     conPtr      dq ?    ;Pointer to the current active CON device header 
-                              C     ;                    The last driver loaded with the STDIN bit[0] set
-0000005A                      C     maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)
-0000005C                      C     bufHeadPtr  dq ?    ;Pointer to the head of the disk buffer chain
-00000064                      C     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array
-0000006C                      C     sfcbHeadPTr dq ?    ;Pointer to the head of the System FCB chain
-00000074                      C     numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
-00000076                      C     numMSDdrv   db ?    ;Number of mass storage devices detected in system
-00000077                      C     lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
-00000078                      C     numJoinDrv  db ?    ;Number of Joined Drives
-00000079                      C     nulDevHdr   drvHdr <>
-                              C 
-                              C 
-0000009B                      C     inDOS       db ?    ;Incremented on each DOS call, decremented when leaving
-0000009C                      C     breakFlag   db ?    ;If set, check for CTRL+C on all DOS calls
-0000009D                      C     defaultDrv  db ?    ;Default, last accessed drive
-                              C 
-0000009E                      C     critStack   dq 41 dup (?)
-000001E6                      C     critStakTop dq ?
-000001EE                      C     IOStack     dq 199 dup (?)
-00000826                      C     IOStakTop   dq ?
-0000082E                      C     DiskStack   dq 199 dup (?)
-00000E66                      C     DiskStakTop dq ?
-00000E6E                      C dSeg ENDS
-                                    INCLUDE dosSeg.inc
-                              C ;Segment ordering file
-                              C 
-00000000                      C loadCode    SEGMENT BYTE USE64 PUBLIC "CODE"
-                              C loadCode    ENDS
-                              C 
-00000000                      C dataSeg SEGMENT BYTE PUBLIC "BSS"
-                              C dataSeg ENDS
-                              C 
-00000000                      C resCode SEGMENT BYTE USE64 PUBLIC "CODE"
-                              C resCode ENDS
-                                ;%usemasm
-00000000                        dataSeg SEGMENT BYTE PUBLIC "BSS"
-00000000  000000000000000000        data dSeg <>
-00000E6E                        dataSeg ENDS 
-
-00000000                        loadCode SEGMENT BYTE USE64 PUBLIC "CODE"
-                                    ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT, fs:dataSeg, gs:NOTHING
-                                ;    ORG 0
-                                ; We arrive here with the following values in the registers.
-                                ; rbx =  LBA of first Logical Block after SCP/BIOS
-                                ; dx  = Int 33h boot device number
-                                ; fs  = userbase pointer (pointer to first usable block of RAM)
-00000000  55AA                      dw 0AA55h           ;Initial signature
-00000002  6687DB                    xchg bx, bx
-00000005  6488142508000000          mov byte ptr fs:[dSeg.bootDrive], dl ;Save the boot drive in memory
-
-0000000D  B9000100C0                mov ecx, 0C0000100h ;Read FS MSR
-00000012  0F32                      rdmsr
-00000014  8BFA                      mov edi, edx        ;Get the hi dword, and clear the upper bytes
-00000016  48C1E720                  shl rdi, 20h        ;Shift high
-0000001A  8BF8                      mov edi, eax        ;Get the low dword in
-
-0000001C  6448893C2500000000        mov qword ptr fs:[dSeg.dosSegPtr], rdi 
-00000025  488BD7                    mov rdx, rdi    ;Save the start of dosSeg in rdx 
-00000028  4881C76E0E0000            add rdi, SIZEOF dSeg ;Move destination past end of data area
-0000002F  488D3500000000            lea rsi, OFFSET resCode  ;Get RIP relative address to copy high
-00000036  B900100000                mov ecx, 1000h
-0000003B  F348A5                    rep movsq
-                                ;Modify the pointers in nData before putting them in the data area
-                                    ;add qword ptr [nData.nxtPtr], rdx
-                                    ;add qword ptr [nData.strPtr], rdx
-                                    ;add qword ptr [nData.intPtr], rdx
-0000003E  6687DB                    xchg bx, bx
-
-00000041  48B800000000000000        mov rax, OFFSET msdDriver
-0000004B  4803D0                    add rdx, rax
-0000004E  32C0                      xor al, al 
-00000050  FFD3                      call rbx
-
-00000052  488D2D00000000            lea rbp, qword ptr [startmsg]   ;Get the absolute address of message
-00000059  B804130000                mov eax, 1304h
-0000005E  CD30                      int 30h
-00000060                        @@:
-00000060  6633C0                    xor ax, ax
-00000063  CD36                      int 36h
-00000065  B40E                      mov ah, 0Eh
-00000067  CD30                      int 30h
-00000069  EBF5                      jmp short @b
-
-0000006B  0A0D5374617274696E    startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
-00000083  000000000000000004    nData drvHdr <conHdr,  08004h, nulStrat, nulIntr, "NUL     "> ;Default NUL data
-
-000000A5                        loadCode ENDS
-
-00000000                        resCode SEGMENT ;BYTE USE64 PUBLIC "CODE"
-                                    ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT,fs:NOTHING, gs:NOTHING
-                                    ;ORG 0
-                                ;-----------------------------------:
-                                ;        Data Area Instance         :
-                                ;-----------------------------------:
-                                ;data dSeg <>    ;Initialise data area as BSS 
-                                ;    ORG SIZEOF dSeg 
-                                ;Offset all addresses below here by size of data area since it is uninitialised
-                                ; to not take up space in the binary file.
-                                ;-----------------------------------:
-                                ;       Misc System routines        :
-                                ;-----------------------------------:
-00000000                        findLRUBuffer  PROC 
-                                ;Finds least recently used buffer, links it and returns ptr to it in rbx
-                                ;Input: Nothing
-                                ;Output: rbx = Pointer to the buffer to use
-00000000  52                        push rdx
-00000001  488B1D5C000000            mov rbx, qword ptr [data.bufHeadPtr]
-00000008  48833BFF                  cmp qword ptr [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
-0000000C  7502                      jne @f
-0000000E  5A                        pop rdx
-0000000F                            ret
-0000000F  C3                *   retn
-00000010                        @@:
-00000010  488BD3                    mov rdx, rbx    ;Save a ptr to the previous buffer header
-00000013  488B1A                    mov rbx, qword ptr [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
-00000016  48833BFF                  cmp qword ptr [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
-0000001A  75F4                      jne @b   ;If not LRU, keep walking, else process
-0000001C  48C702FFFFFFFF            mov qword ptr [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
-00000023  488B155C000000            mov rdx, qword ptr [data.bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
-0000002A  48891D5C000000            mov qword ptr [data.bufHeadPtr], rbx    ;Sysvars to point to new buffer
-00000031  488913                    mov qword ptr [rbx + bufferHdr.nextBufPtr], rdx
-00000034  5A                        pop rdx
-00000035                            ret
-00000035  C3                *   retn
-00000036                        findLRUBuffer  ENDP
-00000036                        findDPB     PROC
-                                ;Finds the DPB for a given drive
-                                ;Input:   dl = Drive number (0=A, 1=B etc...)
-                                ;Output: al = 00, rbx = Pointer to the DPB
-                                ;        al = -1, Failed, no DPB for device, rbx destroyed
-00000036  488B1D3A000000            mov rbx, qword ptr [data.dpbHeadPtr]
-0000003D                        @@:
-0000003D  32C0                      xor al, al
-0000003F  3813                      cmp byte ptr [rbx + dpb.bDriveNumber], dl
-00000041  740E                      je @f
-00000043  488B5B26                  mov rbx, qword ptr [rbx + dpb.qNextDPBPtr]
-00000047  B0FF                      mov al, -1
-00000049  4883FBFF                  cmp rbx, -1 ;If rbx followed last item in list, no DPB exists for dl
-0000004D  7402                      je @f
-0000004F  EBEC                      jmp short @b
-00000051                        @@:
-00000051                            ret
-00000051  C3                *   retn
-00000052                        findDPB     ENDP
-
-                                ;-----------------------------------:
-                                ;       File System routines        :
-                                ;-----------------------------------:
-00000052                        FATprocs    PROC
-00000052                        FATprocs    ENDP
-
-                                ;-----------------------------------:
-                                ;        Interrupt routines         :
-                                ;-----------------------------------:
-00000052                        int49hHook  PROC    ;Called with char to transfer in al
-00000052  50                        push rax
-00000053  B40E                      mov ah, 0Eh
-00000055  CD30                      int 30h
-00000057  58                        pop rax
-00000058                            iretq
-00000058  48CF              *   iretq
-0000005A                        int49hHook  ENDP
-                                ;-----------------------------------:
-                                ;          Driver routines          :
-                                ;-----------------------------------:
-
-0000005A                        drivers PROC
-0000005A  000000000000000013    conHdr  drvHdr <auxHdr,  08013h, commonStrat, conDriver, "CON     ">
-0000007C  000000000000000000    auxHdr  drvHdr <prnHdr,  08000h, commonStrat, com1Intr,  "AUX     ">
-0000009E  000000000000000040    prnHdr  drvHdr <clkHdr,  0A040h, commonStrat, lpt1Hdr ,  "PRN     ">
-000000C0  000000000000000008    clkHdr  drvHdr <msdHdr,  08008h, commonStrat, clkDriver, "CLOCK$  ">
-000000E2  000000000000000040    msdHdr  drvHdr <com1Hdr, 00840h, commonStrat, msdDriver, <0,0,0,0,0,0,0,0>>
-00000104  000000000000000000    com1Hdr drvHdr <com2Hdr, 08000h, commonStrat, com1Intr, "COM1    ">
-00000126  000000000000000000    com2Hdr drvHdr <com3Hdr, 08000h, commonStrat, com2Intr, "COM2    ">
-00000148  000000000000000000    com3Hdr drvHdr <com4Hdr, 08000h, commonStrat, com3Intr, "COM3    ">
-0000016A  000000000000000000    com4Hdr drvHdr <lpt1Hdr, 08000h, commonStrat, com4Intr, "COM4    ">
-0000018C  000000000000000040    lpt1Hdr drvHdr <lpt2Hdr, 0A040h, commonStrat, lptDriver, "LPT1    ">
-000001AE  000000000000000040    lpt2Hdr drvHdr <lpt3Hdr, 0A040h, commonStrat, lptDriver, "LPT2    ">
-000001D0  FFFFFFFFFFFFFFFF40    lpt3Hdr drvHdr <-1, 0A040h, commonStrat, lptDriver, "LPT3    ">
-000001F2                        commonStrat PROC
-                                ;DOS calls this function with rbx=Ptr to request header
-                                ;DOS also sets fs to point to its data segment when entered
-000001F2  48891D00000000            mov qword ptr [reqHdrPtr], rbx
-000001F9                            ret
-000001F9  C3                *   retn
-000001FA  0000000000000000      reqHdrPtr  dq ?    ;Where the default device drivers store the ReqPtr
-00000202                        commonStrat ENDP
-
-00000202                        nulStrat   PROC
-00000202  66C743030001              mov word ptr [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
-00000208                        nulIntr PROC
-00000208                            ret
-00000208  C3                *   retn
-00000209                        nulIntr     ENDP
-00000209                        nulStrat    ENDP
-
-00000209                        conDriver   PROC
-00000209  50                        push rax
-0000020A  53                        push rbx
-0000020B  488D1D00000000            lea rbx, qword ptr [reqHdrPtr]
-00000212  8A4302                    mov al, byte ptr [rbx + drvReqHdr.cmdcde]
-00000215  32C0                      xor al, al
-00000217  7421                      jz conInit
-00000219  3C04                      cmp al, 4
-0000021B  7446                      jz conRead
-0000021D  3C05                      cmp al, 5
-0000021F  745F                      jz conNondestructiveRead
-00000221  3C06                      cmp al, 6
-00000223  740C                      jz conExit
-00000225  3C07                      cmp al, 7
-00000227  746A                      jz conFlushInputBuffers
-00000229  3C08                      cmp al, 8
-0000022B  7472                      jz conWrite
-0000022D  3C09                      cmp al, 9
-0000022F  746E                      jz conWrite
-                                ;All other cases fall through here
-00000231                        conExit:
-00000231  66814B030001              or word ptr [rbx + drvReqHdr.status], 0100h    ;Merge done bit
-00000237  5B                        pop rbx
-00000238  58                        pop rax
-00000239                            ret
-00000239  C3                *   retn
-0000023A                        conInit:    ;Function 0
-0000023A  52                        push rdx
-0000023B  E853000000                call conFlushInputBuffers  ;Call to flush keyboard buffer
-00000240  B800050000                mov eax, 0500h  ;Set page zero as the default page
-00000245  CD30                      int 30h
-00000247  B402                      mov ah, 02h
-00000249  33D2                      xor edx, edx    ;Set screen cursor to top right corner
-0000024B  8AFA                      mov bh, dl      ;Set cursor for page 0
-0000024D  CD30                      int 30h
-0000024F  B707                      mov bh, 07h     ;Grey/Black attribs
-00000251  B800060000                mov eax, 0600h  ;Clear whole screen
-00000256  CD30                      int 30h
-00000258  5A                        pop rdx
-00000259  EBD6                      jmp short conExit
-0000025B                        conIORead:
-0000025B  66C743030380              mov word ptr [rbx + drvReqHdr.status], 8003h    ;Error, unknown command!
-00000261  EBCE                      jmp short conExit
-00000263                        conRead:    ;Function 4
-00000263  57                        push rdi
-00000264  51                        push rcx
-00000265  488B7B0E                  mov rdi, qword ptr [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
-00000269  33C9                      xor ecx, ecx    ;Zero the char counter
-0000026B                        @@:
-0000026B  3B4B16                    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
-0000026E  7409                      je @f
-00000270  33C0                      xor eax, eax
-00000272  CD36                      int 36h
-00000274  AA                        stosb   ;Store char in al into buffer and inc rdi
-00000275  FFC1                      inc ecx
-00000277  EBF2                      jmp short @b
-00000279                        @@:
-00000279  894B16                    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-0000027C  59                        pop rcx
-0000027D  5F                        pop rdi
-0000027E  EBB1                      jmp short conExit
-00000280                        conNondestructiveRead:  ;Function 5
-00000280  B401                      mov ah, 01h     ;Get key if exists
-00000282  CD36                      int 36h
-00000284  7405                      jz @f           ;If zero clear => no key, go forwards
-                                    ;Keystroke available
-00000286  88430D                    mov byte ptr [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
-00000289  EBA6                      jmp short conExit
-0000028B                        @@: ;No keystroke available
-0000028B  66C743030003              mov word ptr [rbx + nonDestInNoWaitReqPkt.status], 0300h   ;Set busy bit
-00000291  EB9E                      jmp short conExit
-00000293                        conFlushInputBuffers:   ;Function 7
-00000293  B401                      mov ah, 01      ;Get buffer status
-00000295  CD36                      int 36h
-00000297  7498                      jz conExit      ;If zero clear => no more keys to read
-00000299  32E4                      xor ah, ah
-0000029B  CD36                      int 36h ;Read key to flush from buffer
-0000029D  EBF4                      jmp short conFlushInputBuffers
-0000029F                        conWrite:   ;Function 8 and 9
-0000029F  56                        push rsi
-000002A0  51                        push rcx
-000002A1  488B730E                  mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
-000002A5  33C9                      xor ecx, ecx    ;Zero the char counter
-000002A7                        @@: 
-000002A7  3B4B16                    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
-000002AA  7407                      je @f
-000002AC  AC                        lodsb   ;Get char into al, and inc rsi
-000002AD  CD49                      int 49h ;Fast print char
-000002AF  FFC1                      inc ecx
-000002B1  EBF4                      jmp short @b ;keep printing until all chars printed
-000002B3                        @@:
-000002B3  894B16                    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-000002B6  59                        pop rcx
-000002B7  5E                        pop rsi
-000002B8  E974FFFFFF                jmp conExit
-000002BD                        conDriver   ENDP
-
-000002BD                        clkDriver   PROC
-000002BD                        clkDriver   ENDP
-
-000002BD                        comDriver   PROC
-000002BD                        com1Intr    PROC
-000002BD  C6050000000000            mov byte ptr [comDevice], 0
-000002C4  EB1B                      jmp short comIntr
-000002C6                        com1Intr    ENDP
-000002C6                        com2Intr    PROC
-000002C6  C6050000000001            mov byte ptr [comDevice], 1
-000002CD  EB12                      jmp short comIntr
-000002CF                        com2Intr    ENDP
-000002CF                        com3Intr    PROC
-000002CF  C6050000000002            mov byte ptr [comDevice], 2
-000002D6  EB09                      jmp short comIntr
-000002D8                        com3Intr    ENDP
-000002D8                        com4Intr    PROC
-000002D8  C6050000000003            mov byte ptr [comDevice], 3
-000002DF  EB00                      jmp short comIntr
-000002E1                        com4Intr    ENDP
-000002E1                        comIntr     PROC
-000002E1  50                        push rax
-000002E2  53                        push rbx
-000002E3  51                        push rcx
-000002E4  52                        push rdx
-000002E5  56                        push rsi
-000002E6  488D1D00000000            lea rbx, qword ptr [reqHdrPtr]
-000002ED  8A4302                    mov al, byte ptr [rbx + drvReqHdr.cmdcde]
-000002F0  3C04                      cmp al, 4
-000002F2  7418                      jz comRead
-000002F4  3C05                      cmp al, 5
-000002F6  7439                      jz comNondestructiveRead
-000002F8  3C08                      cmp al, 8
-000002FA  743D                      jz comWrite
-000002FC  3C09                      cmp al, 9
-000002FE  7439                      jz comWrite
-                                ;All other cases fall through here
-00000300                        comExit:
-00000300  66814B030001              or word ptr [rbx + drvReqHdr.status], 0100h    ;Merge done bit
-00000306  5E                        pop rsi
-00000307  5A                        pop rdx
-00000308  59                        pop rcx
-00000309  5B                        pop rbx
-0000030A  58                        pop rax
-0000030B                            ret
-0000030B  C3                *   retn
-0000030C                        comRead:
-0000030C  57                        push rdi
-0000030D  488B7B0E                  mov rdi, qword ptr [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
-00000311  33C9                      xor ecx, ecx    ;Zero the char counter
-00000313                        @@:
-00000313  3B4B16                    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
-00000316  7413                      je @f
-00000318  B802000000                mov eax, 02h    ;Recieve 
-0000031D  668B1500000000            mov dx, word ptr [comDevice]    ;Get transacting com device
-00000324  CD34                      int 34h ;Recieve Char
-00000326  AA                        stosb   ;Store char in al into buffer and inc rdi
-00000327  FFC1                      inc ecx
-00000329  EBE8                      jmp short @b
-0000032B                        @@:
-0000032B  894B16                    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-0000032E  5F                        pop rdi
-0000032F  EBCF                      jmp short comExit
-00000331                        comNondestructiveRead:
-00000331  66C743030002              mov word ptr [rbx + nonDestInNoWaitReqPkt.status], 0200h    ;Set busy bit 
-00000337  EBC7                      jmp short comExit
-00000339                        comWrite:
-00000339  488B730E               mov rsi, qword ptr [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
-0000033D  33C9                      xor ecx, ecx    ;Zero the char counter
-0000033F                        @@: 
-0000033F  3B4B16                    cmp ecx, dword ptr [rbx + ioReqPkt.tfrlen]
-00000342  7410                      je @f
-00000344  AC                        lodsb   ;Get char into al, and inc rsi
-00000345  B401                      mov ah, 01h ;Move function number into ah
-00000347  668B1500000000            mov dx, word ptr [comDevice]
-0000034E  CD34                      int 34h ;Transmit char
-00000350  FFC1                      inc ecx
-00000352  EBEB                      jmp short @b ;keep printing until all chars printed
-00000354                        @@:
-00000354  894B16                    mov dword ptr [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-00000357  EBA7                      jmp short comExit
-00000359  00                    comDevice   db ?
-0000035A                        comIntr     ENDP
-
-0000035A                        comDriver   ENDP
-
-0000035A                        lptDriver   PROC    ;Drivers for LPT 1, 2, 3
-0000035A  57                        push rdi
-0000035B  488D3D00000000            lea rdi, qword ptr [reqHdrPtr]
-00000362  66C747030001              mov word ptr [rdi + drvReqHdr.status], 0100h    ;Done bit set
-00000368  5F                        pop rdi
-00000369                            ret
-00000369  C3                *   retn
-0000036A                        lptDriver   ENDP
-
-0000036A                        msdDriver   PROC
-0000036A  50                        push rax
-0000036B  53                        push rbx
-0000036C  488D1D00000000            lea rbx, qword ptr [reqHdrPtr]  ;Get the ptr to the req header in rdi
-00000373  8A4302                    mov al, byte ptr [rbx + drvReqHdr.cmdcde]   ;Get command code in al
-00000376  3C18                      cmp al, 24  ;Check cmd num is valid
-00000378  776C                      ja msdError
-0000037A  84C0                      test al, al
-0000037C  7471                      jz msdInit
-0000037E  3C01                      cmp al, 01
-00000380  0F84F8000000              jz msdMedChk
-00000386  3C02                      cmp al, 02
-00000388  0F84F0000000              jz msdBuildBPB
-0000038E  3C03                      cmp al, 03
-00000390  0F84E8000000              jz msdIOCTLRead
-00000396  3C04                      cmp al, 04
-00000398  0F84E0000000              jz msdRead
-0000039E  3C08                      cmp al, 08
-000003A0  0F84D8000000              jz msdWrite
-000003A6  3C09                      cmp al, 09
-000003A8  0F84D0000000              jz msdWriteVerify
-000003AE  3C0C                      cmp al, 12
-000003B0  0F84C8000000              jz msdIOCTLWrite
-000003B6  3C0D                      cmp al, 13
-000003B8  0F84C0000000              jz msdDevOpen
-000003BE  3C0E                      cmp al, 14
-000003C0  0F84B8000000              jz msdDevClose
-000003C6  3C0F                      cmp al, 15
-000003C8  0F84B0000000              jz msdRemovableMedia
-000003CE  3C13                      cmp al, 19
-000003D0  0F84A8000000              jz msdGenericIOCTL
-000003D6  3C17                      cmp al, 23
-000003D8  0F84A0000000              jz msdGetLogicalDev
-000003DE  3C18                      cmp al, 24
-000003E0  0F8498000000              jz msdSetLogicalDev
-000003E6                        msdError:
-000003E6                        msdDriverExit:
-000003E6  66814B030001              or word ptr [rbx + drvReqHdr.status], 0100h ;Set done bit
-000003EC  5B                        pop rbx
-000003ED  58                        pop rax
-000003EE                            ret
-000003EE  C3                *   retn
-000003EF                        msdInit:            ;Function 0
-000003EF  CD31                      int 31h ;Get number of Int 33h devices in r8b
-000003F1  4D0FB6C0                  movzx r8, r8b   ;Keeps real count
-000003F5  418BC0                    mov eax, r8d
-000003F8  3C01                      cmp al, 1
-000003FA  7702                      ja @f
-000003FC  FEC0                      inc al ;Make it two
-000003FE                        @@:
-000003FE  BA05000000                mov edx, 5
-00000403  3BC2                      cmp eax, edx
-00000405  0F47C2                    cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
-00000408  88051A000000              mov byte ptr [msdHdr.drvNam], al ;Save num of drvs in drvr hdr
-0000040E  88430D                    mov byte ptr [rbx + initReqPkt.numunt], al ;And in req packet
-00000411  44000576000000            add byte ptr [data.numMSDdrv], r8b ;Add the true number of devices to total
-00000418  33ED                      xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
-0000041A  488D3D00000000            lea rdi, qword ptr [msdBPBblks]
-00000421  53                        push rbx
-00000422                        @@:
-00000422  8BD5                      mov edx, ebp
-00000424  488D1D00000000            lea rbx, qword ptr [driverDataPtr]  ;Get effective address of scratch space
-0000042B  33C9                      xor ecx, ecx    ;Sector 0
-0000042D  B801820000                mov eax, 8201h       ;Read 1 sector
-00000432  CD33                      int 33h
-00000434  7246                      jc msdInitError
-
-00000436  488D3500000000            lea rsi, qword ptr [driverDataPtr]  ;Point to start of data
-0000043D  B90F000000                mov ecx, SIZEOF(bpbEx)/8
-00000442  F348A5                    rep movsq   ;Move the BPB data into the right block
-
-00000445  FFC5                      inc ebp
-00000447  493BE8                    cmp rbp, r8 ;Have we written the BPB for all physical drives?
-0000044A  75D6                      jne @b  ;No? Go again
-
-0000044C  488D3D00000000            lea rdi, qword ptr [msdBPBTbl]  ;Point to start of table
-00000453  488D1500000000            lea rdx, qword ptr [msdBPBblks]
-0000045A                        @@:
-0000045A  488917                    mov qword ptr [rdi], rdx    ;Move the block entry ptr to rdi
-0000045D  4883C278                  add rdx, SIZEOF(bpbEx)      ;Make rdx point to the next block entry
-00000461  FFCD                      dec ebp
-00000463  75F5                      jnz @b  ;If not zero yet, go again
-
-00000465  5B                        pop rbx
-00000466  488D1500000000            lea rdx, qword ptr [msdBPBTbl]  ;Get far pointer 
-0000046D  48895316                  mov qword ptr [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
-00000471  488D1500000000            lea rdx, qword ptr [driverDataPtr]
-00000478  4889530E                  mov qword ptr [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
-0000047C                        msdInitError:
-0000047C  5B                        pop rbx
-0000047D                            ret
-0000047D  C3                *   retn
-0000047E                        msdMedChk:          ;Function 1
-0000047E                        msdBuildBPB:        ;Function 2
-0000047E                        msdIOCTLRead:       ;Function 3, returns done
-0000047E                        msdRead:            ;Funciton 4
-0000047E                        msdWrite:           ;Function 8
-0000047E                        msdWriteVerify:     ;Function 9, writes sectors then verifies then
-
-0000047E                        msdIOCTLWrite:      ;Function 12, returns done
-0000047E                        msdDevOpen:         ;Function 13
-0000047E                        msdDevClose:        ;Function 14
-0000047E                        msdRemovableMedia:  ;Function 15
-0000047E                        msdGenericIOCTL:    ;Function 19
-0000047E                        msdGetLogicalDev:   ;Function 23
-0000047E                        msdSetLogicalDev:   ;Function 24
-0000047E  E963FFFFFF                jmp msdDriverExit
-00000483  4E4F204E414D452000    msdDefLabel db "NO NAME ",0 ;Default volume label
-                                ;LASTDRIVE default is 5
-0000048C  0000000000            msdBIOSmap  db 5 dup (?)    ;Translates DOS drive number to BIOS number
-00000491  0000000000            msdHdlCnt   db 5 dup (?)    ;Keeps a count of open handles to drive N
-00000496  000000000000000000    msdBPBTbl   dq 5 dup (?)    ;BPB pointer table to be returned
-000004BE  000000000000000000    msdBPBblks  db 5*SIZEOF(bpbEx) dup (?) ;Max 5 bpb records of exFAT bpb size
-00000716                        msdDriver   ENDP
-00000716                        driverDataPtr   LABEL   QWORD
-00000716                        drivers ENDP
-
-00000716                        resCode ENDS
-
-                                END
-
-
-Binary Map:
-
-Segment                  Pos(file)     RVA  Size(fil) Size(mem)
----------------------------------------------------------------
-_TEXT                           0        0         0         0
-_DATA                           0        0         0         0
-loadCode                        0        0        A5        A5
-dataSeg                        A5       A5       E6E       E6E
-resCode                       F13      F13       716       716
----------------------------------------------------------------
-                                                1629      1629
-
-
-Macros:
-
-                N a m e                 Type
-
-@CatStr  . . . . . . . . . . . .        Func
-@Environ . . . . . . . . . . . .        Func
-@InStr . . . . . . . . . . . . .        Func
-@SizeStr . . . . . . . . . . . .        Func
-@SubStr  . . . . . . . . . . . .        Func
-ALIGNADDR  . . . . . . . . . . .        Proc
-ASDOUBLE . . . . . . . . . . . .        Func
-ASFLOAT  . . . . . . . . . . . .        Func
-CLASS  . . . . . . . . . . . . .        Proc
-CMETHOD  . . . . . . . . . . . .        Proc
-COMINTERFACE . . . . . . . . . .        Proc
-CSTATIC  . . . . . . . . . . . .        Proc
-CSTR . . . . . . . . . . . . . .        Func
-CVIRTUAL . . . . . . . . . . . .        Proc
-ENDCLASS . . . . . . . . . . . .        Proc
-ENDCOMINTERFACE  . . . . . . . .        Proc
-ENDMETHOD  . . . . . . . . . . .        Proc
-ENDMETHODS . . . . . . . . . . .        Proc
-ENDOINTERFACE  . . . . . . . . .        Proc
-ENDRAWINTERFACE  . . . . . . . .        Proc
-EXPAND_PREFIX  . . . . . . . . .        Func
-FP10 . . . . . . . . . . . . . .        Func
-FP4  . . . . . . . . . . . . . .        Func
-FP8  . . . . . . . . . . . . . .        Func
-GETMASK128 . . . . . . . . . . .        Proc
-LOADMSD  . . . . . . . . . . . .        Proc
-LOADMSS  . . . . . . . . . . . .        Proc
-LOADPS . . . . . . . . . . . . .        Proc
-LOADSD . . . . . . . . . . . . .        Proc
-LOADSS . . . . . . . . . . . . .        Proc
-MEMALLOC . . . . . . . . . . . .        Proc
-MEMFREE  . . . . . . . . . . . .        Proc
-METHOD . . . . . . . . . . . . .        Proc
-MOV128 . . . . . . . . . . . . .        Proc
-MOV64  . . . . . . . . . . . . .        Proc
-MOVXMMR128 . . . . . . . . . . .        Proc
-NOTMASK128 . . . . . . . . . . .        Proc
-OINTERFACE . . . . . . . . . . .        Proc
-R4P  . . . . . . . . . . . . . .        Func
-R8P  . . . . . . . . . . . . . .        Func
-RAWINTERFACE . . . . . . . . . .        Proc
-REGS15STORAGE  . . . . . . . . .        Proc
-REPARG . . . . . . . . . . . . .        Func
-RV . . . . . . . . . . . . . . .        Func
-SHIFTLEFT128 . . . . . . . . . .        Proc
-SHIFTRIGHT128  . . . . . . . . .        Proc
-SLXMMR . . . . . . . . . . . . .        Proc
-SRXMMR . . . . . . . . . . . . .        Proc
-STATICMETHOD . . . . . . . . . .        Proc
-STATICVECMETHOD  . . . . . . . .        Proc
-STDFUNC  . . . . . . . . . . . .        Proc
-UINVOKE  . . . . . . . . . . . .        Func
-VECMETHOD  . . . . . . . . . . .        Proc
-WSTR . . . . . . . . . . . . . .        Func
-_ARRAY . . . . . . . . . . . . .        Func
-_DECLARE . . . . . . . . . . . .        Proc
-_DELETE  . . . . . . . . . . . .        Proc
-_DELETEARRAY . . . . . . . . . .        Proc
-_DEREF . . . . . . . . . . . . .        Proc
-_DEREFI  . . . . . . . . . . . .        Func
-_DEREFR  . . . . . . . . . . . .        Proc
-_DEREFRR . . . . . . . . . . . .        Proc
-_I . . . . . . . . . . . . . . .        Func
-_INVOKE  . . . . . . . . . . . .        Proc
-_ITEM  . . . . . . . . . . . . .        Func
-_ITEMR . . . . . . . . . . . . .        Func
-_NEW . . . . . . . . . . . . . .        Func
-_RBXNEW  . . . . . . . . . . . .        Func
-_SINVOKE . . . . . . . . . . . .        Proc
-_STATIC  . . . . . . . . . . . .        Func
-_STATICREF . . . . . . . . . . .        Proc
-_V . . . . . . . . . . . . . . .        Func
-_VINVOKE . . . . . . . . . . . .        Proc
-arginvoke  . . . . . . . . . . .        Func
-drvReqHdrM . . . . . . . . . . .        Proc
-
-
-Structures and Unions:
-
-                N a m e                 Size/Ofs   Type
-
-__m128 . . . . . . . . . . . . .              10
-  f32  . . . . . . . . . . . . .               0   __m128f
-  i8 . . . . . . . . . . . . . .               0   __m128b
-  i16  . . . . . . . . . . . . .               0   __m128w
-  i32  . . . . . . . . . . . . .               0   __m128i
-  d64  . . . . . . . . . . . . .               0   __m128d
-  q64  . . . . . . . . . . . . .               0   __m128q
-__m128b  . . . . . . . . . . . .              10
-  b0 . . . . . . . . . . . . . .               0   Byte
-  b1 . . . . . . . . . . . . . .               1   Byte
-  b2 . . . . . . . . . . . . . .               2   Byte
-  b3 . . . . . . . . . . . . . .               3   Byte
-  b4 . . . . . . . . . . . . . .               4   Byte
-  b5 . . . . . . . . . . . . . .               5   Byte
-  b6 . . . . . . . . . . . . . .               6   Byte
-  b7 . . . . . . . . . . . . . .               7   Byte
-  b8 . . . . . . . . . . . . . .               8   Byte
-  b9 . . . . . . . . . . . . . .               9   Byte
-  b10  . . . . . . . . . . . . .               A   Byte
-  b11  . . . . . . . . . . . . .               B   Byte
-  b12  . . . . . . . . . . . . .               C   Byte
-  b13  . . . . . . . . . . . . .               D   Byte
-  b14  . . . . . . . . . . . . .               E   Byte
-  b15  . . . . . . . . . . . . .               F   Byte
-__m128d  . . . . . . . . . . . .              10
-  d0 . . . . . . . . . . . . . .               0   
-  d1 . . . . . . . . . . . . . .               8   
-__m128f  . . . . . . . . . . . .              10
-  f0 . . . . . . . . . . . . . .               0   
-  f1 . . . . . . . . . . . . . .               4   
-  f2 . . . . . . . . . . . . . .               8   
-  f3 . . . . . . . . . . . . . .               C   
-__m128i  . . . . . . . . . . . .              10
-  i0 . . . . . . . . . . . . . .               0   DWord
-  i1 . . . . . . . . . . . . . .               4   DWord
-  i2 . . . . . . . . . . . . . .               8   DWord
-  i3 . . . . . . . . . . . . . .               C   DWord
-__m128q  . . . . . . . . . . . .              10
-  q0 . . . . . . . . . . . . . .               0   QWord
-  q1 . . . . . . . . . . . . . .               8   QWord
-__m128w  . . . . . . . . . . . .              10
-  w0 . . . . . . . . . . . . . .               0   Word
-  w1 . . . . . . . . . . . . . .               2   Word
-  w2 . . . . . . . . . . . . . .               4   Word
-  w3 . . . . . . . . . . . . . .               6   Word
-  w4 . . . . . . . . . . . . . .               8   Word
-  w5 . . . . . . . . . . . . . .               A   Word
-  w6 . . . . . . . . . . . . . .               C   Word
-  w7 . . . . . . . . . . . . . .               E   Word
-__m256 . . . . . . . . . . . . .              20
-  f32  . . . . . . . . . . . . .               0   __m256f
-  i8 . . . . . . . . . . . . . .               0   __m256b
-  i16  . . . . . . . . . . . . .               0   __m256w
-  i32  . . . . . . . . . . . . .               0   __m256i
-  d64  . . . . . . . . . . . . .               0   __m256d
-  q64  . . . . . . . . . . . . .               0   __m256q
-__m256b  . . . . . . . . . . . .              20
-  b0 . . . . . . . . . . . . . .               0   Byte
-  b1 . . . . . . . . . . . . . .               1   Byte
-  b2 . . . . . . . . . . . . . .               2   Byte
-  b3 . . . . . . . . . . . . . .               3   Byte
-  b4 . . . . . . . . . . . . . .               4   Byte
-  b5 . . . . . . . . . . . . . .               5   Byte
-  b6 . . . . . . . . . . . . . .               6   Byte
-  b7 . . . . . . . . . . . . . .               7   Byte
-  b8 . . . . . . . . . . . . . .               8   Byte
-  b9 . . . . . . . . . . . . . .               9   Byte
-  b10  . . . . . . . . . . . . .               A   Byte
-  b11  . . . . . . . . . . . . .               B   Byte
-  b12  . . . . . . . . . . . . .               C   Byte
-  b13  . . . . . . . . . . . . .               D   Byte
-  b14  . . . . . . . . . . . . .               E   Byte
-  b15  . . . . . . . . . . . . .               F   Byte
-  b16  . . . . . . . . . . . . .              10   Byte
-  b17  . . . . . . . . . . . . .              11   Byte
-  b18  . . . . . . . . . . . . .              12   Byte
-  b19  . . . . . . . . . . . . .              13   Byte
-  b20  . . . . . . . . . . . . .              14   Byte
-  b21  . . . . . . . . . . . . .              15   Byte
-  b22  . . . . . . . . . . . . .              16   Byte
-  b23  . . . . . . . . . . . . .              17   Byte
-  b24  . . . . . . . . . . . . .              18   Byte
-  b25  . . . . . . . . . . . . .              19   Byte
-  b26  . . . . . . . . . . . . .              1A   Byte
-  b27  . . . . . . . . . . . . .              1B   Byte
-  b28  . . . . . . . . . . . . .              1C   Byte
-  b29  . . . . . . . . . . . . .              1D   Byte
-  b30  . . . . . . . . . . . . .              1E   Byte
-  b31  . . . . . . . . . . . . .              1F   Byte
-__m256d  . . . . . . . . . . . .              20
-  d0 . . . . . . . . . . . . . .               0   
-  d1 . . . . . . . . . . . . . .               8   
-  d2 . . . . . . . . . . . . . .              10   
-  d3 . . . . . . . . . . . . . .              18   
-__m256f  . . . . . . . . . . . .              20
-  f0 . . . . . . . . . . . . . .               0   
-  f1 . . . . . . . . . . . . . .               4   
-  f2 . . . . . . . . . . . . . .               8   
-  f3 . . . . . . . . . . . . . .               C   
-  f4 . . . . . . . . . . . . . .              10   
-  f5 . . . . . . . . . . . . . .              14   
-  f6 . . . . . . . . . . . . . .              18   
-  f7 . . . . . . . . . . . . . .              1C   
-__m256i  . . . . . . . . . . . .              20
-  i0 . . . . . . . . . . . . . .               0   DWord
-  i1 . . . . . . . . . . . . . .               4   DWord
-  i2 . . . . . . . . . . . . . .               8   DWord
-  i3 . . . . . . . . . . . . . .               C   DWord
-  i4 . . . . . . . . . . . . . .              10   DWord
-  i5 . . . . . . . . . . . . . .              14   DWord
-  i6 . . . . . . . . . . . . . .              18   DWord
-  i7 . . . . . . . . . . . . . .              1C   DWord
-__m256q  . . . . . . . . . . . .              20
-  q0 . . . . . . . . . . . . . .               0   QWord
-  q1 . . . . . . . . . . . . . .               8   QWord
-  q2 . . . . . . . . . . . . . .              10   QWord
-  q3 . . . . . . . . . . . . . .              18   QWord
-__m256w  . . . . . . . . . . . .              20
-  w0 . . . . . . . . . . . . . .               0   Word
-  w1 . . . . . . . . . . . . . .               2   Word
-  w2 . . . . . . . . . . . . . .               4   Word
-  w3 . . . . . . . . . . . . . .               6   Word
-  w4 . . . . . . . . . . . . . .               8   Word
-  w5 . . . . . . . . . . . . . .               A   Word
-  w6 . . . . . . . . . . . . . .               C   Word
-  w7 . . . . . . . . . . . . . .               E   Word
-  w8 . . . . . . . . . . . . . .              10   Word
-  w9 . . . . . . . . . . . . . .              12   Word
-  w10  . . . . . . . . . . . . .              14   Word
-  w11  . . . . . . . . . . . . .              16   Word
-  w12  . . . . . . . . . . . . .              18   Word
-  w13  . . . . . . . . . . . . .              1A   Word
-  w14  . . . . . . . . . . . . .              1C   Word
-  w15  . . . . . . . . . . . . .              1E   Word
-__m512 . . . . . . . . . . . . .              40
-  f32  . . . . . . . . . . . . .               0   __m512f
-  i8 . . . . . . . . . . . . . .               0   __m512b
-  i16  . . . . . . . . . . . . .               0   __m512w
-  i32  . . . . . . . . . . . . .               0   __m512i
-  d64  . . . . . . . . . . . . .               0   __m512d
-  q64  . . . . . . . . . . . . .               0   __m512q
-__m512b  . . . . . . . . . . . .              40
-  b0 . . . . . . . . . . . . . .               0   Byte
-  b1 . . . . . . . . . . . . . .               1   Byte
-  b2 . . . . . . . . . . . . . .               2   Byte
-  b3 . . . . . . . . . . . . . .               3   Byte
-  b4 . . . . . . . . . . . . . .               4   Byte
-  b5 . . . . . . . . . . . . . .               5   Byte
-  b6 . . . . . . . . . . . . . .               6   Byte
-  b7 . . . . . . . . . . . . . .               7   Byte
-  b8 . . . . . . . . . . . . . .               8   Byte
-  b9 . . . . . . . . . . . . . .               9   Byte
-  b10  . . . . . . . . . . . . .               A   Byte
-  b11  . . . . . . . . . . . . .               B   Byte
-  b12  . . . . . . . . . . . . .               C   Byte
-  b13  . . . . . . . . . . . . .               D   Byte
-  b14  . . . . . . . . . . . . .               E   Byte
-  b15  . . . . . . . . . . . . .               F   Byte
-  b16  . . . . . . . . . . . . .              10   Byte
-  b17  . . . . . . . . . . . . .              11   Byte
-  b18  . . . . . . . . . . . . .              12   Byte
-  b19  . . . . . . . . . . . . .              13   Byte
-  b20  . . . . . . . . . . . . .              14   Byte
-  b21  . . . . . . . . . . . . .              15   Byte
-  b22  . . . . . . . . . . . . .              16   Byte
-  b23  . . . . . . . . . . . . .              17   Byte
-  b24  . . . . . . . . . . . . .              18   Byte
-  b25  . . . . . . . . . . . . .              19   Byte
-  b26  . . . . . . . . . . . . .              1A   Byte
-  b27  . . . . . . . . . . . . .              1B   Byte
-  b28  . . . . . . . . . . . . .              1C   Byte
-  b29  . . . . . . . . . . . . .              1D   Byte
-  b30  . . . . . . . . . . . . .              1E   Byte
-  b31  . . . . . . . . . . . . .              1F   Byte
-  b32  . . . . . . . . . . . . .              20   Byte
-  b33  . . . . . . . . . . . . .              21   Byte
-  b34  . . . . . . . . . . . . .              22   Byte
-  b35  . . . . . . . . . . . . .              23   Byte
-  b36  . . . . . . . . . . . . .              24   Byte
-  b37  . . . . . . . . . . . . .              25   Byte
-  b38  . . . . . . . . . . . . .              26   Byte
-  b39  . . . . . . . . . . . . .              27   Byte
-  b40  . . . . . . . . . . . . .              28   Byte
-  b41  . . . . . . . . . . . . .              29   Byte
-  b42  . . . . . . . . . . . . .              2A   Byte
-  b43  . . . . . . . . . . . . .              2B   Byte
-  b44  . . . . . . . . . . . . .              2C   Byte
-  b45  . . . . . . . . . . . . .              2D   Byte
-  b46  . . . . . . . . . . . . .              2E   Byte
-  b47  . . . . . . . . . . . . .              2F   Byte
-  b48  . . . . . . . . . . . . .              30   Byte
-  b49  . . . . . . . . . . . . .              31   Byte
-  b50  . . . . . . . . . . . . .              32   Byte
-  b51  . . . . . . . . . . . . .              33   Byte
-  b52  . . . . . . . . . . . . .              34   Byte
-  b53  . . . . . . . . . . . . .              35   Byte
-  b54  . . . . . . . . . . . . .              36   Byte
-  b55  . . . . . . . . . . . . .              37   Byte
-  b56  . . . . . . . . . . . . .              38   Byte
-  b57  . . . . . . . . . . . . .              39   Byte
-  b58  . . . . . . . . . . . . .              3A   Byte
-  b59  . . . . . . . . . . . . .              3B   Byte
-  b60  . . . . . . . . . . . . .              3C   Byte
-  b61  . . . . . . . . . . . . .              3D   Byte
-  b62  . . . . . . . . . . . . .              3E   Byte
-  b63  . . . . . . . . . . . . .              3F   Byte
-__m512d  . . . . . . . . . . . .              40
-  d0 . . . . . . . . . . . . . .               0   
-  d1 . . . . . . . . . . . . . .               8   
-  d2 . . . . . . . . . . . . . .              10   
-  d3 . . . . . . . . . . . . . .              18   
-  d4 . . . . . . . . . . . . . .              20   
-  d5 . . . . . . . . . . . . . .              28   
-  d6 . . . . . . . . . . . . . .              30   
-  d7 . . . . . . . . . . . . . .              38   
-__m512f  . . . . . . . . . . . .              40
-  f0 . . . . . . . . . . . . . .               0   
-  f1 . . . . . . . . . . . . . .               4   
-  f2 . . . . . . . . . . . . . .               8   
-  f3 . . . . . . . . . . . . . .               C   
-  f4 . . . . . . . . . . . . . .              10   
-  f5 . . . . . . . . . . . . . .              14   
-  f6 . . . . . . . . . . . . . .              18   
-  f7 . . . . . . . . . . . . . .              1C   
-  f8 . . . . . . . . . . . . . .              20   
-  f9 . . . . . . . . . . . . . .              24   
-  f10  . . . . . . . . . . . . .              28   
-  f11  . . . . . . . . . . . . .              2C   
-  f12  . . . . . . . . . . . . .              30   
-  f13  . . . . . . . . . . . . .              34   
-  f14  . . . . . . . . . . . . .              38   
-  f15  . . . . . . . . . . . . .              3C   
-__m512i  . . . . . . . . . . . .              40
-  i0 . . . . . . . . . . . . . .               0   DWord
-  i1 . . . . . . . . . . . . . .               4   DWord
-  i2 . . . . . . . . . . . . . .               8   DWord
-  i3 . . . . . . . . . . . . . .               C   DWord
-  i4 . . . . . . . . . . . . . .              10   DWord
-  i5 . . . . . . . . . . . . . .              14   DWord
-  i6 . . . . . . . . . . . . . .              18   DWord
-  i7 . . . . . . . . . . . . . .              1C   DWord
-  i8 . . . . . . . . . . . . . .              20   DWord
-  i9 . . . . . . . . . . . . . .              24   DWord
-  i10  . . . . . . . . . . . . .              28   DWord
-  i11  . . . . . . . . . . . . .              2C   DWord
-  i12  . . . . . . . . . . . . .              30   DWord
-  i13  . . . . . . . . . . . . .              34   DWord
-  i14  . . . . . . . . . . . . .              38   DWord
-  i15  . . . . . . . . . . . . .              3C   DWord
-__m512q  . . . . . . . . . . . .              40
-  q0 . . . . . . . . . . . . . .               0   QWord
-  q1 . . . . . . . . . . . . . .               8   QWord
-  q2 . . . . . . . . . . . . . .              10   QWord
-  q3 . . . . . . . . . . . . . .              18   QWord
-  q4 . . . . . . . . . . . . . .              20   QWord
-  q5 . . . . . . . . . . . . . .              28   QWord
-  q6 . . . . . . . . . . . . . .              30   QWord
-  q7 . . . . . . . . . . . . . .              38   QWord
-__m512w  . . . . . . . . . . . .              40
-  w0 . . . . . . . . . . . . . .               0   Word
-  w1 . . . . . . . . . . . . . .               2   Word
-  w2 . . . . . . . . . . . . . .               4   Word
-  w3 . . . . . . . . . . . . . .               6   Word
-  w4 . . . . . . . . . . . . . .               8   Word
-  w5 . . . . . . . . . . . . . .               A   Word
-  w6 . . . . . . . . . . . . . .               C   Word
-  w7 . . . . . . . . . . . . . .               E   Word
-  w8 . . . . . . . . . . . . . .              10   Word
-  w9 . . . . . . . . . . . . . .              12   Word
-  w10  . . . . . . . . . . . . .              14   Word
-  w11  . . . . . . . . . . . . .              16   Word
-  w12  . . . . . . . . . . . . .              18   Word
-  w13  . . . . . . . . . . . . .              1A   Word
-  w14  . . . . . . . . . . . . .              1C   Word
-  w15  . . . . . . . . . . . . .              1E   Word
-  w16  . . . . . . . . . . . . .              20   Word
-  w17  . . . . . . . . . . . . .              22   Word
-  w18  . . . . . . . . . . . . .              24   Word
-  w19  . . . . . . . . . . . . .              26   Word
-  w20  . . . . . . . . . . . . .              28   Word
-  w21  . . . . . . . . . . . . .              2A   Word
-  w22  . . . . . . . . . . . . .              2C   Word
-  w23  . . . . . . . . . . . . .              2E   Word
-  w24  . . . . . . . . . . . . .              30   Word
-  w25  . . . . . . . . . . . . .              32   Word
-  w26  . . . . . . . . . . . . .              34   Word
-  w27  . . . . . . . . . . . . .              36   Word
-  w28  . . . . . . . . . . . . .              38   Word
-  w29  . . . . . . . . . . . . .              3A   Word
-  w30  . . . . . . . . . . . . .              3C   Word
-  w31  . . . . . . . . . . . . .              3E   Word
-bpb  . . . . . . . . . . . . . .              3E
-  jmpBoot  . . . . . . . . . . .               0   Byte[3]
-  oemName  . . . . . . . . . . .               3   Byte[8]
-  bytsPerSec . . . . . . . . . .               B   Word
-  secPerClus . . . . . . . . . .               D   Byte
-  revdSecCnt . . . . . . . . . .               E   Word
-  numFATs  . . . . . . . . . . .              10   Byte
-  rootEntCnt . . . . . . . . . .              11   Word
-  totSec16 . . . . . . . . . . .              13   Word
-  media  . . . . . . . . . . . .              15   Byte
-  FATsz16  . . . . . . . . . . .              16   Word
-  secPerTrk  . . . . . . . . . .              18   Word
-  numHeads . . . . . . . . . . .              1A   Word
-  hiddSec  . . . . . . . . . . .              1C   DWord
-  totSec32 . . . . . . . . . . .              20   DWord
-  drvNum . . . . . . . . . . . .              24   Byte
-  reserved1  . . . . . . . . . .              25   Byte
-  bootSig  . . . . . . . . . . .              26   Byte
-  volID  . . . . . . . . . . . .              27   DWord
-  volLab . . . . . . . . . . . .              2B   Byte[11]
-  filSysType . . . . . . . . . .              36   Byte[8]
-bpb32  . . . . . . . . . . . . .              5A
-  jmpBoot  . . . . . . . . . . .               0   Byte[3]
-  oemName  . . . . . . . . . . .               3   Byte[8]
-  bytsPerSec . . . . . . . . . .               B   Word
-  secPerClus . . . . . . . . . .               D   Byte
-  revdSecCnt . . . . . . . . . .               E   Word
-  numFATs  . . . . . . . . . . .              10   Byte
-  rootEntCnt . . . . . . . . . .              11   Word
-  totSec16 . . . . . . . . . . .              13   Word
-  media  . . . . . . . . . . . .              15   Byte
-  FATsz16  . . . . . . . . . . .              16   Word
-  secPerTrk  . . . . . . . . . .              18   Word
-  numHeads . . . . . . . . . . .              1A   Word
-  hiddSec  . . . . . . . . . . .              1C   DWord
-  totSec32 . . . . . . . . . . .              20   DWord
-  FATsz32  . . . . . . . . . . .              24   DWord
-  extFlags . . . . . . . . . . .              28   Word
-  FSver  . . . . . . . . . . . .              2A   Word
-  RootClus . . . . . . . . . . .              2C   DWord
-  FSinfo . . . . . . . . . . . .              30   Word
-  BkBootSec  . . . . . . . . . .              32   Word
-  reserved . . . . . . . . . . .              34   Byte[12]
-  drvNum . . . . . . . . . . . .              40   Byte
-  reserved1  . . . . . . . . . .              41   Byte
-  bootSig  . . . . . . . . . . .              42   Byte
-  volID  . . . . . . . . . . . .              43   DWord
-  volLab . . . . . . . . . . . .              47   Byte[11]
-  filSysType . . . . . . . . . .              52   Byte[8]
-bpbBuildReqPkt . . . . . . . . .              1E
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  medesc . . . . . . . . . . . .               D   Byte
-  bufptr . . . . . . . . . . . .               E   QWord
-  bpbptr . . . . . . . . . . . .              16   QWord
-bpbEx  . . . . . . . . . . . . .              78
-  jmpBoot  . . . . . . . . . . .               0   Byte[3]
-  oemName  . . . . . . . . . . .               3   Byte[8]
-  MustBeZero . . . . . . . . . .               B   Byte[53]
-  partitionOffset  . . . . . . .              40   QWord
-  volumeLength . . . . . . . . .              48   QWord
-  FAToffset  . . . . . . . . . .              50   DWord
-  FATlength  . . . . . . . . . .              54   DWord
-  clusterHeapOffset  . . . . . .              58   DWord
-  clusterCount . . . . . . . . .              5C   DWord
-  firstClusterOfRootDir  . . . .              60   DWord
-  volumeSerialNum  . . . . . . .              64   DWord
-  FSrevision . . . . . . . . . .              68   Word
-  volumeFlags  . . . . . . . . .              6A   Word
-  bytesPerSectorShift  . . . . .              6C   Byte
-  sectorsPerClusterShift . . . .              6D   Byte
-  numberOfFATs . . . . . . . . .              6E   Byte
-  driveSelect  . . . . . . . . .              6F   Byte
-  percentInUse . . . . . . . . .              70   Byte
-  reserved . . . . . . . . . . .              71   Byte[7]
-bufferHdr  . . . . . . . . . . .              18
-  nextBufPtr . . . . . . . . . .               0   QWord
-  driveNumber  . . . . . . . . .               8   Byte
-  bufferFlags  . . . . . . . . .               9   Byte
-  bufferLBA  . . . . . . . . . .               A   DWord
-  bufFATcopy . . . . . . . . . .               E   Byte
-  bufFAToff  . . . . . . . . . .               F   Byte
-  driveDPBPtr  . . . . . . . . .              10   QWord
-cds  . . . . . . . . . . . . . .              5B
-  sCurrentPath . . . . . . . . .               0   Byte[67]
-  wFlags . . . . . . . . . . . .              43   Word
-  qDPBPtr  . . . . . . . . . . .              45   QWord
-  dStartCluster  . . . . . . . .              4D   DWord
-  qReserved  . . . . . . . . . .              51   QWord
-  wBackslashOffset . . . . . . .              59   Word
-closeReqPkt  . . . . . . . . . .               D
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-dSeg . . . . . . . . . . . . . .             E6E
-  dosSegPtr  . . . . . . . . . .               0   QWord
-  bootDrive  . . . . . . . . . .               8   Byte
-  requestHdr . . . . . . . . . .               9   drvReqHdr
-  sysVarsPtr . . . . . . . . . .              2A   QWord
-  mcbChainPtr  . . . . . . . . .              32   QWord
-  dpbHeadPtr . . . . . . . . . .              3A   QWord
-  sftHeadPtr . . . . . . . . . .              42   QWord
-  clockPtr . . . . . . . . . . .              4A   QWord
-  conPtr . . . . . . . . . . . .              52   QWord
-  maxBytesSec  . . . . . . . . .              5A   Word
-  bufHeadPtr . . . . . . . . . .              5C   QWord
-  cdsHeadPtr . . . . . . . . . .              64   QWord
-  sfcbHeadPTr  . . . . . . . . .              6C   QWord
-  numSafeSFCB  . . . . . . . . .              74   Word
-  numMSDdrv  . . . . . . . . . .              76   Byte
-  lastdrvNum . . . . . . . . . .              77   Byte
-  numJoinDrv . . . . . . . . . .              78   Byte
-  nulDevHdr  . . . . . . . . . .              79   drvHdr
-  inDOS  . . . . . . . . . . . .              9B   Byte
-  breakFlag  . . . . . . . . . .              9C   Byte
-  defaultDrv . . . . . . . . . .              9D   Byte
-  critStack  . . . . . . . . . .              9E   QWord[41]
-  critStakTop  . . . . . . . . .             1E6   QWord
-  IOStack  . . . . . . . . . . .             1EE   QWord[199]
-  IOStakTop  . . . . . . . . . .             826   QWord
-  DiskStack  . . . . . . . . . .             82E   QWord[199]
-  DiskStakTop  . . . . . . . . .             E66   QWord
-dpb  . . . . . . . . . . . . . .              36
-  bDriveNumber . . . . . . . . .               0   Byte
-  bUnitNumber  . . . . . . . . .               1   Byte
-  bBytesPerSectorShift . . . . .               2   Byte
-  bMaxSectorInCluster  . . . . .               3   Byte
-  bSectorsPerClusterShift  . . .               4   Byte
-  dFAToffset . . . . . . . . . .               5   DWord
-  bNumberOfFATs  . . . . . . . .               9   Byte
-  wNumberRootDirEntries  . . . .               A   Word
-  dClusterHeapOffset . . . . . .               C   DWord
-  dClusterCount  . . . . . . . .              10   DWord
-  dFATlength . . . . . . . . . .              14   DWord
-  dFirstClusterOfRootDir . . . .              18   DWord
-  qDriverHeaderPtr . . . . . . .              1C   QWord
-  bMediaDescriptor . . . . . . .              24   Byte
-  bAccessFlag  . . . . . . . . .              25   Byte
-  qNextDPBPtr  . . . . . . . . .              26   QWord
-  dFirstFreeCluster  . . . . . .              2E   DWord
-  dNumberOfFreeClusters  . . . .              32   DWord
-drvHdr . . . . . . . . . . . . .              22
-  nxtPtr . . . . . . . . . . . .               0   QWord
-  atWord . . . . . . . . . . . .               8   Word
-  strPtr . . . . . . . . . . . .               A   QWord
-  intPtr . . . . . . . . . . . .              12   QWord
-  drvNam . . . . . . . . . . . .              1A   Byte[8]
-drvReqHdr  . . . . . . . . . . .               D
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-flushReqPkt  . . . . . . . . . .               D
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-getDevReqPkt . . . . . . . . . .              10
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  getcmd . . . . . . . . . . . .               D   Byte
-  cmdsts . . . . . . . . . . . .               E   Word
-initReqPkt . . . . . . . . . . .              1F
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  numunt . . . . . . . . . . . .               D   Byte
-  endptr . . . . . . . . . . . .               E   QWord
-  optptr . . . . . . . . . . . .              16   QWord
-  drvnum . . . . . . . . . . . .              1E   Byte
-ioReqPkt . . . . . . . . . . . .              2A
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  medesc . . . . . . . . . . . .               D   Byte
-  bufptr . . . . . . . . . . . .               E   QWord
-  tfrlen . . . . . . . . . . . .              16   DWord
-  strtsc . . . . . . . . . . . .              1A   QWord
-  desptr . . . . . . . . . . . .              22   QWord
-ioctlReqPkt  . . . . . . . . . .              27
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  majfun . . . . . . . . . . . .               D   Byte
-  minfun . . . . . . . . . . . .               E   Byte
-  rsival . . . . . . . . . . . .               F   QWord
-  rdival . . . . . . . . . . . .              17   QWord
-  ctlptr . . . . . . . . . . . .              1F   QWord
-mediaCheckReqPkt . . . . . . . .              17
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  medesc . . . . . . . . . . . .               D   Byte
-  medret . . . . . . . . . . . .               E   Byte
-  desptr . . . . . . . . . . . .               F   QWord
-nonDestInNoWaitReqPkt  . . . . .               E
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  retbyt . . . . . . . . . . . .               D   Byte
-openReqPkt . . . . . . . . . . .               D
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-remMediaReqPkt . . . . . . . . .               D
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-setDevReqPkt . . . . . . . . . .              10
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-  setcmd . . . . . . . . . . . .               D   Byte
-  cmdsts . . . . . . . . . . . .               E   Word
-sft  . . . . . . . . . . . . . .              3D
-  wNumHandles  . . . . . . . . .               0   Word
-  wOpenMode  . . . . . . . . . .               2   Word
-  bFileAttrib  . . . . . . . . .               4   Byte
-  wDeviceInfo  . . . . . . . . .               5   Word
-  qPtr . . . . . . . . . . . . .               7   QWord
-  dStartClust  . . . . . . . . .               F   DWord
-  wTime  . . . . . . . . . . . .              13   Word
-  wDate  . . . . . . . . . . . .              15   Word
-  dFileSize  . . . . . . . . . .              17   DWord
-  dCurntOff  . . . . . . . . . .              1B   DWord
-  wRelClust  . . . . . . . . . .              1F   Word
-  dDirSect . . . . . . . . . . .              21   DWord
-  bNumDirEnt . . . . . . . . . .              25   Byte
-  sFCBName . . . . . . . . . . .              26   Byte[11]
-  qPSPOwner  . . . . . . . . . .              31   QWord
-  dAbsClusr  . . . . . . . . . .              39   DWord
-sfth . . . . . . . . . . . . . .               A
-  qNextSFTPtr  . . . . . . . . .               0   QWord
-  wNumFiles  . . . . . . . . . .               8   Word
-statusReqPkt . . . . . . . . . .               D
-  hdrlen . . . . . . . . . . . .               0   Byte
-  unitnm . . . . . . . . . . . .               1   Byte
-  cmdcde . . . . . . . . . . . .               2   Byte
-  status . . . . . . . . . . . .               3   Word
-  devptr . . . . . . . . . . . .               5   QWord
-
-
-Segments and Groups:
-
-                N a m e                 Size     Length   Align   Combine Class
-
-dataSeg  . . . . . . . . . . . .        64 Bit   00000E6E Byte    Public  'BSS'
-loadCode . . . . . . . . . . . .        64 Bit   000000A5 Byte    Public  'CODE'
-resCode  . . . . . . . . . . . .        64 Bit   00000716 Byte    Public  'CODE'
-FLAT . . . . . . . . . . . . . .        GROUP
-_DATA  . . . . . . . . . . . . .        64 Bit   00000000 Para    Public  'DATA'
-_TEXT  . . . . . . . . . . . . .        64 Bit   00000000 Para    Public  'CODE'
-
-
-Procedures, parameters and locals:
-
-                N a m e                 Type     Value    Segment  Length
-
-FATprocs . . . . . . . . . . . .        P Near   00000052 resCode  00000000 Public   
-clkDriver  . . . . . . . . . . .        P Near   000002BD resCode  00000000 Public   
-com1Intr . . . . . . . . . . . .        P Near   000002BD resCode  00000009 Public   
-com2Intr . . . . . . . . . . . .        P Near   000002C6 resCode  00000009 Public   
-com3Intr . . . . . . . . . . . .        P Near   000002CF resCode  00000009 Public   
-com4Intr . . . . . . . . . . . .        P Near   000002D8 resCode  00000009 Public   
-comDriver  . . . . . . . . . . .        P Near   000002BD resCode  0000009D Public   
-comIntr  . . . . . . . . . . . .        P Near   000002E1 resCode  00000079 Public   
-  L&_0013  . . . . . . . . . . .        L Near   00000354 resCode
-  comExit  . . . . . . . . . . .        L Near   00000300 resCode
-  L&_0010  . . . . . . . . . . .        L Near   00000313 resCode
-  L&_0012  . . . . . . . . . . .        L Near   0000033F resCode
-  comRead  . . . . . . . . . . .        L Near   0000030C resCode
-  comNondestructiveRead  . . . .        L Near   00000331 resCode
-  comWrite . . . . . . . . . . .        L Near   00000339 resCode
-  L&_0011  . . . . . . . . . . .        L Near   0000032B resCode
-commonStrat  . . . . . . . . . .        P Near   000001F2 resCode  00000010 Public   
-conDriver  . . . . . . . . . . .        P Near   00000209 resCode  000000B4 Public   
-  conInit  . . . . . . . . . . .        L Near   0000023A resCode
-  L&_0008  . . . . . . . . . . .        L Near   000002A7 resCode
-  conFlushInputBuffers . . . . .        L Near   00000293 resCode
-  conWrite . . . . . . . . . . .        L Near   0000029F resCode
-  L&_0005  . . . . . . . . . . .        L Near   0000026B resCode
-  conIORead  . . . . . . . . . .        L Near   0000025B resCode
-  conExit  . . . . . . . . . . .        L Near   00000231 resCode
-  L&_0009  . . . . . . . . . . .        L Near   000002B3 resCode
-  conRead  . . . . . . . . . . .        L Near   00000263 resCode
-  L&_0006  . . . . . . . . . . .        L Near   00000279 resCode
-  conNondestructiveRead  . . . .        L Near   00000280 resCode
-  L&_0007  . . . . . . . . . . .        L Near   0000028B resCode
-drivers  . . . . . . . . . . . .        P Near   0000005A resCode  000006BC Public   
-findDPB  . . . . . . . . . . . .        P Near   00000036 resCode  0000001C Public   
-  L&_0003  . . . . . . . . . . .        L Near   0000003D resCode
-  L&_0004  . . . . . . . . . . .        L Near   00000051 resCode
-findLRUBuffer  . . . . . . . . .        P Near   00000000 resCode  00000036 Public   
-  L&_0002  . . . . . . . . . . .        L Near   00000010 resCode
-int49hHook . . . . . . . . . . .        P Near   00000052 resCode  00000008 Public   
-lptDriver  . . . . . . . . . . .        P Near   0000035A resCode  00000010 Public   
-msdDriver  . . . . . . . . . . .        P Near   0000036A resCode  000003AC Public   
-  msdWriteVerify . . . . . . . .        L Near   0000047E resCode
-  msdDriverExit  . . . . . . . .        L Near   000003E6 resCode
-  msdInit  . . . . . . . . . . .        L Near   000003EF resCode
-  L&_0016  . . . . . . . . . . .        L Near   0000045A resCode
-  msdDevOpen . . . . . . . . . .        L Near   0000047E resCode
-  msdWrite . . . . . . . . . . .        L Near   0000047E resCode
-  msdIOCTLRead . . . . . . . . .        L Near   0000047E resCode
-  msdRemovableMedia  . . . . . .        L Near   0000047E resCode
-  L&_0015  . . . . . . . . . . .        L Near   00000422 resCode
-  msdDevClose  . . . . . . . . .        L Near   0000047E resCode
-  msdMedChk  . . . . . . . . . .        L Near   0000047E resCode
-  msdSetLogicalDev . . . . . . .        L Near   0000047E resCode
-  msdGenericIOCTL  . . . . . . .        L Near   0000047E resCode
-  msdError . . . . . . . . . . .        L Near   000003E6 resCode
-  msdRead  . . . . . . . . . . .        L Near   0000047E resCode
-  msdGetLogicalDev . . . . . . .        L Near   0000047E resCode
-  L&_0014  . . . . . . . . . . .        L Near   000003FE resCode
-  msdIOCTLWrite  . . . . . . . .        L Near   0000047E resCode
-  msdInitError . . . . . . . . .        L Near   0000047C resCode
-  msdBuildBPB  . . . . . . . . .        L Near   0000047E resCode
-nulIntr  . . . . . . . . . . . .        P Near   00000208 resCode  00000001 Public   
-nulStrat . . . . . . . . . . . .        P Near   00000202 resCode  00000007 Public   
-
-
-Symbols:
-
-                N a m e                 Type       Value     Attr
-
-@CodeSize  . . . . . . . . . . .        Number             0h 
-@DataSize  . . . . . . . . . . .        Number             0h 
-@Interface . . . . . . . . . . .        Number             0h 
-@Model . . . . . . . . . . . . .        Number             7h 
-@ReservedStack . . . . . . . . .        Number             0h 
-@code  . . . . . . . . . . . . .        Text   _TEXT
-@data  . . . . . . . . . . . . .        Text   FLAT
-@stack . . . . . . . . . . . . .        Text   FLAT
-L&_0001  . . . . . . . . . . . .        L Near            60h loadCode 
-auxHdr . . . . . . . . . . . . .        drvHdr            7Ch resCode 
-clkHdr . . . . . . . . . . . . .        drvHdr            C0h resCode 
-com1Hdr  . . . . . . . . . . . .        drvHdr           104h resCode 
-com2Hdr  . . . . . . . . . . . .        drvHdr           126h resCode 
-com3Hdr  . . . . . . . . . . . .        drvHdr           148h resCode 
-com4Hdr  . . . . . . . . . . . .        drvHdr           16Ah resCode 
-comDevice  . . . . . . . . . . .        Byte             359h resCode 
-conHdr . . . . . . . . . . . . .        drvHdr            5Ah resCode 
-data . . . . . . . . . . . . . .        dSeg               0h dataSeg 
-driverDataPtr  . . . . . . . . .        QWord            716h resCode 
-lpt1Hdr  . . . . . . . . . . . .        drvHdr           18Ch resCode 
-lpt2Hdr  . . . . . . . . . . . .        drvHdr           1AEh resCode 
-lpt3Hdr  . . . . . . . . . . . .        drvHdr           1D0h resCode 
-msdBIOSmap . . . . . . . . . . .        Byte[5]          48Ch resCode 
-msdBPBTbl  . . . . . . . . . . .        QWord[5]         496h resCode 
-msdBPBblks . . . . . . . . . . .        Byte[600]        4BEh resCode 
-msdDefLabel  . . . . . . . . . .        Byte[9]          483h resCode 
-msdHdlCnt  . . . . . . . . . . .        Byte[5]          491h resCode 
-msdHdr . . . . . . . . . . . . .        drvHdr            E2h resCode 
-nData  . . . . . . . . . . . . .        drvHdr            83h loadCode 
-prnHdr . . . . . . . . . . . . .        drvHdr            9Eh resCode 
-reqHdrPtr  . . . . . . . . . . .        QWord            1FAh resCode 
-startmsg . . . . . . . . . . . .        Byte[24]          6Bh loadCode 
-
-scpdos.asm: 471 lines, 3 passes, 16 ms, 0 warnings, 0 errors
+     1                                  [map all scpdos.map]
+     2                                  [DEFAULT REL]
+     3                                  BITS 64
+     4                                  %include "driverStruc.inc"
+     5                              <1> 
+     6                              <1> ;-------------------------------------------------------;
+     7                              <1> ; This include file contains miscellaneous SCP/DOS      ;
+     8                              <1> ; device driver related structures.                     ;
+     9                              <1> ;-------------------------------------------------------;
+    10                              <1> 
+    11                              <1> struc drvHdr  ;Device Driver Header for character and block devices
+    12                              <1> 
+    13 00000000 ????????????????    <1>     .nxtPtr resq 1  ;Pointer to the next driver header, -1 if at the end
+    14 00000008 ????                <1>     .attrib resw 1  ;Attribute Word
+    15 0000000A ????????????????    <1>     .strPtr resq 1  ;Strategy Entry Pointer
+    16 00000012 ????????????????    <1>     .intPtr resq 1  ;Interrupt Entry Pointer
+    17 0000001A ????????????????    <1>     .drvNam resb 8  ;Driver name (Char) or Unit number byte (Block)
+    18                              <1> drvHdrLen equ $ - drvHdr
+    19                              <1> endstruc
+    20                              <1> 
+    21                              <1> %macro drvReqHdrM 0 ;Driver Request Header Macro
+    22                              <1> 
+    23                              <1>     .hdrlen resb 1  ;Length of the request header
+    24                              <1>     .unitnm resb 1  ;Unit number, meaningless for character devs
+    25                              <1>     .cmdcde resb 1  ;Command code
+    26                              <1>     .status resw 1  ;Status word
+    27                              <1>     .devptr resq 1  ;Device queue pointer field
+    28                              <1> 
+    29                              <1> %endmacro
+    30                              <1> 
+    31                              <1> struc drvReqHdr
+    32                              <1>     drvReqHdrM
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    33                              <1> endstruc
+    34                              <1> 
+    35                              <1> struc initReqPkt  ;Init Request Packet
+    36                              <1> 
+    37                              <1>     drvReqHdrM   ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    38 0000000D ??                  <1>     .numunt resb 1  ;Number of logical units (Block only, 0 for char)
+    39 0000000E ????????????????    <1>     .endptr resq 1  ;Pointer to first free byte after driver
+    40 00000016 ????????????????    <1>     .optptr resq 1  ;Pointer to the BPB array (block) or optional args (char)
+    41 0000001E ??                  <1>     .drvnum resb 1  ;Drive number
+    42                              <1> 
+    43                              <1> endstruc
+    44                              <1> 
+    45                              <1> struc mediaCheckReqPkt ;Media Check Request Packet
+    46                              <1> 
+    47                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    48 0000000D ??                  <1>     .medesc resb 1  ;DOS media descriptor
+    49 0000000E ??                  <1>     .medret resb 1  ;Return byte (Has media been changed?)
+    50 0000000F ????????????????    <1>     .desptr resq 1  ;Pointer to a valid volume id field
+    51                              <1> 
+    52                              <1> endstruc
+    53                              <1> 
+    54                              <1> struc bpbBuildReqPkt  ;Build BPB Request Packet
+    55                              <1> 
+    56                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    57 0000000D ??                  <1>     .medesc resb 1  ;DOS media descriptor
+    58 0000000E ????????????????    <1>     .bufptr resq 1  ;Transfer buffer
+    59 00000016 ????????????????    <1>     .bpbptr resq 1  ;Pointer to the BPB
+    60                              <1> 
+    61                              <1> endstruc
+    62                              <1> 
+    63                              <1> struc ioReqPkt   ;IO Request Packet
+    64                              <1> 
+    65                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    66 0000000D ??                  <1>     .medesc resb 1  ;DOS media descriptor
+    67 0000000E ????????????????    <1>     .bufptr resq 1  ;Transfer buffer
+    68 00000016 ????????            <1>     .tfrlen resd 1  ;Number of Sectors/bytes to transfer
+    69 0000001A ????????????????    <1>     .strtsc resq 1  ;Starting sector for transfer
+    70 00000022 ????????????????    <1>     .desptr resq 1  ;Pointer to a valid volume id field if error
+    71                              <1> 
+    72                              <1> endstruc
+    73                              <1> 
+    74                              <1> struc nonDestInNoWaitReqPkt    ;Nondestructive Input No Wait Request Packet
+    75                              <1>     
+    76                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    77 0000000D ??                  <1>     .retbyt resb 1  ;Byte read non destructively
+    78                              <1> 
+    79                              <1> endstruc
+    80                              <1> 
+    81                              <1> struc statusReqPkt   ;Status Request Packet
+    82                              <1> 
+    83                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    84                              <1> 
+    85                              <1> endstruc
+    86                              <1> 
+    87                              <1> struc flushReqPkt ;Flush Request Packet, terminate all pending requests
+    88                              <1> 
+    89                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    90                              <1>      
+    91                              <1> endstruc
+    92                              <1> 
+    93                              <1> struc openReqPkt ;Open Device Request Packet
+    94                              <1> 
+    95                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+    96                              <1>      
+    97                              <1> endstruc
+    98                              <1> 
+    99                              <1> struc closeReqPkt ;Close Device Request Packet
+   100                              <1> 
+   101                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+   102                              <1>      
+   103                              <1> endstruc
+   104                              <1> 
+   105                              <1> struc remMediaReqPkt ;Removeable Media1 Request Packet
+   106                              <1> 
+   107                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+   108                              <1>      
+   109                              <1> endstruc
+   110                              <1> 
+   111                              <1> struc ioctlReqPkt    ;Generic IOCTL Request Packet
+   112                              <1> 
+   113                              <1>     drvReqHdrM    ;Common Driver Header Macro  
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+   114 0000000D ??                  <1>     .majfun resb 1  ;Major function number
+   115 0000000E ??                  <1>     .minfun resb 1  ;Minor function number
+   116 0000000F ????????????????    <1>     .rsival resq 1  ;Contents of RSI
+   117 00000017 ????????????????    <1>     .rdival resq 1  ;Contents of RDI
+   118 0000001F ????????????????    <1>     .ctlptr resq 1  ;Pointer to Generic IOCTL Request Packet
+   119                              <1> 
+   120                              <1> endstruc
+   121                              <1> 
+   122                              <1> struc getDevReqPkt ;Get Logical Device Request Packet
+   123                              <1>     
+   124                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+   125 0000000D ??                  <1>     .getcmd resb 1  ;Command code
+   126 0000000E ????                <1>     .cmdsts resw 1  ;Command status word
+   127                              <1> 
+   128                              <1> endstruc
+   129                              <1> 
+   130                              <1> struc setDevReqPkt ;Set Logical Device Request Packet
+   131                              <1>     
+   132                              <1>     drvReqHdrM    ;Common Driver Header Macro
+    22                              <2> 
+    23 00000000 ??                  <2>  .hdrlen resb 1
+    24 00000001 ??                  <2>  .unitnm resb 1
+    25 00000002 ??                  <2>  .cmdcde resb 1
+    26 00000003 ????                <2>  .status resw 1
+    27 00000005 ????????????????    <2>  .devptr resq 1
+    28                              <2> 
+   133 0000000D ??                  <1>     .setcmd resb 1  ;Command code
+   134 0000000E ????                <1>     .cmdsts resw 1  ;Command status word
+   135                              <1> 
+   136                              <1> endstruc
+     5                                  %include "fatStruc.inc"
+     6                              <1> 
+     7                              <1> ;-------------------------------------------------------;
+     8                              <1> ; This include file contains miscellaneous FAT driver   ;
+     9                              <1> ; structures. exFAT will have it's own files at a later ;
+    10                              <1> ; stage.                                                ;
+    11                              <1> ;-------------------------------------------------------;
+    12                              <1> 
+    13                              <1> struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
+    14                              <1> 
+    15 00000000 ??????              <1>     .jmpBoot    resb 3 
+    16 00000003 ????????????????    <1>     .oemName    resb 8  ;OEM name
+    17 0000000B ????                <1>     .bytsPerSec resw 1  ;Bytes per sector
+    18 0000000D ??                  <1>     .secPerClus resb 1  ;Sectors per cluster
+    19 0000000E ????                <1>     .revdSecCnt resw 1  ;Number of reserved sectors
+    20 00000010 ??                  <1>     .numFATs    resb 1  ;Number of FATs on media
+    21 00000011 ????                <1>     .rootEntCnt resw 1  ;Number of entries in Root directory
+    22 00000013 ????                <1>     .totSec16   resw 1  ;Number of sectors on medium
+    23 00000015 ??                  <1>     .media      resb 1  ;Media descriptor byte
+    24 00000016 ????                <1>     .FATsz16    resw 1  ;Number of sectors per FAT
+    25 00000018 ????                <1>     .secPerTrk  resw 1  ;Number of sectors per "track"
+    26 0000001A ????                <1>     .numHeads   resw 1  ;Number of read "heads"
+    27 0000001C ????????            <1>     .hiddSec    resd 1  ;Number of hidden sectors
+    28 00000020 ????????            <1>     .totSec32   resd 1  ;32 bit count of sectors
+    29                              <1> 
+    30 00000024 ??                  <1>     .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    31 00000025 ??                  <1>     .reserved1  resb 1  ;Reserved byte
+    32 00000026 ??                  <1>     .bootSig    resb 1  ;Extended boot signature (29h)
+    33 00000027 ????????            <1>     .volID      resd 1  ;Volume serial number
+    34 0000002B <res Bh>            <1>     .volLab     resb 11 ;Volume label string
+    35 00000036 ????????????????    <1>     .filSysType resb 8  ;File system type string
+    36                              <1> 
+    37                              <1> endstruc
+    38                              <1> 
+    39                              <1> struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
+    40                              <1> 
+    41 00000000 ??????              <1>     .jmpBoot    resb 3
+    42 00000003 ????????????????    <1>     .oemName    resb 8  ;OEM name
+    43 0000000B ????                <1>     .bytsPerSec resw 1  ;Bytes per sector
+    44 0000000D ??                  <1>     .secPerClus resb 1  ;Sectors per cluster
+    45 0000000E ????                <1>     .revdSecCnt resw 1  ;Number of reserved sectors
+    46 00000010 ??                  <1>     .numFATs    resb 1  ;Number of FATs on media
+    47 00000011 ????                <1>     .rootEntCnt resw 1  ;Number of entries in Root directory
+    48 00000013 ????                <1>     .totSec16   resw 1  ;Number of sectors on medium
+    49 00000015 ??                  <1>     .media      resb 1  ;Media descriptor byte
+    50 00000016 ????                <1>     .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
+    51 00000018 ????                <1>     .secPerTrk  resw 1  ;Number of sectors per "track"
+    52 0000001A ????                <1>     .numHeads   resw 1  ;Number of read "heads"
+    53 0000001C ????????            <1>     .hiddSec    resd 1  ;Number of hidden sectors
+    54 00000020 ????????            <1>     .totSec32   resd 1  ;32 bit count of sectors
+    55                              <1> 
+    56 00000024 ????????            <1>     .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
+    57 00000028 ????                <1>     .extFlags   resw 1  ;Extended Flags word
+    58 0000002A ????                <1>     .FSver      resw 1  ;File system version word, must be 0
+    59 0000002C ????????            <1>     .RootClus   resd 1  ;First Cluster of Root Directory
+    60 00000030 ????                <1>     .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
+    61 00000032 ????                <1>     .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
+    62 00000034 <res Ch>            <1>     .reserved   resb 12 ;Reserved 12 bytes
+    63                              <1> 
+    64 00000040 ??                  <1>     .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    65 00000041 ??                  <1>     .reserved1  resb 1  ;Reserved byte
+    66 00000042 ??                  <1>     .bootSig    resb 1  ;Extended boot signature (29h)
+    67 00000043 ????????            <1>     .volID      resd 1  ;Volume serial number
+    68 00000047 <res Bh>            <1>     .volLab     resb 11 ;Volume label string
+    69 00000052 ????????????????    <1>     .filSysType resb 8  ;File system type string
+    70                              <1> 
+    71                              <1> endstruc
+    72                              <1> 
+    73                              <1> 
+    74                              <1> struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
+    75                              <1> 
+    76 00000000 ??????              <1>     .jmpBoot                resb 3 
+    77 00000003 ????????????????    <1>     .oemName                resb 8  ;OEM name
+    78 0000000B <res 35h>           <1>     .MustBeZero             resb 53 ;Must be 0, 53 bytes
+    79 00000040 ????????????????    <1>     .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
+    80 00000048 ????????????????    <1>     .volumeLength           resq 1  ;Volume Length in sectors
+    81 00000050 ????????            <1>     .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
+    82 00000054 ????????            <1>     .FATlength              resd 1  ;FAT length, in sectors
+    83 00000058 ????????            <1>     .clusterHeapOffset      resd 1  ;Start of data area, in sectors
+    84 0000005C ????????            <1>     .clusterCount           resd 1  ;Number of clusters on medium
+    85 00000060 ????????            <1>     .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
+    86 00000064 ????????            <1>     .volumeSerialNum        resd 1  ;Volume Serial Number
+    87 00000068 ????                <1>     .FSrevision             resw 1  ;Should be 0001 (v1.00)
+    88 0000006A ????                <1>     .volumeFlags            resw 1  ;Volume Flags, refer to documentation
+    89 0000006C ??                  <1>     .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+    90 0000006D ??                  <1>     .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
+    91 0000006E ??                  <1>     .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
+    92 0000006F ??                  <1>     .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
+    93 00000070 ??                  <1>     .percentInUse           resb 1  ;Rounded down. FFh means unknown
+    94 00000071 ??????????????      <1>     .reserved               resb 7  ;Reserved for alignment
+    95                              <1> bpbExLen    equ $ - bpbEx
+    96                              <1> endstruc
+     6                                  %include "dosStruc.inc"
+     7                              <1> 
+     8                              <1> ;-------------------------------------------------------;
+     9                              <1> ; This include file contains miscellaneous internal     ;
+    10                              <1> ; SCP/DOS structures.                                   ;
+    11                              <1> ;-------------------------------------------------------;
+    12                              <1> 
+    13                              <1> ;------------------------------------------------------------------------;
+    14                              <1> ; Each mass storage device up to LASTDRIVE gets a DPB, describing 
+    15                              <1> ; its file system structure. This is used to locate files and structures
+    16                              <1> ; on the device itself and to translate file requests to cluster chains
+    17                              <1> ; to LBAs to pass to the disk driver..
+    18                              <1> ; The DPBs form a linked list, with each DPB formed after the devices 
+    19                              <1> ; drivers Initialise routine has been called.
+    20                              <1> ;------------------------------------------------------------------------;
+    21                              <1> struc dpb        ;Drive Parameter Block
+    22                              <1> 
+    23 00000000 ??                  <1>     .bDriveNumber            resb 1  ;Drive number (0=A, 1=B ...)
+    24 00000001 ??                  <1>     .bUnitNumber             resb 1  ;Unit number in device
+    25 00000002 ??                  <1>     .bBytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+    26 00000003 ??                  <1>     .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1
+    27                              <1> ;                                       i.e. (2^bSectorsPerClusterShift) - 1
+    28 00000004 ??                  <1>     .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent
+    29 00000005 ????????            <1>     .dFAToffset              resd 1  ;Vol rel offset of first FAT, in sectors
+    30 00000009 ??                  <1>     .bNumberOfFATs           resb 1  ;Number of FATs
+    31 0000000A ????                <1>     .wNumberRootDirEntries   resw 1  ;In sectors
+    32 0000000C ????????            <1>     .dClusterHeapOffset      resd 1  ;Start of data area, in sectors
+    33 00000010 ????????            <1>     .dClusterCount           resd 1  ;Total number of clusters (volume size)
+    34 00000014 ????????            <1>     .dFATlength              resd 1  ;FAT length, in sectors
+    35 00000018 ????????            <1>     .dFirstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
+    36 0000001C ????????????????    <1>     .qDriverHeaderPtr        resq 1  ;Pointer to device driver header
+    37 00000024 ??                  <1>     .bMediaDescriptor        resb 1  ;Media descriptor
+    38 00000025 ??                  <1>     .bAccessFlag             resb 1  ;Access Flag (0 if accessed, else -1)
+    39 00000026 ????????????????    <1>     .qNextDPBPtr             resq 1  ;Pointer to next DPB, -1 if at end
+    40 0000002E ????????            <1>     .dFirstFreeCluster       resd 1  ;Starting cluster of free space search
+    41 00000032 ????????            <1>     .dNumberOfFreeClusters   resd 1  ;Number of free clusters, -1 unknown
+    42                              <1> 
+    43                              <1> endstruc
+    44                              <1> 
+    45                              <1> ;------------------------------------------------------------------------;
+    46                              <1> ; Each mass storage device up to LASTDRIVE has a CDS associated with it.
+    47                              <1> ; All disk pathing requests go via the CDS for that drive.
+    48                              <1> ; The default drive is the last accessed drive, this number is stored
+    49                              <1> ; in the DOS data area.
+    50                              <1> ; The CDS is stored as an array with the offset into the array being 
+    51                              <1> ; given by the drive letter's offset into the alphabet (with A=0).
+    52                              <1> ;
+    53                              <1> ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
+    54                              <1> ;------------------------------------------------------------------------;
+    55                              <1> struc cds       ;Current Directory structure
+    56 00000000 <res 43h>           <1>     .sCurrentPath        resb 67    ;Current Directory Path String
+    57 00000043 ????                <1>     .wFlags              resw 1 ;CDS Flags - 
+    58 00000045 ????????????????    <1>     .qDPBPtr             resq 1 ;Ptr to the DPB of the dev using this CDS
+    59 0000004D ????????            <1>     .dStartCluster       resd 1 ;Starting cluster of the directory on disk
+    60 00000051 ????????????????    <1>     .qReserved           resq 1 ;Reserved for future expansions
+    61 00000059 ????                <1>     .wBackslashOffset    resw 1 ;How many chars to start of current dir in the 
+    62                              <1> ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
+    63                              <1> ; another, we save the number of chars to skip to that deep level).
+    64                              <1> ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
+    65                              <1> ; Flags: Bit 15 set = Network drive
+    66                              <1> ;        Bit 14 set = Physical drive
+    67                              <1> ;        Bit 13 set = JOIN'ed drive
+    68                              <1> ;        Bit 12 set = SUBST'ed drive
+    69                              <1> ;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
+    70                              <1> endstruc
+    71                              <1> 
+    72                              <1> ;------------------------------------------------------------------------;
+    73                              <1> ; The SFT is a way to allow applications to open file handles to files 
+    74                              <1> ; and devices. As things stand, the SFT chain will have 5 file handles
+    75                              <1> ; under the first header, and then a second header will be linked to the 
+    76                              <1> ; first one after CONFIG.SYS has been read, to allow for FILES= to specify
+    77                              <1> ; a size for the second SFT (default 10 files). Same for System FCBs, 
+    78                              <1> ; using the FCBS= command. Default FCBS=5.
+    79                              <1> ;
+    80                              <1> ; A file handle describes the file, and the location within the file that
+    81                              <1> ; we are reading. The file handle can be manipulated without the file
+    82                              <1> ; being in memory, thus allowing the user to access data without needing 
+    83                              <1> ; to take up large portions of memory. Similarly, file handles allow for
+    84                              <1> ; accessing devices, by treating them as files with their drivers 
+    85                              <1> ; responding and translating the manipulations of the file handle itself.
+    86                              <1> ; Neither the driver nor the application should see or use the SFT for
+    87                              <1> ; the handle, as it is subject to change (and will change when file 
+    88                              <1> ; sharing provisions are included). The DOS will make requests to the 
+    89                              <1> ; driver in a generic way and the driver will respond, with DOS keeping
+    90                              <1> ; track of the information in the SFT entry for that handle. 
+    91                              <1> ;
+    92                              <1> ; One SFT entry can have multiple handles and multiple SFT entries
+    93                              <1> ; can point to the same file. It all depends on what the applications 
+    94                              <1> ; want to do with the File.
+    95                              <1> ;
+    96                              <1> ; !!!!IMPORTANT!!!!
+    97                              <1> ; Currently there are plans for File Sharing, but I include minimal 
+    98                              <1> ; provisions for it. I really just wanna get a DOS out the door.
+    99                              <1> ;
+   100                              <1> ;Each SFT may look like this:
+   101                              <1> ;sysvars-->sfth------------>sfth------------>|ENDOFLIST|
+   102                              <1> ;            |                |
+   103                              <1> ;       wNumFiles*sft    wNumFiles*sft
+   104                              <1> ;
+   105                              <1> ; Two SFT chains are built; one for files, and a one for so called 
+   106                              <1> ; System FCBs.
+   107                              <1> ;
+   108                              <1> ; Each SFT header has an array of SFT's below it, with the number of 
+   109                              <1> ; SFTs given by wNumFiles. The SFT headers form a linked list.
+   110                              <1> ;
+   111                              <1> ; DEFAULT FILES=15, MINIMUM FILES=5
+   112                              <1> ; DEFAULT FCBS=5, MINIMUM FCBS=5
+   113                              <1> ;------------------------------------------------------------------------;
+   114                              <1> struc sfth   ;System file table header
+   115                              <1> ; This is the SFT header.
+   116                              <1> ; This structure comes before the start of the first file in the array/table.
+   117 00000000 ????????????????    <1>     .qNextSFTPtr resq 1    ;Pointer to the next SFT
+   118 00000008 ????                <1>     .wNumFiles   resw 1    ;Number of files in this table
+   119                              <1> endstruc
+   120                              <1> 
+   121                              <1> struc sft
+   122                              <1> ;This is the file struc itself
+   123 00000000 ????                <1>     .wNumHandles resw 1    ;Number of handles pointing to this file
+   124 00000002 ????                <1>     .wOpenMode   resw 1    ;Bit 15 set if opened via FCB
+   125 00000004 ??                  <1>     .bFileAttrib resb 1    ;Regular File Attributes
+   126 00000005 ????                <1>     .wDeviceInfo resw 1    ;Includes Device number
+   127 00000007 ????????????????    <1>     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
+   128 0000000F ????????            <1>     .dStartClust resd 1    ;Start cluster of file
+   129 00000013 ????                <1>     .wTime       resw 1    ;File Time
+   130 00000015 ????                <1>     .wDate       resw 1    ;File Date
+   131 00000017 ????????            <1>     .dFileSize   resd 1    ;File Size, in bytes
+   132 0000001B ????????            <1>     .dCurntOff   resd 1    ;Current Offset in file, in bytes
+   133 0000001F ????                <1>     .wRelClust   resw 1    ;Relative cluster in file of the last cluster accessed
+   134 00000021 ????????            <1>     .dDirSect    resd 1    ;Relative number of sector containing directory entry 
+   135 00000025 ??                  <1>     .bNumDirEnt  resb 1    ;Number of dir entry within sector (byte offset/32)
+   136 00000026 <res Bh>            <1>     .sFCBName    resb 11   ;8.3 Filename
+   137 00000031 ????????????????    <1>     .qPSPOwner   resq 1    ;Address of PSP of program which first opened this file
+   138 00000039 ????????            <1>     .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
+   139                              <1> endstruc
+   140                              <1> 
+   141                              <1> ;------------------------------------------------------------------------;
+   142                              <1> ; Buffers allow for buffered drive IO, by first transferring a sector 
+   143                              <1> ; to an internal buffer, and then copying it to the specified location
+   144                              <1> ; in memory. The buffer is kept in the buffer chain,  in the event that 
+   145                              <1> ; another request for the same sector from the same device is made, so 
+   146                              <1> ; that is can be read from the device directly. Buffers are uniform in 
+   147                              <1> ; size, selected according to the largest detected sector size during 
+   148                              <1> ; the initial loadup.
+   149                              <1> ;
+   150                              <1> ; The buffer pointer in SysVars points to most recently used Buffer
+   151                              <1> ;
+   152                              <1> ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
+   153                              <1> ;------------------------------------------------------------------------;
+   154                              <1> 
+   155                              <1> struc bufferHdr
+   156 00000000 ????????????????    <1>     .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
+   157 00000008 ??                  <1>     .driveNumber resb  1   ;Drive number the buffer is used for
+   158 00000009 ??                  <1>     .bufferFlags resb  1   ;Standard Flags
+   159 0000000A ????????            <1>     .bufferLBA   resd  1   ;LBA the buffer contains
+   160 0000000E ??                  <1>     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
+   161 0000000F ??                  <1>     .bufFAToff   resb  1   ;Sector offset of the backup copy of the FAT on disk
+   162 00000010 ????????????????    <1>     .driveDPBPtr resq  1   ;Pointer to the device DPB block
+   163                              <1> endstruc
+     7                                  
+     8                                  Segment dSeg nobits align=1 
+     9 00000000 ????????????????            dosSegPtr   resq 1    ;Pointer to the data Segment itself
+    10 00000008 ??                          bootDrive   resb 1    ;The Int 33h device we booted from
+    11 00000009 <res Dh>                    requestHdr  resb 13    ;The device driver header
+    12 00000016 <res 14h>                               resb 20    ;Reserve xtra space for cmd data, with padding
+    13 0000002A ????????????????            sysVarsPtr  resq 1    ;Pointer to dpbHeadPtr, head of Sys Vars structure below
+    14 00000032 ????????????????            mcbChainPtr resq 1    ;Pointer to the MCB chain
+    15 0000003A ????????????????            dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain
+    16 00000042 ????????????????            sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
+    17 0000004A ????????????????            clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header
+    18                                      ;                    The last driver loaded with the CLOCK$ bit[3] set 
+    19 00000052 ????????????????            conPtr      resq 1    ;Pointer to the current active CON device header 
+    20                                      ;                    The last driver loaded with the STDIN bit[0] set
+    21 0000005A ????                        maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)
+    22 0000005C ????????????????            bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain
+    23 00000064 ????????????????            cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array
+    24 0000006C ????????????????            sfcbHeadPTr resq 1    ;Pointer to the head of the System FCB chain
+    25 00000074 ????                        numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
+    26 00000076 ??                          numMSDdrv   resb 1    ;Number of mass storage devices detected in system
+    27 00000077 ??                          lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
+    28 00000078 ??                          numJoinDrv  resb 1    ;Number of Joined Drives
+    29 00000079 <res 22h>                   nulDevHdr   resb drvHdrLen
+    30                                  
+    31                                  
+    32 0000009B ??                          inDOS       resb 1    ;Inc on each DOS call, dec when leaving
+    33 0000009C ??                          breakFlag   resb 1    ;If set, check for CTRL+C on all DOS calls
+    34 0000009D ??                          defaultDrv  resb 1    ;Default, last accessed drive
+    35                                  
+    36 0000009E <res 148h>                  critStack   resq 41
+    37 000001E6 ????????????????            critStakTop resq 1
+    38 000001EE <res 638h>                  IOStack     resq 199
+    39 00000826 ????????????????            IOStakTop   resq 1
+    40 0000082E <res 638h>                  DiskStack   resq 199
+    41 00000E66 ????????????????            DiskStakTop resq 1
+    42                                      dSegLen     equ     $
+    43                                  
+    44                                  Segment loaderSeg align=1
+    45                                  ; We arrive here with the following values in the registers.
+    46                                  ; rbx =  LBA of first Logical Block after SCP/BIOS
+    47                                  ; dx  = Int 33h boot device number
+    48                                  ; fs  = userbase pointer (pointer to first usable block of RAM)
+    49 00000000 55AA                        dw 0AA55h           ;Initial signature
+    50 00000002 6687DB                      xchg bx, bx
+    51 00000005 64881425[08000000]          mov byte fs:[bootDrive], dl ;Save the boot drive in memory
+    52                                  
+    53 0000000D B9000100C0                  mov ecx, 0C0000100h ;Read FS MSR
+    54 00000012 0F32                        rdmsr
+    55 00000014 89D7                        mov edi, edx        ;Get the hi dword, and clear the upper bytes
+    56 00000016 48C1E720                    shl rdi, 20h        ;Shift high
+    57 0000001A 89C7                        mov edi, eax        ;Get the low dword in
+    58                                  
+    59 0000001C 6448893C25-                 mov qword fs:[dosSegPtr], rdi 
+    59 00000021 [00000000]         
+    60 00000025 4889FA                      mov rdx, rdi    ;Save the start of dosSeg in rdx 
+    61 00000028 4881C7[6E0E0000]            add rdi, dSegLen ;Move destination past end of data area
+    62 0000002F 488D35(00000000)            lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
+    63 00000036 B900100000                  mov ecx, 1000h
+    64 0000003B F348A5                      rep movsq
+    65                                  ;Modify the pointers in nData before putting them in the data area
+    66                                      ;add qword [nData.nxtPtr], rdx
+    67                                      ;add qword [nData.strPtr], rdx
+    68                                      ;add qword [nData.intPtr], rdx
+    69 0000003E 6687DB                      xchg bx, bx
+    70                                  
+    71 00000041 48B8-                       mov rax, msdDriver
+    71 00000043 [6F03000000000000] 
+    72 0000004B 4801C2                      add rdx, rax
+    73 0000004E 30C0                        xor al, al 
+    74 00000050 FFD2                        call rdx
+    75                                  
+    76 00000052 488D2D12000000              lea rbp, qword [startmsg]   ;Get the absolute address of message
+    77 00000059 B804130000                  mov eax, 1304h
+    78 0000005E CD30                        int 30h
+    79                                  l1:
+    80 00000060 6631C0                      xor ax, ax
+    81 00000063 CD36                        int 36h
+    82 00000065 B40E                        mov ah, 0Eh
+    83 00000067 CD30                        int 30h
+    84 00000069 EBF5                        jmp short l1
+    85                                  
+    86 0000006B 0A0D5374617274696E-     startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+    86 00000074 67205343502F444F53-
+    86 0000007D 2E2E2E0A0D00       
+    87                                  nData:
+    88 00000083 [6100000000000000]          dq conHdr
+    89 0000008B 0480                        dw 08004h
+    90 0000008D [0902000000000000]          dq nulStrat
+    91 00000095 [0F02000000000000]          dq nulIntr
+    92 0000009D 4E554C2020202020            db "NUL     " ;Default NUL data
+    93                                  
+    94                                  Segment resSeg follows=loaderSeg align=1 vfollows=dSeg valign=1 
+    95                                  ;-----------------------------------:
+    96                                  ;       Misc System routines        :
+    97                                  ;-----------------------------------:
+    98                                  findLRUBuffer: 
+    99                                  ;Finds least recently used buffer, links it and returns ptr to it in rbx
+   100                                  ;Input: Nothing
+   101                                  ;Output: rbx = Pointer to the buffer to use
+   102 00000000 52                          push rdx
+   103 00000001 488B1D(5C000000)            mov rbx, qword [bufHeadPtr]
+   104 00000008 48813BFFFFFFFF              cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
+   105 0000000F 7502                        jne .flb1
+   106 00000011 5A                          pop rdx
+   107 00000012 C3                          ret
+   108                                  .flb1:
+   109 00000013 4889DA                      mov rdx, rbx    ;Save a ptr to the previous buffer header
+   110 00000016 488B1A                      mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
+   111 00000019 48813BFFFFFFFF              cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
+   112 00000020 75F1                        jne .flb1   ;If not LRU, keep walking, else process
+   113 00000022 48C702FFFFFFFF              mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
+   114 00000029 488B15(5C000000)            mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
+   115 00000030 48891D(5C000000)            mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
+   116 00000037 488913                      mov qword [rbx + bufferHdr.nextBufPtr], rdx
+   117 0000003A 5A                          pop rdx
+   118 0000003B C3                          ret
+   119                                  
+   120                                  findDPB:
+   121                                  ;Finds the DPB for a given drive
+   122                                  ;Input:   dl = Drive number (0=A, 1=B etc...)
+   123                                  ;Output: al = 00, rbx = Pointer to the DPB
+   124                                  ;        al = -1, Failed, no DPB for device, rbx destroyed
+   125 0000003C 488B1D(3A000000)            mov rbx, qword [dpbHeadPtr]
+   126                                  .fd1:
+   127 00000043 30C0                        xor al, al
+   128 00000045 3813                        cmp byte [rbx + dpb.bDriveNumber], dl
+   129 00000047 740F                        je .fd2
+   130 00000049 488B5B26                    mov rbx, qword [rbx + dpb.qNextDPBPtr]
+   131 0000004D B0FF                        mov al, -1
+   132 0000004F 4881FBFFFFFFFF              cmp rbx, -1 ;If rbx followed last item in list, no DPB exists for dl
+   133 00000056 75EB                        jne .fd1
+   134                                  .fd2:
+   135 00000058 C3                          ret
+   136                                  ;-----------------------------------:
+   137                                  ;       File System routines        :
+   138                                  ;-----------------------------------:
+   139                                  FATprocs:
+   140                                  ;-----------------------------------:
+   141                                  ;        Interrupt routines         :
+   142                                  ;-----------------------------------:
+   143                                  int49hHook:    ;Called with char to transfer in al
+   144 00000059 50                          push rax
+   145 0000005A B40E                        mov ah, 0Eh
+   146 0000005C CD30                        int 30h
+   147 0000005E 58                          pop rax
+   148 0000005F 48CF                        iretq
+   149                                  ;-----------------------------------:
+   150                                  ;          Driver routines          :
+   151                                  ;-----------------------------------:
+   152                                  drivers:
+   153                                  conHdr:
+   154 00000061 [8300000000000000]          dq auxHdr
+   155 00000069 1308                        dw 0813h
+   156 0000006B [F901000000000000]          dq commonStrat
+   157 00000073 [1002000000000000]          dq conDriver
+   158 0000007B 434F4E2020202020            db "CON     "
+   159                                  auxHdr:
+   160 00000083 [A500000000000000]          dq prnHdr
+   161 0000008B 0080                        dw 08000h
+   162 0000008D [F901000000000000]          dq commonStrat
+   163 00000095 [C402000000000000]          dq com1Intr
+   164 0000009D 4155582020202020            db "AUX     "
+   165                                  prnHdr:
+   166 000000A5 [C700000000000000]          dq clkHdr
+   167 000000AD 40A0                        dw 0A040h
+   168 000000AF [F901000000000000]          dq commonStrat
+   169 000000B7 [9301000000000000]          dq lpt1Hdr
+   170 000000BF 50524E2020202020            db "PRN     "
+   171                                  clkHdr:
+   172 000000C7 [E900000000000000]          dq msdHdr
+   173 000000CF 0880                        dw 08008h
+   174 000000D1 [F901000000000000]          dq commonStrat
+   175 000000D9 [C402000000000000]          dq clkDriver
+   176 000000E1 434C4F434B242020            db "CLOCK$  "
+   177                                  msdHdr:
+   178 000000E9 [0B01000000000000]          dq com1Hdr
+   179 000000F1 4008                        dw 00840h
+   180 000000F3 [F901000000000000]          dq commonStrat
+   181 000000FB [6F03000000000000]          dq msdDriver
+   182 00000103 0000000000000000            db 0,0,0,0,0,0,0,0
+   183                                  com1Hdr:
+   184 0000010B [2D01000000000000]          dq com2Hdr
+   185 00000113 0080                        dw 08000h
+   186 00000115 [F901000000000000]          dq commonStrat
+   187 0000011D [C402000000000000]          dq com1Intr
+   188 00000125 434F4D3120202020            db "COM1    "
+   189                                  com2Hdr:
+   190 0000012D [4F01000000000000]          dq com3Hdr
+   191 00000135 0080                        dw 08000h
+   192 00000137 [F901000000000000]          dq commonStrat
+   193 0000013F [CD02000000000000]          dq com2Intr
+   194 00000147 434F4D3220202020            db "COM2    "
+   195                                  com3Hdr:
+   196 0000014F [7101000000000000]          dq com4Hdr
+   197 00000157 0080                        dw 08000h
+   198 00000159 [F901000000000000]          dq commonStrat
+   199 00000161 [D602000000000000]          dq com3Intr
+   200 00000169 434F4D3320202020            db "COM3    "
+   201                                  com4Hdr:
+   202 00000171 [9301000000000000]          dq lpt1Hdr
+   203 00000179 0080                        dw 08000h
+   204 0000017B [F901000000000000]          dq commonStrat
+   205 00000183 [DF02000000000000]          dq com4Intr
+   206 0000018B 434F4D3420202020            db "COM4    "
+   207                                  lpt1Hdr:
+   208 00000193 [B501000000000000]          dq lpt2Hdr
+   209 0000019B 40A0                        dw 0A040h
+   210 0000019D [F901000000000000]          dq commonStrat
+   211 000001A5 [5F03000000000000]          dq lptDriver
+   212 000001AD 4C50543120202020            db "LPT1    "
+   213                                  lpt2Hdr:
+   214 000001B5 [D701000000000000]          dq lpt3Hdr
+   215 000001BD 40A0                        dw 0A040h
+   216 000001BF [F901000000000000]          dq commonStrat
+   217 000001C7 [5F03000000000000]          dq lptDriver
+   218 000001CF 4C50543220202020            db "LPT2    "
+   219                                  lpt3Hdr:
+   220 000001D7 FFFFFFFFFFFFFFFF            dq -1
+   221 000001DF 40A0                        dw 0A040h
+   222 000001E1 [F901000000000000]          dq commonStrat
+   223 000001E9 [5F03000000000000]          dq lptDriver
+   224 000001F1 4C50543320202020            dq "LPT3    "
+   225                                  
+   226                                  commonStrat:
+   227                                  ;DOS calls this function with rbx=Ptr to request header
+   228                                  ;DOS also sets fs to point to its data segment when entered
+   229 000001F9 48891D01000000              mov qword [reqHdrPtr], rbx
+   230 00000200 C3                          ret
+   231 00000201 0000000000000000        reqHdrPtr  dq 0    ;Where the default device drivers store the ReqPtr
+   232                                  
+   233                                  nulStrat:
+   234 00000209 66C743030001                mov word [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+   235                                  nulIntr:
+   236 0000020F C3                          ret
+   237                                  
+   238                                  conDriver:
+   239 00000210 50                          push rax
+   240 00000211 53                          push rbx
+   241 00000212 488D1DE8FFFFFF              lea rbx, qword [reqHdrPtr]
+   242 00000219 8A4302                      mov al, byte [rbx + drvReqHdr.cmdcde]
+   243 0000021C 30C0                        xor al, al
+   244 0000021E 7421                        jz conInit
+   245 00000220 3C04                        cmp al, 4
+   246 00000222 7446                        jz conRead
+   247 00000224 3C05                        cmp al, 5
+   248 00000226 745F                        jz conNondestructiveRead
+   249 00000228 3C06                        cmp al, 6
+   250 0000022A 740C                        jz conExit
+   251 0000022C 3C07                        cmp al, 7
+   252 0000022E 746A                        jz conFlushInputBuffers
+   253 00000230 3C08                        cmp al, 8
+   254 00000232 7472                        jz conWrite
+   255 00000234 3C09                        cmp al, 9
+   256 00000236 746E                        jz conWrite
+   257                                  ;All other cases fall through here
+   258                                  conExit:
+   259 00000238 66814B030001                or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+   260 0000023E 5B                          pop rbx
+   261 0000023F 58                          pop rax
+   262 00000240 C3                          ret
+   263                                  conInit:    ;Function 0
+   264 00000241 52                          push rdx
+   265 00000242 E853000000                  call conFlushInputBuffers  ;Call to flush keyboard buffer
+   266 00000247 B800050000                  mov eax, 0500h  ;Set page zero as the default page
+   267 0000024C CD30                        int 30h
+   268 0000024E B402                        mov ah, 02h
+   269 00000250 31D2                        xor edx, edx    ;Set screen cursor to top right corner
+   270 00000252 88D7                        mov bh, dl      ;Set cursor for page 0
+   271 00000254 CD30                        int 30h
+   272 00000256 B707                        mov bh, 07h     ;Grey/Black attribs
+   273 00000258 B800060000                  mov eax, 0600h  ;Clear whole screen
+   274 0000025D CD30                        int 30h
+   275 0000025F 5A                          pop rdx
+   276 00000260 EBD6                        jmp short conExit
+   277                                  conIORead:
+   278 00000262 66C743030380                mov word [rbx + drvReqHdr.status], 8003h    ;Error, unknown command!
+   279 00000268 EBCE                        jmp short conExit
+   280                                  conRead:    ;Function 4
+   281 0000026A 57                          push rdi
+   282 0000026B 51                          push rcx
+   283 0000026C 488B7B0E                    mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
+   284 00000270 31C9                        xor ecx, ecx    ;Zero the char counter
+   285                                  .cr1:
+   286 00000272 3B4B16                      cmp ecx, dword [rbx + ioReqPkt.tfrlen]
+   287 00000275 7409                        je .cre2
+   288 00000277 31C0                        xor eax, eax
+   289 00000279 CD36                        int 36h
+   290 0000027B AA                          stosb   ;Store char in al into buffer and inc rdi
+   291 0000027C FFC1                        inc ecx
+   292 0000027E EBF2                        jmp short .cr1
+   293                                  .cre2:
+   294 00000280 894B16                      mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+   295 00000283 59                          pop rcx
+   296 00000284 5F                          pop rdi
+   297 00000285 EBB1                        jmp short conExit
+   298                                  conNondestructiveRead:  ;Function 5
+   299 00000287 B401                        mov ah, 01h     ;Get key if exists
+   300 00000289 CD36                        int 36h
+   301 0000028B 7405                        jz .cnr           ;If zero clear => no key, go forwards
+   302                                      ;Keystroke available
+   303 0000028D 88430D                      mov byte [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
+   304 00000290 EBA6                        jmp short conExit
+   305                                  .cnr: ;No keystroke available
+   306 00000292 66C743030003                mov word [rbx + nonDestInNoWaitReqPkt.status], 0300h   ;Set busy bit
+   307 00000298 EB9E                        jmp short conExit
+   308                                  conFlushInputBuffers:   ;Function 7
+   309 0000029A B401                        mov ah, 01      ;Get buffer status
+   310 0000029C CD36                        int 36h
+   311 0000029E 7498                        jz conExit      ;If zero clear => no more keys to read
+   312 000002A0 30E4                        xor ah, ah
+   313 000002A2 CD36                        int 36h ;Read key to flush from buffer
+   314 000002A4 EBF4                        jmp short conFlushInputBuffers
+   315                                  conWrite:   ;Function 8 and 9
+   316 000002A6 56                          push rsi
+   317 000002A7 51                          push rcx
+   318 000002A8 488B730E                    mov rsi, qword [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
+   319 000002AC 31C9                        xor ecx, ecx    ;Zero the char counter
+   320                                  .cw1: 
+   321 000002AE 3B4B16                      cmp ecx, dword [rbx + ioReqPkt.tfrlen]
+   322 000002B1 7407                        je .cw2
+   323 000002B3 AC                          lodsb   ;Get char into al, and inc rsi
+   324 000002B4 CD49                        int 49h ;Fast print char
+   325 000002B6 FFC1                        inc ecx
+   326 000002B8 EBF4                        jmp short .cw1 ;keep printing until all chars printed
+   327                                  .cw2:
+   328 000002BA 894B16                      mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+   329 000002BD 59                          pop rcx
+   330 000002BE 5E                          pop rsi
+   331 000002BF E974FFFFFF                  jmp conExit
+   332                                  
+   333                                  clkDriver:
+   334                                  
+   335                                  comDriver:
+   336                                  com1Intr:
+   337 000002C4 C6059300000000              mov byte [comDevice], 0
+   338 000002CB EB19                        jmp short comIntr
+   339                                  com2Intr:
+   340 000002CD C6058A00000001              mov byte [comDevice], 1
+   341 000002D4 EB10                        jmp short comIntr
+   342                                  com3Intr:
+   343 000002D6 C6058100000002              mov byte [comDevice], 2
+   344 000002DD EB07                        jmp short comIntr
+   345                                  com4Intr:
+   346 000002DF C6057800000003              mov byte [comDevice], 3
+   347                                  comIntr:
+   348 000002E6 50                          push rax
+   349 000002E7 53                          push rbx
+   350 000002E8 51                          push rcx
+   351 000002E9 52                          push rdx
+   352 000002EA 56                          push rsi
+   353 000002EB 488D1D0FFFFFFF              lea rbx, qword [reqHdrPtr]
+   354 000002F2 8A4302                      mov al, byte [rbx + drvReqHdr.cmdcde]
+   355 000002F5 3C04                        cmp al, 4
+   356 000002F7 7418                        jz comRead
+   357 000002F9 3C05                        cmp al, 5
+   358 000002FB 7439                        jz comNondestructiveRead
+   359 000002FD 3C08                        cmp al, 8
+   360 000002FF 743D                        jz comWrite
+   361 00000301 3C09                        cmp al, 9
+   362 00000303 7439                        jz comWrite
+   363                                  ;All other cases fall through here
+   364                                  comExit:
+   365 00000305 66814B030001                or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+   366 0000030B 5E                          pop rsi
+   367 0000030C 5A                          pop rdx
+   368 0000030D 59                          pop rcx
+   369 0000030E 5B                          pop rbx
+   370 0000030F 58                          pop rax
+   371 00000310 C3                          ret
+   372                                  comRead:
+   373 00000311 57                          push rdi
+   374 00000312 488B7B0E                    mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
+   375 00000316 31C9                        xor ecx, ecx    ;Zero the char counter
+   376                                  .cr1:
+   377 00000318 3B4B16                      cmp ecx, dword [rbx + ioReqPkt.tfrlen]
+   378 0000031B 7413                        je .cre2
+   379 0000031D B802000000                  mov eax, 02h    ;Recieve 
+   380 00000322 668B1535000000              mov dx, word [comDevice]    ;Get transacting com device
+   381 00000329 CD34                        int 34h ;Recieve Char
+   382 0000032B AA                          stosb   ;Store char in al into buffer and inc rdi
+   383 0000032C FFC1                        inc ecx
+   384 0000032E EBE8                        jmp short .cr1
+   385                                  .cre2:
+   386 00000330 894B16                      mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+   387 00000333 5F                          pop rdi
+   388 00000334 EBCF                        jmp short comExit
+   389                                  comNondestructiveRead:
+   390 00000336 66C743030002                mov word [rbx + nonDestInNoWaitReqPkt.status], 0200h    ;Set busy bit 
+   391 0000033C EBC7                        jmp short comExit
+   392                                  comWrite:
+   393 0000033E 488B730E                 mov rsi, qword [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
+   394 00000342 31C9                        xor ecx, ecx    ;Zero the char counter
+   395                                  .cw1: 
+   396 00000344 3B4B16                      cmp ecx, dword [rbx + ioReqPkt.tfrlen]
+   397 00000347 7410                        je .cw2
+   398 00000349 AC                          lodsb   ;Get char into al, and inc rsi
+   399 0000034A B401                        mov ah, 01h ;Move function number into ah
+   400 0000034C 668B150B000000              mov dx, word [comDevice]
+   401 00000353 CD34                        int 34h ;Transmit char
+   402 00000355 FFC1                        inc ecx
+   403 00000357 EBEB                        jmp short .cw1 ;keep printing until all chars printed
+   404                                  .cw2:
+   405 00000359 894B16                      mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
+   406 0000035C EBA7                        jmp short comExit
+   407 0000035E 00                      comDevice   db 0
+   408                                  
+   409                                  lptDriver:    ;Drivers for LPT 1, 2, 3
+   410 0000035F 57                          push rdi
+   411 00000360 488D3D9AFEFFFF              lea rdi, qword [reqHdrPtr]
+   412 00000367 66C747030001                mov word [rdi + drvReqHdr.status], 0100h    ;Done bit set
+   413 0000036D 5F                          pop rdi
+   414 0000036E C3                          ret
+   415                                  
+   416                                  msdDriver:
+   417 0000036F 50                          push rax
+   418 00000370 53                          push rbx
+   419 00000371 488D1D89FEFFFF              lea rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rdi
+   420 00000378 8A4302                      mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
+   421 0000037B 3C18                        cmp al, 24  ;Check cmd num is valid
+   422 0000037D 776C                        ja msdError
+   423 0000037F 84C0                        test al, al
+   424 00000381 7471                        jz msdInit
+   425 00000383 3C01                        cmp al, 01
+   426 00000385 0F84FB000000                jz msdMedChk
+   427 0000038B 3C02                        cmp al, 02
+   428 0000038D 0F84F3000000                jz msdBuildBPB
+   429 00000393 3C03                        cmp al, 03
+   430 00000395 0F84EB000000                jz msdIOCTLRead
+   431 0000039B 3C04                        cmp al, 04
+   432 0000039D 0F84E3000000                jz msdRead
+   433 000003A3 3C08                        cmp al, 08
+   434 000003A5 0F84DB000000                jz msdWrite
+   435 000003AB 3C09                        cmp al, 09
+   436 000003AD 0F84D3000000                jz msdWriteVerify
+   437 000003B3 3C0C                        cmp al, 12
+   438 000003B5 0F84CB000000                jz msdIOCTLWrite
+   439 000003BB 3C0D                        cmp al, 13
+   440 000003BD 0F84C3000000                jz msdDevOpen
+   441 000003C3 3C0E                        cmp al, 14
+   442 000003C5 0F84BB000000                jz msdDevClose
+   443 000003CB 3C0F                        cmp al, 15
+   444 000003CD 0F84B3000000                jz msdRemovableMedia
+   445 000003D3 3C13                        cmp al, 19
+   446 000003D5 0F84AB000000                jz msdGenericIOCTL
+   447 000003DB 3C17                        cmp al, 23
+   448 000003DD 0F84A3000000                jz msdGetLogicalDev
+   449 000003E3 3C18                        cmp al, 24
+   450 000003E5 0F849B000000                jz msdSetLogicalDev
+   451                                  msdError:
+   452                                  msdDriverExit:
+   453 000003EB 66814B030001                or word [rbx + drvReqHdr.status], 0100h ;Set done bit
+   454 000003F1 5B                          pop rbx
+   455 000003F2 58                          pop rax
+   456 000003F3 C3                          ret
+   457                                  msdInit:            ;Function 0
+   458 000003F4 CD31                        int 31h ;Get number of Int 33h devices in r8b
+   459 000003F6 4D0FB6C0                    movzx r8, r8b   ;Keeps real count
+   460 000003FA 4489C0                      mov eax, r8d
+   461 000003FD 3C01                        cmp al, 1
+   462 000003FF 7702                        ja .mi1
+   463 00000401 FEC0                        inc al ;Make it two
+   464                                  .mi1:
+   465 00000403 BA05000000                  mov edx, 5
+   466 00000408 39D0                        cmp eax, edx
+   467 0000040A 0F47C2                      cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
+   468 0000040D 8805F0FCFFFF                mov byte [msdHdr+ drvHdr.drvNam], al ;Save num of drvs in drvr hdr
+   469 00000413 88430D                      mov byte [rbx + initReqPkt.numunt], al ;And in req packet
+   470 00000416 440005(76000000)            add byte [numMSDdrv], r8b ;Add the true number of devices to total
+   471 0000041D 31ED                        xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
+   472 0000041F 488D3DA0000000              lea rdi, qword [msdBPBblks]
+   473 00000426 53                          push rbx
+   474                                  .mi2:
+   475 00000427 89EA                        mov edx, ebp
+   476 00000429 488D1DEE020000              lea rbx, qword [driverDataPtr]  ;Get effective address of scratch space
+   477 00000430 31C9                        xor ecx, ecx    ;Sector 0
+   478 00000432 B801820000                  mov eax, 8201h       ;Read 1 sector
+   479 00000437 CD33                        int 33h
+   480 00000439 7249                        jc msdInitError
+   481                                  
+   482 0000043B 488D35DC020000              lea rsi, qword [driverDataPtr]  ;Point to start of data
+   483 00000442 B90F000000                  mov ecx, bpbExLen/8
+   484 00000447 F348A5                      rep movsq   ;Move the BPB data into the right block
+   485                                  
+   486 0000044A FFC5                        inc ebp
+   487 0000044C 4C39C5                      cmp rbp, r8 ;Have we written the BPB for all physical drives?
+   488 0000044F 75D6                        jne .mi2  ;No? Go again
+   489                                  
+   490 00000451 488D3D46000000              lea rdi, qword [msdBPBTbl]  ;Point to start of table
+   491 00000458 488D1567000000              lea rdx, qword [msdBPBblks]
+   492                                  .mi3:
+   493 0000045F 488917                      mov qword [rdi], rdx    ;Move the block entry ptr to rdi
+   494 00000462 4881C278000000              add rdx, bpbExLen      ;Make rdx point to the next block entry
+   495 00000469 FFCD                        dec ebp
+   496 0000046B 75F2                        jnz .mi3  ;If not zero yet, go again
+   497                                  
+   498 0000046D 5B                          pop rbx
+   499 0000046E 488D1529000000              lea rdx, qword [msdBPBTbl]  ;Get far pointer 
+   500 00000475 48895316                    mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
+   501 00000479 488D159E020000              lea rdx, qword [driverDataPtr]
+   502 00000480 4889530E                    mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
+   503                                  msdInitError:
+   504 00000484 5B                          pop rbx
+   505 00000485 C3                          ret
+   506                                  msdMedChk:          ;Function 1
+   507                                  msdBuildBPB:        ;Function 2
+   508                                  msdIOCTLRead:       ;Function 3, returns done
+   509                                  msdRead:            ;Funciton 4
+   510                                  msdWrite:           ;Function 8
+   511                                  msdWriteVerify:     ;Function 9, writes sectors then verifies then
+   512                                  
+   513                                  msdIOCTLWrite:      ;Function 12, returns done
+   514                                  msdDevOpen:         ;Function 13
+   515                                  msdDevClose:        ;Function 14
+   516                                  msdRemovableMedia:  ;Function 15
+   517                                  msdGenericIOCTL:    ;Function 19
+   518                                  msdGetLogicalDev:   ;Function 23
+   519                                  msdSetLogicalDev:   ;Function 24
+   520 00000486 E960FFFFFF                  jmp msdDriverExit
+   521 0000048B 4E4F204E414D452000      msdDefLabel db "NO NAME ",0 ;Default volume label
+   522                                  ;LASTDRIVE default is 5
+   523 00000494 0000000000              msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
+   524 00000499 0000000000              msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
+   525 0000049E 000000000000000000-     msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
+   525 000004A7 000000000000000000-
+   525 000004B0 000000000000000000-
+   525 000004B9 000000000000000000-
+   525 000004C2 00000000           
+   526 000004C6 000000000000000000-     msdBPBblks  db 5*bpbExLen dup (0) ;Max 5 bpb records of exFAT bpb size
+   526 000004CF 000000000000000000-
+   526 000004D8 000000000000000000-
+   526 000004E1 000000000000000000-
+   526 000004EA 000000000000000000-
+   526 000004F3 000000000000000000-
+   526 000004FC 000000000000000000-
+   526 00000505 000000000000000000-
+   526 0000050E 000000000000000000-
+   526 00000517 000000000000000000-
+   526 00000520 000000000000000000-
+   526 00000529 000000000000000000-
+   526 00000532 000000000000000000-
+   526 0000053B 000000000000000000-
+   526 00000544 000000000000000000-
+   526 0000054D 000000000000000000-
+   526 00000556 000000000000000000-
+   526 0000055F 000000000000000000-
+   526 00000568 000000000000000000-
+   526 00000571 000000000000000000-
+   526 0000057A 000000000000000000-
+   526 00000583 000000000000000000-
+   526 0000058C 000000000000000000-
+   526 00000595 000000000000000000-
+   526 0000059E 000000000000000000-
+   526 000005A7 000000000000000000-
+   526 000005B0 000000000000000000-
+   526 000005B9 000000000000000000-
+   526 000005C2 000000000000000000-
+   526 000005CB 000000000000000000-
+   526 000005D4 000000000000000000-
+   526 000005DD 000000000000000000-
+   526 000005E6 000000000000000000-
+   526 000005EF 000000000000000000-
+   526 000005F8 000000000000000000-
+   526 00000601 000000000000000000-
+   526 0000060A 000000000000000000-
+   526 00000613 000000000000000000-
+   526 0000061C 000000000000000000-
+   526 00000625 000000000000000000-
+   526 0000062E 000000000000000000-
+   526 00000637 000000000000000000-
+   526 00000640 000000000000000000-
+   526 00000649 000000000000000000-
+   526 00000652 000000000000000000-
+   526 0000065B 000000000000000000-
+   526 00000664 000000000000000000-
+   526 0000066D 000000000000000000-
+   526 00000676 000000000000000000-
+   526 0000067F 000000000000000000-
+   526 00000688 000000000000000000-
+   526 00000691 000000000000000000-
+   526 0000069A 000000000000000000-
+   526 000006A3 000000000000000000-
+   526 000006AC 000000000000000000-
+   526 000006B5 000000000000000000-
+   526 000006BE 000000000000000000-
+   526 000006C7 000000000000000000-
+   526 000006D0 000000000000000000-
+   526 000006D9 000000000000000000-
+   526 000006E2 000000000000000000-
+   526 000006EB 000000000000000000-
+   526 000006F4 000000000000000000-
+   526 000006FD 000000000000000000-
+   526 00000706 000000000000000000-
+   526 0000070F 000000000000000000-
+   526 00000718 000000000000       
+   527                                  driverDataPtr:
