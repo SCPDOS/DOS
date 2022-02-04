@@ -1,19 +1,25 @@
     .x64p
+    .MODEL FLAT
 
     INCLUDE fatStruc.inc
     INCLUDE dosStruc.inc
     INCLUDE driverStruc.inc
     INCLUDE dosData.inc
+    INCLUDE dosSeg.inc
 
-loadCode SEGMENT BYTE USE64
-    ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT,fs:NOTHING, gs:NOTHING
-    ORG 0
+dataSeg SEGMENT BYTE PUBLIC "BSS"
+    data dSeg <>
+dataSeg ENDS 
+
+loadCode SEGMENT BYTE USE64 PUBLIC "CODE"
+    ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT, fs:dataSeg, gs:NOTHING
+;    ORG 0
 ; We arrive here with the following values in the registers.
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
 ; fs  = userbase pointer (pointer to first usable block of RAM)
     dw 0AA55h           ;Initial signature
-
+    xchg bx, bx
     mov byte ptr fs:[dSeg.bootDrive], dl ;Save the boot drive in memory
 
     mov ecx, 0C0000100h ;Read FS MSR
@@ -33,9 +39,10 @@ loadCode SEGMENT BYTE USE64
     ;add qword ptr [nData.strPtr], rdx
     ;add qword ptr [nData.intPtr], rdx
     xchg bx, bx
+
+    mov rax, OFFSET msdDriver
+    add rdx, rax
     xor al, al 
-    mov rbx, msdDriver
-    add rbx, rdx
     call rbx
 
     lea rbp, qword ptr [startmsg]   ;Get the absolute address of message
@@ -53,14 +60,14 @@ nData drvHdr <conHdr,  08004h, nulStrat, nulIntr, "NUL     "> ;Default NUL data
 
 loadCode ENDS
 
-resCode SEGMENT BYTE USE64
+resCode SEGMENT ;BYTE USE64 PUBLIC "CODE"
     ASSUME cs:FLAT, ds:FLAT, es:FLAT, ss:FLAT,fs:NOTHING, gs:NOTHING
-    ORG 0
+    ;ORG 0
 ;-----------------------------------:
 ;        Data Area Instance         :
 ;-----------------------------------:
-data dSeg <>    ;Initialise data area as BSS 
-    ORG SIZEOF dSeg 
+;data dSeg <>    ;Initialise data area as BSS 
+;    ORG SIZEOF dSeg 
 ;Offset all addresses below here by size of data area since it is uninitialised
 ; to not take up space in the binary file.
 ;-----------------------------------:

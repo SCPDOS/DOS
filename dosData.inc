@@ -2,7 +2,7 @@
 dSeg STRUC 
     dosSegPtr   dq ?    ;Pointer to the data Segment itself
     bootDrive   db ?    ;The Int 33h device we booted from
-    requestHdr  drvReqHdr    <,,,,>   ;The device driver header
+    requestHdr  drvReqHdr <>   ;The device driver header
                 db 20 dup (?)    ;Reserve xtra space for cmd data, with padding
     sysVarsPtr  dq ?    ;Pointer to dpbHeadPtr, head of Sys Vars structure below
     mcbChainPtr dq ?    ;Pointer to the MCB chain
@@ -20,7 +20,7 @@ dSeg STRUC
     numMSDdrv   db ?    ;Number of mass storage devices detected in system
     lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
     numJoinDrv  db ?    ;Number of Joined Drives
-    nulDevHdr   drvHdr <,,,,>
+    nulDevHdr   drvHdr <>
 
 
     inDOS       db ?    ;Incremented on each DOS call, decremented when leaving
