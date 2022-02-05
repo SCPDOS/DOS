@@ -41,7 +41,7 @@ Segment dSeg nobits align=1
     DiskStakTop resq 1
     dSegLen     equ     $
 
-Segment loaderSeg align=1
+Segment .text align=1
 ; We arrive here with the following values in the registers.
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
@@ -109,7 +109,7 @@ nData:
     dq nulIntr
     db "NUL     " ;Default NUL data
 
-Segment resSeg follows=loaderSeg align=1 vfollows=dSeg valign=1 
+Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 
 ;-----------------------------------:
 ;       Misc System routines        :
 ;-----------------------------------:
