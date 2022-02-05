@@ -47,7 +47,6 @@ Segment loaderSeg align=1
 ; dx  = Int 33h boot device number
 ; fs  = userbase pointer (pointer to first usable block of RAM)
     dw 0AA55h           ;Initial signature
-    xchg bx, bx
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
 
     mov ecx, 0C0000100h ;Read FS MSR
@@ -57,7 +56,7 @@ Segment loaderSeg align=1
     mov edi, eax        ;Get the low dword in
 
     mov qword fs:[dosSegPtr], rdi 
-    mov rdx, rdi    ;Save the start of dosSeg in rdx 
+    mov rbp, rdi    ;Save the start of dosSeg in rdx 
     add rdi, dSegLen ;Move destination past end of data area
     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
     mov ecx, 1000h
@@ -67,11 +66,15 @@ Segment loaderSeg align=1
     ;add qword [nData.strPtr], rdx
     ;add qword [nData.intPtr], rdx
     xchg bx, bx
+    mov rbx, conDriver
+    lea rbx, qword [rbp+rbx]
+    xor al, al
+    call rbx
 
-    mov rax, msdDriver
-    add rdx, rax
-    xor al, al 
-    call rdx
+    mov rbx, msdDriver
+    lea rbx, qword [rbp+rbx]
+    xor al, al
+    call rbx
 
     lea rbp, qword [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
@@ -83,7 +86,7 @@ l1:
     int 30h
     jmp short l1
 
-startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+startmsg db "Starting SCP/DOS...",0Ah,0Dh,0
 nData:
     dq conHdr
     dw 08004h
@@ -240,7 +243,7 @@ conDriver:
     push rbx
     lea rbx, qword [reqHdrPtr]
     mov al, byte [rbx + drvReqHdr.cmdcde]
-    xor al, al
+    test al, al
     jz conInit
     cmp al, 4
     jz conRead
@@ -262,7 +265,15 @@ conExit:
     ret
 conInit:    ;Function 0
     push rdx
-    call conFlushInputBuffers  ;Call to flush keyboard buffer
+    ;Flush keyboard buffer
+.ci0:
+    mov ah, 01      ;Get buffer status
+    int 36h
+    jz .ci1      ;If zero clear => no more keys to read
+    xor ah, ah
+    int 36h ;Read key to flush from buffer
+    jmp short .ci0
+.ci1:
     mov eax, 0500h  ;Set page zero as the default page
     int 30h
     mov ah, 02h
@@ -465,7 +476,7 @@ msdInit:            ;Function 0
     mov edx, 5
     cmp eax, edx
     cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
-    mov byte [msdHdr+ drvHdr.drvNam], al ;Save num of drvs in drvr hdr
+    mov byte [msdHdr + drvHdr.drvNam], al ;Save num of drvs in drvr hdr
     mov byte [rbx + initReqPkt.numunt], al ;And in req packet
     add byte [numMSDdrv], r8b ;Add the true number of devices to total
     xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
@@ -490,7 +501,7 @@ msdInit:            ;Function 0
     lea rdi, qword [msdBPBTbl]  ;Point to start of table
     lea rdx, qword [msdBPBblks]
 .mi3:
-    mov qword [rdi], rdx    ;Move the block entry ptr to rdi
+    mov qword [rdi], rdx   ;Move the block entry ptr to rdi
     add rdx, bpbExLen      ;Make rdx point to the next block entry
     dec ebp
     jnz .mi3  ;If not zero yet, go again
@@ -500,6 +511,7 @@ msdInit:            ;Function 0
     mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
     lea rdx, qword [driverDataPtr]
     mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
+    jmp msdDriverExit
 msdInitError:
     pop rbx
     ret
