@@ -10,7 +10,7 @@ Segment dSeg nobits align=1
     bootDrive   resb 1    ;The Int 33h device we booted from
     requestHdr  resb 13    ;The device driver header
                 resb 20    ;Reserve xtra space for cmd data, with padding
-    sysVarsPtr  resq 1    ;Pointer to dpbHeadPtr, head of Sys Vars structure below
+    sysVarsPtr  resq 1    ;Pointer to dpbHeadPtr, head of Sys Vars struc below
     mcbChainPtr resq 1    ;Pointer to the MCB chain
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain
     sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
@@ -228,7 +228,6 @@ lpt3Hdr:
 
 commonStrat:
 ;DOS calls this function with rbx=Ptr to request header
-;DOS also sets fs to point to its data segment when entered
     mov qword [reqHdrPtr], rbx
     ret
 reqHdrPtr  dq 0    ;Where the default device drivers store the ReqPtr
@@ -241,7 +240,7 @@ nulIntr:
 conDriver:
     push rax
     push rbx
-    lea rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqHdrPtr]
     mov al, byte [rbx + drvReqHdr.cmdcde]
     test al, al
     jz conInit
@@ -361,7 +360,7 @@ comIntr:
     push rcx
     push rdx
     push rsi
-    lea rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqHdrPtr]
     mov al, byte [rbx + drvReqHdr.cmdcde]
     cmp al, 4
     jz comRead
@@ -419,7 +418,7 @@ comDevice   db 0
 
 lptDriver:    ;Drivers for LPT 1, 2, 3
     push rdi
-    lea rdi, qword [reqHdrPtr]
+    mov rdi, qword [reqHdrPtr]
     mov word [rdi + drvReqHdr.status], 0100h    ;Done bit set
     pop rdi
     ret
@@ -427,7 +426,7 @@ lptDriver:    ;Drivers for LPT 1, 2, 3
 msdDriver:
     push rax
     push rbx
-    lea rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rdi
+    mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
     mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     cmp al, 24  ;Check cmd num is valid
     ja msdError
