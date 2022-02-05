@@ -61,16 +61,31 @@ Segment loaderSeg align=1
     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
     mov ecx, 1000h
     rep movsq
+
 ;Modify the pointers in nData before putting them in the data area
-    ;add qword [nData.nxtPtr], rdx
-    ;add qword [nData.strPtr], rdx
-    ;add qword [nData.intPtr], rdx
+    add qword [nData + drvHdr.nxtPtr], rbp
+    add qword [nData + drvHdr.strPtr], rbp
+    add qword [nData + drvHdr.intPtr], rbp
+;Copy the Null driver to its location in Sysvars
+    mov ecx, drvHdrLen
+    lea rsi, qword [nData]
+    lea rdi, qword [rbp + nulDevHdr]
+    rep movsb   
+
     xchg bx, bx
+    ;Open NUL
+    lea rbx, qword [rbp + nulDevHdr + drvHdr.strPtr]    ;Get ptr to strat ptr
+    mov rbx, qword [rbx]    ;Get strat ptr
+    xor al, al
+    call rbx
+
+    ;Open CON
     mov rbx, conDriver
     lea rbx, qword [rbp+rbx]
     xor al, al
     call rbx
 
+    ;Open Mass Storage
     mov rbx, msdDriver
     lea rbx, qword [rbp+rbx]
     xor al, al
@@ -179,7 +194,7 @@ clkHdr:
     db "CLOCK$  "
 msdHdr:
     dq com1Hdr
-    dw 00840h
+    dw 00800h   ;Once Generic IO implemented, change to 00840h
     dq commonStrat
     dq msdDriver
     db 0,0,0,0,0,0,0,0
@@ -426,45 +441,55 @@ lptDriver:    ;Drivers for LPT 1, 2, 3
 msdDriver:
     push rax
     push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
     mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     cmp al, 24  ;Check cmd num is valid
-    ja msdError
+    ja .msdError
     test al, al
-    jz msdInit
+    jz .msdInit
     cmp al, 01
-    jz msdMedChk
+    jz .msdMedChk
     cmp al, 02
-    jz msdBuildBPB
+    jz .msdBuildBPB
     cmp al, 03
-    jz msdIOCTLRead
+    jz .msdIOCTLRead
     cmp al, 04
-    jz msdRead
+    jz .msdRead
     cmp al, 08
-    jz msdWrite
+    jz .msdWrite
     cmp al, 09
-    jz msdWriteVerify
+    jz .msdWriteVerify
     cmp al, 12
-    jz msdIOCTLWrite
+    jz .msdIOCTLWrite
     cmp al, 13
-    jz msdDevOpen
+    jz .msdDevOpen
     cmp al, 14
-    jz msdDevClose
+    jz .msdDevClose
     cmp al, 15
-    jz msdRemovableMedia
+    jz .msdRemovableMedia
     cmp al, 19
-    jz msdGenericIOCTL
+    jz .msdGenericIOCTL
     cmp al, 23
-    jz msdGetLogicalDev
+    jz .msdGetLogicalDev
     cmp al, 24
-    jz msdSetLogicalDev
-msdError:
-msdDriverExit:
+    jz .msdSetLogicalDev
+.msdError:
+.msdDriverExit:
     or word [rbx + drvReqHdr.status], 0100h ;Set done bit
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
     pop rbx
     pop rax
     ret
-msdInit:            ;Function 0
+.msdInit:            ;Function 0
     int 31h ;Get number of Int 33h devices in r8b
     movzx r8, r8b   ;Keeps real count
     mov eax, r8d
@@ -479,7 +504,7 @@ msdInit:            ;Function 0
     mov byte [rbx + initReqPkt.numunt], al ;And in req packet
     add byte [numMSDdrv], r8b ;Add the true number of devices to total
     xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
-    lea rdi, qword [msdBPBblks]
+    lea rdi, qword [.msdBPBblks]
     push rbx
 .mi2:
     mov edx, ebp
@@ -487,7 +512,7 @@ msdInit:            ;Function 0
     xor ecx, ecx    ;Sector 0
     mov eax, 8201h       ;Read 1 sector
     int 33h
-    jc msdInitError
+    jc .msdInitError
 
     lea rsi, qword [driverDataPtr]  ;Point to start of data
     mov ecx, bpbExLen/8
@@ -497,8 +522,8 @@ msdInit:            ;Function 0
     cmp rbp, r8 ;Have we written the BPB for all physical drives?
     jne .mi2  ;No? Go again
 
-    lea rdi, qword [msdBPBTbl]  ;Point to start of table
-    lea rdx, qword [msdBPBblks]
+    lea rdi, qword [.msdBPBTbl]  ;Point to start of table
+    lea rdx, qword [.msdBPBblks]
 .mi3:
     mov qword [rdi], rdx   ;Move the block entry ptr to rdi
     add rdx, bpbExLen      ;Make rdx point to the next block entry
@@ -506,33 +531,122 @@ msdInit:            ;Function 0
     jnz .mi3  ;If not zero yet, go again
 
     pop rbx
-    lea rdx, qword [msdBPBTbl]  ;Get far pointer 
+    lea rdx, qword [.msdBPBTbl]  ;Get far pointer 
     mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
     lea rdx, qword [driverDataPtr]
     mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
-    jmp msdDriverExit
-msdInitError:
+    jmp .msdDriverExit
+.msdInitError:
     pop rbx
-    ret
-msdMedChk:          ;Function 1
-msdBuildBPB:        ;Function 2
-msdIOCTLRead:       ;Function 3, returns done
-msdRead:            ;Funciton 4
-msdWrite:           ;Function 8
-msdWriteVerify:     ;Function 9, writes sectors then verifies then
+    jmp .msdDriverExit
+.msdMedChk:          ;Function 1
+;Once the BIOS function is implmented that reads the changeline, use that!
+;For BIOSes that dont support the changeline, the following procedure will 
+; suffice.
+    movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
+    mov dl, byte [.msdBIOSmap + rax]    ;Translate unitnum to BIOS num
+    test dl, 80h    ;If it is a fixed disk, no change!
+    jnz .mmcNoChange
+;Now we test Media Descriptor
+    mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
+    mov rdi, qword [.msdBPBTbl + 8*rax]
+    mov rdi, qword [rdi]    ;Dereference rdi
+    cmp byte [rdi + bpb32.media], dl    ;Compare media descriptor bytes
+    je .mmcUnsure
+.mmcChange: ;Fail safe, always assume the device has changed
+    mov byte [rbx + mediaCheckReqPkt.medret], -1
+    mov qword [rbx + mediaCheckReqPkt.desptr], .msdDefLabel ;Temp, ret def label
+.mmcUnsure:
+    mov byte [rbx + mediaCheckReqPkt.medret], 0
+    jmp .msdDriverExit
+.mmcNoChange:
+    mov byte [rbx + mediaCheckReqPkt.medret], 1
+    jmp .msdDriverExit
 
-msdIOCTLWrite:      ;Function 12, returns done
-msdDevOpen:         ;Function 13
-msdDevClose:        ;Function 14
-msdRemovableMedia:  ;Function 15
-msdGenericIOCTL:    ;Function 19
-msdGetLogicalDev:   ;Function 23
-msdSetLogicalDev:   ;Function 24
-    jmp msdDriverExit
-msdDefLabel db "NO NAME ",0 ;Default volume label
+.msdBuildBPB:        ;Function 2
+    mov rsi, rbx
+    movzx rax, byte [rsi + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
+    mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
+    mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
+    xor ecx, ecx    ;Read Sector 0
+    mov eax, 8201h  ;LBA Read 1 sector
+    int 33h
+    jc .mbbpbError
+    xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
+    movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
+    mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
+    mov rdi, qword [rdi] ;Dereference to get pointer to buffer 
+    mov qword [rbx + bpbBuildReqPkt.bpbptr], rdi ;rdi -> final bpb resting place
+    mov ecx, bpbExLen/8
+    rep movsq   ;Move the BPB data into the right space
+    jmp .msdDriverExit
+.mbbpbError:
+.msdIOCTLRead:       ;Function 3, returns done
+    jmp .msdDriverExit
+.msdRead:            ;Function 4
+    mov rbp, rbx
+    mov ah, 82h ;LBA Read Sectors
+    call .msdBlkIOCommon
+    mov rbx, rbp
+    jmp .msdDriverExit
+.msdWrite:           ;Function 8
+    mov rbp, rbx
+    mov ah, 83h ;LBA Write Sectors
+    call .msdBlkIOCommon
+    mov rbx, rbp
+    jmp .msdDriverExit
+.msdWriteVerify:     ;Function 9, writes sectors then verifies them
+    mov rbp, rbx
+    mov ah, 83h ;LBA Write Sectors
+    call .msdBlkIOCommon
+    mov ah, 84h ;LBA Verify Sectors
+    call .msdBlkIOCommon
+    mov rbx, rbp
+    jmp .msdDriverExit
+.msdIOCTLWrite:      ;Function 12, returns done
+    jmp .msdDriverExit
+.msdDevOpen:         ;Function 13
+    movzx rax, byte [rbx + openReqPkt.unitnm]
+    inc byte [.msdHdlCnt + rax]  ;Inc handle cnt for given unit
+    jmp .msdDriverExit
+.msdDevClose:        ;Function 14
+    movzx rax, byte [rbx + closeReqPkt.unitnm]
+    dec byte [.msdHdlCnt + rax]  ;Dec handle cnt for given unit
+    jmp .msdDriverExit
+.msdRemovableMedia:  ;Function 15
+    movzx rax, byte [rbx + remMediaReqPkt.unitnm]
+    mov al, byte [.msdBIOSmap + rax]    ;Get BIOS number
+    test al, 80h
+    jz .msdDriverExit   ;If removable, busy bit is clear
+    mov word [rbx + remMediaReqPkt.status], 20h ;Set Busy bit
+    jmp .msdDriverExit
+.msdGenericIOCTL:    ;Function 19
+.msdGetLogicalDev:   ;Function 23
+    mov al, byte [.msdCurDev]
+    mov byte [rbx + getDevReqPkt.unitnm], al
+    jmp .msdDriverExit
+.msdSetLogicalDev:   ;Function 24
+    mov al, byte [rbx + getDevReqPkt.unitnm]
+    mov byte [.msdCurDev], al
+    jmp .msdDriverExit
+
+.msdBlkIOCommon:  ;Does block IO
+;Called with rbp containing old rbx value and ah with function number
+;Error handled by caller
+    movzx rax, byte [rbp + ioReqPkt.unitnm]
+    mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
+    mov rcx, qword [rbp + ioReqPkt.strtsc]  ;Get start sector
+    mov al, byte [rbp + ioReqPkt.tfrlen]    ;Get number of sectors, max 255
+    mov rbx, qword [rbp + ioReqPkt.bufptr]  ;Get Memory Buffer
+    int 33h
+    ret
+
+.msdDefLabel db "NO NAME ",0 ;Default volume label
 ;LASTDRIVE default is 5
-msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
-msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
-msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
-msdBPBblks  db 5*bpbExLen dup (0) ;Max 5 bpb records of exFAT bpb size
+.msdCurDev   db 0  ;The device to be referenced by the driver is saved here!
+.msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
+.msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
+.msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
+.msdBPBblks  db 5*bpbExLen dup (0) ;Max 5 bpb records of exFAT bpb size
+
 driverDataPtr:

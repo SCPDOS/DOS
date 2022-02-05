@@ -98,7 +98,7 @@ struc closeReqPkt ;Close Device Request Packet
      
 endstruc
 
-struc remMediaReqPkt ;Removeable Media1 Request Packet
+struc remMediaReqPkt ;Removeable Media Request Packet
 
     drvReqHdrM    ;Common Driver Header Macro
      
@@ -118,15 +118,11 @@ endstruc
 struc getDevReqPkt ;Get Logical Device Request Packet
     
     drvReqHdrM    ;Common Driver Header Macro
-    .getcmd resb 1  ;Command code
-    .cmdsts resw 1  ;Command status word
-
+    
 endstruc
 
 struc setDevReqPkt ;Set Logical Device Request Packet
     
     drvReqHdrM    ;Common Driver Header Macro
-    .setcmd resb 1  ;Command code
-    .cmdsts resw 1  ;Command status word
 
 endstruc
