@@ -72,8 +72,15 @@ Segment .text align=1
     lea rsi, qword [nData]
     lea rdi, qword [rbp + nulDevHdr]
     rep movsb   
-
+;Adjust the addresses in the driver headers 
     xchg bx, bx
+    mov rsi, conHdr ;Point to the first non-NUL dev in chain
+    mov ecx, 12      ;12 drivers in data area
+    lea rsi, qword [rsi + rbp]  ;Get effective addr of driver header
+adjDrivers:
+    call adjustDrvHdr
+    loop adjDrivers
+
     ;Open NUL
     lea rbx, qword [rbp + nulDevHdr + drvHdr.strPtr]    ;Get ptr to strat ptr
     mov rbx, qword [rbx]    ;Get strat ptr
@@ -101,6 +108,15 @@ l1:
     mov ah, 0Eh
     int 30h
     jmp short l1
+adjustDrvHdr:
+;Input: rsi = Effective address of driver in DOS segment
+;       rbp = Ptr to the start of the DOS segment
+;Output: rsi = EA of next header in DOS segment
+    add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
+    add qword [rsi + drvHdr.strPtr], rbp
+    add qword [rsi + drvHdr.intPtr], rbp
+    add rsi, drvHdr_size
+    ret
 
 startmsg db "Starting SCP/DOS...",0Ah,0Dh,0
 nData:
