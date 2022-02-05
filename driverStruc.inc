@@ -11,7 +11,7 @@ struc drvHdr  ;Device Driver Header for character and block devices
     .strPtr resq 1  ;Strategy Entry Pointer
     .intPtr resq 1  ;Interrupt Entry Pointer
     .drvNam resb 8  ;Driver name (Char) or Unit number byte (Block)
-drvHdrLen equ $ - drvHdr
+    
 endstruc
 
 %macro drvReqHdrM 0 ;Driver Request Header Macro
@@ -118,7 +118,7 @@ endstruc
 struc getDevReqPkt ;Get Logical Device Request Packet
     
     drvReqHdrM    ;Common Driver Header Macro
-    
+
 endstruc
 
 struc setDevReqPkt ;Set Logical Device Request Packet

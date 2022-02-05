@@ -8,8 +8,8 @@ BITS 64
 Segment dSeg nobits align=1 
     dosSegPtr   resq 1    ;Pointer to the data Segment itself
     bootDrive   resb 1    ;The Int 33h device we booted from
-    requestHdr  resb 13    ;The device driver header
-                resb 20    ;Reserve xtra space for cmd data, with padding
+    requestHdr  resb ioReqPkt_size   
+    ;The device driver header with space for the largest possible packet
     sysVarsPtr  resq 1    ;Pointer to dpbHeadPtr, head of Sys Vars struc below
     mcbChainPtr resq 1    ;Pointer to the MCB chain
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain
@@ -26,12 +26,13 @@ Segment dSeg nobits align=1
     numMSDdrv   resb 1    ;Number of mass storage devices detected in system
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
     numJoinDrv  resb 1    ;Number of Joined Drives
-    nulDevHdr   resb drvHdrLen
+    nulDevHdr   resb drvHdr_size
 
 
     inDOS       resb 1    ;Inc on each DOS call, dec when leaving
     breakFlag   resb 1    ;If set, check for CTRL+C on all DOS calls
     defaultDrv  resb 1    ;Default, last accessed drive
+    currentPSP  resq 1    ;Address of current PSP
 
     critStack   resq 41
     critStakTop resq 1
@@ -67,7 +68,7 @@ Segment .text align=1
     add qword [nData + drvHdr.strPtr], rbp
     add qword [nData + drvHdr.intPtr], rbp
 ;Copy the Null driver to its location in Sysvars
-    mov ecx, drvHdrLen
+    mov ecx, drvHdr_size
     lea rsi, qword [nData]
     lea rdi, qword [rbp + nulDevHdr]
     rep movsb   
@@ -154,16 +155,48 @@ findDPB:
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
-FATprocs:
+fatProc:
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
-int49hHook:    ;Called with char to transfer in al
+terminateProcess:   ;Int 40h
+functionDispatch:   ;Int 41h Main function dispatcher
+terminateHandler:   ;Int 42h
+ctrlCHandler:       ;Int 43h
+critErrorHandler:   ;Int 44h
+absDiskRead:        ;Int 45h
+;al = Drive number
+;rbx = Memory Buffer address
+;ecx = Number of sectors to read (max 255 for now)
+;rdx = Start LBA to read from
+    movzx rax, al   ;Zero extend DOS drive number 
+    mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
+    xchg rax, rcx
+    xchg rcx, rdx
+    mov ah, 82h
+    int 33h
+    iretq
+absDiskWrite:       ;Int 46h
+    movzx rax, al   ;Zero extend DOS drive number 
+    mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
+    xchg rax, rcx
+    xchg rcx, rdx
+    mov ah, 83h
+    int 33h
+    iretq
+terminateResident:  ;Int 47h
+inDosHandler:       ;Int 48h
+;Called when DOS idle
+    iretq
+fastOutput:         ;Int 49h
+;Called with char to transfer in al
     push rax
     mov ah, 0Eh
     int 30h
     pop rax
     iretq
+passCommand:        ;Int 4Eh
+multiplex:          ;Int 4Fh
 ;-----------------------------------:
 ;          Driver routines          :
 ;-----------------------------------:
@@ -515,7 +548,7 @@ msdDriver:
     jc .msdInitError
 
     lea rsi, qword [driverDataPtr]  ;Point to start of data
-    mov ecx, bpbExLen/8
+    mov ecx, bpbEx_size/8
     rep movsq   ;Move the BPB data into the right block
 
     inc ebp
@@ -526,7 +559,7 @@ msdDriver:
     lea rdx, qword [.msdBPBblks]
 .mi3:
     mov qword [rdi], rdx   ;Move the block entry ptr to rdi
-    add rdx, bpbExLen      ;Make rdx point to the next block entry
+    add rdx, bpbEx_size      ;Make rdx point to the next block entry
     dec ebp
     jnz .mi3  ;If not zero yet, go again
 
@@ -577,7 +610,7 @@ msdDriver:
     mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
     mov rdi, qword [rdi] ;Dereference to get pointer to buffer 
     mov qword [rbx + bpbBuildReqPkt.bpbptr], rdi ;rdi -> final bpb resting place
-    mov ecx, bpbExLen/8
+    mov ecx, bpbEx_size/8
     rep movsq   ;Move the BPB data into the right space
     jmp .msdDriverExit
 .mbbpbError:
@@ -621,6 +654,7 @@ msdDriver:
     mov word [rbx + remMediaReqPkt.status], 20h ;Set Busy bit
     jmp .msdDriverExit
 .msdGenericIOCTL:    ;Function 19
+    jmp .msdDriverExit
 .msdGetLogicalDev:   ;Function 23
     mov al, byte [.msdCurDev]
     mov byte [rbx + getDevReqPkt.unitnm], al
@@ -647,6 +681,6 @@ msdDriver:
 .msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
-.msdBPBblks  db 5*bpbExLen dup (0) ;Max 5 bpb records of exFAT bpb size
+.msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
 
 driverDataPtr:

@@ -87,5 +87,5 @@ struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
     .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
     .percentInUse           resb 1  ;Rounded down. FFh means unknown
     .reserved               resb 7  ;Reserved for alignment
-bpbExLen    equ $ - bpbEx
+    
 endstruc
