@@ -212,7 +212,8 @@ critErrorHandler:   ;Int 44h
     push rcx
     push rdx
     push rdi
-    cld         ;Make String op go forward
+    push rsi
+    cld         ;Make String ops go forward
 
     mov bx, ax  ;Save ah in bh and al in bl (if needed)
     lea rdx, qword [.crlf]
@@ -307,6 +308,7 @@ critErrorHandler:   ;Int 44h
 .validInput:
     mov al, cl  ;Move the offset into .responses into al
 .cehExit:
+    pop rsi
     pop rdi
     pop rdx
     pop rcx
