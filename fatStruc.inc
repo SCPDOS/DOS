@@ -65,6 +65,30 @@ struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
 
 endstruc
 
+struc fatDirEntry
+
+    .name       resb 11 ;8.3 File Name
+    .attribute  resb 1  ;Usual attributes
+    .ntRes      resb 1  ;Reserved 0
+    .crtTimeT   resb 1  ;Count of tenths of a second of file creation time <=199
+    .crtTime    resb 2  ;Creation time, granularity of 2 seconds
+    .crtDate    resb 2  ;Creation date
+    .lastAccDat resb 2  ;Last Read/Write date
+    .fstClusHi  resb 2  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
+    .wrtTime    resb 2  ;Last modification (write) time
+    .wrtDate    resb 2  ;Last modification (write) date
+    .fstClusLo  resb 2  ;Lo word of 1st data cluster for file/dir
+    .fileSize   resb 4  ;32-bit quantity with size of file described by entry
+
+endstruc
+;Directory attribute equates
+    dirReadOnly     equ 01h
+    dirHidden       equ 02h
+    dirSystem       equ 04h
+    dirVolumeID     equ 08h
+    dirDirectory    equ 10h
+    dirArchive      equ 20h
+    dirLongName     equ dirReadOnly | dirHidden | dirSystem | dirVolumeID
 
 struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
 
@@ -87,5 +111,17 @@ struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
     .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
     .percentInUse           resb 1  ;Rounded down. FFh means unknown
     .reserved               resb 7  ;Reserved for alignment
-    
+
+endstruc
+
+struc FSInfo
+
+    .leadSig    resb 4  ;Leading Signature, should be 041615252h
+    .reserved1  resb 480
+    .strucSig   resb 4  ;Should be 061417272h
+    .freeCount  resb 4  ;Contains the last known free cluster on volume
+    .nextFree   resb 4  ;Contains the first known free cluster on volume
+    .reserved2  resb 12 ;Should be 0
+    .trailSig   resb 4  ;Should be 0AA550000h
+
 endstruc

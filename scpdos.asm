@@ -28,11 +28,12 @@ Segment dSeg nobits align=1
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 
-
+;Swappable, process related data here
     inDOS       resb 1    ;Inc on each DOS call, dec when leaving
     breakFlag   resb 1    ;If set, check for CTRL+C on all DOS calls
     defaultDrv  resb 1    ;Default, last accessed drive
     currentPSP  resq 1    ;Address of current PSP
+    oldRSP      resq 1    ;RSP value before stack switch
 
     critStack   resq 41
     critStakTop resq 1
@@ -72,8 +73,8 @@ Segment .text align=1
     lea rsi, qword [nData]
     lea rdi, qword [rbp + nulDevHdr]
     rep movsb   
-;Adjust the addresses in the driver headers 
-    xchg bx, bx
+
+;Adjust the addresses in the other driver headers 
     mov rsi, conHdr ;Point to the first non-NUL dev in chain
     mov ecx, 12      ;12 drivers in data area
     lea rsi, qword [rsi + rbp]  ;Get effective addr of driver header
@@ -81,6 +82,7 @@ adjDrivers:
     call adjustDrvHdr
     loop adjDrivers
 
+    xchg bx, bx
     ;Open NUL
     lea rbx, qword [rbp + nulDevHdr + drvHdr.strPtr]    ;Get ptr to strat ptr
     mov rbx, qword [rbx]    ;Get strat ptr
@@ -102,6 +104,10 @@ adjDrivers:
     lea rbp, qword [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
     int 30h
+
+    mov rsi, fs:[nulDevHdr]
+    mov eax, 0C501h ;Connect debugger
+    int 35h
 l1:
     xor ax, ax
     int 36h
@@ -180,6 +186,33 @@ functionDispatch:   ;Int 41h Main function dispatcher
 terminateHandler:   ;Int 42h
 ctrlCHandler:       ;Int 43h
 critErrorHandler:   ;Int 44h
+;User Stack in usage here, must be swapped to before this is called
+;Entered with AH = Critical Error Bitfield
+
+
+.errorMsgTable:
+            db "Write Protect ", $          ;Error 0
+            db "Unknown Unit ", $           ;Error 1
+            db "Not Ready ", $              ;Error 2
+            db "Unknown Command ", $        ;Error 3
+            db "Data Error ", $             ;Error 4
+            db "Bad Request ", $            ;Error 5
+            db "Seek ", $                   ;Error 6
+            db "Unknown Media ", $          ;Error 7
+            db "Sector Not Found ", $       ;Error 8
+            db "Out Of Paper ", $           ;Error 9
+            db "Write Fault ", $            ;Error A
+            db "Read Fault ", $             ;Error B
+            db "General Failure ", $        ;Error C
+
+.drive      db "drive ", $
+.readmsg    db "error reading ", $
+.writemsg   db "error writing ", $
+.crlf       db 0Ah, 0Dh, $
+.abortmsg   db "Abort, ", $ ;Comma gets changed to ? if only abort permitted
+.ignoremsg  db "Ignore, ", $
+.retrymsg   db "Retry, ", $
+.failmsg    db "Fail? ", $
 absDiskRead:        ;Int 45h
 ;al = Drive number
 ;rbx = Memory Buffer address
@@ -693,7 +726,8 @@ msdDriver:
 
 .msdDefLabel db "NO NAME ",0 ;Default volume label
 ;LASTDRIVE default is 5
-.msdCurDev   db 0  ;The device to be referenced by the driver is saved here!
+.msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
+; Except when single drive in use, in which case Drive A and B refer to device 0
 .msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
