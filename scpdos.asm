@@ -277,7 +277,7 @@ critErrorHandler:   ;Int 44h
     mov ah, 09h
     int 41h
 .userFail:
-    test bh, 08h    ;Bit 3 is ignore bit
+    test bh, 08h    ;Bit 3 is Fail bit
     jz .userMsgEnd
     lea rdx, qword [.betweenMsg]
     mov ah, 09h
@@ -307,6 +307,24 @@ critErrorHandler:   ;Int 44h
     jmp short .userInputPhase ;If valid char not found, keep waiting 
 .validInput:
     mov al, cl  ;Move the offset into .responses into al
+;Now check if the input is permitted
+    cmp al, 2   ;Check if abort, abort always permitted
+    je .cehExit
+    test al, al ;Check if 0 => Ignore
+    je .viIgnore
+    cmp al, 1   ;Check if 1 => Retry
+    je .viRetry
+.viFail:    ;Fallthrough for fail (al = 3)
+    test bh, 8  ;Bit 3 is Fail bit
+    jz .userInputPhase  ;If bit 3 is zero, get input again
+    jmp short .cehExit
+.viIgnore:
+    test bh, 20h    ;Bit 5 is Ignore bit
+    jz .userInputPhase
+    jmp short .cehExit
+.viRetry:
+    test bh, 10h    ;Bit 4 is Retry bit
+    jz .userInputPhase
 .cehExit:
     pop rsi
     pop rdi
