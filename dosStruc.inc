@@ -160,3 +160,43 @@ struc bufferHdr
     .bufFAToff   resb  1   ;Sector offset of the backup copy of the FAT on disk
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
 endstruc
+
+;------------------------------------------------------------------------;
+; For Int 41h, the callers registers are saved on their stack in the 
+; following order, thus allowing for return values to be placed in the 
+; registers by accessing the caller register stack frame.
+;------------------------------------------------------------------------;
+struc callerFrame   
+    .rax    resq 1  ;Bottom of frame, rbp + 0
+    .rbx    resq 1    
+    .rcx    resq 1
+    .rdx    resq 1
+    .rsi    resq 1
+    .rdi    resq 1
+    .rbp    resq 1
+    .r8     resq 1  ;To be removed if truly not needed
+    .r9     resq 1
+endstruc
+
+%macro pushDOS 0
+    push r9
+    push r8
+    push rbp
+    push rdi
+    push rsi
+    push rdx
+    push rcx
+    push rbx
+    push rax
+%endmacro
+
+%macro popDOS 0
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rsi
+    pop rdi
+    pop r8
+    pop r9
+%endmacro

@@ -35,7 +35,7 @@ Segment dSeg nobits align=1
     currentPSP  resq 1    ;Address of current PSP
     oldRSP      resq 1    ;RSP value before stack switch
 
-    critStack   resq 41
+    critStack   resq 165
     critStakTop resq 1
     IOStack     resq 199
     IOStakTop   resq 1
@@ -174,6 +174,8 @@ findDPB:
     jne .fd1
 .fd2:
     ret
+callCritError:
+;Common Procedure to swap stacks and call Critical Error Interrupt
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
@@ -182,7 +184,236 @@ fatProc:
 ;        Interrupt routines         :
 ;-----------------------------------:
 terminateProcess:   ;Int 40h
+
 functionDispatch:   ;Int 41h Main function dispatcher
+;ah = Function number, all other registers have various meanings
+    cli ;Halt external interrupts
+    cmp ah, dispatchTableL/8    ;Number of functions
+    ja .fdExitBad
+    
+.fdExit:
+.fdExitBad:
+
+.dispTerminate:     ;ah = 00h
+.stdinReadEcho:     ;ah = 01h
+.stdoutWrite:       ;ah = 02h
+;Bspace is regular cursor left, does not insert a blank
+.stdauxRead:        ;ah = 03h
+.stdauxWrite:       ;ah = 04h
+.stdprnWrite:       ;ah = 05h
+.directCONIO:       ;ah = 06h
+.waitDirectInNoEcho:;ah = 07h
+.waitStdinNoEcho:   ;ah = 08h
+.printString:       ;ah = 09h
+.buffStdinInput:    ;ah = 0Ah
+.checkStdinStatus:  ;ah = 0Bh
+.clearbuffDoFunc:   ;ah = 0Ch
+.diskReset:         ;ah = 0Dh
+.selectDisk:        ;ah = 0Eh
+.openFileFCB:       ;ah = 0Fh
+.closeFileFCB:      ;ah = 10h
+.findFirstFileFCB:  ;ah = 11h
+.findNextFileFCB:   ;ah = 12h
+.deleteFileFCB:     ;ah = 13h
+.sequentialReadFCB: ;ah = 14h
+.sequentialWriteFCB:;ah = 15h
+.createFileFCB:     ;ah = 16h
+.renameFileFCB:     ;ah = 17h
+                    ;ah = 18h unused
+.currentDisk:       ;ah = 19h, get current default drive
+.setDTA:            ;ah = 1Ah
+.FATinfoDefault:    ;ah = 1Bh
+.FatinfoDevice:     ;ah = 1Ch
+                    ;ah = 1Dh unused
+                    ;ah = 1Eh unused
+.getCurrentDPBptr:  ;ah = 1Fh, simply calls int 41h ah = 32h with dl = 0
+                    ;ah = 20h unused
+.randomReadFCB:     ;ah = 21h
+.randomWriteFCB:    ;ah = 22h
+.getFileSizeFCB:    ;ah = 23h
+.setRelRecordFCB:   ;ah = 24h
+.setIntVector:      ;ah = 25h
+.createNewProgSeg:  ;ah = 26h
+.randBlockReadFCB:  ;ah = 27h
+.randBlockWriteFCB: ;ah = 28h
+.parseFilenameFCB:  ;ah = 29h
+.getDate:           ;ah = 2Ah
+.setDate:           ;ah = 2Bh
+.getTime:           ;ah = 2Ch
+.setTime:           ;ah = 2Dh
+.setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
+.getDTA:            ;ah = 2Fh
+.getDOSversion:     ;ah = 30h
+.terminateStayRes:  ;ah = 31h
+.getDeviceDPBptr:   ;ah = 32h
+.ctrlBreakCheck:    ;ah = 33h
+.getInDOSflagPtr:   ;ah = 34h
+.getIntVector:      ;ah = 35h
+.getDiskFreeSpace:  ;ah = 36h
+.getsetSwitchChar:  ;ah = 37h, allows changing default switch from / to anything
+.getsetCountryInfo: ;ah = 38h, localisation info
+.makeDIR:           ;ah = 39h
+.removeDIR:         ;ah = 3Ah
+.changeCurrentDIR:  ;ah = 3Bh, changes directory for current drive
+.createFileHdl:     ;ah = 3Ch, handle function
+.openFileHdl:       ;ah = 3Dh, handle function
+.closeFileHdl:      ;ah = 3Eh, handle function
+.readFileHdl:       ;ah = 3Fh, handle function
+.writeFileHdl:      ;ah = 40h, handle function
+.deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
+.movFileReadPtr:    ;ah = 42h, handle function, LSEEK
+.changeFileModeHdl: ;ah = 43h, handle function, CHMOD
+.ioctrl:            ;ah = 44h, handle function
+.duplicateHandle:   ;ah = 45h, handle function
+.forceDuplicateHdl: ;ah = 46h, handle function
+.getCurrentDIR:     ;ah = 47h
+.allocateMemory:    ;ah = 48h
+.freeMemory:        ;ah = 49h
+.reallocMemory:     ;ah = 4Ah
+.loadExecChild:     ;ah = 4Bh, EXEC
+.terminateClean:    ;ah = 4Ch, EXIT
+.getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
+.findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
+.findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
+.setCurrProcessID:  ;ah = 50h, set current process ID
+.getCurrProcessID:  ;ah = 51h, get current process ID
+.getSysVarsPtr:     ;ah = 52h
+.createDPB:         ;ah = 53h, generates a DPB from a given BPB
+.getVerifySetting:  ;ah = 54h
+.createPSP:         ;ah = 55h, creates a PSP for a program
+.renameFile:        ;ah = 56h
+.getSetFileDateTime:;ah = 57h
+.getsetMallocStrat: ;ah = 58h
+.getExtendedError:  ;ah = 59h
+.createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
+.createNewFile:     ;ah = 5Bh
+.lockUnlockFile:    ;ah = 5Ch
+.getCritErrorInfo:  ;ah = 5Dh
+.networkServices:   ;ah = 5Eh, do nothing
+.networkRedirection:;ah = 5Fh, do nothing
+.trueName:          ;ah = 60h, get fully qualified name
+                    ;ah = 61h, reserved
+.getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+                    ;ah = 63h, reserved
+.setDriverLookahead:;ah = 64h, reserved
+.getExtLocalInfo:   ;ah = 65h, Get Extended Country Info
+.getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage, reserved
+.setHandleCount:    ;ah = 67h
+.commitFile:        ;ah = 68h, flushes buffers for handle to disk 
+.getsetDiskSerial:  ;ah = 69h, get/set disk serial number
+.return:
+    ret
+
+
+.dispatchTable:
+    dq .dispTerminate
+    dq .stdinReadEcho
+    dq .stdoutWrite
+    dq .stdauxRead
+    dq .stdauxWrite
+    dq .stdprnWrite
+    dq .directCONIO
+    dq .waitDirectInNoEcho
+    dq .waitStdinNoEcho
+    dq .printString
+    dq .buffStdinInput
+    dq .checkStdinStatus
+    dq .clearbuffDoFunc
+    dq .diskReset
+    dq .selectDisk
+    dq .openFileFCB
+    dq .closeFileFCB
+    dq .findFirstFileFCB
+    dq .findNextFileFCB
+    dq .deleteFileFCB
+    dq .sequentialReadFCB
+    dq .sequentialWriteFCB
+    dq .createFileFCB
+    dq .renameFileFCB
+    dq .return
+    dq .currentDisk
+    dq .setDTA
+    dq .FATinfoDefault
+    dq .FatinfoDevice
+    dq .return
+    dq .return
+    dq .getCurrentDPBptr
+    dq .return
+    dq .randomReadFCB
+    dq .randomWriteFCB
+    dq .getFileSizeFCB
+    dq .setRelRecordFCB
+    dq .setIntVector
+    dq .createNewProgSeg
+    dq .randBlockReadFCB
+    dq .randBlockWriteFCB
+    dq .parseFilenameFCB
+    dq .getDate
+    dq .setDate
+    dq .getTime
+    dq .setTime
+    dq .setResetVerify
+    dq .getDTA
+    dq .getDOSversion
+    dq .terminateStayRes
+    dq .getDeviceDPBptr
+    dq .ctrlBreakCheck
+    dq .getInDOSflagPtr
+    dq .getIntVector
+    dq .getDiskFreeSpace
+    dq .getsetSwitchChar
+    dq .getsetCountryInfo
+    dq .makeDIR
+    dq .removeDIR
+    dq .changeCurrentDIR
+    dq .createFileHdl
+    dq .openFileHdl
+    dq .closeFileHdl
+    dq .readFileHdl
+    dq .writeFileHdl
+    dq .deleteFileHdl
+    dq .movFileReadPtr
+    dq .changeFileModeHdl
+    dq .ioctrl
+    dq .duplicateHandle
+    dq .forceDuplicateHdl
+    dq .getCurrentDIR
+    dq .allocateMemory
+    dq .freeMemory
+    dq .reallocMemory
+    dq .loadExecChild
+    dq .terminateClean
+    dq .getRetCodeChild
+    dq .findFirstFileHdl
+    dq .findNextFileHdl
+    dq .setCurrProcessID
+    dq .getCurrProcessID
+    dq .getSysVarsPtr
+    dq .createDPB
+    dq .getVerifySetting
+    dq .createPSP
+    dq .renameFile
+    dq .getSetFileDateTime
+    dq .getsetMallocStrat
+    dq .getExtendedError
+    dq .createUniqueFile
+    dq .createNewFile
+    dq .lockUnlockFile
+    dq .getCritErrorInfo
+    dq .networkServices
+    dq .networkRedirection
+    dq .trueName
+    dq .return
+    dq .getPSPaddr
+    dq .return
+    dq .setDriverLookahead
+    dq .getExtLocalInfo
+    dq .getsetGlobalCP
+    dq .setHandleCount
+    dq .commitFile
+    dq .getsetDiskSerial
+dispatchTableL  equ $ - .dispatchTable 
+
 terminateHandler:   ;Int 42h
 ctrlCHandler:       ;Int 43h
 critErrorHandler:   ;Int 44h
@@ -340,7 +571,7 @@ critErrorHandler:   ;Int 44h
     mov dl, al  ;Move char into dl
     mov ah, 02h
     int 41h ;Print char
-    loop .ce1   ;Keep looping until all 8 char device cahrs have been printed
+    loop .ce1   ;Keep looping until all 8 char device chars have been printed
     jmp .userInput
 
 .errorMsgTable: ;Each table entry is 18 chars long
