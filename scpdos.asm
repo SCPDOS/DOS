@@ -191,28 +191,28 @@ critErrorHandler:   ;Int 44h
 
 
 .errorMsgTable:
-            db "Write Protect ", $          ;Error 0
-            db "Unknown Unit ", $           ;Error 1
-            db "Not Ready ", $              ;Error 2
-            db "Unknown Command ", $        ;Error 3
-            db "Data Error ", $             ;Error 4
-            db "Bad Request ", $            ;Error 5
-            db "Seek ", $                   ;Error 6
-            db "Unknown Media ", $          ;Error 7
-            db "Sector Not Found ", $       ;Error 8
-            db "Out Of Paper ", $           ;Error 9
-            db "Write Fault ", $            ;Error A
-            db "Read Fault ", $             ;Error B
-            db "General Failure ", $        ;Error C
+            db "Write Protect $"          ;Error 0
+            db "Unknown Unit $"           ;Error 1
+            db "Not Ready $"              ;Error 2
+            db "Unknown Command $"        ;Error 3
+            db "Data Error $"             ;Error 4
+            db "Bad Request $"            ;Error 5
+            db "Seek $"                   ;Error 6
+            db "Unknown Media $"          ;Error 7
+            db "Sector Not Found $"       ;Error 8
+            db "Out Of Paper $"           ;Error 9
+            db "Write Fault $"            ;Error A
+            db "Read Fault $"             ;Error B
+            db "General Failure $"        ;Error C
 
-.drive      db "drive ", $
-.readmsg    db "error reading ", $
-.writemsg   db "error writing ", $
-.crlf       db 0Ah, 0Dh, $
-.abortmsg   db "Abort, ", $ ;Comma gets changed to ? if only abort permitted
-.ignoremsg  db "Ignore, ", $
-.retrymsg   db "Retry, ", $
-.failmsg    db "Fail? ", $
+.drive      db "drive $"
+.readmsg    db "error reading $"
+.writemsg   db "error writing $"
+.crlf       db 0Ah, 0Dh, "$""
+.abortmsg   db "Abort, $" ;Comma gets changed to ? if only abort permitted
+.ignoremsg  db "Ignore, $"
+.retrymsg   db "Retry, $"
+.failmsg    db "Fail? $"
 absDiskRead:        ;Int 45h
 ;al = Drive number
 ;rbx = Memory Buffer address
