@@ -82,7 +82,6 @@ adjDrivers:
     call adjustDrvHdr
     loop adjDrivers
 
-    xchg bx, bx
     ;Open NUL
     lea rbx, qword [rbp + nulDevHdr + drvHdr.strPtr]    ;Get ptr to strat ptr
     mov rbx, qword [rbx]    ;Get strat ptr
@@ -100,6 +99,41 @@ adjDrivers:
     lea rbx, qword [rbp+rbx]
     xor al, al
     call rbx
+;Adjust Int 41h address table
+
+adjInt41h:
+    mov ecx, dispatchTableL/8 ;Number of elements in table
+    mov rbx, functionDispatch.dispatchTable ;Get EA of table
+    lea rbx, qword [rbp+rbx]    ;Point to the start of the relocated table 
+.ai41h:
+    add qword [rbx], rbp    ;Add base address value to entry in reloc table
+    add rbx, 8              ;Each entry is size 8
+    dec ecx
+    jnz .ai41h  ;Keep looping until all entries have been adjusted
+
+;Adjust Interrupt Entries Int 40h-49h
+adjInts:
+    mov bl, 40h
+    mov eax, 0F007h ;Get the descriptor
+    int 35h
+    mov ecx, 40h    ;Start from interrupt 40h
+    lea rdi, intData
+    mov esi, eax    ;Move segment selector info to esi
+.ai0:
+    mov eax, 0F008h ;Set the descriptor
+    mov rbx, qword [rdi]    ;Get address pointed to by rdi
+    add rbx, rbp            ;Add the relocated base to rbx
+    int 35h
+    add rdi, 8
+    inc ecx
+    cmp ecx, 4Ah
+    jne .ai0
+    
+;Test Error Case
+    mov ah, 00011000b
+    mov al, 00h
+    mov edi, 0Ch
+    int 44h
 
     lea rbp, qword [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
@@ -124,7 +158,18 @@ adjustDrvHdr:
     add rsi, drvHdr_size
     ret
 
-startmsg db "Starting SCP/DOS...",0Ah,0Dh,0
+startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+intData:
+    dq terminateProcess ;Int 40h
+    dq functionDispatch ;Int 41h
+    dq terminateHandler ;Int 42h
+    dq ctrlCHandler     ;Int 43h
+    dq critErrorHandler ;Int 44h
+    dq absDiskRead      ;Int 45h
+    dq absDiskWrite     ;Int 46h
+    dq terminateResident    ;Int 47h
+    dq inDosHandler     ;Int 48h
+    dq fastOutput       ;Int 49h
 nData:
     dq conHdr
     dw 08004h
@@ -190,21 +235,48 @@ functionDispatch:   ;Int 41h Main function dispatcher
     cli ;Halt external interrupts
     cmp ah, dispatchTableL/8    ;Number of functions
     ja .fdExitBad
-    
+    cmp ah, 02h
+    je .stdoutWrite
+    cmp ah, 08h
+    je .waitStdinNoEcho
+    cmp ah, 09h
+    je .printString
+    iretq
 .fdExit:
 .fdExitBad:
-
+    iretq
 .dispTerminate:     ;ah = 00h
 .stdinReadEcho:     ;ah = 01h
 .stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
+    push rax
+    mov al, dl
+    int 49h
+    pop rax
+    iretq
 .stdauxRead:        ;ah = 03h
 .stdauxWrite:       ;ah = 04h
 .stdprnWrite:       ;ah = 05h
 .directCONIO:       ;ah = 06h
 .waitDirectInNoEcho:;ah = 07h
 .waitStdinNoEcho:   ;ah = 08h
+    xor ah, ah
+    int 36h
+    iretq
 .printString:       ;ah = 09h
+    push rax
+    push rdx
+.ps0:
+    mov al, byte [rdx]
+    cmp al, "$"
+    je .ps1
+    inc rdx ;Goto next char
+    int 49h ;Print char in al
+    jmp short .ps0
+.ps1:
+    pop rdx
+    pop rax
+    iretq
 .buffStdinInput:    ;ah = 0Ah
 .checkStdinStatus:  ;ah = 0Bh
 .clearbuffDoFunc:   ;ah = 0Ch
@@ -457,7 +529,8 @@ critErrorHandler:   ;Int 44h
     shl rdi, 4  ;Multiply by 16
     shl rdx, 1  ;Multiply by 2
     add rdi, rdx    ;Add the resultant multiplications
-    lea rdx, qword [.errorMsgTable + rdi]   ;Load EA to rdx
+    lea rdx, qword [.errorMsgTable]
+    lea rdx, qword [rdx+rdi]   ;Load EA to rdx
     mov ah, 09h ;Print String
     int 41h     ;Call DOS to print first part of message
 
@@ -631,8 +704,10 @@ fastOutput:         ;Int 49h
     int 30h
     pop rax
     iretq
-passCommand:        ;Int 4Eh
-multiplex:          ;Int 4Fh
+passCommand:        ;Int 4Eh, hooked by COMMAND.COM
+    iretq
+multiplex:          ;Int 4Fh, kept as iretq for now
+    iretq
 ;-----------------------------------:
 ;          Driver routines          :
 ;-----------------------------------:
