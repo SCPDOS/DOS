@@ -292,7 +292,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .createFileFCB:     ;ah = 16h
 .renameFileFCB:     ;ah = 17h
                     ;ah = 18h unused
-.currentDisk:       ;ah = 19h, get current default drive
+.getCurrentDisk:       ;ah = 19h, get current default drive
 .setDTA:            ;ah = 1Ah
 .FATinfoDefault:    ;ah = 1Bh
 .FatinfoDevice:     ;ah = 1Ch
@@ -305,7 +305,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .getFileSizeFCB:    ;ah = 23h
 .setRelRecordFCB:   ;ah = 24h
 .setIntVector:      ;ah = 25h
-.createNewProgSeg:  ;ah = 26h
+.createNewPSP:      ;ah = 26h
 .randBlockReadFCB:  ;ah = 27h
 .randBlockWriteFCB: ;ah = 28h
 .parseFilenameFCB:  ;ah = 29h
@@ -378,112 +378,112 @@ functionDispatch:   ;Int 41h Main function dispatcher
 
 
 .dispatchTable:
-    dq .dispTerminate
-    dq .stdinReadEcho
-    dq .stdoutWrite
-    dq .stdauxRead
-    dq .stdauxWrite
-    dq .stdprnWrite
-    dq .directCONIO
-    dq .waitDirectInNoEcho
-    dq .waitStdinNoEcho
-    dq .printString
-    dq .buffStdinInput
-    dq .checkStdinStatus
-    dq .clearbuffDoFunc
-    dq .diskReset
-    dq .selectDisk
-    dq .openFileFCB
-    dq .closeFileFCB
-    dq .findFirstFileFCB
-    dq .findNextFileFCB
-    dq .deleteFileFCB
-    dq .sequentialReadFCB
-    dq .sequentialWriteFCB
-    dq .createFileFCB
-    dq .renameFileFCB
-    dq .return
-    dq .currentDisk
-    dq .setDTA
-    dq .FATinfoDefault
-    dq .FatinfoDevice
-    dq .return
-    dq .return
-    dq .getCurrentDPBptr
-    dq .return
-    dq .randomReadFCB
-    dq .randomWriteFCB
-    dq .getFileSizeFCB
-    dq .setRelRecordFCB
-    dq .setIntVector
-    dq .createNewProgSeg
-    dq .randBlockReadFCB
-    dq .randBlockWriteFCB
-    dq .parseFilenameFCB
-    dq .getDate
-    dq .setDate
-    dq .getTime
-    dq .setTime
-    dq .setResetVerify
-    dq .getDTA
-    dq .getDOSversion
-    dq .terminateStayRes
-    dq .getDeviceDPBptr
-    dq .ctrlBreakCheck
-    dq .getInDOSflagPtr
-    dq .getIntVector
-    dq .getDiskFreeSpace
-    dq .getsetSwitchChar
-    dq .getsetCountryInfo
-    dq .makeDIR
-    dq .removeDIR
-    dq .changeCurrentDIR
-    dq .createFileHdl
-    dq .openFileHdl
-    dq .closeFileHdl
-    dq .readFileHdl
-    dq .writeFileHdl
-    dq .deleteFileHdl
-    dq .movFileReadPtr
-    dq .changeFileModeHdl
-    dq .ioctrl
-    dq .duplicateHandle
-    dq .forceDuplicateHdl
-    dq .getCurrentDIR
-    dq .allocateMemory
-    dq .freeMemory
-    dq .reallocMemory
-    dq .loadExecChild
-    dq .terminateClean
-    dq .getRetCodeChild
-    dq .findFirstFileHdl
-    dq .findNextFileHdl
-    dq .setCurrProcessID
-    dq .getCurrProcessID
-    dq .getSysVarsPtr
-    dq .createDPB
-    dq .getVerifySetting
-    dq .createPSP
-    dq .renameFile
-    dq .getSetFileDateTime
-    dq .getsetMallocStrat
-    dq .getExtendedError
-    dq .createUniqueFile
-    dq .createNewFile
-    dq .lockUnlockFile
-    dq .getCritErrorInfo
-    dq .networkServices
-    dq .networkRedirection
-    dq .trueName
-    dq .return
-    dq .getPSPaddr
-    dq .return
-    dq .setDriverLookahead
-    dq .getExtLocalInfo
-    dq .getsetGlobalCP
-    dq .setHandleCount
-    dq .commitFile
-    dq .getsetDiskSerial
+    dq .dispTerminate       ;AH = 00H, PROCESS MANAGEMENT
+    dq .stdinReadEcho       ;AH = 01H, CHAR IO
+    dq .stdoutWrite         ;AH = 02H, CHAR IO
+    dq .stdauxRead          ;AH = 03H, CHAR IO
+    dq .stdauxWrite         ;AH = 04H, CHAR IO
+    dq .stdprnWrite         ;AH = 05H, CHAR IO
+    dq .directCONIO         ;AH = 06H, CHAR IO
+    dq .waitDirectInNoEcho  ;AH = 07H, CHAR IO
+    dq .waitStdinNoEcho     ;AH = 08H, CHAR IO
+    dq .printString         ;AH = 09H, CHAR IO
+    dq .buffStdinInput      ;AH = 0AH, CHAR IO
+    dq .checkStdinStatus    ;AH = 0BH, CHAR IO
+    dq .clearbuffDoFunc     ;AH = 0CH, CHAR IO
+    dq .diskReset           ;AH = 0DH, DISK MANAGEMENT
+    dq .selectDisk          ;AH = 0EH, DISK MANAGEMENT
+    dq .openFileFCB         ;AH = 0FH, FILE OPERATION       FCB
+    dq .closeFileFCB        ;AH = 10H, FILE OPERATION       FCB
+    dq .findFirstFileFCB    ;AH = 11H, FILE OPERATION       FCB
+    dq .findNextFileFCB     ;AH = 12H, FILE OPERATION       FCB
+    dq .deleteFileFCB       ;AH = 13H, FILE OPERATION       FCB
+    dq .sequentialReadFCB   ;AH = 14H, RECORD OPERATION     FCB
+    dq .sequentialWriteFCB  ;AH = 15H, RECORD OPERTAION     FCB
+    dq .createFileFCB       ;AH = 16H, FILE OPERATION       FCB
+    dq .renameFileFCB       ;AH = 17H, FILE OPERATION       FCB
+    dq .return              ;AH = 18H, RESERVED
+    dq .getCurrentDisk      ;AH = 19H, DISK MANAGEMENT
+    dq .setDTA              ;AH = 1AH, RECORD OPERATION     F/H
+    dq .FATinfoDefault      ;AH = 1BH, DISK MANAGEMENT
+    dq .FatinfoDevice       ;AH = 1CH, DISK MANAGEMENT
+    dq .return              ;AH = 1DH, RESERVED
+    dq .return              ;AH = 1EH, RESERVED
+    dq .getCurrentDPBptr    ;AH = 1FH, RESERVED INTERNAL, GET CURR DRIVE DPB PTR
+    dq .return              ;AH = 20H, RESERVED
+    dq .randomReadFCB       ;AH = 21H, RECORD OPERATION     FCB
+    dq .randomWriteFCB      ;AH = 22H, RECORD OPERATION     FCB
+    dq .getFileSizeFCB      ;AH = 23H, FILE OPERATION       FCB
+    dq .setRelRecordFCB     ;AH = 24H, RECORD OPERATION     FCB
+    dq .setIntVector        ;AH = 25H, MISC. SYS. FUNCTION
+    dq .createNewPSP        ;AH = 26H, PROCESS MANAGEMENT
+    dq .randBlockReadFCB    ;AH = 27H, RECORD OPERATION     FCB
+    dq .randBlockWriteFCB   ;AH = 28H, RECORD OPERATION     FCB
+    dq .parseFilenameFCB    ;AH = 29H, FILE OPERATION       FCB
+    dq .getDate             ;AH = 2AH, TIME AND DATE
+    dq .setDate             ;AH = 2BH, TIME AND DATE
+    dq .getTime             ;AH = 2CH, TIME AND DATE
+    dq .setTime             ;AH = 2DH, TIME AND DATE
+    dq .setResetVerify      ;AH = 2EH, DISK MANAGEMENT
+    dq .getDTA              ;AH = 2FH, RECORD OPERATION     F/H
+    dq .getDOSversion       ;AH = 30H, MISC. SYS. FUNCTION
+    dq .terminateStayRes    ;AH = 31H, PROCESS MANAGEMENT
+    dq .getDeviceDPBptr     ;AH = 32H, RESERVED INTERNAL, GET DEVICE DPB PTR
+    dq .ctrlBreakCheck      ;AH = 33H, MISC. SYS. FUNCTION
+    dq .getInDOSflagPtr     ;AH = 34H, RESERVED INTERNAL, GET PTR TO INDOS FLAG
+    dq .getIntVector        ;AH = 35H, MISC. SYS. FUNCTION
+    dq .getDiskFreeSpace    ;AH = 36H, DISK MANAGEMENT
+    dq .getsetSwitchChar    ;AH = 37H, RESERVED INTERNAL, CHANGE SWITCH CHAR
+    dq .getsetCountryInfo   ;AH = 38H, MISC. SYS. FUNCTION
+    dq .makeDIR             ;AH = 39H, DIRECTORY OPERATION
+    dq .removeDIR           ;AH = 3AH, DIRECTORY OPERATION
+    dq .changeCurrentDIR    ;AH = 3BH, DIRECTORY OPERATION
+    dq .createFileHdl       ;AH = 3CH, FILE OPERATION       HANDLE
+    dq .openFileHdl         ;AH = 3DH, FILE OPERATION       HANDLE
+    dq .closeFileHdl        ;AH = 3EH, FILE OPERATION       HANDLE
+    dq .readFileHdl         ;AH = 3FH, RECORD OPERATION     HANDLE
+    dq .writeFileHdl        ;AH = 40H, RECORD OPERATION     HANDLE
+    dq .deleteFileHdl       ;AH = 41H, FILE OPERATION       HANDLE
+    dq .movFileReadPtr      ;AH = 42H, RECORD OPERATION     HANDLE
+    dq .changeFileModeHdl   ;AH = 43H, FILE OPERATION       HANDLE
+    dq .ioctrl              ;AH = 44H, MISC. SYS. FUNCTION
+    dq .duplicateHandle     ;AH = 45H, FILE OPERATION       HANDLE
+    dq .forceDuplicateHdl   ;AH = 46H, FILE OPERATION       HANDLE
+    dq .getCurrentDIR       ;AH = 47H, DIRECTORY OPERATION
+    dq .allocateMemory      ;AH = 48H, MEMORY MANAGEMENT
+    dq .freeMemory          ;AH = 49H, MEMORY MANAGEMENT
+    dq .reallocMemory       ;AH = 4AH, MEMORY MANAGEMENT
+    dq .loadExecChild       ;AH = 4BH, PROCESS MANAGEMENT
+    dq .terminateClean      ;AH = 4CH, PROCESS MANAGEMENT
+    dq .getRetCodeChild     ;AH = 4DH, PROCESS MANAGEMENT
+    dq .findFirstFileHdl    ;AH = 4EH, FILE OPERATION       HANDLE
+    dq .findNextFileHdl     ;AH = 4FH, FILE OPERATION       HANDLE
+    dq .setCurrProcessID    ;AH = 50H, RESERVED INTERNAL, SET CURRENT PROCESS ID
+    dq .getCurrProcessID    ;AH = 51H, RESERVED INTERNAL, GET CURRENT PROCESS ID
+    dq .getSysVarsPtr       ;AH = 52H, RESERVED INTERNAL, GET SYSVARS POINTER
+    dq .createDPB           ;AH = 53H, RESERVED INTERNAL, TRANSLATE A BPB TO DPB
+    dq .getVerifySetting    ;AH = 54H, DISK MANAGEMENT
+    dq .createPSP           ;AH = 55H, RESERVED INTERNAL, CREATE A PSP
+    dq .renameFile          ;AH = 56H, FILE OPERATION       HANDLE
+    dq .getSetFileDateTime  ;AH = 57H, FILE OPERATION       HANDLE
+    dq .getsetMallocStrat   ;AH = 58H, MEMORY MANAGEMENT
+    dq .getExtendedError    ;AH = 59H, MISC. SYS. FUNCTION
+    dq .createUniqueFile    ;AH = 5AH, FILE OPERATION       HANDLE
+    dq .createNewFile       ;AH = 5BH, FILE OPERATION       HANDLE
+    dq .lockUnlockFile      ;AH = 5CH, RECORD OPERATION     HANDLE
+    dq .getCritErrorInfo    ;AH = 5DH, RESERVED INTERNAL, GET CRIT. ERROR DATA
+    dq .networkServices     ;AH = 5EH, RESERVED NETWORK FUNCTION
+    dq .networkRedirection  ;AH = 5FH, RESERVED NETWORK FUNCTION
+    dq .trueName            ;AH = 60H, RESERVED INTERNAL, GET TRUE NAME
+    dq .return              ;AH = 61H, RESERVED
+    dq .getPSPaddr          ;AH = 62H, PROCESS MANAGEMENT
+    dq .return              ;AH = 63H, RESERVED
+    dq .setDriverLookahead  ;AH = 64H, RESERVED INTERNAL, DRIVER LOOKAHEAD
+    dq .getExtLocalInfo     ;AH = 65H, MISC. SYS. FUNCTION
+    dq .getsetGlobalCP      ;AH = 66H, MISC. SYS. FUNCTION
+    dq .setHandleCount      ;AH = 67H, FILE OPERAITON       F/H
+    dq .commitFile          ;AH = 68H, FILE OPERATION       HANDLE
+    dq .getsetDiskSerial    ;AH = 69H, RESERVED INTERNAL, GET/SET DISK SER. NUM
 dispatchTableL  equ $ - .dispatchTable 
 
 terminateHandler:   ;Int 42h
