@@ -235,10 +235,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
     cli ;Halt external interrupts
     cmp ah, dispatchTableL/8    ;Number of functions
     ja .fdExitBad
+    cmp ah, 01h
+    je .stdinReadEcho
     cmp ah, 02h
     je .stdoutWrite
-    cmp ah, 08h
-    je .waitStdinNoEcho
     cmp ah, 09h
     je .printString
     iretq
@@ -247,6 +247,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
     iretq
 .dispTerminate:     ;ah = 00h
 .stdinReadEcho:     ;ah = 01h
+    xor ah, ah
+    int 36h
+    int 49h ;Pass al to fast output
+    iretq
 .stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     push rax
@@ -260,9 +264,6 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .directCONIO:       ;ah = 06h
 .waitDirectInNoEcho:;ah = 07h
 .waitStdinNoEcho:   ;ah = 08h
-    xor ah, ah
-    int 36h
-    iretq
 .printString:       ;ah = 09h
     push rax
     push rdx
@@ -594,10 +595,9 @@ critErrorHandler:   ;Int 44h
     mov ah, 09h
     int 41h
 ;Get user input now 
-.userInputPhase:
     xor ecx, ecx  ;4 Possible Responses
     lea rdi, qword [.responses] ;Go to start of string
-    mov ah, 08h ;STDIN without Console Echo
+    mov ah, 01h ;STDIN without Console Echo
     int 41h ;Get char in al
     cmp al, "a" ;Chack if lowercase
     jb .uip1    ;If the value is below, ignore subtraction
@@ -608,7 +608,7 @@ critErrorHandler:   ;Int 44h
     inc ecx
     cmp ecx, 4
     jne .uip1
-    jmp short .userInputPhase ;If valid char not found, keep waiting 
+    jmp .userInput ;If valid char not found, keep waiting 
 .validInput:
     mov al, cl  ;Move the offset into .responses into al
 ;Now check if the input is permitted
@@ -620,15 +620,15 @@ critErrorHandler:   ;Int 44h
     je .viRetry
 .viFail:    ;Fallthrough for fail (al = 3)
     test bh, 8  ;Bit 3 is Fail bit
-    jz .userInputPhase  ;If bit 3 is zero, get input again
+    jz .userInput  ;If bit 3 is zero, prompt and get input again
     jmp short .cehExit
 .viIgnore:
     test bh, 20h    ;Bit 5 is Ignore bit
-    jz .userInputPhase
+    jz .userInput
     jmp short .cehExit
 .viRetry:
     test bh, 10h    ;Bit 4 is Retry bit
-    jz .userInputPhase
+    jz .userInput
 .cehExit:
     pop rsi
     pop rdi
