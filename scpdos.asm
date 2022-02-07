@@ -128,9 +128,9 @@ adjInts:
     inc ecx
     cmp ecx, 4Ah
     jne .ai0
-    
+
 ;Test Error Case
-    mov ah, 00011000b
+    mov ah, 000110000b
     mov al, 00h
     mov edi, 0Ch
     int 44h
