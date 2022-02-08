@@ -8,7 +8,8 @@ BITS 64
 Segment dSeg nobits align=1 
     dosSegPtr   resq 1    ;Pointer to the data Segment itself
     bootDrive   resb 1    ;The Int 33h device we booted from
-    requestHdr  resb ioReqPkt_size   
+    charReqHdr  resb ioReqPkt_size  ;Character IO Request header
+    diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header
     ;The device driver header with space for the largest possible packet
     sysVarsPtr  resq 1    ;Pointer to dpbHeadPtr, head of Sys Vars struc below
     mcbChainPtr resq 1    ;Pointer to the MCB chain
@@ -25,15 +26,22 @@ Segment dSeg nobits align=1
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numMSDdrv   resb 1    ;Number of mass storage devices detected in system
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
-    numJoinDrv  resb 1    ;Number of Joined Drives
+    numJoinDrv  resb 1      ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 
 ;Swappable, process related data here
-    inDOS       resb 1    ;Inc on each DOS call, dec when leaving
-    breakFlag   resb 1    ;If set, check for CTRL+C on all DOS calls
-    defaultDrv  resb 1    ;Default, last accessed drive
-    currentPSP  resq 1    ;Address of current PSP
-    oldRSP      resq 1    ;RSP value before stack switch
+    inDOS       resb 1  ;Inc on each DOS call, dec when leaving
+    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
+    defaultDrv  resb 1  ;Default, last accessed drive
+    currentPSP  resq 1  ;Address of current PSP
+    oldRSP      resq 1  ;RSP value before stack switch
+
+    errorCode   resb 1  ;Regular Error Code
+    exErrorCode resw 1  ;Extended Error Code
+    errorClass  resb 1  ;Error Class
+    errSuggestn resb 1  ;Suggested action for error
+    errorLocus  resb 1  ;Where the error took place    
+
 
     critStack   resq 165
     critStakTop resq 1
@@ -130,10 +138,11 @@ adjInts:
     jne .ai0
 
 ;Test Error Case
-    mov ah, 000110000b
+    mov ah, 00110000b
     mov al, 00h
     mov edi, 0Ch
     int 44h
+    xchg bx, bx
 
     lea rbp, qword [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
@@ -524,7 +533,10 @@ critErrorHandler:   ;Int 44h
     mov ah, 09h ;Print String
     int 41h     ;Call DOS to print CRLF part of message
 
-    and di, 00FFh   ;Zero the upper byte of DI just in case
+    and edi, 00FFh   ;Zero the upper bytes of DI just in case
+    mov ecx, 0Ch
+    cmp edi, ecx  ;Check if the error number is erroniously above Gen Error
+    cmova edi, ecx  ;If it is, move Gen Error into edi
     movzx rdi, di
     mov rdx, rdi    ;Copy error code
     shl rdi, 4  ;Multiply by 16
@@ -652,7 +664,7 @@ critErrorHandler:   ;Int 44h
             db "Unknown Unit $    "       ;Error 1
             db "Not Ready $       "       ;Error 2
             db "Unknown Command $ "       ;Error 3
-            db "Data Error $      "       ;Error 4
+            db "Data $            "       ;Error 4
             db "Bad Request $     "       ;Error 5
             db "Seek $            "       ;Error 6
             db "Unknown Media $   "       ;Error 7

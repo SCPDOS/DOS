@@ -200,3 +200,22 @@ endstruc
     pop r8
     pop r9
 %endmacro
+
+struc psp
+    .return     resb 2  ;Should always be CDh 40h
+    .startSeg   resq 1
+    .oldInt42h  resq 1
+    .oldInt43h  resq 1
+    .oldInt44h  resq 1
+    .parentPtr  resq 1  ;Pointer to parent process PSP
+    .fHandles   resb 20 ;Main File handle array
+    .envPtr     resq 1  ;Pointer to the environment
+    .rspPtr     resq 1  ;Pointer to rsp on entry to int 41h
+    .xtraHdlSz  resw 1  ;Additional File Handle array size
+    .unixEntry  resb 3  ;Must always be CDh 41h CBh
+    .prevPSP    resq 1  ;Pointer to the previous PSP in chain
+    .xtraHdlPtr resq 1  ;Pointer to the extra handle array if needed
+    .reserved   resb 29
+    .charCount  resb 1
+    .progTail   resb 127 ;Default DTA/Program tail
+endstruc
