@@ -26,21 +26,27 @@ Segment dSeg nobits align=1
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numMSDdrv   resb 1    ;Number of mass storage devices detected in system
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
-    numJoinDrv  resb 1      ;Number of Joined Drives
+    numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 
-;Swappable, process related data here
+;Start of Swappable Data Area, this bit can remain static
+    critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving
-    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
-    defaultDrv  resb 1  ;Default, last accessed drive
-    currentPSP  resq 1  ;Address of current PSP
-    oldRSP      resq 1  ;RSP value before stack switch
-
-    errorCode   resb 1  ;Regular Error Code
-    exErrorCode resw 1  ;Extended Error Code
+    errorDrv    resb 1  ;Drive on which error occured or FFh
+    errorLocus  resb 1  ;Where the error took place  
+    errorExt    resw 1  ;Extended Error Code
+    errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
-    errSuggestn resb 1  ;Suggested action for error
-    errorLocus  resb 1  ;Where the error took place    
+
+    currentDTA  resq 1  ;Address of the current DTA
+    currentPSP  resq 1  ;Address of current PSP
+    rdiErrorPtr resq 1  ;Saves RDI value of last error
+    xInt43RSP   resq 1  ;Saves RSP across an Int 43h call
+    lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
+    currentDrv  resb 1  ;Default, last accessed drive
+    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
+;SDA, needs to be replaced between PROCESSES (not tasks)
+    xInt44hRSP  resq 1  ;RSP across an Int 44h call
 
 
     critStack   resq 165
@@ -142,7 +148,6 @@ adjInts:
     mov al, 00h
     mov edi, 0Ch
     int 44h
-    xchg bx, bx
 
     lea rbp, qword [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
@@ -233,7 +238,8 @@ callCritError:
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
-fatProc:
+name2Clust:
+;Converts a file name to a first cluster number
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
@@ -253,6 +259,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     iretq
 .fdExit:
 .fdExitBad:
+    mov ah, 0
     iretq
 .dispTerminate:     ;ah = 00h
 .stdinReadEcho:     ;ah = 01h
