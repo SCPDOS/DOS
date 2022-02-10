@@ -41,13 +41,17 @@ Segment dSeg nobits align=1
     currentDTA  resq 1  ;Address of the current DTA
     currentPSP  resq 1  ;Address of current PSP
     rdiErrorPtr resq 1  ;Saves RDI value of last error
-    xInt43RSP   resq 1  ;Saves RSP across an Int 43h call
+    xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
     currentDrv  resb 1  ;Default, last accessed drive
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
 ;SDA, needs to be replaced between PROCESSES (not tasks)
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
 
+    int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
+    oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
+    oldRSP      resq 1  ;RSP when entering Int 41h
+    oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
 
     critStack   resq 165
     critStakTop resq 1
@@ -148,6 +152,7 @@ adjInts:
     mov al, 00h
     mov edi, 0Ch
     int 44h
+    xchg bx, bx
 
     lea rbp, qword [startmsg]   ;Get the absolute address of message
     mov eax, 1304h
@@ -248,38 +253,102 @@ terminateProcess:   ;Int 40h
 functionDispatch:   ;Int 41h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
     cli ;Halt external interrupts
+    cld ;Ensure all string ops occur in the right direction
     cmp ah, dispatchTableL/8    ;Number of functions
     ja .fdExitBad
-    cmp ah, 01h
-    je .stdinReadEcho
-    cmp ah, 02h
-    je .stdoutWrite
-    cmp ah, 09h
-    je .printString
-    iretq
+    ;Cherry pick functions
+    cmp ah, 33h ;CTRL+BREAK check
+    jb .fdInInt41   ;If below skip these checks
+    je .ctrlBreakCheck
+    cmp ah, 64h
+    je .setDriverLookahead  ;Reserved, but avoids usual Int 41h spiel
+    ja .fdInInt41   ;If above, do usual Int41 entry
+    cmp ah, 51h
+    je .getCurrProcessID    ;This an below are exactly the same
+    cmp ah, 62h
+    je .getPSPaddr          ;Calls the above function
+    cmp ah, 50h
+    je .setCurrProcessID
+.fdInInt41:
+    pushDOS ;Push the usual prologue registers
+    mov rax, qword [oldRSP]
+    mov qword [oldoldRSP], rax
+    inc byte [inDOS]    ;Increment in DOS flag
+    mov qword [oldRSP], rsp
+    pop rax     ;Get old rax back
+    push rax    ;and push it back onto the stack
+    lea rsp, critStakTop
+    sti         ;Reenable interrupts
+
+    mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
+    movzx ebx, ah   ;Move the function number bl zero extended to rbx
+    shl ebx, 3      ;Multiply the function number by 8 for offset into table
+    push rax        ;Push rax onto the stack
+    lea rax, qword [.dispatchTable]
+    add rbx, rax    ;Add dispatch table offset into rbx
+    pop rax
+    mov rbx, qword [rbx]    ;Get the address from the dispatch table
+
+    test ah, ah     ;Simple Terminate function?
+    jz .fddiskOp
+    cmp ah, 59h     ;Extended Error report?
+    je .fdGoToFunction  ;Bypass code that clears the error report
+    cmp ah, 0Ch     ;Are we a char function?
+    ja .fddiskOp
+;Char operations here
+    test byte [critErrFlag], 1  ;Are we in critical error?
+    jnz .fdGoToFunction         ;If we are, stay on Critical Error Stack
+    lea rsp, IOStakTop          ;Otherwise, switch to IO stack
+    jmp short .fdGoToFunction
+.fddiskOp:
+    ;Disk operations go here
+    ;Clear up error info
+    mov byte [errorLocus], 1    ;Reset to generic, unknown locus
+    mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
+    mov byte [errorDrv], -1     ;Set the drive which caused the error to none
+
+    mov byte [int48Flag], 0     ;Turn off the ability to trigger Int 48h
+    lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
+    test byte [breakFlag], -1   ;Test if set
+    jz .fdGoToFunction
+; HANDLE CTRL+BREAK HERE!
+.fdGoToFunction:
+    xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
+    call qword [oldRBX]     ;Call the desired function, rax contains ret code
 .fdExit:
+    cli     ;Redisable interrupts
+    ;???
+    dec byte [inDOS]            ;Decrement the inDOS count
+    mov rsp, qword [oldRSP]     ;Point rsp to old stack
+    mov qword [rsp], rax    ;Put the ret code into its pos on the register frame
+    mov rax, qword [oldoldRSP]
+    mov qword [oldRSP], rax
+    popDOS  ;Pop the frame
+    iretq
 .fdExitBad:
     mov ah, 0
     iretq
-.dispTerminate:     ;ah = 00h
+.simpleTerminate:     ;ah = 00h
+    ret
 .stdinReadEcho:     ;ah = 01h
     xor ah, ah
     int 36h
     int 49h ;Pass al to fast output
-    iretq
+    ret
 .stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     push rax
     mov al, dl
     int 49h
     pop rax
-    iretq
+    ret
 .stdauxRead:        ;ah = 03h
 .stdauxWrite:       ;ah = 04h
 .stdprnWrite:       ;ah = 05h
 .directCONIO:       ;ah = 06h
 .waitDirectInNoEcho:;ah = 07h
 .waitStdinNoEcho:   ;ah = 08h
+    ret
 .printString:       ;ah = 09h
     push rax
     push rdx
@@ -293,7 +362,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .ps1:
     pop rdx
     pop rax
-    iretq
+    ret
+    db "MESSAGE!!"
 .buffStdinInput:    ;ah = 0Ah
 .checkStdinStatus:  ;ah = 0Bh
 .clearbuffDoFunc:   ;ah = 0Ch
@@ -395,7 +465,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 
 
 .dispatchTable:
-    dq .dispTerminate       ;AH = 00H, PROCESS MANAGEMENT
+    dq .simpleTerminate     ;AH = 00H, PROCESS MANAGEMENT
     dq .stdinReadEcho       ;AH = 01H, CHAR IO
     dq .stdoutWrite         ;AH = 02H, CHAR IO
     dq .stdauxRead          ;AH = 03H, CHAR IO

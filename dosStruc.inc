@@ -166,8 +166,8 @@ endstruc
 ; following order, thus allowing for return values to be placed in the 
 ; registers by accessing the caller register stack frame.
 ;------------------------------------------------------------------------;
-struc callerFrame   
-    .rax    resq 1  ;Bottom of frame, rbp + 0
+struc callerFrame
+    .rax    resq 1  ;Bottom of frame, pointer to rax saved in oldRSP
     .rbx    resq 1    
     .rcx    resq 1
     .rdx    resq 1
@@ -176,6 +176,10 @@ struc callerFrame
     .rbp    resq 1
     .r8     resq 1  ;To be removed if truly not needed
     .r9     resq 1
+;Pushed by Processor when invoked via Interrupt
+    .rip    resq 1
+    .cs     resq 1
+    .flags  resq 1
 endstruc
 
 %macro pushDOS 0
@@ -197,6 +201,7 @@ endstruc
     pop rdx
     pop rsi
     pop rdi
+    pop rbp
     pop r8
     pop r9
 %endmacro
@@ -215,7 +220,16 @@ struc psp
     .unixEntry  resb 3  ;Must always be CDh 41h CBh
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain
     .xtraHdlPtr resq 1  ;Pointer to the extra handle array if needed
-    .reserved   resb 29
+    .fcbPtr1    resq 1  ;Pointer to the first OS allocated FCB
+    .reserved   resb 21
     .charCount  resb 1
     .progTail   resb 127 ;Default DTA/Program tail
+endstruc
+
+struc mcb
+    .mzbyte     resb 1  ;M=In use, Z=Free
+    .processPtr resq 1  ;Points to the start of the process PSP
+    .paragraphs resd 1  ;Gives the number of paras allocated to this process
+    .reserved   resb 3
+    .program:
 endstruc
