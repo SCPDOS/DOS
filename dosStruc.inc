@@ -208,21 +208,21 @@ endstruc
 
 struc psp
     .return     resb 2  ;Should always be CDh 40h
-    .startSeg   resq 1
-    .oldInt42h  resq 1
-    .oldInt43h  resq 1
-    .oldInt44h  resq 1
+    .startSeg   resq 1  ;Pointer to the start of the PSP
+    .oldInt42h  resq 1  ;Int 42h pointer on overlay load
+    .oldInt43h  resq 1  ;Int 43h pointer on overlay load
+    .oldInt44h  resq 1  ;Int 44h pointer on overlay load
     .parentPtr  resq 1  ;Pointer to parent process PSP
     .fHandles   resb 20 ;Main File handle array
     .envPtr     resq 1  ;Pointer to the environment
-    .rspPtr     resq 1  ;Pointer to rsp on entry to int 41h
+    .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
     .xtraHdlSz  resw 1  ;Additional File Handle array size
     .unixEntry  resb 3  ;Must always be CDh 41h CBh
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain
     .xtraHdlPtr resq 1  ;Pointer to the extra handle array if needed
     .fcbPtr1    resq 1  ;Pointer to the first OS allocated FCB
     .reserved   resb 21
-    .charCount  resb 1
+    .charCount  resb 1  ;Number of characters in command tail
     .progTail   resb 127 ;Default DTA/Program tail
 endstruc
 
