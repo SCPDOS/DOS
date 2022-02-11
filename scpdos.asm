@@ -11,9 +11,13 @@ Segment .text align=1
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
 ; fs  = userbase pointer (pointer to first usable block of RAM)
+tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
+    db (100h-2) dup (0)
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
-
+    lea rdx, qword [tempPSP]    ;Get the address of the tempPSP
+    mov qword fs:[currentPSP], rdx
+;DOS allows for non-PARA aligned PSPs but DOS aligns all programs on PARA bndry
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
