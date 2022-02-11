@@ -174,7 +174,7 @@ adjInts:
     int 35h
     xchg bx, bx
 l1:
-    mov eax, 0100h  ;Write with echo
+    mov ah, 01h  ;Write with echo
     int 41h
     jmp short l1
 adjustDrvHdr:
