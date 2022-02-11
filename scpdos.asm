@@ -45,14 +45,25 @@ Segment dSeg nobits align=1
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
     currentDrv  resb 1  ;Default, last accessed drive
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
-;SDA, needs to be replaced between PROCESSES (not tasks)
+;SDA, needs to be replaced between processes
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
 
+    Int44RetVal resb 1  ;Saves a copy of the Int 44 return value
+    Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
+;Time stuff
+    CLOCKrecrd  resb 6  ;Clock driver record
+    dayOfMonth  resb 1  ;1 - 31 BCD
+    monthOfYear resb 1  ;1 - 12 BCD
+    years       resw 1  ;0000 - 9999 BCD
+    yearsOffset resw 1  ;Current Year - 1980
+    daysOffset  resd 1  ;Days since 1-1-1980
+    dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
+;Stacks
     critStack   resq 165
     critStakTop resq 1
     IOStack     resq 199
@@ -152,20 +163,19 @@ adjInts:
     mov al, 00h
     mov edi, 0Ch
     int 44h
-    xchg bx, bx
 
-    lea rbp, qword [startmsg]   ;Get the absolute address of message
-    mov eax, 1304h
-    int 30h
+
+    lea rdx, qword [startmsg]   ;Get the absolute address of message
+    mov ah, 09h
+    int 41h
 
     mov rsi, fs:[nulDevHdr]
     mov eax, 0C501h ;Connect debugger
     int 35h
+    xchg bx, bx
 l1:
-    xor ax, ax
-    int 36h
-    mov ah, 0Eh
-    int 30h
+    mov eax, 0100h  ;Write with echo
+    int 41h
     jmp short l1
 adjustDrvHdr:
 ;Input: rsi = Effective address of driver in DOS segment
@@ -177,7 +187,7 @@ adjustDrvHdr:
     add rsi, drvHdr_size
     ret
 
-startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,0
+startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,"$"
 intData:
     dq terminateProcess ;Int 40h
     dq functionDispatch ;Int 41h
@@ -277,8 +287,11 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov qword [oldRSP], rsp
     pop rax     ;Get old rax back
     push rax    ;and push it back onto the stack
+    ;Here, we want to save oldRSP in the callers PSP
     lea rsp, critStakTop
     sti         ;Reenable interrupts
+
+    mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
 
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
     movzx ebx, ah   ;Move the function number bl zero extended to rbx
@@ -314,6 +327,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
 ; HANDLE CTRL+BREAK HERE!
 .fdGoToFunction:
     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
+    ;Potentially point rbp to caller reg frame for easy access of registers 
+    ;mov rbp, qword [oldRSP]    ;Move rsp on entry into rbp
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
 .fdExit:
     cli     ;Redisable interrupts
@@ -363,7 +378,6 @@ functionDispatch:   ;Int 41h Main function dispatcher
     pop rdx
     pop rax
     ret
-    db "MESSAGE!!"
 .buffStdinInput:    ;ah = 0Ah
 .checkStdinStatus:  ;ah = 0Bh
 .clearbuffDoFunc:   ;ah = 0Ch
