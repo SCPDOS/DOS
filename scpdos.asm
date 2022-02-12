@@ -206,26 +206,31 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ja .fdExitBad
     ;Cherry pick functions
     cmp ah, 33h ;CTRL+BREAK check
-    jb .fdInInt41   ;If below skip these checks
+    jb .fsbegin   ;If below skip these checks
     je .ctrlBreakCheck
     cmp ah, 64h
     je .setDriverLookahead  ;Reserved, but avoids usual Int 41h spiel
-    ja .fdInInt41   ;If above, do usual Int41 entry
+    ja .fsbegin   ;If above, do usual Int41 entry
     cmp ah, 51h
     je .getCurrProcessID    ;This an below are exactly the same
     cmp ah, 62h
     je .getPSPaddr          ;Calls the above function
     cmp ah, 50h
     je .setCurrProcessID
-.fdInInt41:
+.fsbegin:
     pushDOS ;Push the usual prologue registers
     mov rax, qword [oldRSP]
     mov qword [oldoldRSP], rax
     inc byte [inDOS]    ;Increment in DOS flag
     mov qword [oldRSP], rsp
+;Here, we want to save oldRSP in the callers PSP
+    cmp byte [inDOS], 1 ;Check how many times we are in DOS
+    jne .fsb1   ;If this is first entry, save rsp in callers PSP
+    mov rax, qword [currentPSP] ;Get current PSP address
+    mov qword [rax + psp.rspPtr], rsp    ;Save rsp on callers stack
+.fsb1:
     pop rax     ;Get old rax back
     push rax    ;and push it back onto the stack
-    ;Here, we want to save oldRSP in the callers PSP
     lea rsp, critStakTop
     sti         ;Reenable interrupts
 
