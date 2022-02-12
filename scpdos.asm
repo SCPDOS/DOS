@@ -79,7 +79,7 @@ Segment .text align=1
 ; fs  = userbase pointer (pointer to first usable block of RAM)
 tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
-    db (100h-2) dup (0)
+    db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
     lea rdx, qword [tempPSP]    ;Get the address of the tempPSP
     mov qword fs:[currentPSP], rdx
