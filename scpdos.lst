@@ -1451,7 +1451,7 @@
    725                                  ;ecx = Number of sectors to read (max 255 for now)
    726                                  ;rdx = Start LBA to read from
    727 0000078C 480FB6C0                    movzx rax, al   ;Zero extend DOS drive number 
-   728 00000790 8A80[780E0000]              mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
+   728 00000790 8A80[A20E0000]              mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
    729 00000796 4891                        xchg rax, rcx
    730 00000798 4887CA                      xchg rcx, rdx
    731 0000079B B482                        mov ah, 82h
@@ -1459,7 +1459,7 @@
    733 0000079F 48CF                        iretq
    734                                  absDiskWrite:       ;Int 46h
    735 000007A1 480FB6C0                    movzx rax, al   ;Zero extend DOS drive number 
-   736 000007A5 8A80[780E0000]              mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
+   736 000007A5 8A80[A20E0000]              mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
    737 000007AB 4891                        xchg rax, rcx
    738 000007AD 4887CA                      xchg rcx, rdx
    739 000007B0 B483                        mov ah, 83h
@@ -1766,390 +1766,404 @@
   1040 00000AE2 488B1D7BFEFFFF              mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
   1041 00000AE9 803B2A                      cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
   1042 00000AEC B005                        mov al, 05h ;Bad request structure length
-  1043 00000AEE 0F85F7000000                jne .msdWriteErrorCode
+  1043 00000AEE 0F8503010000                jne .msdWriteErrorCode
   1044 00000AF4 807B0218                    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
   1045 00000AF8 B003                        mov al, 03h
-  1046 00000AFA 0F87EB000000                ja .msdWriteErrorCode ;If yes, error!
-  1047 00000B00 8A4302                      mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
-  1048 00000B03 84C0                        test al, al
-  1049 00000B05 0F84F6000000                jz .msdInit
-  1050 00000B0B 3C01                        cmp al, 01
-  1051 00000B0D 0F848D010000                jz .msdMedChk
-  1052 00000B13 3C02                        cmp al, 02
-  1053 00000B15 0F84EB010000                jz .msdBuildBPB
-  1054 00000B1B 3C03                        cmp al, 03
-  1055 00000B1D 0F8428020000                jz .msdIOCTLRead
-  1056 00000B23 3C04                        cmp al, 04
-  1057 00000B25 0F8425020000                jz .msdRead
-  1058 00000B2B 3C08                        cmp al, 08
-  1059 00000B2D 0F844E020000                jz .msdWrite
-  1060 00000B33 3C09                        cmp al, 09
-  1061 00000B35 0F8477020000                jz .msdWriteVerify
-  1062 00000B3B 3C0C                        cmp al, 12
-  1063 00000B3D 0F84AD020000                jz .msdIOCTLWrite
-  1064 00000B43 3C0D                        cmp al, 13
-  1065 00000B45 0F84AA020000                jz .msdDevOpen
-  1066 00000B4B 3C0E                        cmp al, 14
-  1067 00000B4D 0F84B2020000                jz .msdDevClose
-  1068 00000B53 3C0F                        cmp al, 15
-  1069 00000B55 0F84BA020000                jz .msdRemovableMedia
-  1070 00000B5B 3C13                        cmp al, 19
-  1071 00000B5D 0F84D0020000                jz .msdGenericIOCTL
-  1072 00000B63 3C17                        cmp al, 23
-  1073 00000B65 0F84CD020000                jz .msdGetLogicalDev
-  1074 00000B6B 3C18                        cmp al, 24
-  1075 00000B6D 0F84D3020000                jz .msdSetLogicalDev
-  1076                                  .msdIOError:  ;In Read and Write errors, rbp points to the dev struc
-  1077 00000B73 4889EB                      mov rbx, rbp
-  1078 00000B76 0FB6C0                      movzx eax, al   ;Number of IO-ed sectors in last request
-  1079 00000B79 01C6                        add esi, eax    ;esi Keeps sector count across transfers
-  1080 00000B7B 897316                      mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
-  1081                                  ;Now fall through to general error
-  1082                                  .msdGenDiskError:
-  1083 00000B7E B401                        mov ah, 01h
-  1084 00000B80 30D2                        xor dl, dl  ;Work around bug that fails request if dl > 7Fh
-  1085 00000B82 CD33                        int 33h ;Read status of last operation
-  1086 00000B84 80FC06                      cmp ah, 06h ;Mock Seek response (device not present)
-  1087 00000B87 B002                        mov al, 02h ;Give device not ready error (sensibly I think)
-  1088 00000B89 7460                        je .msdWriteErrorCode 
-  1089 00000B8B B00C                        mov al, 0Ch ;Preliminary General Error Faults
-  1090 00000B8D 80FCFF                      cmp ah, -1  ;Sense operation failed
-  1091 00000B90 7459                        je .msdWriteErrorCode 
-  1092 00000B92 80FC20                      cmp ah, 20h ;Gen. ctrlr. failure. Consider new error code to halt system.
-  1093 00000B95 7454                        je .msdWriteErrorCode
-  1094                                  ;Device Not Ready
-  1095 00000B97 B002                        mov al, 02h  ;Device not ready code
-  1096 00000B99 4138C0                      cmp r8b, al  ;SCSI Not ready commands start with 2
-  1097 00000B9C 744D                        je .msdWriteErrorCode
-  1098 00000B9E 49C1E808                    shr r8, 8       ;Remove Sense Key
-  1099 00000BA2 410FB7C8                    movzx ecx, r8w  ;Get ASC and ASCQ in cl and ch bzw.
-  1100                                  ;Write Protected
-  1101 00000BA6 30C0                        xor al, al
-  1102 00000BA8 6681F92700                  cmp cx, 0027h   ;Write protected error
-  1103 00000BAD 743C                        je .msdWriteErrorCode
-  1104                                  ;CRC Error
-  1105 00000BAF B004                        mov al, 04h     ;CRC error code
-  1106 00000BB1 6681F90803                  cmp cx, 0308h   ;LU comms CRC error (UDMA/32)
-  1107 00000BB6 7433                        je .msdWriteErrorCode
-  1108 00000BB8 6681F91000                  cmp cx, 0010h   ;ID CRC or ECC error
-  1109 00000BBD 742C                        je .msdWriteErrorCode
-  1110 00000BBF 6681F94701                  cmp cx, 0147h   ;Data phase CRC error detected
-  1111 00000BC4 7425                        je .msdWriteErrorCode
-  1112                                  ;Seek Error
-  1113 00000BC6 B006                        mov al, 06h     ;Seek error code
-  1114 00000BC8 80F902                      cmp cl, 02h     ;No Seek Complete
-  1115 00000BCB 741E                        je .msdWriteErrorCode
-  1116                                  ;Unknown Hardware Media (Shouldn't happen with Flash Drives)
-  1117                                  ;This error should only be called if BPB not recognised for Flash Drives
-  1118 00000BCD B007                        mov al, 07h
-  1119 00000BCF 80F930                      cmp cl, 30h   ;All issues with media returns unknown media
-  1120 00000BD2 7417                        je .msdWriteErrorCode
-  1121                                  ;Sector Not Found
-  1122 00000BD4 B008                        mov al, 08h     ;Sector not found code
-  1123 00000BD6 80F921                      cmp cl, 21h     ;Illegal Request - Invalid LBA
-  1124 00000BD9 7410                        je .msdWriteErrorCode
-  1125                                  ;Write faults
-  1126 00000BDB B00A                        mov al, 0Ah     ;Write fault
-  1127 00000BDD 80F90C                      cmp cl, 0Ch     ;Write Error ASC code
-  1128 00000BE0 7409                        je .msdWriteErrorCode
-  1129                                  ;Read faults
-  1130 00000BE2 B00B                        mov al, 0Bh     ;Read fault
-  1131 00000BE4 80F911                      cmp cl, 11h     ;Read error
-  1132 00000BE7 7402                        je .msdWriteErrorCode
-  1133                                  ;General Errors
-  1134 00000BE9 B00C                        mov al, 0Ch     ;Everything else is general error
-  1135                                  .msdWriteErrorCode:    ;Jump to with al=Standard Error code
-  1136 00000BEB B480                        mov ah, 80h ;Set error bit
-  1137 00000BED 66894303                    mov word [rbx + drvReqHdr.status], ax
-  1138                                  .msdDriverExit:
-  1139 00000BF1 66814B030001                or word [rbx + drvReqHdr.status], 0100h ;Set done bit
-  1140 00000BF7 4158                        pop r8
-  1141 00000BF9 5D                          pop rbp
-  1142 00000BFA 5F                          pop rdi
-  1143 00000BFB 5E                          pop rsi
-  1144 00000BFC 5A                          pop rdx
-  1145 00000BFD 59                          pop rcx
-  1146 00000BFE 5B                          pop rbx
-  1147 00000BFF 58                          pop rax
-  1148 00000C00 C3                          ret
-  1149                                  .msdInit:            ;Function 0
-  1150 00000C01 4151                        push r9
-  1151 00000C03 CD31                        int 31h ;Get number of Int 33h devices in r8b
-  1152 00000C05 4159                        pop r9
-  1153 00000C07 4D0FB6C0                    movzx r8, r8b   ;Keeps real count
-  1154 00000C0B 4489C0                      mov eax, r8d
-  1155 00000C0E 3C01                        cmp al, 1
-  1156 00000C10 7702                        ja .mi1
-  1157 00000C12 FEC0                        inc al ;Make it two
-  1158                                  .mi1:
-  1159 00000C14 BA05000000                  mov edx, 5
-  1160 00000C19 39D0                        cmp eax, edx
-  1161 00000C1B 0F47C2                      cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
-  1162 00000C1E 880542FCFFFF                mov byte [msdHdr + drvHdr.drvNam], al ;Save num of drvs in drvr hdr
-  1163 00000C24 88430D                      mov byte [rbx + initReqPkt.numunt], al ;And in req packet
-  1164 00000C27 440005(A9000000)            add byte [numMSDdrv], r8b ;Add the true number of devices to total
-  1165 00000C2E 31ED                        xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
-  1166 00000C30 488D3D73020000              lea rdi, qword [.msdBPBblks]
-  1167 00000C37 53                          push rbx
-  1168                                  .mi2:
-  1169 00000C38 89EA                        mov edx, ebp
-  1170 00000C3A 488D1DC1040000              lea rbx, qword [driverDataPtr]  ;Get effective address of scratch space
-  1171 00000C41 31C9                        xor ecx, ecx    ;Sector 0
-  1172 00000C43 B801820000                  mov eax, 8201h       ;Read 1 sector
-  1173 00000C48 CD33                        int 33h
-  1174 00000C4A 724E                        jc .msdInitError
-  1175                                  
-  1176 00000C4C 488D35AF040000              lea rsi, qword [driverDataPtr]  ;Point to start of data
-  1177 00000C53 B90F000000                  mov ecx, bpbEx_size/8
-  1178 00000C58 F348A5                      rep movsq   ;Move the BPB data into the right block
-  1179                                  
-  1180 00000C5B FFC5                        inc ebp
-  1181 00000C5D 4C39C5                      cmp rbp, r8 ;Have we written the BPB for all physical drives?
-  1182 00000C60 75D6                        jne .mi2  ;No? Go again
-  1183                                  
-  1184 00000C62 488D3D19020000              lea rdi, qword [.msdBPBTbl]  ;Point to start of table
-  1185 00000C69 488D153A020000              lea rdx, qword [.msdBPBblks]
-  1186                                  .mi3:
-  1187 00000C70 488917                      mov qword [rdi], rdx   ;Move the block entry ptr to rdi
-  1188 00000C73 4881C278000000              add rdx, bpbEx_size      ;Make rdx point to the next block entry
-  1189 00000C7A FFCD                        dec ebp
-  1190 00000C7C 75F2                        jnz .mi3  ;If not zero yet, go again
-  1191                                  
-  1192 00000C7E 5B                          pop rbx
-  1193 00000C7F 488D15FC010000              lea rdx, qword [.msdBPBTbl]  ;Get far pointer 
-  1194 00000C86 48895316                    mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
-  1195 00000C8A 488D1571040000              lea rdx, qword [driverDataPtr]
-  1196 00000C91 4889530E                    mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
-  1197 00000C95 E957FFFFFF                  jmp .msdDriverExit
-  1198                                  .msdInitError:
-  1199 00000C9A 5B                          pop rbx
-  1200 00000C9B E951FFFFFF                  jmp .msdDriverExit
-  1201                                  .msdMedChk:          ;Function 1
-  1202                                  ;Once the BIOS function is implmented that reads the changeline, use that!
-  1203                                  ;For BIOSes that dont support the changeline, the following procedure will 
-  1204                                  ; suffice.
-  1205 00000CA0 480FB64301                  movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
-  1206 00000CA5 8A90[780E0000]              mov dl, byte [.msdBIOSmap + rax]    ;Translate unitnum to BIOS num
-  1207 00000CAB F6C280                      test dl, 80h    ;If it is a fixed disk, no change!
-  1208 00000CAE 754D                        jnz .mmcNoChange
-  1209                                  ;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
-  1210 00000CB0 B416                        mov ah, 16h 
-  1211 00000CB2 CD33                        int 33h
-  1212 00000CB4 0F82C4FEFFFF                jc .msdGenDiskError
-  1213 00000CBA 80FC80                      cmp ah, 80h
-  1214 00000CBD 740E                        je .mmcNoChangeLine
-  1215 00000CBF 80FC86                      cmp ah, 86h
-  1216 00000CC2 7409                        je .mmcNoChangeLine
-  1217 00000CC4 84E4                        test ah, ah ;No change?
-  1218 00000CC6 7435                        jz .mmcNoChange
-  1219 00000CC8 F6C401                      test ah, 1  ;Neither 80h or 86h have bit 0 set
-  1220 00000CCB 7513                        jnz .mmcChange
-  1221                                  ;If nothing, fall through and test manually, should never happen though
-  1222                                  .mmcNoChangeLine:
-  1223                                  ;Now we test Media Descriptor
-  1224 00000CCD 8A530D                      mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
-  1225 00000CD0 488B3CC5[820E0000]          mov rdi, qword [.msdBPBTbl + 8*rax]
-  1226 00000CD8 488B3F                      mov rdi, qword [rdi]    ;Dereference rdi
-  1227 00000CDB 385715                      cmp byte [rdi + bpb32.media], dl    ;Compare media descriptor bytes
-  1228 00000CDE 7414                        je .mmcUnsure
-  1229                                  .mmcChange:
-  1230 00000CE0 C6430EFF                    mov byte [rbx + mediaCheckReqPkt.medret], -1
-  1231 00000CE4 488D0583010000              lea rax, qword [.msdDefLabel]           ;Temp, ret def label
-  1232 00000CEB 4889430F                    mov qword [rbx + mediaCheckReqPkt.desptr], rax 
-  1233 00000CEF E9FDFEFFFF                  jmp .msdDriverExit
-  1234                                  .mmcUnsure:
-  1235 00000CF4 C6430E00                    mov byte [rbx + mediaCheckReqPkt.medret], 0
-  1236 00000CF8 E9F4FEFFFF                  jmp .msdDriverExit
-  1237                                  .mmcNoChange:
-  1238 00000CFD C6430E01                    mov byte [rbx + mediaCheckReqPkt.medret], 1
-  1239 00000D01 E9EBFEFFFF                  jmp .msdDriverExit
-  1240                                  
-  1241                                  .msdBuildBPB:        ;Function 2
-  1242 00000D06 4889DE                      mov rsi, rbx
-  1243 00000D09 480FB64601                  movzx rax, byte [rsi + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
-  1244 00000D0E 8A90[780E0000]              mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
-  1245 00000D14 488B5E0E                    mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
-  1246 00000D18 31C9                        xor ecx, ecx    ;Read Sector 0
-  1247 00000D1A B801820000                  mov eax, 8201h  ;LBA Read 1 sector
-  1248 00000D1F CD33                        int 33h
-  1249 00000D21 0F8257FEFFFF                jc .msdGenDiskError
-  1250 00000D27 4887DE                      xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
-  1251 00000D2A 480FB64301                  movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
-  1252 00000D2F 488B3CC5[820E0000]          mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
-  1253 00000D37 488B3F                      mov rdi, qword [rdi] ;Dereference to get pointer to buffer 
-  1254 00000D3A 48897B16                    mov qword [rbx + bpbBuildReqPkt.bpbptr], rdi ;rdi -> final bpb resting place
-  1255 00000D3E B90F000000                  mov ecx, bpbEx_size/8
-  1256 00000D43 F348A5                      rep movsq   ;Move the BPB data into the right space
-  1257 00000D46 E9A6FEFFFF                  jmp .msdDriverExit
-  1258                                  .msdIOCTLRead:       ;Function 3, returns done
-  1259 00000D4B E9A1FEFFFF                  jmp .msdDriverExit
-  1260                                  .msdRead:            ;Function 4
-  1261                                  ;Will read one sector at a time.
-  1262 00000D50 4889DD                      mov rbp, rbx
-  1263 00000D53 31F6                        xor esi, esi  ;Set sector read counter to zero
-  1264                                  .msdr0:
-  1265 00000D55 B682                        mov dh, 82h ;LBA Read Sectors
-  1266 00000D57 E8F8000000                  call .msdBlkIOCommon
-  1267 00000D5C 0F8211FEFFFF                jc .msdIOError
-  1268 00000D62 4881451A00020000            add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
-  1269 00000D6A 4881450E00020000            add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
-  1270 00000D72 FFC6                        inc esi
-  1271 00000D74 3B7516                      cmp esi, dword [rbp + ioReqPkt.tfrlen]
-  1272 00000D77 75DC                        jne .msdr0
-  1273 00000D79 4889EB                      mov rbx, rbp
-  1274 00000D7C E970FEFFFF                  jmp .msdDriverExit
-  1275                                  .msdWrite:           ;Function 8
-  1276                                  ;Will write one sector at a time.
-  1277 00000D81 4889DD                      mov rbp, rbx
-  1278 00000D84 31F6                        xor esi, esi  ;Set counter to zero
-  1279                                  .msdw0:
-  1280 00000D86 B683                        mov dh, 83h ;LBA Write Sectors
-  1281 00000D88 E8C7000000                  call .msdBlkIOCommon
-  1282 00000D8D 0F82E0FDFFFF                jc .msdIOError
-  1283 00000D93 4881451A00020000            add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
-  1284 00000D9B 4881450E00020000            add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
-  1285 00000DA3 FFC6                        inc esi
-  1286 00000DA5 3B7516                      cmp esi, dword [rbp + ioReqPkt.tfrlen]
-  1287 00000DA8 75DC                        jne .msdw0
-  1288 00000DAA 4889EB                      mov rbx, rbp
-  1289 00000DAD E93FFEFFFF                  jmp .msdDriverExit
-  1290                                  .msdWriteVerify:     ;Function 9, writes sectors then verifies them
-  1291                                  ;Will write one sector at a time and then verify it.
-  1292 00000DB2 4889DD                      mov rbp, rbx
-  1293 00000DB5 31F6                        xor esi, esi  ;Set counter to zero
-  1294                                  .msdwv0:
-  1295 00000DB7 B683                        mov dh, 83h ;LBA Write Sectors
-  1296 00000DB9 E896000000                  call .msdBlkIOCommon
-  1297 00000DBE 0F82AFFDFFFF                jc .msdIOError    ;Error handler needs to add to esi the value in al
-  1298 00000DC4 B684                        mov dh, 84h ;LBA Verify Sectors
-  1299 00000DC6 E889000000                  call .msdBlkIOCommon
-  1300 00000DCB 0F82A2FDFFFF                jc .msdIOError    ;Error handler needs to add to esi the value in al
-  1301 00000DD1 4881451A00020000            add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
-  1302 00000DD9 4881450E00020000            add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
-  1303 00000DE1 FFC6                        inc esi
-  1304 00000DE3 3B7516                      cmp esi, dword [rbp + ioReqPkt.tfrlen]
-  1305 00000DE6 75CF                        jne .msdwv0
-  1306 00000DE8 4889EB                      mov rbx, rbp
-  1307 00000DEB E901FEFFFF                  jmp .msdDriverExit
-  1308                                  .msdIOCTLWrite:      ;Function 12, returns done
-  1309 00000DF0 E9FCFDFFFF                  jmp .msdDriverExit
-  1310                                  .msdDevOpen:         ;Function 13
-  1311 00000DF5 480FB64301                  movzx rax, byte [rbx + openReqPkt.unitnm]
-  1312 00000DFA FE80[7D0E0000]              inc byte [.msdHdlCnt + rax]  ;Inc handle cnt for given unit
-  1313 00000E00 E9ECFDFFFF                  jmp .msdDriverExit
-  1314                                  .msdDevClose:        ;Function 14
-  1315 00000E05 480FB64301                  movzx rax, byte [rbx + closeReqPkt.unitnm]
-  1316 00000E0A FE88[7D0E0000]              dec byte [.msdHdlCnt + rax]  ;Dec handle cnt for given unit
-  1317 00000E10 E9DCFDFFFF                  jmp .msdDriverExit
-  1318                                  .msdRemovableMedia:  ;Function 15
-  1319 00000E15 480FB64301                  movzx rax, byte [rbx + remMediaReqPkt.unitnm]
-  1320 00000E1A 8A80[780E0000]              mov al, byte [.msdBIOSmap + rax]    ;Get BIOS number
-  1321 00000E20 A880                        test al, 80h
-  1322 00000E22 0F84C9FDFFFF                jz .msdDriverExit   ;If removable, busy bit is clear
-  1323 00000E28 66C743032000                mov word [rbx + remMediaReqPkt.status], 20h ;Set Busy bit
-  1324 00000E2E E9BEFDFFFF                  jmp .msdDriverExit
-  1325                                  .msdGenericIOCTL:    ;Function 19
-  1326 00000E33 E9B9FDFFFF                  jmp .msdDriverExit
-  1327                                  .msdGetLogicalDev:   ;Function 23
-  1328 00000E38 8A0539000000                mov al, byte [.msdCurDev]
-  1329 00000E3E 884301                      mov byte [rbx + getDevReqPkt.unitnm], al
-  1330 00000E41 E9ABFDFFFF                  jmp .msdDriverExit
-  1331                                  .msdSetLogicalDev:   ;Function 24
-  1332 00000E46 8A4301                      mov al, byte [rbx + getDevReqPkt.unitnm]
-  1333 00000E49 880528000000                mov byte [.msdCurDev], al
-  1334 00000E4F E99DFDFFFF                  jmp .msdDriverExit
-  1335                                  
-  1336                                  .msdBlkIOCommon:  ;Does block IO
-  1337                                  ;Called with rbp containing old rbx value and ah with function number
-  1338                                  ;Error handled by caller
-  1339                                  ;Sector count handled by caller
-  1340                                  ;Called with dh = BIOS function number
-  1341 00000E54 480FB64501                  movzx rax, byte [rbp + ioReqPkt.unitnm]
-  1342 00000E59 8A90[780E0000]              mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req in dl
-  1343 00000E5F 488B4D1A                    mov rcx, qword [rbp + ioReqPkt.strtsc]  ;Get start sector
-  1344 00000E63 488B5D0E                    mov rbx, qword [rbp + ioReqPkt.bufptr]  ;Get Memory Buffer
-  1345 00000E67 88F4                        mov ah, dh
-  1346 00000E69 B001                        mov al, 01h ;Do one sector at a time 
-  1347 00000E6B CD33                        int 33h
-  1348 00000E6D C3                          ret
+  1046 00000AFA 0F87F7000000                ja .msdWriteErrorCode ;If yes, error!
+  1047 00000B00 B001                        mov al, 01h ;Unknown Unit Error
+  1048 00000B02 807B0105                    cmp byte [rbx + drvReqHdr.unitnm], 05h  ;Unit greater than 5 is invalid
+  1049 00000B06 0F87EB000000                ja .msdWriteErrorCode ;If yes, error!
+  1050 00000B0C 8A4302                      mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
+  1051 00000B0F 84C0                        test al, al
+  1052 00000B11 0F84F6000000                jz .msdInit
+  1053 00000B17 3C01                        cmp al, 01
+  1054 00000B19 0F848D010000                jz .msdMedChk
+  1055 00000B1F 3C02                        cmp al, 02
+  1056 00000B21 0F84EB010000                jz .msdBuildBPB
+  1057 00000B27 3C03                        cmp al, 03
+  1058 00000B29 0F8446020000                jz .msdIOCTLRead
+  1059 00000B2F 3C04                        cmp al, 04
+  1060 00000B31 0F8443020000                jz .msdRead
+  1061 00000B37 3C08                        cmp al, 08
+  1062 00000B39 0F846C020000                jz .msdWrite
+  1063 00000B3F 3C09                        cmp al, 09
+  1064 00000B41 0F8495020000                jz .msdWriteVerify
+  1065 00000B47 3C0C                        cmp al, 12
+  1066 00000B49 0F84CB020000                jz .msdIOCTLWrite
+  1067 00000B4F 3C0D                        cmp al, 13
+  1068 00000B51 0F84C8020000                jz .msdDevOpen
+  1069 00000B57 3C0E                        cmp al, 14
+  1070 00000B59 0F84D0020000                jz .msdDevClose
+  1071 00000B5F 3C0F                        cmp al, 15
+  1072 00000B61 0F84D8020000                jz .msdRemovableMedia
+  1073 00000B67 3C13                        cmp al, 19
+  1074 00000B69 0F84EE020000                jz .msdGenericIOCTL
+  1075 00000B6F 3C17                        cmp al, 23
+  1076 00000B71 0F84EB020000                jz .msdGetLogicalDev
+  1077 00000B77 3C18                        cmp al, 24
+  1078 00000B79 0F84F1020000                jz .msdSetLogicalDev
+  1079                                  .msdIOError:  ;In Read and Write errors, rbp points to the dev struc
+  1080 00000B7F 4889EB                      mov rbx, rbp
+  1081 00000B82 0FB6C0                      movzx eax, al   ;Number of IO-ed sectors in last request
+  1082 00000B85 01C6                        add esi, eax    ;esi Keeps sector count across transfers
+  1083 00000B87 897316                      mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
+  1084                                  ;Now fall through to general error
+  1085                                  .msdGenDiskError:
+  1086 00000B8A B401                        mov ah, 01h
+  1087 00000B8C 30D2                        xor dl, dl  ;Work around bug that fails request if dl > 7Fh
+  1088 00000B8E CD33                        int 33h ;Read status of last operation
+  1089 00000B90 80FC06                      cmp ah, 06h ;Mock Seek response (device not present)
+  1090 00000B93 B002                        mov al, 02h ;Give device not ready error (sensibly I think)
+  1091 00000B95 7460                        je .msdWriteErrorCode 
+  1092 00000B97 B00C                        mov al, 0Ch ;Preliminary General Error Faults
+  1093 00000B99 80FCFF                      cmp ah, -1  ;Sense operation failed
+  1094 00000B9C 7459                        je .msdWriteErrorCode 
+  1095 00000B9E 80FC20                      cmp ah, 20h ;Gen. ctrlr. failure. Consider new error code to halt system.
+  1096 00000BA1 7454                        je .msdWriteErrorCode
+  1097                                  ;Device Not Ready
+  1098 00000BA3 B002                        mov al, 02h  ;Device not ready code
+  1099 00000BA5 4138C0                      cmp r8b, al  ;SCSI Not ready commands start with 2
+  1100 00000BA8 744D                        je .msdWriteErrorCode
+  1101 00000BAA 49C1E808                    shr r8, 8       ;Remove Sense Key
+  1102 00000BAE 410FB7C8                    movzx ecx, r8w  ;Get ASC and ASCQ in cl and ch bzw.
+  1103                                  ;Write Protected
+  1104 00000BB2 30C0                        xor al, al
+  1105 00000BB4 6681F92700                  cmp cx, 0027h   ;Write protected error
+  1106 00000BB9 743C                        je .msdWriteErrorCode
+  1107                                  ;CRC Error
+  1108 00000BBB B004                        mov al, 04h     ;CRC error code
+  1109 00000BBD 6681F90803                  cmp cx, 0308h   ;LU comms CRC error (UDMA/32)
+  1110 00000BC2 7433                        je .msdWriteErrorCode
+  1111 00000BC4 6681F91000                  cmp cx, 0010h   ;ID CRC or ECC error
+  1112 00000BC9 742C                        je .msdWriteErrorCode
+  1113 00000BCB 6681F94701                  cmp cx, 0147h   ;Data phase CRC error detected
+  1114 00000BD0 7425                        je .msdWriteErrorCode
+  1115                                  ;Seek Error
+  1116 00000BD2 B006                        mov al, 06h     ;Seek error code
+  1117 00000BD4 80F902                      cmp cl, 02h     ;No Seek Complete
+  1118 00000BD7 741E                        je .msdWriteErrorCode
+  1119                                  ;Unknown Hardware Media (Shouldn't happen with Flash Drives)
+  1120                                  ;This error should only be called if BPB not recognised for Flash Drives
+  1121 00000BD9 B007                        mov al, 07h
+  1122 00000BDB 80F930                      cmp cl, 30h   ;All issues with media returns unknown media
+  1123 00000BDE 7417                        je .msdWriteErrorCode
+  1124                                  ;Sector Not Found
+  1125 00000BE0 B008                        mov al, 08h     ;Sector not found code
+  1126 00000BE2 80F921                      cmp cl, 21h     ;Illegal Request - Invalid LBA
+  1127 00000BE5 7410                        je .msdWriteErrorCode
+  1128                                  ;Write faults
+  1129 00000BE7 B00A                        mov al, 0Ah     ;Write fault
+  1130 00000BE9 80F90C                      cmp cl, 0Ch     ;Write Error ASC code
+  1131 00000BEC 7409                        je .msdWriteErrorCode
+  1132                                  ;Read faults
+  1133 00000BEE B00B                        mov al, 0Bh     ;Read fault
+  1134 00000BF0 80F911                      cmp cl, 11h     ;Read error
+  1135 00000BF3 7402                        je .msdWriteErrorCode
+  1136                                  ;General Errors
+  1137 00000BF5 B00C                        mov al, 0Ch     ;Everything else is general error
+  1138                                  .msdWriteErrorCode:    ;Jump to with al=Standard Error code
+  1139 00000BF7 B480                        mov ah, 80h ;Set error bit
+  1140 00000BF9 66894303                    mov word [rbx + drvReqHdr.status], ax
+  1141                                  .msdDriverExit:
+  1142 00000BFD 66814B030001                or word [rbx + drvReqHdr.status], 0100h ;Set done bit
+  1143 00000C03 4158                        pop r8
+  1144 00000C05 5D                          pop rbp
+  1145 00000C06 5F                          pop rdi
+  1146 00000C07 5E                          pop rsi
+  1147 00000C08 5A                          pop rdx
+  1148 00000C09 59                          pop rcx
+  1149 00000C0A 5B                          pop rbx
+  1150 00000C0B 58                          pop rax
+  1151 00000C0C C3                          ret
+  1152                                  .msdInit:            ;Function 0
+  1153 00000C0D 4151                        push r9
+  1154 00000C0F CD31                        int 31h ;Get number of Int 33h devices in r8b
+  1155 00000C11 4159                        pop r9
+  1156 00000C13 4D0FB6C0                    movzx r8, r8b   ;Keeps real count
+  1157 00000C17 4489C0                      mov eax, r8d
+  1158 00000C1A 3C01                        cmp al, 1
+  1159 00000C1C 7702                        ja .mi1
+  1160 00000C1E FEC0                        inc al ;Make it two
+  1161                                  .mi1:
+  1162 00000C20 BA05000000                  mov edx, 5
+  1163 00000C25 39D0                        cmp eax, edx
+  1164 00000C27 0F47C2                      cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
+  1165 00000C2A 880536FCFFFF                mov byte [msdHdr + drvHdr.drvNam], al ;Save num of drvs in drvr hdr
+  1166 00000C30 88430D                      mov byte [rbx + initReqPkt.numunt], al ;And in req packet
+  1167 00000C33 440005(A9000000)            add byte [numMSDdrv], r8b ;Add the true number of devices to total
+  1168 00000C3A 31ED                        xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
+  1169 00000C3C 488D3D91020000              lea rdi, qword [.msdBPBblks]
+  1170 00000C43 53                          push rbx
+  1171                                  .mi2:
+  1172 00000C44 89EA                        mov edx, ebp
+  1173 00000C46 488D1DDF040000              lea rbx, qword [driverDataPtr]  ;Get effective address of scratch space
+  1174 00000C4D 31C9                        xor ecx, ecx    ;Sector 0
+  1175 00000C4F B801820000                  mov eax, 8201h       ;Read 1 sector
+  1176 00000C54 CD33                        int 33h
+  1177 00000C56 724E                        jc .msdInitError
+  1178                                  
+  1179 00000C58 488D35CD040000              lea rsi, qword [driverDataPtr]  ;Point to start of data
+  1180 00000C5F B90F000000                  mov ecx, bpbEx_size/8
+  1181 00000C64 F348A5                      rep movsq   ;Move the BPB data into the right block
+  1182                                  
+  1183 00000C67 FFC5                        inc ebp
+  1184 00000C69 4C39C5                      cmp rbp, r8 ;Have we written the BPB for all physical drives?
+  1185 00000C6C 75D6                        jne .mi2  ;No? Go again
+  1186                                  
+  1187 00000C6E 488D3D37020000              lea rdi, qword [.msdBPBTbl]  ;Point to start of table
+  1188 00000C75 488D1558020000              lea rdx, qword [.msdBPBblks]
+  1189                                  .mi3:
+  1190 00000C7C 488917                      mov qword [rdi], rdx   ;Move the block entry ptr to rdi
+  1191 00000C7F 4881C278000000              add rdx, bpbEx_size      ;Make rdx point to the next block entry
+  1192 00000C86 FFCD                        dec ebp
+  1193 00000C88 75F2                        jnz .mi3  ;If not zero yet, go again
+  1194                                  
+  1195 00000C8A 5B                          pop rbx
+  1196 00000C8B 488D151A020000              lea rdx, qword [.msdBPBTbl]  ;Get far pointer 
+  1197 00000C92 48895316                    mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
+  1198 00000C96 488D158F040000              lea rdx, qword [driverDataPtr]
+  1199 00000C9D 4889530E                    mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
+  1200 00000CA1 E957FFFFFF                  jmp .msdDriverExit
+  1201                                  .msdInitError:
+  1202 00000CA6 5B                          pop rbx
+  1203 00000CA7 E951FFFFFF                  jmp .msdDriverExit
+  1204                                  .msdMedChk:          ;Function 1
+  1205                                  ;Once the BIOS function is implmented that reads the changeline, use that!
+  1206                                  ;For BIOSes that dont support the changeline, the following procedure will 
+  1207                                  ; suffice.
+  1208 00000CAC 480FB64301                  movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
+  1209 00000CB1 8A90[A20E0000]              mov dl, byte [.msdBIOSmap + rax]    ;Translate unitnum to BIOS num
+  1210 00000CB7 F6C280                      test dl, 80h    ;If it is a fixed disk, no change!
+  1211 00000CBA 754D                        jnz .mmcNoChange
+  1212                                  ;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
+  1213 00000CBC B416                        mov ah, 16h 
+  1214 00000CBE CD33                        int 33h
+  1215 00000CC0 0F82C4FEFFFF                jc .msdGenDiskError
+  1216 00000CC6 80FC80                      cmp ah, 80h
+  1217 00000CC9 740E                        je .mmcNoChangeLine
+  1218 00000CCB 80FC86                      cmp ah, 86h
+  1219 00000CCE 7409                        je .mmcNoChangeLine
+  1220 00000CD0 84E4                        test ah, ah ;No change?
+  1221 00000CD2 7435                        jz .mmcNoChange
+  1222 00000CD4 F6C401                      test ah, 1  ;Neither 80h or 86h have bit 0 set
+  1223 00000CD7 7513                        jnz .mmcChange
+  1224                                  ;If nothing, fall through and test manually, should never happen though
+  1225                                  .mmcNoChangeLine:
+  1226                                  ;Now we test Media Descriptor
+  1227 00000CD9 8A530D                      mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
+  1228 00000CDC 488B3CC5[AC0E0000]          mov rdi, qword [.msdBPBTbl + 8*rax]
+  1229 00000CE4 488B3F                      mov rdi, qword [rdi]    ;Dereference rdi
+  1230 00000CE7 385715                      cmp byte [rdi + bpb32.media], dl    ;Compare media descriptor bytes
+  1231 00000CEA 7414                        je .mmcUnsure
+  1232                                  .mmcChange:
+  1233 00000CEC C6430EFF                    mov byte [rbx + mediaCheckReqPkt.medret], -1
+  1234 00000CF0 488D05A1010000              lea rax, qword [.msdDefLabel]           ;Temp, ret def label
+  1235 00000CF7 4889430F                    mov qword [rbx + mediaCheckReqPkt.desptr], rax 
+  1236 00000CFB E9FDFEFFFF                  jmp .msdDriverExit
+  1237                                  .mmcUnsure:
+  1238 00000D00 C6430E00                    mov byte [rbx + mediaCheckReqPkt.medret], 0
+  1239 00000D04 E9F4FEFFFF                  jmp .msdDriverExit
+  1240                                  .mmcNoChange:
+  1241 00000D09 C6430E01                    mov byte [rbx + mediaCheckReqPkt.medret], 1
+  1242 00000D0D E9EBFEFFFF                  jmp .msdDriverExit
+  1243                                  
+  1244                                  .msdBuildBPB:        ;Function 2
+  1245 00000D12 4889DE                      mov rsi, rbx
+  1246 00000D15 480FB64601                  movzx rax, byte [rsi + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
+  1247 00000D1A 8A90[A20E0000]              mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
+  1248 00000D20 488B5E0E                    mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
+  1249 00000D24 31C9                        xor ecx, ecx    ;Read Sector 0
+  1250 00000D26 B801820000                  mov eax, 8201h  ;LBA Read 1 sector
+  1251 00000D2B CD33                        int 33h
+  1252 00000D2D 0F8257FEFFFF                jc .msdGenDiskError
+  1253                                  ;Check Media Descriptor, must be F0h or F8h-FFh or unknown media
+  1254 00000D33 807B15F0                    cmp byte [rbx + bpb.media], 0F0h    ;3.5" FDD standard
+  1255 00000D37 7418                        je .mbbpb0
+  1256 00000D39 807B15F8                    cmp byte [rbx + bpb.media], 0F8h    ;FDD/Large Media Standard
+  1257 00000D3D 7412                        je .mbbpb0
+  1258 00000D3F 807B15F9                    cmp byte [rbx + bpb.media], 0F9h    ;5.25" & 720K 3.5" Media Standard
+  1259 00000D43 740C                        je .mbbpb0
+  1260 00000D45 807B15FC                    cmp byte [rbx + bpb.media], 0FCh    ;Very Obsolete Media Standards
+  1261 00000D49 B007                        mov al, 07h ;Unknown media error code
+  1262 00000D4B 0F82A6FEFFFF                jb .msdWriteErrorCode
+  1263                                  .mbbpb0:
+  1264 00000D51 4887DE                      xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
+  1265 00000D54 480FB64301                  movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
+  1266 00000D59 488B3CC5[AC0E0000]          mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
+  1267 00000D61 488B3F                      mov rdi, qword [rdi] ;Dereference to get pointer to buffer 
+  1268 00000D64 48897B16                    mov qword [rbx + bpbBuildReqPkt.bpbptr], rdi ;rdi -> final bpb resting place
+  1269 00000D68 B90F000000                  mov ecx, bpbEx_size/8
+  1270 00000D6D F348A5                      rep movsq   ;Move the BPB data into the right space
+  1271 00000D70 E988FEFFFF                  jmp .msdDriverExit
+  1272                                  .msdIOCTLRead:       ;Function 3, returns done
+  1273 00000D75 E983FEFFFF                  jmp .msdDriverExit
+  1274                                  .msdRead:            ;Function 4
+  1275                                  ;Will read one sector at a time.
+  1276 00000D7A 4889DD                      mov rbp, rbx
+  1277 00000D7D 31F6                        xor esi, esi  ;Set sector read counter to zero
+  1278                                  .msdr0:
+  1279 00000D7F B682                        mov dh, 82h ;LBA Read Sectors
+  1280 00000D81 E8F8000000                  call .msdBlkIOCommon
+  1281 00000D86 0F82F3FDFFFF                jc .msdIOError
+  1282 00000D8C 4881451A00020000            add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
+  1283 00000D94 4881450E00020000            add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+  1284 00000D9C FFC6                        inc esi
+  1285 00000D9E 3B7516                      cmp esi, dword [rbp + ioReqPkt.tfrlen]
+  1286 00000DA1 75DC                        jne .msdr0
+  1287 00000DA3 4889EB                      mov rbx, rbp
+  1288 00000DA6 E952FEFFFF                  jmp .msdDriverExit
+  1289                                  .msdWrite:           ;Function 8
+  1290                                  ;Will write one sector at a time.
+  1291 00000DAB 4889DD                      mov rbp, rbx
+  1292 00000DAE 31F6                        xor esi, esi  ;Set counter to zero
+  1293                                  .msdw0:
+  1294 00000DB0 B683                        mov dh, 83h ;LBA Write Sectors
+  1295 00000DB2 E8C7000000                  call .msdBlkIOCommon
+  1296 00000DB7 0F82C2FDFFFF                jc .msdIOError
+  1297 00000DBD 4881451A00020000            add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
+  1298 00000DC5 4881450E00020000            add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+  1299 00000DCD FFC6                        inc esi
+  1300 00000DCF 3B7516                      cmp esi, dword [rbp + ioReqPkt.tfrlen]
+  1301 00000DD2 75DC                        jne .msdw0
+  1302 00000DD4 4889EB                      mov rbx, rbp
+  1303 00000DD7 E921FEFFFF                  jmp .msdDriverExit
+  1304                                  .msdWriteVerify:     ;Function 9, writes sectors then verifies them
+  1305                                  ;Will write one sector at a time and then verify it.
+  1306 00000DDC 4889DD                      mov rbp, rbx
+  1307 00000DDF 31F6                        xor esi, esi  ;Set counter to zero
+  1308                                  .msdwv0:
+  1309 00000DE1 B683                        mov dh, 83h ;LBA Write Sectors
+  1310 00000DE3 E896000000                  call .msdBlkIOCommon
+  1311 00000DE8 0F8291FDFFFF                jc .msdIOError    ;Error handler needs to add to esi the value in al
+  1312 00000DEE B684                        mov dh, 84h ;LBA Verify Sectors
+  1313 00000DF0 E889000000                  call .msdBlkIOCommon
+  1314 00000DF5 0F8284FDFFFF                jc .msdIOError    ;Error handler needs to add to esi the value in al
+  1315 00000DFB 4881451A00020000            add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
+  1316 00000E03 4881450E00020000            add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+  1317 00000E0B FFC6                        inc esi
+  1318 00000E0D 3B7516                      cmp esi, dword [rbp + ioReqPkt.tfrlen]
+  1319 00000E10 75CF                        jne .msdwv0
+  1320 00000E12 4889EB                      mov rbx, rbp
+  1321 00000E15 E9E3FDFFFF                  jmp .msdDriverExit
+  1322                                  .msdIOCTLWrite:      ;Function 12, returns done
+  1323 00000E1A E9DEFDFFFF                  jmp .msdDriverExit
+  1324                                  .msdDevOpen:         ;Function 13
+  1325 00000E1F 480FB64301                  movzx rax, byte [rbx + openReqPkt.unitnm]
+  1326 00000E24 FE80[A70E0000]              inc byte [.msdHdlCnt + rax]  ;Inc handle cnt for given unit
+  1327 00000E2A E9CEFDFFFF                  jmp .msdDriverExit
+  1328                                  .msdDevClose:        ;Function 14
+  1329 00000E2F 480FB64301                  movzx rax, byte [rbx + closeReqPkt.unitnm]
+  1330 00000E34 FE88[A70E0000]              dec byte [.msdHdlCnt + rax]  ;Dec handle cnt for given unit
+  1331 00000E3A E9BEFDFFFF                  jmp .msdDriverExit
+  1332                                  .msdRemovableMedia:  ;Function 15
+  1333 00000E3F 480FB64301                  movzx rax, byte [rbx + remMediaReqPkt.unitnm]
+  1334 00000E44 8A80[A20E0000]              mov al, byte [.msdBIOSmap + rax]    ;Get BIOS number
+  1335 00000E4A A880                        test al, 80h
+  1336 00000E4C 0F84ABFDFFFF                jz .msdDriverExit   ;If removable, busy bit is clear
+  1337 00000E52 66C743032000                mov word [rbx + remMediaReqPkt.status], 20h ;Set Busy bit
+  1338 00000E58 E9A0FDFFFF                  jmp .msdDriverExit
+  1339                                  .msdGenericIOCTL:    ;Function 19
+  1340 00000E5D E99BFDFFFF                  jmp .msdDriverExit
+  1341                                  .msdGetLogicalDev:   ;Function 23
+  1342 00000E62 8A0539000000                mov al, byte [.msdCurDev]
+  1343 00000E68 884301                      mov byte [rbx + getDevReqPkt.unitnm], al
+  1344 00000E6B E98DFDFFFF                  jmp .msdDriverExit
+  1345                                  .msdSetLogicalDev:   ;Function 24
+  1346 00000E70 8A4301                      mov al, byte [rbx + getDevReqPkt.unitnm]
+  1347 00000E73 880528000000                mov byte [.msdCurDev], al
+  1348 00000E79 E97FFDFFFF                  jmp .msdDriverExit
   1349                                  
-  1350 00000E6E 4E4F204E414D452000      .msdDefLabel db "NO NAME ",0 ;Default volume label
-  1351                                  ;LASTDRIVE default is 5
-  1352 00000E77 00                      .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
-  1353                                  ; Except when single drive in use, in which case Drive A and B refer to device 0
-  1354 00000E78 0000000000              .msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
-  1355 00000E7D 0000000000              .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
-  1356 00000E82 000000000000000000-     .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
-  1356 00000E8B 000000000000000000-
-  1356 00000E94 000000000000000000-
-  1356 00000E9D 000000000000000000-
-  1356 00000EA6 00000000           
-  1357 00000EAA 000000000000000000-     .msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
-  1357 00000EB3 000000000000000000-
-  1357 00000EBC 000000000000000000-
-  1357 00000EC5 000000000000000000-
-  1357 00000ECE 000000000000000000-
-  1357 00000ED7 000000000000000000-
-  1357 00000EE0 000000000000000000-
-  1357 00000EE9 000000000000000000-
-  1357 00000EF2 000000000000000000-
-  1357 00000EFB 000000000000000000-
-  1357 00000F04 000000000000000000-
-  1357 00000F0D 000000000000000000-
-  1357 00000F16 000000000000000000-
-  1357 00000F1F 000000000000000000-
-  1357 00000F28 000000000000000000-
-  1357 00000F31 000000000000000000-
-  1357 00000F3A 000000000000000000-
-  1357 00000F43 000000000000000000-
-  1357 00000F4C 000000000000000000-
-  1357 00000F55 000000000000000000-
-  1357 00000F5E 000000000000000000-
-  1357 00000F67 000000000000000000-
-  1357 00000F70 000000000000000000-
-  1357 00000F79 000000000000000000-
-  1357 00000F82 000000000000000000-
-  1357 00000F8B 000000000000000000-
-  1357 00000F94 000000000000000000-
-  1357 00000F9D 000000000000000000-
-  1357 00000FA6 000000000000000000-
-  1357 00000FAF 000000000000000000-
-  1357 00000FB8 000000000000000000-
-  1357 00000FC1 000000000000000000-
-  1357 00000FCA 000000000000000000-
-  1357 00000FD3 000000000000000000-
-  1357 00000FDC 000000000000000000-
-  1357 00000FE5 000000000000000000-
-  1357 00000FEE 000000000000000000-
-  1357 00000FF7 000000000000000000-
-  1357 00001000 000000000000000000-
-  1357 00001009 000000000000000000-
-  1357 00001012 000000000000000000-
-  1357 0000101B 000000000000000000-
-  1357 00001024 000000000000000000-
-  1357 0000102D 000000000000000000-
-  1357 00001036 000000000000000000-
-  1357 0000103F 000000000000000000-
-  1357 00001048 000000000000000000-
-  1357 00001051 000000000000000000-
-  1357 0000105A 000000000000000000-
-  1357 00001063 000000000000000000-
-  1357 0000106C 000000000000000000-
-  1357 00001075 000000000000000000-
-  1357 0000107E 000000000000000000-
-  1357 00001087 000000000000000000-
-  1357 00001090 000000000000000000-
-  1357 00001099 000000000000000000-
-  1357 000010A2 000000000000000000-
-  1357 000010AB 000000000000000000-
-  1357 000010B4 000000000000000000-
-  1357 000010BD 000000000000000000-
-  1357 000010C6 000000000000000000-
-  1357 000010CF 000000000000000000-
-  1357 000010D8 000000000000000000-
-  1357 000010E1 000000000000000000-
-  1357 000010EA 000000000000000000-
-  1357 000010F3 000000000000000000-
-  1357 000010FC 000000000000       
-  1358                                  
-  1359                                  driverDataPtr:
+  1350                                  .msdBlkIOCommon:  ;Does block IO
+  1351                                  ;Called with rbp containing old rbx value and ah with function number
+  1352                                  ;Error handled by caller
+  1353                                  ;Sector count handled by caller
+  1354                                  ;Called with dh = BIOS function number
+  1355 00000E7E 480FB64501                  movzx rax, byte [rbp + ioReqPkt.unitnm]
+  1356 00000E83 8A90[A20E0000]              mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req in dl
+  1357 00000E89 488B4D1A                    mov rcx, qword [rbp + ioReqPkt.strtsc]  ;Get start sector
+  1358 00000E8D 488B5D0E                    mov rbx, qword [rbp + ioReqPkt.bufptr]  ;Get Memory Buffer
+  1359 00000E91 88F4                        mov ah, dh
+  1360 00000E93 B001                        mov al, 01h ;Do one sector at a time 
+  1361 00000E95 CD33                        int 33h
+  1362 00000E97 C3                          ret
+  1363                                  
+  1364 00000E98 4E4F204E414D452000      .msdDefLabel db "NO NAME ",0 ;Default volume label
+  1365                                  ;LASTDRIVE default is 5
+  1366 00000EA1 00                      .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
+  1367                                  ; Except when single drive in use, in which case Drive A and B refer to device 0
+  1368 00000EA2 0000000000              .msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
+  1369 00000EA7 0000000000              .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
+  1370 00000EAC 000000000000000000-     .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
+  1370 00000EB5 000000000000000000-
+  1370 00000EBE 000000000000000000-
+  1370 00000EC7 000000000000000000-
+  1370 00000ED0 00000000           
+  1371 00000ED4 000000000000000000-     .msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
+  1371 00000EDD 000000000000000000-
+  1371 00000EE6 000000000000000000-
+  1371 00000EEF 000000000000000000-
+  1371 00000EF8 000000000000000000-
+  1371 00000F01 000000000000000000-
+  1371 00000F0A 000000000000000000-
+  1371 00000F13 000000000000000000-
+  1371 00000F1C 000000000000000000-
+  1371 00000F25 000000000000000000-
+  1371 00000F2E 000000000000000000-
+  1371 00000F37 000000000000000000-
+  1371 00000F40 000000000000000000-
+  1371 00000F49 000000000000000000-
+  1371 00000F52 000000000000000000-
+  1371 00000F5B 000000000000000000-
+  1371 00000F64 000000000000000000-
+  1371 00000F6D 000000000000000000-
+  1371 00000F76 000000000000000000-
+  1371 00000F7F 000000000000000000-
+  1371 00000F88 000000000000000000-
+  1371 00000F91 000000000000000000-
+  1371 00000F9A 000000000000000000-
+  1371 00000FA3 000000000000000000-
+  1371 00000FAC 000000000000000000-
+  1371 00000FB5 000000000000000000-
+  1371 00000FBE 000000000000000000-
+  1371 00000FC7 000000000000000000-
+  1371 00000FD0 000000000000000000-
+  1371 00000FD9 000000000000000000-
+  1371 00000FE2 000000000000000000-
+  1371 00000FEB 000000000000000000-
+  1371 00000FF4 000000000000000000-
+  1371 00000FFD 000000000000000000-
+  1371 00001006 000000000000000000-
+  1371 0000100F 000000000000000000-
+  1371 00001018 000000000000000000-
+  1371 00001021 000000000000000000-
+  1371 0000102A 000000000000000000-
+  1371 00001033 000000000000000000-
+  1371 0000103C 000000000000000000-
+  1371 00001045 000000000000000000-
+  1371 0000104E 000000000000000000-
+  1371 00001057 000000000000000000-
+  1371 00001060 000000000000000000-
+  1371 00001069 000000000000000000-
+  1371 00001072 000000000000000000-
+  1371 0000107B 000000000000000000-
+  1371 00001084 000000000000000000-
+  1371 0000108D 000000000000000000-
+  1371 00001096 000000000000000000-
+  1371 0000109F 000000000000000000-
+  1371 000010A8 000000000000000000-
+  1371 000010B1 000000000000000000-
+  1371 000010BA 000000000000000000-
+  1371 000010C3 000000000000000000-
+  1371 000010CC 000000000000000000-
+  1371 000010D5 000000000000000000-
+  1371 000010DE 000000000000000000-
+  1371 000010E7 000000000000000000-
+  1371 000010F0 000000000000000000-
+  1371 000010F9 000000000000000000-
+  1371 00001102 000000000000000000-
+  1371 0000110B 000000000000000000-
+  1371 00001114 000000000000000000-
+  1371 0000111D 000000000000000000-
+  1371 00001126 000000000000       
+  1372                                  
+  1373                                  driverDataPtr:

@@ -1044,6 +1044,9 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
     mov al, 03h
     ja .msdWriteErrorCode ;If yes, error!
+    mov al, 01h ;Unknown Unit Error
+    cmp byte [rbx + drvReqHdr.unitnm], 05h  ;Unit greater than 5 is invalid
+    ja .msdWriteErrorCode ;If yes, error!
     mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     test al, al
     jz .msdInit
@@ -1247,6 +1250,17 @@ msdDriver:
     mov eax, 8201h  ;LBA Read 1 sector
     int 33h
     jc .msdGenDiskError
+;Check Media Descriptor, must be F0h or F8h-FFh or unknown media
+    cmp byte [rbx + bpb.media], 0F0h    ;3.5" FDD standard
+    je .mbbpb0
+    cmp byte [rbx + bpb.media], 0F8h    ;FDD/Large Media Standard
+    je .mbbpb0
+    cmp byte [rbx + bpb.media], 0F9h    ;5.25" & 720K 3.5" Media Standard
+    je .mbbpb0
+    cmp byte [rbx + bpb.media], 0FCh    ;Very Obsolete Media Standards
+    mov al, 07h ;Unknown media error code
+    jb .msdWriteErrorCode
+.mbbpb0:
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
     movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
     mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
