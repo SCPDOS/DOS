@@ -1038,9 +1038,6 @@ msdDriver:
     push rbp
     push r8
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
-    mov al, 05h ;Bad request structure length
-    jne .msdWriteErrorCode
     cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
     mov al, 03h
     ja .msdWriteErrorCode ;If yes, error!
@@ -1150,6 +1147,10 @@ msdDriver:
     pop rax
     ret
 .msdInit:            ;Function 0
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], initReqPkt_size
+    jne .msdWriteErrorCode
+
     push r9
     int 31h ;Get number of Int 33h devices in r8b
     pop r9
@@ -1205,6 +1206,10 @@ msdDriver:
 ;Once the BIOS function is implmented that reads the changeline, use that!
 ;For BIOSes that dont support the changeline, the following procedure will 
 ; suffice.
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], mediaCheckReqPkt_size
+    jne .msdWriteErrorCode
+
     movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
     mov dl, byte [.msdBIOSmap + rax]    ;Translate unitnum to BIOS num
     test dl, 80h    ;If it is a fixed disk, no change!
@@ -1242,6 +1247,10 @@ msdDriver:
     jmp .msdDriverExit
 
 .msdBuildBPB:        ;Function 2
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], bpbBuildReqPkt_size
+    jne .msdWriteErrorCode
+
     mov rsi, rbx
     movzx rax, byte [rsi + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
     mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
@@ -1270,9 +1279,17 @@ msdDriver:
     rep movsq   ;Move the BPB data into the right space
     jmp .msdDriverExit
 .msdIOCTLRead:       ;Function 3, returns done
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .msdWriteErrorCode
+
     jmp .msdDriverExit
 .msdRead:            ;Function 4
 ;Will read one sector at a time.
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .msdWriteErrorCode
+
     mov rbp, rbx
     xor esi, esi  ;Set sector read counter to zero
 .msdr0:
@@ -1288,6 +1305,10 @@ msdDriver:
     jmp .msdDriverExit
 .msdWrite:           ;Function 8
 ;Will write one sector at a time.
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .msdWriteErrorCode
+
     mov rbp, rbx
     xor esi, esi  ;Set counter to zero
 .msdw0:
@@ -1303,6 +1324,10 @@ msdDriver:
     jmp .msdDriverExit
 .msdWriteVerify:     ;Function 9, writes sectors then verifies them
 ;Will write one sector at a time and then verify it.
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .msdWriteErrorCode
+
     mov rbp, rbx
     xor esi, esi  ;Set counter to zero
 .msdwv0:
@@ -1320,16 +1345,32 @@ msdDriver:
     mov rbx, rbp
     jmp .msdDriverExit
 .msdIOCTLWrite:      ;Function 12, returns done
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .msdWriteErrorCode
+
     jmp .msdDriverExit
 .msdDevOpen:         ;Function 13
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], openReqPkt_size
+    jne .msdWriteErrorCode
+
     movzx rax, byte [rbx + openReqPkt.unitnm]
     inc byte [.msdHdlCnt + rax]  ;Inc handle cnt for given unit
     jmp .msdDriverExit
 .msdDevClose:        ;Function 14
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], closeReqPkt_size
+    jne .msdWriteErrorCode
+
     movzx rax, byte [rbx + closeReqPkt.unitnm]
     dec byte [.msdHdlCnt + rax]  ;Dec handle cnt for given unit
     jmp .msdDriverExit
 .msdRemovableMedia:  ;Function 15
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], remMediaReqPkt_size
+    jne .msdWriteErrorCode
+
     movzx rax, byte [rbx + remMediaReqPkt.unitnm]
     mov al, byte [.msdBIOSmap + rax]    ;Get BIOS number
     test al, 80h
@@ -1337,12 +1378,24 @@ msdDriver:
     mov word [rbx + remMediaReqPkt.status], 20h ;Set Busy bit
     jmp .msdDriverExit
 .msdGenericIOCTL:    ;Function 19
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], ioctlReqPkt_size
+    jne .msdWriteErrorCode
+
     jmp .msdDriverExit
 .msdGetLogicalDev:   ;Function 23
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], getDevReqPkt_size
+    jne .msdWriteErrorCode
+
     mov al, byte [.msdCurDev]
     mov byte [rbx + getDevReqPkt.unitnm], al
     jmp .msdDriverExit
 .msdSetLogicalDev:   ;Function 24
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], setDevReqPkt_size
+    jne .msdWriteErrorCode
+
     mov al, byte [rbx + getDevReqPkt.unitnm]
     mov byte [.msdCurDev], al
     jmp .msdDriverExit
