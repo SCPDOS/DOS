@@ -1036,10 +1036,15 @@ msdDriver:
     push rsi
     push rdi
     push rbp
+    push r8
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    mov al, 05h ;Bad request structure length
+    jne .msdWriteErrorCode
+    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    mov al, 03h
+    ja .msdWriteErrorCode ;If yes, error!
     mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
-    cmp al, 24  ;Check cmd num is valid
-    ja .msdError
     test al, al
     jz .msdInit
     cmp al, 01
@@ -1068,9 +1073,71 @@ msdDriver:
     jz .msdGetLogicalDev
     cmp al, 24
     jz .msdSetLogicalDev
-.msdError:
+.msdIOError:  ;In Read and Write errors, rbp points to the dev struc
+    mov rbx, rbp
+    movzx eax, al   ;Number of IO-ed sectors in last request
+    add esi, eax    ;esi Keeps sector count across transfers
+    mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
+;Now fall through to general error
+.msdGenDiskError:
+    mov ah, 01h
+    xor dl, dl  ;Work around bug that fails request if dl > 7Fh
+    int 33h ;Read status of last operation
+    cmp ah, 06h ;Mock Seek response (device not present)
+    mov al, 02h ;Give device not ready error (sensibly I think)
+    je .msdWriteErrorCode 
+    mov al, 0Ch ;Preliminary General Error Faults
+    cmp ah, -1  ;Sense operation failed
+    je .msdWriteErrorCode 
+    cmp ah, 20h ;Gen. ctrlr. failure. Consider new error code to halt system.
+    je .msdWriteErrorCode
+;Device Not Ready
+    mov al, 02h  ;Device not ready code
+    cmp r8b, al  ;SCSI Not ready commands start with 2
+    je .msdWriteErrorCode
+    shr r8, 8       ;Remove Sense Key
+    movzx ecx, r8w  ;Get ASC and ASCQ in cl and ch bzw.
+;Write Protected
+    xor al, al
+    cmp cx, 0027h   ;Write protected error
+    je .msdWriteErrorCode
+;CRC Error
+    mov al, 04h     ;CRC error code
+    cmp cx, 0308h   ;LU comms CRC error (UDMA/32)
+    je .msdWriteErrorCode
+    cmp cx, 0010h   ;ID CRC or ECC error
+    je .msdWriteErrorCode
+    cmp cx, 0147h   ;Data phase CRC error detected
+    je .msdWriteErrorCode
+;Seek Error
+    mov al, 06h     ;Seek error code
+    cmp cl, 02h     ;No Seek Complete
+    je .msdWriteErrorCode
+;Unknown Hardware Media (Shouldn't happen with Flash Drives)
+;This error should only be called if BPB not recognised for Flash Drives
+    mov al, 07h
+    cmp cl, 30h   ;All issues with media returns unknown media
+    je .msdWriteErrorCode
+;Sector Not Found
+    mov al, 08h     ;Sector not found code
+    cmp cl, 21h     ;Illegal Request - Invalid LBA
+    je .msdWriteErrorCode
+;Write faults
+    mov al, 0Ah     ;Write fault
+    cmp cl, 0Ch     ;Write Error ASC code
+    je .msdWriteErrorCode
+;Read faults
+    mov al, 0Bh     ;Read fault
+    cmp cl, 11h     ;Read error
+    je .msdWriteErrorCode
+;General Errors
+    mov al, 0Ch     ;Everything else is general error
+.msdWriteErrorCode:    ;Jump to with al=Standard Error code
+    mov ah, 80h ;Set error bit
+    mov word [rbx + drvReqHdr.status], ax
 .msdDriverExit:
     or word [rbx + drvReqHdr.status], 0100h ;Set done bit
+    pop r8
     pop rbp
     pop rdi
     pop rsi
@@ -1080,7 +1147,9 @@ msdDriver:
     pop rax
     ret
 .msdInit:            ;Function 0
+    push r9
     int 31h ;Get number of Int 33h devices in r8b
+    pop r9
     movzx r8, r8b   ;Keeps real count
     mov eax, r8d
     cmp al, 1
@@ -1137,15 +1206,31 @@ msdDriver:
     mov dl, byte [.msdBIOSmap + rax]    ;Translate unitnum to BIOS num
     test dl, 80h    ;If it is a fixed disk, no change!
     jnz .mmcNoChange
+;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
+    mov ah, 16h 
+    int 33h
+    jc .msdGenDiskError
+    cmp ah, 80h
+    je .mmcNoChangeLine
+    cmp ah, 86h
+    je .mmcNoChangeLine
+    test ah, ah ;No change?
+    jz .mmcNoChange
+    test ah, 1  ;Neither 80h or 86h have bit 0 set
+    jnz .mmcChange
+;If nothing, fall through and test manually, should never happen though
+.mmcNoChangeLine:
 ;Now we test Media Descriptor
     mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
     mov rdi, qword [.msdBPBTbl + 8*rax]
     mov rdi, qword [rdi]    ;Dereference rdi
     cmp byte [rdi + bpb32.media], dl    ;Compare media descriptor bytes
     je .mmcUnsure
-.mmcChange: ;Fail safe, always assume the device has changed
+.mmcChange:
     mov byte [rbx + mediaCheckReqPkt.medret], -1
-    mov qword [rbx + mediaCheckReqPkt.desptr], .msdDefLabel ;Temp, ret def label
+    lea rax, qword [.msdDefLabel]           ;Temp, ret def label
+    mov qword [rbx + mediaCheckReqPkt.desptr], rax 
+    jmp .msdDriverExit
 .mmcUnsure:
     mov byte [rbx + mediaCheckReqPkt.medret], 0
     jmp .msdDriverExit
@@ -1161,7 +1246,7 @@ msdDriver:
     xor ecx, ecx    ;Read Sector 0
     mov eax, 8201h  ;LBA Read 1 sector
     int 33h
-    jc .mbbpbError
+    jc .msdGenDiskError
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
     movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
     mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
@@ -1170,27 +1255,54 @@ msdDriver:
     mov ecx, bpbEx_size/8
     rep movsq   ;Move the BPB data into the right space
     jmp .msdDriverExit
-.mbbpbError:
 .msdIOCTLRead:       ;Function 3, returns done
     jmp .msdDriverExit
 .msdRead:            ;Function 4
+;Will read one sector at a time.
     mov rbp, rbx
-    mov ah, 82h ;LBA Read Sectors
+    xor esi, esi  ;Set sector read counter to zero
+.msdr0:
+    mov dh, 82h ;LBA Read Sectors
     call .msdBlkIOCommon
+    jc .msdIOError
+    add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
+    add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+    inc esi
+    cmp esi, dword [rbp + ioReqPkt.tfrlen]
+    jne .msdr0
     mov rbx, rbp
     jmp .msdDriverExit
 .msdWrite:           ;Function 8
+;Will write one sector at a time.
     mov rbp, rbx
-    mov ah, 83h ;LBA Write Sectors
+    xor esi, esi  ;Set counter to zero
+.msdw0:
+    mov dh, 83h ;LBA Write Sectors
     call .msdBlkIOCommon
+    jc .msdIOError
+    add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
+    add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+    inc esi
+    cmp esi, dword [rbp + ioReqPkt.tfrlen]
+    jne .msdw0
     mov rbx, rbp
     jmp .msdDriverExit
 .msdWriteVerify:     ;Function 9, writes sectors then verifies them
+;Will write one sector at a time and then verify it.
     mov rbp, rbx
-    mov ah, 83h ;LBA Write Sectors
+    xor esi, esi  ;Set counter to zero
+.msdwv0:
+    mov dh, 83h ;LBA Write Sectors
     call .msdBlkIOCommon
-    mov ah, 84h ;LBA Verify Sectors
+    jc .msdIOError    ;Error handler needs to add to esi the value in al
+    mov dh, 84h ;LBA Verify Sectors
     call .msdBlkIOCommon
+    jc .msdIOError    ;Error handler needs to add to esi the value in al
+    add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
+    add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+    inc esi
+    cmp esi, dword [rbp + ioReqPkt.tfrlen]
+    jne .msdwv0
     mov rbx, rbp
     jmp .msdDriverExit
 .msdIOCTLWrite:      ;Function 12, returns done
@@ -1224,11 +1336,14 @@ msdDriver:
 .msdBlkIOCommon:  ;Does block IO
 ;Called with rbp containing old rbx value and ah with function number
 ;Error handled by caller
+;Sector count handled by caller
+;Called with dh = BIOS function number
     movzx rax, byte [rbp + ioReqPkt.unitnm]
-    mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
+    mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req in dl
     mov rcx, qword [rbp + ioReqPkt.strtsc]  ;Get start sector
-    mov al, byte [rbp + ioReqPkt.tfrlen]    ;Get number of sectors, max 255
     mov rbx, qword [rbp + ioReqPkt.bufptr]  ;Get Memory Buffer
+    mov ah, dh
+    mov al, 01h ;Do one sector at a time 
     int 33h
     ret
 
