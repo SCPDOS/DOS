@@ -773,8 +773,8 @@ auxHdr:
 prnHdr:
     dq clkHdr
     dw 0A040h
-    dq commonStrat
-    dq lpt1Hdr
+    dq nulStrat
+    dq nulIntr
     db "PRN     "
 clkHdr:
     dq msdHdr
@@ -815,20 +815,20 @@ com4Hdr:
 lpt1Hdr:
     dq lpt2Hdr
     dw 0A040h
-    dq commonStrat
-    dq lptDriver
+    dq nulStrat
+    dq nulIntr
     db "LPT1    "
 lpt2Hdr:
     dq lpt3Hdr
     dw 0A040h
-    dq commonStrat
-    dq lptDriver
+    dq nulStrat
+    dq nulIntr
     db "LPT2    "
 lpt3Hdr:
     dq -1
     dw 0A040h
-    dq commonStrat
-    dq lptDriver
+    dq nulStrat
+    dq nulIntr
     dq "LPT3    "
 
 commonStrat:
@@ -848,26 +848,26 @@ conDriver:
     mov rbx, qword [reqHdrPtr]
     mov al, byte [rbx + drvReqHdr.cmdcde]
     test al, al
-    jz conInit
+    jz .conInit
     cmp al, 4
-    jz conRead
+    jz .conRead
     cmp al, 5
-    jz conNondestructiveRead
+    jz .conNondestructiveRead
     cmp al, 6
-    jz conExit
+    jz .conExit
     cmp al, 7
-    jz conFlushInputBuffers
+    jz .conFlushInputBuffers
     cmp al, 8
-    jz conWrite
+    jz .conWrite
     cmp al, 9
-    jz conWrite
+    jz .conWrite
 ;All other cases fall through here
-conExit:
+.conExit:
     or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
     pop rbx
     pop rax
     ret
-conInit:    ;Function 0
+.conInit:    ;Function 0
     push rdx
     ;Flush keyboard buffer
 .ci0:
@@ -888,11 +888,11 @@ conInit:    ;Function 0
     mov eax, 0600h  ;Clear whole screen
     int 30h
     pop rdx
-    jmp short conExit
-conIORead:
+    jmp short .conExit
+.conIORead:
     mov word [rbx + drvReqHdr.status], 8003h    ;Error, unknown command!
-    jmp short conExit
-conRead:    ;Function 4
+    jmp short .conExit
+.conRead:    ;Function 4
     push rdi
     push rcx
     mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
@@ -909,25 +909,25 @@ conRead:    ;Function 4
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rcx
     pop rdi
-    jmp short conExit
-conNondestructiveRead:  ;Function 5
+    jmp short .conExit
+.conNondestructiveRead:  ;Function 5
     mov ah, 01h     ;Get key if exists
     int 36h
     jz .cnr           ;If zero clear => no key, go forwards
     ;Keystroke available
     mov byte [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
-    jmp short conExit
+    jmp short .conExit
 .cnr: ;No keystroke available
     mov word [rbx + nonDestInNoWaitReqPkt.status], 0300h   ;Set busy bit
-    jmp short conExit
-conFlushInputBuffers:   ;Function 7
+    jmp short .conExit
+.conFlushInputBuffers:   ;Function 7
     mov ah, 01      ;Get buffer status
     int 36h
-    jz conExit      ;If zero clear => no more keys to read
+    jz .conExit      ;If zero clear => no more keys to read
     xor ah, ah
     int 36h ;Read key to flush from buffer
-    jmp short conFlushInputBuffers
-conWrite:   ;Function 8 and 9
+    jmp short .conFlushInputBuffers
+.conWrite:   ;Function 8 and 9
     push rsi
     push rcx
     mov rsi, qword [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
@@ -943,22 +943,22 @@ conWrite:   ;Function 8 and 9
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rcx
     pop rsi
-    jmp conExit
+    jmp .conExit
 
 clkDriver:
 
-comDriver:
+;COM Driver headers and main interrupt strat
 com1Intr:
-    mov byte [comDevice], 0
+    mov byte [comIntr.comDevice], 0
     jmp short comIntr
 com2Intr:
-    mov byte [comDevice], 1
+    mov byte [comIntr.comDevice], 1
     jmp short comIntr
 com3Intr:
-    mov byte [comDevice], 2
+    mov byte [comIntr.comDevice], 2
     jmp short comIntr
 com4Intr:
-    mov byte [comDevice], 3
+    mov byte [comIntr.comDevice], 3
 comIntr:
     push rax
     push rbx
@@ -966,17 +966,36 @@ comIntr:
     push rdx
     push rsi
     mov rbx, qword [reqHdrPtr]
+    mov al, 03h ;Unknown Command
+    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    ja .comWriteErrorCode ;If yes, error!
+
     mov al, byte [rbx + drvReqHdr.cmdcde]
+    test al, al
+    jz .comInit
     cmp al, 4
-    jz comRead
+    jz .comRead
     cmp al, 5
-    jz comNondestructiveRead
+    jz .comNondestructiveRead
     cmp al, 8
-    jz comWrite
+    jz .comWrite
     cmp al, 9
-    jz comWrite
-;All other cases fall through here
-comExit:
+    jz .comWrite
+    jmp short .comExit  ;All other valid functions should return completed
+.comReadError:
+    mov edx, 0Bh
+.comWriteError:
+    mov edx, 0Ah
+.comError:
+    mov dword [rbx + ioReqPkt.tfrlen], ecx ;Store actual transferred chars
+    mov ecx, 02h    ;Unknown device
+    cmp al, 0FEh    ;Invalid COM port
+    cmove edx, ecx  ;Only move unknown device error code if invalid COM port
+    mov al, dl      ;Move dl to al to store error code
+.comWriteErrorCode:    ;Jump to with al=Standard Error code
+    mov ah, 80h ;Set error bit
+    mov word [rbx + drvReqHdr.status], ax
+.comExit:
     or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
     pop rsi
     pop rdx
@@ -984,49 +1003,60 @@ comExit:
     pop rbx
     pop rax
     ret
-comRead:
+.comInit:
+.comRead:
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .comWriteErrorCode
+
     push rdi
     mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
     xor ecx, ecx    ;Zero the char counter
 .cr1:
     cmp ecx, dword [rbx + ioReqPkt.tfrlen]
     je .cre2
+.cr11:  ;Blocking wait, could be an infinite loop. Imitate basic DOS driver
     mov eax, 02h    ;Recieve 
-    mov dx, word [comDevice]    ;Get transacting com device
+    mov dx, word [.comDevice]    ;Get transacting com device
     int 34h ;Recieve Char
+    jc .comError
+    cmp ah, 80h ;Did a "timeout" occur? If so, keep waiting
+    je .cr11
     stosb   ;Store char in al into buffer and inc rdi
     inc ecx
     jmp short .cr1
 .cre2:
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rdi
-    jmp short comExit
-comNondestructiveRead:
+    jmp short .comExit
+.comNondestructiveRead:
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], nonDestInNoWaitReqPkt_size
+    jne .comWriteErrorCode
+
     mov word [rbx + nonDestInNoWaitReqPkt.status], 0200h    ;Set busy bit 
-    jmp short comExit
-comWrite:
- mov rsi, qword [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
+    jmp short .comExit
+.comWrite:
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .comWriteErrorCode
+
+    mov rsi, qword [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
     xor ecx, ecx    ;Zero the char counter
 .cw1: 
     cmp ecx, dword [rbx + ioReqPkt.tfrlen]
     je .cw2
     lodsb   ;Get char into al, and inc rsi
     mov ah, 01h ;Move function number into ah
-    mov dx, word [comDevice]
+    mov dx, word [.comDevice]
     int 34h ;Transmit char
+    jc .comError
     inc ecx
     jmp short .cw1 ;keep printing until all chars printed
 .cw2:
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-    jmp short comExit
-comDevice   db 0
-
-lptDriver:    ;Drivers for LPT 1, 2, 3
-    push rdi
-    mov rdi, qword [reqHdrPtr]
-    mov word [rdi + drvReqHdr.status], 0100h    ;Done bit set
-    pop rdi
-    ret
+    jmp short .comExit
+.comDevice   db 0
 
 msdDriver:
     push rax
