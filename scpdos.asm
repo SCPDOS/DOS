@@ -971,17 +971,24 @@ comIntr:
     ja .comWriteErrorCode ;If yes, error!
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
-    test al, al
-    jz .comInit
-    cmp al, 4
+    cmp al, 4   ;Read Character(s)
     jz .comRead
-    cmp al, 5
-    jz .comNondestructiveRead
+    cmp al, 5   ;Non-destructive read, acts like fast read 1 char if available
+    jz .comNondestructiveRead   
+    cmp al, 6   ;Read Input Status, always return with Busy bit = 0
+    jz .comReadInputStatus
+    cmp al, 7   ;Flush read buffers, return done
+    jz .comFlushInputBuffers
     cmp al, 8
     jz .comWrite
     cmp al, 9
     jz .comWrite
+    cmp al, 0Ah
+    jz .comOutputStatus ;Return Clear to send bit inverted for busy bit
     jmp short .comExit  ;All other valid functions should return completed
+.comErrorNoCount:
+    mov al, 02h ;Unknown device
+    jmp short .comWriteErrorCode
 .comReadError:
     mov edx, 0Bh
 .comWriteError:
@@ -1003,7 +1010,7 @@ comIntr:
     pop rbx
     pop rax
     ret
-.comInit:
+
 .comRead:
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
@@ -1017,7 +1024,8 @@ comIntr:
     je .cre2
 .cr11:  ;Blocking wait, could be an infinite loop. Imitate basic DOS driver
     mov eax, 02h    ;Recieve 
-    mov dx, word [.comDevice]    ;Get transacting com device
+    mov dl, byte [.comDevice]    ;Get transacting com device
+    cbw     ;Zero extend to upper byte
     int 34h ;Recieve Char
     jc .comError
     cmp ah, 80h ;Did a "timeout" occur? If so, keep waiting
@@ -1029,13 +1037,47 @@ comIntr:
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rdi
     jmp short .comExit
+
+.comReadInputStatus:
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    jne .comWriteErrorCode
+    mov word [rbx + statusReqPkt.status], 0 ;Chars ready to read status
+    jmp short .comExit
+
 .comNondestructiveRead:
+;Acts like a "read one character if there is one" function
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], nonDestInNoWaitReqPkt_size
     jne .comWriteErrorCode
-
-    mov word [rbx + nonDestInNoWaitReqPkt.status], 0200h    ;Set busy bit 
+.cndr1:
+    mov eax, 02h    ;Recieve 
+    mov dl, byte [.comDevice]    ;Get transacting com device
+    cbw     ;Zero extend to upper byte
+    int 34h ;Recieve Char
+    jc .comErrorNoCount ;Dont save a char transfer number
+    cmp ah, 80h ;Did a "timeout" occur? If so, return with busy = 1
+    je .cndr2
+    mov byte [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Get next char
     jmp short .comExit
+.cndr2:
+    mov word [rbx + nonDestInNoWaitReqPkt.status], 200h ;Busy bit set
+    jmp short .comExit
+
+.comFlushInputBuffers:
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], flushReqPkt_size
+    jne .comWriteErrorCode
+.cfib0:
+    mov dl, byte [.comDevice]
+    cbw
+    mov eax, 02h    ;Recieve
+    int 34h
+    jc .comErrorNoCount
+    cmp ah, 80h ;Keep looping until ah = 80h (no more chars in buffer)
+    jne .cfib0
+    jmp .comExit
+
 .comWrite:
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
@@ -1048,14 +1090,33 @@ comIntr:
     je .cw2
     lodsb   ;Get char into al, and inc rsi
     mov ah, 01h ;Move function number into ah
-    mov dx, word [.comDevice]
+    mov dl, byte [.comDevice]
+    cbw     ;Zero extend to upper byte
     int 34h ;Transmit char
     jc .comError
     inc ecx
     jmp short .cw1 ;keep printing until all chars printed
 .cw2:
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-    jmp short .comExit
+    jmp .comExit
+
+.comOutputStatus:
+;Read MODEM status
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    jne .comWriteErrorCode
+
+    mov dl, byte [.comDevice]
+    cbw     ;Zero extend to upper byte
+    mov ah, 03h     ;Get status
+    int 34h
+    jc .comErrorNoCount
+    and eax, 10h ;Isolate bit 4 of al, clear to set, and clear all other bits
+    shl eax, 5   ;Shift it up to bit 9 (busy bit in status word) 
+    not eax      ;Bitwise inversion
+    and eax, 200h   ;Isolate bit 9
+    or word [rbx + rbx + drvReqHdr.status], ax  ;Add the busy bit
+    jmp .comExit
 .comDevice   db 0
 
 msdDriver:
