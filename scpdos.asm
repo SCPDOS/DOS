@@ -885,45 +885,62 @@ conDriver:
     push rcx
     mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
     xor ecx, ecx    ;Zero the char counter
-.cr1:
+.cre1:
     cmp ecx, dword [rbx + ioReqPkt.tfrlen]
     je .cre2
+    cmp byte [.conBuf], 0   ;Does the buffer contain a zero?
+    jnz .cre3   ;No, get the buffer value
     xor eax, eax
     int 36h
-    stosb   ;Store char in al into buffer and inc rdi
-    inc ecx
-    jmp short .cr1
+.cre11:
+    stosb
+    test al, al ;Was the ascii code 0?
+    jnz .cre12  ;No, skip storing scancode
+    mov byte [.conBuf], ah  ;Save scancode
+.cre12:
+    inc ecx ;Inc chars stored in buffer
+    jmp short .cre1
 .cre2:
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
     pop rcx
     pop rdi
     jmp short .conExit
+.cre3:
+    mov al, byte [.conBuf]  ;Get the buffer value
+    mov byte [.conBuf], 0   ;Reset the buffer value
+    jmp short .cre11
 
 .conNondestructiveRead:  ;Function 5
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], nonDestInNoWaitReqPkt_size
     jne .conWriteErrorCode
-
+    cmp byte [.conBuf], 0
+    jnz .cnr2
     mov ah, 01h     ;Get key if exists
     int 36h
-    jz .cnr           ;If zero clear => no key, go forwards
+    jz .cnr1        ;If zero clear => no key, go forwards
     ;Keystroke available
+.cnr0:
     mov byte [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
     jmp short .conExit
-.cnr: ;No keystroke available
+.cnr1: ;No keystroke available
     mov word [rbx + nonDestInNoWaitReqPkt.status], 0200h   ;Set busy bit
     jmp short .conExit
+.cnr2:
+    mov al, byte [.conBuf]  ;Copy scancode but dont reset it
+    jmp short .cnr0   ;Keystroke is available clearly
 
 .conInputStatus:         ;Function 6
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
     jne .conWriteErrorCode
-    jmp short .conExit ;Exit, device ready
+    jmp .conExit ;Exit, device ready
 
 .conFlushInputBuffers:   ;Function 7
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
     jne .conWriteErrorCode
+    mov byte [.conBuf], 0   ;Clear buffer
 .cfib0:
     mov ah, 01      ;Get buffer status
     int 36h
@@ -981,9 +998,154 @@ conDriver:
     int 30h
     pop rdx
     jmp .conExit
-    
+.conBuf db 0    ;Single byte buffer
 clkDriver:
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    mov rbx, qword [reqHdrPtr]
+    mov al, 03h ;Unknown Command
+    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    ja .clkWriteErrorCode ;If yes, error!
+    cmp ah, 04h
+    jz .clkRead
+    cmp ah, 06h
+    jz .clkInputStatus
+    cmp ah, 07h
+    jz .clkFlushInputBuffers
+    cmp ah, 08h
+    jz .clkWrite
+    cmp ah, 09h
+    jz .clkWrite
+    jmp short .clkExit  ;All other valid functions return done immediately!
+.clkNotFunctioning:
+    mov al, 02h ;Device not ready error
+.clkWriteErrorCode:
+    mov ah, 80h ;Set error bit
+    mov word [rbx + drvReqHdr.status], ax
+.clkExit:
+    or word [rbx + drvReqHdr.status], 0100h ;Merge done bit
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
 
+.clkRead:           ;Function 4
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .clkWriteErrorCode
+
+    xor rbp, rbp    ;Write to RBP rather than updating record word by word
+    mov ah, 04h ;Read RTC date
+    int 3Ah
+    jc .clkNotFunctioning
+    movzx eax, dl  ;Get dl (day of the month) into al
+    call .clkBCDtoHex   ;Convert BCD value to hex
+    mov ebp, eax    ;Save result in bp
+    mov al, dh 
+    call .clkBCDtoHex
+    shl eax, 5  ;Shift month
+    add ebp, eax    ;Add month number to bp
+    mov al, cl      ;Get year from cl
+    call .clkBCDtoHex
+    cmp al, 80  ;Is the value less than 80
+    jae .cread0
+    add al, 100
+.cread0:
+    sub al, 80
+    shl eax, 9
+    add ebp, eax    ;number of years since 1980 shifted by 9 to ebp
+    shl rbp, 10h    ;Shift word 1 into word 2
+    mov ah, 02h ;Read RTC time
+    int 3Ah
+    jc .clkNotFunctioning
+    mov al, cl  ;Get minutes into al
+    call .clkBCDtoHex
+    or rbp, rax ;Add minutes byte low
+    shl rbp, 8  ;Shift up by a byte
+
+    mov al, ch  ;Get hours into al
+    call .clkBCDtoHex
+    or rbp, rax ;Add hours to byte low
+    shl rbp, 10h  ;Shift up by a byte and add an empty byte for 100ths of second
+    mov al, dh  ;Get seconds into al
+    call .clkBCDtoHex
+    or rbp, rax ;Add seconds to byte low
+    mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Get the buffer pointer
+    add rdi, 5  ;Move pointer to the end of the buffer
+    mov rax, rbp    ;Get the packed 6 bytes into rax
+    mov ecx, 6  ;6 bytes to transfer
+    std ;Reverse direction of string operation
+.cread1:
+    stosb   ;Store byte and dec rdi
+    shr rax, 8  ;Shift all down by one byte
+    loop .cread1    ;do it until ecx=0
+    cld ;
+    jmp .clkExit
+
+.clkInputStatus:    ;Function 6
+;Always return ready
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    jne .clkWriteErrorCode
+    jmp .clkExit
+.clkFlushInputBuffers:  ;Function 7
+;Always return done immediately
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], flushReqPkt_size
+    jne .clkWriteErrorCode
+    jmp .clkExit
+
+.clkWrite:          ;Functions 8 and 9
+    mov al, 05h ;Bad request structure length?
+    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    jne .clkWriteErrorCode
+
+    mov rsi, qword [rbx + ioReqPkt.bufptr]
+    xor eax, eax
+    stosw   ;Get first word into ax
+    mov ecx, eax    ;Save ax in cx
+
+.clkBCDtoHex:
+;Converts a BCD value to a Hex byte
+;Takes input in al, returns in al (zero-ed upper seven bytes)
+    push rcx
+    movzx eax, al   ;Zero extend
+    mov ecx, eax    ;Save al in ecx
+    and eax, 0Fh    ;Get lower nybble
+    and ecx, 0F0h   ;Get upper nybble
+    shr ecx, 4      ;Shift upper nybble value down
+.cbth0:
+    add eax, 10
+    loop .cbth0
+    pop rcx
+    ret
+
+.clkHexToBCD:
+;Converts a Hex byte into two BCD digits
+;Takes input in al, returns in al (zero-ed upper seven bytes)
+    push rcx
+    movzx eax, al   ;Zero extend
+    xor ecx, ecx
+.chtb0:
+    cmp eax, 10
+    jb .chtb1
+    sub eax, 10
+    inc ecx
+    jmp short .chtb0
+.chtb1:
+    shl ecx, 4  ;Move to upper nybble
+    or al, cl   ;Move upper nybble into al upper nybble
+    pop rcx
+    ret
 ;COM Driver headers and main interrupt strat
 com1Intr:
     mov byte [comIntr.comDevice], 0
@@ -1002,6 +1164,7 @@ comIntr:
     push rcx
     push rdx
     push rsi
+    push rdi
     mov rbx, qword [reqHdrPtr]
     mov al, 03h ;Unknown Command
     cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
@@ -1041,6 +1204,7 @@ comIntr:
     mov word [rbx + drvReqHdr.status], ax
 .comExit:
     or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+    pop rdi
     pop rsi
     pop rdx
     pop rcx
@@ -1053,7 +1217,6 @@ comIntr:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .comWriteErrorCode
 
-    push rdi
     mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
     xor ecx, ecx    ;Zero the char counter
 .cr1:
@@ -1072,7 +1235,6 @@ comIntr:
     jmp short .cr1
 .cre2:
     mov dword [rbx + ioReqPkt.tfrlen], ecx  ;Move num of transferred chars
-    pop rdi
     jmp short .comExit
 
 .comReadInputStatus:
