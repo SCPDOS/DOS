@@ -306,7 +306,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 ;    int 36h
 ;    int 49h ;Pass al to fast output
 ;    ret
-    xchg bx, bx
+    ;xchg bx, bx
     lea rbx, charReqHdr ;Get the address of this request block
     lea rax, .stdinReadEchoBuffer
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -316,6 +316,19 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov dword [rbx + ioReqPkt.tfrlen], 01
     call commonStrat
     call conDriver
+    cmp byte [.stdinReadEchoBuffer], 00h
+    jz .stdinReadEcho
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .stdinReadEchoBuffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call commonStrat
+    call conDriver
+    mov al, byte [.stdinReadEchoBuffer]
+    ret
 .stdinReadEchoBuffer    db 0
 .stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
@@ -912,10 +925,6 @@ conDriver:
     je .cre2
     cmp byte [.conBuf], 0   ;Does the buffer contain a zero?
     jnz .cre3   ;No, get the buffer value
-    mov ah, 02  ;Get keyboard status
-    int 36h
-    test al, 4h  ;Is the CTRL key being pressed?
-    jnz .cre4
     xor eax, eax
     int 36h
 .cre11:
@@ -935,12 +944,7 @@ conDriver:
     mov al, byte [.conBuf]  ;Get the buffer value
     mov byte [.conBuf], 0   ;Reset the buffer value
     jmp short .cre11
-.cre4:
-;Only if the CTRL key is being pressed
-    mov byte [.conBuf], 1Dh ;1Dh = CTRL scancode
-    xor al, al
-    stosb   ;Store without checking if ascii = 0
-    jmp short .cre12
+
 .conNondestructiveRead:  ;Function 5
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], nonDestInNoWaitReqPkt_size
