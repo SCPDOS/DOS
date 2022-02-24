@@ -55,11 +55,25 @@ adjDrivers:
     xor al, al
     call rbx
 
-    ;Open CON
-    mov rbx, conDriver
-    lea rbx, qword [rbp+rbx]
-    xor al, al
-    call rbx
+;Open CON
+conInit:    ;Rather than keeping this resident... do it here
+.ci0:
+    mov ah, 01      ;Get buffer status
+    int 36h
+    jz .ci1      ;If zero clear => no more keys to read
+    xor ah, ah
+    int 36h ;Read key to flush from buffer
+    jmp short .ci0
+.ci1:
+    mov eax, 0500h  ;Set page zero as the default page
+    int 30h
+    mov ah, 02h
+    xor edx, edx    ;Set screen cursor to top right corner
+    mov bh, dl      ;Set cursor for page 0
+    int 30h
+    mov bh, 07h     ;Grey/Black attribs
+    mov eax, 0600h  ;Clear whole screen
+    int 30h
 
     ;Open Mass Storage
     mov rbx, msdDriver
@@ -851,8 +865,6 @@ conDriver:
     ja .conWriteErrorCode ;If yes, error!
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
-    test al, al
-    jz .conInit
     cmp al, 4
     jz .conRead
     cmp al, 5
@@ -976,28 +988,6 @@ conDriver:
     jne .conWriteErrorCode
     jmp .conExit
 
-.conInit:    ;Function 0
-    push rdx
-    ;Flush keyboard buffer
-.ci0:
-    mov ah, 01      ;Get buffer status
-    int 36h
-    jz .ci1      ;If zero clear => no more keys to read
-    xor ah, ah
-    int 36h ;Read key to flush from buffer
-    jmp short .ci0
-.ci1:
-    mov eax, 0500h  ;Set page zero as the default page
-    int 30h
-    mov ah, 02h
-    xor edx, edx    ;Set screen cursor to top right corner
-    mov bh, dl      ;Set cursor for page 0
-    int 30h
-    mov bh, 07h     ;Grey/Black attribs
-    mov eax, 0600h  ;Clear whole screen
-    int 30h
-    pop rdx
-    jmp .conExit
 .conBuf db 0    ;Single byte buffer
 clkDriver:
     push rax
@@ -1146,6 +1136,7 @@ clkDriver:
     or al, cl   ;Move upper nybble into al upper nybble
     pop rcx
     ret
+
 ;COM Driver headers and main interrupt strat
 com1Intr:
     mov byte [comIntr.comDevice], 0
