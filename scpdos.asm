@@ -327,11 +327,18 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .stdinReadEchoBuffer    db 0
 .stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
-    push rax
-    mov al, dl
-    int 49h
-    pop rax
+    mov byte [.stdoutWriteBuffer], dl
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .stdoutWriteBuffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
     ret
+.stdoutWriteBuffer db 0
 .stdauxRead:        ;ah = 03h
 .stdauxWrite:       ;ah = 04h
 .stdprnWrite:       ;ah = 05h
@@ -340,18 +347,23 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .waitStdinNoEcho:   ;ah = 08h
     ret
 .printString:       ;ah = 09h
-    push rax
-    push rdx
-.ps0:
-    mov al, byte [rdx]
-    cmp al, "$"
+    xor ecx, ecx    ;Clear char counter
+    mov eax, "$"    ;Terminating char
+    mov rdi, rdx    ;Set up for scasb
+.ps0:   ;Search for $ to get count of chars
+    scasb
     je .ps1
-    inc rdx ;Goto next char
-    int 49h ;Print char in al
+    inc ecx
     jmp short .ps0
-.ps1:
-    pop rdx
-    pop rax
+.ps1:   ;Use handle 
+    lea rbx, charReqHdr ;Get the address of this request block
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rdx
+    mov dword [rbx + ioReqPkt.tfrlen], ecx
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
     ret
 .buffStdinInput:    ;ah = 0Ah
 .checkStdinStatus:  ;ah = 0Bh
