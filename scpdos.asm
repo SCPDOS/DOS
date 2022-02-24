@@ -302,11 +302,6 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .simpleTerminate:     ;ah = 00h
     ret
 .stdinReadEcho:     ;ah = 01h
-;    xor ah, ah
-;    int 36h
-;    int 49h ;Pass al to fast output
-;    ret
-    ;xchg bx, bx
     lea rbx, charReqHdr ;Get the address of this request block
     lea rax, .stdinReadEchoBuffer
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -314,8 +309,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov word [rbx + ioReqPkt.status], 0 ;Zero status word
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 01
-    call commonStrat
-    call conDriver
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
     cmp byte [.stdinReadEchoBuffer], 00h
     jz .stdinReadEcho
     lea rbx, charReqHdr ;Get the address of this request block
@@ -325,8 +320,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov word [rbx + ioReqPkt.status], 0 ;Zero status word
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 01
-    call commonStrat
-    call conDriver
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
     mov al, byte [.stdinReadEchoBuffer]
     ret
 .stdinReadEchoBuffer    db 0
