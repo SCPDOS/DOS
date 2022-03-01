@@ -65,6 +65,26 @@ struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
 
 endstruc
 
+struc mbr
+    .bsCode     resb 440
+    .diskID     resb 4
+    .reserved   resb 2
+    .mbrEntry1  resb 16
+    .mbrEntry2  resb 16
+    .mbrEntry3  resb 16
+    .mbrEntry4  resb 16
+    .mbrSig     resb 2
+endstruc
+
+struc mbrEntry
+    .ptnAtrib   resb 1  ;80h = active
+    .chsStart   resb 3  ;Ignore practically
+    .ptnType    resb 1
+    .chsEnd     resb 3  ;Ignore
+    .lbaStart   resb 4  ;Start of partition in 32 bit LBA
+    .numSectors resb 4  ;Number of sectors in partition
+endstruc
+
 struc fatDirEntry
 
     .name       resb 11 ;8.3 File Name

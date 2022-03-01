@@ -3,6 +3,8 @@
 Segment dSeg nobits align=1 
     dosSegPtr   resq 1    ;Pointer to the data Segment itself
     bootDrive   resb 1    ;The Int 33h device we booted from
+    numMSDdrv   resb 1    ;Number of mass storage devices detected in system
+    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header
     ;The device driver header with space for the largest possible packet
@@ -19,8 +21,6 @@ Segment dSeg nobits align=1
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array
     sfcbHeadPTr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
-    numMSDdrv   resb 1    ;Number of mass storage devices detected in system
-    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 

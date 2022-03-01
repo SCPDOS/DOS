@@ -182,7 +182,7 @@ l3:
     int 30h
     movzx eax, byte [rbx + clkStruc.hseconds]
     call .clkHexToBCD
-    jmp l3
+    jmp l1
 .clkHexToBCD:
 ;Converts a Hex byte into two BCD digits
 ;Takes input in each nybble of al
@@ -1593,54 +1593,53 @@ msdDriver:
     push r9
     int 31h ;Get number of Int 33h devices in r8b
     pop r9
-    movzx r8, r8b   ;Keeps real count
-    mov eax, r8d
-    cmp al, 1
-    ja .mi1
-    inc al ;Make it two
-.mi1:
-    mov edx, 5
-    cmp eax, edx
-    cmova eax, edx  ;If num of drives is greater than 5, consider only first 5
-    mov byte [msdHdr + drvHdr.drvNam], al ;Save num of drvs in drvr hdr
-    mov byte [rbx + initReqPkt.numunt], al ;And in req packet
-    add byte [numMSDdrv], r8b ;Add the true number of devices to total
-    xor ebp, ebp    ;Use bpl as device counter, cmp to r8b
-    lea rdi, qword [.msdBPBblks]
-    push rbx
-.mi2:
-    mov edx, ebp
-    lea rbx, qword [msdTempBuffer]  ;Get effective address of scratch space
-    xor ecx, ecx    ;Sector 0
-    mov eax, 8201h       ;Read 1 sector
+    mov byte [numMSDdrv], r8b   ;Save number of physical int 33h devs
+    mov r8, rbx ;Save the req block ptr in r8
+    xor edx, edx  ;Start from device zero
+    mov byte [lastdrvNum], dl   ;Zero this field, max 5
+.mi0:   ;Now check each device for partitions
+    cmp byte [lastdrvNum], 5
+    je .msdExit ;IF we are at 5 now, we exit
+    mov ah, 82h ;LBA read
+    mov al, 1   ;1 sector
+    mov ecx, 0  ;Read sector 0
+    lea rbx, msdTempBuffer  ;Get address of this space
     int 33h
     jc .msdInitError
-
-    lea rsi, qword [msdTempBuffer]  ;Point to start of data
-    mov ecx, bpbEx_size/8
-    rep movsq   ;Move the BPB data into the right block
-
-    inc ebp
-    cmp rbp, r8 ;Have we written the BPB for all physical drives?
-    jne .mi2  ;No? Go again
-
-    lea rdi, qword [.msdBPBTbl]  ;Point to start of table
-    lea rdx, qword [.msdBPBblks]
-.mi3:
-    mov qword [rdi], rdx   ;Move the block entry ptr to rdi
-    add rdx, bpbEx_size      ;Make rdx point to the next block entry
-    dec ebp
-    jnz .mi3  ;If not zero yet, go again
-
-    pop rbx
-    lea rdx, qword [.msdBPBTbl]  ;Get far pointer 
-    mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
-    lea rdx, qword [msdTempBuffer]
-    mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
+;Now we verify if this is a BPB. Removable devices can't be partitioned (yet)
+;1) Check byte 0 for EBh (short jmp) and byte 2 for a 90h (nop).
+    mov al, byte [rbx]
+    mov ah, byte [rbx + 2]
+    cmp ax, 090EBh
+    jne .mimbr
+;Valid BPB found! Copy to internal table and inc lastdrive
+    mov rsi, rbx
+    mov eax, bpbEx_size
+    mov ecx, edx    ;Temporarily save dl in ecx
+    mul edx
+    mov edx, ecx
+    lea rdi, qword [.msdBPBblks + eax]
+    mov ecx, bpbEx_size
+    mov rax, rdi    ;Save the entry address in rax
+    rep movsb   ;Copy the bpb into the bpb table
+    lea rdi, qword [.msdBPBTbl + 8*edx]
+    mov qword [rdi], rax
+    inc byte [lastdrvNum]
+    inc dl
+    cmp dl, byte [numMSDdrv] ;Once these are equal, we have processed last dev
+    jne .mi0
+.msdExit:
+    mov rbx, r8
     jmp .msdDriverExit
+.mimbr:
+;Goto next device without incrementing LASTDRIVE
+    inc dl
+    cmp dl, byte [numMSDdrv] ;Once these are equal, we have processed last dev
+    jne .mi0
+    jmp short .msdExit
 .msdInitError:
-    pop rbx
-    jmp .msdDriverExit
+    mov rbx, r8
+    jmp .msdGenDiskError
 .msdMedChk:          ;Function 1
 ;Once the BIOS function is implmented that reads the changeline, use that!
 ;For BIOSes that dont support the changeline, the following procedure will 
