@@ -213,7 +213,7 @@ struc psp
     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
     .oldInt44h  resq 1  ;Int 44h pointer on overlay load
     .parentPtr  resq 1  ;Pointer to parent process PSP
-    .fHandles   resb 20 ;Main File handle array
+    .jobFileTbl resb 20 ;Main File handle array, JFT
     .envPtr     resq 1  ;Pointer to the environment
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
     .xtraHdlSz  resw 1  ;Additional File Handle array size

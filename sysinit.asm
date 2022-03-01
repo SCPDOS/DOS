@@ -215,7 +215,9 @@ l3:
     int 30h
     pop rbx
     ret
-
+;--------------------------------
+;       PROCS FOR SYSINIT       :
+;--------------------------------
 adjustDrvHdr:
 ;Input: rsi = Effective address of driver in DOS segment
 ;       rbp = Ptr to the start of the DOS segment
@@ -225,6 +227,9 @@ adjustDrvHdr:
     add qword [rsi + drvHdr.intPtr], rbp
     add rsi, drvHdr_size
     ret
+;--------------------------------
+;       DATA FOR SYSINIT        :
+;--------------------------------
 startmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
 intData:
     dq terminateProcess ;Int 40h

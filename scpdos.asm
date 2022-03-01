@@ -5,5 +5,6 @@ BITS 64
 %include "fatStruc.inc"
 %include "dosStruc.inc"
 %include "dosSeg.asm"
-%include "sysinit.asm"
-%include "dosres.asm"
+%include "sysInit.asm"
+%include "dosKernel.asm"
+%include "dosDrivers.asm"

@@ -1,0 +1,654 @@
+Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 
+;-----------------------------------:
+;       Misc System routines        :
+;-----------------------------------:
+findLRUBuffer: 
+;Finds least recently used buffer, links it and returns ptr to it in rbx
+;Input: Nothing
+;Output: rbx = Pointer to the buffer to use
+    push rdx
+    mov rbx, qword [bufHeadPtr]
+    cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
+    jne .flb1
+    pop rdx
+    ret
+.flb1:
+    mov rdx, rbx    ;Save a ptr to the previous buffer header
+    mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
+    cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
+    jne .flb1   ;If not LRU, keep walking, else process
+    mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
+    mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
+    mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
+    mov qword [rbx + bufferHdr.nextBufPtr], rdx
+    pop rdx
+    ret
+
+findDPB:
+;Finds the DPB for a given drive
+;Input:   dl = Drive number (0=A, 1=B etc...)
+;Output: al = 00, rbx = Pointer to the DPB
+;        al = -1, Failed, no DPB for device, rbx destroyed
+    mov rbx, qword [dpbHeadPtr]
+.fd1:
+    xor al, al
+    cmp byte [rbx + dpb.bDriveNumber], dl
+    je .fd2
+    mov rbx, qword [rbx + dpb.qNextDPBPtr]
+    mov al, -1
+    cmp rbx, -1 ;If rbx followed last item in list, no DPB exists for dl
+    jne .fd1
+.fd2:
+    ret
+callCritError:
+;Common Procedure to swap stacks and call Critical Error Interrupt
+;-----------------------------------:
+;       File System routines        :
+;-----------------------------------:
+name2Clust:
+;Converts a file name to a first cluster number
+;-----------------------------------:
+;        Interrupt routines         :
+;-----------------------------------:
+terminateProcess:   ;Int 40h
+
+functionDispatch:   ;Int 41h Main function dispatcher
+;ah = Function number, all other registers have various meanings
+    cli ;Halt external interrupts
+    cld ;Ensure all string ops occur in the right direction
+    cmp ah, dispatchTableL/8    ;Number of functions
+    ja .fdExitBad
+    ;Cherry pick functions
+    cmp ah, 33h ;CTRL+BREAK check
+    jb .fsbegin   ;If below skip these checks
+    je .ctrlBreakCheck
+    cmp ah, 64h
+    je .setDriverLookahead  ;Reserved, but avoids usual Int 41h spiel
+    ja .fsbegin   ;If above, do usual Int41 entry
+    cmp ah, 51h
+    je .getCurrProcessID    ;This an below are exactly the same
+    cmp ah, 62h
+    je .getPSPaddr          ;Calls the above function
+    cmp ah, 50h
+    je .setCurrProcessID
+.fsbegin:
+    pushDOS ;Push the usual prologue registers
+    mov rax, qword [oldRSP]
+    mov qword [oldoldRSP], rax
+    inc byte [inDOS]    ;Increment in DOS flag
+    mov qword [oldRSP], rsp
+;Here, we want to save oldRSP in the callers PSP
+    cmp byte [inDOS], 1 ;Check how many times we are in DOS
+    jne .fsb1   ;If this is first entry, save rsp in callers PSP
+    mov rax, qword [currentPSP] ;Get current PSP address
+    mov qword [rax + psp.rspPtr], rsp    ;Save rsp on callers stack
+.fsb1:
+    pop rax     ;Get old rax back
+    push rax    ;and push it back onto the stack
+    lea rsp, critStakTop
+    sti         ;Reenable interrupts
+
+    mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
+
+    mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
+    movzx ebx, ah   ;Move the function number bl zero extended to rbx
+    shl ebx, 3      ;Multiply the function number by 8 for offset into table
+    push rax        ;Push rax onto the stack
+    lea rax, qword [.dispatchTable]
+    add rbx, rax    ;Add dispatch table offset into rbx
+    pop rax
+    mov rbx, qword [rbx]    ;Get the address from the dispatch table
+
+    test ah, ah     ;Simple Terminate function?
+    jz .fddiskOp
+    cmp ah, 59h     ;Extended Error report?
+    je .fdGoToFunction  ;Bypass code that clears the error report
+    cmp ah, 0Ch     ;Are we a char function?
+    ja .fddiskOp
+;Char operations here
+    test byte [critErrFlag], 1  ;Are we in critical error?
+    jnz .fdGoToFunction         ;If we are, stay on Critical Error Stack
+    lea rsp, IOStakTop          ;Otherwise, switch to IO stack
+    jmp short .fdGoToFunction
+.fddiskOp:
+    ;Disk operations go here
+    ;Clear up error info
+    mov byte [errorLocus], 1    ;Reset to generic, unknown locus
+    mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
+    mov byte [errorDrv], -1     ;Set the drive which caused the error to none
+
+    mov byte [int48Flag], 0     ;Turn off the ability to trigger Int 48h
+    lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
+    test byte [breakFlag], -1   ;Test if set
+    jz .fdGoToFunction
+; HANDLE CTRL+BREAK HERE!
+.fdGoToFunction:
+    xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
+    ;Potentially point rbp to caller reg frame for easy access of registers 
+    ;mov rbp, qword [oldRSP]    ;Move rsp on entry into rbp
+    call qword [oldRBX]     ;Call the desired function, rax contains ret code
+.fdExit:
+    cli     ;Redisable interrupts
+    ;???
+    dec byte [inDOS]            ;Decrement the inDOS count
+    mov rsp, qword [oldRSP]     ;Point rsp to old stack
+    mov qword [rsp], rax    ;Put the ret code into its pos on the register frame
+    mov rax, qword [oldoldRSP]
+    mov qword [oldRSP], rax
+    popDOS  ;Pop the frame
+    iretq
+.fdExitBad:
+    mov ah, 0
+    iretq
+.simpleTerminate:     ;ah = 00h
+    ret
+.stdinReadEcho:     ;ah = 01h
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .stdinReadEchoBuffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
+    cmp byte [.stdinReadEchoBuffer], 00h
+    jz .stdireexit
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .stdinReadEchoBuffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
+.stdireexit:
+    mov al, byte [.stdinReadEchoBuffer]
+    ret
+.stdinReadEchoBuffer    db 0
+.stdoutWrite:       ;ah = 02h
+;Bspace is regular cursor left, does not insert a blank
+    mov byte [.stdoutWriteBuffer], dl
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .stdoutWriteBuffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
+    ret
+.stdoutWriteBuffer db 0
+.stdauxRead:        ;ah = 03h
+.stdauxWrite:       ;ah = 04h
+.stdprnWrite:       ;ah = 05h
+.directCONIO:       ;ah = 06h
+.waitDirectInNoEcho:;ah = 07h
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .function7buffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
+    mov al, byte [.function7buffer]
+    ret
+.function7buffer    db 0
+.waitStdinNoEcho:   ;ah = 08h
+    ret
+.printString:       ;ah = 09h
+    xor ecx, ecx    ;Clear char counter
+    mov eax, "$"    ;Terminating char
+    mov rdi, rdx    ;Set up for scasb
+.ps0:   ;Search for $ to get count of chars
+    scasb
+    je .ps1
+    inc ecx
+    jmp short .ps0
+.ps1:   ;Use handle 
+    lea rbx, charReqHdr ;Get the address of this request block
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rdx
+    mov dword [rbx + ioReqPkt.tfrlen], ecx
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
+    ret
+.buffStdinInput:    ;ah = 0Ah
+.checkStdinStatus:  ;ah = 0Bh
+.clearbuffDoFunc:   ;ah = 0Ch
+.diskReset:         ;ah = 0Dh
+.selectDisk:        ;ah = 0Eh
+.openFileFCB:       ;ah = 0Fh
+.closeFileFCB:      ;ah = 10h
+.findFirstFileFCB:  ;ah = 11h
+.findNextFileFCB:   ;ah = 12h
+.deleteFileFCB:     ;ah = 13h
+.sequentialReadFCB: ;ah = 14h
+.sequentialWriteFCB:;ah = 15h
+.createFileFCB:     ;ah = 16h
+.renameFileFCB:     ;ah = 17h
+                    ;ah = 18h unused
+.getCurrentDisk:       ;ah = 19h, get current default drive
+.setDTA:            ;ah = 1Ah
+.FATinfoDefault:    ;ah = 1Bh
+.FatinfoDevice:     ;ah = 1Ch
+                    ;ah = 1Dh unused
+                    ;ah = 1Eh unused
+.getCurrentDPBptr:  ;ah = 1Fh, simply calls int 41h ah = 32h with dl = 0
+                    ;ah = 20h unused
+.randomReadFCB:     ;ah = 21h
+.randomWriteFCB:    ;ah = 22h
+.getFileSizeFCB:    ;ah = 23h
+.setRelRecordFCB:   ;ah = 24h
+.setIntVector:      ;ah = 25h
+.createNewPSP:      ;ah = 26h
+.randBlockReadFCB:  ;ah = 27h
+.randBlockWriteFCB: ;ah = 28h
+.parseFilenameFCB:  ;ah = 29h
+.getDate:           ;ah = 2Ah
+.setDate:           ;ah = 2Bh
+.getTime:           ;ah = 2Ch
+.setTime:           ;ah = 2Dh
+.setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
+.getDTA:            ;ah = 2Fh
+.getDOSversion:     ;ah = 30h
+.terminateStayRes:  ;ah = 31h
+.getDeviceDPBptr:   ;ah = 32h
+.ctrlBreakCheck:    ;ah = 33h
+.getInDOSflagPtr:   ;ah = 34h
+.getIntVector:      ;ah = 35h
+.getDiskFreeSpace:  ;ah = 36h
+.getsetSwitchChar:  ;ah = 37h, allows changing default switch from / to anything
+.getsetCountryInfo: ;ah = 38h, localisation info
+.makeDIR:           ;ah = 39h
+.removeDIR:         ;ah = 3Ah
+.changeCurrentDIR:  ;ah = 3Bh, changes directory for current drive
+.createFileHdl:     ;ah = 3Ch, handle function
+.openFileHdl:       ;ah = 3Dh, handle function
+.closeFileHdl:      ;ah = 3Eh, handle function
+.readFileHdl:       ;ah = 3Fh, handle function
+.writeFileHdl:      ;ah = 40h, handle function
+.deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
+.movFileReadPtr:    ;ah = 42h, handle function, LSEEK
+.changeFileModeHdl: ;ah = 43h, handle function, CHMOD
+.ioctrl:            ;ah = 44h, handle function
+.duplicateHandle:   ;ah = 45h, handle function
+.forceDuplicateHdl: ;ah = 46h, handle function
+.getCurrentDIR:     ;ah = 47h
+.allocateMemory:    ;ah = 48h
+.freeMemory:        ;ah = 49h
+.reallocMemory:     ;ah = 4Ah
+.loadExecChild:     ;ah = 4Bh, EXEC
+.terminateClean:    ;ah = 4Ch, EXIT
+.getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
+.findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
+.findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
+.setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+.getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
+.getSysVarsPtr:     ;ah = 52h
+.createDPB:         ;ah = 53h, generates a DPB from a given BPB
+.getVerifySetting:  ;ah = 54h
+.createPSP:         ;ah = 55h, creates a PSP for a program
+.renameFile:        ;ah = 56h
+.getSetFileDateTime:;ah = 57h
+.getsetMallocStrat: ;ah = 58h
+.getExtendedError:  ;ah = 59h
+.createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
+.createNewFile:     ;ah = 5Bh
+.lockUnlockFile:    ;ah = 5Ch
+.getCritErrorInfo:  ;ah = 5Dh
+.networkServices:   ;ah = 5Eh, do nothing
+.networkRedirection:;ah = 5Fh, do nothing
+.trueName:          ;ah = 60h, get fully qualified name
+                    ;ah = 61h, reserved
+.getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+                    ;ah = 63h, reserved
+.setDriverLookahead:;ah = 64h, reserved
+.getExtLocalInfo:   ;ah = 65h, Get Extended Country Info
+.getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage, reserved
+.setHandleCount:    ;ah = 67h
+.commitFile:        ;ah = 68h, flushes buffers for handle to disk 
+.getsetDiskSerial:  ;ah = 69h, get/set disk serial number
+.return:
+    ret
+
+
+.dispatchTable:
+    dq .simpleTerminate     ;AH = 00H, PROCESS MANAGEMENT
+    dq .stdinReadEcho       ;AH = 01H, CHAR IO
+    dq .stdoutWrite         ;AH = 02H, CHAR IO
+    dq .stdauxRead          ;AH = 03H, CHAR IO
+    dq .stdauxWrite         ;AH = 04H, CHAR IO
+    dq .stdprnWrite         ;AH = 05H, CHAR IO
+    dq .directCONIO         ;AH = 06H, CHAR IO
+    dq .waitDirectInNoEcho  ;AH = 07H, CHAR IO
+    dq .waitStdinNoEcho     ;AH = 08H, CHAR IO
+    dq .printString         ;AH = 09H, CHAR IO
+    dq .buffStdinInput      ;AH = 0AH, CHAR IO
+    dq .checkStdinStatus    ;AH = 0BH, CHAR IO
+    dq .clearbuffDoFunc     ;AH = 0CH, CHAR IO
+    dq .diskReset           ;AH = 0DH, DISK MANAGEMENT
+    dq .selectDisk          ;AH = 0EH, DISK MANAGEMENT
+    dq .openFileFCB         ;AH = 0FH, FILE OPERATION       FCB
+    dq .closeFileFCB        ;AH = 10H, FILE OPERATION       FCB
+    dq .findFirstFileFCB    ;AH = 11H, FILE OPERATION       FCB
+    dq .findNextFileFCB     ;AH = 12H, FILE OPERATION       FCB
+    dq .deleteFileFCB       ;AH = 13H, FILE OPERATION       FCB
+    dq .sequentialReadFCB   ;AH = 14H, RECORD OPERATION     FCB
+    dq .sequentialWriteFCB  ;AH = 15H, RECORD OPERTAION     FCB
+    dq .createFileFCB       ;AH = 16H, FILE OPERATION       FCB
+    dq .renameFileFCB       ;AH = 17H, FILE OPERATION       FCB
+    dq .return              ;AH = 18H, RESERVED
+    dq .getCurrentDisk      ;AH = 19H, DISK MANAGEMENT
+    dq .setDTA              ;AH = 1AH, RECORD OPERATION     F/H
+    dq .FATinfoDefault      ;AH = 1BH, DISK MANAGEMENT
+    dq .FatinfoDevice       ;AH = 1CH, DISK MANAGEMENT
+    dq .return              ;AH = 1DH, RESERVED
+    dq .return              ;AH = 1EH, RESERVED
+    dq .getCurrentDPBptr    ;AH = 1FH, RESERVED INTERNAL, GET CURR DRIVE DPB PTR
+    dq .return              ;AH = 20H, RESERVED
+    dq .randomReadFCB       ;AH = 21H, RECORD OPERATION     FCB
+    dq .randomWriteFCB      ;AH = 22H, RECORD OPERATION     FCB
+    dq .getFileSizeFCB      ;AH = 23H, FILE OPERATION       FCB
+    dq .setRelRecordFCB     ;AH = 24H, RECORD OPERATION     FCB
+    dq .setIntVector        ;AH = 25H, MISC. SYS. FUNCTION
+    dq .createNewPSP        ;AH = 26H, PROCESS MANAGEMENT
+    dq .randBlockReadFCB    ;AH = 27H, RECORD OPERATION     FCB
+    dq .randBlockWriteFCB   ;AH = 28H, RECORD OPERATION     FCB
+    dq .parseFilenameFCB    ;AH = 29H, FILE OPERATION       FCB
+    dq .getDate             ;AH = 2AH, TIME AND DATE
+    dq .setDate             ;AH = 2BH, TIME AND DATE
+    dq .getTime             ;AH = 2CH, TIME AND DATE
+    dq .setTime             ;AH = 2DH, TIME AND DATE
+    dq .setResetVerify      ;AH = 2EH, DISK MANAGEMENT
+    dq .getDTA              ;AH = 2FH, RECORD OPERATION     F/H
+    dq .getDOSversion       ;AH = 30H, MISC. SYS. FUNCTION
+    dq .terminateStayRes    ;AH = 31H, PROCESS MANAGEMENT
+    dq .getDeviceDPBptr     ;AH = 32H, RESERVED INTERNAL, GET DEVICE DPB PTR
+    dq .ctrlBreakCheck      ;AH = 33H, MISC. SYS. FUNCTION
+    dq .getInDOSflagPtr     ;AH = 34H, RESERVED INTERNAL, GET PTR TO INDOS FLAG
+    dq .getIntVector        ;AH = 35H, MISC. SYS. FUNCTION
+    dq .getDiskFreeSpace    ;AH = 36H, DISK MANAGEMENT
+    dq .getsetSwitchChar    ;AH = 37H, RESERVED INTERNAL, CHANGE SWITCH CHAR
+    dq .getsetCountryInfo   ;AH = 38H, MISC. SYS. FUNCTION
+    dq .makeDIR             ;AH = 39H, DIRECTORY OPERATION
+    dq .removeDIR           ;AH = 3AH, DIRECTORY OPERATION
+    dq .changeCurrentDIR    ;AH = 3BH, DIRECTORY OPERATION
+    dq .createFileHdl       ;AH = 3CH, FILE OPERATION       HANDLE
+    dq .openFileHdl         ;AH = 3DH, FILE OPERATION       HANDLE
+    dq .closeFileHdl        ;AH = 3EH, FILE OPERATION       HANDLE
+    dq .readFileHdl         ;AH = 3FH, RECORD OPERATION     HANDLE
+    dq .writeFileHdl        ;AH = 40H, RECORD OPERATION     HANDLE
+    dq .deleteFileHdl       ;AH = 41H, FILE OPERATION       HANDLE
+    dq .movFileReadPtr      ;AH = 42H, RECORD OPERATION     HANDLE
+    dq .changeFileModeHdl   ;AH = 43H, FILE OPERATION       HANDLE
+    dq .ioctrl              ;AH = 44H, MISC. SYS. FUNCTION
+    dq .duplicateHandle     ;AH = 45H, FILE OPERATION       HANDLE
+    dq .forceDuplicateHdl   ;AH = 46H, FILE OPERATION       HANDLE
+    dq .getCurrentDIR       ;AH = 47H, DIRECTORY OPERATION
+    dq .allocateMemory      ;AH = 48H, MEMORY MANAGEMENT
+    dq .freeMemory          ;AH = 49H, MEMORY MANAGEMENT
+    dq .reallocMemory       ;AH = 4AH, MEMORY MANAGEMENT
+    dq .loadExecChild       ;AH = 4BH, PROCESS MANAGEMENT
+    dq .terminateClean      ;AH = 4CH, PROCESS MANAGEMENT
+    dq .getRetCodeChild     ;AH = 4DH, PROCESS MANAGEMENT
+    dq .findFirstFileHdl    ;AH = 4EH, FILE OPERATION       HANDLE
+    dq .findNextFileHdl     ;AH = 4FH, FILE OPERATION       HANDLE
+    dq .setCurrProcessID    ;AH = 50H, RESERVED INTERNAL, SET CURRENT PROCESS ID
+    dq .getCurrProcessID    ;AH = 51H, RESERVED INTERNAL, GET CURRENT PROCESS ID
+    dq .getSysVarsPtr       ;AH = 52H, RESERVED INTERNAL, GET SYSVARS POINTER
+    dq .createDPB           ;AH = 53H, RESERVED INTERNAL, TRANSLATE A BPB TO DPB
+    dq .getVerifySetting    ;AH = 54H, DISK MANAGEMENT
+    dq .createPSP           ;AH = 55H, RESERVED INTERNAL, CREATE A PSP
+    dq .renameFile          ;AH = 56H, FILE OPERATION       HANDLE
+    dq .getSetFileDateTime  ;AH = 57H, FILE OPERATION       HANDLE
+    dq .getsetMallocStrat   ;AH = 58H, MEMORY MANAGEMENT
+    dq .getExtendedError    ;AH = 59H, MISC. SYS. FUNCTION
+    dq .createUniqueFile    ;AH = 5AH, FILE OPERATION       HANDLE
+    dq .createNewFile       ;AH = 5BH, FILE OPERATION       HANDLE
+    dq .lockUnlockFile      ;AH = 5CH, RECORD OPERATION     HANDLE
+    dq .getCritErrorInfo    ;AH = 5DH, RESERVED INTERNAL, GET CRIT. ERROR DATA
+    dq .networkServices     ;AH = 5EH, RESERVED NETWORK FUNCTION
+    dq .networkRedirection  ;AH = 5FH, RESERVED NETWORK FUNCTION
+    dq .trueName            ;AH = 60H, RESERVED INTERNAL, GET TRUE NAME
+    dq .return              ;AH = 61H, RESERVED
+    dq .getPSPaddr          ;AH = 62H, PROCESS MANAGEMENT
+    dq .return              ;AH = 63H, RESERVED
+    dq .setDriverLookahead  ;AH = 64H, RESERVED INTERNAL, DRIVER LOOKAHEAD
+    dq .getExtLocalInfo     ;AH = 65H, MISC. SYS. FUNCTION
+    dq .getsetGlobalCP      ;AH = 66H, MISC. SYS. FUNCTION
+    dq .setHandleCount      ;AH = 67H, FILE OPERAITON       F/H
+    dq .commitFile          ;AH = 68H, FILE OPERATION       HANDLE
+    dq .getsetDiskSerial    ;AH = 69H, RESERVED INTERNAL, GET/SET DISK SER. NUM
+dispatchTableL  equ $ - .dispatchTable 
+
+terminateHandler:   ;Int 42h
+ctrlCHandler:       ;Int 43h
+critErrorHandler:   ;Int 44h
+;User Stack in usage here, must be swapped to before this is called
+;Entered with:  
+;               AH = Critical Error Bitfield
+;               Bit 7 = 0 - Disk Error, Bit 7 = 1 - Char Device Error
+;               Bit 6 - Reserved
+;               Bit 5 = 0 - IGNORE not allowed, Bit 5 = 1 - IGNORE allowed
+;               Bit 4 = 0 - RETRY not allowed, Bit 4 = 1 - RETRY allowed
+;               Bit 3 = 0 - FAIL not allowed, Bit 3 = 1 - FAIL allowed
+;               Bits [2-1] = Affected Disk Error
+;                     0 0   DOS area
+;                     0 1   FAT area
+;                     1 0   Directory area
+;                     1 1   Data area
+;               Bit 0 = 0 - Read Operation, Bit 0 = 1 - Write Operation
+;               AL  = Failing drive number if AH[7] = 0
+;               DIL = Error code for errorMsg
+;               RSI = EA of Device Header for which device the error occured
+;Return:
+;               AL = 0 - Ignore the Error       (Ignore)
+;                  = 1 - Retry the Operation    (Retry)
+;                  = 2 - Terminate the Program  (Abort)
+;                  = 3 - Fail the DOS call      (Fail)
+    push rbx
+    push rcx
+    push rdx
+    push rdi
+    push rsi
+    cld         ;Make String ops go forward
+
+    mov bx, ax  ;Save ah in bh and al in bl (if needed)
+    lea rdx, qword [.crlf]
+    mov ah, 09h ;Print String
+    int 41h     ;Call DOS to print CRLF part of message
+
+    and edi, 00FFh   ;Zero the upper bytes of DI just in case
+    mov ecx, 0Ch
+    cmp edi, ecx  ;Check if the error number is erroniously above Gen Error
+    cmova edi, ecx  ;If it is, move Gen Error into edi
+    movzx rdi, di
+    mov rdx, rdi    ;Copy error code
+    shl rdi, 4  ;Multiply by 16
+    shl rdx, 1  ;Multiply by 2
+    add rdi, rdx    ;Add the resultant multiplications
+    lea rdx, qword [.errorMsgTable]
+    lea rdx, qword [rdx+rdi]   ;Load EA to rdx
+    mov ah, 09h ;Print String
+    int 41h     ;Call DOS to print first part of message
+
+    lea rdx, qword [.readmsg]
+    lea rdi, qword [.writemsg]
+    test bh, 1  ;Bit 0 is set if write operation
+    cmovnz rdx, rdi ;Move the correct r/w part of the message to rdx
+    mov ah, 09h ;Print String
+    int 41h     ;Call DOS to print error reading/writing portion
+
+    test bh, 80h    ;Test bit 7 for char/Disk assertation
+    jnz .charError
+;Disk error continues here
+    lea rdx, qword [.drive] ;Drive message
+    mov ah, 09h
+    int 41h
+    mov dl, bl  ;Get zero based drive number into dl
+    add dl, "A" ;Add ASCII code
+    mov ah, 02h ;Print char in dl
+    int 41h
+.userInput:
+    lea rdx, qword [.crlf]  ;Print new line
+    mov ah, 09h
+    int 41h
+;Abort, Retry, Ignore, Fail is word order
+;Last message gets a ?, otherwise a comma followed by a 20h (space)
+.userAbort:
+;Abort is always an option
+    lea rdx, qword [.abortmsg]
+    mov ah, 09h
+    int 41h ;Call DOS to prompt user for ABORT option
+.userRetry:
+    test bh, 10h  ;Bit 4 is retry bit
+    jz .userIgnore    ;If clear, dont print message
+    lea rdx, qword [.betweenMsg]
+    mov ah, 09h
+    int 41h
+    lea rdx, qword [.retrymsg]
+    mov ah, 09h
+    int 41h
+.userIgnore:
+    test bh, 20h    ;Bit 5 is ignore bit
+    jz .userFail
+    lea rdx, qword [.betweenMsg]
+    mov ah, 09h
+    int 41h
+    lea rdx, qword [.ignoremsg]
+    mov ah, 09h
+    int 41h
+.userFail:
+    test bh, 08h    ;Bit 3 is Fail bit
+    jz .userMsgEnd
+    lea rdx, qword [.betweenMsg]
+    mov ah, 09h
+    int 41h
+    lea rdx, qword [.failmsg]
+    mov ah, 09h
+    int 41h
+.userMsgEnd:
+    lea rdx, qword [.endMsg]
+    mov ah, 09h
+    int 41h
+;Get user input now 
+    xor ecx, ecx  ;4 Possible Responses
+    lea rdi, qword [.responses] ;Go to start of string
+    mov ah, 01h ;STDIN without Console Echo
+    int 41h ;Get char in al
+    cmp al, "a" ;Chack if lowercase
+    jb .uip1    ;If the value is below, ignore subtraction
+    sub al, "a"-"A"  ;Turn the char into uppercase
+.uip1:
+    scasb   ;Compare char to list, offset gives return code
+    je .validInput  ;If they are equal, ecx has return code
+    inc ecx
+    cmp ecx, 4
+    jne .uip1
+    jmp .userInput ;If valid char not found, keep waiting 
+.validInput:
+    mov al, cl  ;Move the offset into .responses into al
+;Now check if the input is permitted
+    cmp al, 2   ;Check if abort, abort always permitted
+    je .cehExit
+    test al, al ;Check if 0 => Ignore
+    je .viIgnore
+    cmp al, 1   ;Check if 1 => Retry
+    je .viRetry
+.viFail:    ;Fallthrough for fail (al = 3)
+    test bh, 8  ;Bit 3 is Fail bit
+    jz .userInput  ;If bit 3 is zero, prompt and get input again
+    jmp short .cehExit
+.viIgnore:
+    test bh, 20h    ;Bit 5 is Ignore bit
+    jz .userInput
+    jmp short .cehExit
+.viRetry:
+    test bh, 10h    ;Bit 4 is Retry bit
+    jz .userInput
+.cehExit:
+    pop rsi
+    pop rdi
+    pop rdx
+    pop rcx
+    pop rbx
+    iretq
+.charError:
+    mov ecx, 8  ;8 chars in device name
+    add rsi, drvHdr.drvNam  ;Get the address of the Drive name
+.ce1:
+    lodsb   ;Get a string char into al and inc rsi
+    mov dl, al  ;Move char into dl
+    mov ah, 02h
+    int 41h ;Print char
+    loop .ce1   ;Keep looping until all 8 char device chars have been printed
+    jmp .userInput
+
+.errorMsgTable: ;Each table entry is 18 chars long
+            db "Write Protect $   "       ;Error 0
+            db "Unknown Unit $    "       ;Error 1
+            db "Not Ready $       "       ;Error 2
+            db "Unknown Command $ "       ;Error 3
+            db "Data $            "       ;Error 4
+            db "Bad Request $     "       ;Error 5
+            db "Seek $            "       ;Error 6
+            db "Unknown Media $   "       ;Error 7
+            db "Sector Not Found $"       ;Error 8
+            db "Out Of Paper $    "       ;Error 9
+            db "Write Fault $     "       ;Error A
+            db "Read Fault $      "       ;Error B
+            db "General Failure $ "       ;Error C
+
+.drive      db "drive $"
+.readmsg    db "error reading $"
+.writemsg   db "error writing $"
+.crlf       db 0Ah, 0Dh, "$"
+.abortmsg   db "Abort$" 
+.ignoremsg  db "Ignore$"
+.retrymsg   db "Retry$"
+.failmsg    db "Fail$"
+.betweenMsg db ", $"
+.endMsg     db "? $"
+.responses  db "IRAF"   ;Abort Retry Ignore Fail
+absDiskRead:        ;Int 45h
+;al = Drive number
+;rbx = Memory Buffer address
+;ecx = Number of sectors to read (max 255 for now)
+;rdx = Start LBA to read from
+    movzx rax, al   ;Zero extend DOS drive number 
+    mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
+    xchg rax, rcx
+    xchg rcx, rdx
+    mov ah, 82h
+    int 33h
+    iretq
+absDiskWrite:       ;Int 46h
+    movzx rax, al   ;Zero extend DOS drive number 
+    mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
+    xchg rax, rcx
+    xchg rcx, rdx
+    mov ah, 83h
+    int 33h
+    iretq
+terminateResident:  ;Int 47h
+inDosHandler:       ;Int 48h
+;Called when DOS idle
+    iretq
+fastOutput:         ;Int 49h
+;Called with char to transfer in al
+    push rax
+    mov ah, 0Eh
+    int 30h
+    pop rax
+    iretq
+passCommand:        ;Int 4Eh, hooked by COMMAND.COM
+    iretq
+multiplex:          ;Int 4Fh, kept as iretq for now
+    iretq
