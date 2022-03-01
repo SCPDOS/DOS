@@ -182,7 +182,7 @@ l3:
     int 30h
     movzx eax, byte [rbx + clkStruc.hseconds]
     call .clkHexToBCD
-    jmp l1
+    jmp l3
 .clkHexToBCD:
 ;Converts a Hex byte into two BCD digits
 ;Takes input in each nybble of al
@@ -224,7 +224,7 @@ adjustDrvHdr:
     add qword [rsi + drvHdr.intPtr], rbp
     add rsi, drvHdr_size
     ret
-startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,"$"
+startmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
 intData:
     dq terminateProcess ;Int 40h
     dq functionDispatch ;Int 41h
@@ -534,8 +534,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
 .findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 .findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
-.setCurrProcessID:  ;ah = 50h, set current process ID
-.getCurrProcessID:  ;ah = 51h, get current process ID
+.setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+.getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
 .getSysVarsPtr:     ;ah = 52h
 .createDPB:         ;ah = 53h, generates a DPB from a given BPB
 .getVerifySetting:  ;ah = 54h
@@ -1185,13 +1185,14 @@ clkDriver:
     div ecx
     mov byte [rbp + clkStruc.minutes], al
     mov eax, edx    ;Get remainder in eax
+    lea eax, dword [eax + 4*eax]    ;Multiply by 5
     xor edx, edx
-    mov ecx, 18
+    mov ecx, 91 ;5*18.2
     div ecx
     mov byte [rbp + clkStruc.seconds], al
     mov eax, edx    ;Get remainder in eax
-    lea eax, dword [eax + 4*eax]
-    add eax, edx    ;Essentially multiply by 6
+    ;lea eax, dword [eax + 4*eax]
+    ;add eax, edx    ;Essentially multiply by 6
     mov byte [rbp + clkStruc.hseconds], al
     mov rbx, rsi    ;Return the packet pointer back to rbx
     jmp .clkExit
