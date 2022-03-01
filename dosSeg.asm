@@ -4,6 +4,7 @@ Segment dSeg nobits align=1
     dosSegPtr   resq 1    ;Pointer to the data Segment itself
     bootDrive   resb 1    ;The Int 33h device we booted from
     numMSDdrv   resb 1    ;Number of mass storage devices detected in system
+    numLDrives  resb 1    ;Number of logical drives in the system
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header
@@ -35,7 +36,7 @@ Segment dSeg nobits align=1
 
     currentDTA  resq 1  ;Address of the current DTA
     currentPSP  resq 1  ;Address of current PSP
-    rdiErrorPtr resq 1  ;Saves RDI value of last error
+    rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this dx)
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
     currentDrv  resb 1  ;Default, last accessed drive

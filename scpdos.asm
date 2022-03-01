@@ -31,6 +31,11 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov ecx, 1000h
     rep movsq
 
+    int 31h ;Get number of Int 33h devices in r8b
+    mov byte fs:[numMSDdrv], r8b    ;Save number of physical int 33h devs
+    mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
+    mov byte fs:[numLDrives], 0     ;Number of logical drives
+
 ;Modify the pointers in nData before putting them in the data area
     add qword [nData + drvHdr.nxtPtr], rbp
     add qword [nData + drvHdr.strPtr], rbp
@@ -78,8 +83,10 @@ conInit:    ;Rather than keeping this resident... do it here
     ;Open Mass Storage
     lea rbx, qword [rbp + diskReqHdr]
     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-    mov byte [rbx + initReqPkt.cmdcde], 00h   ;MSD init
-    mov word [rbx + initReqPkt.status], 0 ;Zero status word
+    mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
+    mov word [rbx + initReqPkt.status], 0       ;Zero status word
+    mov al, byte fs:[numLDrives]
+    mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
     call qword [rbp + msdHdr + drvHdr.strPtr]
     call qword [rbp + msdHdr + drvHdr.intPtr]
 
@@ -1591,15 +1598,17 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], initReqPkt_size
     jne .msdWriteErrorCode
-    push r9
-    int 31h ;Get number of Int 33h devices in r8b
-    pop r9
-    mov byte [numMSDdrv], r8b   ;Save number of physical int 33h devs
-    mov r8, rbx ;Save the req block ptr in r8
+
+    lea rbp, endptr
+    mov qword [rbx + initReqPkt.endptr], rbp    ;Where the end is gonna be
+    lea rbp, .msdBPBTbl
+    mov qword [rbx + initReqPkt.optptr], rbp    ;Where bpb tbl is gonna be
+
+    mov rbp, rbx ;Save the req block ptr in rbp
     xor edx, edx  ;Start from device zero
-    mov byte [lastdrvNum], dl   ;Zero this field, max 5
+    mov byte [rbp + initReqPkt.numunt], dl   ;Zero this field, max 5
 .mi0:   ;Now check each device for partitions
-    cmp byte [lastdrvNum], 5
+    cmp byte [rbp + initReqPkt.numunt], 5
     je .msdExit ;IF we are at 5 now, we exit
     mov ah, 82h ;LBA read
     mov al, 1   ;1 sector
@@ -1630,14 +1639,14 @@ msdDriver:
     lea rdi, .msdBIOSmap
     add rdi, rdx    ;rdx contains a number, table is a list of bytes
     mov byte [rdi], dl
-    inc byte [lastdrvNum]
+    inc byte [rbp + initReqPkt.numunt]
     inc dl
     cmp dl, byte [numMSDdrv] ;Once these are equal, we have processed last dev
     jne .mi0
 .msdExit:
 ;If one device only, copy its BPB pointer and drive number
 ;When HDD support implemented, this will check the number of remdevs not lastdrv
-    cmp byte [lastdrvNum], 1
+    cmp byte [rbp + initReqPkt.numunt], 1
     jne .msdexit1
 ;Here ONLY if one device found
     lea rsi, .msdBPBTbl
@@ -1646,9 +1655,9 @@ msdDriver:
     lea rsi, .msdBIOSmap
     lea rdi, qword [rsi + 1]
     movsb   ;Copy byte
-    inc byte [lastdrvNum]
+    inc byte [rbp + initReqPkt.numunt]
 .msdexit1:
-    mov rbx, r8
+    mov rbx, rbp
     jmp .msdDriverExit
 .mimbr:
 ;Goto next device without incrementing LASTDRIVE
@@ -1657,7 +1666,7 @@ msdDriver:
     jne .mi0
     jmp short .msdExit
 .msdInitError:
-    mov rbx, r8
+    mov rbx, rbp
     jmp .msdGenDiskError
 .msdMedChk:          ;Function 1
 ;Once the BIOS function is implmented that reads the changeline, use that!
@@ -1882,3 +1891,5 @@ msdDriver:
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
 .msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
+
+endptr equ $
