@@ -76,10 +76,12 @@ conInit:    ;Rather than keeping this resident... do it here
     int 30h
 
     ;Open Mass Storage
-    mov rbx, msdDriver
-    lea rbx, qword [rbp+rbx]
-    xor al, al
-    call rbx
+    lea rbx, qword [rbp + diskReqHdr]
+    mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
+    mov byte [rbx + initReqPkt.cmdcde], 00h   ;MSD init
+    mov word [rbx + initReqPkt.status], 0 ;Zero status word
+    call qword [rbp + msdHdr + drvHdr.strPtr]
+    call qword [rbp + msdHdr + drvHdr.intPtr]
 
 ;Adjust Int 41h address table
 adjInt41h:
@@ -1589,7 +1591,6 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], initReqPkt_size
     jne .msdWriteErrorCode
-
     push r9
     int 31h ;Get number of Int 33h devices in r8b
     pop r9
@@ -1618,11 +1619,13 @@ msdDriver:
     mov ecx, edx    ;Temporarily save dl in ecx
     mul edx
     mov edx, ecx
-    lea rdi, qword [.msdBPBblks + eax]
+    lea rdi, .msdBPBblks
+    add rdi, rax
     mov ecx, bpbEx_size
     mov rax, rdi    ;Save the entry address in rax
     rep movsb   ;Copy the bpb into the bpb table
-    lea rdi, qword [.msdBPBTbl + 8*edx]
+    lea rdi, .msdBPBTbl
+    lea rdi, qword [rdi + 8*rdx]
     mov qword [rdi], rax
     inc byte [lastdrvNum]
     inc dl
