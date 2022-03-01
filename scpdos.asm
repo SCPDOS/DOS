@@ -1636,15 +1636,17 @@ msdDriver:
     jne .mi0
 .msdExit:
 ;If one device only, copy its BPB pointer and drive number
+;When HDD support implemented, this will check the number of remdevs not lastdrv
     cmp byte [lastdrvNum], 1
     jne .msdexit1
 ;Here ONLY if one device found
     lea rsi, .msdBPBTbl
     lea rdi, qword [rsi + 8]    ;Point to next entry
-    movsq
+    movsq   ;Copy pointer
     lea rsi, .msdBIOSmap
     lea rdi, qword [rsi + 1]
     movsb   ;Copy byte
+    inc byte [lastdrvNum]
 .msdexit1:
     mov rbx, r8
     jmp .msdDriverExit
