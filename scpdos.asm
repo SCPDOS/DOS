@@ -1813,7 +1813,8 @@ msdDriver:
     jne .msdWriteErrorCode
 
     movzx rax, byte [rbx + openReqPkt.unitnm]
-    inc byte [.msdHdlCnt + rax]  ;Inc handle cnt for given unit
+    lea rcx, .msdHdlCnt
+    inc byte [rcx + rax]  ;Inc handle cnt for given unit
     jmp .msdDriverExit
 .msdDevClose:        ;Function 14
     mov al, 05h ;Bad request structure length
@@ -1821,7 +1822,8 @@ msdDriver:
     jne .msdWriteErrorCode
 
     movzx rax, byte [rbx + closeReqPkt.unitnm]
-    dec byte [.msdHdlCnt + rax]  ;Dec handle cnt for given unit
+    lea rcx, .msdHdlCnt
+    dec byte [rcx + rax]  ;Dec handle cnt for given unit
     jmp .msdDriverExit
 .msdRemovableMedia:  ;Function 15
     mov al, 05h ;Bad request structure length
@@ -1829,7 +1831,8 @@ msdDriver:
     jne .msdWriteErrorCode
 
     movzx rax, byte [rbx + remMediaReqPkt.unitnm]
-    mov al, byte [.msdBIOSmap + rax]    ;Get BIOS number
+    lea rcx, .msdBIOSmap
+    mov al, byte [rcx + rax]    ;Get BIOS number
     test al, 80h
     jz .msdDriverExit   ;If removable, busy bit is clear
     mov word [rbx + remMediaReqPkt.status], 0200h ;Set Busy bit
