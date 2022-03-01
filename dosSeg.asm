@@ -51,11 +51,10 @@ Segment dSeg nobits align=1
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
 ;Time stuff
     CLOCKrecrd  resb 6  ;Clock driver record
-    dayOfMonth  resb 1  ;1 - 31 BCD
-    monthOfYear resb 1  ;1 - 12 BCD
-    years       resw 1  ;0000 - 9999 BCD
-    yearsOffset resw 1  ;Current Year - 1980
-    daysOffset  resd 1  ;Days since 1-1-1980
+    dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
+    monthOfYear resb 1  ;01h - 0Ch (1 - 12)
+    years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
+    daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
 ;Stacks
@@ -66,3 +65,16 @@ Segment dSeg nobits align=1
     DiskStack   resq 199
     DiskStakTop resq 1
     dSegLen     equ     $
+
+Segment dynamicDataArea nobits valign=1 vfollows=resSeg
+;Create SFT header and corresponding array of five default sft entries
+firstSftHeader  resb sfth_size
+firstSft        resb sft_size
+secondSft       resb sft_size
+thirdSft        resb sft_size
+fourthSft       resb sft_size
+fifthSft        resb sft_size
+
+
+msdTempBuffer   resb 512    ;Reserve one sectors worth of space
+dynamicDataAreaLength equ $

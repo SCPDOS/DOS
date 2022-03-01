@@ -80,8 +80,8 @@ conInit:    ;Rather than keeping this resident... do it here
     lea rbx, qword [rbp+rbx]
     xor al, al
     call rbx
-;Adjust Int 41h address table
 
+;Adjust Int 41h address table
 adjInt41h:
     mov ecx, dispatchTableL/8 ;Number of elements in table
     mov rbx, functionDispatch.dispatchTable ;Get EA of table
@@ -110,12 +110,22 @@ adjInts:
     cmp ecx, 4Ah
     jne .ai0
 
-;Test Error Case
-    mov ah, 00110000b
-    mov al, 00h
-    mov edi, 0Ch
-    int 44h
+;Fill in the default file table entries
+    ;lea rbx, qword [rbp + firstSftHeader]
+    ;mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
+    ;mov word [rbx + sfth.wNumFiles], 5      ;5 default files
+    ;mov qword fs:[sftHeadPtr], rbx  ;Save ptr to this sft header in SysVars
 
+    ;lea rbx, qword [rbp + firstSft]
+    ;mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    ;mov word [rbx + sft.w]
+
+
+;Test Error Case
+    ;mov ah, 00110000b
+    ;mov al, 00h
+    ;mov edi, 0Ch
+    ;int 44h
 
     lea rdx, qword [startmsg]   ;Get the absolute address of message
     mov ah, 09h
@@ -127,7 +137,84 @@ adjInts:
 l1:
     mov ah, 01h  ;Write with echo
     int 41h
+    cmp al, 0
+    je l2
     jmp short l1
+l2:
+    mov ah, 07h
+    int 41h
+    cmp al, 42h
+    jne l1
+l3:
+    mov word fs:[CLOCKrecrd + clkStruc.dateWord], 0
+    lea rbx, qword [rbp + charReqHdr] ;Get the address of this request block
+    lea rax, qword [rbp + CLOCKrecrd]
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read the time
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 06
+    call qword [rbp + clkHdr + drvHdr.strPtr]
+    call qword [rbp + clkHdr + drvHdr.intPtr]
+
+    mov ah, 03h
+    xor bh, bh
+    int 30h
+    xor dl, dl  ;0 column
+    mov ah, 02h
+    int 30h
+
+    lea rbx, qword [rbp + CLOCKrecrd]
+    movzx eax, byte [rbx + clkStruc.hours]
+    call .clkHexToBCD
+    mov ah, 0Eh
+    mov al, ":"
+    int 30h
+    movzx eax, byte [rbx + clkStruc.minutes]
+    call .clkHexToBCD
+    mov ah, 0Eh
+    mov al, ":"
+    int 30h
+    movzx eax, byte [rbx + clkStruc.seconds]
+    call .clkHexToBCD
+    mov ah, 0Eh
+    mov al, "."
+    int 30h
+    movzx eax, byte [rbx + clkStruc.hseconds]
+    call .clkHexToBCD
+    jmp l1
+.clkHexToBCD:
+;Converts a Hex byte into two BCD digits
+;Takes input in each nybble of al
+    push rbx
+    ;xchg bx, bx
+    mov rbx, 0Ah  ;Divide by 10
+    xor edx, edx
+    div rbx
+    add dl, '0'
+    cmp dl, '9'
+    jbe .chtb0
+    add dl, 'A'-'0'-10
+.chtb0:
+    mov cl, dl    ;Save remainder byte
+    xor edx, edx
+    div rbx
+    add dl, '0'
+    cmp dl, '9'
+    jbe .chtb1
+    add dl, 'A'-'0'-10
+.chtb1:
+    mov ch, dl    ;Save remainder byte
+
+    mov al, ch    ;Get most sig digit into al
+    mov ah, 0Eh
+    int 30h
+    mov al, cl    ;Get least sig digit into al
+    mov ah, 0Eh
+    int 30h
+    pop rbx
+    ret
+
 adjustDrvHdr:
 ;Input: rsi = Effective address of driver in DOS segment
 ;       rbp = Ptr to the start of the DOS segment
@@ -137,7 +224,6 @@ adjustDrvHdr:
     add qword [rsi + drvHdr.intPtr], rbp
     add rsi, drvHdr_size
     ret
-
 startmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,"$"
 intData:
     dq terminateProcess ;Int 40h
@@ -312,7 +398,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     call qword [conHdr + drvHdr.strPtr]
     call qword [conHdr + drvHdr.intPtr]
     cmp byte [.stdinReadEchoBuffer], 00h
-    jz .stdinReadEcho
+    jz .stdireexit
     lea rbx, charReqHdr ;Get the address of this request block
     lea rax, .stdinReadEchoBuffer
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -322,6 +408,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov dword [rbx + ioReqPkt.tfrlen], 01
     call qword [conHdr + drvHdr.strPtr]
     call qword [conHdr + drvHdr.intPtr]
+.stdireexit:
     mov al, byte [.stdinReadEchoBuffer]
     ret
 .stdinReadEchoBuffer    db 0
@@ -344,6 +431,18 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .stdprnWrite:       ;ah = 05h
 .directCONIO:       ;ah = 06h
 .waitDirectInNoEcho:;ah = 07h
+    lea rbx, charReqHdr ;Get the address of this request block
+    lea rax, .function7buffer
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read a byte
+    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
+    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov dword [rbx + ioReqPkt.tfrlen], 01
+    call qword [conHdr + drvHdr.strPtr]
+    call qword [conHdr + drvHdr.intPtr]
+    mov al, byte [.function7buffer]
+    ret
+.function7buffer    db 0
 .waitStdinNoEcho:   ;ah = 08h
     ret
 .printString:       ;ah = 09h
@@ -1025,21 +1124,22 @@ clkDriver:
     push rcx
     push rdx
     push rsi
-    push rdi
     push rbp
     mov rbx, qword [reqHdrPtr]
     mov al, 03h ;Unknown Command
     cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
     ja .clkWriteErrorCode ;If yes, error!
-    cmp ah, 04h
+
+    mov al, byte [rbx + drvReqHdr.cmdcde]
+    cmp al, 04h
     jz .clkRead
-    cmp ah, 06h
+    cmp al, 06h
     jz .clkInputStatus
-    cmp ah, 07h
+    cmp al, 07h
     jz .clkFlushInputBuffers
-    cmp ah, 08h
+    cmp al, 08h
     jz .clkWrite
-    cmp ah, 09h
+    cmp al, 09h
     jz .clkWrite
     jmp short .clkExit  ;All other valid functions return done immediately!
 .clkNotFunctioning:
@@ -1050,7 +1150,6 @@ clkDriver:
 .clkExit:
     or word [rbx + drvReqHdr.status], 0100h ;Merge done bit
     pop rbp
-    pop rdi
     pop rsi
     pop rdx
     pop rcx
@@ -1063,52 +1162,38 @@ clkDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .clkWriteErrorCode
 
-    xor rbp, rbp    ;Write to RBP rather than updating record word by word
-    mov ah, 04h ;Read RTC date
-    int 3Ah
-    jc .clkNotFunctioning
-    movzx eax, dl  ;Get dl (day of the month) into al
-    call .clkBCDtoHex   ;Convert BCD value to hex
-    mov ebp, eax    ;Save result in bp
-    mov al, dh 
-    call .clkBCDtoHex
-    shl eax, 5  ;Shift month
-    add ebp, eax    ;Add month number to bp
-    mov al, cl      ;Get year from cl
-    call .clkBCDtoHex
-    cmp al, 80  ;Is the value less than 80
-    jae .cread0
-    add al, 100
-.cread0:
-    sub al, 80
-    shl eax, 9
-    add ebp, eax    ;number of years since 1980 shifted by 9 to ebp
-    shl rbp, 10h    ;Shift word 1 into word 2
-    mov ah, 02h ;Read RTC time
-    int 3Ah
-    jc .clkNotFunctioning
-    mov al, cl  ;Get minutes into al
-    call .clkBCDtoHex
-    or rbp, rax ;Add minutes byte low
-    shl rbp, 8  ;Shift up by a byte
-
-    mov al, ch  ;Get hours into al
-    call .clkBCDtoHex
-    or rbp, rax ;Add hours to byte low
-    shl rbp, 10h  ;Shift up by a byte and add an empty byte for 100ths of second
-    mov al, dh  ;Get seconds into al
-    call .clkBCDtoHex
-    or rbp, rax ;Add seconds to byte low
-    mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Get the buffer pointer
-    add rdi, 5  ;Move pointer to the end of the buffer
-    mov rax, rbp    ;Get the packed 6 bytes into rax
-    mov ecx, 6  ;6 bytes to transfer
-    std ;Reverse direction of string operation
-.cread1:
-    stosb   ;Store byte and dec rdi
-    shr rax, 8  ;Shift all down by one byte
-    loop .cread1    ;do it until ecx=0
-    cld ;
+    mov rsi, rbx    ;Save rbx temporarily in rsi
+    mov rbp, qword [rbx + ioReqPkt.bufptr]    ;Save the clock struc ptr in rbp
+    mov ax, word [.clkDate] ;Get the clock date
+    mov word [rbp + clkStruc.dateWord], ax
+    xor ah, ah
+    int 3Ah         ;Read the system timer
+    test al, al     ;Check to see if midnight has passed?
+    jz .clkr1       ;Nope, now just time 
+    xor ah, ah
+    ;This works as al should keep count of the # of days passed since last read
+    add word [rbp + clkStruc.dateWord], ax
+    add word [.clkDate], ax ;Add to internal date counter too
+.clkr1:
+    mov byte [rbp + clkStruc.hours], cl   ;Save hours
+    movzx edx, dx
+    mov ebx, edx  ;Save the minutes/seconds/hseconds count
+    mov eax, edx
+    xor edx, edx
+    mov eax, ebx
+    mov ecx, 1092   
+    div ecx
+    mov byte [rbp + clkStruc.minutes], al
+    mov eax, edx    ;Get remainder in eax
+    xor edx, edx
+    mov ecx, 18
+    div ecx
+    mov byte [rbp + clkStruc.seconds], al
+    mov eax, edx    ;Get remainder in eax
+    lea eax, dword [eax + 4*eax]
+    add eax, edx    ;Essentially multiply by 6
+    mov byte [rbp + clkStruc.hseconds], al
+    mov rbx, rsi    ;Return the packet pointer back to rbx
     jmp .clkExit
 
 .clkInputStatus:    ;Function 6
@@ -1129,10 +1214,36 @@ clkDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .clkWriteErrorCode
 
-    mov rsi, qword [rbx + ioReqPkt.bufptr]
-    xor eax, eax
-    stosw   ;Get first word into ax
-    mov ecx, eax    ;Save ax in cx
+    mov rsi, rbx    ;Save rbx temporarily in rsi
+    mov rbp, qword [rbx + ioReqPkt.bufptr]    ;Save the clock struc ptr in rbp
+    mov ax, word [rbp + clkStruc.dateWord]    ;Get date word
+    mov word [.clkDate], ax ;Save date internally
+
+    xor ebx, ebx    ;Clear temporary lo count register
+    movzx eax, byte [rbp + clkStruc.hseconds]
+    mov cl, 5
+    div cl          ;Divide al by 5
+    xor ah, ah      ;Remove the remainder
+    add ebx, eax    ;Add the hseconds to final value
+;Using the decimal part of this formula for the low count
+;LoCount = (Minutes * 1092.38) + (Seconds * 18.21) + (Hundreths * .182)
+    mov al, byte [rbp + clkStruc.seconds]
+    mov ecx, 18
+    mul ecx  
+    add ebx, eax
+
+    xor edx, edx
+    movzx eax, byte [rbp + clkStruc.minutes]
+    mov ecx, 1092
+    mul ecx
+    add ebx, eax
+    mov edx, ebx    ;edx now has low count
+    movzx ecx, byte [rbp + clkStruc.hours]
+    mov ah, 01h     ;Set the system time
+    int 3Ah
+
+    mov rbx, rsi
+    jmp .clkExit
 
 .clkBCDtoHex:
 ;Converts a BCD value to a Hex byte
@@ -1166,7 +1277,22 @@ clkDriver:
     or al, cl   ;Move upper nybble into al upper nybble
     pop rcx
     ret
-
+.clkDate    dw 0    ;Number of days since 01/01/1980
+;When counting the number of days, first compute the number of years since
+; 1980 and your year. 
+;Then, using the table below, find the number of leap years between 1980
+; and (YourYear - 1). 
+;Then do (YourYear - 1980) * 365 + numberOfLeapYears to get the number of 
+; days since 01/01/1980 and 01/01/YourYear.
+;Use the months table to get the number of days in a normal month as leap 
+; years are added using the previous comment.
+;Finally check if the date is after 28th Feb. If it is, check if your year is 
+; a leap year using the table. If it is, add an extra day.
+.clkLeapYears:
+    db 00, 04, 08, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 
+    db 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96
+.clkMonths:
+    db 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 ;COM Driver headers and main interrupt strat
 com1Intr:
     mov byte [comIntr.comDevice], 0
@@ -1483,13 +1609,13 @@ msdDriver:
     push rbx
 .mi2:
     mov edx, ebp
-    lea rbx, qword [driverDataPtr]  ;Get effective address of scratch space
+    lea rbx, qword [msdTempBuffer]  ;Get effective address of scratch space
     xor ecx, ecx    ;Sector 0
     mov eax, 8201h       ;Read 1 sector
     int 33h
     jc .msdInitError
 
-    lea rsi, qword [driverDataPtr]  ;Point to start of data
+    lea rsi, qword [msdTempBuffer]  ;Point to start of data
     mov ecx, bpbEx_size/8
     rep movsq   ;Move the BPB data into the right block
 
@@ -1508,7 +1634,7 @@ msdDriver:
     pop rbx
     lea rdx, qword [.msdBPBTbl]  ;Get far pointer 
     mov qword [rbx + initReqPkt.optptr], rdx  ;Save ptr to array
-    lea rdx, qword [driverDataPtr]
+    lea rdx, qword [msdTempBuffer]
     mov qword [rbx + initReqPkt.endptr], rdx    ;Save free space ptr
     jmp .msdDriverExit
 .msdInitError:
@@ -1734,5 +1860,3 @@ msdDriver:
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
 .msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
-
-driverDataPtr:

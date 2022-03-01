@@ -129,11 +129,11 @@ struc sft
     .wDate       resw 1    ;File Date
     .dFileSize   resd 1    ;File Size, in bytes
     .dCurntOff   resd 1    ;Current Offset in file, in bytes
-    .wRelClust   resw 1    ;Relative cluster in file of the last cluster accessed
-    .dDirSect    resd 1    ;Relative number of sector containing directory entry 
+    .wRelClust   resw 1    ;Rel cluster in file of the last cluster accessed
+    .dDirSect    resd 1    ;Rel number of sector containing directory entry 
     .bNumDirEnt  resb 1    ;Number of dir entry within sector (byte offset/32)
-    .sFCBName    resb 11   ;8.3 Filename
-    .qPSPOwner   resq 1    ;Address of PSP of program which first opened this file
+    .sFileName   resb 11   ;8.3 Filename
+    .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
     .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
 endstruc
 
@@ -155,7 +155,7 @@ struc bufferHdr
     .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
     .driveNumber resb  1   ;Drive number the buffer is used for
     .bufferFlags resb  1   ;Standard Flags
-    .bufferLBA   resd  1   ;LBA the buffer contains
+    .bufferLBA   resq  1   ;LBA the buffer contains
     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
     .bufFAToff   resb  1   ;Sector offset of the backup copy of the FAT on disk
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
@@ -232,4 +232,12 @@ struc mcb
     .paragraphs resd 1  ;Gives the number of paras allocated to this process
     .reserved   resb 3
     .program:
+endstruc
+
+struc clkStruc
+    .dateWord   resw 1
+    .minutes    resb 1
+    .hours      resb 1
+    .hseconds   resb 1  ;Hundreths of seconds
+    .seconds    resb 1
 endstruc
