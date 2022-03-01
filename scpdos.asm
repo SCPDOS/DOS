@@ -1627,11 +1627,25 @@ msdDriver:
     lea rdi, .msdBPBTbl
     lea rdi, qword [rdi + 8*rdx]
     mov qword [rdi], rax
+    lea rdi, .msdBIOSmap
+    add rdi, rdx    ;rdx contains a number, table is a list of bytes
+    mov byte [rdi], dl
     inc byte [lastdrvNum]
     inc dl
     cmp dl, byte [numMSDdrv] ;Once these are equal, we have processed last dev
     jne .mi0
 .msdExit:
+;If one device only, copy its BPB pointer and drive number
+    cmp byte [lastdrvNum], 1
+    jne .msdexit1
+;Here ONLY if one device found
+    lea rsi, .msdBPBTbl
+    lea rdi, qword [rsi + 8]    ;Point to next entry
+    movsq
+    lea rsi, .msdBIOSmap
+    lea rdi, qword [rsi + 1]
+    movsb   ;Copy byte
+.msdexit1:
     mov rbx, r8
     jmp .msdDriverExit
 .mimbr:
@@ -1859,7 +1873,7 @@ msdDriver:
 ;LASTDRIVE default is 5
 .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
 ; Except when single drive in use, in which case Drive A and B refer to device 0
-.msdBIOSmap  db 5 dup (0)    ;Translates DOS drive number to BIOS number
+.msdBIOSmap  db 5 dup (0FFh) ;Translates DOS drive number to BIOS number
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
 .msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
