@@ -1,5 +1,10 @@
 Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 
 ;-----------------------------------:
+;           Static Data             :
+;-----------------------------------:
+dosMajor    db 01h      ;Version 1
+dosMinor    db 00h      ;.0
+;-----------------------------------:
 ;       Misc System routines        :
 ;-----------------------------------:
 findLRUBuffer: 
@@ -125,14 +130,17 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .fdGoToFunction:
     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
     ;Potentially point rbp to caller reg frame for easy access of registers 
-    ;mov rbp, qword [oldRSP]    ;Move rsp on entry into rbp
+    ;
+    ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
+    ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
+    ;
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
 .fdExit:
     cli     ;Redisable interrupts
     ;???
     dec byte [inDOS]            ;Decrement the inDOS count
     mov rsp, qword [oldRSP]     ;Point rsp to old stack
-    mov qword [rsp], rax    ;Put the ret code into its pos on the register frame
+    mov byte [rsp], al   ;Put the ret code into its pos on the register frame
     mov rax, qword [oldoldRSP]
     mov qword [oldRSP], rax
     popDOS  ;Pop the frame
@@ -143,6 +151,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .simpleTerminate:     ;ah = 00h
     ret
 .stdinReadEcho:     ;ah = 01h
+;Return char that has been read and echoed in al
     lea rbx, charReqHdr ;Get the address of this request block
     lea rax, .stdinReadEchoBuffer
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -171,11 +180,11 @@ functionDispatch:   ;Int 41h Main function dispatcher
 ;Bspace is regular cursor left, does not insert a blank
     mov byte [.stdoutWriteBuffer], dl
     lea rbx, charReqHdr ;Get the address of this request block
-    lea rax, .stdoutWriteBuffer
+    lea rdx, .stdoutWriteBuffer
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
     mov word [rbx + ioReqPkt.status], 0 ;Zero status word
-    mov qword [rbx + ioReqPkt.bufptr], rax
+    mov qword [rbx + ioReqPkt.bufptr], rdx
     mov dword [rbx + ioReqPkt.tfrlen], 01
     call qword [conHdr + drvHdr.strPtr]
     call qword [conHdr + drvHdr.intPtr]
@@ -186,6 +195,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .stdprnWrite:       ;ah = 05h
 .directCONIO:       ;ah = 06h
 .waitDirectInNoEcho:;ah = 07h
+;Return char in al
     lea rbx, charReqHdr ;Get the address of this request block
     lea rax, .function7buffer
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -218,6 +228,9 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov dword [rbx + ioReqPkt.tfrlen], ecx
     call qword [conHdr + drvHdr.strPtr]
     call qword [conHdr + drvHdr.intPtr]
+
+    mov rbx, qword [oldRSP]
+    mov al, byte [rbx+callerFrame.rax]      ;Gets al to preserve it
     ret
 .buffStdinInput:    ;ah = 0Ah
 .checkStdinStatus:  ;ah = 0Bh
@@ -234,8 +247,16 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .createFileFCB:     ;ah = 16h
 .renameFileFCB:     ;ah = 17h
                     ;ah = 18h unused
-.getCurrentDisk:       ;ah = 19h, get current default drive
+.getCurrentDisk:    ;ah = 19h, get current default drive
+    mov al, byte [currentDrv]
+    ret
 .setDTA:            ;ah = 1Ah
+;Called with:
+;   rdx = Pointer to the new default DTA
+    mov rbx, qword [oldRSP]
+    mov rdx, qword [rbx + callerFrame.rdx]
+    mov qword [currentDTA], rdx
+    ret
 .FATinfoDefault:    ;ah = 1Bh
 .FatinfoDevice:     ;ah = 1Ch
                     ;ah = 1Dh unused
@@ -247,6 +268,25 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .getFileSizeFCB:    ;ah = 23h
 .setRelRecordFCB:   ;ah = 24h
 .setIntVector:      ;ah = 25h
+;Called with:
+;   rdx = Pointer to interrupt handler
+;   al = Interrupt number
+    mov ebp, eax ;al has interrupt number which we need to save
+    and ebp, 0FFh   ;Zero everything but the bottom byte
+;First call to get default BIOS segement selector and attribute word
+    mov bl, al  ;Set interrupt number 
+    mov eax, 0F007h ;Get the descriptor
+    int 35h
+    mov esi, eax    ;Move segment selector info to esi
+    mov ecx, ebp    ;Get the interrupt number into cl
+;dx preserves the attribute word
+    mov rbp, qword [oldRSP]
+    mov rbx, qword [rbp + callerFrame.rdx]  ;Pointer passed in rdx
+    mov eax, 0F008h ;Set descriptor
+    int 35h
+
+    mov al, byte [rbp + callerFrame.rax]    ;Preserve low byte of rax
+    ret
 .createNewPSP:      ;ah = 26h
 .randBlockReadFCB:  ;ah = 27h
 .randBlockWriteFCB: ;ah = 28h
@@ -256,13 +296,46 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .getTime:           ;ah = 2Ch
 .setTime:           ;ah = 2Dh
 .setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
+    mov byte [verifyFlag], al
+    ret
 .getDTA:            ;ah = 2Fh
+    mov rdx, qword [oldRSP]
+    mov rbx, qword [currentDTA] ;Get current DTA
+    mov qword [rdx + callerFrame.rbx], rbx
+    ret
 .getDOSversion:     ;ah = 30h
+    mov rdx, qword [oldRSP]
+    xor ah, ah ;Continue the mainline PC-DOS identification line
+    mov byte [rdx + callerFrame.rbx + 1], ah    ;Clear bh 
+    mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
+    mov word [rdx + callerFrame.rax], ax    ;Save ax
+    ret
 .terminateStayRes:  ;ah = 31h
 .getDeviceDPBptr:   ;ah = 32h
 .ctrlBreakCheck:    ;ah = 33h
+    test al, al
+    jz .cbcget  ;Get the state
+    mov byte [breakFlag], dl    ;Set the state
+.cbcget:
+    mov dl, byte [breakFlag]    ;Get the state
+    ret
 .getInDOSflagPtr:   ;ah = 34h
+    lea rdx, inDOS
+    mov rbx, qword [oldRSP]
+    mov qword [rbx + callerFrame.rbx], rdx  ;save ptr in rbx
+    ret
 .getIntVector:      ;ah = 35h
+;Called with:
+;   al = Interrupt Number
+;Returns:
+;   rbx = Pointer to interrupt handler
+    mov bl, al  ;Get the interrupt vector number into bl
+    mov eax, 0F007h
+    int 35h
+    mov rdx, qword [oldRSP]
+    mov qword [rdx + callerFrame.rbx], rbx  ;Save pointer in rbx
+    mov al, byte [rdx + callerFrame.rax]    ;Get the low byte in al
+    ret
 .getDiskFreeSpace:  ;ah = 36h
 .getsetSwitchChar:  ;ah = 37h, allows changing default switch from / to anything
 .getsetCountryInfo: ;ah = 38h, localisation info
@@ -290,10 +363,22 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 .findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 .setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+    mov qword [currentPSP], rbx ;Set the pointer
+    ret
 .getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
+    mov rbx, qword [oldRSP]
+    mov rdx, qword [currentPSP]
+    mov qword [rbx + callerFrame.rbx], rdx   ;Set the caller pointer
+    ret 
 .getSysVarsPtr:     ;ah = 52h
+    lea rdx, sysVarsPtr
+    mov rbx, qword [oldRSP]
+    mov qword [rbx + callerFrame.rbx], rdx
+    ret
 .createDPB:         ;ah = 53h, generates a DPB from a given BPB
 .getVerifySetting:  ;ah = 54h
+    mov al, byte [verifyFlag]   ;al is the return value in this case
+    ret
 .createPSP:         ;ah = 55h, creates a PSP for a program
 .renameFile:        ;ah = 56h
 .getSetFileDateTime:;ah = 57h
@@ -308,6 +393,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .trueName:          ;ah = 60h, get fully qualified name
                     ;ah = 61h, reserved
 .getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+    mov rbx, qword [oldRSP]
+    mov rdx, qword [currentPSP]
+    mov qword [rbx + callerFrame.rbx], rdx  ;Save the current psp in rbx
+    ret
                     ;ah = 63h, reserved
 .setDriverLookahead:;ah = 64h, reserved
 .getExtLocalInfo:   ;ah = 65h, Get Extended Country Info

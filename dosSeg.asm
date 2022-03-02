@@ -9,8 +9,8 @@ Segment dSeg nobits align=1
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header
     ;The device driver header with space for the largest possible packet
-    sysVarsPtr  resq 1    ;Pointer to dpbHeadPtr, head of Sys Vars struc below
     mcbChainPtr resq 1    ;Pointer to the MCB chain
+sysVarsPtr:
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain
     sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
     clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header
@@ -41,6 +41,7 @@ Segment dSeg nobits align=1
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
     currentDrv  resb 1  ;Default, last accessed drive
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
+    verifyFlag  resb 1  ;If set, writes are replaces with write/verify
 ;SDA, needs to be replaced between processes
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
 

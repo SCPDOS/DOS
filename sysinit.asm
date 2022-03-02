@@ -15,7 +15,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
     shl rdi, 20h        ;Shift high
     mov edi, eax        ;Get the low dword in
-
+;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov rbp, rdi    ;Save the start of dosSeg in rdx 
     add rdi, dSegLen ;Move destination past end of data area
@@ -127,6 +127,9 @@ adjInts:
     ;mov al, 00h
     ;mov edi, 0Ch
     ;int 44h
+    
+    mov ah, 52h
+    int 41h
 
     lea rdx, qword [startmsg]   ;Get the absolute address of message
     mov ah, 09h
@@ -231,6 +234,9 @@ adjustDrvHdr:
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
 startmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+conName db "CON",0
+auxName db "AUX",0
+prnName db "PRN",0
 intData:
     dq terminateProcess ;Int 40h
     dq functionDispatch ;Int 41h
