@@ -7,8 +7,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
 ;First make space for the MCB
-    xchg bx, bx
-    push rdx
+    push rdx    ;Save dl on stack briefly
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
@@ -20,9 +19,20 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     shr rdx, 20h
     wrmsr   ;Write the new value to FS MSR
     pop rdx
-;Save OS data
+;------------------------------------------------;
+;           Sanitise the data area               ;
+;------------------------------------------------;
+    mov ecx, dSegLen
+    xor al, al
+    push rdi    ;Temp save rdi on the stack
+    rep stosb
+    pop rdi
+
+;------------------------------------------------;
+;          Start saving Basic DOS data           ;
+;------------------------------------------------;
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
-    lea rdx, qword [tempPSP]    ;Get the address of the tempPSP
+    lea rdx, tempPSP    ;Get the address of the tempPSP
     mov qword fs:[currentPSP], rdx
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
@@ -37,6 +47,25 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
     mov byte fs:[numLDrives], 0     ;Number of logical drives
 
+;------------------------------------------------;
+;          Find largest sector size              ;
+;------------------------------------------------;
+largestSectorSearch:
+    xor dl, dl
+    xor edi, edi    ;Use this as the counter for the largest sector size
+.lss:
+    mov ah, 88h
+    int 33h
+    cmp edi, eax
+    cmovb edi, eax  ;Only replace ebp if eax is greater
+    inc dl
+    cmp dl, r8b
+    jne .lss
+    mov word fs:[maxBytesSec], di
+
+;------------------------------------------------;
+;          Driver Adjustments and inits          ;
+;------------------------------------------------;
 ;Modify the pointers in nData before putting them in the data area
     add qword [nData + drvHdr.nxtPtr], rbp
     add qword [nData + drvHdr.strPtr], rbp
@@ -90,6 +119,17 @@ conInit:    ;Rather than keeping this resident... do it here
     mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
     call qword [rbp + msdHdr + drvHdr.strPtr]
     call qword [rbp + msdHdr + drvHdr.intPtr]
+    ;Check if it returned OK first!
+    mov al, byte [rbx + initReqPkt.numunt]
+    mov byte fs:[numLDrives], al
+
+    ;Save ptr to ConHdr in Sysvars
+    lea rax, qword [rbp + conHdr]
+    mov qword fs:[conPtr], rax
+
+    ;Save ptr to ClkHdr in Sysvars
+    lea rax, qword [rbp + clkHdr]
+    mov qword fs:[clockPtr], rax
 
 ;Adjust Int 41h address table
 adjInt41h:
@@ -120,6 +160,10 @@ adjInts:
     cmp ecx, 4Ah
     jne .ai0
 
+;------------------------------------------------;
+;                   MCB inits                    ;
+;------------------------------------------------;
+
 ;Build the DOS segment's MCB header
     mov rbx, rbp
     sub rbx, mcb_size   ;Point rbx to the start of the MCB
@@ -127,9 +171,12 @@ adjInts:
     mov rax, qword fs:[currentPSP]  ;Get the current PSP
     mov qword [rbx + mcb.owner], rax
     mov dword [rbx + mcb.blockSize], -1 ;Let size be max for now, adjust later
-    
+
     mov qword fs:[mcbChainPtr], rbx ;Save rbx in data area
 
+;------------------------------------------------;
+;          Default File Handle Creation          ;
+;------------------------------------------------;
 
 ;Fill in the default file table entries
     ;lea rbx, qword [rbp + firstSftHeader]
@@ -141,13 +188,21 @@ adjInts:
     ;mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
     ;mov word [rbx + sft.w]
 
+;------------------------------------------------;
+;               Load CONFIG.SYS                  ;
+;------------------------------------------------;
+;------------------------------------------------;
+;              Process CONFIG.SYS                ;
+;------------------------------------------------;
+;------------------------------------------------;
+;           Load Command interpreter             ;
+;------------------------------------------------;
 
 ;Test Error Case
     ;mov ah, 00110000b
     ;mov al, 00h
     ;mov edi, 0Ch
     ;int 44h
-    
 
     lea rdx, qword [startmsg]   ;Get the absolute address of message
     mov ah, 09h
@@ -209,7 +264,6 @@ l3:
 ;Converts a Hex byte into two BCD digits
 ;Takes input in each nybble of al
     push rbx
-    ;xchg bx, bx
     mov rbx, 0Ah  ;Divide by 10
     xor edx, edx
     div rbx

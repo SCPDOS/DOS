@@ -1,26 +1,26 @@
 ;This file contains the main DOS data segment
 
 Segment dSeg nobits align=1 start=0 
-    dosSegPtr   resq 1    ;Pointer to the data Segment itself
-    bootDrive   resb 1    ;The Int 33h device we booted from
-    numMSDdrv   resb 1    ;Number of mass storage devices detected in system
-    numLDrives  resb 1    ;Number of logical drives in the system
-    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]
-    charReqHdr  resb ioReqPkt_size  ;Character IO Request header
-    diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header
+    dosSegPtr   resq 1    ;Pointer to the data Segment itself x
+    bootDrive   resb 1    ;The Int 33h device we booted from x
+    numMSDdrv   resb 1    ;Number of mass storage devices detected in system x
+    numLDrives  resb 1    ;Number of logical drives in the system x
+    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
+    charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
+    diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x
     ;The device driver header with space for the largest possible packet
-    mcbChainPtr resq 1    ;Pointer to the MCB chain
+    mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain
     sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
-    clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header
+    clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header x
     ;                    The last driver loaded with the CLOCK$ bit[3] set 
-    conPtr      resq 1    ;Pointer to the current active CON device header 
+    conPtr      resq 1    ;Pointer to the current active CON device header  x
     ;                    The last driver loaded with the STDIN bit[0] set
-    maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)
+    maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array
-    sfcbHeadPTr resq 1    ;Pointer to the head of the System FCB chain
+    sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
