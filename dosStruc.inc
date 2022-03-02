@@ -162,6 +162,16 @@ struc bufferHdr
 endstruc
 
 ;------------------------------------------------------------------------;
+; Memory control block for each memory arena
+;------------------------------------------------------------------------;
+struc mcb
+    .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
+    .owner      resq 1  ;Owning application PSP or 0 for free space
+    .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
+    .reserved   resb 3  ;Reserved three bytes
+endstruc
+
+;------------------------------------------------------------------------;
 ; For Int 41h, the callers registers are saved on their stack in the 
 ; following order, thus allowing for return values to be placed in the 
 ; registers by accessing the caller register stack frame.

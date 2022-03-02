@@ -1,6 +1,6 @@
 ;This file contains the main DOS data segment
 
-Segment dSeg nobits align=1 
+Segment dSeg nobits align=1 start=0 
     dosSegPtr   resq 1    ;Pointer to the data Segment itself
     bootDrive   resb 1    ;The Int 33h device we booted from
     numMSDdrv   resb 1    ;Number of mass storage devices detected in system

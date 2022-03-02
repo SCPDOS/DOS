@@ -71,7 +71,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     je .setDriverLookahead  ;Reserved, but avoids usual Int 41h spiel
     ja .fsbegin   ;If above, do usual Int41 entry
     cmp ah, 51h
-    je .getCurrProcessID    ;This an below are exactly the same
+    je .getCurrProcessID    ;This and below are exactly the same
     cmp ah, 62h
     je .getPSPaddr          ;Calls the above function
     cmp ah, 50h

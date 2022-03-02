@@ -6,15 +6,24 @@ Segment .text align=1
 tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
-    mov byte fs:[bootDrive], dl ;Save the boot drive in memory
-    lea rdx, qword [tempPSP]    ;Get the address of the tempPSP
-    mov qword fs:[currentPSP], rdx
-;DOS allows for non-PARA aligned PSPs but DOS aligns all programs on PARA bndry
+;First make space for the MCB
+    xchg bx, bx
+    push rdx
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
     shl rdi, 20h        ;Shift high
     mov edi, eax        ;Get the low dword in
+    add rdi, mcb_size   ;Make space for the MCB
+    mov eax, edi
+    mov rdx, rdi
+    shr rdx, 20h
+    wrmsr   ;Write the new value to FS MSR
+    pop rdx
+;Save OS data
+    mov byte fs:[bootDrive], dl ;Save the boot drive in memory
+    lea rdx, qword [tempPSP]    ;Get the address of the tempPSP
+    mov qword fs:[currentPSP], rdx
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov rbp, rdi    ;Save the start of dosSeg in rdx 
@@ -111,6 +120,17 @@ adjInts:
     cmp ecx, 4Ah
     jne .ai0
 
+;Build the DOS segment's MCB header
+    mov rbx, rbp
+    sub rbx, mcb_size   ;Point rbx to the start of the MCB
+    mov byte [rbx + mcb.marker], "M"
+    mov rax, qword fs:[currentPSP]  ;Get the current PSP
+    mov qword [rbx + mcb.owner], rax
+    mov dword [rbx + mcb.blockSize], -1 ;Let size be max for now, adjust later
+    
+    mov qword fs:[mcbChainPtr], rbx ;Save rbx in data area
+
+
 ;Fill in the default file table entries
     ;lea rbx, qword [rbp + firstSftHeader]
     ;mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
@@ -128,8 +148,6 @@ adjInts:
     ;mov edi, 0Ch
     ;int 44h
     
-    mov ah, 52h
-    int 41h
 
     lea rdx, qword [startmsg]   ;Get the absolute address of message
     mov ah, 09h
