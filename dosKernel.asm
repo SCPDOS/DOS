@@ -7,6 +7,18 @@ dosMinor    db 00h      ;.0
 ;-----------------------------------:
 ;       Misc System routines        :
 ;-----------------------------------:
+criticalDOSError:
+;Will swap stacks and enter int 44h safely and handle passing the right data 
+; to the critical error handler.
+; Called with ax, di and rsi set as required by Int 44h (caller decides)
+; Return response from int 44h in al
+    mov qword [xInt44hRSP], rsp
+    mov rsp, qword [oldRSP] ;Get the old RSP value
+    cli ;Disable Interrupts
+    int 44h ;Call critical error handler
+    sti ;Reenable Interrupts
+    mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
+    ret
 findLRUBuffer: 
 ;Finds least recently used buffer, links it and returns ptr to it in rbx
 ;Input: Nothing
@@ -45,8 +57,6 @@ findDPB:
     jne .fd1
 .fd2:
     ret
-callCritError:
-;Common Procedure to swap stacks and call Critical Error Interrupt
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:

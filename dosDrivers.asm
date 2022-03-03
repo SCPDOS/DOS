@@ -74,13 +74,11 @@ lpt3Hdr:
     dq nulStrat
     dq nulIntr
     dq "LPT3    "
-
+reqHdrPtr  dq 0    ;Where the default device drivers store the ReqPtr
 commonStrat:
 ;DOS calls this function with rbx=Ptr to request header
     mov qword [reqHdrPtr], rbx
     ret
-reqHdrPtr  dq 0    ;Where the default device drivers store the ReqPtr
-
 nulStrat:
     mov word [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
 nulIntr:

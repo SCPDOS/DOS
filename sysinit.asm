@@ -85,11 +85,11 @@ adjDrivers:
     loop adjDrivers
 
     ;Open NUL
-    lea rbx, qword [rbp + nulDevHdr + drvHdr.strPtr]    ;Get ptr to strat ptr
-    mov rbx, qword [rbx]    ;Get strat ptr
-    xor al, al
-    call rbx
-
+    lea rbx, qword [rbp + charReqHdr]
+    mov byte [rbx + openReqPkt.hdrlen], openReqPkt_size
+    mov byte [rbx + openReqPkt.status], 0
+    call qword [rbp + nulDevHdr + drvHdr.strPtr]
+    call qword [rbp + nulDevHdr + drvHdr.intPtr]
 ;Open CON
 conInit:    ;Rather than keeping this resident... do it here
 .ci0:
@@ -120,8 +120,11 @@ conInit:    ;Rather than keeping this resident... do it here
     call qword [rbp + msdHdr + drvHdr.strPtr]
     call qword [rbp + msdHdr + drvHdr.intPtr]
     ;Check if it returned OK first!
+    test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
+    jnz errorInit   ;If the bit is set, halt execution
     mov al, byte [rbx + initReqPkt.numunt]
     mov byte fs:[numLDrives], al
+    mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
     ;Save ptr to ConHdr in Sysvars
     lea rax, qword [rbp + conHdr]
@@ -131,6 +134,9 @@ conInit:    ;Rather than keeping this resident... do it here
     lea rax, qword [rbp + clkHdr]
     mov qword fs:[clockPtr], rax
 
+;------------------------------------------------;
+;          Kernel inits and adjustments          ;
+;------------------------------------------------;
 ;Adjust Int 41h address table
 adjInt41h:
     mov ecx, dispatchTableL/8 ;Number of elements in table
@@ -204,11 +210,11 @@ adjInts:
     ;mov edi, 0Ch
     ;int 44h
 
-    lea rdx, qword [startmsg]   ;Get the absolute address of message
+    lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
 
-    mov rsi, fs:[nulDevHdr]
+    ;mov rsi, fs:[nulDevHdr]
     mov eax, 0C501h ;Connect debugger
     int 35h
 l1:
@@ -302,10 +308,27 @@ adjustDrvHdr:
     add qword [rsi + drvHdr.intPtr], rbp
     add rsi, drvHdr_size
     ret
+errorInit:
+;If a critical error occurs during sysinit, fail through here
+    lea rdx, hltmsg
+    mov ah, 09h
+    int 41h
+    cli ;Clear interrupts
+    mov al, -1
+    mov dx, 0A1h    ;PIC2 data
+    out dx, al      ;Mask all lines
+    mov dx, 21h     ;PIC1 data
+    out dx, al      ;Mask all lines
+.ei0:
+    hlt
+    pause
+    jmp short .ei0
+
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
-startmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0Ah,0Dh,"$"
 conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
