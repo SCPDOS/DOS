@@ -36,7 +36,7 @@ sysVarsPtr:
 
     currentDTA  resq 1  ;Address of the current DTA
     currentPSP  resq 1  ;Address of current PSP
-    rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this dx)
+    rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this di)
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
     currentDrv  resb 1  ;Default, last accessed drive
@@ -44,6 +44,10 @@ sysVarsPtr:
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify
 ;SDA, needs to be replaced between processes
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
+
+;Only used on single remdrive systems, marks if drive A or B was last accessed
+    singleDrv   resb 1  
+;This is done to allow for DOS to give the user a change to swap devices
 
     Int44RetVal resb 1  ;Saves a copy of the Int 44 return value
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler

@@ -31,7 +31,7 @@ findLRUBuffer:
 
 findDPB:
 ;Finds the DPB for a given drive
-;Input:   dl = Drive number (0=A, 1=B etc...)
+;Input:  dl = Drive number (0=A, 1=B etc...)
 ;Output: al = 00, rbx = Pointer to the DPB
 ;        al = -1, Failed, no DPB for device, rbx destroyed
     mov rbx, qword [dpbHeadPtr]
