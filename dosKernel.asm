@@ -386,6 +386,118 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov qword [rbx + callerFrame.rbx], rdx
     ret
 .createDPB:         ;ah = 53h, generates a DPB from a given BPB
+;Only translates the data that can be garnered from a BPB to the DPB
+;This is done so that the other fields of the DPB can be recycled
+;Input: rsi = ptr to the BPB
+;       rbp = ptr to the DPB
+;bMediaDescriptor
+    mov al, byte [rsi + bpb.media]
+    mov byte [rbp + dpb.bMediaDescriptor], al
+;bAccessFlag
+    mov byte [rbp + dpb.bAccessFlag], -1    ;Not accessed
+;dFirstFreeCluster
+    mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
+;dNumberOfFreeClusters
+    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
+;bBytesPerSectorShift
+    mov ax, word [rsi + bpb.bytsPerSec]
+    mov cl, 7   ;Start with 128 byte sectors (not supported, min 512)
+    shr ax, cl  ;Shift down
+.cd0:
+    shr ax, 1
+    jz .cd1
+    inc cl
+    jmp short .cd0
+.cd1:
+    mov byte [rbp + dpb.bBytesPerSectorShift], cl
+;bMaxSectorInCluster
+    mov al, byte [rsi + bpb.secPerClus]
+    dec al  ;Subtract one to get the max number of the last sector in a cluster
+    mov byte [rbp + dpb.bMaxSectorInCluster], al
+;bSectorsPerClusterShift
+    inc al
+    xor cl, cl
+.cd2:
+    shr al, 1
+    jz .cd3
+    inc cl
+    jmp short .cd2
+.cd3:
+    mov byte [rbp + dpb.bSectorsPerClusterShift], cl
+;dFAToffset, number of hidden sectors + number of reserved sectors
+    movzx eax, word [rsi + bpb.revdSecCnt]
+    add eax, dword [rsi + bpb.hiddSec] 
+    mov dword [rbp + dpb.dFAToffset], eax
+;bNumberOfFATs
+    mov al, byte [rsi + bpb.numFATs]
+    mov byte [rbp + dpb.bNumberOfFATs], al
+;wNumberRootDirSectors
+    movzx eax, word [rsi + bpb.rootEntCnt] ;Must be 0 on FAT 32
+    shl eax, 5  ;Multiply by 32
+    movzx ecx, word [rsi + bpb.bytsPerSec]
+    dec ecx
+    add eax, ecx
+    xor edx, edx    ;Clear for divide
+    div ecx ;Divide 0:eax by ecx, (e)ax has number of clusters
+    mov word [rbp + dpb.wNumberRootDirSectors], ax  ;0 for FAT32
+;dFATlength, get the FAT length
+    movzx eax, word [rsi + bpb.FATsz16]
+    mov ebx, dword [rsi + bpb32.FATsz32]
+    test eax, eax   ;If FATsz16 = 0, then use FATsz32
+    cmovz eax, ebx  ;Only move 32bit value if sz16 was 0
+    mov dword [rbp + dpb.dFATlength], eax
+;Complex cases below...
+;dClusterHeapOffset, start sector of the data area
+    movzx eax, word [rsi + bpb.FATsz16]
+    mov ebx, dword [rsi + bpb32.FATsz32]
+    test eax, eax
+    cmovz eax, ebx
+;eax = FATsz
+    movzx ebx, word [rsi + bpb.totSec16]
+    mov ecx, dword [rsi + bpb.totSec32]
+    test ebx, ebx
+    cmovz ebx, ecx 
+;ebx = TotSec
+    mov cl, byte [rsi + bpb.numFATs]
+    xor edx, edx    ;Use edx = NumFATs * FATsz temporarily
+.cd4:
+    add edx, eax
+    dec cl
+    jnz .cd4
+    mov eax, edx    ;Store product in eax
+    movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
+    add eax, edx
+    movzx edx, word [rbp + dpb.wNumberRootDirSectors]
+    add eax, edx    ;This adds nothing if FAT32
+    ;eax = BPB_ResvdSecCnt + (BPB_NumFATs * FATSz) + RootDirSectors
+    ;aka eax = Start sector of the data area in volume
+    mov dword [rbp + dpb.dClusterHeapOffset], eax
+;dClusterCount
+    sub ebx, eax    ;ebx = Number of sectors in the data area
+    mov eax, ebx    ;Move number of sectors in data area into eax
+    xor edx, edx
+    mov ebx, 1
+    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    shl ebx, cl ;Get sectors per cluster
+    div ebx ;Data area sector / sectors per cluster = cluster count
+    inc eax ;Maximum valid cluster value is eax + 1
+    mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
+;dFirstUnitOfRootDir
+    cmp eax, 65525  ;If above, its FAT32
+    mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
+    ja .cd5
+    ;Else, we need to find the first sector of the root directory
+    ;Get the start sector of data area in volume 
+    ; and sub the number of sectors in the root directory
+    mov eax, dword [rbp + dpb.dClusterHeapOffset]
+    movzx ebx, word [rbp + dpb.wNumberRootDirSectors]
+    sub eax, ebx    ;eax now has start sector of root dir
+.cd5:
+    mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
+;Exit epilogue
+    mov rbx, qword [oldRSP]
+    mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
+    ret
 .getVerifySetting:  ;ah = 54h
     mov al, byte [verifyFlag]   ;al is the return value in this case
     ret

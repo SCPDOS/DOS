@@ -731,7 +731,7 @@ msdDriver:
     mov byte [rdi], dl
     inc byte [rbp + initReqPkt.numunt]
     inc dl
-    cmp dl, byte [numMSDdrv] ;Once these are equal, we have processed last dev
+    cmp dl, byte [numRemMSD] ;Once these are equal, we have processed last dev
     jne .mi0
 .msdExit:
 ;If one device only, copy its BPB pointer and drive number
@@ -752,7 +752,7 @@ msdDriver:
 .mimbr:
 ;Goto next device without incrementing LASTDRIVE
     inc dl
-    cmp dl, byte [numMSDdrv] ;Once these are equal, we have processed last dev
+    cmp dl, byte [numRemMSD] ;Once these are equ, we have processed last dev
     jne .mi0
     jmp short .msdExit
 .msdInitError:
@@ -767,7 +767,8 @@ msdDriver:
     jne .msdWriteErrorCode
 
     movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
-    mov dl, byte [.msdBIOSmap + rax]    ;Translate unitnum to BIOS num
+    lea rcx, .msdBIOSmap
+    mov dl, byte [rcx + rax]    ;Translate unitnum to BIOS num
     test dl, 80h    ;If it is a fixed disk, no change!
     jnz .mmcNoChange
 ;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
@@ -786,13 +787,14 @@ msdDriver:
 .mmcNoChangeLine:
 ;Now we test Media Descriptor
     mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
-    mov rdi, qword [.msdBPBTbl + 8*rax]
+    lea rdi, .msdBPBTbl
+    mov rdi, qword [rdi + 8*rax]
     mov rdi, qword [rdi]    ;Dereference rdi
     cmp byte [rdi + bpb32.media], dl    ;Compare media descriptor bytes
     je .mmcUnsure
 .mmcChange:
     mov byte [rbx + mediaCheckReqPkt.medret], -1
-    lea rax, qword [.msdDefLabel]           ;Temp, ret def label
+    lea rax, .msdDefLabel          ;Temp, ret def label
     mov qword [rbx + mediaCheckReqPkt.desptr], rax 
     jmp .msdDriverExit
 .mmcUnsure:
@@ -809,7 +811,8 @@ msdDriver:
 
     mov rsi, rbx
     movzx rax, byte [rsi + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
-    mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req
+    lea rcx, .msdBIOSmap
+    mov dl, byte [rcx + rax]  ;Get translated BIOS number for req
     mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
     xor ecx, ecx    ;Read Sector 0
     mov eax, 8201h  ;LBA Read 1 sector
@@ -828,7 +831,8 @@ msdDriver:
 .mbbpb0:
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
     movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
-    mov rdi, qword [.msdBPBTbl + 8*rax] ;Get pointer to pointer to buffer
+    lea rdi, .msdBPBTbl
+    mov rdi, qword [rdi + 8*rax] ;Get pointer to pointer to buffer
     mov rdi, qword [rdi] ;Dereference to get pointer to buffer 
     mov qword [rbx + bpbBuildReqPkt.bpbptr], rdi ;rdi -> final bpb resting place
     mov ecx, bpbEx_size/8

@@ -14,25 +14,25 @@
 ;------------------------------------------------------------------------;
 struc dpb        ;Drive Parameter Block
 
-    .bDriveNumber            resb 1  ;Drive number (0=A, 1=B ...)
-    .bUnitNumber             resb 1  ;Unit number in device
-    .bBytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
-    .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1
-;                                       i.e. (2^bSectorsPerClusterShift) - 1
-    .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent
-    .dFAToffset              resd 1  ;Vol rel offset of first FAT, in sectors
-    .bNumberOfFATs           resb 1  ;Number of FATs
-    .wNumberRootDirEntries   resw 1  ;In sectors
-    .dClusterHeapOffset      resd 1  ;Start of data area, in sectors
-    .dClusterCount           resd 1  ;Total number of clusters (volume size)
-    .dFATlength              resd 1  ;FAT length, in sectors
-    .dFirstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
-    .qDriverHeaderPtr        resq 1  ;Pointer to device driver header
-    .bMediaDescriptor        resb 1  ;Media descriptor
-    .bAccessFlag             resb 1  ;Access Flag (0 if accessed, else -1)
+    .bDriveNumber            resb 1  ;Drive number (0=A, 1=B ...) x
+    .bUnitNumber             resb 1  ;Unit number in device x
+    .bBytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)x
+    .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1 x
+    .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent x
+    .dFAToffset              resd 1  ;Number of Sectors preceeding first FAT x
+    .bNumberOfFATs           resb 1  ;Number of FATs x
+    .wNumberRootDirSectors   resw 1  ;In sectors, this is 0 for FAT32 formats x
+    .dClusterHeapOffset      resd 1  ;Start sector of data area x
+    .dClusterCount           resd 1  ;Total number of clusters in data area x
+    .dFATlength              resd 1  ;FAT length, in sectors x
+    .dFirstUnitOfRootDir     resd 1  
+    ;Unit=Sector/Cluster of Root Directory (FAT12/16 = Sector, FAT32 = Cluster)x
+    .qDriverHeaderPtr        resq 1  ;Pointer to device driver header x
+    .bMediaDescriptor        resb 1  ;Media descriptor x
+    .bAccessFlag             resb 1  ;Access Flag (0 if accessed, else -1) x
     .qNextDPBPtr             resq 1  ;Pointer to next DPB, -1 if at end
-    .dFirstFreeCluster       resd 1  ;Starting cluster of free space search
-    .dNumberOfFreeClusters   resd 1  ;Number of free clusters, -1 unknown
+    .dFirstFreeCluster       resd 1  ;Starting cluster of free space search x
+    .dNumberOfFreeClusters   resd 1  ;Number of free clusters, -1 unknown x
 
 endstruc
 

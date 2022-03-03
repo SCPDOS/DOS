@@ -3,8 +3,9 @@
 Segment dSeg nobits align=1 start=0 
     dosSegPtr   resq 1    ;Pointer to the data Segment itself x
     bootDrive   resb 1    ;The Int 33h device we booted from x
-    numMSDdrv   resb 1    ;Number of mass storage devices detected in system x
-    numLDrives  resb 1    ;Number of logical drives in the system x
+    numRemMSD   resb 1    ;Number of physical removable MSDs in system x
+    numLRemDrives  resb 1 ;Number of logical removable drives in system x
+    ;if numRemMSD = 1 then numLRemDrives = 2 and we have a single drive system
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x

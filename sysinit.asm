@@ -7,6 +7,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
 ;First make space for the MCB
+    xchg bx, bx
     push rdx    ;Save dl on stack briefly
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
@@ -43,9 +44,9 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     rep movsq
 
     int 31h ;Get number of Int 33h devices in r8b
-    mov byte fs:[numMSDdrv], r8b    ;Save number of physical int 33h devs
+    mov byte fs:[numRemMSD], r8b    ;Save number of physical int 33h devs
     mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
-    mov byte fs:[numLDrives], 0     ;Number of logical drives
+    mov byte fs:[numLRemDrives], 0     ;Number of logical drives
 
 ;------------------------------------------------;
 ;          Find largest sector size              ;
@@ -153,6 +154,7 @@ adjInts:
 ;------------------------------------------------;
 ;      Init msd driver, create DPB and CDS       ;
 ;------------------------------------------------;
+storageInits:
 ;First save dpb and cds pointer in sysvars
     lea rbx, qword [rbp + firstDPB]
     mov qword fs:[dpbHeadPtr], rbx
@@ -164,7 +166,7 @@ adjInts:
     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
     mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
     mov word [rbx + initReqPkt.status], 0       ;Zero status word
-    mov al, byte fs:[numLDrives]
+    mov al, byte fs:[numLRemDrives]
     mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
     call qword [rbp + msdHdr + drvHdr.strPtr]
     call qword [rbp + msdHdr + drvHdr.intPtr]
@@ -172,9 +174,38 @@ adjInts:
     test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
     jnz errorInit   ;If the bit is set, halt execution
     mov al, byte [rbx + initReqPkt.numunt]
-    mov byte fs:[numLDrives], al
+    mov byte fs:[numLRemDrives], al
     mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
+    mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
+    mov rdi, rbp ;Save rbp in rdi temporarily
+    xor cl, cl  ;Clear counter
+    mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
+.si0:   
+    mov rsi, qword [rdx]    ;Get pointer to device media bpb
+    mov ah, 53h ;Fill dpb with translated BPB data
+    int 41h
+;Add other data to DPB
+    mov byte [rbp + dpb.bDriveNumber], cl ;Remember, rbp points to dpb!!
+    mov byte [rbp + dpb.bUnitNumber], cl
+    push rax
+    lea rax, qword [rdi + msdHdr]   ;Get ptr to msd driver header
+    mov qword [rbp + dpb.qDriverHeaderPtr], rax
+    pop rax
+    inc cl
+    cmp cl, al  ;When equal, we are have finished
+    je .si1
+    push rax
+    lea rax, qword [rbp + dpb_size] ;Load address of next dpb to rax
+    mov qword [rbp + dpb.qNextDPBPtr], rax  ;Save pointer
+    mov rbp, rax        ;Now move current device pointer over
+    pop rax
+    add rdx, 8  ;Goto next pointer in table
+    jmp short .si0
+.si1:
+;Remember to now place a -1 in the qNextDPBPtr field 
+    mov qword [rbp + dpb.qNextDPBPtr], -1
+    mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
 ;------------------------------------------------;
 ;                   MCB inits                    ;
 ;------------------------------------------------;

@@ -11,15 +11,15 @@ struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
     .oemName    resb 8  ;OEM name
     .bytsPerSec resw 1  ;Bytes per sector
     .secPerClus resb 1  ;Sectors per cluster
-    .revdSecCnt resw 1  ;Number of reserved sectors
+    .revdSecCnt resw 1  ;Number of reserved sectors, in volume
     .numFATs    resb 1  ;Number of FATs on media
-    .rootEntCnt resw 1  ;Number of entries in Root directory
+    .rootEntCnt resw 1  ;Number of 32 byte entries in Root directory
     .totSec16   resw 1  ;Number of sectors on medium
     .media      resb 1  ;Media descriptor byte
     .FATsz16    resw 1  ;Number of sectors per FAT
     .secPerTrk  resw 1  ;Number of sectors per "track"
     .numHeads   resw 1  ;Number of read "heads"
-    .hiddSec    resd 1  ;Number of hidden sectors
+    .hiddSec    resd 1  ;Number of hidden sectors, preceeding volume start
     .totSec32   resd 1  ;32 bit count of sectors
 
     .drvNum     resb 1  ;Logical drive number (00h or 80h)
