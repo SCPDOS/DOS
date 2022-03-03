@@ -11,7 +11,7 @@ Segment dSeg nobits align=1 start=0
     ;The device driver header with space for the largest possible packet
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
-    dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain
+    dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain x
     sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
     clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header x
     ;                    The last driver loaded with the CLOCK$ bit[3] set 
@@ -19,7 +19,7 @@ sysVarsPtr:
     ;                    The last driver loaded with the STDIN bit[0] set
     maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain
-    cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array
+    cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
     sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numJoinDrv  resb 1    ;Number of Joined Drives
@@ -73,6 +73,13 @@ sysVarsPtr:
     dSegLen     equ     $
 
 Segment dynamicDataArea nobits valign=1 vfollows=resSeg
+;Create DPB chain of first 5 available DPB slots
+firstDPB        resb dpb_size
+secondDPB       resb dpb_size
+thirdDPB        resb dpb_size
+fourthDPB       resb dpb_size
+fifthDPB        resb dpb_size 
+
 ;Create SFT header and corresponding array of five default sft entries
 firstSftHeader  resb sfth_size
 firstSft        resb sft_size
@@ -81,6 +88,9 @@ thirdSft        resb sft_size
 fourthSft       resb sft_size
 fifthSft        resb sft_size
 
-
+;Create a five drive CDS here so we can jettison it if config wants more
+initCDS         resb 5*cds_size 
+;Always jettison this space
+DOSENDPTR:   ;Points to the end of the initially reserved DOS area
 msdTempBuffer   resb 512    ;Reserve one sectors worth of space
 dynamicDataAreaLength equ $

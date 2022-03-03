@@ -84,7 +84,7 @@ adjDrivers:
     call adjustDrvHdr
     loop adjDrivers
 
-    ;Open NUL
+;Open NUL
     lea rbx, qword [rbp + charReqHdr]
     mov byte [rbx + openReqPkt.hdrlen], openReqPkt_size
     mov byte [rbx + openReqPkt.status], 0
@@ -109,22 +109,6 @@ conInit:    ;Rather than keeping this resident... do it here
     mov bh, 07h     ;Grey/Black attribs
     mov eax, 0600h  ;Clear whole screen
     int 30h
-
-    ;Open Mass Storage
-    lea rbx, qword [rbp + diskReqHdr]
-    mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-    mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
-    mov word [rbx + initReqPkt.status], 0       ;Zero status word
-    mov al, byte fs:[numLDrives]
-    mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
-    call qword [rbp + msdHdr + drvHdr.strPtr]
-    call qword [rbp + msdHdr + drvHdr.intPtr]
-    ;Check if it returned OK first!
-    test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
-    jnz errorInit   ;If the bit is set, halt execution
-    mov al, byte [rbx + initReqPkt.numunt]
-    mov byte fs:[numLDrives], al
-    mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
     ;Save ptr to ConHdr in Sysvars
     lea rax, qword [rbp + conHdr]
@@ -165,6 +149,31 @@ adjInts:
     inc ecx
     cmp ecx, 4Ah
     jne .ai0
+
+;------------------------------------------------;
+;      Init msd driver, create DPB and CDS       ;
+;------------------------------------------------;
+;First save dpb and cds pointer in sysvars
+    lea rbx, qword [rbp + firstDPB]
+    mov qword fs:[dpbHeadPtr], rbx
+    lea rbx, qword [rbp + initCDS]
+    mov qword fs:[cdsHeadPtr], rbx
+
+;Open Mass Storage
+    lea rbx, qword [rbp + diskReqHdr]
+    mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
+    mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
+    mov word [rbx + initReqPkt.status], 0       ;Zero status word
+    mov al, byte fs:[numLDrives]
+    mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
+    call qword [rbp + msdHdr + drvHdr.strPtr]
+    call qword [rbp + msdHdr + drvHdr.intPtr]
+    ;Check if it returned OK first!
+    test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
+    jnz errorInit   ;If the bit is set, halt execution
+    mov al, byte [rbx + initReqPkt.numunt]
+    mov byte fs:[numLDrives], al
+    mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
 ;------------------------------------------------;
 ;                   MCB inits                    ;
@@ -214,7 +223,6 @@ adjInts:
     mov ah, 09h
     int 41h
 
-    ;mov rsi, fs:[nulDevHdr]
     mov eax, 0C501h ;Connect debugger
     int 35h
 l1:

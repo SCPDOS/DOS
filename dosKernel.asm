@@ -2,8 +2,8 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1
 ;-----------------------------------:
 ;           Static Data             :
 ;-----------------------------------:
-dosMajor    db 01h      ;Version 1
-dosMinor    db 00h      ;.0
+dosMajor    db 00h      ;Version 0
+dosMinor    db 01h      ;.01
 ;-----------------------------------:
 ;       Misc System routines        :
 ;-----------------------------------:
