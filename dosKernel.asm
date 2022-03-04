@@ -1,4 +1,4 @@
-Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 
+
 ;-----------------------------------:
 ;           Static Data             :
 ;-----------------------------------:

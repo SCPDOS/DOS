@@ -1,4 +1,3 @@
-Segment .text align=1
 ; We arrive here with the following values in the registers.
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
