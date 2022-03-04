@@ -7,7 +7,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
 ;First make space for the MCB
-    xchg bx, bx
     push rdx    ;Save dl on stack briefly
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
@@ -152,7 +151,7 @@ adjInts:
     jne .ai0
 
 ;------------------------------------------------;
-;      Init msd driver, create DPB and CDS       ;
+;         Init msd driver, create DPB            ;
 ;------------------------------------------------;
 storageInits:
 ;First save dpb and cds pointer in sysvars
@@ -206,6 +205,7 @@ storageInits:
 ;Remember to now place a -1 in the qNextDPBPtr field 
     mov qword [rbp + dpb.qNextDPBPtr], -1
     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
+
 ;------------------------------------------------;
 ;                   MCB inits                    ;
 ;------------------------------------------------;
@@ -239,6 +239,9 @@ storageInits:
 ;------------------------------------------------;
 ;------------------------------------------------;
 ;              Process CONFIG.SYS                ;
+;------------------------------------------------;
+;------------------------------------------------;
+;                 Create a CDS                   ;
 ;------------------------------------------------;
 ;------------------------------------------------;
 ;           Load Command interpreter             ;

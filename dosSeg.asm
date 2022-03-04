@@ -6,7 +6,6 @@ Segment dSeg nobits align=1 start=0
     numRemMSD   resb 1    ;Number of physical removable MSDs in system x
     numLRemDrives  resb 1 ;Number of logical removable drives in system x
     ;if numRemMSD = 1 then numLRemDrives = 2 and we have a single drive system
-    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x
     ;The device driver header with space for the largest possible packet
@@ -21,6 +20,7 @@ sysVarsPtr:
     maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
+    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numJoinDrv  resb 1    ;Number of Joined Drives
@@ -93,5 +93,6 @@ fifthSft        resb sft_size
 initCDS         resb 5*cds_size 
 ;Always jettison this space
 DOSENDPTR:   ;Points to the end of the initially reserved DOS area
+tmpBufHdr       resb bufferHdr_size
 msdTempBuffer   resb 512    ;Reserve one sectors worth of space
 dynamicDataAreaLength equ $

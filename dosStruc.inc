@@ -107,7 +107,7 @@ endstruc
 ; Each SFT header has an array of SFT's below it, with the number of 
 ; SFTs given by wNumFiles. The SFT headers form a linked list.
 ;
-; DEFAULT FILES=15, MINIMUM FILES=5
+; DEFAULT FILES=8, MINIMUM FILES=5
 ; DEFAULT FCBS=5, MINIMUM FCBS=5
 ;------------------------------------------------------------------------;
 struc sfth   ;System file table header
@@ -160,7 +160,13 @@ struc bufferHdr
     .bufFAToff   resb  1   ;Sector offset of the backup copy of the FAT on disk
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
 endstruc
-
+;Buffer Flag equates
+    fatBuffer   equ 2h  ;FAT sector in buffer
+    dirBuffer   equ 4h  ;Directory sector in buffer
+    dataBuffer  equ 8h  ;File Data sector in buffer
+    refBuffer   equ 10h ;Data in buffer referenced by an application
+    dirtyBuffer equ 20h ;Data in buffer modified by an application
+    remotBuffer equ 40h ;
 ;------------------------------------------------------------------------;
 ; Memory control block for each memory arena
 ;------------------------------------------------------------------------;
