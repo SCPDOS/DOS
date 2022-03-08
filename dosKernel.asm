@@ -62,6 +62,41 @@ findDPB:
 ;-----------------------------------:
 name2Clust:
 ;Converts a file name to a first cluster number
+clust2FATEntry:
+;Converts a cluster number to a FAT entry
+;Entry:  rsi points to the DPB for the transacting device
+;        eax = Cluster number to look for
+;Exit: eax = Sector on disk of FAT, edx = 1.5Word/Word/DWord in sector of entry
+    push rbx
+    push rcx
+    mov ebx, dword [rsi + dpb.dClusterCount]
+    cmp ebx, fat16MaxClustCnt
+    jae .fat32
+    cmp ebx, fat12MaxClustCnt
+    jb .fat12
+;FAT16
+    shl eax, 1  ;Multiply cluster number by 2
+    jmp short .common
+.fat12:
+    mov ecx, eax    ;ecx = eax
+    shr ecx, 1      ;ecx = ecx / 2
+    add eax, ecx    ;eax = eax + ecx    (eax * 1.5)
+    jmp short .common
+.fat32:
+    shl eax, 2  ;Multiply cluster number by 4
+.common:
+;eax has the FAToffset
+    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
+    mov edx, 1
+    shl edx, cl    ;Turn edx to number of bytes per sector
+    mov ecx, edx
+    xor edx, edx    ;edx = 0
+    div ecx         ;Divide by bytes per sector (0:eax / ecx)
+    add eax, dword [rsi + dpb.dFAToffset]   ;Add the offset to the first FAT
+    pop rcx
+    pop rbx
+    ret
+
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
@@ -483,7 +518,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     inc eax ;Maximum valid cluster value is eax + 1
     mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
 ;dFirstUnitOfRootDir
-    cmp eax, 65525  ;If above, its FAT32
+    cmp eax, fat16MaxClustCnt  ;If above, its FAT32
     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
     ja .cd5
     ;Else, we need to find the first sector of the root directory

@@ -36,6 +36,8 @@ struc dpb        ;Drive Parameter Block
 
 endstruc
 
+fat12MaxClustCnt    equ 4085    ;Cluster count less than this is FAT12
+fat16MaxClustCnt    equ 65525   ;Cluster count less than this is FAT16
 ;------------------------------------------------------------------------;
 ; Each mass storage device up to LASTDRIVE has a CDS associated with it.
 ; All disk pathing requests go via the CDS for that drive.

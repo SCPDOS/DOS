@@ -1,6 +1,7 @@
 [map all scpdos.map]
 [DEFAULT REL]
 BITS 64
+;Defs and strucs
 %include "driverStruc.inc"
 %include "fatStruc.inc"
 %include "dosStruc.inc"
