@@ -147,8 +147,8 @@ clust2FATEntry:
     ret
 readBuffer:
 ;This function will return a pointer to the desired data OR 
-; find the most appropriate buffer and read the relevant data into the buffer,
-; returning a pointer to the sector buffer in rbx.
+; find the most appropriate buffer, flush and read the relevant data into the 
+; buffer, returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (FAT, DIR, Data) 
 ;       rsi = DPB of transacting drive
@@ -201,6 +201,7 @@ readSector:
 ;       CF=CY : Fail, terminate the request
 ;First make request to device driver
     push rax
+    push rbx
     push rcx
     push rdx
     push rbp
@@ -226,13 +227,13 @@ readSector:
     call [rdx + drvHdr.intPtr]
     test word [diskReqHdr + ioReqPkt.status], 8000h  ;Test error bit
     jnz .rsFail
-    mov rax, rbx ;Get the pointer to the sector buffer in rax
 .rsExit:
     clc
 .rsExitBad:
     pop rbp
     pop rdx
     pop rcx
+    pop rbx
     pop rax
     ret
 .rsFail:
