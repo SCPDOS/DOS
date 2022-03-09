@@ -201,7 +201,7 @@ readSector:
 ;       CF=CY : Fail, terminate the request
 ;First make request to device driver
     push rax
-    push rbx
+    ;push rbx   ;rbx is never edited!
     push rcx
     push rdx
     push rbp
@@ -233,7 +233,7 @@ readSector:
     pop rbp
     pop rdx
     pop rcx
-    pop rbx
+    ;pop rbx
     pop rax
     ret
 .rsFail:
