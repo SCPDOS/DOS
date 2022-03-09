@@ -11,19 +11,39 @@ criticalDOSError:
 ;Will swap stacks and enter int 44h safely and handle passing the right data 
 ; to the critical error handler.
 ; Called with ax, di and rsi set as required by Int 44h (caller decides)
+;               AH = Critical Error Bitfield
+;               Bit 7 = 0 - Disk Error, Bit 7 = 1 - Char Device Error
+;               Bit 6 - Reserved
+;               Bit 5 = 0 - IGNORE not allowed, Bit 5 = 1 - IGNORE allowed
+;               Bit 4 = 0 - RETRY not allowed, Bit 4 = 1 - RETRY allowed
+;               Bit 3 = 0 - FAIL not allowed, Bit 3 = 1 - FAIL allowed
+;               Bits [2-1] = Affected Disk Error
+;                     0 0   DOS area
+;                     0 1   FAT area
+;                     1 0   Directory area
+;                     1 1   Data area
+;               Bit 0 = 0 - Read Operation, Bit 0 = 1 - Write Operation
+;               AL  = Failing drive number if AH[7] = 0
+;               DIL = Error code for errorMsg
+;               RSI = EA of Device Header for which device the error occured
+;Return:
+;               AL = 0 - Ignore the Error       (Ignore)
+;                  = 1 - Retry the Operation    (Retry)
+;                  = 2 - Terminate the Program  (Abort)
+;                  = 3 - Fail the DOS call      (Fail)
 ; Return response from int 44h in al
+    cli ;Disable Interrupts
     mov qword [xInt44hRSP], rsp
     mov rsp, qword [oldRSP] ;Get the old RSP value
-    cli ;Disable Interrupts
     int 44h ;Call critical error handler
-    sti ;Reenable Interrupts
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
+    sti ;Reenable Interrupts
     ret
 findLRUBuffer: 
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
 ; in rbx
 ;Input: Nothing
-;Output: rbx = Pointer to the buffer to use
+;Output: rbx = Pointer to the buffer hdr to use
     push rdx
     mov rbx, qword [bufHeadPtr]
     cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
@@ -51,6 +71,25 @@ findLRUBuffer:
     mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
     pop rcx
     jmp short .flbHeadLink
+findSectorInBuffer:
+;Finds the Buffer for a sector
+;If the sector is not in a buffer, returns with a -1
+;Input: rax = Sector number
+;        dl = Drive number
+;Output: rbx = Buffer hdr pointer or -1
+    mov rbx, qword [bufHeadPtr]
+.fsiCheckBuffer:
+    cmp byte [rbx + bufferHdr.driveNumber], dl
+    jne .fsiGotoNextBuffer
+    cmp qword [rbx + bufferHdr.bufferLBA], rax
+    jne .fsiGotoNextBuffer
+.fsiExit:
+    ret
+.fsiGotoNextBuffer:
+    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
+    cmp rbx, -1     ;If rbx points to -1, exit
+    je .fsiExit
+    jmp short .fsiCheckBuffer
 findDPB:
 ;Finds the DPB for a given drive
 ;Input:  dl = Drive number (0=A, 1=B etc...)
@@ -107,12 +146,232 @@ clust2FATEntry:
     pop rbx
     ret
 readBuffer:
-;This function will enact a transaction into a buffer and return a ptr to the 
-;buffer OR if the data is buffered, return a ptr to the buffered data.
+;This function will return a pointer to the desired data OR 
+; find the most appropriate buffer and read the relevant data into the buffer,
+; returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
-;        bl = Data type being read (FAT, DIR, Data) 
+;        cl = Data type being read (FAT, DIR, Data) 
 ;       rsi = DPB of transacting drive
-;Exit:  rax = Pointer to buffer containing sector (not the buffer header)
+;Exit:  rbx = Pointer to buffer containing sector (not the buffer header)
+;       All other registers as before
+; If CF set, terminate the request.
+    push rdx
+    push rcx
+    mov dl, byte [rsi + dpb.bDriveNumber]
+    call findSectorInBuffer ;rax = sector to read, dl = drive number
+    cmp rbx, -1
+    je .rbReadNewSector
+    add rbx, bufferHdr_size ;Have the pointer point to the data area
+.rbExit:
+    clc
+.rbExitNoFlag:
+    pop rcx
+    pop rdx
+    ret
+.rbReadNewSector:
+    call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
+    call flushBuffer
+    jc .rbExitNoFlag    ;Exit in error
+;rbx points to buffer that has been appropriately linked to the head of chain
+    mov byte [rbx + bufferHdr.driveNumber], dl
+    mov byte [rbx + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
+    mov qword [rbx + bufferHdr.bufferLBA], rax
+    cmp cl, fatBuffer
+    mov dl, 1   ;Default values if not fat buffer
+    mov ecx, 0  ;Ditto!
+    jne .rbNonFATbuffer
+    mov dl, byte [rsi + dpb.bNumberOfFATs]
+    mov ecx, dword [rsi + dpb.dFATlength]
+.rbNonFATbuffer:
+    mov byte [rbx + bufferHdr.bufFATcopy], dl
+    mov dword [rbx + bufferHdr.bufFATsize], ecx
+    mov qword [rbx + bufferHdr.driveDPBPtr], rsi
+    mov byte [rbx + bufferHdr.reserved], 0
+    add rbx, bufferHdr_size ;Point to the buffer now
+    call readSector ;Carry the flag from the request
+    jmp short .rbExitNoFlag
+
+readSector:
+;Reads a sector into a sector buffer
+;Entry: rax = Sector Number
+;       rbx = Pointer to buffer space
+;        cl = Data type being read (FAT, DIR, Data) 
+;       rsi = DPB of transacting drive
+;Exit:  CF=NC : Success
+;       CF=CY : Fail, terminate the request
+;First make request to device driver
+    push rax
+    push rcx
+    push rdx
+    push rbp
+;Build a request block in diskReqHdr
+    mov rbp, rax    ;Move sector number into rbp
+.rsRequest0:
+    mov ch, 3  ;Repeat attempt counter
+.rsRequest1:
+    mov word [diskReqHdr + ioReqPkt.status], 0
+    mov qword [diskReqHdr + ioReqPkt.devptr], 0
+    mov dword [diskReqHdr + ioReqPkt.tfrlen], 1 ;One sector
+    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [diskReqHdr + ioReqPkt.cmdcde], drvREAD
+    mov qword [diskReqHdr + ioReqPkt.strtsc], rbp   ;rbp has sector number
+    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;rbx points to buffer
+    mov al, byte [rsi + dpb.bUnitNumber]
+    mov byte [diskReqHdr + ioReqPkt.unitnm], al
+    mov al, byte [rsi + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.medesc], al
+    mov rdx, qword [rsi + dpb.qDriverHeaderPtr] ;Get pointer to driver header
+
+    call [rdx + drvHdr.strPtr]
+    call [rdx + drvHdr.intPtr]
+    test word [diskReqHdr + ioReqPkt.status], 8000h  ;Test error bit
+    jnz .rsFail
+    mov rax, rbx ;Get the pointer to the sector buffer in rax
+.rsExit:
+    clc
+.rsExitBad:
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+.rsFail:
+;Enter here only if the request failed
+    dec ch
+    jnz .rsRequest1 ;Try the request again!
+;Request failed thrice, critical error call
+    push rbx    ;Save the pointer to the data buffer area
+    xor ax, ax
+    mov bx, 1
+    cmp cl, dosBuffer
+    cmove ax, bx
+    inc bx
+    cmp cl, fatBuffer
+    cmove ax, bx
+    inc bx
+    cmp cl, dirBuffer
+    cmove ax, bx
+    inc bx
+    cmp cl, dataBuffer
+    cmove ax, bx
+    pop rbx
+    shl ax, 1   ;Shift number into bits 1-2 and clear bit 0 (read operation)
+    mov ah, al  ;Move into ah
+    or ah, 30h  ;Set Retry and Ignore bits and bit 7 = 0 (msd device)
+    mov al, byte [rsi + dpb.bDriveNumber]
+    push rdi
+    push rsi
+    mov di, word [diskReqHdr + ioReqPkt.status]
+    and di, 00FFh   ;Mask off upper byte
+    mov rsi, rdx    ;Get ptr to device driver in rsi
+    call criticalDOSError
+    pop rsi
+    pop rdi
+
+    test al, al ;Ignore
+    jz .rsExit  ;rbx contains the buffer to the data area
+    test al, 1
+    jnz .rsRequest0 ;Retry
+    stc
+    jmp .rsExitBad  ;Abort
+flushBuffer:
+;Flushes the data in a sector buffer to disk!
+;Entry: rbx = Pointer to buffer header for this buffer
+;Exit:  CF=NC : Success
+;       CF=CY : Fail, terminate the request
+;First make request to device driver
+    push rax
+    push rcx
+    push rdx
+    push rbp
+    push rsi
+    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
+    jz .fbExit  ;Skip write to disk if data not modified
+;Build a request block in diskReqHdr
+    mov rsi, qword [rbx + bufferHdr.driveDPBPtr]    ;Get dpbptr in rsi
+.fbRequest0:
+    mov ch, 3  ;Repeat attempt counter
+.fbRequest1:
+    mov word [diskReqHdr + ioReqPkt.status], 0
+    mov qword [diskReqHdr + ioReqPkt.devptr], 0
+    mov dword [diskReqHdr + ioReqPkt.tfrlen], 1 ;One sector
+    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [diskReqHdr + ioReqPkt.cmdcde], drvWRITE
+    mov al, byte [verifyFlag]
+    and al, 1   ;Only get the last bit
+    add byte [verifyFlag], al   ;Change write into write/verify if needed
+    mov rax, qword [rbx + bufferHdr.bufferLBA]
+    mov qword [diskReqHdr + ioReqPkt.strtsc], rax
+
+    lea rax, qword [rbx + bufferHdr_size]
+    mov qword [diskReqHdr + ioReqPkt.bufptr], rax   ;rbx points to buffer
+
+    mov al, byte [rsi + dpb.bUnitNumber]
+    mov byte [diskReqHdr + ioReqPkt.unitnm], al
+    mov al, byte [rsi + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.medesc], al
+    mov rdx, qword [rsi + dpb.qDriverHeaderPtr] ;Get pointer to driver header
+
+    call [rdx + drvHdr.strPtr]
+    call [rdx + drvHdr.intPtr]
+    test word [diskReqHdr + ioReqPkt.status], 8000h  ;Test error bit
+    jnz .fbFail
+;Now check if the buffer was a FAT, to write additional copies
+    test byte [rbx + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
+    jz .fbExit  ;If not, exit
+    dec byte [rbx + bufferHdr.bufFATcopy]
+    jz .fbExit  ;Once this goes to 0, stop writing FAT copies
+    mov eax, dword [rbx + bufferHdr.bufFATsize]
+    add qword [rbx + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
+    jmp .fbRequest0 ;Make another request
+.fbExit:
+    clc
+.fbExitBad:
+    pop rsi
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+.fbFail:
+;Enter here only if the request failed
+    dec ch
+    jnz .fbRequest1 ;Try the request again!
+;Request failed thrice, critical error call
+    push rbx    ;Save the pointer to the data buffer area
+    xor ax, ax
+    mov bx, 1
+    cmp cl, dosBuffer
+    cmove ax, bx
+    inc bx
+    cmp cl, fatBuffer
+    cmove ax, bx
+    inc bx
+    cmp cl, dirBuffer
+    cmove ax, bx
+    inc bx
+    cmp cl, dataBuffer
+    cmove ax, bx
+    pop rbx
+    shl ax, 1   ;Shift number into bits 1-2
+    mov ah, al  ;Move into ah
+    or ah, 31h  ;Set Retry and Ignore, bit 7 = 0 (msd device) and bit 0 (write)
+    mov al, byte [rsi + dpb.bDriveNumber]
+    push rdi
+    push rsi
+    mov di, word [diskReqHdr + ioReqPkt.status]
+    and di, 00FFh   ;Mask off upper byte
+    mov rsi, rdx    ;Get ptr to device driver in rsi
+    call criticalDOSError
+    pop rsi
+    pop rdi
+
+    test al, al ;Ignore
+    jz .fbExit  ;rbx contains the buffer to the data area
+    test al, 1
+    jnz .fbRequest0 ;Retry
+    stc
+    jmp .fbExitBad  ;Abort
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:

@@ -23,7 +23,29 @@ endstruc
     .devptr resq 1  ;Device queue pointer field
 
 %endmacro
+;Command Code equates
+    drvINIT        equ 0
+    drvMEDCHK      equ 1
+    drvBUILDBPB    equ 2
+    drvIOCTLREAD   equ 3
+    drvREAD        equ 4
+    drvNONDESTREAD equ 5
+    drvINSTATUS    equ 6
+    drvFLUSHINBUF  equ 7
+    drvWRITE       equ 8
+    drvWRITEVERIFY equ 9
+    drvOUTSTATUS   equ 10
+    drvFLUSHOUTBUF equ 11
+    drvIOCTLWRITE  equ 12
+    drvOPEN        equ 13
+    drvCLOSE       equ 14
+    drvREMMEDCHECK equ 15
+    drvOUTTILBUSY  equ 16  ;Not implemented
+    drvIOCTL       equ 19
+    drvGETDRVMAP   equ 23
+    drvSETDRVMAP   equ 24
 
+;Drive structures
 struc drvReqHdr
     drvReqHdrM
 endstruc

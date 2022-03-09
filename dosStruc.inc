@@ -159,10 +159,12 @@ struc bufferHdr
     .bufferFlags resb  1   ;Standard Flags
     .bufferLBA   resq  1   ;LBA the buffer contains
     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
-    .bufFAToff   resb  1   ;Sector offset of the backup copy of the FAT on disk
+    .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
+    .reserved    resb  1   ;Alignment byte
 endstruc
 ;Buffer Flag equates
+    dosBuffer   equ 1h  ;DOS data sector in buffer
     fatBuffer   equ 2h  ;FAT sector in buffer
     dirBuffer   equ 4h  ;Directory sector in buffer
     dataBuffer  equ 8h  ;File Data sector in buffer
