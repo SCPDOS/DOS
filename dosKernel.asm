@@ -20,27 +20,37 @@ criticalDOSError:
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
     ret
 findLRUBuffer: 
-;Finds least recently used buffer, links it and returns ptr to it in rbx
+;Finds first free or least recently used buffer, links it and returns ptr to it 
+; in rbx
 ;Input: Nothing
 ;Output: rbx = Pointer to the buffer to use
     push rdx
     mov rbx, qword [bufHeadPtr]
+    cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
+    je .flbExit 
     cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
-    jne .flb1
-    pop rdx
-    ret
-.flb1:
+    je .flbExit
+.flbWalk:
     mov rdx, rbx    ;Save a ptr to the previous buffer header
     mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
+    cmp byte [rbx + bufferHdr.driveNumber], -1
+    je .flbFreeLink ;If free, link to head, and xlink prev and next buffs
     cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
-    jne .flb1   ;If not LRU, keep walking, else process
+    jne .flbWalk   ;If not LRU, keep walking, else process
     mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
+.flbHeadLink:
     mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
     mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
     mov qword [rbx + bufferHdr.nextBufPtr], rdx
+.flbExit:
     pop rdx
     ret
-
+.flbFreeLink:
+    push rcx
+    mov rcx, qword [rbx + bufferHdr.nextBufPtr]
+    mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
+    pop rcx
+    jmp short .flbHeadLink
 findDPB:
 ;Finds the DPB for a given drive
 ;Input:  dl = Drive number (0=A, 1=B etc...)
@@ -61,7 +71,7 @@ findDPB:
 ;       File System routines        :
 ;-----------------------------------:
 name2Clust:
-;Converts a file name to a first cluster number
+;Converts a path + file name to a first cluster number
 clust2FATEntry:
 ;Converts a cluster number to a FAT entry
 ;Entry:  rsi points to the DPB for the transacting device
@@ -96,7 +106,13 @@ clust2FATEntry:
     pop rcx
     pop rbx
     ret
-
+readBuffer:
+;This function will enact a transaction into a buffer and return a ptr to the 
+;buffer OR if the data is buffered, return a ptr to the buffered data.
+;Entry: rax = Sector to read
+;        bl = Data type being read (FAT, DIR, Data) 
+;       rsi = DPB of transacting drive
+;Exit:  rax = Pointer to buffer containing sector (not the buffer header)
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:

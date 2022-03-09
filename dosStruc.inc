@@ -155,7 +155,7 @@ endstruc
 
 struc bufferHdr
     .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
-    .driveNumber resb  1   ;Drive number the buffer is used for
+    .driveNumber resb  1   ;Drive number the buffer is used for (or -1 for free)
     .bufferFlags resb  1   ;Standard Flags
     .bufferLBA   resq  1   ;LBA the buffer contains
     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
@@ -166,9 +166,8 @@ endstruc
     fatBuffer   equ 2h  ;FAT sector in buffer
     dirBuffer   equ 4h  ;Directory sector in buffer
     dataBuffer  equ 8h  ;File Data sector in buffer
-    refBuffer   equ 10h ;Data in buffer referenced by an application
-    dirtyBuffer equ 20h ;Data in buffer modified by an application
-    remotBuffer equ 40h ;
+    refBuffer   equ 20h ;Data in buffer referenced by an application
+    dirtyBuffer equ 40h ;Data in buffer modified by an application
 ;------------------------------------------------------------------------;
 ; Memory control block for each memory arena
 ;------------------------------------------------------------------------;
