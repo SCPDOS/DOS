@@ -188,7 +188,7 @@ readBuffer:
     mov qword [rbx + bufferHdr.driveDPBPtr], rsi
     mov byte [rbx + bufferHdr.reserved], 0
     call readSector ;Carry the flag from the request
-    add rbx, bufferHdr_size ;Point to the buffer now
+    lea rbx, qword [rbx + bufferHdr_size] ;Point to buffer w/o modifying flags
     jmp short .rbExitNoFlag
 
 readSector:
