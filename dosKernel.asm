@@ -152,9 +152,13 @@ readBuffer:
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (FAT, DIR, Data) 
 ;       rsi = DPB of transacting drive
-;Exit:  rbx = Pointer to buffer containing sector (not the buffer header)
+;Exit:  CF = NC : All ok!
+;       rbx = Pointer to buffer containing sector (not the buffer header)
+;             with valid data in buffer.
 ;       All other registers as before
-; If CF set, terminate the request, rbx means nothing.
+;       CF = CY: Something went wrong
+;       rbx = Pointer to buffer containing sector (not the buffer header)
+;             without valid data in buffer (either unflushed or unread)
     push rdx
     push rcx
     mov dl, byte [rsi + dpb.bDriveNumber]
@@ -205,7 +209,7 @@ readSector:
 ;Build a request block in diskReqHdr
     mov rsi, qword [rbx + bufferHdr.driveDPBPtr]    ;Get dpbptr in rsi
 .rsRequest0:
-    mov ch, 3  ;Repeat attempt counter
+    mov cl, 3  ;Repeat attempt counter
 .rsRequest1:
     mov word [diskReqHdr + ioReqPkt.status], 0
     mov qword [diskReqHdr + ioReqPkt.devptr], 0
@@ -236,42 +240,9 @@ readSector:
     ret
 .rsFail:
 ;Enter here only if the request failed
-    dec ch
+    dec cl
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    mov cl, byte [rbx + bufferHdr.bufferFlags]  ;Get buffer flags in cl[3:0]
-    push rbx    ;Save the pointer to the data buffer area
-    xor ax, ax
-    mov bx, 1
-    cmp cl, dosBuffer
-    cmove ax, bx
-    inc bx
-    cmp cl, fatBuffer
-    cmove ax, bx
-    inc bx
-    cmp cl, dirBuffer
-    cmove ax, bx
-    inc bx
-    cmp cl, dataBuffer
-    cmove ax, bx
-    pop rbx
-    shl ax, 1   ;Shift number into bits 1-2 and clear bit 0 (read operation)
-    mov ah, al  ;Move into ah
-    or ah, 30h  ;Set Retry and Ignore bits and bit 7 = 0 (msd device)
-    mov al, byte [rsi + dpb.bDriveNumber]
-    push rdi
-    push rsi
-    mov di, word [diskReqHdr + ioReqPkt.status]
-    and di, 00FFh   ;Mask off upper byte
-    mov rsi, rdx    ;Get ptr to device driver in rsi
-    call criticalDOSError
-    pop rsi
-    pop rdi
-
-    test al, al ;Ignore
-    jz .rsExit  ;rbx contains the buffer to the data area
-    test al, 1
-    jnz .rsRequest0 ;Retry
     stc
     jmp .rsExitBad  ;Abort
 flushBuffer:
@@ -290,7 +261,7 @@ flushBuffer:
 ;Build a request block in diskReqHdr
     mov rsi, qword [rbx + bufferHdr.driveDPBPtr]    ;Get dpbptr in rsi
 .fbRequest0:
-    mov ch, 3  ;Repeat attempt counter
+    mov cl, 3  ;Repeat attempt counter
 .fbRequest1:
     mov word [diskReqHdr + ioReqPkt.status], 0
     mov qword [diskReqHdr + ioReqPkt.devptr], 0
@@ -336,42 +307,9 @@ flushBuffer:
     ret
 .fbFail:
 ;Enter here only if the request failed
-    dec ch
+    dec cl
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    mov cl, byte [rbx + bufferHdr.bufferFlags]  ;Get buffer flags in cl[3:0]
-    push rbx    ;Save the pointer to the data buffer area
-    xor ax, ax
-    mov bx, 1
-    cmp cl, dosBuffer
-    cmove ax, bx
-    inc bx
-    cmp cl, fatBuffer
-    cmove ax, bx
-    inc bx
-    cmp cl, dirBuffer
-    cmove ax, bx
-    inc bx
-    cmp cl, dataBuffer
-    cmove ax, bx
-    pop rbx
-    shl ax, 1   ;Shift number into bits 1-2
-    mov ah, al  ;Move into ah
-    or ah, 31h  ;Set Retry and Ignore, bit 7 = 0 (msd device) and bit 0 (write)
-    mov al, byte [rsi + dpb.bDriveNumber]
-    push rdi
-    push rsi
-    mov di, word [diskReqHdr + ioReqPkt.status]
-    and di, 00FFh   ;Mask off upper byte
-    mov rsi, rdx    ;Get ptr to device driver in rsi
-    call criticalDOSError
-    pop rsi
-    pop rdi
-
-    test al, al ;Ignore
-    jz .fbFreeExit  ;Free the buffer, lose the data
-    test al, 1
-    jnz .fbRequest0 ;Retry
     stc
     jmp .fbExitBad  ;Abort
 ;-----------------------------------:
