@@ -146,7 +146,7 @@ clust2FATEntry:
     pop rbx
     ret
 readBuffer:
-;This function will return a pointer to the desired data OR 
+;This function will return a pointer to the desired data sector OR 
 ; find the most appropriate buffer, flush and read the relevant data into the 
 ; buffer, returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
@@ -154,7 +154,7 @@ readBuffer:
 ;       rsi = DPB of transacting drive
 ;Exit:  rbx = Pointer to buffer containing sector (not the buffer header)
 ;       All other registers as before
-; If CF set, terminate the request.
+; If CF set, terminate the request, rbx means nothing.
     push rdx
     push rcx
     mov dl, byte [rsi + dpb.bDriveNumber]
@@ -172,7 +172,7 @@ readBuffer:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
     call flushBuffer
     jc .rbExitNoFlag    ;Exit in error
-;rbx points to buffer that has been appropriately linked to the head of chain
+;rbx points to bufferHdr that has been appropriately linked to the head of chain
     mov byte [rbx + bufferHdr.driveNumber], dl
     mov byte [rbx + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
     mov qword [rbx + bufferHdr.bufferLBA], rax
@@ -187,26 +187,23 @@ readBuffer:
     mov dword [rbx + bufferHdr.bufFATsize], ecx
     mov qword [rbx + bufferHdr.driveDPBPtr], rsi
     mov byte [rbx + bufferHdr.reserved], 0
-    add rbx, bufferHdr_size ;Point to the buffer now
     call readSector ;Carry the flag from the request
+    add rbx, bufferHdr_size ;Point to the buffer now
     jmp short .rbExitNoFlag
 
 readSector:
-;Reads a sector into a sector buffer
-;Entry: rax = Sector Number
-;       rbx = Pointer to buffer space
-;        cl = Data type being read (FAT, DIR, Data) 
-;       rsi = DPB of transacting drive
+;Reads a sector into a built sector buffer
+;Entry: rbx = Pointer to buffer header
 ;Exit:  CF=NC : Success
 ;       CF=CY : Fail, terminate the request
+;       rbx pointing to buffer header
 ;First make request to device driver
     push rax
-    ;push rbx   ;rbx is never edited!
     push rcx
     push rdx
-    push rbp
+    push rsi
 ;Build a request block in diskReqHdr
-    mov rbp, rax    ;Move sector number into rbp
+    mov rsi, qword [rbx + bufferHdr.driveDPBPtr]    ;Get dpbptr in rsi
 .rsRequest0:
     mov ch, 3  ;Repeat attempt counter
 .rsRequest1:
@@ -215,8 +212,10 @@ readSector:
     mov dword [diskReqHdr + ioReqPkt.tfrlen], 1 ;One sector
     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [diskReqHdr + ioReqPkt.cmdcde], drvREAD
-    mov qword [diskReqHdr + ioReqPkt.strtsc], rbp   ;rbp has sector number
-    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;rbx points to buffer
+    mov rax, qword [rbx + bufferHdr.bufferLBA]      ;Get sector num in rax
+    mov qword [diskReqHdr + ioReqPkt.strtsc], rax   ;Save rax in request block
+    lea rax, qword [rbx + bufferHdr_size]           ;Get addr of buffer in rax
+    mov qword [diskReqHdr + ioReqPkt.bufptr], rax   ;Save rax in request block
     mov al, byte [rsi + dpb.bUnitNumber]
     mov byte [diskReqHdr + ioReqPkt.unitnm], al
     mov al, byte [rsi + dpb.bMediaDescriptor]
@@ -230,10 +229,9 @@ readSector:
 .rsExit:
     clc
 .rsExitBad:
-    pop rbp
+    pop rsi
     pop rdx
     pop rcx
-    ;pop rbx
     pop rax
     ret
 .rsFail:
@@ -241,6 +239,7 @@ readSector:
     dec ch
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
+    mov cl, byte [rbx + bufferHdr.bufferFlags]  ;Get buffer flags in cl[3:0]
     push rbx    ;Save the pointer to the data buffer area
     xor ax, ax
     mov bx, 1
@@ -280,14 +279,14 @@ flushBuffer:
 ;Entry: rbx = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
 ;       CF=CY : Fail, terminate the request
+;       rbx preserved pointing to data buffer
 ;First make request to device driver
     push rax
     push rcx
     push rdx
-    push rbp
     push rsi
     test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
-    jz .fbExit  ;Skip write to disk if data not modified
+    jz .fbFreeExit  ;Skip write to disk if data not modified
 ;Build a request block in diskReqHdr
     mov rsi, qword [rbx + bufferHdr.driveDPBPtr]    ;Get dpbptr in rsi
 .fbRequest0:
@@ -319,17 +318,18 @@ flushBuffer:
     jnz .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
     test byte [rbx + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
-    jz .fbExit  ;If not, exit
+    jz .fbFreeExit  ;If not, exit
     dec byte [rbx + bufferHdr.bufFATcopy]
-    jz .fbExit  ;Once this goes to 0, stop writing FAT copies
+    jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
     mov eax, dword [rbx + bufferHdr.bufFATsize]
     add qword [rbx + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
     jmp .fbRequest0 ;Make another request
-.fbExit:
+.fbFreeExit:
+;Free the buffer if it was flushed successfully
+    mov byte [rbx + bufferHdr.driveNumber], -1
     clc
 .fbExitBad:
     pop rsi
-    pop rbp
     pop rdx
     pop rcx
     pop rax
@@ -339,6 +339,7 @@ flushBuffer:
     dec ch
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
+    mov cl, byte [rbx + bufferHdr.bufferFlags]  ;Get buffer flags in cl[3:0]
     push rbx    ;Save the pointer to the data buffer area
     xor ax, ax
     mov bx, 1
@@ -368,11 +369,15 @@ flushBuffer:
     pop rdi
 
     test al, al ;Ignore
-    jz .fbExit  ;rbx contains the buffer to the data area
+    jz .fbFreeExit  ;Free the buffer, lose the data
     test al, 1
     jnz .fbRequest0 ;Retry
     stc
     jmp .fbExitBad  ;Abort
+;-----------------------------------:
+;        File Handle routines       :
+;-----------------------------------:
+
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
