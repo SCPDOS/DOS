@@ -145,38 +145,38 @@ clust2FATEntry:
     pop rcx
     pop rbx
     ret
+
 readBuffer:
 ;This function will return a pointer to the desired data sector OR 
 ; find the most appropriate buffer, flush and read the relevant data into the 
 ; buffer, returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
-;        cl = Data type being read (FAT, DIR, Data) 
+;        cl = Data type being read (DOS, FAT, DIR, Data) 
 ;       rsi = DPB of transacting drive
 ;Exit:  CF = NC : All ok!
-;       rbx = Pointer to buffer containing sector (not the buffer header)
-;             with valid data in buffer.
+;       rbx = Pointer to buffer header with valid data in buffer.
 ;       All other registers as before
-;       CF = CY: Something went wrong
-;       rbx = Pointer to buffer containing sector (not the buffer header)
-;             without valid data in buffer (either unflushed or unread)
+;       CF = CY: Something went wrong, return error code or INT 44h
+;       ch = 0 -> Data Not Flushed To Disk
+;       ch = 1 -> Data Not Read From Disk
+;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
     push rdx
-    push rcx
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
     cmp rbx, -1
     je .rbReadNewSector
-    add rbx, bufferHdr_size ;Have the pointer point to the data area
 .rbExit:
     clc
 .rbExitNoFlag:
-    pop rcx
     pop rdx
     ret
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
+    xor ch, ch
     call flushBuffer
     jc .rbExitNoFlag    ;Exit in error
 ;rbx points to bufferHdr that has been appropriately linked to the head of chain
+    push rcx
     mov byte [rbx + bufferHdr.driveNumber], dl
     mov byte [rbx + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
     mov qword [rbx + bufferHdr.bufferLBA], rax
@@ -191,8 +191,9 @@ readBuffer:
     mov dword [rbx + bufferHdr.bufFATsize], ecx
     mov qword [rbx + bufferHdr.driveDPBPtr], rsi
     mov byte [rbx + bufferHdr.reserved], 0
+    pop rcx
+    inc ch  ;If an error occurs, have the signature in ch
     call readSector ;Carry the flag from the request
-    lea rbx, qword [rbx + bufferHdr_size] ;Point to buffer w/o modifying flags
     jmp short .rbExitNoFlag
 
 readSector:
@@ -226,8 +227,11 @@ readSector:
     mov byte [diskReqHdr + ioReqPkt.medesc], al
     mov rdx, qword [rsi + dpb.qDriverHeaderPtr] ;Get pointer to driver header
 
-    call [rdx + drvHdr.strPtr]
-    call [rdx + drvHdr.intPtr]
+    push rbx
+    lea rbx, diskReqHdr
+    call qword [rdx + drvHdr.strPtr]  ;Call with ptr to the request block in rbx
+    call qword [rdx + drvHdr.intPtr]
+    pop rbx
     test word [diskReqHdr + ioReqPkt.status], 8000h  ;Test error bit
     jnz .rsFail
 .rsExit:
@@ -245,6 +249,7 @@ readSector:
 ;Request failed thrice, critical error call
     stc
     jmp .rsExitBad  ;Abort
+
 flushBuffer:
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rbx = Pointer to buffer header for this buffer
@@ -282,9 +287,11 @@ flushBuffer:
     mov al, byte [rsi + dpb.bMediaDescriptor]
     mov byte [diskReqHdr + ioReqPkt.medesc], al
     mov rdx, qword [rsi + dpb.qDriverHeaderPtr] ;Get pointer to driver header
-
-    call [rdx + drvHdr.strPtr]
-    call [rdx + drvHdr.intPtr]
+    push rbx
+    lea rbx, diskReqHdr
+    call qword [rdx + drvHdr.strPtr] ;Call with ptr to the request block in rbx
+    call qword [rdx + drvHdr.intPtr]
+    pop rbx
     test word [diskReqHdr + ioReqPkt.status], 8000h  ;Test error bit
     jnz .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
@@ -315,7 +322,47 @@ flushBuffer:
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
+readBinaryByteFromFile:
+;Reads a byte from a SFT entry, does not translate it. 
+;Read or RW permissions are checked at the INT 41h level
+;Entry: rbx = SFT entry pointer
+;       rdx = Address of the data buffer
+;       ecx = Number of bytes to read
+;Exit: If CF = NC : All ok!
+;       rbx = SFT entry pointer
+;       al = 8 bit binary value read from device/file
+;      If CF = CY : Error!
+;       rbx = SFT entry pointer
+;       al = Error code to ret if user returns fail from int 44h or no int 44h
+;
+; !!! Use the disk request header for all file handle IO !!!
+;
+    test word [rbx + sft.wDeviceInfo], devCharDev
+    jnz .readBinaryByteFromCharDevice
+.readBinaryByteFromHardFile:
+;Disk files are accessed from here
+;Use the sector buffers if the data is already buffered,
+; else use the dpb to fill a sector buffer
 
+.readBinaryByteFromCharDevice:
+;Devices are accessed from here
+    mov rbp, qword [rbx + sft.qPtr] ;Get device driver header pointer
+    push rbx
+    lea rbx, diskReqHdr
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], drvREAD
+    mov word [rbx + ioReqPkt.status], 0
+    mov qword [rbx + ioReqPkt.bufptr], rdx
+    mov dword [rbx + ioReqPkt.tfrlen], ecx
+
+    call qword [rbp + drvHdr.strPtr]
+    call qword [rbp + drvHdr.intPtr]
+    test word [rbx + ioReqPkt.status], 8000h    ;Test the error bit is set
+    pop rbx
+    jz .readBinaryByteExitGood  ;Error bit not set, all good!
+.readBinaryByteExitGood:
+    mov eax, dword [ioReqPkt.tfrlen]    ;Get number of bytes read
+    ret
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:

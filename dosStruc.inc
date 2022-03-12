@@ -118,11 +118,11 @@ struc sfth   ;System file table header
     .qNextSFTPtr resq 1    ;Pointer to the next SFT
     .wNumFiles   resw 1    ;Number of files in this table
 endstruc
-
+;When a file is created, its first sector is read into buffers
 struc sft
 ;This is the file struc itself
     .wNumHandles resw 1    ;Number of handles pointing to this file
-    .wOpenMode   resw 1    ;Bit 15 set if opened via FCB
+    .wOpenMode   resw 1    ;File access permissions and behvaiours
     .bFileAttrib resb 1    ;Regular File Attributes
     .wDeviceInfo resw 1    ;Includes Device number
     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
@@ -131,14 +131,56 @@ struc sft
     .wDate       resw 1    ;File Date
     .dFileSize   resd 1    ;File Size, in bytes
     .dCurntOff   resd 1    ;Current Offset in file, in bytes
-    .wRelClust   resw 1    ;Rel cluster in file of the last cluster accessed
+    .wRelSect    resw 1    ;Rel sector in file of the last cluster accessed
     .dDirSect    resd 1    ;Rel number of sector containing directory entry 
-    .bNumDirEnt  resb 1    ;Number of dir entry within sector (byte offset/32)
+    .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
     .sFileName   resb 11   ;8.3 Filename
     .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
     .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
 endstruc
-
+;Open Mode equates
+;Access modes   Bits[2:0]
+    ReadAccess      equ 0h
+    WriteAccess     equ 1h
+    RWAccess        equ 2h
+;Bit 3 reserved 0
+;Sharing modes  Bits[6:4]
+    CompatShare     equ 0h
+    denyRWShare     equ 10h
+    denyWriteShare  equ 20h
+    denyReadShare   equ 30h
+    denyNoneShare   equ 40h
+;Bit 7 reserved 0
+;Bits 8-12 reserved 0
+;Critical Error handling
+    critErrHdl      equ 2000h   ;If set, return error code. If clear, INT 44h
+;Buffering on writes
+    noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
+;FCB opened file?
+    FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
+;Attribute Byte
+    readOnlyFile    equ 1h
+    hiddenFile      equ 2h
+    systemFile      equ 4h
+    volumeLabel     equ 8h
+    directoryFile   equ 10h ;Directory entry
+    archiveFile     equ 20h
+;Device Info equates
+;For a block device, bits [5:0] contain the drive number
+    charDevConIn    equ 1h  ;If set, device is CON input
+    charDevConOut   equ 2h  ;If set, device is CON output
+    charDevNulDev   equ 4h  ;If set, device is NULL device
+    charDevClockDev equ 8h  ;If set, device is CLOCK device
+    charDevFastOut  equ 10h ;If set, device supports INT 49h
+    charDevBinary   equ 20h ;If set, read in Binary mode!!!
+    charDevNoEOF    equ 40h ;If set, no EOF on input!!
+    blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
+    devCharDev      equ 80h ;If set, it is a char device!
+    charDevNetSpool equ 800h    ;If set, device is a network spooler
+    devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
+    charDevNamePipe equ 2000h   ;If set, device is a named pipe
+    blokDevDTSet    equ 4000h   ;If set, date and time updated for all i/o
+    devRedirDev     equ 8000h   ;If set, dev/file is redirected!
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 
 ; to an internal buffer, and then copying it to the specified location
@@ -162,6 +204,7 @@ struc bufferHdr
     .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
     .reserved    resb  1   ;Alignment byte
+    .dataarea    resb  1   ;The size here changes wrt sector size!
 endstruc
 ;Buffer Flag equates
     dosBuffer   equ 1h  ;DOS data sector in buffer
