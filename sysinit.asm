@@ -247,10 +247,10 @@ storageInits:
 ;------------------------------------------------;
 
 ;Test Error Case
-    ;mov ah, 00110000b
-    ;mov al, 00h
-    ;mov edi, 0Ch
-    ;int 44h
+    mov ah, 00110000b
+    mov al, 00h
+    mov edi, 0Ch
+    int 44h
 
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h

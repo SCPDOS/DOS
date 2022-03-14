@@ -118,7 +118,7 @@ struc sfth   ;System file table header
     .qNextSFTPtr resq 1    ;Pointer to the next SFT
     .wNumFiles   resw 1    ;Number of files in this table
 endstruc
-;When a file is created, its first sector is read into buffers
+
 struc sft
 ;This is the file struc itself
     .wNumHandles resw 1    ;Number of handles pointing to this file
