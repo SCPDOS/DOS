@@ -150,6 +150,97 @@ readBinaryByteFromFile:
 ;-----------------------------------:
 terminateProcess:   ;Int 40h
     iretq
+terminateHandler:   ;Int 42h
+ctrlCHandler:       ;Int 43h
+    iretq
+absDiskWrite:       ;Int 46h
+;al = Drive number
+;rbx = Memory Buffer address to read from
+;ecx = Number of sectors to write
+;rdx = Start LBA to write to
+    push rax
+    push rbx
+    push rdx
+    and byte [verifyFlag], 1    ;Only save the last bit
+    mov ah, drvWRITE
+    add ah, byte [verifyFlag]   ;Change to Write/Verify is set
+    jmp short absDiskReadWriteCommon
+absDiskRead:        ;Int 45h
+;al = Drive number
+;rbx = Memory Buffer address to write to
+;ecx = Number of sectors to read
+;rdx = Start LBA to read from
+    push rax
+    push rbx
+    push rdx
+    mov ah, drvREAD
+absDiskReadWriteCommon:
+;Entered with the appropriate function number in ah
+    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [diskReqHdr + ioReqPkt.unitnm], al
+    mov byte [diskReqHdr + ioReqPkt.cmdcde], ah
+    mov word [diskReqHdr + ioReqPkt.status], 0
+    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx
+    mov qword [diskReqHdr + ioReqPkt.strtsc], rdx
+    mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx
+
+    mov ah, 32h ;Get DPB
+    mov dl, al
+    int 41h
+    mov al, byte [rbx + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.medesc], al
+    mov rdx, qword [rbx + dpb.qDriverHeaderPtr] ;Get driver pointer
+
+    lea rbx, diskReqHdr
+    call qword [rdx + drvHdr.strPtr]  ;Call with ptr to request block in rbx
+    call qword [rdx + drvHdr.intPtr]
+    pop rdx
+    pop rbx
+    pop rax
+    test word [diskReqHdr + ioReqPkt.status], 8000h
+    je .absDiskError
+    clc
+    ret
+.absDiskError:
+    mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
+    mov ah, 80h ;Attachment failure
+    cmp al, 0Ch ;Gen error
+    je .absExit
+    mov ah, 40h ;Seek error
+    cmp al, 06h
+    je .absExit
+    mov ah, 08h ;Bad CRC
+    cmp al, 04h
+    je .absExit
+    mov ah, 04h ;Sector not found
+    cmp al, 08h
+    je .absExit
+    xor ah, ah  ;Write Protect Violation
+    test al, al
+    je .absExit
+    mov ah, 02h ;Other Error
+.absExit:
+    stc
+    ret
+
+terminateResident:  ;Int 47h
+inDosHandler:       ;Int 48h
+;Called when DOS idle
+    iretq
+fastOutput:         ;Int 49h
+;Called with char to transfer in al
+    push rax
+    mov ah, 0Eh
+    int 30h
+    pop rax
+    iretq
+passCommand:        ;Int 4Eh, hooked by COMMAND.COM
+    iretq
+multiplex:          ;Int 4Fh, kept as iretq for now
+    iretq
+;-----------------------------------:
+;        Main Kernel routines       :
+;-----------------------------------:
 functionDispatch:   ;Int 41h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
     cli ;Halt external interrupts
@@ -721,42 +812,3 @@ functionDispatch:   ;Int 41h Main function dispatcher
     dq .commitFile          ;AH = 68H, FILE OPERATION       HANDLE
     dq .getsetDiskSerial    ;AH = 69H, RESERVED INTERNAL, GET/SET DISK SER. NUM
 dispatchTableL  equ $ - .dispatchTable 
-
-terminateHandler:   ;Int 42h
-ctrlCHandler:       ;Int 43h
-    iretq
-absDiskRead:        ;Int 45h
-;al = Drive number
-;rbx = Memory Buffer address
-;ecx = Number of sectors to read (max 255 for now)
-;rdx = Start LBA to read from
-    movzx rax, al   ;Zero extend DOS drive number 
-    mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
-    xchg rax, rcx
-    xchg rcx, rdx
-    mov ah, 82h
-    int 33h
-    iretq
-absDiskWrite:       ;Int 46h
-    movzx rax, al   ;Zero extend DOS drive number 
-    mov al, byte [msdDriver.msdBIOSmap + rax] ;Get translated BIOS num into al
-    xchg rax, rcx
-    xchg rcx, rdx
-    mov ah, 83h
-    int 33h
-    iretq
-terminateResident:  ;Int 47h
-inDosHandler:       ;Int 48h
-;Called when DOS idle
-    iretq
-fastOutput:         ;Int 49h
-;Called with char to transfer in al
-    push rax
-    mov ah, 0Eh
-    int 30h
-    pop rax
-    iretq
-passCommand:        ;Int 4Eh, hooked by COMMAND.COM
-    iretq
-multiplex:          ;Int 4Fh, kept as iretq for now
-    iretq

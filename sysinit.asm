@@ -368,7 +368,7 @@ errorInit:
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
-strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+strtmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,"$"
 hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0Ah,0Dh,"$"
 conName db "CON",0
 auxName db "AUX",0
