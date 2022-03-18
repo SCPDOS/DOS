@@ -201,7 +201,7 @@ flushBuffer:
     ret
 .fbFail:
 ;Enter here only if the request failed
-    dec cesil
+    dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
     stc

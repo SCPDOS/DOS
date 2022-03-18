@@ -161,6 +161,7 @@ absDiskWrite:       ;Int 46h
     push rax
     push rbx
     push rdx
+    push rbp
     and byte [verifyFlag], 1    ;Only save the last bit
     mov ah, drvWRITE
     add ah, byte [verifyFlag]   ;Change to Write/Verify is set
@@ -173,27 +174,36 @@ absDiskRead:        ;Int 45h
     push rax
     push rbx
     push rdx
+    push rbp
     mov ah, drvREAD
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
+    push rax    ;Save drive number, cmdcde and start LBA
+    push rbx
+    push rdx
+    mov ah, 32h ;Get DPB
+    mov dl, al
+    int 41h
+    mov rbp, rbx    ;Get dpb ptr in rbp
+    pop rdx
+    pop rbx
+    pop rax
+
     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [diskReqHdr + ioReqPkt.unitnm], al
     mov byte [diskReqHdr + ioReqPkt.cmdcde], ah
     mov word [diskReqHdr + ioReqPkt.status], 0
+    mov al, byte [rbp + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.medesc], al
     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx
     mov qword [diskReqHdr + ioReqPkt.strtsc], rdx
     mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx
-
-    mov ah, 32h ;Get DPB
-    mov dl, al
-    int 41h
-    mov al, byte [rbx + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + ioReqPkt.medesc], al
-    mov rdx, qword [rbx + dpb.qDriverHeaderPtr] ;Get driver pointer
+    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver pointer
 
     lea rbx, diskReqHdr
     call qword [rdx + drvHdr.strPtr]  ;Call with ptr to request block in rbx
     call qword [rdx + drvHdr.intPtr]
+    pop rbp
     pop rdx
     pop rbx
     pop rax
@@ -421,6 +431,13 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .clearbuffDoFunc:   ;ah = 0Ch
 .diskReset:         ;ah = 0Dh
 .selectDisk:        ;ah = 0Eh
+;Called with dl = drive number, 0 = A, 1 = B etc...
+    mov byte [currentDrv], dl
+    mov al, byte [numLRemDrives]
+    mov bl, byte [lastdrvNum]
+    cmp bl, al
+    cmova eax, ebx    ;If bl > al, move bl to al
+    ret ;al = lastdrv as retcode
 .openFileFCB:       ;ah = 0Fh
 .closeFileFCB:      ;ah = 10h
 .findFirstFileFCB:  ;ah = 11h
@@ -495,7 +512,95 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov word [rdx + callerFrame.rax], ax    ;Save ax
     ret
 .terminateStayRes:  ;ah = 31h
+    ret
 .getDeviceDPBptr:   ;ah = 32h
+;On entry: dl = Drive number
+;On exit: rbx = DPB pointer
+    test dl, dl
+    jnz .gddpskipdefault
+    mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
+    jmp short .gddpcommon
+.gddpskipdefault:
+    ;Decrement the drive letter since 0 = Default, 1 = A etc...
+    dec dl
+.gddpcommon:
+    call findDPB
+    ;should cmp al, -1, and if -1 lock up the system
+    ;Else, rbx = current dpb pointer
+    mov rbp, rbx    ;Save dpb pointer in rbp
+;Here we now media check or if needed, build bpb
+    mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], dl
+    mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
+    mov word [diskReqHdr + mediaCheckReqPkt.status], 0
+    mov al, byte [rbp + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
+    mov al, dl  ;Save device number in al
+    mov rdx, qword [rbp + dpb.qDriverHeaderPtr]
+    lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
+    call [rdx + drvHdr.strPtr]
+    call [rdx + drvHdr.intPtr]
+    test word [diskReqHdr + mediaCheckReqPkt.status], 8000h
+    jnz .gddpError
+    mov dl, al
+    cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 1 ;Certified no change
+    je .gddpretdbp
+;Now build BPB
+    call findLRUBuffer  ;Get lru buffer pointer in rbx
+    ;Write the buffer header
+    mov byte [rbx + bufferHdr.driveNumber], dl
+    mov byte [rbx + bufferHdr.bufferFlags], dataBuffer
+    mov qword [rbx + bufferHdr.bufferLBA], 0
+    mov byte [rbx + bufferHdr.bufFATcopy], 1
+    mov dword [rbx + bufferHdr.bufFATsize], 0
+    mov qword [rbx + bufferHdr.driveDPBPtr], rbp
+    lea rbx, qword [rbx + bufferHdr.dataarea]
+    ;Build BPB request
+    mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+    mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], dl
+    mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+    mov word [diskReqHdr + bpbBuildReqPkt.status], 0 
+    mov al, byte [rbp + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
+    mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rbx ;Put lru pointer in rbx
+    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
+    call [rdx + drvHdr.strPtr]
+    call [rdx + drvHdr.intPtr]
+    test word [diskReqHdr + bpbBuildReqPkt.status], 8000h
+    jnz .gddpError
+    mov rsi, qword [diskReqHdr + bpbBuildReqPkt.bpbptr]
+    ;rbp points to dpb so we good to go
+    call .createDPB ;Call int 41h ah=53h Build DPB without reentering Int 41h
+.gddpretdbp: 
+    mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
+    mov rdx, qword [oldRSP]
+    mov qword [rdx + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
+    ret
+.gddpError:
+;Abort, Retry, Ignore are the only acceptible responses
+;Entered with rdx = dpb for failing drive
+    mov rbp, qword [oldRSP]
+    mov al, byte [rbp + callerFrame.rdx]    ;Get low byte = dl = Drive number
+    mov dl, al  ;Save in dl
+    test al, al
+    jnz .gddpE0
+    mov al, byte [currentDrv]
+    jmp short .gddpE1
+.gddpE0:
+    dec al
+.gddpE1:
+    mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
+    mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
+    and di, 0FFh    ;Save lo byte only
+    mov rsi, rdx    ;rdx points to driver header in both cases
+    call criticalDOSError   ;Critical error handler
+    test al, al
+    jz .gddpretdbp  ;Ignore error, return
+    cmp al, 1
+    je .getDeviceDPBptr ;Reenter the function, dl has drive code
+    int 40h ;Else, restart DOS
+
 .ctrlBreakCheck:    ;ah = 33h
     test al, al
     jz .cbcget  ;Get the state
@@ -546,6 +651,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
 .findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 .findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
+    ret
 .setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
     mov qword [currentPSP], rbx ;Set the pointer
     ret
@@ -688,6 +794,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .networkRedirection:;ah = 5Fh, do nothing
 .trueName:          ;ah = 60h, get fully qualified name
                     ;ah = 61h, reserved
+    ret
 .getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
     mov rbx, qword [oldRSP]
     mov rdx, qword [currentPSP]

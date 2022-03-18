@@ -39,12 +39,11 @@ sysVarsPtr:
     rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this di)
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
-    currentDrv  resb 1  ;Default, last accessed drive
+    currentDrv  resb 1  ;Default drive
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify
 ;SDA, needs to be replaced between processes
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
-
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
     singleDrv   resb 1  
 ;This is done to allow for DOS to give the user a change to swap devices
