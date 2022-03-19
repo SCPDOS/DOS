@@ -498,6 +498,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .setTime:           ;ah = 2Dh
 .setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     mov byte [verifyFlag], al
+    and byte [verifyFlag], 1       ;Only save the bottom bit
     ret
 .getDTA:            ;ah = 2Fh
     mov rdx, qword [oldRSP]
@@ -528,7 +529,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ;should cmp al, -1, and if -1 lock up the system
     ;Else, rbx = current dpb pointer
     mov rbp, rbx    ;Save dpb pointer in rbp
-;Here we now media check or if needed, build bpb
+;Media Check Section
     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], dl
     mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
@@ -545,7 +546,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov dl, al
     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 1 ;Certified no change
     je .gddpretdbp
-;Now build BPB
+;BPB Build Section
     call findLRUBuffer  ;Get lru buffer pointer in rbx
     ;Write the buffer header
     mov byte [rbx + bufferHdr.driveNumber], dl
@@ -579,9 +580,9 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ret
 .gddpError:
 ;Abort, Retry, Ignore are the only acceptible responses
-;Entered with rdx = dpb for failing drive
-    mov rbp, qword [oldRSP]
-    mov al, byte [rbp + callerFrame.rdx]    ;Get low byte = dl = Drive number
+;Entered with rbp = dpb for failing drive
+    mov rbx, qword [oldRSP]
+    mov al, byte [rbx + callerFrame.rdx]    ;Get low byte = dl = Drive number
     mov dl, al  ;Save in dl
     test al, al
     jnz .gddpE0
@@ -596,7 +597,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov rsi, rdx    ;rdx points to driver header in both cases
     call criticalDOSError   ;Critical error handler
     test al, al
-    jz .gddpretdbp  ;Ignore error, return
+    jz .gddpretdbp  ;Ignore error, return, rbp has old dpb pointer
     cmp al, 1
     je .getDeviceDPBptr ;Reenter the function, dl has drive code
     int 40h ;Else, restart DOS
