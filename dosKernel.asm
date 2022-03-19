@@ -719,6 +719,47 @@ getIntVector:      ;ah = 35h
     mov al, byte [rdx + callerFrame.rax]    ;Get the low byte in al
     ret
 getDiskFreeSpace:  ;ah = 36h
+    test dl, dl
+    jz .gdfsSkipdefault
+    mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
+    jmp short .gdfsMain
+.gdfsSkipdefault:
+    dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
+.gdfsMain:
+;Walk the dpb chain manually
+    mov rbp, qword [dpbHeadPtr]
+.gdfsCompare:
+    cmp dl, byte [rbp + dpb.bDriveNumber]
+    je .gdfsDPBFound
+    mov rbp, qword [rbp + dpb.qNextDPBPtr]  ;Go to next DPB
+    cmp rbp, -1 ;If -1 => we at the end
+    jne .gdfsCompare
+;Else, we at an error.
+;Simply return with CY set and error code in al with extended error info
+    mov eax, 15                 ;Invalid drive error
+    mov word [errorExt], 15     ;Invalid drive error
+    mov byte [errorLocus], 1    ;Not appropriate
+    mov byte [errorClass], 8    ;Drive not found
+    mov byte [errorAction], 7   ;Retry after user intervention
+    mov rbp, qword [oldRSP]
+    mov word [rbp + callerFrame.rax], -1    ;Set ax=FFFFh
+    or qword [rbp + callerFrame.flags], 1   ;Set CF=CY
+    ret
+.gdfsDPBFound:
+    mov al, byte [rbp + dpb.bMaxSectorInCluster]
+    inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
+    mov edx, dword [rbp + dpb.dClusterCount]
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    mov ebx, 1
+    shl ebx, cl
+    mov ecx, ebx    ;Save the value in ecx
+    mov ebx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
+    mov rbp, qword [oldRSP]
+    mov qword [rbp + callerFrame.rdx], rdx
+    mov word [rbp + callerFrame.rcx], cx
+    mov qword [rbp + callerFrame.rbx], rbx
+    ret
+
 loadExecChild:     ;ah = 4Bh, EXEC
 terminateClean:    ;ah = 4Ch, EXIT
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
