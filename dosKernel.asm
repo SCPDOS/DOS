@@ -27,10 +27,12 @@ criticalDOSError:
 ;                  = 3 - Fail the DOS call      (Fail)
 ; Return response from int 44h in al
     cli ;Disable Interrupts
+    mov byte [critErrFlag], 1   ;Set flag for critical error
     mov qword [xInt44hRSP], rsp
     mov rsp, qword [oldRSP] ;Get the old RSP value
     int 44h ;Call critical error handler
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
+    mov byte [critErrFlag], 0   ;Clear critical error flag
     sti ;Reenable Interrupts
     ret
 findLRUBuffer: 
@@ -162,9 +164,8 @@ absDiskWrite:       ;Int 46h
     push rbx
     push rdx
     push rbp
-    and byte [verifyFlag], 1    ;Only save the last bit
     mov ah, drvWRITE
-    add ah, byte [verifyFlag]   ;Change to Write/Verify is set
+    add ah, byte [verifyFlag]   ;Change to Write/Verify if set
     jmp short absDiskReadWriteCommon
 absDiskRead:        ;Int 45h
 ;al = Drive number
@@ -594,6 +595,12 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
     and di, 0FFh    ;Save lo byte only
+    mov word [errorExt], di     ;Save driver error code
+    add word [errorExt], 13h    ;Add offset to driver error codes
+    mov byte [errorDrv], al     ;Save the drive on which the error occured
+    mov byte [errorLocus], 2    ;Error in Block Device Request code
+    mov byte [errorClass], 11   ;Media error occured (bad BPB or other) code
+    mov byte [errorAction], 1   ;Retry request code
     mov rsi, rdx    ;rdx points to driver header in both cases
     call criticalDOSError   ;Critical error handler
     test al, al
