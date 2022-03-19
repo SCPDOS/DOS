@@ -164,9 +164,9 @@ flushBuffer:
 ;Entry: rbp = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
 ;       CF=CY : Fail, terminate the request
-;       rbx preserved pointing to data buffer
 ;First make request to device driver
     push rax
+    push rbx
     push rcx
     push rdx
     push rsi
@@ -191,12 +191,13 @@ flushBuffer:
     jmp .fbRequest0 ;Make another request
 .fbFreeExit:
 ;Free the buffer if it was flushed successfully
-    mov byte [rbx + bufferHdr.driveNumber], -1
+    mov byte [rbp + bufferHdr.driveNumber], -1
     clc
 .fbExitBad:
     pop rsi
     pop rdx
     pop rcx
+    pop rbx
     pop rax
     ret
 .fbFail:

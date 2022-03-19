@@ -67,6 +67,25 @@ findLRUBuffer:
     mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
     pop rcx
     jmp short .flbHeadLink
+
+findDirtyBufferForDrive:
+;Searches the buffer chain for a dirty buffer for a given drive letter.
+;Input: dl = Drive number
+;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
+    mov rbx, qword [bufHeadPtr]
+.fdbfdCheckBuffer:
+    cmp byte [rbx + bufferHdr.driveNumber], dl
+    jne .fdbfdGotoNextBuffer
+    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
+    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
+.fdbfdExit:
+    ret
+.fdbfdGotoNextBuffer:
+    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
+    cmp rbx, -1     ;If rbx points to -1, exit
+    je .fdbfdExit
+    jmp short .fdbfdCheckBuffer
+
 findSectorInBuffer:
 ;Finds the Buffer for a sector
 ;If the sector is not in a buffer, returns with a -1
@@ -527,8 +546,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
     dec dl
 .gddpcommon:
     call findDPB
-    ;should cmp al, -1, and if -1 lock up the system
-    ;Else, rbx = current dpb pointer
+    test al, al
+    jz .gddpMediaCheck
+    ret ;Return. al = -1
+.gddpMediaCheck:
     mov rbp, rbx    ;Save dpb pointer in rbp
 ;Media Check Section
     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
@@ -547,9 +568,25 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov dl, al
     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 1 ;Certified no change
     je .gddpretdbp
-;BPB Build Section
+    cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 0
+    jne .gddpBuildBPB   ;This means Media changed declared
+    call findDirtyBufferForDrive
+    test rbx, -1    ;This is the case if no dirty buffers for drive
+    jne .gddpretdbp ;If there is a dirty buffer for the drive, dont build bpb
+.gddpBuildBPB:
+;BPB Build Section, only here if need a new bpb, i.e. sure of a new device
     call findLRUBuffer  ;Get lru buffer pointer in rbx
-    ;Write the buffer header
+    cmp dl, byte [rbx + bufferHdr.driveNumber]  ;Does buffer belong to old drv?
+    je .gddpBuildBPBInvalidateBuffer    ;Yes, immediately invalidate data
+;If no, flush the data to disk.
+.gddpBuildBPBFlush:
+    mov rsi, rbp    ;Save rbp as pointer to old dl drive dpb
+    mov rbp, rbx    ;Get buffer header pointer in rbp
+    call flushBuffer    ;Flush the buffer to disk, rbx preserved
+    mov rbp, rsi    ;Return old drive dpb pointer to rbp
+    jc .gddpErrorType2  ;rbx points to buffer header
+.gddpBuildBPBInvalidateBuffer:
+    ;Write new buffer header
     mov byte [rbx + bufferHdr.driveNumber], dl
     mov byte [rbx + bufferHdr.bufferFlags], dataBuffer
     mov qword [rbx + bufferHdr.bufferLBA], 0
@@ -578,6 +615,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
     mov rdx, qword [oldRSP]
     mov qword [rdx + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
+    ret
+.gddpretdpbFail:
+    mov rdx, qword [oldRSP]
+    or qword [rdx + callerFrame.flags], 1   ;Set CF=CY
     ret
 .gddpError:
 ;Abort, Retry, Ignore are the only acceptible responses
@@ -608,7 +649,50 @@ functionDispatch:   ;Int 41h Main function dispatcher
     cmp al, 1
     je .getDeviceDPBptr ;Reenter the function, dl has drive code
     int 40h ;Else, restart DOS
-
+.gddpErrorType2:
+;Error flushing the old buffer
+    mov ah, 39h ;Write operation, abort/retry/ignore/fail, disk error
+    cmp byte [rbx + bufferHdr.bufferFlags], dosBuffer
+    je .gddpErrorType2main
+    or ah, 2h   ;Set bit 1
+    cmp byte [rbx + bufferHdr.bufferFlags], fatBuffer
+    je .gddpErrorType2main
+    mov ah, 3Dh ;Set bit 2, clear bit 1
+    cmp byte [rbx + bufferHdr.bufferFlags], dirBuffer
+    je .gddpErrorType2main
+    or ah, 2h   ;Set bit 2 and 1
+.gddpErrorType2main:    
+    mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
+    and di, 0FFh    ;Save lo byte only
+    mov word [errorExt], di     ;Save driver error code
+    add word [errorExt], 13h    ;Add offset to driver error codes
+    mov al, byte [rbx + bufferHdr.driveNumber]
+    mov byte [errorDrv], al
+    mov byte [errorLocus], 2    ;Error in Block Device Request code
+    mov byte [errorClass], 11   ;Media error occured (bad disk write) code
+    mov byte [errorAction], 1   ;Retry request code
+    mov rsi, qword [rbx + bufferHdr.driveDPBPtr]
+    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get device driver header in rsi
+    call criticalDOSError   ;Critical error handler
+    cmp byte [rbx + bufferHdr.bufferFlags], fatBuffer
+    je .gddpErrorType2FatDir
+    cmp byte [rbx + bufferHdr.bufferFlags], dirBuffer
+    je .gddpErrorType2FatDir
+    test al, al
+    jz .gddpBuildBPBInvalidateBuffer ;Ignore error, invalidate data
+    cmp al, 1
+    je .gddpBuildBPBFlush   ;Retry flush, rbx has buffer pointer
+    cmp al, 3
+    je .gddpretdpbFail
+    int 40h ;al = 2, means just abort
+.gddpErrorType2FatDir:
+    test al, al ;Ignore converted to fail
+    jz .gddpretdpbFail
+    cmp al, 1
+    je .gddpBuildBPBFlush   ;Retry flush, rbx has buffer pointer
+    cmp al, 3
+    je .gddpretdpbFail
+    int 40h ;al = 2, means just abort
 .ctrlBreakCheck:    ;ah = 33h
     test al, al
     jz .cbcget  ;Get the state
