@@ -122,8 +122,8 @@ conInit:    ;Rather than keeping this resident... do it here
 ;------------------------------------------------;
 ;Adjust Int 41h address table
 adjInt41h:
-    mov ecx, dispatchTableL/8 ;Number of elements in table
-    mov rbx, functionDispatch.dispatchTable ;Get EA of table
+    mov ecx, kernelDispatchTableL/8 ;Number of elements in table
+    mov rbx, kernelDispatchTable ;Get EA of table
     lea rbx, qword [rbp+rbx]    ;Point to the start of the relocated table 
 .ai41h:
     add qword [rbx], rbp    ;Add base address value to entry in reloc table

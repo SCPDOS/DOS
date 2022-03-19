@@ -1,0 +1,20 @@
+createFileHdl:     ;ah = 3Ch, handle function
+openFileHdl:       ;ah = 3Dh, handle function
+closeFileHdl:      ;ah = 3Eh, handle function
+readFileHdl:       ;ah = 3Fh, handle function
+writeFileHdl:      ;ah = 40h, handle function
+deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
+movFileReadPtr:    ;ah = 42h, handle function, LSEEK
+changeFileModeHdl: ;ah = 43h, handle function, CHMOD
+ioctrl:            ;ah = 44h, handle function
+duplicateHandle:   ;ah = 45h, handle function
+forceDuplicateHdl: ;ah = 46h, handle function
+findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
+findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
+renameFile:        ;ah = 56h
+setHandleCount:    ;ah = 67h
+commitFile:        ;ah = 68h, flushes buffers for handle to disk 
+createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
+createNewFile:     ;ah = 5Bh
+lockUnlockFile:    ;ah = 5Ch
+    ret

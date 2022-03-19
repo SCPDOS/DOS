@@ -100,7 +100,7 @@ readBuffer:
     xor ch, ch
     call flushBuffer
     jc .rbExitNoFlag    ;Exit in error
-;rbx points to bufferHdr that has been appropriately linked to the head of chain
+;rbp points to bufferHdr that has been appropriately linked to the head of chain
     push rcx
     mov byte [rbp + bufferHdr.driveNumber], dl
     mov byte [rbp + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
@@ -207,3 +207,13 @@ flushBuffer:
 ;Request failed thrice, critical error call
     stc
     jmp .fbExitBad  ;Abort
+;---------------------------------------------------:
+;                   KERNEL FUNCTIONS                :
+;---------------------------------------------------:
+makeDIR:           ;ah = 39h
+removeDIR:         ;ah = 3Ah
+changeCurrentDIR:  ;ah = 3Bh, changes directory for current drive
+getCurrentDIR:     ;ah = 47h
+getSetFileDateTime:;ah = 57h
+trueName:          ;ah = 60h, get fully qualified name
+    ret
