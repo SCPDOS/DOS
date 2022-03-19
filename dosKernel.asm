@@ -108,16 +108,16 @@ findSectorInBuffer:
 findDPB:
 ;Finds the DPB for a given drive
 ;Input:  dl = Drive number (0=A, 1=B etc...)
-;Output: al = 00, rbx = Pointer to the DPB
+;Output: al = 00, rbp = Pointer to the DPB
 ;        al = -1, Failed, no DPB for device, rbx destroyed
     mov rbx, qword [dpbHeadPtr]
 .fd1:
     xor al, al
-    cmp byte [rbx + dpb.bDriveNumber], dl
+    cmp byte [rbp + dpb.bDriveNumber], dl
     je .fd2
-    mov rbx, qword [rbx + dpb.qNextDPBPtr]
+    mov rbp, qword [rbp + dpb.qNextDPBPtr]
     mov al, -1
-    cmp rbx, -1 ;If rbx followed last item in list, no DPB exists for dl
+    cmp rbp, -1 ;If rbx followed last item in list, no DPB exists for dl
     jne .fd1
 .fd2:
     ret
@@ -455,13 +455,9 @@ FATinfoDevice:     ;ah = 1Ch
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
 .fidMain:
 ;Walk the dpb chain manually
-    mov rbp, qword [dpbHeadPtr]
-.fidCompare:
-    cmp dl, byte [rbp + dpb.bDriveNumber]
-    je .fidDPBFound
-    mov rbp, qword [rbp + dpb.qNextDPBPtr]  ;Go to next DPB
-    cmp rbp, -1 ;If -1 => we at the end
-    jne .fidCompare
+    call findDPB    ;Get in rbp the dpb pointer for drive dl
+    test al, al
+    jz .fidDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
     mov rbp, qword [oldRSP]
@@ -540,12 +536,16 @@ getDeviceDPBptr:   ;ah = 32h
     ;Decrement the drive letter since 0 = Default, 1 = A etc...
     dec dl
 .gddpcommon:
-    call findDPB
+    call findDPB ;Get in rbp the dpb pointer for drive dl
     test al, al
     jz .gddpMediaCheck
+;Put in here error info
+    mov word [errorExt], 15 ;Invalid drive spec
+    mov byte [errorLocus], 2    ;Block device driver
+    mov byte [errorClass], 8    ;Drive not found
+    mov byte [errorAction], 7   ;Retry after intervention
     ret ;Return. al = -1
 .gddpMediaCheck:
-    mov rbp, rbx    ;Save dpb pointer in rbp
 ;Media Check Section
     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], dl
@@ -726,17 +726,11 @@ getDiskFreeSpace:  ;ah = 36h
 .gdfsSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
 .gdfsMain:
-;Walk the dpb chain manually
-    mov rbp, qword [dpbHeadPtr]
-.gdfsCompare:
-    cmp dl, byte [rbp + dpb.bDriveNumber]
-    je .gdfsDPBFound
-    mov rbp, qword [rbp + dpb.qNextDPBPtr]  ;Go to next DPB
-    cmp rbp, -1 ;If -1 => we at the end
-    jne .gdfsCompare
+    call findDPB ;Get in rbp the dpb pointer for drive dl
+    test al, al
+    jz .gdfsDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
-    mov eax, 15                 ;Invalid drive error
     mov word [errorExt], 15     ;Invalid drive error
     mov byte [errorLocus], 1    ;Not appropriate
     mov byte [errorClass], 8    ;Drive not found
