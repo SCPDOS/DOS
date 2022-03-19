@@ -23,3 +23,8 @@ randBlockReadFCB:  ;ah = 27h
 randBlockWriteFCB: ;ah = 28h
 parseFilenameFCB:  ;ah = 29h
     ret
+getDTA:            ;ah = 2Fh
+    mov rdx, qword [oldRSP]
+    mov rbx, qword [currentDTA] ;Get current DTA
+    mov qword [rdx + callerFrame.rbx], rbx
+    ret

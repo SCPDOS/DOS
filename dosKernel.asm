@@ -418,22 +418,75 @@ diskReset:         ;ah = 0Dh
 
 selectDisk:        ;ah = 0Eh
 ;Called with dl = drive number, 0 = A, 1 = B etc...
-    mov byte [currentDrv], dl
-    mov al, byte [numLRemDrives]
-    mov bl, byte [lastdrvNum]
+    mov al, byte [numLRemDrives]    ;Value 1 based
+    mov bl, byte [lastdrvNum]       ;Value 1 based
+    dec al
+    dec bl
     cmp bl, al
     cmova eax, ebx    ;If bl > al, move bl to al
+    cmp dl, al  ;If dl is bigger than al
+    ja .error
+    mov byte [currentDrv], dl   ;Only save dl if it is a valid number
     ret ;al = lastdrv as retcode
-
+.error:
+    mov rbp, qword [oldRSP]
+    or qword [rbp + callerFrame.flags], 1   ;Set the CY flag
+    mov eax, 15                 ;Invalid drive error
+    mov word [errorExt], ax     
+    mov byte [errorLocus], 1    ;Not appropriate
+    mov byte [errorClass], 8    ;Drive not found
+    mov byte [errorAction], 7   ;Retry after user intervention
+    ret
 getCurrentDisk:    ;ah = 19h, get current default drive
     mov al, byte [currentDrv]
     ret
 FATinfoDefault:    ;ah = 1Bh
-FatinfoDevice:     ;ah = 1Ch
-    ret
-getCurrentDPBptr:  ;ah = 1Fh, simply calls int 41h ah = 32h with dl = 0
     xor dl, dl
-    jmp getDeviceDPBptr
+FATinfoDevice:     ;ah = 1Ch
+;Return in:
+;   al = Number of sectors per cluster
+;   edx = Number of clusters
+;   cx =  Size of a clsuter
+    test dl, dl
+    jz .fidSkipdefault
+    mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
+    jmp short .fidMain
+.fidSkipdefault:
+    dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
+.fidMain:
+;Walk the dpb chain manually
+    mov rbp, qword [dpbHeadPtr]
+.fidCompare:
+    cmp dl, byte [rbp + dpb.bDriveNumber]
+    je .fidDPBFound
+    mov rbp, qword [rbp + dpb.qNextDPBPtr]  ;Go to next DPB
+    cmp rbp, -1 ;If -1 => we at the end
+    jne .fidCompare
+;Else, we at an error.
+;Simply return with CY set and error code in al with extended error info
+    mov rbp, qword [oldRSP]
+    or qword [rbp + callerFrame.flags], 1   ;Set the CY flag
+    mov eax, 15                 ;Invalid drive error
+    mov word [errorExt], ax     
+    mov byte [errorLocus], 1    ;Not appropriate
+    mov byte [errorClass], 8    ;Drive not found
+    mov byte [errorAction], 7   ;Retry after user intervention
+    ret
+.fidDPBFound:
+    mov al, byte [rbp + dpb.bMaxSectorInCluster]
+    inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
+    mov edx, dword [rbp + dpb.dClusterCount]
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    mov ebx, 1
+    shl ebx, cl
+    mov ecx, ebx    ;Save the value in ecx
+    lea rbx, qword [rbp + dpb.bMediaDescriptor]
+    mov rbp, qword [oldRSP]
+    mov qword [rbp + callerFrame.rdx], rdx
+    mov word [rbp + callerFrame.rcx], cx
+    mov qword [rbp + callerFrame.rbx], rbx
+    ret
+;===============================
 setIntVector:      ;ah = 25h
 ;Called with:
 ;   rdx = Pointer to interrupt handler
@@ -464,11 +517,6 @@ setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     mov byte [verifyFlag], al
     and byte [verifyFlag], 1       ;Only save the bottom bit
     ret
-getDTA:            ;ah = 2Fh
-    mov rdx, qword [oldRSP]
-    mov rbx, qword [currentDTA] ;Get current DTA
-    mov qword [rdx + callerFrame.rbx], rbx
-    ret
 getDOSversion:     ;ah = 30h
     mov rdx, qword [oldRSP]
     xor ah, ah ;Continue the mainline PC-DOS identification line
@@ -479,6 +527,8 @@ getDOSversion:     ;ah = 30h
 terminateStayRes:  ;ah = 31h
     ret
 ;-------------------------------------------
+getCurrentDPBptr:  ;ah = 1Fh, simply calls int 41h ah = 32h with dl = 0
+    xor dl, dl
 getDeviceDPBptr:   ;ah = 32h
 ;On entry: dl = Drive number
 ;On exit: rbx = DPB pointer
@@ -565,6 +615,7 @@ getDeviceDPBptr:   ;ah = 32h
 .gddpretdpbFail:
     mov rdx, qword [oldRSP]
     or qword [rdx + callerFrame.flags], 1   ;Set CF=CY
+    mov word [errorExt], 83 ;Fail on INT 44h error code
     ret
 .gddpError:
 ;Abort, Retry, Ignore are the only acceptible responses
@@ -847,7 +898,7 @@ kernelDispatchTable:
     dq getCurrentDisk      ;AH = 19H, DISK MANAGEMENT
     dq setDTA              ;AH = 1AH, RECORD OPERATION     F/H
     dq FATinfoDefault      ;AH = 1BH, DISK MANAGEMENT
-    dq FatinfoDevice       ;AH = 1CH, DISK MANAGEMENT
+    dq FATinfoDevice       ;AH = 1CH, DISK MANAGEMENT
     dq return              ;AH = 1DH, RESERVED
     dq return              ;AH = 1EH, RESERVED
     dq getCurrentDPBptr    ;AH = 1FH, RESERVED INTERNAL, GET CURR DRIVE DPB PTR

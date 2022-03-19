@@ -12,9 +12,9 @@ forceDuplicateHdl: ;ah = 46h, handle function
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h
-setHandleCount:    ;ah = 67h
-commitFile:        ;ah = 68h, flushes buffers for handle to disk 
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
 lockUnlockFile:    ;ah = 5Ch
+setHandleCount:    ;ah = 67h
+commitFile:        ;ah = 68h, flushes buffers for handle to disk 
     ret
