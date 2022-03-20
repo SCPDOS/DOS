@@ -16,6 +16,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "fcbFunctions.asm"
 %include "handleFunctions.asm"
 %include "memoryFunctions.asm"
+%include "dateTimeFunctions.asm"
 %include "localisation.asm"
 %include "dosKernel.asm"
 %include "int44h.asm"

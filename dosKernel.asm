@@ -362,6 +362,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .fdExitBad:
     mov ah, 0
     iretq
+
+;========================================:
+;            Kernel Functions            :
+;========================================:
 simpleTerminate:   ;ah = 00h
     ret
 diskReset:         ;ah = 0Dh
@@ -504,10 +508,6 @@ setIntVector:      ;ah = 25h
     mov al, byte [rbp + callerFrame.rax]    ;Preserve low byte of rax
     ret
 createNewPSP:      ;ah = 26h
-getDate:           ;ah = 2Ah
-setDate:           ;ah = 2Bh
-getTime:           ;ah = 2Ch
-setTime:           ;ah = 2Dh
     ret
 setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     mov byte [verifyFlag], al
@@ -605,7 +605,9 @@ getDeviceDPBptr:   ;ah = 32h
     jnz .gddpError
     mov rsi, qword [diskReqHdr + bpbBuildReqPkt.bpbptr]
     ;rbp points to dpb so we good to go
-    call createDPB ;Call int 41h ah=53h Build DPB without reentering Int 41h
+    ;Call int 41h ah=53h Build DPB without reentering Int 41h
+    ;Since this function doesnt modify the caller stack, it is safe to do so
+    call createDPB 
 .gddpretdbp: 
     mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
     mov rdx, qword [oldRSP]
