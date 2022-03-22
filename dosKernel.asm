@@ -890,7 +890,17 @@ getVerifySetting:  ;ah = 54h
     mov al, byte [verifyFlag]   ;al is the return value in this case
     ret
 createPSP:         ;ah = 55h, creates a PSP for a program
+    ret
 getExtendedError:  ;ah = 59h
+    mov rdx, qword [oldRSP]
+    mov ax, word [errorExt]
+    mov ch, byte [errorLocus]
+    mov bh, byte [errorClass]
+    mov bl, byte [errorAction]
+    mov word [rdx + callerFrame.rax], ax
+    mov word [rdx + callerFrame.rbx], bx
+    mov byte [rdx + callerFrame.rcx + 1], ch
+    ret
 getCritErrorInfo:  ;ah = 5Dh
 networkServices:   ;ah = 5Eh, do nothing
 networkRedirection:;ah = 5Fh, do nothing
