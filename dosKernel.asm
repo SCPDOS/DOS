@@ -122,51 +122,6 @@ findDPB:
 .fd2:
     ret
 ;-----------------------------------:
-;        File Handle routines       :
-;-----------------------------------:
-readBinaryByteFromFile:
-;Reads a byte from a SFT entry, does not translate it. 
-;Read or RW permissions are checked at the INT 41h level
-;Entry: rbx = SFT entry pointer
-;       rdx = Address of the data buffer to read to
-;       ecx = Number of bytes to read
-;Exit: If CF = NC : All ok!
-;       rbx = SFT entry pointer
-;       al = 8 bit binary value read from device/file
-;      If CF = CY : Error!
-;       rbx = SFT entry pointer
-;       al = Error code to ret if user returns fail from int 44h or no int 44h
-;
-; !!! Use the disk request header for all file handle IO !!!
-;
-    test word [rbx + sft.wDeviceInfo], devCharDev
-    jnz .readBinaryByteFromCharDevice
-.readBinaryByteFromHardFile:
-;Disk files are accessed from here
-;Use the sector buffers if the data is already buffered,
-; else use the dpb to fill a sector buffer
-
-
-.readBinaryByteFromCharDevice:
-;Devices are accessed from here
-    mov rbp, qword [rbx + sft.qPtr] ;Get device driver header pointer
-    push rbx
-    lea rbx, charReqHdr
-    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-    mov byte [rbx + ioReqPkt.cmdcde], drvREAD
-    mov word [rbx + ioReqPkt.status], 0
-    mov qword [rbx + ioReqPkt.bufptr], rdx
-    mov dword [rbx + ioReqPkt.tfrlen], ecx
-
-    call qword [rbp + drvHdr.strPtr]
-    call qword [rbp + drvHdr.intPtr]
-    mov eax, dword [rbx + ioReqPkt.tfrlen] ;Get number of bytes read
-    test word [rbx + ioReqPkt.status], 8000h    ;Test the error bit is set
-    pop rbx
-    jz .readBinaryByteExitGood  ;Error bit not set, all good!
-.readBinaryByteExitGood:
-    ret
-;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
 terminateProcess:   ;Int 40h
