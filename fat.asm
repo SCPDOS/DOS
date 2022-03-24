@@ -61,7 +61,8 @@ clust2FATEntry:
     mov ecx, edx
     xor edx, edx    ;edx = 0
     div ecx         ;Divide by bytes per sector (0:eax / ecx)
-    add eax, dword [rsi + dpb.dFAToffset]   ;Add the offset to the first FAT
+    movzx ebx, word [rsi + dpb.wFAToffset]   ;Add the offset to the first FAT
+    add eax, ebx
     pop rcx
     pop rbx
     ret

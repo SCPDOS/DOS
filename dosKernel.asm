@@ -812,10 +812,9 @@ createDPB:         ;ah = 53h, generates a DPB from a given BPB
     jmp short .cd2
 .cd3:
     mov byte [rbp + dpb.bSectorsPerClusterShift], cl
-;dFAToffset, number of hidden sectors + number of reserved sectors
-    movzx eax, word [rsi + bpb.revdSecCnt]
-    add eax, dword [rsi + bpb.hiddSec] 
-    mov dword [rbp + dpb.dFAToffset], eax
+;wFAToffset, number of reserved sectors in partition
+    mov ax, word [rsi + bpb.revdSecCnt]
+    mov word [rbp + dpb.wFAToffset], ax
 ;bNumberOfFATs
     mov al, byte [rsi + bpb.numFATs]
     mov byte [rbp + dpb.bNumberOfFATs], al

@@ -19,7 +19,7 @@ struc dpb        ;Drive Parameter Block
     .bBytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)x
     .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1 x
     .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent x
-    .dFAToffset              resd 1  ;Number of Sectors preceeding first FAT x
+    .wFAToffset              resw 1  ;Number of reserved sectors in partition x
     .bNumberOfFATs           resb 1  ;Number of FATs x
     .wNumberRootDirSectors   resw 1  ;In sectors, this is 0 for FAT32 formats x
     .dClusterHeapOffset      resd 1  ;Start sector of data area x
