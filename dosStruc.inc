@@ -222,6 +222,13 @@ struc mcb
     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
     .reserved   resb 3  ;Reserved three bytes
 endstruc
+;MCB equates
+mcbOwnerHole    equ -1  ;Owner = -1 => Memory hole
+mcbOwnerFree    equ 0   ;Owner =  0 => Free and available space
+mcbOwnerDOS     equ 8   ;Owner =  8 => Owned by DOS
+;Owner = Para aligned address => Owning application PSP
+;...To consider...
+;Owner = Non-para aligned address => Error? Should maybe lock up system?
 
 ;------------------------------------------------------------------------;
 ; For Int 41h, the callers registers are saved on their stack in the 

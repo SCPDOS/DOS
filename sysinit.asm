@@ -208,17 +208,47 @@ storageInits:
 ;------------------------------------------------;
 ;                   MCB inits                    ;
 ;------------------------------------------------;
-
+mcbInit:
+    mov eax, 0E801h ;Get the Extended memory arena sizes
+    int 35h
+    movzx ecx, cx   ;cx = # of bytes between USER_BASE and 16Mb
+    movzx edx, dx   ;dx = # 64kb pages between 16Mb and 4Gb
+    shl ecx, 9h   ;Multiply by 1024 to get number of bytes
+    shl edx, 10h  ;Multiply by 65536 to get number of bytes
 ;Build the DOS segment's MCB header
     mov rbx, rbp
     sub rbx, mcb_size   ;Point rbx to the start of the MCB
-    mov byte [rbx + mcb.marker], "M"
-    mov rax, qword fs:[currentPSP]  ;Get the current PSP
-    mov qword [rbx + mcb.owner], rax
-    mov dword [rbx + mcb.blockSize], -1 ;Let size be max for now, adjust later
 
     mov qword fs:[mcbChainPtr], rbx ;Save rbx in data area
 
+    mov qword [rbx + mcb.owner], mcbOwnerDOS
+    mov dword [rbx + mcb.blockSize], ecx ;Use Max lo mem size for now
+    mov byte [rbx + mcb.marker], "Z"
+    test edx, edx   ;Is edx 0?
+    jz .mcbExit ;If it is, skip the next bit
+;We have memory above 16Mb, change alloc to M and decrease size
+    mov byte [rbx + mcb.marker], "M"
+    sub dword [rbx + mcb.blockSize], mcb_size   ;Decrease allocation
+
+    mov ecx, dword [rbx + mcb.blockSize]    ;Get the decreased size
+    add rbx, rcx    ;Walk chain
+;Now at the memory hole
+    ;Holes are only declared if hole has usable ram on both sides of it
+    mov byte [rbx + mcb.marker], "M"
+    mov eax, 1000000h   ;16Mb
+    sub eax, ebx    ;Sub ptr from 16Mb to get hole size
+    mov qword [rbx + mcb.owner], mcbOwnerHole   ;Memory hole
+    mov dword [rbx + mcb.blockSize], eax
+
+    add rbx, rax    ;Walk chain
+    mov byte [rbx + mcb.marker], "Z"
+    mov qword [rbx + mcb.owner],mcbOwnerFree
+    sub edx, mcb_size   ;Make space for the mcb
+    mov dword [rbx + mcb.blockSize], edx
+.mcbExit:
+    mov ah, 52h
+    int 41h
+    xchg bx, bx
 ;------------------------------------------------;
 ;          Default File Handle Creation          ;
 ;------------------------------------------------;
