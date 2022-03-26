@@ -19,6 +19,11 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     wrmsr   ;Write the new value to FS MSR
     pop rdx
 ;------------------------------------------------;
+;              Connect Debugger                  ;
+;------------------------------------------------;
+    mov eax, 0C501h ;Connect debugger
+    int 35h
+;------------------------------------------------;
 ;           Sanitise the data area               ;
 ;------------------------------------------------;
     mov ecx, dSegLen
@@ -42,6 +47,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     rep movsq
 
     int 31h ;Get number of Int 33h devices in r8b
+    shr r8, 3*8   ;Isolate byte 3 of r8
     mov byte fs:[numRemMSD], r8b    ;Save number of physical int 33h devs
     mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
     mov byte fs:[numLRemDrives], 0     ;Number of logical drives
@@ -285,9 +291,6 @@ mcbInit:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
-
-    mov eax, 0C501h ;Connect debugger
-    int 35h
 l1:
     mov ah, 01h  ;Write with echo
     int 41h
@@ -384,15 +387,14 @@ errorInit:
     lea rdx, hltmsg
     mov ah, 09h
     int 41h
-    cli ;Clear interrupts
-    mov al, -1
-    mov dx, 0A1h    ;PIC2 data
-    out dx, al      ;Mask all lines
-    mov dx, 21h     ;PIC1 data
-    out dx, al      ;Mask all lines
+    ;cli ;Clear interrupts
+    ;mov al, -1
+    ;mov dx, 0A1h    ;PIC2 data
+    ;out dx, al      ;Mask all lines
+    ;mov dx, 21h     ;PIC1 data
+    ;out dx, al      ;Mask all lines
 .ei0:
     hlt
-    pause
     jmp short .ei0
 
 ;--------------------------------

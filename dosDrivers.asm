@@ -702,7 +702,7 @@ msdDriver:
     je .msdExit ;IF we are at 5 now, we exit
     mov ah, 82h ;LBA read
     mov al, 1   ;1 sector
-    mov ecx, 0  ;Read sector 0
+    xor ecx, ecx  ;Read sector 0
     lea rbx, msdTempBuffer  ;Get address of this space
     int 33h
     jc .msdInitError
@@ -752,7 +752,8 @@ msdDriver:
 .mimbr:
 ;Goto next device without incrementing LASTDRIVE
     inc dl
-    cmp dl, byte [numRemMSD] ;Once these are equ, we have processed last dev
+    mov al, byte [numRemMSD]
+    cmp dl, al ;Once these are equ, we have processed last dev
     jne .mi0
     jmp short .msdExit
 .msdInitError:
