@@ -219,7 +219,7 @@ mcbInit:
     int 35h
     movzx ecx, cx   ;cx = # of bytes between USER_BASE and 16Mb
     movzx edx, dx   ;dx = # 64kb pages between 16Mb and 4Gb
-    shl ecx, 9h   ;Multiply by 1024 to get number of bytes
+    shl ecx, 0Ah   ;Multiply by 1024 to get number of bytes
     shl edx, 10h  ;Multiply by 65536 to get number of bytes
 ;Build the DOS segment's MCB header
     mov rbx, rbp
