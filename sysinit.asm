@@ -252,9 +252,6 @@ mcbInit:
     sub edx, mcb_size   ;Make space for the mcb
     mov dword [rbx + mcb.blockSize], edx
 .mcbExit:
-    mov ah, 52h
-    int 41h
-    xchg bx, bx
 ;------------------------------------------------;
 ;          Default File Handle Creation          ;
 ;------------------------------------------------;
