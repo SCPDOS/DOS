@@ -621,7 +621,7 @@ msdDriver:
     mov ah, 01h
     xor dl, dl  ;Work around bug that fails request if dl > 7Fh
     int 33h ;Read status of last operation
-    cmp ah, 06h ;Mock Seek response (device not present)
+    cmp ah, 80h ;Timeout/Media Not Ready response (device not present)
     mov al, 02h ;Give device not ready error (sensibly I think)
     je .msdWriteErrorCode 
     mov al, 0Ch ;Preliminary General Error Faults
