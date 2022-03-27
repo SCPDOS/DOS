@@ -172,7 +172,7 @@ endstruc
     charDevNulDev   equ 4h  ;If set, device is NULL device
     charDevClockDev equ 8h  ;If set, device is CLOCK device
     charDevFastOut  equ 10h ;If set, device supports INT 49h
-    charDevBinary   equ 20h ;If set, read in Binary mode!!!
+    devBinary       equ 20h ;If set, read device in Binary mode!!!
     charDevNoEOF    equ 40h ;If set, no EOF on input!!
     blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
     devCharDev      equ 80h ;If set, it is a char device!

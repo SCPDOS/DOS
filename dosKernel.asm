@@ -35,76 +35,7 @@ criticalDOSError:
     mov byte [critErrFlag], 0   ;Clear critical error flag
     sti ;Reenable Interrupts
     ret
-findLRUBuffer: 
-;Finds first free or least recently used buffer, links it and returns ptr to it 
-; in rbx
-;Input: Nothing
-;Output: rbx = Pointer to the buffer hdr to use
-    push rdx
-    mov rbx, qword [bufHeadPtr]
-    cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
-    je .flbExit 
-    cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
-    je .flbExit
-.flbWalk:
-    mov rdx, rbx    ;Save a ptr to the previous buffer header
-    mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
-    cmp byte [rbx + bufferHdr.driveNumber], -1
-    je .flbFreeLink ;If free, link to head, and xlink prev and next buffs
-    cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
-    jne .flbWalk   ;If not LRU, keep walking, else process
-    mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
-.flbHeadLink:
-    mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
-    mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
-    mov qword [rbx + bufferHdr.nextBufPtr], rdx
-.flbExit:
-    pop rdx
-    ret
-.flbFreeLink:
-    push rcx
-    mov rcx, qword [rbx + bufferHdr.nextBufPtr]
-    mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
-    pop rcx
-    jmp short .flbHeadLink
 
-findDirtyBufferForDrive:
-;Searches the buffer chain for a dirty buffer for a given drive letter.
-;Input: dl = Drive number
-;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
-    mov rbx, qword [bufHeadPtr]
-.fdbfdCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
-    jne .fdbfdGotoNextBuffer
-    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
-    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
-.fdbfdExit:
-    ret
-.fdbfdGotoNextBuffer:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
-    je .fdbfdExit
-    jmp short .fdbfdCheckBuffer
-
-findSectorInBuffer:
-;Finds the Buffer for a sector
-;If the sector is not in a buffer, returns with a -1
-;Input: rax = Sector number
-;        dl = Drive number
-;Output: rbx = Buffer hdr pointer or -1
-    mov rbx, qword [bufHeadPtr]
-.fsiCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
-    jne .fsiGotoNextBuffer
-    cmp qword [rbx + bufferHdr.bufferLBA], rax
-    jne .fsiGotoNextBuffer
-.fsiExit:
-    ret
-.fsiGotoNextBuffer:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
-    je .fsiExit
-    jmp short .fsiCheckBuffer
 findDPB:
 ;Finds the DPB for a given drive
 ;Input:  dl = Drive number (0=A, 1=B etc...)

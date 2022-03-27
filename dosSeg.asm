@@ -61,7 +61,8 @@ sysVarsPtr:
     years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
-
+;String Stuff
+    asciiBuffer resb 255    ;Have a 255 char buffer for the ascii terminal
 ;Stacks
     critStack   resq 165
     critStakTop resq 1

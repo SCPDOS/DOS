@@ -5,8 +5,51 @@
 createFileHdl:     ;ah = 3Ch, handle function
 openFileHdl:       ;ah = 3Dh, handle function
 closeFileHdl:      ;ah = 3Eh, handle function
+    ret
 readFileHdl:       ;ah = 3Fh, handle function
+    call getSFTPtr
+    jc .rfhErrorHandle  ;Function can only fail for bad file handle
+;Here rdi points to the correct SFT 
+    mov ax, word [rdi + sft.wOpenMode]  ;Get open mode
+    test al, RWAccess  ;Check r/w permission
+    jnz .rfh2   ;Bit set, proceed
+    test al, al  ;Check read access (it is 0)
+    jnz .rfhNoPermission    ;If not zero then it is write only permission
+.rfh2:
+    ;So now read the number of bytes from the data buffers
+    mov rbx, rdi    ;Move SFT pointer into rbx
+    test byte [rbx + sft.wDeviceInfo], devBinary
+    jz .rfhASCII    ;If not set, read in ASCII
+    call readBinaryBytesFromFile
+    jc .rfCriticalError
+    jmp short .rfhExitOK
+.rfhASCII:
+    call readASCIIBytesFromFile
+    jc .rfCriticalError
+.rfhExitOK:
+    mov rdi, qword [oldRSP]
+    mov al, cl  ;Get low byte in cl
+    mov dword [rdi + callerFrame.rax], ecx  ;Save number of bytes transf.
+    ret
+.rfCriticalError:
+    ;Fail due to driver error. Invoke Int 44h if set to in SFT
+.rfhErrorHandle:
+    ;Fail due to bad file handle provided
+.rfhNoPermission:
+    ;Fail due to bad permissions
 writeFileHdl:      ;ah = 40h, handle function
+    call getSFTPtr
+    jc .wfhErrorHandle  ;Function can only fail for bad file handle
+    mov ax, word [rdi + sft.wOpenMode]  ;Get open mode
+    test ax, 3
+    jz .wfhNoPermission ;Bad permissions! No r/w or w permissions
+.wfCriticalError:
+    ;Fail due to driver error. Invoke Int 44h if set to in SFT
+.wfhErrorHandle:
+    ;Fail due to bad file handle provided
+.wfhNoPermission:
+    ;Fail due to bad permissions
+
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 movFileReadPtr:    ;ah = 42h, handle function, LSEEK
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
@@ -25,7 +68,47 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
-readBinaryByteFromFile:
+getSFTPtr:
+;Gets the SFT pointer for a given file handle from the calling application
+;On entry:
+;   bl = File handle
+;On exit:
+;   rsi = currentPSP
+;   rdi = SFT pointer
+;   rax, rbx trashed
+    mov rsi, qword [currentPSP]
+    movzx rbx, bl
+    mov bl, byte [rsi + psp.jobFileTbl + rbx]   ;Use jft entry to get sft num
+    xor eax, eax
+    mov rdi, qword [sftHeadPtr]
+.gsp0:
+    add ax, word [rdi + sfth.wNumFiles]
+    cmp al, bl  ;Check if the file header block contains the entry
+    jbe .gsp1   ;IF bl is below or equal to al then it does
+    cmp rdi, -1 ;End of list
+    je .gspFail   ;If we have a number greater than the last entry, fail
+    mov rdi, qword [rdi + sfth.qNextSFTPtr] ;Walk the chain
+    jmp short .gsp0 ;Search again
+.gsp1: 
+    ;Now point to the right entry
+    sub al, bl  ;Subtract the number from the total so far to get offset
+    movzx eax, al
+    add rdi, sfth_size  ;Point to first file in table
+    test al, al ;Check if rdi points to the first file in this block
+    jz .gsp12   ;Skip walking down the sft blocks
+.gsp11:
+    add rdi, sft_size
+    dec al
+    jnz .gsp11  ;Keep adding one until al is zero
+.gsp12:
+    ret
+.gspFail:
+    stc
+    ret
+
+readASCIIBytesFromFile:
+    ret
+readBinaryBytesFromFile:
 ;Reads a byte from a SFT entry, does not translate it. 
 ;Read or RW permissions are checked at the INT 41h level
 ;Entry: rbx = SFT entry pointer
@@ -33,7 +116,7 @@ readBinaryByteFromFile:
 ;       ecx = Number of bytes to read
 ;Exit: If CF = NC : All ok!
 ;       rbx = SFT entry pointer
-;       al = 8 bit binary value read from device/file
+;       ecx = Number of chars read/written
 ;      If CF = CY : Error!
 ;       rbx = SFT entry pointer
 ;       al = Error code to ret if user returns fail from int 44h or no int 44h
@@ -41,14 +124,15 @@ readBinaryByteFromFile:
 ; !!! Use the disk request header for all file handle IO !!!
 ;
     test word [rbx + sft.wDeviceInfo], devCharDev
-    jnz .readBinaryByteFromCharDevice
-.readBinaryByteFromHardFile:
+    jnz .readBinaryBytesFromCharDevice
+.readBinaryBytesFromHardFile:
 ;Disk files are accessed from here
 ;Use the sector buffers if the data is already buffered,
 ; else use the dpb to fill a sector buffer
 
 
-.readBinaryByteFromCharDevice:
+
+.readBinaryBytesFromCharDevice:
 ;Devices are accessed from here
     mov rbp, qword [rbx + sft.qPtr] ;Get device driver header pointer
     push rbx
@@ -64,6 +148,6 @@ readBinaryByteFromFile:
     mov eax, dword [rbx + ioReqPkt.tfrlen] ;Get number of bytes read
     test word [rbx + ioReqPkt.status], 8000h    ;Test the error bit is set
     pop rbx
-    jz .readBinaryByteExitGood  ;Error bit not set, all good!
-.readBinaryByteExitGood:
+    jz .readBinaryBytesExitGood  ;Error bit not set, all good!
+.readBinaryBytesExitGood:
     ret
