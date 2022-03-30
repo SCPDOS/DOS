@@ -210,6 +210,32 @@ storageInits:
 ;Remember to now place a -1 in the qNextDPBPtr field 
     mov qword [rbp + dpb.qNextDPBPtr], -1
     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
+;------------------------------------------------;
+;                 Temp CDS inits                 ;
+;------------------------------------------------;
+tempCDS:
+;Build a temporary CDS for Drive A to use it for booting
+    lea rdi, initCDS
+    mov ecx, 67 ;Buffer length
+    xor eax, eax
+    mov rbx, rdi    ;Save CDS pointer in rbx
+    rep stosb   ;Zero out the path string
+    mov rdi, rbx
+    mov al, "A"
+    stosb
+    mov al, ":"
+    stosb
+    mov al, "\"
+    stosb
+    mov rdi, rbx
+    mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
+    mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
+    mov qword [rdi + cds.qDPBPtr], rbx
+    mov word [rdi + cds.wBackslashOffset], 2    ;Skip the A:
+    ;On FAT12/16, startcluster = 0 => Root Dir Sector
+    ;On FAT32, startcluster = 0 => Alias for root cluster
+    mov dword [rdi + cds.dStartCluster], eax    ;eax was zeroed before
+
 
 ;------------------------------------------------;
 ;                   MCB inits                    ;

@@ -13,10 +13,15 @@ thirdSft        resb sft_size
 fourthSft       resb sft_size
 fifthSft        resb sft_size
 
-;Create a five drive CDS here so we can jettison it if config wants more
-initCDS         resb 5*cds_size 
-;Always jettison this space
 DOSENDPTR:   ;Points to the end of the initially reserved DOS area
+;Always jettison this space
+
+;Create a one drive CDS to keep track of drive A's current dir
+;Replace once CONFGI.SYS has been read
+initCDS         resb cds_size 
+
+
 tmpBufHdr       resb bufferHdr_size
-msdTempBuffer   resb 512    ;Reserve one sectors worth of space
+msdTempBuffer   resb 4096    ;Reserve one (MAX) sectors' worth of space
+;This buffer is used as a temp read buffer by the MSDdriver directly (no header)
 dynamicDataAreaLength equ $

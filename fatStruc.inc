@@ -4,6 +4,16 @@
 ; structures. exFAT will have it's own files at a later ;
 ; stage.                                                ;
 ;-------------------------------------------------------;
+;-------------------------------------------------------;
+;-------------------------------------------------------;
+;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
+;   REMEMBER, CLUSTER NUMBERS START AT 2!               ;
+;   THE FIRST DATA CLUSTER ON A DISK IS CLUSTER 2!!!    ;
+;   ON FAT12/16, A CLUSTER NUMBER OF 0 MEANS ROOT DIR!  ;
+;   ON FAT32, A CLUSTER NUMBER OF 0 ALIASES THE FIRST   ;
+;       CLUSTER OF THE ROOT DIRECTORY!!                 ;
+;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
+;-------------------------------------------------------;
 
 struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
 
