@@ -49,7 +49,50 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[numRemMSD], r8b    ;Save number of physical int 33h devs
     mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
     mov byte fs:[numLRemDrives], 0     ;Number of logical drives
+;------------------------------------------------;
+;          Kernel inits and adjustments          ;
+;------------------------------------------------;
+;Adjust Int 41h address table
+adjInt41h:
+    mov ecx, kernelDispatchTableL/8 ;Number of elements in table
+    mov rbx, kernelDispatchTable ;Get EA of table
+    lea rbx, qword [rbp+rbx]    ;Point to the start of the relocated table 
+.ai41h:
+    add qword [rbx], rbp    ;Add base address value to entry in reloc table
+    add rbx, 8              ;Each entry is size 8
+    dec ecx
+    jnz .ai41h  ;Keep looping until all entries have been adjusted
 
+;Adjust Interrupt Entries Int 40h-49h
+adjInts:
+    mov bl, 40h
+    mov eax, 0F007h ;Get the descriptor
+    int 35h
+    mov ecx, 40h    ;Start from interrupt 40h
+    lea rdi, intData
+    mov esi, eax    ;Move segment selector info to esi
+.ai0:
+    mov eax, 0F008h ;Set the descriptor
+    mov rbx, qword [rdi]    ;Get address pointed to by rdi
+    add rbx, rbp            ;Add the relocated base to rbx
+.ai1:
+    int 35h
+    add rdi, 8
+    inc ecx
+    cmp ecx, 4Ah
+    jne .ai0
+
+;++++++++++++++++++++++++++++++++++++++++++++++++;
+;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
+;++++++++++++++++++++++++++++++++++++++++++++++++;
+
+;Now adjust int 42h 43h and 44h correctly using DOS
+    lea rdx, errorInit ;Get segment start address
+    mov eax, 2542h  ;Int 42, set vector
+    int 41h
+    lea rdx, errorInit ;Get segment start address
+    mov eax, 2544h
+    int 41h
 ;------------------------------------------------;
 ;          Find largest sector size              ;
 ;------------------------------------------------;
@@ -120,38 +163,6 @@ conInit:    ;Rather than keeping this resident... do it here
     ;Save ptr to ClkHdr in Sysvars
     lea rax, qword [rbp + clkHdr]
     mov qword fs:[clockPtr], rax
-
-;------------------------------------------------;
-;          Kernel inits and adjustments          ;
-;------------------------------------------------;
-;Adjust Int 41h address table
-adjInt41h:
-    mov ecx, kernelDispatchTableL/8 ;Number of elements in table
-    mov rbx, kernelDispatchTable ;Get EA of table
-    lea rbx, qword [rbp+rbx]    ;Point to the start of the relocated table 
-.ai41h:
-    add qword [rbx], rbp    ;Add base address value to entry in reloc table
-    add rbx, 8              ;Each entry is size 8
-    dec ecx
-    jnz .ai41h  ;Keep looping until all entries have been adjusted
-
-;Adjust Interrupt Entries Int 40h-49h
-adjInts:
-    mov bl, 40h
-    mov eax, 0F007h ;Get the descriptor
-    int 35h
-    mov ecx, 40h    ;Start from interrupt 40h
-    lea rdi, intData
-    mov esi, eax    ;Move segment selector info to esi
-.ai0:
-    mov eax, 0F008h ;Set the descriptor
-    mov rbx, qword [rdi]    ;Get address pointed to by rdi
-    add rbx, rbp            ;Add the relocated base to rbx
-    int 35h
-    add rdi, 8
-    inc ecx
-    cmp ecx, 4Ah
-    jne .ai0
 
 ;------------------------------------------------;
 ;         Link DOS to temporary Buffer           ;
@@ -420,12 +431,6 @@ mcbInit:
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
 
-;Test Error Case
-    mov ah, 00110000b
-    mov al, 00h
-    mov edi, 0Ch
-    int 44h
-
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
@@ -522,6 +527,7 @@ adjustDrvHdr:
     ret
 errorInit:
 ;If a critical error occurs during sysinit, fail through here
+;Int 42h, 43h and 44h point here during sysinit
     lea rdx, hltmsg
     mov ah, 09h
     int 41h
@@ -546,9 +552,9 @@ prnName db "PRN",0
 intData:
     dq terminateProcess ;Int 40h
     dq functionDispatch ;Int 41h
-    dq terminateHandler ;Int 42h
-    dq ctrlCHandler     ;Int 43h
-    dq critErrorHandler ;Int 44h
+    dq errorInit        ;Int 42h, If sysinit terminates, halt system
+    dq ctrlCHandler     ;Int 43h, ignore any CTRL+C during init
+    dq errorInit        ;Int 44h, If critical error in sysinit, halt system
     dq absDiskRead      ;Int 45h
     dq absDiskWrite     ;Int 46h
     dq terminateResident    ;Int 47h
