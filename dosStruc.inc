@@ -305,12 +305,12 @@ struc psp
     .jobFileTbl resb 20 ;Main File handle array, JFT
     .envPtr     resq 1  ;Pointer to the environment
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
-    .xtraHdlSz  resw 1  ;Additional File Handle array size
+    .xtraHdlSz  resw 1  ;Additional File Handle array size, 0 by default
     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain
-    .xtraHdlNum resb 1  ;Lookup number of extra handle array.
+    .xtraHdlNum resb 1  ;Lookup number of extra handle array, -1 = unused
 ;Extra handle arrays are grouped into a linked list
-;These are in the same place as in DOS
+;The below are in the same place as in DOS
     .fcb1       resb 16  ;First FCB
     .fcb2       resb 20  ;Second FCB
     .dta:   ;Pointer to the default DTA in the PSP

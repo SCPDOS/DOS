@@ -247,12 +247,7 @@ tempCDS:
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
-    lea rbx, qword [tempPSP]
-    mov qword fs:[currentPSP], rbx    ;Save current PSP
-    push rbx
-    add rbx, psp.dta
-    mov qword fs:[currentDTA], rbx    ;Save current DTA
-    pop rbx
+    ;Additional DOS Vars init
     xor eax, eax
     mov byte fs:[currentDrv], al ;Current Drive = Drive A
     mov byte fs:[breakFlag], al  ;Break off
@@ -262,6 +257,37 @@ tempCDS:
     mov byte fs:[inDOS], al      ;Not in DOS
     mov byte fs:[errorDrv], -1   ;No error drive
     mov word fs:[lastRetCode], ax   ;Last return code is 0, no error
+
+    ;SYSVARS PSP Init
+    lea rbx, qword [tempPSP]
+    mov qword fs:[currentPSP], rbx    ;Save current PSP
+    push rbx
+    add rbx, psp.dta
+    mov qword fs:[currentDTA], rbx    ;Save current DTA
+    pop rbx
+    mov word [rbx + psp.return], 0CD40h ;DOS return function
+    mov dword [rbx + psp.unixEntry], 0CD40CB00h  ;Last byte overlaied
+    mov qword [rbx + psp.startSeg], rbx ;Save start segment of app
+    mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
+    mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
+    xor eax, eax
+    lea rdi, qword [rbx + psp.jobFileTbl]
+    stosq   ;8 bytes
+    stosq   ;16 bytes
+    stosd   ;20 bytes
+    mov qword [rbx + psp.envPtr], -1    ;No environment
+    mov word [rbx + psp.xtraHdlSz], ax  ;No size
+    mov byte [rbx + psp.xtraHdlNum], -1 ;Unused
+    mov rdx, rbx
+    mov eax, 3542h  ;Get pointer for Int 42h in rbx
+    int 41h
+    mov qword [rdx + psp.oldInt42h], rbx
+    mov eax, 3543h
+    int 41h
+    mov qword [rdx + psp.oldInt43h], rbx
+    mov eax, 3544h
+    int 41h
+    mov qword [rdx + psp.oldInt44h], rbx
 ;------------------------------------------------;
 ;          Default File Handle Creation          ;
 ;------------------------------------------------;
