@@ -281,9 +281,10 @@ tempCDS:
     mov qword [rbx + psp.startSeg], rbx ;Save start segment of app
     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
     mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
-    xor eax, eax
     lea rdi, qword [rbx + psp.jobFileTbl]
+    mov rax, 0000000201000000h  ;Store default handles in JFT
     stosq   ;8 bytes
+    xor eax, eax
     stosq   ;16 bytes
     stosd   ;20 bytes
     mov qword [rbx + psp.envPtr], -1    ;No environment
