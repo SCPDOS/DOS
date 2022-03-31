@@ -307,7 +307,8 @@ defaultFileHandles:
     mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-    mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|devCharDev
+    mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
+    ;No EOF when reading from the device
     mov rax, qword fs:[conPtr]  ;Get pointer to CON device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
@@ -326,7 +327,7 @@ defaultFileHandles:
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
     mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
-    ;No EOF when writing to the device
+    ;No EOF when reading from the device
     mov rax, qword [rbp + auxHdr]  ;Get pointer to AUX device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
@@ -344,8 +345,8 @@ defaultFileHandles:
     mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-    mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
-    ;No EOF when writing to the device
+    mov byte [rbx + sft.wDeviceInfo], devCharDev 
+    ;Want EOF when reading from to the device
     mov rax, qword [rbp + prnHdr]  ;Get pointer to PRN device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
