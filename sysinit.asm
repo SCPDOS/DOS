@@ -36,8 +36,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
-    lea rdx, tempPSP    ;Get the address of the tempPSP
-    mov qword fs:[currentPSP], rdx
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov rbp, rdi    ;Save the start of dosSeg in rdx 
@@ -156,15 +154,24 @@ adjInts:
     jne .ai0
 
 ;------------------------------------------------;
+;         Link DOS to temporary Buffer           ;
+;------------------------------------------------;
+tempBufferInit:
+    lea rdi, qword [rbp + tmpBufHdr]
+    mov qword fs:[bufHeadPtr], rdi  ;Save pointer to temp buffer "list"
+    xor eax, eax
+    dec rax
+    stosq   ;.nextBufPTr, end of list
+    stosb   ;.driveNumber, Free entry
+    inc rax
+    stosb   ;.bufferFlags, No flags
+;------------------------------------------------;
 ;         Init msd driver, create DPB            ;
 ;------------------------------------------------;
 storageInits:
-;First save dpb and cds pointer in sysvars
+;First save dpb pointer in sysvars
     lea rbx, qword [rbp + firstDPB]
     mov qword fs:[dpbHeadPtr], rbx
-    lea rbx, qword [rbp + initCDS]
-    mov qword fs:[cdsHeadPtr], rbx
-
 ;Open Mass Storage
     lea rbx, qword [rbp + diskReqHdr]
     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
@@ -215,7 +222,8 @@ storageInits:
 ;------------------------------------------------;
 tempCDS:
 ;Build a temporary CDS for Drive A to use it for booting
-    lea rdi, initCDS
+    lea rdi, qword [rbp + initCDS]
+    mov qword fs:[cdsHeadPtr], rdi
     mov ecx, 67 ;Buffer length
     xor eax, eax
     mov rbx, rdi    ;Save CDS pointer in rbx
@@ -233,10 +241,109 @@ tempCDS:
     mov qword [rdi + cds.qDPBPtr], rbx
     mov word [rdi + cds.wBackslashOffset], 2    ;Skip the A:
     ;On FAT12/16, startcluster = 0 => Root Dir Sector
-    ;On FAT32, startcluster = 0 => Alias for root cluster
+    ;On FAT32, startcluster = 0 => Alias for root cluster. 
+    ;   Read dpb.dFirstUnitOfRootDir for first cluster of root dir
     mov dword [rdi + cds.dStartCluster], eax    ;eax was zeroed before
-
-
+;------------------------------------------------;
+;     Set up general PSP areas and DOS vars      ;
+;------------------------------------------------;
+    lea rbx, qword [tempPSP]
+    mov qword fs:[currentPSP], rbx    ;Save current PSP
+    push rbx
+    add rbx, psp.dta
+    mov qword fs:[currentDTA], rbx    ;Save current DTA
+    pop rbx
+    xor eax, eax
+    mov byte fs:[currentDrv], al ;Current Drive = Drive A
+    mov byte fs:[breakFlag], al  ;Break off
+    mov byte fs:[verifyFlag], al ;Write only
+    mov byte fs:[singleDrv], al  ;Only used on single drive systems
+    mov byte fs:[critErrFlag], al   ;Not in critical error
+    mov byte fs:[inDOS], al      ;Not in DOS
+    mov byte fs:[errorDrv], -1   ;No error drive
+    mov word fs:[lastRetCode], ax   ;Last return code is 0, no error
+;------------------------------------------------;
+;          Default File Handle Creation          ;
+;------------------------------------------------;
+defaultFileHandles:
+;Fill in the default file table entries
+    lea rbx, qword [rbp + firstSftHeader]
+    mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
+    mov word [rbx + sfth.wNumFiles], 5      ;5 default files
+    mov qword fs:[sftHeadPtr], rbx  ;Save ptr to this sft header in SysVars
+;GOTO FIRST FILE 
+    add rbx, sfth_size  ;Goto first driver
+;Write CON
+    mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+    mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+    mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|devCharDev
+    mov rax, qword fs:[conPtr]  ;Get pointer to CON device
+    mov qword [rbx + sft.qPtr], rax
+    ;Ignore disk related fields and Date/Time of open
+    mov rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    lea rsi, qword [.dfhCon]
+    ;11 chars in 8.3 name
+    movsq   ;8 chars
+    movsw   ;10 chars
+    movsb   ;11 chars
+    mov rax, qword fs:[currentPSP]  ;Get current PSP
+    mov qword [rbx + sft.qPSPOwner], rax
+;GOTO NEXT ENTRY
+    add rbx, sft_size   ;Goto next SFT
+;Write AUX
+    mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+    mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+    mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
+    ;No EOF when writing to the device
+    mov rax, qword [rbp + auxHdr]  ;Get pointer to AUX device
+    mov qword [rbx + sft.qPtr], rax
+    ;Ignore disk related fields and Date/Time of open
+    mov rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    lea rsi, qword [.dfhAux]
+    ;11 chars in 8.3 name
+    movsq   ;8 chars
+    movsw   ;10 chars
+    movsb   ;11 chars
+    mov rax, qword fs:[currentPSP]  ;Get current PSP
+    mov qword [rbx + sft.qPSPOwner], rax
+;GOTO NEXT ENTRY
+    add rbx, sft_size   ;Goto next SFT
+;Write PRN
+    mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+    mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+    mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
+    ;No EOF when writing to the device
+    mov rax, qword [rbp + prnHdr]  ;Get pointer to PRN device
+    mov qword [rbx + sft.qPtr], rax
+    ;Ignore disk related fields and Date/Time of open
+    mov rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    lea rsi, qword [.dfhPrn]
+    ;11 chars in 8.3 name
+    movsq   ;8 chars
+    movsw   ;10 chars
+    movsb   ;11 chars
+    mov rax, qword fs:[currentPSP]  ;Get current PSP
+    mov qword [rbx + sft.qPSPOwner], rax
+    jmp short .dfhExit
+.dfhCon db "CON        "
+.dfhAux db "AUX        "
+.dfhPrn db "PRN        "
+.dfhExit:
+;------------------------------------------------;
+;               Load CONFIG.SYS                  ;
+;------------------------------------------------;
+;------------------------------------------------;
+;              Process CONFIG.SYS                ;
+;------------------------------------------------;
+;------------------------------------------------;
+;       Load User Drivers from CONFIG.SYS        ;
+;------------------------------------------------;
+;------------------------------------------------;
+;                 Create a CDS                   ;
+;------------------------------------------------;
 ;------------------------------------------------;
 ;                   MCB inits                    ;
 ;------------------------------------------------;
@@ -278,29 +385,6 @@ mcbInit:
     sub edx, mcb_size   ;Make space for the mcb
     mov dword [rbx + mcb.blockSize], edx
 .mcbExit:
-;------------------------------------------------;
-;          Default File Handle Creation          ;
-;------------------------------------------------;
-
-;Fill in the default file table entries
-    ;lea rbx, qword [rbp + firstSftHeader]
-    ;mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
-    ;mov word [rbx + sfth.wNumFiles], 5      ;5 default files
-    ;mov qword fs:[sftHeadPtr], rbx  ;Save ptr to this sft header in SysVars
-
-    ;lea rbx, qword [rbp + firstSft]
-    ;mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
-    ;mov word [rbx + sft.w]
-
-;------------------------------------------------;
-;               Load CONFIG.SYS                  ;
-;------------------------------------------------;
-;------------------------------------------------;
-;              Process CONFIG.SYS                ;
-;------------------------------------------------;
-;------------------------------------------------;
-;                 Create a CDS                   ;
-;------------------------------------------------;
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
 ;------------------------------------------------;

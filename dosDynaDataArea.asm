@@ -1,10 +1,3 @@
-;Create DPB chain of first 5 available DPB slots
-firstDPB        resb dpb_size
-secondDPB       resb dpb_size
-thirdDPB        resb dpb_size
-fourthDPB       resb dpb_size
-fifthDPB        resb dpb_size 
-
 ;Create SFT header and corresponding array of five default sft entries
 firstSftHeader  resb sfth_size
 firstSft        resb sft_size
@@ -13,8 +6,15 @@ thirdSft        resb sft_size
 fourthSft       resb sft_size
 fifthSft        resb sft_size
 
+;Create DPB chain of first 5 available DPB slots
+;The bottom three DPB's are jettisonable if the devices dont exist!
+firstDPB        resb dpb_size
+secondDPB       resb dpb_size
 DOSENDPTR:   ;Points to the end of the initially reserved DOS area
 ;Always jettison this space
+thirdDPB        resb dpb_size
+fourthDPB       resb dpb_size
+fifthDPB        resb dpb_size 
 
 ;Create a one drive CDS to keep track of drive A's current dir
 ;Replace once CONFGI.SYS has been read

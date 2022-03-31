@@ -172,7 +172,7 @@ endstruc
     charDevNulDev   equ 4h  ;If set, device is NULL device
     charDevClockDev equ 8h  ;If set, device is CLOCK device
     charDevFastOut  equ 10h ;If set, device supports INT 49h
-    devBinary       equ 20h ;If set, read device in Binary mode!!!
+    devBinary       equ 20h ;If set, r/w device in Binary mode!!!
     charDevNoEOF    equ 40h ;If set, no EOF on input!!
     blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
     devCharDev      equ 80h ;If set, it is a char device!
@@ -204,7 +204,7 @@ struc bufferHdr
     .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
     .reserved    resb  1   ;Alignment byte
-    .dataarea    resb  1   ;The size here changes wrt sector size!
+    .dataarea:             ;Points to the start of the data area
 endstruc
 ;Buffer Flag equates
     dosBuffer   equ 1h  ;DOS data sector in buffer
@@ -221,6 +221,7 @@ struc mcb
     .owner      resq 1  ;Owning application PSP or 0 for free space
     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
     .reserved   resb 3  ;Reserved three bytes
+    .program:
 endstruc
 ;MCB equates
 mcbOwnerHole    equ -1  ;Owner = -1 => Memory hole
@@ -274,9 +275,28 @@ endstruc
     pop r8
     pop r9
 %endmacro
+struc fcb
+;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
+    .driveNum   resb 1
+    .filename   resb 8
+    .fileext    resb 3
+    .curBlock   resb 2  ;Current block number relative to 0
+;One block consists of 128 records, of size denoted in the below
+    .recordSize resb 2  ;Record size, default 80h
+    .fileSize   resb 4  ;File size, in bytes
+    .fileDate   resb 2  ;Standard date format
+    .fileTime   resb 2  ;Standard time format
+    .fcbByte    resb 1  ;Res. byte, bit7 = Logical drive, bit 6 = open file
+    .cluster    resb 4  ;Res. dword, Current Cluster number on disk
+    .reserved   resb 3  ;Res. 3 alignment bytes
+    .recordNum  resb 1  ;Current record in block
+    .randRecrd  resb 4  ;Relative record number, relative to start of file
+    ;If record size > 64, high byte is ignored.
+    ;Used for random read and write operations to find the right record
+endstruc
 
 struc psp
-    .return     resb 2  ;Should always be CDh 40h
+    .return     resb 2  ;Should always be CDh 40h, same place as DOS
     .startSeg   resq 1  ;Pointer to the start of the PSP
     .oldInt42h  resq 1  ;Int 42h pointer on overlay load
     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
@@ -286,21 +306,16 @@ struc psp
     .envPtr     resq 1  ;Pointer to the environment
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
     .xtraHdlSz  resw 1  ;Additional File Handle array size
-    .unixEntry  resb 3  ;Must always be CDh 41h CBh
+    .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain
-    .xtraHdlPtr resq 1  ;Pointer to the extra handle array if needed
-    .fcbPtr1    resq 1  ;Pointer to the first OS allocated FCB
-    .reserved   resb 21
-    .charCount  resb 1  ;Number of characters in command tail
+    .xtraHdlNum resb 1  ;Lookup number of extra handle array.
+;Extra handle arrays are grouped into a linked list
+;These are in the same place as in DOS
+    .fcb1       resb 16  ;First FCB
+    .fcb2       resb 20  ;Second FCB
+    .dta:   ;Pointer to the default DTA in the PSP
+    .parmList   resb 1   ;Number of characters in command tail
     .progTail   resb 127 ;Default DTA/Program tail
-endstruc
-
-struc mcb
-    .mzbyte     resb 1  ;M=In use, Z=Free
-    .processPtr resq 1  ;Points to the start of the process PSP
-    .paragraphs resd 1  ;Gives the number of paras allocated to this process
-    .reserved   resb 3
-    .program:
 endstruc
 
 struc clkStruc

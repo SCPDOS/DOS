@@ -17,7 +17,7 @@ sysVarsPtr:
     conPtr      resq 1    ;Pointer to the current active CON device header  x
     ;                    The last driver loaded with the STDIN bit[0] set
     maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
-    bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain
+    bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain x
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
@@ -26,26 +26,26 @@ sysVarsPtr:
     nulDevHdr   resb drvHdr_size
 
 ;Start of Swappable Data Area, this bit can remain static
-    critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h
-    inDOS       resb 1  ;Inc on each DOS call, dec when leaving
-    errorDrv    resb 1  ;Drive on which error occured or FFh
+    critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
+    inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
+    errorDrv    resb 1  ;Drive on which error occured or FFh x
     errorLocus  resb 1  ;Where the error took place  
     errorExt    resw 1  ;Extended Error Code
     errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
 
-    currentDTA  resq 1  ;Address of the current DTA
-    currentPSP  resq 1  ;Address of current PSP
+    currentDTA  resq 1  ;Address of the current DTA x
+    currentPSP  resq 1  ;Address of current PSP x
     rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this di)
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
-    lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch
-    currentDrv  resb 1  ;Default drive
-    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls
-    verifyFlag  resb 1  ;If set, writes are replaces with write/verify
+    lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch x
+    currentDrv  resb 1  ;Default drive x
+    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
+    verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
 ;SDA, needs to be replaced between processes
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
-    singleDrv   resb 1  
+    singleDrv   resb 1  ;Set if last drive accessed was drive B x
 ;This is done to allow for DOS to give the user a change to swap devices
 
     Int44RetVal resb 1  ;Saves a copy of the Int 44 return value
