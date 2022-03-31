@@ -288,6 +288,10 @@ tempCDS:
     mov eax, 3544h
     int 41h
     mov qword [rdx + psp.oldInt44h], rbx
+
+    mov ecx, psp_size - psp.fcb1    ;Clear the dta and fcb space
+    lea rdi, qword [rdx + psp.fcb1] ;Point to fcb1
+    rep stosb   ;Clear DTA and FCBs
 ;------------------------------------------------;
 ;          Default File Handle Creation          ;
 ;------------------------------------------------;
