@@ -122,9 +122,7 @@ readBinaryBytesFromFile:
 ;      If CF = CY : Error!
 ;       rbx = SFT entry pointer
 ;       al = Error code to ret if user returns fail from int 44h or no int 44h
-;
-; !!! Use the disk request header for all file handle IO !!!
-;
+
     test word [rbx + sft.wDeviceInfo], devCharDev
     jnz .readBinaryBytesFromCharDevice
 .readBinaryBytesFromHardFile:
@@ -134,21 +132,37 @@ readBinaryBytesFromFile:
     push rbx
     mov r8, rbx                     ;Use r8 as sft pointer
     mov r9, qword [r8 + sft.qPtr]   ;Use r9 as dpb pointer
-;Compute the number of sectors to read at max size and the 
-; remaining number of sectors to 
-    movzx eax, byte [r9 + dpb.bBytesPerSectorShift]
-    mov ecx, 1
-    xchg ecx, eax
-    shl eax, cl ;Shift left to turn into number of bytes per sector
+    ;First compute the number of bytes to read for the current sector
+    ;Compute how many bytes in a sector
+    mov cl, byte [r9 + dpb.bBytesPerSectorShift]
+    mov eax, 1
+    shl eax, cl
+    mov ecx, eax    ;ecx has bytes per sector
+    mov rax, qword [rbp + callerFrame.rcx]  ;Get total number of bytes
     xor edx, edx
-    mov ecx, dword [rbp + callerFrame.rcx]  ;Get # of bytes to read
-    xchg eax, ecx   ;Swap num bytes per sector <-> num bytes to read
-    div ecx 
-;eax = Number of sectors to read in entirety
-;ecx = Number of bytes per sector
-;edx = Number of bytes to read in last sector 
-    pop rbx
+    mov qword [rbp + callerFrame.rcx], rdx  ;Zero this field
+    div ecx ;Divide by number of bytes per sector
+    xchg ecx, edx    ;Get "in current sector remainder of bytes" in ecx
+                     ;and bytes per sector in edx
+    mov eax, dword [r8 + sft.dAbsClusr]  ;Get cluster number
+    call getStartSectorOfCluster
+    movzx ebx, word [r8 + sft.wRelSect] ;Add the offset into the cluster
+    add eax, ebx    ;eax now has the sector number
+    mov rsi, r9 ;Move dpb pointer into rsi
+    xor rdi, rdi
+    mov edi, ecx    ;Save in current sector remainder of bytes in edi
+    mov cl, dataBuffer
+    call readBuffer ;Read the data
+    jc .readBinaryBytesFromHardFileError
+    add rbx, bufferHdr.dataarea
+    mov rsi, rbx
+    mov rcx, rdi    ;Get the number of bytes to read in this sector to rbx
+    mov rdi, qword [rbp + callerFrame.rdx]  ;Point to destination
+    add qword [rbp + callerFrame.rcx], rcx
+    rep movsb   ;Move the bytes from this sector
 
+    pop rbx
+.readBinaryBytesFromHardFileError:
 
 .readBinaryBytesFromCharDevice:
 ;Devices are accessed from here

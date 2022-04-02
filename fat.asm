@@ -70,7 +70,20 @@ clust2FATEntry:
     pop rcx ;Pop the FAT type back into rcx
     pop rbx
     ret
-
+getStartSectorOfCluster:
+;Input: eax = Cluster Number
+;       r9 = dpb pointer
+;Output: eax = Starting Sector number for cluster
+;Gives the data sector we are at in the current cluster
+;Start Sector = (ClusterNumber - 2)*SecPerClust + DataAreaStartSector
+    push rcx
+    sub eax, 2
+    mov cl, byte [r9 + dpb.bSectorsPerClusterShift]
+    shl eax, cl
+    add eax, [r9 + dpb.dClusterHeapOffset]
+    ;eax now has the first sector of the current cluster
+    pop rcx
+    ret
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
@@ -79,7 +92,7 @@ getNextSectorOfFile:
 ;Input: r8 = sft pointer
 ;       r9 = dpb pointer
 ;Output:
-;       rbx = Pointer to buffer header
+;       rbx = Pointer to buffer data
 ;       CF = NC, buffer OK to read
 ;       CF = CY, buffer not ok, something went wrong
 ;           ZF = ZE(1), Data not flushed to disk
@@ -94,20 +107,15 @@ getNextSectorOfFile:
     ;Check if we need to go to next cluster
     mov ax, word [r8 + sft.wRelSect]    ;Upper byte is ALWAYS 0
     cmp al, byte [r9 + dpb.bMaxSectorInCluster]
-    je .goToNextCluster
+    je .gotoNextCluster
     ;Goto next sector
     inc word [r8 + sft.wRelSect]    ;Goto next sector in cluster
 .getSector:
-    ;Current Sector = (ClusterNumber - 2)*SecPerClust + DataAreaStartSector
     mov eax, dword [r8 + sft.dAbsClusr] ;Get cluster number
-    sub eax, 2
-    mov cl, byte [r9 + dpb.bSectorsPerClusterShift]
-    shl eax, cl
-    add eax, [r9 + dpb.dClusterHeapOffset]
-    ;eax now has the first sector of the current cluster
+    call getStartSectorOfCluster
     movzx ebx, word [r8 + sft.wRelSect] ;Get relative sector number
-    add eax, ebx
     ;eax now has the correct sector in the cluster
+    add eax, ebx    
     ;Read the sector into a buffer
     ;The sector read here is either DATA or DOS
     lea rsi, qword [r8 + sft.sFileName]
@@ -126,6 +134,7 @@ getNextSectorOfFile:
     mov rsi, r9
     call readBuffer
     jc .getSectorFailed
+    add rbx, bufferHdr.dataarea ;Goto data area
 .getSectorExit:
     pop rdi
     pop rsi
@@ -144,7 +153,7 @@ getNextSectorOfFile:
     stc ;Set the carry flag!
     jmp short .getSectorExit
 
-.goToNextCluster:
+.gotoNextCluster:
     ;Read FAT, find next cluster in cluster map, update SFT entries
     mov eax, dword [r8 + sft.dAbsClusr] ;Get the current cluster
     mov rsi, r9 ;Move dpb pointer into rsi, eax has cluster number
