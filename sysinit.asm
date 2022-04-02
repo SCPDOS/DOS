@@ -316,7 +316,7 @@ defaultFileHandles:
 ;GOTO FIRST FILE 
     add rbx, sfth_size  ;Goto first driver
 ;Write CON
-    mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    mov word [rbx + sft.wNumHandles], 3 ;Sysinit stdin/out/err
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
     mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
@@ -335,7 +335,7 @@ defaultFileHandles:
 ;GOTO NEXT ENTRY
     add rbx, sft_size   ;Goto next SFT
 ;Write AUX
-    mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdaux
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
     mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
@@ -354,7 +354,7 @@ defaultFileHandles:
 ;GOTO NEXT ENTRY
     add rbx, sft_size   ;Goto next SFT
 ;Write PRN
-    mov word [rbx + sft.wNumHandles], 0 ;Nothing pointing to this file yet
+    mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdprn
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
     mov byte [rbx + sft.wDeviceInfo], devCharDev 

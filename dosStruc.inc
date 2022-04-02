@@ -131,7 +131,7 @@ struc sft
     .wDate       resw 1    ;File Date
     .dFileSize   resd 1    ;File Size, in bytes
     .dCurntOff   resd 1    ;Current Offset in file, in bytes
-    .wRelSect    resw 1    ;Rel sector in file of the last cluster accessed
+    .wRelSect    resw 1    ;Rel sector in the last cluster accessed
     .dDirSect    resd 1    ;Rel number of sector containing directory entry 
     .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
     .sFileName   resb 11   ;8.3 Filename

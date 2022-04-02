@@ -35,9 +35,10 @@ clust2FATEntry:
 ;Converts a cluster number to a FAT entry
 ;Entry:  rsi points to the DPB for the transacting device
 ;        eax = Cluster number to look for
-;Exit: eax = Sector on disk of FAT, edx = 1.5Word/Word/DWord in sector of entry
+;Exit:   eax = Sector on disk of FAT 
+;        ecx = 0 => FAT12, 1 => FAT16, 2 => FAT32
+;        edx = 1.5Byte/Word/DWord in sector of entry
     push rbx
-    push rcx
     mov ebx, dword [rsi + dpb.dClusterCount]
     cmp ebx, fat16MaxClustCnt
     jae .fat32
@@ -45,13 +46,16 @@ clust2FATEntry:
     jb .fat12
 ;FAT16
     shl eax, 1  ;Multiply cluster number by 2
+    push qword 1
     jmp short .common
 .fat12:
     mov ecx, eax    ;ecx = eax
     shr ecx, 1      ;ecx = ecx / 2
     add eax, ecx    ;eax = eax + ecx    (eax * 1.5)
+    push qword 0
     jmp short .common
 .fat32:
+    push qword 2
     shl eax, 2  ;Multiply cluster number by 4
 .common:
 ;eax has the FAToffset
@@ -63,222 +67,141 @@ clust2FATEntry:
     div ecx         ;Divide by bytes per sector (0:eax / ecx)
     movzx ebx, word [rsi + dpb.wFAToffset]   ;Add the offset to the first FAT
     add eax, ebx
-    pop rcx
+    pop rcx ;Pop the FAT type back into rcx
     pop rbx
     ret
 
-readBuffer:
+getNextSectorOfFile:
+;This function will read the next sector for a file into a buffer.
+;If the next sector to be read lives in the next cluster, it will update
+; the file handle of the file being read/written to the new cluster
 ;
-;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
-;TO CALL!
-;
-;This function will return a pointer to the desired data sector OR 
-; find the most appropriate buffer, flush and read the relevant data into the 
-; buffer, again then returning a pointer to the sector buffer in rbx.
-;Entry: rax = Sector to read
-;        cl = Data type being read (DOS, FAT, DIR, Data) 
-;       rsi = DPB of transacting drive
-;Exit:  CF = NC : All ok!
-;       rbx = Pointer to buffer header with valid data in buffer.
-;       All other registers as before
-;       CF = CY: Something went wrong, return error code or INT 44h
-;       ch = 0 -> Data Not Flushed To Disk
-;       ch = 1 -> Data Not Read From Disk
-;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
-    push rdx
-    mov dl, byte [rsi + dpb.bDriveNumber]
-    call findSectorInBuffer ;rax = sector to read, dl = drive number
-    cmp rbx, -1
-    je .rbReadNewSector
-.rbExit:
-    clc
-.rbExitNoFlag:
-    pop rdx
-    ret
-.rbReadNewSector:
-    call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
-    mov rbp, rbx
-    xor ch, ch
-    call flushBuffer
-    jc .rbExitNoFlag    ;Exit in error
-;rbp points to bufferHdr that has been appropriately linked to the head of chain
-    push rcx
-    mov byte [rbp + bufferHdr.driveNumber], dl
-    mov byte [rbp + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
-    mov qword [rbp + bufferHdr.bufferLBA], rax
-    cmp cl, fatBuffer
-    mov dl, 1   ;Default values if not fat buffer
-    mov ecx, 0  ;Ditto!
-    jne .rbNonFATbuffer
-    mov dl, byte [rsi + dpb.bNumberOfFATs]
-    mov ecx, dword [rsi + dpb.dFATlength]
-.rbNonFATbuffer:
-    mov byte [rbp + bufferHdr.bufFATcopy], dl
-    mov dword [rbp + bufferHdr.bufFATsize], ecx
-    mov qword [rbp + bufferHdr.driveDPBPtr], rsi
-    mov byte [rbp + bufferHdr.reserved], 0
-    pop rcx
-    inc ch  ;If an error occurs, have the signature in ch
-    call readSectorBuffer ;Carry the flag from the request
-    jmp short .rbExitNoFlag
-
-readSectorBuffer:
-;Reads a sector into a built sector buffer
-;Entry: rbp = Pointer to buffer header
-;Exit:  CF=NC : Success
-;       CF=CY : Fail, terminate the request
-;       rbx pointing to buffer header
-;First make request to device driver
+;Input: r8 = sft pointer
+;       r9 = dpb pointer
+;Output:
+;       rbx = Pointer to buffer header
+;       CF = NC, buffer OK to read
+;       CF = CY, buffer not ok, something went wrong
+;           ZF = ZE(1), Data not flushed to disk
+;           ZF = NZ(0), Data no read from disk
+    ;Read next sector. If at last sector in cluster, walk map, get
+    ; next cluster and read first sector 
     push rax
-    push rbx
     push rcx
     push rdx
     push rsi
-.rsRequest0:
-    mov esi, 3  ;Repeat attempt counter
-.rsRequest1:
-    mov al, byte [rbp + bufferHdr.driveNumber]
-    mov ecx, 1  ;One sector to copy
-    mov rdx, qword [rbp + bufferHdr.bufferLBA]
-    mov rbx, qword [rbp + bufferHdr.dataarea]
-    call absDiskRead    ;Call INT 45h
-    jc .rsFail
-.rsExit:
-    clc
-.rsExitBad:
+    push rdi
+    ;Check if we need to go to next cluster
+    mov ax, word [r8 + sft.wRelSect]    ;Upper byte is ALWAYS 0
+    cmp al, byte [r9 + dpb.bMaxSectorInCluster]
+    je .goToNextCluster
+    ;Goto next sector
+    inc word [r8 + sft.wRelSect]    ;Goto next sector in cluster
+.getSector:
+    ;Current Sector = (ClusterNumber - 2)*SecPerClust + DataAreaStartSector
+    mov eax, dword [r8 + sft.dAbsClusr] ;Get cluster number
+    sub eax, 2
+    mov cl, byte [r9 + dpb.bSectorsPerClusterShift]
+    shl eax, cl
+    add eax, [r9 + dpb.dClusterHeapOffset]
+    ;eax now has the first sector of the current cluster
+    movzx ebx, word [r8 + sft.wRelSect] ;Get relative sector number
+    add eax, ebx
+    ;eax now has the correct sector in the cluster
+    ;Read the sector into a buffer
+    ;The sector read here is either DATA or DOS
+    lea rsi, qword [r8 + sft.sFileName]
+    lea rdi, dosBIOSName    ;Check if the file being read is the BIOS
+    mov ecx, 11             ;File name length
+    repe cmpsb
+    je .OSFile
+    lea rsi, qword [r8 + sft.sFileName]
+    lea rdi, dosKernName
+    mov ecx, 11             ;File name length
+    repe cmpsb
+    je .OSFile
+    ;Not an OS file, dataBuffer
+    mov cl, dataBuffer
+.getSectorRead:
+    mov rsi, r9
+    call readBuffer
+    jc .getSectorFailed
+.getSectorExit:
+    pop rdi
     pop rsi
     pop rdx
     pop rcx
-    pop rbx
     pop rax
     ret
-.rsFail:
-;Enter here only if the request failed
-    dec esi
-    jnz .rsRequest1 ;Try the request again!
-;Request failed thrice, critical error call
-    stc
-    jmp .rsExitBad  ;Abort
+.OSFile:
+    mov cl, dosBuffer
+    jmp short .getSectorRead
+.getSectorFailed:
+    ;CF = CY => Something went wrong!
+    ;   Set the Zero flag for data not flushed to disk
+    ;   Clear Zero flag for data not read from disk
+    test ch, ch ;This sets the zero flag correctly, but mangles CF
+    stc ;Set the carry flag!
+    jmp short .getSectorExit
 
-flushBuffer:
-;Flushes the data in a sector buffer to disk!
-;Entry: rbp = Pointer to buffer header for this buffer
-;Exit:  CF=NC : Success
-;       CF=CY : Fail, terminate the request
-;First make request to device driver
-    push rax
-    push rbx
-    push rcx
-    push rdx
-    push rsi
-    test byte [rbp + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
-    jz .fbFreeExit  ;Skip write to disk if data not modified
-.fbRequest0:
-    mov esi, 3  ;Repeat attempt counter
-.fbRequest1:
-    mov al, byte [rbp + bufferHdr.driveNumber]
-    mov ecx, 1  ;One sector to copy
-    mov rdx, qword [rbp + bufferHdr.bufferLBA]
-    mov rbx, qword [rbp + bufferHdr.dataarea]
-    call absDiskWrite    ;Call INT 46h
-    jc .fbFail
-;Now check if the buffer was a FAT, to write additional copies
-    test byte [rbp + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
-    jz .fbFreeExit  ;If not, exit
-    dec byte [rbp + bufferHdr.bufFATcopy]
-    jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
-    mov eax, dword [rbp + bufferHdr.bufFATsize]
-    add qword [rbp + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
-    jmp .fbRequest0 ;Make another request
-.fbFreeExit:
-;Free the buffer if it was flushed successfully
-    mov byte [rbp + bufferHdr.driveNumber], -1
-    clc
-.fbExitBad:
-    pop rsi
-    pop rdx
-    pop rcx
-    pop rbx
-    pop rax
-    ret
-.fbFail:
-;Enter here only if the request failed
-    dec esi
-    jnz .fbRequest1 ;Try the request again!
-;Request failed thrice, critical error call
-    stc
-    jmp .fbExitBad  ;Abort
-    
-findLRUBuffer: 
-;Finds first free or least recently used buffer, links it and returns ptr to it 
-; in rbx
-;Input: Nothing
-;Output: rbx = Pointer to the buffer hdr to use
-    push rdx
-    mov rbx, qword [bufHeadPtr]
-    cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
-    je .flbExit 
-    cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
-    je .flbExit
-.flbWalk:
-    mov rdx, rbx    ;Save a ptr to the previous buffer header
-    mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
-    cmp byte [rbx + bufferHdr.driveNumber], -1
-    je .flbFreeLink ;If free, link to head, and xlink prev and next buffs
-    cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
-    jne .flbWalk   ;If not LRU, keep walking, else process
-    mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
-.flbHeadLink:
-    mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
-    mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
-    mov qword [rbx + bufferHdr.nextBufPtr], rdx
-.flbExit:
-    pop rdx
-    ret
-.flbFreeLink:
-    push rcx
-    mov rcx, qword [rbx + bufferHdr.nextBufPtr]
-    mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
-    pop rcx
-    jmp short .flbHeadLink
-
-findDirtyBufferForDrive:
-;Searches the buffer chain for a dirty buffer for a given drive letter.
-;Input: dl = Drive number
-;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
-    mov rbx, qword [bufHeadPtr]
-.fdbfdCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
-    jne .fdbfdGotoNextBuffer
-    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
-    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
-.fdbfdExit:
-    ret
-.fdbfdGotoNextBuffer:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
-    je .fdbfdExit
-    jmp short .fdbfdCheckBuffer
-
-findSectorInBuffer:
-;Finds the Buffer for a sector
-;If the sector is not in a buffer, returns with a -1
-;Input: rax = Sector number
-;        dl = Drive number
-;Output: rbx = Buffer hdr pointer or -1
-    mov rbx, qword [bufHeadPtr]
-.fsiCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
-    jne .fsiGotoNextBuffer
-    cmp qword [rbx + bufferHdr.bufferLBA], rax
-    jne .fsiGotoNextBuffer
-.fsiExit:
-    ret
-.fsiGotoNextBuffer:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
-    je .fsiExit
-    jmp short .fsiCheckBuffer
+.goToNextCluster:
+    ;Read FAT, find next cluster in cluster map, update SFT entries
+    mov eax, dword [r8 + sft.dAbsClusr] ;Get the current cluster
+    mov rsi, r9 ;Move dpb pointer into rsi, eax has cluster number
+    call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
+    movzx ebx, word [r9 + dpb.wFAToffset]
+    add eax, ebx    ;Add the FAT offset to the sector
+    mov cl, fatBuffer
+    call readBuffer ;Buffer Header in ebx
+    jc .getSectorFailed
+    ;Check if FAT 12, 16, 32
+    test rdi, rdi
+    jz .gotoNextClusterFat12    ;Handle FAT 12 separately
+    test rdi, 1
+    jz .goToNextClusterCommonFat32
+    ;Here we handle FAT16
+    movzx eax, word [rbx + bufferHdr.dataarea + rdx]
+    jmp short .goToNextClusterCommon
+.goToNextClusterCommonFat32:
+    mov eax, dword [rbx + bufferHdr.dataarea + rdx]
+    and eax, 0FFFFFFFh  ;Zero upper nybble
+.goToNextClusterCommon:
+    mov dword [r8 + sft.dAbsClusr], eax ;Save new cluster number
+    mov word [r8 + sft.wRelSect], 0 ;First sector in next cluster
+    jmp .getSector
+.gotoNextClusterFat12:
+;FAT12 might need two FAT sectors read so we always read two sectors
+;eax has the sector of the FAT, offset into the sector is in edx
+    mov rdi, rbx    ;Save previous buffer header in rdi
+    inc eax ;Get next sector
+    call readBuffer ;Buffer Header in ebx
+    jc .getSectorFailed
+    ;rdi has first buffer header, rbx has second buffer header
+    ;rdx has offset into first header for entry
+    test dword [r8 + sft.dAbsClusr], 1  ;Check if cluster is odd
+    jz .gotoNextClusterFat12Even
+    ;Here the cluster is ODD, and might cross sector boundary
+    mov eax, 1
+    mov cl, byte [r8 + dpb.bBytesPerSectorShift]
+    shl eax, cl
+    sub eax, edx
+    dec eax ;If edx = BytesPerSector - 1 then it crosses, else no
+    jnz .gotoNextClusterFat12NoCross
+    ;Boundary cross, build entry properly
+    xor eax, eax
+    mov al, byte [rdi + bufferHdr.dataarea + rdx]
+    mov ah, byte [rbx + bufferHdr.dataarea]  ;Read first entry of next sector
+    shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
+    jmp short .goToNextClusterCommon
+.gotoNextClusterFat12NoCross:
+    movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
+    shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
+    jmp short .goToNextClusterCommon
+.gotoNextClusterFat12Even:
+    ;Here the cluster is even and can't cross a sector boundary
+    movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
+    and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
+    jmp short .goToNextClusterCommon
 ;---------------------------------------------------:
 ;                   KERNEL FUNCTIONS                :
 ;---------------------------------------------------:

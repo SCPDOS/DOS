@@ -11,6 +11,7 @@ Segment dSeg nobits align=1 start=0     ;BSS data segment
 %include "dosSeg.asm"
 Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "staticData.asm"
+%include "bufferFunctions.asm"
 %include "fat.asm"
 %include "charFunctions.asm"
 %include "fcbFunctions.asm"

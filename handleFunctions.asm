@@ -7,6 +7,7 @@ openFileHdl:       ;ah = 3Dh, handle function
 closeFileHdl:      ;ah = 3Eh, handle function
     ret
 readFileHdl:       ;ah = 3Fh, handle function
+    mov rbp, qword [oldRSP]
     call getSFTPtr
     jc .rfhErrorHandle  ;Function can only fail for bad file handle
 ;Here rdi points to the correct SFT 
@@ -27,9 +28,8 @@ readFileHdl:       ;ah = 3Fh, handle function
     call readASCIIBytesFromFile
     jc .rfCriticalError
 .rfhExitOK:
-    mov rdi, qword [oldRSP]
     mov al, cl  ;Get low byte in cl
-    mov dword [rdi + callerFrame.rax], ecx  ;Save number of bytes transf.
+    mov dword [rbp + callerFrame.rax], ecx  ;Save number of bytes transf.
     ret
 .rfCriticalError:
     ;Fail due to driver error. Invoke Int 44h if set to in SFT
@@ -111,9 +111,11 @@ readASCIIBytesFromFile:
 readBinaryBytesFromFile:
 ;Reads a byte from a SFT entry, does not translate it. 
 ;Read or RW permissions are checked at the INT 41h level
-;Entry: rbx = SFT entry pointer
-;       rdx = Address of the data buffer to read to
-;       ecx = Number of bytes to read
+;Entry: rbp = Pointer to the caller stack
+;       rbx = SFT entry pointer
+;       On stack:
+;           rdx = Address of the data buffer to read to
+;           ecx = Number of bytes to read
 ;Exit: If CF = NC : All ok!
 ;       rbx = SFT entry pointer
 ;       ecx = Number of chars read/written
@@ -129,7 +131,23 @@ readBinaryBytesFromFile:
 ;Disk files are accessed from here
 ;Use the sector buffers if the data is already buffered,
 ; else use the dpb to fill a sector buffer
-
+    push rbx
+    mov r8, rbx                     ;Use r8 as sft pointer
+    mov r9, qword [r8 + sft.qPtr]   ;Use r9 as dpb pointer
+;Compute the number of sectors to read at max size and the 
+; remaining number of sectors to 
+    movzx eax, byte [r9 + dpb.bBytesPerSectorShift]
+    mov ecx, 1
+    xchg ecx, eax
+    shl eax, cl ;Shift left to turn into number of bytes per sector
+    xor edx, edx
+    mov ecx, dword [rbp + callerFrame.rcx]  ;Get # of bytes to read
+    xchg eax, ecx   ;Swap num bytes per sector <-> num bytes to read
+    div ecx 
+;eax = Number of sectors to read in entirety
+;ecx = Number of bytes per sector
+;edx = Number of bytes to read in last sector 
+    pop rbx
 
 
 .readBinaryBytesFromCharDevice:
@@ -151,3 +169,4 @@ readBinaryBytesFromFile:
     jz .readBinaryBytesExitGood  ;Error bit not set, all good!
 .readBinaryBytesExitGood:
     ret
+
