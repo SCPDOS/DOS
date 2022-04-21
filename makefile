@@ -10,7 +10,23 @@
 assemble:
 	nasm scpdos.asm -o scpdos.bin -f bin -l scpdos.lst -O0
 	mv ./scpdos.BIN ./scpdos.sys
-# io.sys should start at sector 88
 	dd if=./scpdos.sys of=./MyDiskDOS.ima bs=512 seek=100 conv=notrunc
-# Copy to make a fake USB device
+	cp ./MyDiskDOS.ima ./MyDiskDOSMSD.ima
+
+#Add a new boot sector to current image
+loader:
+	nasm loader.asm -o loader.bin -f bin -l loader.lst -O0
+	dd if=loader.bin of=./MyDiskDOS.ima bs=512 count=1 conv=notrunc
+	cp ./MyDiskDOS.ima ./MyDiskDOSMSD.ima
+
+#Create a fresh disk image
+fresh:
+	dd if=/dev/zero of=./MyDiskDOS.IMA bs=512 count=2880 conv=notrunc
+
+	nasm loader.asm -o loader.bin -f bin -l loader.lst -O0
+	dd if=loader.bin of=./MyDiskDOS.ima bs=512 count=1 conv=notrunc
+
+	nasm scpdos.asm -o scpdos.bin -f bin -l scpdos.lst -O0
+	mv ./scpdos.BIN ./scpdos.sys
+	dd if=./scpdos.sys of=./MyDiskDOS.ima bs=512 seek=100 conv=notrunc
 	cp ./MyDiskDOS.ima ./MyDiskDOSMSD.ima
