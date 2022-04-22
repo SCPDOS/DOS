@@ -32,3 +32,7 @@ fresh:
 	mv ./scpdos.BIN ./scpdos.sys
 	dd if=./scpdos.sys of=./MyDiskDOS.ima bs=512 seek=100 conv=notrunc
 	cp ./MyDiskDOS.ima ./MyDiskDOSMSD.ima
+#Replace BIOS
+bios:
+	dd if=./scpbios.bin of=./MyDiskDOS.ima bs=512 seek=33 conv=notrunc
+	cp ./MyDiskDOS.ima ./MyDiskDOSMSD.ima
