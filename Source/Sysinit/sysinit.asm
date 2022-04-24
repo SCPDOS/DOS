@@ -103,7 +103,7 @@ largestSectorSearch:
     mov ah, 88h
     int 33h
     cmp edi, eax
-    cmovb edi, eax  ;Only replace ebp if eax is greater
+    cmovb edi, eax  ;Only replace edi if eax is greater
     inc dl
     cmp dl, r8b
     jne .lss
