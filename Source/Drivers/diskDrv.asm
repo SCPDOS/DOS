@@ -14,36 +14,15 @@ msdDriver:
     mov al, 01h ;Unknown Unit Error
     cmp byte [rbx + drvReqHdr.unitnm], 05h  ;Unit greater than 5 is invalid
     ja .msdWriteErrorCode ;If yes, error!
-    mov al, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
-    test al, al
-    jz .msdInit
-    cmp al, 01
-    jz .msdMedChk
-    cmp al, 02
-    jz .msdBuildBPB
-    cmp al, 03
-    jz .msdIOCTLRead
-    cmp al, 04
-    jz .msdRead
-    cmp al, 08
-    jz .msdWrite
-    cmp al, 09
-    jz .msdWriteVerify
-    cmp al, 12
-    jz .msdIOCTLWrite
-    cmp al, 13
-    jz .msdDevOpen
-    cmp al, 14
-    jz .msdDevClose
-    cmp al, 15
-    jz .msdRemovableMedia
-    cmp al, 19
-    jz .msdGenericIOCTL
-    cmp al, 23
-    jz .msdGetLogicalDev
-    cmp al, 24
-    jz .msdSetLogicalDev
-    jmp short .msdDriverExit    ;All other valid functions exit done
+    movzx eax, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
+    shl eax, 1  ;Multiply by 2 since each entry is a word in size
+    lea rcx, .msdTable
+    movzx eax, word [rcx + rax] ;Get distance from table base
+    test eax, eax   ;Is the distance 0, i.e. function not implemented?
+    jz .msdDriverExit ;Valid function number but not for MSD, exits with done!
+    add rax, rcx    ;Else, add table address to the distance from the table
+    jmp rax ;Goto the function
+
 .msdIOError:  ;In Read and Write errors, rbp points to the dev struc
     mov rbx, rbp
     movzx eax, al   ;Number of IO-ed sectors in last request
@@ -117,6 +96,34 @@ msdDriver:
     pop rbx
     pop rax
     ret
+.msdTable:
+    dw .msdInit - .msdTable         ;Function 0
+    dw .msdMedChk - .msdTable       ;Function 1
+    dw .msdBuildBPB - .msdTable     ;Function 2
+    dw .msdIOCTLRead - .msdTable    ;Function 3
+    dw .msdRead - .msdTable         ;Function 4
+    dw 0                            ;Function 5
+    dw 0                            ;Function 6
+    dw 0                            ;Function 7
+    dw .msdWrite - .msdTable        ;Function 8
+    dw .msdWriteVerify - .msdTable  ;Function 9
+    dw 0                            ;Function 10
+    dw 0                            ;Function 11
+    dw .msdIOCTLWrite - .msdTable   ;Function 12
+    dw .msdDevOpen - .msdTable      ;Function 13
+    dw .msdDevClose - .msdTable     ;Function 14
+    dw .msdRemovableMedia - .msdTable   ;Function 15
+    dw 0                            ;Function 16
+    dw 0                            ;Function 17
+    dw 0                            ;Function 18
+    dw .msdGenericIOCTL - .msdTable ;Function 19
+    dw 0                            ;Function 20
+    dw 0                            ;Function 21
+    dw 0                            ;Function 22
+    dw .msdGetLogicalDev - .msdTable    ;Function 23
+    dw .msdSetLogicalDev - .msdTable    ;Function 24
+
+
 .msdInit:            ;Function 0
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], initReqPkt_size
@@ -139,7 +146,7 @@ msdDriver:
     lea rbx, msdTempBuffer  ;Get address of this space
     int 33h
     jc .msdInitError
-;Now we verify if this is a BPB. Removable devices can't be partitioned (yet)
+;Now we verify if this is a BPB. Removable devices can't be partitioned
 ;1) Check byte 0 for EBh (short jmp) and byte 2 for a 90h (nop).
     mov al, byte [rbx]
     mov ah, byte [rbx + 2]
@@ -193,9 +200,6 @@ msdDriver:
     mov rbx, rbp
     jmp .msdGenDiskError
 .msdMedChk:          ;Function 1
-;Once the BIOS function is implmented that reads the changeline, use that!
-;For BIOSes that dont support the changeline, the following procedure will 
-; suffice.
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], mediaCheckReqPkt_size
     jne .msdWriteErrorCode
