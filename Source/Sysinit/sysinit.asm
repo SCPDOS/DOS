@@ -93,21 +93,6 @@ adjInts:
     lea rdx, errorInit ;Get segment start address
     mov eax, 2544h
     int 41h
-;------------------------------------------------;
-;          Find largest sector size              ;
-;------------------------------------------------;
-largestSectorSearch:
-    xor dl, dl
-    xor edi, edi    ;Use this as the counter for the largest sector size
-.lss:
-    mov ah, 88h
-    int 33h
-    cmp edi, eax
-    cmovb edi, eax  ;Only replace edi if eax is greater
-    inc dl
-    cmp dl, r8b
-    jne .lss
-    mov word fs:[maxBytesSec], di
 
 ;------------------------------------------------;
 ;          Driver Adjustments and inits          ;
@@ -228,6 +213,13 @@ storageInits:
 ;Remember to now place a -1 in the qNextDPBPtr field 
     mov qword [rbp + dpb.qNextDPBPtr], -1
     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
+;------------------------------------------------;
+;          Find largest sector size              ;
+;------------------------------------------------;
+;Done by reading BPB's for each drive
+    mov word fs:[maxBytesSec], 0
+    
+
 ;------------------------------------------------;
 ;                 Temp CDS inits                 ;
 ;------------------------------------------------;
