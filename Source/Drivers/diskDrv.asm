@@ -96,7 +96,7 @@ msdDriver:
 .msdWriteErrorCode:    ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
     mov word [rbx + drvReqHdr.status], ax
-    jmp .msdDriverExit
+    ret ;Return to set done bit
 .msdTable:
     dw .msdInit - .msdTable         ;Function 0
     dw .msdMedChk - .msdTable       ;Function 1
