@@ -4,7 +4,7 @@
     bootDrive   resb 1    ;The Int 33h device we booted from x
     numRemMSD   resb 1    ;Number of physical removable MSDs in system x
     numLRemDrives  resb 1 ;Number of logical removable drives in system x
-    ;if numRemMSD = 1 then numLRemDrives = 2 and we have a single drive system
+    ;if numRemMSD = 1 then numLRemDrives = 2 and we have a single rem. drive system
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x
     ;The device driver header with space for the largest possible packet
