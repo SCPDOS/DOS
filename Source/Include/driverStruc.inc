@@ -24,26 +24,42 @@ endstruc
 
 %endmacro
 ;Command Code equates
-    drvINIT        equ 0
-    drvMEDCHK      equ 1
-    drvBUILDBPB    equ 2
-    drvIOCTLREAD   equ 3
-    drvREAD        equ 4
-    drvNONDESTREAD equ 5
-    drvINSTATUS    equ 6
-    drvFLUSHINBUF  equ 7
-    drvWRITE       equ 8
-    drvWRITEVERIFY equ 9
-    drvOUTSTATUS   equ 10
-    drvFLUSHOUTBUF equ 11
-    drvIOCTLWRITE  equ 12
-    drvOPEN        equ 13
-    drvCLOSE       equ 14
-    drvREMMEDCHECK equ 15
-    drvOUTTILBUSY  equ 16  ;Not implemented
-    drvIOCTL       equ 19
-    drvGETDRVMAP   equ 23
-    drvSETDRVMAP   equ 24
+    drvINIT         equ 0
+    drvMEDCHK       equ 1
+    drvBUILDBPB     equ 2
+    drvIOCTLREAD    equ 3
+    drvREAD         equ 4
+    drvNONDESTREAD  equ 5
+    drvINSTATUS     equ 6
+    drvFLUSHINBUF   equ 7
+    drvWRITE        equ 8
+    drvWRITEVERIFY  equ 9
+    drvOUTSTATUS    equ 10
+    drvFLUSHOUTBUF  equ 11
+    drvIOCTLWRITE   equ 12
+    drvOPEN         equ 13
+    drvCLOSE        equ 14
+    drvREMMEDCHECK  equ 15
+    drvOUTTILBUSY   equ 16  ;Not implemented
+    drvIOCTL        equ 19
+    drvGETDRVMAP    equ 23
+    drvSETDRVMAP    equ 24
+    
+;Driver Error equates 
+    drvWPErr        equ 0   ;Write Protect Violation
+    drvBadUnit      equ 1   ;Unknown unit
+    drvNotReady     equ 2   ;Device not ready
+    drvBadCmd       equ 3   ;Unknown command
+    drvCRCErr       equ 4   ;CRC Error
+    drvBadDrvReq    equ 5   ;Bad drive request structure length
+    drvBadSeek      equ 6   ;Seek error
+    drvBadMed       equ 7   ;Unknown media
+    drvSecNotFnd    equ 8   ;Sector not found
+    drvNoPaper      equ 9   ;Printer out of paper
+    drvWriteFault   equ 10  ;Write Fault
+    drvReadFault    equ 11  ;Read Fault
+    drvGenFault     equ 12  ;General Fault
+    drvBadDskChnge  equ 15  ;Invalid disk change
 
 ;Drive structures
 struc drvReqHdr

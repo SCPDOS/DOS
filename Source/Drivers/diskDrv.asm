@@ -9,11 +9,15 @@ msdDriver:
     push r8
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
     cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
-    mov al, 03h
+    mov al, drvBadCmd
     ja .msdWriteErrorCode ;If yes, error!
-    mov al, 01h ;Unknown Unit Error
+    mov al, drvBadUnit 
     cmp byte [rbx + drvReqHdr.unitnm], 05h  ;Unit greater than 5 is invalid
     ja .msdWriteErrorCode ;If yes, error!
+    lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
+    movzx eax, byte [rbx + drvReqHdr.unitnm]
+    shl eax, 3  ;Multiply by 8 to get pointer to pointer to bpb
+    mov rbp, qword [rax]    ;Get pointer to bpb in rbp
     movzx eax, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     shl eax, 1  ;Multiply by 2 since each entry is a word in size
     lea rcx, .msdTable
@@ -143,13 +147,13 @@ msdDriver:
 ;Will write one sector at a time and then verify it.
     ret
 .msdIOCTLWrite:      ;Function 12, returns done
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 
     ret
 .msdDevOpen:         ;Function 13
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], openReqPkt_size
     jne .msdWriteErrorCode
 
@@ -158,7 +162,7 @@ msdDriver:
     inc byte [rcx + rax]  ;Inc handle cnt for given unit
     ret
 .msdDevClose:        ;Function 14
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], closeReqPkt_size
     jne .msdWriteErrorCode
 
@@ -167,7 +171,7 @@ msdDriver:
     dec byte [rcx + rax]  ;Dec handle cnt for given unit
     ret
 .msdRemovableMedia:  ;Function 15
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], remMediaReqPkt_size
     jne .msdWriteErrorCode
 
@@ -179,13 +183,13 @@ msdDriver:
     mov word [rbx + remMediaReqPkt.status], 0200h ;Set Busy bit
     ret
 .msdGenericIOCTL:    ;Function 19
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], ioctlReqPkt_size
     jne .msdWriteErrorCode
 
     ret
 .msdGetLogicalDev:   ;Function 23
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], getDevReqPkt_size
     jne .msdWriteErrorCode
 
@@ -193,7 +197,7 @@ msdDriver:
     mov byte [rbx + getDevReqPkt.unitnm], al
     ret
 .msdSetLogicalDev:   ;Function 24
-    mov al, 05h ;Bad request structure length
+    mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], setDevReqPkt_size
     jne .msdWriteErrorCode
 
