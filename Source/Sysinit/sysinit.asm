@@ -46,9 +46,9 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 
     int 31h ;Get number of Int 33h devices in r8b
     shr r8, 3*8   ;Isolate byte 3 of r8
-    mov byte fs:[numRemMSD], r8b    ;Save number of physical int 33h devs
+    mov byte fs:[numRemDrv], r8b    ;Save number of physical int 33h devs
     mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
-    mov byte fs:[numLRemDrives], 0     ;Number of logical drives
+    mov byte fs:[numLogDrv], 0     ;Number of logical drives
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
@@ -173,7 +173,7 @@ storageInits:
     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
     mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
     mov word [rbx + initReqPkt.status], 0       ;Zero status word
-    mov al, byte fs:[numLRemDrives]
+    mov al, byte fs:[numLogDrv]
     mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
     call qword [rbp + msdHdr + drvHdr.strPtr]
     call qword [rbp + msdHdr + drvHdr.intPtr]
@@ -181,7 +181,7 @@ storageInits:
     test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
     jnz errorInit   ;If the bit is set, halt execution
     mov al, byte [rbx + initReqPkt.numunt]
-    mov byte fs:[numLRemDrives], al
+    mov byte fs:[numLogDrv], al
     mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
     mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx

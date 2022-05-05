@@ -129,7 +129,21 @@ msdDriver:
 
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .msdInit:            ;Function 0
+    mov al, 05h ;Bad request structure length
+    cmp byte [rbx + drvReqHdr.hdrlen], initReqPkt_size
+    jne .msdWriteErrorCode
+
+    lea rax, endptr
+    mov qword [rbx + initReqPkt.endptr], rax    ;Where the end is gonna be
+    lea rax, .msdBPBTbl
+    mov qword [rbx + initReqPkt.optptr], rax    ;Where bpb tbl is gonna be
+    ;We create a function to deal with BPB parsing etc
+    ;We first go thru Hard drives for primary partitions
+    ;   then for logical partitionss, then removable drives.
+
     ret
+.msdInitBPBParse:
+
 .msdMedChk:          ;Function 1
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], mediaCheckReqPkt_size

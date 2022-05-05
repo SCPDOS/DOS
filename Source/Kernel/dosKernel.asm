@@ -308,7 +308,7 @@ diskReset:         ;ah = 0Dh
 
 selectDisk:        ;ah = 0Eh
 ;Called with dl = drive number, 0 = A, 1 = B etc...
-    mov al, byte [numLRemDrives]    ;Value 1 based
+    mov al, byte [numLogDrv]        ;Value 1 based
     mov bl, byte [lastdrvNum]       ;Value 1 based
     dec al
     dec bl
