@@ -95,6 +95,15 @@ struc mbrEntry
     .numSectors resb 4  ;Number of sectors in partition
 endstruc
 
+struc ebr
+    .bsCode     resb 446    ;Basic 16-bit code to error if launched into
+    .ebrVolHdr  resb 16 ;Information about the volume itself
+    .ebrLinkHdr resb 16 ;Link header information to next logical volume in ebr
+    .reserved   resb 32 ;Reserved
+    .mbrSig     resb 2
+endstruc
+
+
 struc fatDirEntry
 
     .name       resb 11 ;8.3 File Name

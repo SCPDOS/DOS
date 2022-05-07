@@ -45,10 +45,16 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     rep movsq
 
     int 31h ;Get number of Int 33h devices in r8b
-    shr r8, 3*8   ;Isolate byte 3 of r8
-    mov byte fs:[numRemDrv], r8b    ;Save number of physical int 33h devs
-    mov byte fs:[lastdrvNum], 5     ;Last drive is by default 5
+    shr r8, 8   ;Isolate bytes 1 and 2 of r8
+    mov ax, r8w
+    mov byte fs:[numRemDrv], ah    ;Save number of physical int 33h removable drvs
+    mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
+    mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     mov byte fs:[numLogDrv], 0     ;Number of logical drives
+    ;If no detected Int 33h devices, halt 
+    shr r8, 2*8
+    test r8b, r8b
+    jz errorInit
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
@@ -56,7 +62,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 adjInt41h:
     mov ecx, kernelDispatchTableL/8 ;Number of elements in table
     mov rbx, kernelDispatchTable ;Get EA of table
-    lea rbx, qword [rbp+rbx]    ;Point to the start of the relocated table 
+    lea rbx, qword [rbp + rbx]    ;Point to the start of the relocated table 
 .ai41h:
     add qword [rbx], rbp    ;Add base address value to entry in reloc table
     add rbx, 8              ;Each entry is size 8
@@ -169,23 +175,26 @@ storageInits:
     lea rbx, qword [rbp + firstDPB]
     mov qword fs:[dpbHeadPtr], rbx
 ;Open Mass Storage
-    lea rbx, qword [rbp + diskReqHdr]
-    mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-    mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
-    mov word [rbx + initReqPkt.status], 0       ;Zero status word
-    mov al, byte fs:[numLogDrv]
-    mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
-    call qword [rbp + msdHdr + drvHdr.strPtr]
-    call qword [rbp + msdHdr + drvHdr.intPtr]
+    ;lea rbx, qword [rbp + diskReqHdr]
+    ;mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
+    ;mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
+    ;mov word [rbx + initReqPkt.status], 0       ;Zero status word
+    ;mov al, byte fs:[numLogDrv]
+    ;mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
+    ;call qword [rbp + msdHdr + drvHdr.strPtr]
+    ;call qword [rbp + msdHdr + drvHdr.intPtr]
     ;Check if it returned OK first!
-    test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
-    jnz errorInit   ;If the bit is set, halt execution
-    mov al, byte [rbx + initReqPkt.numunt]
-    mov byte fs:[numLogDrv], al
-    mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
+    ;test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
+    ;jnz errorInit   ;If the bit is set, halt execution
+    ;mov al, byte [rbx + initReqPkt.numunt]
+    ;mov byte fs:[numLogDrv], al
+    ;mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
-    mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
+    ;mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
+    call diskInit
     mov rdi, rbp ;Save rbp in rdi temporarily
+    mov al, byte fs:[numLogDrv]
+    lea rdx, qword [rbp + msdDriver.msdBPBTbl]
     xor cl, cl  ;Clear counter
     mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
 .si0:   
@@ -316,7 +325,7 @@ defaultFileHandles:
     mov rax, qword fs:[conPtr]  ;Get pointer to CON device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
-    mov rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
     lea rsi, qword [.dfhCon]
     ;11 chars in 8.3 name
     movsq   ;8 chars
@@ -335,7 +344,7 @@ defaultFileHandles:
     mov rax, qword [rbp + auxHdr]  ;Get pointer to AUX device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
-    mov rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
     lea rsi, qword [.dfhAux]
     ;11 chars in 8.3 name
     movsq   ;8 chars
@@ -354,7 +363,7 @@ defaultFileHandles:
     mov rax, qword [rbp + prnHdr]  ;Get pointer to PRN device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
-    mov rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
     lea rsi, qword [.dfhPrn]
     ;11 chars in 8.3 name
     movsq   ;8 chars
@@ -383,42 +392,7 @@ defaultFileHandles:
 ;                   MCB inits                    ;
 ;------------------------------------------------;
 mcbInit:
-    mov eax, 0E801h ;Get the Extended memory arena sizes
-    int 35h
-    movzx ecx, cx   ;cx = # of bytes between USER_BASE and 16Mb
-    movzx edx, dx   ;dx = # 64kb pages between 16Mb and 4Gb
-    shl ecx, 0Ah   ;Multiply by 1024 to get number of bytes
-    shl edx, 10h  ;Multiply by 65536 to get number of bytes
-;Build the DOS segment's MCB header
-    mov rbx, rbp
-    sub rbx, mcb_size   ;Point rbx to the start of the MCB
 
-    mov qword fs:[mcbChainPtr], rbx ;Save rbx in data area
-
-    mov qword [rbx + mcb.owner], mcbOwnerDOS
-    mov dword [rbx + mcb.blockSize], ecx ;Use Max lo mem size for now
-    mov byte [rbx + mcb.marker], "Z"
-    test edx, edx   ;Is edx 0?
-    jz .mcbExit ;If it is, skip the next bit
-;We have memory above 16Mb, change alloc to M and decrease size
-    mov byte [rbx + mcb.marker], "M"
-    sub dword [rbx + mcb.blockSize], mcb_size   ;Decrease allocation
-
-    mov ecx, dword [rbx + mcb.blockSize]    ;Get the decreased size
-    add rbx, rcx    ;Walk chain
-;Now at the memory hole
-    ;Holes are only declared if hole has usable ram on both sides of it
-    mov byte [rbx + mcb.marker], "M"
-    mov eax, 1000000h   ;16Mb
-    sub eax, ebx    ;Sub ptr from 16Mb to get hole size
-    mov qword [rbx + mcb.owner], mcbOwnerHole   ;Memory hole
-    mov dword [rbx + mcb.blockSize], eax
-
-    add rbx, rax    ;Walk chain
-    mov byte [rbx + mcb.marker], "Z"
-    mov qword [rbx + mcb.owner],mcbOwnerFree
-    sub edx, mcb_size   ;Make space for the mcb
-    mov dword [rbx + mcb.blockSize], edx
 .mcbExit:
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
@@ -448,7 +422,7 @@ l3:
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 06
     call qword [rbp + clkHdr + drvHdr.strPtr]
-    call qword [rbp + clkHdr + drvHdr.intPtr]
+    call qword [rbp + clkHdr + drvHdr.intPtr] 
 
     mov ah, 03h
     xor bh, bh
@@ -521,9 +495,9 @@ adjustDrvHdr:
 errorInit:
 ;If a critical error occurs during sysinit, fail through here
 ;Int 42h, 43h and 44h point here during sysinit
-    lea rdx, hltmsg
-    mov ah, 09h
-    int 41h
+    lea rbp, hltmsg
+    mov eax, 1304h
+    int 30h
     ;cli ;Clear interrupts
     ;mov al, -1
     ;mov dx, 0A1h    ;PIC2 data
@@ -533,12 +507,11 @@ errorInit:
 .ei0:
     hlt
     jmp short .ei0
-
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
 strtmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,"$"
-hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0Ah,0Dh,"$"
+hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
 conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
@@ -559,3 +532,151 @@ nData:
     dq nulStrat
     dq nulIntr
     db "NUL     " ;Default NUL data
+
+diskInit:
+    ;We create a function to deal with BPB parsing etc
+    ;Start with the first primary partition on each hard disk (until max)
+    ;   They dont have to be bootable
+    ;Then go back and look for other partitions partitions. 
+    ;   Add each other primary or logical ptn (until max)
+    ;Then finish with removable devices. First two devs become A: and B: resp.
+    ;Use r8 as device counter
+    lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
+    cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
+    jz .remInit ;No? Go to removables
+    mov r8, 2   ;Device number 2 = C:
+    mov dl, 80h ;Start with HDD 0
+.primary:
+    cmp byte fs:[numLogDrv], 3  ;Are we at maximum devices (A: B: reserved)?
+    je .remInit
+    xor ecx, ecx    ;Sector 0
+    call .initReadSector ;Sets rbx to msdtempbuffer
+    jc .primaryEpilog
+    ;Here, check MBR or BPB
+    cmp word [rbx + 1FEh], 0AA55h
+    jne .primaryEpilog  ;Not a valid MBR or BPB, skip disk
+    ;Now check if BPB or MBR
+    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+    mov ah, byte [rbx + 2]
+    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+    je .primaryEpilog ;Will process these during Extended Ptn search
+    ;Here with a MBR. Search the MBR for the first Primary Partition
+    ;Look for CHS/LBA types (01h/04h/06h/0Bh/0Ch/0Eh) for primary ptns
+    add rbx, mbr.mbrEntry1 ;Point rbx to mbrEntry1
+    mov cl, 4
+.checkPrimary:
+    mov al, byte [rbx + mbrEntry.ptnType]
+    cmp al, 01
+    je .primaryFound
+    cmp al, 04
+    je .primaryFound
+    cmp al, 06
+    je .primaryFound
+    cmp al, 0Bh
+    je .primaryFound
+    cmp al, 0Ch
+    je .primaryFound
+    cmp al, 0Eh
+    je .primaryFound
+    add rbx, mbrEntry_size  ;Goto next entry byte
+    dec cl
+    jz .primaryEpilog
+    jmp short .checkPrimary
+.primaryFound:
+    ;Copy the first sector of this partition into memory
+    mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
+    call .initReadSector
+    jc .primaryEpilog
+    ;Now verify this is a BPB
+    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+    mov ah, byte [rbx + 2]
+    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+    jne .primaryEpilog   ;If not, skip
+    ;Now copy data to internal tables
+    mov rsi, rbx    ;Point rsi to the temp buffer
+    mov ecx, bpbEx_size/8   ;Copy BPB
+    push rdi
+    rep movsq   ;Copy the BPB
+    pop rsi ;Get the pointer to the copied bpb into rsi
+    ;Store BIOS map value and BPBblk pointer in bpbTbl
+    lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+    ;Add device count to rbx to point to correct entry
+    mov byte [rbx], dl  ;Store BIOS map value 
+    lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+    mov qword [rbx], rsi
+    inc r8  ;Goto next logical drive
+    inc byte fs:[numLogDrv] ;Increment the number of valid drives we have
+.primaryEpilog:
+    inc dl  ;Goto next BIOS drive
+    mov dh, dl
+    and dh, 7Fh ;Clear bit 7
+    cmp dh, byte fs:[numFixDrv]    ;Have we gone thru all hard drives?
+    jne .primary    ;Whilst we have fewer, go back
+.extended:
+;We have gone through all the devices once
+    ;cmp byte fs:[numLogDrv], 3  ;Are we at maximum devices (A: B: reserved)?
+    ;je .remInit ;If yes, get removable devices
+    ;mov dl, 80h ;Go back to hard drive 80h
+    ;xor ecx, ecx    ;Get MBR back
+    ;call .initReadSector
+    ;Now we eventually search MBR for a FAT extended partition
+.remInit:
+;Now handle removable devices, at least 2 rem. devs.
+    mov r9, r8  ;Save number of next device in r9b
+    xor dl, dl  ;Start with removable device 0
+    mov r8b, dl ;Once r8b becomes 2, go past the disk drives
+    ;rdi points to the space for the subsequent bpb's
+.removables:
+    xor ecx, ecx    ;Read sector 0
+    call .initReadSector
+    jc .removableEpilogue   ;Goto next device
+    ;Now verify this is a BPB
+    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+    mov ah, byte [rbx + 2]
+    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+    jne .removableEpilogue   ;If not, skip
+    ;Now copy data to internal tables
+    mov rsi, rbx    ;Point rsi to the temp buffer
+    mov ecx, bpbEx_size/8   ;Copy BPB
+    push rdi
+    rep movsq   ;Copy the BPB
+    pop rsi ;Get the pointer to the copied bpb into rsi
+    ;Store BIOS map value and BPBblk pointer in bpbTbl
+    lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+    ;Add device count to rbx to point to correct entry
+    mov byte [rbx], dl  ;Store BIOS map value 
+    lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+    mov qword [rbx], rsi
+    inc r8  ;Goto next logical drive
+    inc byte fs:[numLogDrv] ;Increment the number of valid drives we have    
+.removableEpilogue:
+    inc dl  ;Goto next BIOS device now
+    cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
+    je .end
+    cmp r8, 2 ;Are we back at drive C: ?
+    je .re0
+    add r8b, r9b    ;Add the number of fixed disk volumes
+.re0:
+    cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
+    jb .removables
+.end:
+    cmp byte fs:[numRemDrv], 1  ;Do we have only 1 removable device?
+    je .singleRemDev
+    ret
+.singleRemDev:
+    ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
+    lea rbx, qword [rbp + msdDriver.msdBIOSmap]
+    mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
+    mov byte [rbx + 1], dl  ;Store in byte for Drive B:
+    lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
+    mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
+    mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
+    inc byte fs:[numLogDrv] ;Gotta register the phantom drive!
+    ret
+.initReadSector:
+;Called with sector number in rcx and BIOS device number in dl
+    mov ah, 82h ;Read
+    mov al, 1   ;One sector
+    lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
+    int 33h
+    ret
