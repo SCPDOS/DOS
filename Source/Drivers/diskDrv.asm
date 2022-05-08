@@ -161,6 +161,7 @@ msdDriver:
     mov byte [rbx + mediaCheckReqPkt.medret], -1
     lea rax, .msdDefLabel          ;Temp, ret def label
     mov qword [rbx + mediaCheckReqPkt.desptr], rax 
+    ;Check here if there were any open handles on the device when it was changed
     ret
 .mmcUnsure:
     mov byte [rbx + mediaCheckReqPkt.medret], 0

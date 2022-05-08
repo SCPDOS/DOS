@@ -225,10 +225,23 @@ storageInits:
 ;------------------------------------------------;
 ;          Find largest sector size              ;
 ;------------------------------------------------;
+sectorSizeSearch:
 ;Done by reading BPB's for each drive
-    mov word fs:[maxBytesSec], 0
+    xchg bx, bx
+    lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
     
-
+    ;Go thru each block individually
+    xor eax, eax
+    mov rdx, qword [rbx]    ;Get bpb pointer into rdx
+.findLargest:
+    cmp ax, word [rdx + bpb.bytsPerSec]
+    cmovb ax, word [rdx + bpb.bytsPerSec] ;Only replace ax if the word is above ax
+    add rbx, 8 ;Goto next entry
+    mov rdx, qword [rbx]    ;Get next bpb pointer into rdx
+    test rdx, rdx   ;Are we at the end?
+    jnz .findLargest    ;Nope, keep checking!
+    mov word fs:[maxBytesSec], ax
+    
 ;------------------------------------------------;
 ;                 Temp CDS inits                 ;
 ;------------------------------------------------;
