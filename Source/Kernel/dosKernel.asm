@@ -84,16 +84,12 @@ absDiskRead:        ;Int 45h
     mov ah, drvREAD
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
-    push rax    ;Save drive number, cmdcde and start LBA
-    push rbx
-    push rdx
-    mov ah, 32h ;Get DPB
+    push rdx    ;Save start LBA
+    push rax
     mov dl, al
-    int 41h
-    mov rbp, rbx    ;Get dpb ptr in rbp
-    pop rdx
-    pop rbx
+    call findDPB   ;Get dpb ptr in rbp
     pop rax
+    pop rdx
 
     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [diskReqHdr + ioReqPkt.unitnm], al
