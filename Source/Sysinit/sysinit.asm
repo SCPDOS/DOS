@@ -399,7 +399,8 @@ defaultFileHandles:
 ;       Load User Drivers from CONFIG.SYS        ;
 ;------------------------------------------------;
 ;------------------------------------------------;
-;                 Create a CDS                   ;
+;   Setup Final Data Areas With Overrides from   ;
+;                  CONFIG.SYS                    ;
 ;------------------------------------------------;
 ;------------------------------------------------;
 ;                   MCB inits                    ;
