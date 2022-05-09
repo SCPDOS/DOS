@@ -3,12 +3,12 @@
 ;-----------------------------------:
 name2Clust:
 ;Converts a file name to a first cluster number
-;Converts the whole path subdirectory by subdirectory
-;On entry: rbx = ptr to ASCIIZ string of file path, maxlen = 67 + 1 (for the 0)
-;On return: ebx = First cluster number for the file
-;   On error: CF=CY, ax = Error code
-
-;First ascertain path is valid path and get drive letter
+;Entry : rbx = Points to ASCIIZ string to parse for a Cluster number
+;Exit : rax = Cluster number or -1 if file not found
+;Three cases:
+;1) Start with a letter and a : => Full path and Drive specified
+;2) Start with \ => Current Drive and relative path from Current Dir
+;3) Else => File name in Current Dir
     push rsi
     push rdi
     push rcx
