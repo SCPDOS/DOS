@@ -65,6 +65,8 @@ searchDirectorySectorForEntry:
     ;Use ecx as counter for each entry
     mov ecx, eax
 .searchDir:
+    cmp byte [rbx], 0 ;Check if dir empty before proceeding
+    jz .exitNotOK
     ;Do string compare here, search for / or \ or 0 to exit
     push rdx    ;Push the name pointer 
     push rbx    ;Push sector pointer
@@ -85,7 +87,10 @@ searchDirectorySectorForEntry:
     jne .nameNotFound
     inc rbx
 .skipChar:
-    inc rdx
+    inc rdx ;Go to Filename extension
+    pop rbx ;Get start of directory entry into rbx
+    push rbx
+    add rbx, 8  ;Go to the extension portion of the Filename
     jmp .searchLoop
 .specialCase:
     mov al, 0E5h
@@ -93,14 +98,14 @@ searchDirectorySectorForEntry:
 .dotCase:
 ;Check if next char is geq than 'A'. If yes, path separator
     cmp byte [rdx + 1], 'A'
-    jnge .specRet
+    jnge .specRet   ;Not Path Separator
     jmp short .skipChar
 .nameNotFound:
     pop rbx
     pop rdx
+    add rbx, 20h    ;Goto next sector entry
     cmp byte [rbx], 0   ;Are we at the end of the Directory?
     jz .exitNotOK   ;Exit early, end of directory
-    add rbx, 20h    ;Goto next sector entry
     dec ecx
     jnz .searchDir
 .exitNotOK:
