@@ -27,6 +27,12 @@ name2Clust:
     add rbx, rcx    ;Move rbx to the right offset in the array
     mov eax, dword [rbx + cds.dStartCluster]    ;Get start cluster
     mov rsi, qword [rbx + cds.qDPBPtr]  ;Get dpb ptr in rsi
+    test eax, eax
+    jnz .localFileNoRoot
+    ;Here, we deal with Root Directories
+    call getFATtype ;rsi points to dpb
+    ;if ecx = 2, then FAT 32 and must treat differently
+.localFileNoRoot:
     call clust2FATEntry ;Get the first sector of the directory in eax
 .relPath:
 .fullPath:
@@ -35,6 +41,94 @@ name2Clust:
     pop rcx
     pop rdi
     pop rsi
+    ret
+
+searchDirectorySectorForEntry:
+;Proc that searches the sector for the string 
+; UP UNTIL the NULL char or the path separator
+;If a . is found in file name, skip it
+;If a sector entry is found to start with 0, return fail
+;Entry: rdx = Path Section ptr (point to first A/N char)
+;       rbx = Sector buffer pointer
+;       rsi = DPB pointer
+;Exit: CF=NC => Found, CF=CY => Not found
+;       If CF=CY read char pointed to by rbx.
+;       If this char is 0, then end of directory reached!
+    push rax
+    push rcx
+    ;cl has number of entries per sector
+    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
+    sub cl, 5   ;5 is the number of bytes per dir entry shift
+    mov eax, 1
+    shl eax, cl ;eax has number of directory entries in sector
+    ;Now search each entry for name
+    ;Use ecx as counter for each entry
+    mov ecx, eax
+.searchDir:
+    ;Do string compare here, search for / or \ or 0 to exit
+    push rdx    ;Push the name pointer 
+    push rbx    ;Push sector pointer
+.searchLoop:
+    mov al, byte [rdx] ;Get char in ASCIIZ buffer
+    cmp al, "." ;Verify if name separator or directory entry
+    je .dotCase
+    cmp al, 05h ;Special Case
+    je .specialCase
+    cmp al, "/" ;Name Found
+    je .nameFound
+    cmp al, "\" ;Name Found
+    je .nameFound
+    cmp al, 0   ;End of ASCIIZ string!
+    je .nameFound
+.specRet:
+    cmp al, byte [rbx]  ;Compare to char in sector buffer
+    jne .nameNotFound
+    inc rbx
+.skipChar:
+    inc rdx
+    jmp .searchLoop
+.specialCase:
+    mov al, 0E5h
+    jmp short .specRet
+.dotCase:
+;Check if next char is geq than 'A'. If yes, path separator
+    cmp byte [rdx + 1], 'A'
+    jnge .specRet
+    jmp short .skipChar
+.nameNotFound:
+    pop rbx
+    pop rdx
+    cmp byte [rbx], 0   ;Are we at the end of the Directory?
+    jz .exitNotOK   ;Exit early, end of directory
+    add rbx, 20h    ;Goto next sector entry
+    dec ecx
+    jnz .searchDir
+.exitNotOK:
+    stc
+.exitOk:
+    pop rcx
+    pop rax
+    ret
+.nameFound:
+    pop rbx
+    pop rdx
+    clc
+    jmp short .exitOk
+getFATtype:
+;Gets a pointer to a DPB and returns the FAT type on the drive
+;Entry: rsi = DPB to ascertain FAT
+;Exit: ecx = 0 => FAT 12, ecx = 1 => FAT 16, ecx = 2 => FAT 32
+    push rbx
+    mov ebx, dword [rsi + dpb.dClusterCount]
+    mov ecx, 1  ;FAT 16 marker
+    cmp ebx, fat16MaxClustCnt
+    jae .exit
+    dec ecx     ;FAT 12 marker
+    cmp ebx, fat12MaxClustCnt
+    jb .exit
+    mov ecx, 2  ;Must be FAT 32 otherwise
+.exit:
+    pop rbx
     ret
 
 clust2FATEntry:
