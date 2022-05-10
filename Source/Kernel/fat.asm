@@ -12,20 +12,26 @@ name2Clust:
     push rsi
     push rdi
     push rcx
-    mov rdi, rbx
-    mov rsi, rbx
+    push rdx
+    mov rdi, rbx    ;Save string ptr in rdi
     cmp byte [rdi + 1], ":" ;Check it is a colon for full path
-    jne .cdsPath    ;Use CDS for current dir
-.getSubDir:
-    mov al, "\"
-    scasb   ;inc 
-    je .psfnd   ;Path separator found
-
-.psfnd:
-    dec rdi
-    mov rsi, rdi
-
-.cdsPath:
+    je .fullPath
+    cmp byte [rdi], "\"
+    je .relPath
+    ;Else search the current dir for an entry
+    movzx rax, byte [currentDrv]   ;Get current drive
+    lea rbx, cdsHeadPtr ;Point to cds array
+    mov rcx, cds_size   
+    xor edx, edx
+    mul ecx 
+    add rbx, rcx    ;Move rbx to the right offset in the array
+    mov eax, dword [rbx + cds.dStartCluster]    ;Get start cluster
+    mov rsi, qword [rbx + cds.qDPBPtr]  ;Get dpb ptr in rsi
+    call clust2FATEntry ;Get the first sector of the directory in eax
+.relPath:
+.fullPath:
+.exit:
+    pop rdx
     pop rcx
     pop rdi
     pop rsi
