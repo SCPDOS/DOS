@@ -1,7 +1,7 @@
 ;This file contains miscellaneous disk buffer related functions that
 ; dont fit anywhere else
 
-readBuffer:
+readBuffer: ;EXTERNAL LINKAGE
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL!
@@ -176,7 +176,7 @@ findLRUBuffer:
     pop rcx
     jmp short .flbHeadLink
 
-findDirtyBufferForDrive:
+findDirtyBufferForDrive:    ;EXTERNAL LINKAGE
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
 ;Input: dl = Drive number
 ;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
@@ -194,7 +194,7 @@ findDirtyBufferForDrive:
     je .fdbfdExit
     jmp short .fdbfdCheckBuffer
 
-findSectorInBuffer:
+findSectorInBuffer:     ;EXTERNAL LINKAGE
 ;Finds the Buffer for a sector
 ;If the sector is not in a buffer, returns with a -1
 ;Input: rax = Sector number
