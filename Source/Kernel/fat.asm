@@ -38,7 +38,7 @@ name2Clust:
     ret
 
 clust2FATEntry:
-;Converts a cluster number to a FAT entry
+;Converts a cluster number to a offset in the FAT
 ;Entry:  rsi points to the DPB for the transacting device
 ;        eax = Cluster number to look for
 ;Exit:   eax = Sector on disk of FAT 
