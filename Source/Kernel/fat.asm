@@ -7,8 +7,8 @@ name2Clust:
 ;Exit : rax = Cluster number or -1 if file not found
 ;Three cases:
 ;1) Start with a letter and a : => Full path and Drive specified
-;2) Start with \ => Current Drive and relative path from Current Dir
-;3) Else => File name in Current Dir
+;2) Start with \ or / => Current Drive and relative path from root
+;3) Else => File name in Current Dir or a subdir from current dir
     push rsi
     push rdi
     push rcx
@@ -18,13 +18,11 @@ name2Clust:
     je .fullPath
     cmp byte [rdi], "\"
     je .relPath
+    cmp byte [rdi], "/"
+    je .relPath ;Both CPM and UNIX are considered acceptible path separators
     ;Else search the current dir for an entry
     movzx rax, byte [currentDrv]   ;Get current drive
-    lea rbx, cdsHeadPtr ;Point to cds array
-    mov rcx, cds_size   
-    xor edx, edx
-    mul ecx 
-    add rbx, rcx    ;Move rbx to the right offset in the array
+    call getCDS
     mov eax, dword [rbx + cds.dStartCluster]    ;Get start cluster
     mov rsi, qword [rbx + cds.qDPBPtr]  ;Get dpb ptr in rsi
     test eax, eax
@@ -32,8 +30,8 @@ name2Clust:
     ;Here, we deal with Root Directories
     call getFATtype ;rsi points to dpb
     ;if ecx = 2, then FAT 32 and must treat differently
+
 .localFileNoRoot:
-    call clust2FATEntry ;Get the first sector of the directory in eax
 .relPath:
 .fullPath:
 .exit:

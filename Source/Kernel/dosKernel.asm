@@ -52,6 +52,22 @@ findDPB:
     jne .fd1
 .fd2:
     ret
+getCDS:
+    ;Gets the CDS for the current drive in rax
+    ;Input: rax = Drive number, 0 = A ...
+    ;Output: rbx = Pointer to CDS for drive in rax
+    push rax
+    push rcx
+    push rdx
+    lea rbx, qword [cdsHeadPtr] ;Point to cds array
+    mov rcx, cds_size   
+    xor edx, edx
+    mul ecx 
+    add rbx, rax    ;Move rbx to the right offset in the array
+    pop rdx
+    pop rcx
+    pop rax
+    ret
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:

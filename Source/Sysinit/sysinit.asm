@@ -411,7 +411,10 @@ mcbInit:
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
-
+    %if DEBUG
+    lea rbx, qword [rbp + debDebuggerActive]
+    call rbx
+    %endif
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
