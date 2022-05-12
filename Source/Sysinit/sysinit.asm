@@ -412,9 +412,18 @@ mcbInit:
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
     %if DEBUG
-    lea rbx, qword [rbp + debDebuggerActive]
+debugPopUpMsg:
+    debugEnterM
+    lea rbx, qword [debPrintNullString + rbp]
+    lea rbp, .msg
     call rbx
+    jmp short .exit
+.msg:   db "SCP/BIOS Boot complete.",0Ah,0Dh
+        db "SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
+.exit:
+    debugExitM
     %endif
+
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h

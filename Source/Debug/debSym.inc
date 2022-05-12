@@ -5,3 +5,6 @@
 
 ;Switch the following to false in production!
 %define DEBUG true
+
+;Use this space as the debug stack
+%define debStackTop 80000h
