@@ -7,7 +7,7 @@
 debOldRSP   dq 0    ;The RSP value when entering a debug output block
 debDigitStringLen equ 20
 debDigitString db debDigitStringLen dup(0)
-
+debascii: db '0123456789ABCDEF'
 ;Common procedures
 
 debPrintHexByte:
@@ -29,23 +29,22 @@ debPrintHexByte:
     pop rdx
     ret
 .wrchar:
-    lea rbx, .wrascii
+    xchg bx, bx
+    lea rbx, debascii
     xlatb    ;point al to entry in ascii table, using al as offset into table
     mov ah, 01h
-    int 30h  ;print char
+    int 34h  ;print char
     ret
-.wrascii:    db    '0123456789ABCDEF'
 
 debPrintHexQword:
 ;Print the hexadecimal qword in rax as a hex value
     push rax
     push rcx
-    mov cl, 8
+    mov ecx, 8
 .printChar:
     call debPrintHexByte
     shr rax, 8
-    dec cl
-    jnz .printChar
+    loop .printChar
     pop rcx
     pop rax
     ret
@@ -113,6 +112,87 @@ debPrintNullString:
     pop rax
     pop rsi
     ret
+
+debPrintDOSStack:
+;Function that shows me the state on entering and exiting a DOS kernel function
+;Shows me which function, and parameters passed and returned
+    lea rbp, .a1
+    call debPrintNullString
+    mov rdx, qword [oldRSP] ;Get caller RSP value
+    lea rbx, .a0
+    mov rax, qword [rdx + callerFrame.rax]
+    call .storeQword
+    add rbx, 22
+    mov rax, qword [rdx + callerFrame.rbx]
+    call .storeQword
+    add rbx, 22
+    mov rax, qword [rdx + callerFrame.rcx]
+    call .storeQword
+    add rbx, 22 + 2  ;Skip crlf
+    mov rax, qword [rdx + callerFrame.rdx]
+    call .storeQword
+    add rbx, 22 
+    mov rax, qword [rdx + callerFrame.rsi]
+    call .storeQword
+    add rbx, 22
+    mov rax, qword [rdx + callerFrame.rdi]
+    call .storeQword
+    add rbx, 22 + 2 ;Skip crlf
+    mov rax, qword [rdx + callerFrame.rbp]
+    call .storeQword
+    add rbx, 22
+    mov rax, qword [rdx + callerFrame.flags]
+    call .storeQword
+
+    lea rbp, .a0
+    call debPrintNullString
+    ret
+.storeQword:
+    ;Called with number in rax
+    ;table in rbx
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+    mov rbp, rbx
+    mov rdx, rax
+    add rbp, 4 + 15 ;Go to end of number
+    mov ecx, 8 ;16 digits, 2 at a time
+    lea rbx, debascii
+.sq0:
+    mov al, dl  ;Go low nybble first
+    and al, 0Fh
+    xlatb
+    mov byte [rbp], al
+    dec rbp ;Go down one char pos
+    mov al, dl
+    and al, 0F0h    ;Hi nybble next
+    shr al, 4   ;Shift hi nybble low
+    xlatb
+    mov byte [rbp], al  ;Store char
+    shr rdx, 8  ;Get next digit from rdx
+    dec rbp
+    dec ecx
+    jnz .sq0
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
+
+.a0 db "rax=0000000000000000h " ;each line is 22 chars long
+    db "rbx=0000000000000000h "
+    db "rcx=0000000000000000h "
+    db  0Ah,0Dh
+    db "rdx=0000000000000000h "
+    db "rsi=0000000000000000h "
+    db "rdi=0000000000000000h "
+    db 0Ah, 0Dh
+    db "rbp=0000000000000000h "
+    db "flg=0000000000000000h "
+    db 0Ah,0Dh,0
+.a1 db "Registers on Int 41h stack",0Ah,0Dh,0
+
 ;----------------:
 ;!!!! MACROS !!!!:
 ;----------------:

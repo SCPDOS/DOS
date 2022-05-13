@@ -246,7 +246,29 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
     ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
     ;
+    %ifdef DEBUG
+    ;Entry function
+    debugEnterM
+    lea rbp, .l0000
+    call debPrintNullString
+    call debPrintDOSStack
+    jmp short .l0001
+.l0000 db "Entering Int 41h",0Ah,0Dh,0
+.l0001:    
+    debugExitM
+    %endif
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
+    %ifdef DEBUG
+    ;Exit function
+    debugEnterM
+    lea rbp, .l0002
+    call debPrintNullString
+    call debPrintDOSStack
+    jmp short .l0003
+.l0002 db "Exiting Int 41h",0Ah,0Dh,0
+.l0003:    
+    debugExitM
+    %endif
 .fdExit:
     cli     ;Redisable interrupts
     ;???

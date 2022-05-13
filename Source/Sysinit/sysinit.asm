@@ -91,6 +91,20 @@ adjInts:
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
 ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
+    %if DEBUG
+debugPopUpMsg:
+    push rbx
+    push rbp
+    lea rbx, qword [debPrintNullString + rbp]
+    lea rbp, .msg
+    call rbx
+    jmp short .exit
+.msg:   db 0Ah,0Dh,"SCP/BIOS Boot complete.",0Ah,0Dh
+        db "SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
+.exit:
+    pop rbp
+    pop rbx
+    %endif
 
 ;Now adjust int 42h 43h and 44h correctly using DOS
     lea rdx, errorInit ;Get segment start address
@@ -227,7 +241,7 @@ storageInits:
 ;------------------------------------------------;
 sectorSizeSearch:
 ;Done by reading BPB's for each drive
-    xchg bx, bx
+    ;xchg bx, bx
     lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
     
     ;Go thru each block individually
@@ -411,19 +425,6 @@ mcbInit:
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
-    %if DEBUG
-debugPopUpMsg:
-    debugEnterM
-    lea rbx, qword [debPrintNullString + rbp]
-    lea rbp, .msg
-    call rbx
-    jmp short .exit
-.msg:   db "SCP/BIOS Boot complete.",0Ah,0Dh
-        db "SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
-.exit:
-    debugExitM
-    %endif
-
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
