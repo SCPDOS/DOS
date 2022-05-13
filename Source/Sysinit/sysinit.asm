@@ -92,10 +92,6 @@ adjInts:
 ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
     %if DEBUG
-    xchg bx, bx
-    xor dl, dl
-    mov eax, 0E3h   ;Set 9600,n,8,1
-    int 34h
 debugPopUpMsg:
     push rbx
     push rbp
