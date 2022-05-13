@@ -92,6 +92,10 @@ adjInts:
 ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
     %if DEBUG
+    xchg bx, bx
+    xor dl, dl
+    mov eax, 0E3h   ;Set 9600,n,8,1
+    int 34h
 debugPopUpMsg:
     push rbx
     push rbp
@@ -100,7 +104,7 @@ debugPopUpMsg:
     call rbx
     jmp short .exit
 .msg:   db 0Ah,0Dh,"SCP/BIOS Boot complete.",0Ah,0Dh
-        db "SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
+        db "SCP/DOS Kernel Debugger Connected on COM1:9600,n,8,1",0Ah,0Dh,0
 .exit:
     pop rbp
     pop rbx
@@ -428,6 +432,9 @@ mcbInit:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
+    %if DEBUG
+
+    %endif
 l1:
     mov ah, 01h  ;Write with echo
     int 41h
@@ -537,7 +544,7 @@ errorInit:
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
-strtmsg db 0Ah,0Dh,"Starting SCP/DOS...",0Ah,0Dh,"$"
+strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
 hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
 conName db "CON",0
 auxName db "AUX",0
