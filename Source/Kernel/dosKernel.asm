@@ -171,6 +171,17 @@ multiplex:          ;Int 4Fh, kept as iretq for now
 ;-----------------------------------:
 functionDispatch:   ;Int 41h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
+ %ifdef DEBUG
+    ;Entry function
+    debugEnterM
+    lea rbp, .l0000
+    call debPrintNullString
+    call debPrintFunctionName
+    jmp short .l0001
+.l0000 db 0Ah,0Dh,"Entering Int 41h",0Ah,0Dh,0
+.l0001:    
+    debugExitM
+    %endif
     cli ;Halt external interrupts
     cld ;Ensure all string ops occur in the right direction
     cmp ah, kernelDispatchTableL/8    ;Number of functions
@@ -247,14 +258,9 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
     ;
     %ifdef DEBUG
-    ;Entry function
+    ;Print stack if necessary function
     debugEnterM
-    lea rbp, .l0000
-    call debPrintNullString
     call debPrintDOSStack
-    jmp short .l0001
-.l0000 db "Entering Int 41h",0Ah,0Dh,0
-.l0001:    
     debugExitM
     %endif
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
@@ -265,7 +271,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     call debPrintNullString
     call debPrintDOSStack
     jmp short .l0003
-.l0002 db "Exiting Int 41h",0Ah,0Dh,0
+.l0002 db 0Ah,0Dh,"Exiting Int 41h",0Ah,0Dh,0
 .l0003:    
     debugExitM
     %endif
@@ -622,7 +628,7 @@ ctrlBreakCheck:    ;ah = 33h
     mov byte [breakFlag], dl    ;Set the state
 .cbcget:
     mov dl, byte [breakFlag]    ;Get the state
-    ret
+    iretq
 getInDOSflagPtr:   ;ah = 34h
     lea rdx, inDOS
     mov rbx, qword [oldRSP]
@@ -682,12 +688,10 @@ getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     ret
 setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
     mov qword [currentPSP], rbx ;Set the pointer
-    ret
+    iretq
 getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
-    mov rbx, qword [oldRSP]
     mov rdx, qword [currentPSP]
-    mov qword [rbx + callerFrame.rbx], rdx   ;Set the caller pointer
-    ret 
+    iretq
 getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr
     mov rbx, qword [oldRSP]
@@ -825,12 +829,11 @@ networkServices:   ;ah = 5Eh, do nothing
 networkRedirection:;ah = 5Fh, do nothing
     ret
 getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
-    mov rbx, qword [oldRSP]
     mov rdx, qword [currentPSP]
-    mov qword [rbx + callerFrame.rbx], rdx  ;Save the current psp in rbx
-    ret
+    iretq
                     ;ah = 63h, reserved
 setDriverLookahead:;ah = 64h, reserved
+    iretq
 getsetDiskSerial:  ;ah = 69h, get/set disk serial number
 return:
     ret
