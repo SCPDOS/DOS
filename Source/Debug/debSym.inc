@@ -3,8 +3,10 @@
 %define true 1
 %define false 0
 
-;Switch the following to false in production!
+;Switch the DEBUG to false in production!
 %define DEBUG true
+%define DPBINFO false
+%define REGS false
 
 ;Use this space as the debug stack
 %define debStackTop 80000h

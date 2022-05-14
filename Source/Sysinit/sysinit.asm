@@ -21,8 +21,11 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;------------------------------------------------;
 ;              Connect Debugger                  ;
 ;------------------------------------------------;
+%if DEBUG
+;Only connect if in debug mode
     mov eax, 0C501h ;Connect debugger
     int 35h
+%endif
 ;------------------------------------------------;
 ;           Sanitise the data area               ;
 ;------------------------------------------------;
@@ -100,7 +103,7 @@ debugPopUpMsg:
     call rbx
     jmp short .exit
 .msg:   db 0Ah,0Dh,"SCP/BIOS Boot complete.",0Ah,0Dh
-        db "SCP/DOS Kernel Debugger Connected on COM1:9600,n,8,1",0Ah,0Dh,0
+        db "SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
 .exit:
     pop rbp
     pop rbx
@@ -429,7 +432,76 @@ mcbInit:
     mov ah, 09h
     int 41h
     %if DEBUG
+debugFinal:
+    ;Print system state
+    push rbp    ;Only rbp really matters here
+    mov r8, rbp
 
+    lea rbp, .msg2
+    lea r9, qword [r8 + debPrintNullString]
+    call r9
+
+    lea rbx, qword [.msg + 8]
+    mov rax, qword fs:[dosSegPtr]
+
+    lea r9, qword [r8 + overlayQword]
+    call r9
+
+    add rbx, 19+8
+    mov rax, qword fs:[mcbChainPtr]
+    call r9
+
+    add rbx, 19+8
+    mov rax, qword fs:[dpbHeadPtr]
+    call r9
+
+    add rbx, 19+8
+    mov rax, qword fs:[sftHeadPtr]
+    call r9
+
+    add rbx, 19+8
+    mov rax, qword fs:[bufHeadPtr]
+    call r9
+
+    add rbx, 19+8
+    mov rax, qword fs:[cdsHeadPtr]
+    call r9
+
+    lea r9, qword [r8 + overlayByte]
+
+    add rbx, 25+19
+    movzx rax, byte fs:[numLogDrv]
+    call r9
+
+    add rbx, 30
+    movzx rax, byte fs:[numFixDrv]
+    call r9
+
+    add rbx, 30
+    movzx rax, byte fs:[numRemDrv]
+    call r9
+
+    add rbx, 16
+    movzx rax, byte fs:[bootDrive]
+    call r9
+
+    lea rbp, .msg
+    lea r9, qword [r8 + debPrintNullString]
+    call r9
+    pop rbp
+    jmp l1
+.msg:   db "DOS Seg FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "MCBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "DPBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "SFTptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "bufPtr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "CDSptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "Number of Logical Drives FFh",0Ah,0Dh
+        db "Number of Fixed Drives   FFh",0Ah,0Dh
+        db "Number of Removable Drvs FFh",0Ah,0Dh
+        db "Boot drive FFh",0Ah,0Dh
+        db "Loading COMMAND.COM...",0Ah,0Dh,0
+.msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
     mov ah, 01h  ;Write with echo

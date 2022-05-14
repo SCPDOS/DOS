@@ -51,6 +51,17 @@ findDPB:
     cmp rbp, -1 ;If rbx followed last item in list, no DPB exists for dl
     jne .fd1
 .fd2:
+    %if DEBUG
+    ;Print DPB 
+    debugEnterM
+    lea rbp, .l0000
+    call debPrintNullString
+    call debPrintDeviceDPB
+    jmp short .l0001
+.l0000 db "Internal call to find DPB",0Ah,0Dh,0
+.l0001:
+    debugExitM
+    %endif
     ret
 getCDS:
     ;Gets the CDS for the current drive in rax
@@ -81,6 +92,16 @@ absDiskWrite:       ;Int 46h
 ;rbx = Memory Buffer address to read from
 ;ecx = Number of sectors to write
 ;rdx = Start LBA to write to
+    %if DEBUG
+    ;Print DPB 
+    debugEnterM
+    lea rbp, .l0000
+    call debPrintNullString
+    jmp short .l0001
+.l0000 db "Entering Int 46h",0Ah,0Dh,0
+.l0001:
+    debugExitM
+    %endif
     push rax
     push rbx
     push rdx
@@ -93,6 +114,16 @@ absDiskRead:        ;Int 45h
 ;rbx = Memory Buffer address to write to
 ;ecx = Number of sectors to read
 ;rdx = Start LBA to read from
+    %if DEBUG
+    ;Print DPB 
+    debugEnterM
+    lea rbp, .l0000
+    call debPrintNullString
+    jmp short .l0001
+.l0000 db "Entering Int 45h",0Ah,0Dh,0
+.l0001:
+    debugExitM
+    %endif
     push rax
     push rbx
     push rdx
@@ -171,7 +202,7 @@ multiplex:          ;Int 4Fh, kept as iretq for now
 ;-----------------------------------:
 functionDispatch:   ;Int 41h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
- %ifdef DEBUG
+ %if DEBUG
     ;Entry function
     debugEnterM
     lea rbp, .l0000
@@ -257,22 +288,17 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
     ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
     ;
-    %ifdef DEBUG
+    %if DEBUG && REGS
     ;Print stack if necessary function
     debugEnterM
     call debPrintDOSStack
     debugExitM
     %endif
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
-    %ifdef DEBUG
+    %if DEBUG && REGS
     ;Exit function
     debugEnterM
-    lea rbp, .l0002
-    call debPrintNullString
     call debPrintDOSStack
-    jmp short .l0003
-.l0002 db 0Ah,0Dh,"Exiting Int 41h",0Ah,0Dh,0
-.l0003:    
     debugExitM
     %endif
 .fdExit:
@@ -284,6 +310,17 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov rax, qword [oldoldRSP]
     mov qword [oldRSP], rax
     popDOS  ;Pop the frame
+ %if DEBUG
+    ;Entry function
+    debugEnterM
+    lea rbp, .l0002
+    call debPrintNullString
+    call debPrintFunctionName
+    jmp short .l0003
+.l0002 db 0Ah,0Dh,"Exiting Int 41h",0Ah,0Dh,0
+.l0003:    
+    debugExitM
+    %endif
     iretq
 .fdExitBad:
     mov ah, 0
@@ -808,6 +845,20 @@ createDPB:         ;ah = 53h, generates a DPB from a given BPB
 ;Exit epilogue
     mov rbx, qword [oldRSP]
     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
+    %if DEBUG && DPBINFO
+    ;Print DPB 
+    debugEnterM
+    push rbp
+    lea rbp, .l0000
+    call debPrintNullString
+    pop rbp
+    call debPrintDeviceDPB
+    call debMakeDebuggerRespond
+    jmp short .l0001
+.l0000 db "Constructed DPB from given device BPB",0Ah,0Dh,0
+.l0001:
+    debugExitM
+    %endif
     ret
 getVerifySetting:  ;ah = 54h
     mov al, byte [verifyFlag]   ;al is the return value in this case

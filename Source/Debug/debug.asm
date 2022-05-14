@@ -9,7 +9,24 @@ debDigitStringLen equ 20
 debDigitString db debDigitStringLen dup(0)
 debascii: db '0123456789ABCDEF'
 ;Common procedures
-
+debMakeDebuggerRespond:
+    lea rbp, .msg
+    call debPrintNullString
+    mov ecx, 100000h
+.waiting:
+    dec ecx
+    jz .timeout
+    mov ah, 02h ;Blocking recieve!
+    xor edx, edx
+    int 34h
+    test ah, 80h    ;Was no char recieved? Keep waiting
+    jnz .waiting
+    ret
+.timeout:
+    lea rbp, .msg2
+    jmp debPrintNullString
+.msg: db "Strike a key at the terminal to continue or wait for timeout...",0Ah,0Dh,0
+.msg2: db "Timeout. Continuing...",0Ah,0Dh,0
 debPrintHexByte:
 ;Print the hex byte in al as a hex value
     push rdx
@@ -119,71 +136,39 @@ debPrintDOSStack:
     lea rbp, .a1
     call debPrintNullString
     mov rdx, qword [oldRSP] ;Get caller RSP value
-    lea rbx, .a0
+    lea rbx, qword [.a0 + 4]    ;Go past the rax= part
     mov rax, qword [rdx + callerFrame.rax]
-    call .storeQword
+    call overlayQword
     add rbx, 22
     mov rax, qword [rdx + callerFrame.rbx]
-    call .storeQword
+    call overlayQword
     add rbx, 22
     mov rax, qword [rdx + callerFrame.rcx]
-    call .storeQword
+    call overlayQword
     add rbx, 22 + 2  ;Skip crlf
     mov rax, qword [rdx + callerFrame.rdx]
-    call .storeQword
+    call overlayQword
     add rbx, 22 
     mov rax, qword [rdx + callerFrame.rsi]
-    call .storeQword
+    call overlayQword
     add rbx, 22
     mov rax, qword [rdx + callerFrame.rdi]
-    call .storeQword
+    call overlayQword
     add rbx, 22 + 2 ;Skip crlf
     mov rax, qword [rdx + callerFrame.rbp]
-    call .storeQword
+    call overlayQword
     add rbx, 22
     mov rax, qword [oldRSP]
     add rax, callerFrame_size
-    call .storeQword
+    call overlayQword
     add rbx, 22
     mov rax, qword [rdx + callerFrame.rip]
-    call .storeQword
+    call overlayQword
     add rbx, 22 + 2 ;Skip crlf
     mov rax, qword [rdx + callerFrame.flags]
-    call .storeQword
+    call overlayQword
     lea rbp, .a0
     call debPrintNullString
-    ret
-.storeQword:
-    ;Called with number in rax
-    ;table in rbx
-    push rbx
-    push rcx
-    push rdx
-    push rbp
-    mov rbp, rbx
-    mov rdx, rax
-    add rbp, 4 + 15 ;Go to end of number
-    mov ecx, 8 ;16 digits, 2 at a time
-    lea rbx, debascii
-.sq0:
-    mov al, dl  ;Go low nybble first
-    and al, 0Fh
-    xlatb
-    mov byte [rbp], al
-    dec rbp ;Go down one char pos
-    mov al, dl
-    and al, 0F0h    ;Hi nybble next
-    shr al, 4   ;Shift hi nybble low
-    xlatb
-    mov byte [rbp], al  ;Store char
-    shr rdx, 8  ;Get next digit from rdx
-    dec rbp
-    dec ecx
-    jnz .sq0
-    pop rbp
-    pop rdx
-    pop rcx
-    pop rbx
     ret
 
 .a0 db "rax=0000000000000000h " ;each line is 22 chars long
@@ -202,6 +187,219 @@ debPrintDOSStack:
     db 0Ah,0Dh,0
 .a1 db "Registers on Int 41h stack",0Ah,0Dh,0
 
+debPrintDeviceDPB:
+    ;rbp has dpb pointer in it or if -1, no dpb
+    cmp rbp, -1
+    je .bad
+    lea rbx, qword [.dpb + 8]   ;Goto first number
+    movzx rax, byte [rbp + dpb.bDriveNumber]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, byte [rbp + dpb.bUnitNumber]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, byte [rbp + dpb.bBytesPerSectorShift]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, byte [rbp + dpb.bMaxSectorInCluster]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, byte [rbp + dpb.bSectorsPerClusterShift]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, word [rbp + dpb.wFAToffset]
+    call overlayWord
+    add rbx, 7+8
+    movzx rax, byte [rbp + dpb.bNumberOfFATs]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, word [rbp + dpb.wNumberRootDirSectors]
+    call overlayWord
+    add rbx, 7+8
+    mov eax, dword [rbp + dpb.dClusterHeapOffset]
+    call overlayDword
+    add rbx, 11+8
+    mov eax, dword [rbp + dpb.dClusterCount]
+    call overlayDword
+    add rbx, 11+8
+    mov eax, dword [rbp + dpb.dFATlength]
+    call overlayDword
+    add rbx, 11+8
+    mov eax, dword [rbp + dpb.dFirstUnitOfRootDir]
+    call overlayDword
+    add rbx, 11+8
+    mov rax, qword [rbp + dpb.qDriverHeaderPtr]
+    call overlayQword
+    add rbx, 19+8
+    movzx rax, byte [rbp + dpb.bMediaDescriptor]
+    call overlayByte
+    add rbx, 5+8
+    movzx rax, byte [rbp + dpb.bAccessFlag]
+    call overlayByte
+    add rbx, 5+8
+    mov rax, qword [rbp + dpb.qNextDPBPtr]
+    call overlayQword
+    add rbx, 19+8
+    mov eax, dword [rbp + dpb.dFirstFreeCluster]
+    call overlayDword
+    add rbx, 11+8
+    mov eax, dword [rbp + dpb.dNumberOfFreeClusters]
+    call overlayDword
+    lea rbp, .dpb
+    call debPrintNullString
+    ret
+.bad: 
+    lea rbp, .badstring
+    jmp debPrintNullString
+.badstring db "Null DPB pointer",0Ah,0Dh,0
+.dpb: 
+    db "Drive   00h",0Ah,0Dh
+    db "Unit    00h",0Ah,0Dh
+    db "Byt/Sec 00h",0Ah,0Dh
+    db "SiCMax  00h",0Ah,0Dh
+    db "SpCShft 00h",0Ah,0Dh
+    db "FAToff  0000h",0Ah,0Dh
+    db "#FAT    00h",0Ah,0Dh
+    db "RtDrSec 0000h",0Ah,0Dh  ;Root directory sectors
+    db "DatStrt 00000000h", 0Ah,0Dh
+    db "#Clust  00000000h",0Ah,0Dh
+    db "#FATLen 00000000h",0Ah,0Dh
+    db "RtDir1  00000000h",0Ah,0Dh  ;First sector or cluster of root dir
+    db "DrvPtr  0000000000000000h",0Ah,0Dh
+    db "MedDesc 00h",0Ah,0Dh
+    db "AccFlag 00h",0Ah,0Dh
+    db "NextDPB 0000000000000000h",0Ah,0Dh
+    db "FreeCls 00000000h",0Ah,0Dh
+    db "#FreCls 00000000h",0Ah,0Dh,0
+
+overlayByte:
+    ;Called with number in rax
+    ;pointer to START of 16 byte space for number in rbx
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+    mov rbp, rbx
+    mov rdx, rax
+    inc rbp ;Go to end of number
+
+    lea rbx, debascii
+    mov al, dl  ;Go low nybble first
+    and al, 0Fh
+    xlatb
+    mov byte [rbp], al
+    dec rbp ;Go down one char pos
+    mov al, dl
+    and al, 0F0h    ;Hi nybble next
+    shr al, 4   ;Shift hi nybble low
+    xlatb
+    mov byte [rbp], al  ;Store char
+
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
+
+overlayWord:
+    ;Called with number in rax
+    ;pointer to START of 16 byte space for number in rbx
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+    mov rbp, rbx
+    mov rdx, rax
+    add rbp, 3 ;Go to end of number
+    mov ecx, 2 ;4 digits, 2 at a time
+    lea rbx, debascii
+.ow0:
+    mov al, dl  ;Go low nybble first
+    and al, 0Fh
+    xlatb
+    mov byte [rbp], al
+    dec rbp ;Go down one char pos
+    mov al, dl
+    and al, 0F0h    ;Hi nybble next
+    shr al, 4   ;Shift hi nybble low
+    xlatb
+    mov byte [rbp], al  ;Store char
+    shr rdx, 8  ;Get next digit from rdx
+    dec rbp
+    dec ecx
+    jnz .ow0
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
+
+overlayDword:
+    ;Called with number in rax
+    ;pointer to START of 16 byte space for number in rbx
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+    mov rbp, rbx
+    mov rdx, rax
+    add rbp, 7 ;Go to end of number
+    mov ecx, 4 ;8 digits, 2 at a time
+    lea rbx, debascii
+.od0:
+    mov al, dl  ;Go low nybble first
+    and al, 0Fh
+    xlatb
+    mov byte [rbp], al
+    dec rbp ;Go down one char pos
+    mov al, dl
+    and al, 0F0h    ;Hi nybble next
+    shr al, 4   ;Shift hi nybble low
+    xlatb
+    mov byte [rbp], al  ;Store char
+    shr rdx, 8  ;Get next digit from rdx
+    dec rbp
+    dec ecx
+    jnz .od0
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
+
+overlayQword:
+    ;Called with number in rax
+    ;pointer to START of 16 byte space for number in rbx
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+    mov rbp, rbx
+    mov rdx, rax
+    add rbp, 15 ;Go to end of number
+    mov ecx, 8 ;16 digits, 2 at a time
+    lea rbx, debascii
+.oq0:
+    mov al, dl  ;Go low nybble first
+    and al, 0Fh
+    xlatb
+    mov byte [rbp], al
+    dec rbp ;Go down one char pos
+    mov al, dl
+    and al, 0F0h    ;Hi nybble next
+    shr al, 4   ;Shift hi nybble low
+    xlatb
+    mov byte [rbp], al  ;Store char
+    shr rdx, 8  ;Get next digit from rdx
+    dec rbp
+    dec ecx
+    jnz .oq0
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
+
 debPrintFunctionName:
 ;Prints the DOS function that has been entered
 ;Entered with ah = Function number
@@ -219,7 +417,7 @@ debPrintFunctionName:
     lea rbp, .dosString
     call debPrintNullString
     ret
-.dosString db "Calling DOS function Int 41h/AH="
+.dosString db "DOS function Int 41h/AH="
 .number db "00h",0Ah,0Dh,0
 
 ;----------------:
