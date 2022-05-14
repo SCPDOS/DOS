@@ -295,6 +295,19 @@ functionDispatch:   ;Int 41h Main function dispatcher
     debugExitM
     %endif
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
+    %if DEBUG
+    ;Entry function
+    debugEnterM
+    lea rbp, .l0002
+    call debPrintNullString
+    mov rbx, qword [oldRSP]
+    mov ax, word [rbx + callerFrame.rax]  ;Get ah value
+    call debPrintFunctionName
+    jmp short .l0003
+.l0002 db 0Ah,0Dh,"Exiting Int 41h",0Ah,0Dh,0
+.l0003:    
+    debugExitM
+    %endif
     %if DEBUG && REGS
     ;Exit function
     debugEnterM
@@ -310,17 +323,6 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov rax, qword [oldoldRSP]
     mov qword [oldRSP], rax
     popDOS  ;Pop the frame
- %if DEBUG
-    ;Entry function
-    debugEnterM
-    lea rbp, .l0002
-    call debPrintNullString
-    call debPrintFunctionName
-    jmp short .l0003
-.l0002 db 0Ah,0Dh,"Exiting Int 41h",0Ah,0Dh,0
-.l0003:    
-    debugExitM
-    %endif
     iretq
 .fdExitBad:
     mov ah, 0
