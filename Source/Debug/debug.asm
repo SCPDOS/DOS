@@ -5,8 +5,7 @@
 ;Variables and equates
 
 debOldRSP   dq 0    ;The RSP value when entering a debug output block
-debDigitStringLen equ 20
-debDigitString db debDigitStringLen dup(0)
+
 debascii: db '0123456789ABCDEF'
 ;Common procedures
 debMakeDebuggerRespond:
@@ -51,63 +50,6 @@ debPrintHexByte:
     xlatb    ;point al to entry in ascii table, using al as offset into table
     mov ah, 01h
     int 34h  ;print char
-    ret
-
-debPrintHexQword:
-;Print the hexadecimal qword in rax as a hex value
-    push rax
-    push rcx
-    mov ecx, 8
-.printChar:
-    call debPrintHexByte
-    shr rax, 8
-    loop .printChar
-    pop rcx
-    pop rax
-    ret
-debPrintDecQword:
-;Print the hexadecimal qword in rax in decimal
-    push rax
-    push rbx
-    lea rdi, debDigitString   ;Use the default line as a buffer
-    ;Sanitise the digit buffer
-    push rdi
-    push rcx
-    push rax
-    xor eax, eax
-    mov ecx, debDigitStringLen/8
-    rep stosq
-    pop rax
-    pop rcx
-    pop rdi
-
-    add rdi, debDigitStringLen - 1 ;Go to the end of the buffer
-    std ;Reverse string ops
-    push rax
-    xor al, al  ;Place delimiter
-    stosb
-    pop rax
-    mov rbx, 0Ah  ;Divide by 10
-.pdw0:
-    xor edx, edx
-    div rbx
-    add dl, '0'
-    cmp dl, '9'
-    jbe .pdw1
-    add dl, 'A'-'0'-10
-.pdw1:
-    push rax
-    mov al, dl    ;Save remainder byte
-    stosb   ;Store the byte and add one to rdi
-    pop rax
-    test rax, rax
-    jnz .pdw0
-    cld ;Return string ops to normal
-    inc rdi ;Skip the extra 0 that was inserted
-    mov rbp, rdi    ;Point rbp to the head of the string
-    call debPrintNullString
-    pop rbx
-    pop rax
     ret
 
 debPrintNullString:
@@ -187,91 +129,32 @@ debPrintDOSStack:
     db 0Ah,0Dh,0
 .a1 db "Registers on Int 41h stack",0Ah,0Dh,0
 
-debPrintDeviceDPB:
+debDPBptr:
     ;rbp has dpb pointer in it or if -1, no dpb
-    cmp rbp, -1
-    je .bad
-    lea rbx, qword [.dpb + 8]   ;Goto first number
-    movzx rax, byte [rbp + dpb.bDriveNumber]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, byte [rbp + dpb.bUnitNumber]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, byte [rbp + dpb.bBytesPerSectorShift]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, byte [rbp + dpb.bMaxSectorInCluster]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, byte [rbp + dpb.bSectorsPerClusterShift]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, word [rbp + dpb.wFAToffset]
-    call overlayWord
-    add rbx, 7+8
-    movzx rax, byte [rbp + dpb.bNumberOfFATs]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, word [rbp + dpb.wNumberRootDirSectors]
-    call overlayWord
-    add rbx, 7+8
-    mov eax, dword [rbp + dpb.dClusterHeapOffset]
-    call overlayDword
-    add rbx, 11+8
-    mov eax, dword [rbp + dpb.dClusterCount]
-    call overlayDword
-    add rbx, 11+8
-    mov eax, dword [rbp + dpb.dFATlength]
-    call overlayDword
-    add rbx, 11+8
-    mov eax, dword [rbp + dpb.dFirstUnitOfRootDir]
-    call overlayDword
-    add rbx, 11+8
-    mov rax, qword [rbp + dpb.qDriverHeaderPtr]
+    lea rbx, qword [.dpb + 10]   ;Goto first number
+    mov rax, rbp
     call overlayQword
-    add rbx, 19+8
-    movzx rax, byte [rbp + dpb.bMediaDescriptor]
-    call overlayByte
-    add rbx, 5+8
-    movzx rax, byte [rbp + dpb.bAccessFlag]
-    call overlayByte
-    add rbx, 5+8
-    mov rax, qword [rbp + dpb.qNextDPBPtr]
-    call overlayQword
-    add rbx, 19+8
-    mov eax, dword [rbp + dpb.dFirstFreeCluster]
-    call overlayDword
-    add rbx, 11+8
-    mov eax, dword [rbp + dpb.dNumberOfFreeClusters]
-    call overlayDword
     lea rbp, .dpb
     call debPrintNullString
     ret
-.bad: 
-    lea rbp, .badstring
-    jmp debPrintNullString
-.badstring db "Null DPB pointer",0Ah,0Dh,0
 .dpb: 
-    db "Drive   00h",0Ah,0Dh
-    db "Unit    00h",0Ah,0Dh
-    db "Byt/Sec 00h",0Ah,0Dh
-    db "SiCMax  00h",0Ah,0Dh
-    db "SpCShft 00h",0Ah,0Dh
-    db "FAToff  0000h",0Ah,0Dh
-    db "#FAT    00h",0Ah,0Dh
-    db "RtDrSec 0000h",0Ah,0Dh  ;Root directory sectors
-    db "DatStrt 00000000h", 0Ah,0Dh
-    db "#Clust  00000000h",0Ah,0Dh
-    db "#FATLen 00000000h",0Ah,0Dh
-    db "RtDir1  00000000h",0Ah,0Dh  ;First sector or cluster of root dir
-    db "DrvPtr  0000000000000000h",0Ah,0Dh
-    db "MedDesc 00h",0Ah,0Dh
-    db "AccFlag 00h",0Ah,0Dh
-    db "NextDPB 0000000000000000h",0Ah,0Dh
-    db "FreeCls 00000000h",0Ah,0Dh
-    db "#FreCls 00000000h",0Ah,0Dh,0
+    db "DPB ptr @ 0000000000000000h ",0Ah,0Dh,0
 
+debDPBBPBptr:
+    ;rbp has dpb ptr in it or -1 if no dpb
+    ;rsi has bpb ptr in it or -1 if no bpb
+    lea rbx, qword [.dpb + 10]   ;Goto first number
+    mov rax, rbp
+    call overlayQword
+    add rbx, 33
+    mov rax, rsi
+    call overlayQword
+    lea rbp, .dpb
+    call debPrintNullString
+    ret
+.dpb: 
+    db "DPB ptr @ 0000000000000000h from "
+    db "BPB ptr @ 0000000000000000h ",0Ah,0Dh,0
 overlayByte:
     ;Called with number in rax
     ;pointer to START of 16 byte space for number in rbx

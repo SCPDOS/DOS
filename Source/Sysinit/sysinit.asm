@@ -483,7 +483,8 @@ debugFinal:
 
     add rbx, 16
     movzx rax, byte fs:[bootDrive]
-    call r9
+    add al, "A"
+    mov byte [rbx], al
 
     lea rbp, .msg
     lea r9, qword [r8 + debPrintNullString]
@@ -499,7 +500,7 @@ debugFinal:
         db "Number of Logical Drives FFh",0Ah,0Dh
         db "Number of Fixed Drives   FFh",0Ah,0Dh
         db "Number of Removable Drvs FFh",0Ah,0Dh
-        db "Boot drive FFh",0Ah,0Dh
+        db "Boot drive Z:",0Ah,0Dh
         db "Loading COMMAND.COM...",0Ah,0Dh,0
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif

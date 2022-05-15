@@ -54,9 +54,11 @@ findDPB:
     %if DEBUG
     ;Print DPB 
     debugEnterM
+    mov r8, rbp ;Save dpb pointer
     lea rbp, .l0000
     call debPrintNullString
-    call debPrintDeviceDPB
+    mov rbp, r8
+    call debDPBptr
     jmp short .l0001
 .l0000 db "Internal call to find DPB",0Ah,0Dh,0
 .l0001:
@@ -854,7 +856,7 @@ createDPB:         ;ah = 53h, generates a DPB from a given BPB
     lea rbp, .l0000
     call debPrintNullString
     pop rbp
-    call debPrintDeviceDPB
+    call debDPBBPBptr
     call debMakeDebuggerRespond
     jmp short .l0001
 .l0000 db "Constructed DPB from given device BPB",0Ah,0Dh,0
