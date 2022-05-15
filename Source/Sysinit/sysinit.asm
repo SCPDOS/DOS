@@ -98,13 +98,23 @@ adjInts:
 debugPopUpMsg:
     push rbx
     push rbp
+    push rcx
+    push rdx
+    mov ecx, 53 ;A large number of lines
+    xor edx, edx    ;COM 1
+.cls:
+    mov eax, 010Ah ;Transmit Line feed
+    int 34h
+    dec ecx
+    jnz .cls
     lea rbx, qword [debPrintNullString + rbp]
     lea rbp, .msg
     call rbx
     jmp short .exit
-.msg:   db 0Ah,0Dh,"SCP/BIOS Boot complete.",0Ah,0Dh
-        db "SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
+.msg:   db 0Ah,0Dh,"SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
 .exit:
+    pop rdx
+    pop rcx
     pop rbp
     pop rbx
     %endif
@@ -423,7 +433,24 @@ defaultFileHandles:
 ;                   MCB inits                    ;
 ;------------------------------------------------;
 mcbInit:
+;If exists avoid ISA hole by taking address after USERBASE to it's max value
+;DOS is limited to 4GB max memory for now. Consider extending BIOS page tables.
+;   There is plenty of space to do so with 2MB paging!
+    mov eax, 0E820h
+    int 35h
+    ;rax has pointer to USERBASE, rsi has pointer to memory map
+    ;Search for entry in table. Use that value to check if ISA hole exists.
+    ;ISA hole ends at 16MB value, so then search for that address again
+    
 
+
+    jmp .mcbExit
+.mcbFail:
+    lea rbp, .mcbFailmsg
+    mov eax, 1304h
+    int 30h
+    jmp errorInit
+.mcbFailmsg: db "Memory Allocation Error",0Ah,0Dh,0
 .mcbExit:
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
