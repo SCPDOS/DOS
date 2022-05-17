@@ -117,7 +117,7 @@ mcbInit:
     mov eax, 200000h
     mov rbx, qword fs:[biosUBase]   ;Get userbase
     sub eax, ebx
-    mov dword [loProtMem], eax  ;The leftover goes here
+    mov dword fs:[loProtMem], eax  ;The leftover goes here
     jmp mcbBuild 
 .mcbi1:
     mov rdx, qword [rax]    ;Save the userbase in rdx
@@ -195,28 +195,30 @@ mcbBuild:
 ;Actually build the MCB chain here
 ;Start by computing the difference between userbase and DOS area
 ;This value needs to be subtracted from loProtMem to get free memory
-    ;xchg bx, bx
+    xchg bx, bx
     mov rbx, qword fs:[biosUBase]
     lea rsi, qword [rbp + dosMCB]  ;Get the fs relative address of this ptr
     push rsi    ;Save ptr
     add rsi, mcb.program    ;Point to free space
     sub rsi, rbx    ;Get difference from userbase and first byte after DOS
-    sub dword [loProtMem], esi  ;Hide DOS data and code segs
+    sub dword fs:[loProtMem], esi  ;Hide DOS data and code segs
     pop rbx
     mov byte [rbx + mcb.marker], "Z"    ;Mark as end of chain
     mov qword [rbx + mcb.owner], mcbOwnerDOS
+    mov esi, dword fs:[loProtMem]
     shr esi, 4  ;Shift down by a nybble to get paragraphs
     mov dword [rbx + mcb.blockSize], esi
     mov qword fs:[mcbChainPtr], rbx ;Save pointer
 
     ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
-    cmp dword [hiProtMem], 0
+    cmp dword fs:[hiProtMem], 0
     jz .skipISA
     ;Here if an ISA hole exists, place a MCB around it
     sub dword [rbx + mcb.blockSize], (mcb_size>>4)    
     ;Remove one MCB worth of space from alloc
     xor ecx, ecx
     mov ecx, dword [rbx + mcb.blockSize]
+    add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
     shl ecx, 4  ;Convert from paragraphs
     mov byte [rbx + mcb.marker], "M"    ;Change marker in anchor
     add rbx, rcx   ;Point rbx to next space
@@ -236,17 +238,19 @@ mcbBuild:
     mov qword [rbx + mcb.owner], mcbOwnerFree
     mov ecx, dword fs:[hiProtMem]
     shr ecx, 4  ;Get paragraphs
+    sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
     mov dword [rbx + mcb.blockSize], ecx
 .skipISA:
     ;Now check the longMem count. If it is 0, skip PCI hole computations.
     ;rbx points to a block with "Z" marker
-    cmp dword [longMem], 0
+    cmp dword fs:[longMem], 0
     jz .exit
     ;Add PCI hole MCB
     sub dword [rbx + mcb.blockSize], (mcb_size>>4)
     ;Remove one MCB worth of space from alloc
     xor ecx, ecx
     mov ecx, dword [rbx + mcb.blockSize]
+    add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
     shl ecx, 4  ;Get bytes
     mov byte [rbx + mcb.marker], "M"    ;Change marker in prev MCB
     add rbx, rcx   ;Point rbx to next space
@@ -266,6 +270,7 @@ mcbBuild:
     mov qword [rbx + mcb.owner], mcbOwnerFree
     mov ecx, dword fs:[longMem]
     shr ecx, 4
+    sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
     mov dword [rbx + mcb.blockSize], ecx
 .exit:
 ;------------------------------------------------;

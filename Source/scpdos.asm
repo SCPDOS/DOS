@@ -26,5 +26,6 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Drivers/drvData.asm"
 %include "./Source/Drivers/charDrv.asm"
 %include "./Source/Drivers/diskDrv.asm"
-Segment dynamicDataArea nobits valign=1 vfollows=resSeg
+Segment dynamicDataArea nobits valign=10h vfollows=resSeg
+;Paragraph alignment
 %include "./Source/BSS/dosDynaDataArea.asm"
