@@ -12,7 +12,9 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
     shl rdi, 20h        ;Shift high
     mov edi, eax        ;Get the low dword in
-    add rdi, mcb_size   ;Make space for the MCB
+    and rdi, ~0FFFh
+    add rdi, 1000h      ;Make this pointer 4Kb aligned!
+    add rdi, dosDataArea   ;Make space for the MCB and additional page tables
     mov eax, edi
     mov rdx, rdi
     shr rdx, 20h
@@ -50,7 +52,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     int 31h ;Get number of Int 33h devices in r8b
     shr r8, 8   ;Isolate bytes 1 and 2 of r8
     mov ax, r8w
-    mov byte fs:[numRemDrv], ah    ;Save number of physical int 33h removable drvs
+    mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     mov byte fs:[numLogDrv], 0     ;Number of logical drives
@@ -58,6 +60,38 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     shr r8, 2*8
     test r8b, r8b
     jz errorInit
+;------------------------------------------------;
+;          Add additional page tables            ;
+;------------------------------------------------;
+;This will allow for up to 64Gb of addressible space
+    xchg bx, bx
+    mov rdi, rbp   ;rbp points to the data area
+    sub rdi, (mcb_size + dosAPTsize) ;Point back to 4kb aligned userbase 
+    ;Each entry is a 2Mb (200000h) multiple from 4Gb (100000000h)
+    mov ecx, dosAPTsize/8   ;This many entries as qwords
+    push rdi
+    mov rax, 100000000h | 83h ;Make each pde 2Mb, present and r/w
+pdtLoop:
+    stosq
+    add rax, 200000h
+    dec ecx
+    jnz pdtLoop
+    pop rax ;Get the pointer back to the top of the memory area in rax
+;Now we add every 4kb page to the page directory pointer table
+;15 4kb pages to consider
+    mov rdi, cr3    ;Get Page level 4 table pointer
+    mov rdi, qword [rdi] ;Go to next level
+    and rdi, ~0FFh  ;Strip bottom two nybbles
+    add rdi, 4*8    ;Go to 4th entry
+    mov ecx, 60
+    or rax, 3h      ;present and r/w
+pdptLoop:
+    stosq
+    add rax, 1000h  ;Goto next 4kb page
+    dec ecx
+    jnz pdptLoop
+    mov rdi, cr3
+    mov cr3, rdi
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;

@@ -1,5 +1,9 @@
 ;This file contains the main DOS data segment
-
+dosAPT: ;Additional Page tables
+    resb dosAPTsize    ;60kb of space for the page tables
+dosMCB: ;Anchor MCB space
+    resb mcb_size
+dosDataArea:
     dosSegPtr   resq 1    ;Pointer to the data Segment itself x
     bootDrive   resb 1    ;The Int 33h device we booted from x
     numRemDrv   resb 1    ;Number of physical removable MSDs in system x

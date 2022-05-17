@@ -325,3 +325,7 @@ struc clkStruc
     .hseconds   resb 1  ;Hundreths of seconds
     .seconds    resb 1
 endstruc
+
+;60 4kb pages, giving a total of 264kb of space allocated to paging
+;for a space of 64Gb
+dosAPTsize  equ 60*4096
