@@ -218,7 +218,7 @@ endstruc
 ;------------------------------------------------------------------------;
 struc mcb
     .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
-    .owner      resq 1  ;Owning application PSP or 0 for free space
+    .owner      resq 1  ;Owning application PSP (para aligned) or 0 for free
     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
     .reserved   resb 3  ;Reserved three bytes
     .program:
@@ -230,7 +230,7 @@ mcbOwnerDOS     equ 8   ;Owner =  8 => Owned by DOS
 ;Owner = Para aligned address => Owning application PSP
 ;...To consider...
 ;Owner = Non-para aligned address => Error? Should maybe lock up system?
-;blockSize does NOT count the mcb but goes to the next mcb
+;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
 ;------------------------------------------------------------------------;
 ; For Int 41h, the callers registers are saved on their stack in the 
 ; following order, thus allowing for return values to be placed in the 
