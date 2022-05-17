@@ -195,7 +195,6 @@ mcbBuild:
 ;Actually build the MCB chain here
 ;Start by computing the difference between userbase and DOS area
 ;This value needs to be subtracted from loProtMem to get free memory
-    xchg bx, bx
     mov rbx, qword fs:[biosUBase]
     lea rsi, qword [rbp + dosMCB]  ;Get the fs relative address of this ptr
     push rsi    ;Save ptr
@@ -468,7 +467,6 @@ storageInits:
 ;------------------------------------------------;
 sectorSizeSearch:
 ;Done by reading BPB's for each drive
-    ;xchg bx, bx
     lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
     
     ;Go thru each block individually
