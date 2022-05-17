@@ -15,7 +15,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov rsi, rdi        ;Save userbase in rsi temporarily
     and rdi, ~0FFFh
     add rdi, 1000h      ;Make this pointer 4Kb aligned!
-    add rdi, dosDataArea   ;Make space for the MCB and additional page tables
+    ;add rdi, dosDataArea   ;Make space for the MCB and additional page tables
     mov eax, edi
     mov rdx, rdi
     shr rdx, 20h
@@ -37,7 +37,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     push rdi    ;Temp save rdi on the stack
     rep stosb
     pop rdi
-
 ;------------------------------------------------;
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
@@ -67,8 +66,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;          Add additional page tables            ;
 ;------------------------------------------------;
 ;This will allow for up to 64Gb of addressible space
-    mov rdi, rbp   ;rbp points to the data area
-    sub rdi, (mcb_size + dosAPTsize) ;Point back to 4kb aligned userbase 
+    mov rdi, qword fs:[dosSegPtr]
     ;Each entry is a 2Mb (200000h) multiple from 4Gb (100000000h)
     mov ecx, dosAPTsize/8   ;This many entries as qwords
     push rdi
