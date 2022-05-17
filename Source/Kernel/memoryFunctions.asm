@@ -21,7 +21,10 @@ verifyIntegrityOfMCBChain:
 .exit:
     ret ;We have reached the end of the chain, return all good!
 .ok1:
+    xor eax, eax
     mov eax, dword [rbx + mcb.blockSize]    ;Add the block size
+    shl rax, 4  ;Convert from paragraphs to bytes
+    add rbx, mcb.program    ;The block starts at the program
     add rbx, rax
     jmp short .ok
 .sysHalt:
