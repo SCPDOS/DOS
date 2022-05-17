@@ -465,9 +465,7 @@ defaultFileHandles:
 ;                   MCB inits                    ;
 ;------------------------------------------------;
 mcbInit:
-;If exists avoid ISA hole by taking address after USERBASE to it's max value
-;DOS is limited to 4GB max memory for now. Consider extending BIOS page tables.
-;   There is plenty of space to do so with 2MB paging!
+    xchg bx, bx
     mov eax, 0E820h
     int 35h
     ;rax has pointer to USERBASE, rsi has pointer to memory map
@@ -476,15 +474,59 @@ mcbInit:
     ;Here, we try use E801h
     mov eax, 0E801h
     int 35h
-
+    movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
+    movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
+    test eax, eax
+    jz .worst
+    shl eax, 9      ;Multiply by 9 to get number of bytes
+    shl ebx, 16     ;Multiply by 16 to get number of bytes
+    mov dword fs:[loProtMem], eax
+    mov dword fs:[hiProtMem], ebx
+    jmp .mcbBuild
+.worst:
+    ;Get USERBASE pointer and subtract it from 2Mb
+    mov eax, 200000h
+    mov rbx, qword fs:[biosUBase]   ;Get userbase
+    sub eax, ebx
+    mov dword [loProtMem], eax  ;The leftover goes here
+    jmp .mcbBuild 
 .mcbi1:
-    mov rdx, rax    ;Save the userbase in rdx
-    mov rax, qword [rax + 8]    ;Get size of entry
-
-
-    
-    jmp .mcbExit
-
+    mov rdx, qword [rax]    ;Save the userbase in rdx
+    mov rbx, 100000001h ;Valid entry signature
+    cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
+    jne .mcbFail
+    mov rax, qword [rax + 8]    ;Get arena size in rax
+    ;PCI hole always exists so this value will always be a dword
+    mov dword fs:[loProtMem], eax
+    mov rbx, rdx    ;Get userbase into rbx
+    add rbx, rax    ;Check if it goes above 16Mb?
+    cmp rbx, 1000000h  
+    ja .skipISA
+;Here we deal with ISA hole issues
+    mov eax, 0E820h
+    int 35h
+    mov rax, 1000000h
+    call .mcbFindAddress
+    jc .mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
+    mov rbx, 100000001h ;Valid entry signature
+    cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+    jne .mcbBuild  
+    mov rbx, qword [rax]    ;Get 16Mb value in rbx
+    add rbx, qword [rax + 8]    ;Get the domain size in rbx
+    mov dword fs:[hiProtMem], ebx   ;Save data 
+.skipISA:
+    mov eax, 0E820h
+    int 35h
+    mov rax, 100000000h ;4Gb boundary
+    call .mcbFindAddress
+    jc .mcbBuild    ;If no memory above 4Gb, proceed as normal
+    mov rbx, 100000001h ;Valid entry signature
+    cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+    jne .mcbBuild   
+    mov rbx, qword [rax]    ;Get 4Gb value in rbx
+    add rbx, qword [rax + 8]    ;Get the domain size in rbx
+    mov qword fs:[longMem], rbx   ;Save data 
+    jmp .mcbBuild
 .mcbFindAddress:
 ;Takes an address in rax and tries to find the 24 byte entry in the memory map
 ;Entry: rax = Address of arena to search for
@@ -508,6 +550,7 @@ mcbInit:
     stc
     ret
 .mcbAddressFound:
+    mov rax, rsi    ;Save pointer to entry in rax
     pop rcx ;Pop old rax value off
     pop rcx
     pop rsi
@@ -520,7 +563,14 @@ mcbInit:
     int 30h
     jmp errorInit
 .mcbFailmsg: db "Memory Allocation Error",0Ah,0Dh,0
-.mcbExit:
+.mcbBuild:
+;Actually build the MCB chain here
+;Start by computing the difference between userbase and the dosSegment
+    mov rbx, qword fs:[biosUBase]
+    mov rsi, qword fs:[dosSegPtr]
+    add rsi, dosDataArea    ;First usable DOS byte is after the MCB
+    sub rsi, rbx    ;Get the difference between the two to sub from rax
+;rsi now has the difference between userbase and dosDataArea
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
