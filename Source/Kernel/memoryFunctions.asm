@@ -14,9 +14,9 @@ getsetMallocStrat: ;ah = 58h
 verifyIntegrityOfMCBChain:
     mov rbx, qword [mcbChainPtr]    ;Get the head of the chain
 .ok:
-    cmp byte [rbx + mcb.marker], 'M'
+    cmp byte [rbx + mcb.marker], mcbMarkCtn
     je .ok1
-    cmp byte [rbx + mcb.marker], "Z"    ;End of the chain?
+    cmp byte [rbx + mcb.marker], mcbMarkEnd    ;End of the chain?
     jne .sysHalt    ;It was not M or Z, fail violently
 .exit:
     ret ;We have reached the end of the chain, return all good!

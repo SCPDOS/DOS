@@ -227,6 +227,9 @@ endstruc
 mcbOwnerHole    equ -1  ;Owner = -1 => Memory hole
 mcbOwnerFree    equ 0   ;Owner =  0 => Free and available space
 mcbOwnerDOS     equ 8   ;Owner =  8 => Owned by DOS
+mcbMarkCtn      equ "M"
+mcbMarkEnd      equ "Z"
+
 ;Owner = Para aligned address => Owning application PSP
 ;...To consider...
 ;Owner = Non-para aligned address => Error? Should maybe lock up system?

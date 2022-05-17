@@ -202,7 +202,7 @@ mcbBuild:
     sub rsi, rbx    ;Get difference from userbase and first byte after DOS
     sub dword fs:[loProtMem], esi  ;Hide DOS data and code segs
     pop rbx
-    mov byte [rbx + mcb.marker], "Z"    ;Mark as end of chain
+    mov byte [rbx + mcb.marker], mcbMarkEnd  ;Mark as end of chain
     mov qword [rbx + mcb.owner], mcbOwnerDOS
     mov esi, dword fs:[loProtMem]
     shr esi, 4  ;Shift down by a nybble to get paragraphs
@@ -219,9 +219,9 @@ mcbBuild:
     mov ecx, dword [rbx + mcb.blockSize]
     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
     shl ecx, 4  ;Convert from paragraphs
-    mov byte [rbx + mcb.marker], "M"    ;Change marker in anchor
+    mov byte [rbx + mcb.marker], mcbMarkCtn  ;Change marker in anchor
     add rbx, rcx   ;Point rbx to next space
-    mov byte [rbx + mcb.marker], "M"
+    mov byte [rbx + mcb.marker], mcbMarkCtn
     mov qword [rbx + mcb.owner], mcbOwnerHole
     mov rcx, 1000000h   ;Move 16Mb in rcx
     mov rax, rbx    ;Get mcb pointer in rax
@@ -233,7 +233,7 @@ mcbBuild:
     add rbx, mcb_size
     add rbx, rcx
     ;RBX should now be at 16Mb
-    mov byte [rbx + mcb.marker], "Z"
+    mov byte [rbx + mcb.marker], mcbMarkEnd
     mov qword [rbx + mcb.owner], mcbOwnerFree
     mov ecx, dword fs:[hiProtMem]
     shr ecx, 4  ;Get paragraphs
@@ -251,9 +251,9 @@ mcbBuild:
     mov ecx, dword [rbx + mcb.blockSize]
     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
     shl ecx, 4  ;Get bytes
-    mov byte [rbx + mcb.marker], "M"    ;Change marker in prev MCB
+    mov byte [rbx + mcb.marker], mcbMarkCtn ;Change marker in prev MCB
     add rbx, rcx   ;Point rbx to next space
-    mov byte [rbx + mcb.marker], "M"
+    mov byte [rbx + mcb.marker], mcbMarkCtn
     mov qword [rbx + mcb.owner], mcbOwnerHole
     mov rcx, 100000000h   ;Move 4Gb in rcx
     mov rax, rbx    ;Get mcb pointer in rax
@@ -265,7 +265,7 @@ mcbBuild:
     add rbx, mcb_size
     add rbx, rcx
     ;RBX should now be at 4Gb
-    mov byte [rbx + mcb.marker], "Z"
+    mov byte [rbx + mcb.marker], mcbMarkEnd
     mov qword [rbx + mcb.owner], mcbOwnerFree
     mov ecx, dword fs:[longMem]
     shr ecx, 4
