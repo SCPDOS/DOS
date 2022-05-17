@@ -15,7 +15,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov rsi, rdi        ;Save userbase in rsi temporarily
     and rdi, ~0FFFh
     add rdi, 1000h      ;Make this pointer 4Kb aligned!
-    ;add rdi, dosDataArea   ;Make space for the MCB and additional page tables
     mov eax, edi
     mov rdx, rdi
     shr rdx, 20h
@@ -40,12 +39,11 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;------------------------------------------------;
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
-    xchg bx, bx
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov qword fs:[biosUBase], rsi
-    mov rbp, rdi    ;Save the start of dosSeg in rdx 
+    mov rbp, rdi    ;Save the start of dosSeg in rbp
     add rdi, dSegLen ;Move destination past end of data area
     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
     mov ecx, 1000h
@@ -66,7 +64,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;          Add additional page tables            ;
 ;------------------------------------------------;
 ;This will allow for up to 64Gb of addressible space
-    mov rdi, qword fs:[dosSegPtr]
+    mov rdi, rbp
     ;Each entry is a 2Mb (200000h) multiple from 4Gb (100000000h)
     mov ecx, dosAPTsize/8   ;This many entries as qwords
     push rdi
