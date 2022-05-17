@@ -111,14 +111,14 @@ mcbInit:
     shl ebx, 16     ;Multiply by 16 to get number of bytes
     mov dword fs:[loProtMem], eax
     mov dword fs:[hiProtMem], ebx
-    jmp .mcbBuild
+    jmp mcbBuild
 .worst:
     ;Get USERBASE pointer and subtract it from 2Mb
     mov eax, 200000h
     mov rbx, qword fs:[biosUBase]   ;Get userbase
     sub eax, ebx
     mov dword [loProtMem], eax  ;The leftover goes here
-    jmp .mcbBuild 
+    jmp mcbBuild 
 .mcbi1:
     mov rdx, qword [rax]    ;Save the userbase in rdx
     mov rbx, 100000001h ;Valid entry signature
@@ -136,10 +136,10 @@ mcbInit:
     int 35h
     mov rax, 1000000h
     call .mcbFindAddress
-    jc .mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
+    jc mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
     mov rbx, 100000001h ;Valid entry signature
     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-    jne .mcbBuild  
+    jne mcbBuild  
     mov rbx, qword [rax]    ;Get 16Mb value in rbx
     add rbx, qword [rax + 8]    ;Get the domain size in rbx
     mov dword fs:[hiProtMem], ebx   ;Save data 
@@ -148,14 +148,14 @@ mcbInit:
     int 35h
     mov rax, 100000000h ;4Gb boundary
     call .mcbFindAddress
-    jc .mcbBuild    ;If no memory above 4Gb, proceed as normal
+    jc mcbBuild    ;If no memory above 4Gb, proceed as normal
     mov rbx, 100000001h ;Valid entry signature
     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-    jne .mcbBuild   
+    jne mcbBuild   
     mov rbx, qword [rax]    ;Get 4Gb value in rbx
     add rbx, qword [rax + 8]    ;Get the domain size in rbx
     mov qword fs:[longMem], rbx   ;Save data 
-    jmp .mcbBuild
+    jmp mcbBuild
 .mcbFindAddress:
 ;Takes an address in rax and tries to find the 24 byte entry in the memory map
 ;Entry: rax = Address of arena to search for
@@ -191,7 +191,7 @@ mcbInit:
     int 30h
     jmp errorInit
 .mcbFailmsg: db "Memory Allocation Error",0Ah,0Dh,0
-.mcbBuild:
+mcbBuild:
 ;Actually build the MCB chain here
 ;Start by computing the difference between userbase and DOS area
 ;This value needs to be subtracted from loProtMem to get free memory
@@ -205,9 +205,69 @@ mcbInit:
     pop rbx
     mov byte [rbx + mcb.marker], "Z"    ;Mark as end of chain
     mov qword [rbx + mcb.owner], mcbOwnerDOS
+    shr esi, 4  ;Shift down by a nybble to get paragraphs
     mov dword [rbx + mcb.blockSize], esi
     mov qword fs:[mcbChainPtr], rbx ;Save pointer
 
+    ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
+    cmp dword [hiProtMem], 0
+    jz .skipISA
+    ;Here if an ISA hole exists, place a MCB around it
+    sub dword [rbx + mcb.blockSize], (mcb_size>>4)    
+    ;Remove one MCB worth of space from alloc
+    xor ecx, ecx
+    mov ecx, dword [rbx + mcb.blockSize]
+    shl ecx, 4  ;Convert from paragraphs
+    mov byte [rbx + mcb.marker], "M"    ;Change marker in anchor
+    add rbx, rcx   ;Point rbx to next space
+    mov byte [rbx + mcb.marker], "M"
+    mov qword [rbx + mcb.owner], mcbOwnerHole
+    mov rcx, 1000000h   ;Move 16Mb in rcx
+    mov rax, rbx    ;Get mcb pointer in rax
+    add rax, mcb_size
+    sub rcx, rax    ;Take their difference
+    shr ecx, 4
+    mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
+    shl ecx, 4  ;Get bytes again
+    add rbx, mcb_size
+    add rbx, rcx
+    ;RBX should now be at 16Mb
+    mov byte [rbx + mcb.marker], "Z"
+    mov qword [rbx + mcb.owner], mcbOwnerFree
+    mov ecx, dword fs:[hiProtMem]
+    shr ecx, 4  ;Get paragraphs
+    mov dword [rbx + mcb.blockSize], ecx
+.skipISA:
+    ;Now check the longMem count. If it is 0, skip PCI hole computations.
+    ;rbx points to a block with "Z" marker
+    cmp dword [longMem], 0
+    jz .exit
+    ;Add PCI hole MCB
+    sub dword [rbx + mcb.blockSize], (mcb_size>>4)
+    ;Remove one MCB worth of space from alloc
+    xor ecx, ecx
+    mov ecx, dword [rbx + mcb.blockSize]
+    shl ecx, 4  ;Get bytes
+    mov byte [rbx + mcb.marker], "M"    ;Change marker in prev MCB
+    add rbx, rcx   ;Point rbx to next space
+    mov byte [rbx + mcb.marker], "M"
+    mov qword [rbx + mcb.owner], mcbOwnerHole
+    mov rcx, 100000000h   ;Move 4Gb in rcx
+    mov rax, rbx    ;Get mcb pointer in rax
+    add rax, mcb_size
+    sub rcx, rax    ;Take their difference
+    shr ecx, 4
+    mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
+    shl ecx, 4  ;Get bytes again
+    add rbx, mcb_size
+    add rbx, rcx
+    ;RBX should now be at 4Gb
+    mov byte [rbx + mcb.marker], "Z"
+    mov qword [rbx + mcb.owner], mcbOwnerFree
+    mov ecx, dword fs:[longMem]
+    shr ecx, 4
+    mov dword [rbx + mcb.blockSize], ecx
+.exit:
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
