@@ -5,7 +5,7 @@
 tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
-;First make space for the MCB
+;First move the alignment of the DOSSEG to 4Kb
     push rdx    ;Save dl on stack briefly
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
@@ -90,6 +90,124 @@ pdptLoop:
     jnz pdptLoop
     mov rdi, cr3
     mov cr3, rdi
+
+;------------------------------------------------;
+;                   MCB inits                    ;
+;------------------------------------------------;
+mcbInit:
+    mov eax, 0E820h
+    int 35h
+    ;rax has pointer to USERBASE, rsi has pointer to memory map
+    call .mcbFindAddress
+    jnc .mcbi1  ;If found, proceed
+    ;Here, we try use E801h
+    mov eax, 0E801h
+    int 35h
+    movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
+    movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
+    test eax, eax
+    jz .worst
+    shl eax, 9      ;Multiply by 9 to get number of bytes
+    shl ebx, 16     ;Multiply by 16 to get number of bytes
+    mov dword fs:[loProtMem], eax
+    mov dword fs:[hiProtMem], ebx
+    jmp .mcbBuild
+.worst:
+    ;Get USERBASE pointer and subtract it from 2Mb
+    mov eax, 200000h
+    mov rbx, qword fs:[biosUBase]   ;Get userbase
+    sub eax, ebx
+    mov dword [loProtMem], eax  ;The leftover goes here
+    jmp .mcbBuild 
+.mcbi1:
+    mov rdx, qword [rax]    ;Save the userbase in rdx
+    mov rbx, 100000001h ;Valid entry signature
+    cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
+    jne .mcbFail
+    mov rax, qword [rax + 8]    ;Get arena size in rax
+    ;PCI hole always exists so this value will always be a dword
+    mov dword fs:[loProtMem], eax
+    mov rbx, rdx    ;Get userbase into rbx
+    add rbx, rax    ;Check if it goes above 16Mb?
+    cmp rbx, 1000000h  
+    ja .skipISA
+;Here we deal with ISA hole issues
+    mov eax, 0E820h
+    int 35h
+    mov rax, 1000000h
+    call .mcbFindAddress
+    jc .mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
+    mov rbx, 100000001h ;Valid entry signature
+    cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+    jne .mcbBuild  
+    mov rbx, qword [rax]    ;Get 16Mb value in rbx
+    add rbx, qword [rax + 8]    ;Get the domain size in rbx
+    mov dword fs:[hiProtMem], ebx   ;Save data 
+.skipISA:
+    mov eax, 0E820h
+    int 35h
+    mov rax, 100000000h ;4Gb boundary
+    call .mcbFindAddress
+    jc .mcbBuild    ;If no memory above 4Gb, proceed as normal
+    mov rbx, 100000001h ;Valid entry signature
+    cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+    jne .mcbBuild   
+    mov rbx, qword [rax]    ;Get 4Gb value in rbx
+    add rbx, qword [rax + 8]    ;Get the domain size in rbx
+    mov qword fs:[longMem], rbx   ;Save data 
+    jmp .mcbBuild
+.mcbFindAddress:
+;Takes an address in rax and tries to find the 24 byte entry in the memory map
+;Entry: rax = Address of arena to search for
+;       rsi = Pointer to memory map
+;       ecx = Number of 24 byte entries
+;Exit:  CF=NC : rax = Pointer to 24 byte entry 
+;       CF=CY : value in rax not found
+    push rsi
+    push rcx
+    push rax
+.mfa0:
+    cmp rax, qword [rsi]
+    je .mcbAddressFound
+    add rsi, 24 ;Goto next entry
+    dec ecx
+    jns .mfa0
+.mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
+    pop rax
+    pop rcx
+    pop rsi
+    stc
+    ret
+.mcbAddressFound:
+    mov rax, rsi    ;Save pointer to entry in rax
+    pop rcx ;Pop old rax value off
+    pop rcx
+    pop rsi
+    clc
+    ret
+.mcbFail:
+    lea rbp, .mcbFailmsg
+    mov eax, 1304h
+    int 30h
+    jmp errorInit
+.mcbFailmsg: db "Memory Allocation Error",0Ah,0Dh,0
+.mcbBuild:
+;Actually build the MCB chain here
+;Start by computing the difference between userbase and DOS area
+;This value needs to be subtracted from loProtMem to get free memory
+    xchg bx, bx
+    mov rbx, qword fs:[biosUBase]
+    lea rsi, qword [rbp + dosMCB]  ;Get the fs relative address of this ptr
+    push rsi    ;Save ptr
+    add rsi, mcb.program    ;Point to free space
+    sub rsi, rbx    ;Get difference from userbase and first byte after DOS
+    sub dword [loProtMem], esi  ;Hide DOS data and code segs
+    pop rbx
+    mov byte [rbx + mcb.marker], "Z"    ;Mark as end of chain
+    mov qword [rbx + mcb.owner], mcbOwnerDOS
+    mov dword [rbx + mcb.blockSize], esi
+    mov qword fs:[mcbChainPtr], rbx ;Save pointer
+
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
@@ -158,7 +276,6 @@ debugPopUpMsg:
     lea rdx, errorInit ;Get segment start address
     mov eax, 2544h
     int 41h
-
 ;------------------------------------------------;
 ;          Driver Adjustments and inits          ;
 ;------------------------------------------------;
@@ -462,116 +579,6 @@ defaultFileHandles:
 ;                  CONFIG.SYS                    ;
 ;------------------------------------------------;
 ;------------------------------------------------;
-;                   MCB inits                    ;
-;------------------------------------------------;
-mcbInit:
-    xchg bx, bx
-    mov eax, 0E820h
-    int 35h
-    ;rax has pointer to USERBASE, rsi has pointer to memory map
-    call .mcbFindAddress
-    jnc .mcbi1  ;If found, proceed
-    ;Here, we try use E801h
-    mov eax, 0E801h
-    int 35h
-    movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
-    movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
-    test eax, eax
-    jz .worst
-    shl eax, 9      ;Multiply by 9 to get number of bytes
-    shl ebx, 16     ;Multiply by 16 to get number of bytes
-    mov dword fs:[loProtMem], eax
-    mov dword fs:[hiProtMem], ebx
-    jmp .mcbBuild
-.worst:
-    ;Get USERBASE pointer and subtract it from 2Mb
-    mov eax, 200000h
-    mov rbx, qword fs:[biosUBase]   ;Get userbase
-    sub eax, ebx
-    mov dword [loProtMem], eax  ;The leftover goes here
-    jmp .mcbBuild 
-.mcbi1:
-    mov rdx, qword [rax]    ;Save the userbase in rdx
-    mov rbx, 100000001h ;Valid entry signature
-    cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
-    jne .mcbFail
-    mov rax, qword [rax + 8]    ;Get arena size in rax
-    ;PCI hole always exists so this value will always be a dword
-    mov dword fs:[loProtMem], eax
-    mov rbx, rdx    ;Get userbase into rbx
-    add rbx, rax    ;Check if it goes above 16Mb?
-    cmp rbx, 1000000h  
-    ja .skipISA
-;Here we deal with ISA hole issues
-    mov eax, 0E820h
-    int 35h
-    mov rax, 1000000h
-    call .mcbFindAddress
-    jc .mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
-    mov rbx, 100000001h ;Valid entry signature
-    cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-    jne .mcbBuild  
-    mov rbx, qword [rax]    ;Get 16Mb value in rbx
-    add rbx, qword [rax + 8]    ;Get the domain size in rbx
-    mov dword fs:[hiProtMem], ebx   ;Save data 
-.skipISA:
-    mov eax, 0E820h
-    int 35h
-    mov rax, 100000000h ;4Gb boundary
-    call .mcbFindAddress
-    jc .mcbBuild    ;If no memory above 4Gb, proceed as normal
-    mov rbx, 100000001h ;Valid entry signature
-    cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-    jne .mcbBuild   
-    mov rbx, qword [rax]    ;Get 4Gb value in rbx
-    add rbx, qword [rax + 8]    ;Get the domain size in rbx
-    mov qword fs:[longMem], rbx   ;Save data 
-    jmp .mcbBuild
-.mcbFindAddress:
-;Takes an address in rax and tries to find the 24 byte entry in the memory map
-;Entry: rax = Address of arena to search for
-;       rsi = Pointer to memory map
-;       ecx = Number of 24 byte entries
-;Exit:  CF=NC : rax = Pointer to 24 byte entry 
-;       CF=CY : value in rax not found
-    push rsi
-    push rcx
-    push rax
-.mfa0:
-    cmp rax, qword [rsi]
-    je .mcbAddressFound
-    add rsi, 24 ;Goto next entry
-    dec ecx
-    jns .mfa0
-.mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
-    pop rax
-    pop rcx
-    pop rsi
-    stc
-    ret
-.mcbAddressFound:
-    mov rax, rsi    ;Save pointer to entry in rax
-    pop rcx ;Pop old rax value off
-    pop rcx
-    pop rsi
-    clc
-    ret
-
-.mcbFail:
-    lea rbp, .mcbFailmsg
-    mov eax, 1304h
-    int 30h
-    jmp errorInit
-.mcbFailmsg: db "Memory Allocation Error",0Ah,0Dh,0
-.mcbBuild:
-;Actually build the MCB chain here
-;Start by computing the difference between userbase and the dosSegment
-    mov rbx, qword fs:[biosUBase]
-    mov rsi, qword fs:[dosSegPtr]
-    add rsi, dosDataArea    ;First usable DOS byte is after the MCB
-    sub rsi, rbx    ;Get the difference between the two to sub from rax
-;rsi now has the difference between userbase and dosDataArea
-;------------------------------------------------;
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
@@ -599,6 +606,20 @@ debugFinal:
 
     add rbx, 19+8
     mov rax, qword fs:[mcbChainPtr]
+    call r9
+
+    add rbx, 20+8
+    lea r9, qword [r8 + overlayDword]
+    mov eax, dword fs:[loProtMem]
+    call r9
+
+    add rbx, 10+8
+    mov eax, dword fs:[hiProtMem]
+    call r9
+
+    add rbx, 10+8
+    mov rax, qword fs:[longMem]
+    lea r9, qword [r8 + overlayQword]
     call r9
 
     add rbx, 19+8
@@ -643,7 +664,10 @@ debugFinal:
     jmp l1
 .msg:   db "BIOS user base FFFFFFFFFFFFFFFFh",0Ah,0Dh ;15 chars to number
         db "DOS Seg FFFFFFFFFFFFFFFFh",0Ah,0Dh
-        db "MCBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+        db "MCBptr  FFFFFFFFFFFFFFFFh ",0Ah,0Dh
+        db "Arena1: FFFFFFFFh ",
+        db "Arena2: FFFFFFFFh ",
+        db "Arena3: FFFFFFFFFFFFFFFFh",0Ah,0Dh
         db "DPBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
         db "SFTptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
         db "bufPtr  FFFFFFFFFFFFFFFFh",0Ah,0Dh

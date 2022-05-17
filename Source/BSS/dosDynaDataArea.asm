@@ -1,3 +1,7 @@
+;This is the scratch space allocated by DOS. This also forms the start of 
+; the MCB chain!
+dosMCB          resb mcb_size
+
 ;Create SFT header and corresponding array of five default sft entries
 firstSftHeader  resb sfth_size
 firstSft        resb sft_size

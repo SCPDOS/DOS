@@ -1,8 +1,6 @@
 ;This file contains the main DOS data segment
 dosAPT: ;Additional Page tables
     resb dosAPTsize    ;60kb of space for the page tables
-dosMCB: ;Anchor MCB space
-    resb mcb_size
 dosDataArea:
     dosSegPtr   resq 1    ;Pointer to the data Segment itself x
     biosUBase   resq 1    ;Ptr to the BIOS userbase
