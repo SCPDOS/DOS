@@ -12,6 +12,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
     shl rdi, 20h        ;Shift high
     mov edi, eax        ;Get the low dword in
+    mov rsi, rdi        ;Save userbase in rsi temporarily
     and rdi, ~0FFFh
     add rdi, 1000h      ;Make this pointer 4Kb aligned!
     add rdi, dosDataArea   ;Make space for the MCB and additional page tables
@@ -40,9 +41,11 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;------------------------------------------------;
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
+    xchg bx, bx
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
+    mov qword fs:[biosUBase], rsi
     mov rbp, rdi    ;Save the start of dosSeg in rdx 
     add rdi, dSegLen ;Move destination past end of data area
     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
@@ -472,12 +475,49 @@ mcbInit:
     mov eax, 0E820h
     int 35h
     ;rax has pointer to USERBASE, rsi has pointer to memory map
-    ;Search for entry in table. Use that value to check if ISA hole exists.
-    ;ISA hole ends at 16MB value, so then search for that address again
+    call .mcbFindAddress
+    jnc .mcbi1  ;If found, proceed
+    ;Here, we try use E801h
+    mov eax, 0E801h
+    int 35h
+
+.mcbi1:
+    mov rdx, rax    ;Save the userbase in rdx
+    mov rax, qword [rax + 8]    ;Get size of entry
+
+
     
-
-
     jmp .mcbExit
+
+.mcbFindAddress:
+;Takes an address in rax and tries to find the 24 byte entry in the memory map
+;Entry: rax = Address of arena to search for
+;       rsi = Pointer to memory map
+;       ecx = Number of 24 byte entries
+;Exit:  CF=NC : rax = Pointer to 24 byte entry 
+;       CF=CY : value in rax not found
+    push rsi
+    push rcx
+    push rax
+.mfa0:
+    cmp rax, qword [rsi]
+    je .mcbAddressFound
+    add rsi, 24 ;Goto next entry
+    dec ecx
+    jns .mfa0
+.mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
+    pop rax
+    pop rcx
+    pop rsi
+    stc
+    ret
+.mcbAddressFound:
+    pop rcx ;Pop old rax value off
+    pop rcx
+    pop rsi
+    clc
+    ret
+
 .mcbFail:
     lea rbp, .mcbFailmsg
     mov eax, 1304h
@@ -501,10 +541,14 @@ debugFinal:
     lea r9, qword [r8 + debPrintNullString]
     call r9
 
-    lea rbx, qword [.msg + 8]
-    mov rax, qword fs:[dosSegPtr]
+    lea rbx, qword [.msg + 15]
+    mov rax, qword fs:[biosUBase]
 
     lea r9, qword [r8 + overlayQword]
+    call r9
+
+    add rbx, 19+8
+    mov rax, qword fs:[dosSegPtr]
     call r9
 
     add rbx, 19+8
@@ -551,7 +595,8 @@ debugFinal:
     call r9
     pop rbp
     jmp l1
-.msg:   db "DOS Seg FFFFFFFFFFFFFFFFh",0Ah,0Dh
+.msg:   db "BIOS user base FFFFFFFFFFFFFFFFh",0Ah,0Dh ;15 chars to number
+        db "DOS Seg FFFFFFFFFFFFFFFFh",0Ah,0Dh
         db "MCBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
         db "DPBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
         db "SFTptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh

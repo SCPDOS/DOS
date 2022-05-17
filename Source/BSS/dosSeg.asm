@@ -5,10 +5,13 @@ dosMCB: ;Anchor MCB space
     resb mcb_size
 dosDataArea:
     dosSegPtr   resq 1    ;Pointer to the data Segment itself x
+    biosUBase   resq 1    ;Ptr to the BIOS userbase
     bootDrive   resb 1    ;The Int 33h device we booted from x
     numRemDrv   resb 1    ;Number of physical removable MSDs in system x
     numFixDrv   resb 1    ;Number of physical fixed drives in system
     numLogDrv   resb 1    ;Number of logical drives in system x
+    loProtected resd 1    ;Number of bytes available to use in lo protected
+    hiProtected resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x
     ;The device driver header with space for the largest possible packet

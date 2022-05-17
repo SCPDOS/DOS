@@ -230,7 +230,7 @@ mcbOwnerDOS     equ 8   ;Owner =  8 => Owned by DOS
 ;Owner = Para aligned address => Owning application PSP
 ;...To consider...
 ;Owner = Non-para aligned address => Error? Should maybe lock up system?
-
+;blockSize does NOT count the mcb but goes to the next mcb
 ;------------------------------------------------------------------------;
 ; For Int 41h, the callers registers are saved on their stack in the 
 ; following order, thus allowing for return values to be placed in the 
