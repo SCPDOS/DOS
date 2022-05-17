@@ -195,7 +195,7 @@ mcbInit:
 ;Actually build the MCB chain here
 ;Start by computing the difference between userbase and DOS area
 ;This value needs to be subtracted from loProtMem to get free memory
-    xchg bx, bx
+    ;xchg bx, bx
     mov rbx, qword fs:[biosUBase]
     lea rsi, qword [rbp + dosMCB]  ;Get the fs relative address of this ptr
     push rsi    ;Save ptr
@@ -584,7 +584,7 @@ defaultFileHandles:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
-    %if DEBUG
+    %if true
 debugFinal:
     ;Print system state
     push rbp    ;Only rbp really matters here
