@@ -64,7 +64,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;          Add additional page tables            ;
 ;------------------------------------------------;
 ;This will allow for up to 64Gb of addressible space
-    xchg bx, bx
     mov rdi, rbp   ;rbp points to the data area
     sub rdi, (mcb_size + dosAPTsize) ;Point back to 4kb aligned userbase 
     ;Each entry is a 2Mb (200000h) multiple from 4Gb (100000000h)
