@@ -115,10 +115,13 @@ memSysHalt:
     lea rbx, .sysHltString
     mov ah, 09h
     int 41h
+    ;Only halt IRQ's in production!
+    %if !DEBUG
     cli ;Halt interrupts
     mov al, 0FFh    ;Mask IRQ lines 
     out 0A1h, al
     out 021h, al
+    %endif
     hlt             ;Halt the system
     jmp short $ - 3 ;Go back far enough to capture the hlt
 .sysHltString db "Memory allocation error",0Dh,0Ah,
