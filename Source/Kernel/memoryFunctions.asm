@@ -66,6 +66,7 @@ freeMemory:        ;ah = 49h
     add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
     add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
 .blockFoundExit:
+    call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
     mov rbx, qword [oldRSP]
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
     ret
