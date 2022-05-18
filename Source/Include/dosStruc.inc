@@ -224,7 +224,7 @@ struc mcb
     .program:
 endstruc
 ;MCB equates
-mcbOwnerHole    equ -1  ;Owner = -1 => Memory hole
+mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
 mcbOwnerFree    equ 0   ;Owner =  0 => Free and available space
 mcbOwnerDOS     equ 8   ;Owner =  8 => Owned by DOS
 mcbMarkCtn      equ "M"
