@@ -142,8 +142,7 @@ mcbInit:
     mov rbx, 100000001h ;Valid entry signature
     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
     jne mcbBuild  
-    mov rbx, qword [rax]    ;Get 16Mb value in rbx
-    add rbx, qword [rax + 8]    ;Get the domain size in rbx
+    mov rbx, qword [rax + 8]
     mov dword fs:[hiProtMem], ebx   ;Save data 
 .skipISA:
     mov eax, 0E820h
@@ -154,8 +153,11 @@ mcbInit:
     mov rbx, 100000001h ;Valid entry signature
     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
     jne mcbBuild   
-    mov rbx, qword [rax]    ;Get 4Gb value in rbx
-    add rbx, qword [rax + 8]    ;Get the domain size in rbx
+    mov rbx, qword [rax + 8]
+    ;If this size is above 60Gb, store 60Gb as this is max long arena size!
+    mov rcx, 0F00000000h    ;60Gb value
+    cmp rbx, rcx
+    cmova rbx, rcx  ;Move the value of rcx into rbx IF it is above
     mov qword fs:[longMem], rbx   ;Save data 
     jmp mcbBuild
 .mcbFindAddress:
@@ -269,11 +271,13 @@ mcbBuild:
     ;RBX should now be at 4Gb
     mov byte [rbx + mcb.marker], mcbMarkEnd
     mov qword [rbx + mcb.owner], mcbOwnerFree
-    mov ecx, dword fs:[longMem]
-    shr ecx, 4
+    mov rcx, qword fs:[longMem]
+    shr rcx, 4
     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
     mov dword [rbx + mcb.blockSize], ecx
 .exit:
+    ;The last arena doesn't need to reserve space for one more MCB
+    add dword [rbx + mcb.blockSize], (mcb_size>>4)
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;

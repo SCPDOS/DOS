@@ -8,7 +8,7 @@ allocateMemory:    ;ah = 48h
     ; Also maintain a variable, ecx for the size of the allocation
     ;All sizes in paragraphs
 freeMemory:        ;ah = 49h
-;Input: r8 = segment of the block to be returned (MCB + 1para)
+;Input: r8 = segment of the block to be returned (MCB + 1 para)
 ;Output: CF=CY => al = error code, CH=NC, nothing
 ;Always skip the first block as this is the anchor for DOS
     xor ecx, ecx
@@ -88,6 +88,23 @@ freeMemory:        ;ah = 49h
     or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on
     ret
 reallocMemory:     ;ah = 4Ah
+;Input: r8 = segment of the block to be realloc'ed (MCB + 1 para)
+;       ebx = How much memory this block should contain after realloc,
+;               in paragraphs. If ebx = 0, jump to free memory
+    test ebx, ebx
+    jz freeMemory   ;If resize to 0, equivalent to free!
+    xor ecx, ecx
+    mov rsi, r8     ;Get segment pointer in rsi
+    cmp byte [rsi + mcb.marker], mcbMarkCtn
+    je .ctn
+    cmp byte [rsi + mcb.marker],mcbMarkEnd
+    jne memSysHalt
+.ctn:
+    ;This MCB is valid, proceed to resize
+    ;There needs to be at least 20h bytes free for the realloc to work
+    mov ecx, dword [rsi + mcb.blockSize]    ;Get current blocksize
+    
+
 getsetMallocStrat: ;ah = 58h
     ret
 ;-----------------------------------:
