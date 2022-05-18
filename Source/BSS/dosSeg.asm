@@ -26,6 +26,8 @@ sysVarsPtr:
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain x
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
+    numBuffers  resb 1    ;Buffers=30 default
+    numFiles    resb 1    ;FILES=5 default
     sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numJoinDrv  resb 1    ;Number of Joined Drives
@@ -36,7 +38,7 @@ sysVarsPtr:
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
     errorLocus  resb 1  ;Where the error took place  
-    errorExt    resw 1  ;Extended Error Code
+    errorExCde  resw 1  ;Extended Error Code
     errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
 
@@ -45,6 +47,7 @@ sysVarsPtr:
     rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this di)
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch x
+    allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
     currentDrv  resb 1  ;Default drive x
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x

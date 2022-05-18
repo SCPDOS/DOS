@@ -4,7 +4,88 @@
 ;  Memory related Kernel routines   :
 ;-----------------------------------:
 allocateMemory:    ;ah = 48h
+    ;Maintain 2 pointers, best and last
+    ; Also maintain a variable, ecx for the size of the allocation
+    ;All sizes in paragraphs
 freeMemory:        ;ah = 49h
+;Input: r8 = segment of the block to be returned (MCB + 1para)
+;Output: CF=CY => al = error code, CH=NC, nothing
+;Always skip the first block as this is the anchor for DOS
+    xor ecx, ecx
+    mov rsi, qword [mcbChainPtr]    ;Get MCB chain ptr to start walking
+    mov rdi, rsi
+    mov ecx, dword [rsi + mcb.blockSize]
+    shl rcx, 4  ;Turn to bytes
+    add rcx, mcb.program
+    add rsi, rcx    ;Go to next block
+.mainLoop:
+    xor ecx, ecx
+    cmp byte [rsi + mcb.marker], mcbMarkCtn
+    je .valid
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    jne memSysHalt
+.valid:
+    cmp r8, rsi
+    je .blockFound
+    ;Not valid, check if last block in chain
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    je .blockNotFound
+    mov ecx, dword [rsi + mcb.blockSize]
+    shl rcx, 4  ;Turn to bytes
+    add rcx, mcb.program    ;Go past the arena mcb
+    add rsi, rcx    ;Go to next block
+    jmp short .mainLoop
+.blockFound:
+    ;If hole, error.
+    ;Else, set free, check if previous block is free, then check if next is free
+    cmp qword [rsi + mcb.owner], mcbOwnerHole
+    je .blockHole
+    mov qword [rsi + mcb.owner], mcbOwnerFree
+    cmp qword [rdi + mcb.owner], mcbOwnerFree   ;Is the previous block free?
+    jne .blockFoundCheckFollowing   ;No, check if block following is free
+    ;It is, let it absorb this space
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
+    add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
+    mov rsi, rdi    ;Now point rsi to this block
+.blockFoundCheckFollowing:
+    ;First check if we are the last block in chain
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    je .blockFoundExit  ;If yes, exit!
+    mov rdi, rsi    ;Now point rdi to current block
+    mov ecx, dword [rsi + mcb.blockSize]
+    shl rcx, 4  ;Turn to bytes
+    add rcx, mcb.program
+    add rsi, rcx    ;Go to next block
+    cmp qword [rsi + mcb.owner], mcbOwnerFree
+    jne .blockFoundExit ;If not free, exit
+    ;If free, absorb into block pointed to by rdi
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
+    add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
+.blockFoundExit:
+    mov rbx, qword [oldRSP]
+    and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
+    ret
+.blockNotFound:
+    ;Set CF and error code
+    mov byte [errorClass], eClsNotFnd   ;Block not found 
+    jmp short .blockError
+.blockHole:
+;Cannot free a hole! Fail!
+    mov byte [errorClass], eClsLocked   ;Cant free a hole
+.blockError:
+    mov byte [errorDrv], -1 ;No drive
+    mov byte [errorLocus], eLocMem  ;Memory locus
+    mov word [errorExCde], errMemAddr   ;Invalid mem addr
+    mov byte [errorAction], eActUsr ;Retry with different value
+    mov eax, errMemAddr
+    mov rbx, qword [oldRSP]
+    mov word [rbx + callerFrame.rax], ax    ;Save this word on stack
+    or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on
+    ret
 reallocMemory:     ;ah = 4Ah
 getsetMallocStrat: ;ah = 58h
     ret
@@ -17,7 +98,7 @@ verifyIntegrityOfMCBChain:
     cmp byte [rbx + mcb.marker], mcbMarkCtn
     je .ok1
     cmp byte [rbx + mcb.marker], mcbMarkEnd    ;End of the chain?
-    jne .sysHalt    ;It was not M or Z, fail violently
+    jne memSysHalt    ;It was not M or Z, fail violently
 .exit:
     ret ;We have reached the end of the chain, return all good!
 .ok1:
@@ -27,7 +108,7 @@ verifyIntegrityOfMCBChain:
     add rbx, mcb.program    ;The block starts at the program
     add rbx, rax
     jmp short .ok
-.sysHalt:
+memSysHalt:
 ;Only arrive here if the integrity of the system is not verified
 ;Lock the system
     lea rbx, .sysHltString

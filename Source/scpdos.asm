@@ -6,6 +6,7 @@ BITS 64
 %include "./Source/Include/fatStruc.inc"
 %include "./Source/Include/dosStruc.inc"
 %include "./Source/Debug/debSym.inc"
+%include "./Source/Include/dosError.inc"
 Segment .text align=1   ;Init code
 %include "./Source/Sysinit/sysInit.asm"
 Segment dSeg nobits align=1 start=0     ;BSS data segment

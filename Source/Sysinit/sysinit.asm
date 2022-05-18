@@ -56,6 +56,8 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     mov byte fs:[numLogDrv], 0     ;Number of logical drives
+    mov byte fs:[numFiles], 5      ;Default 8 files, at start 5
+    mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
     ;If no detected Int 33h devices, halt 
     shr r8, 2*8
     test r8b, r8b
@@ -521,6 +523,7 @@ tempCDS:
     mov byte fs:[inDOS], al      ;Not in DOS
     mov byte fs:[errorDrv], -1   ;No error drive
     mov word fs:[lastRetCode], ax   ;Last return code is 0, no error
+    mov byte fs:[allocStrat], al    ;First Fit
 
     ;SYSVARS PSP Init
     lea rbx, qword [tempPSP]

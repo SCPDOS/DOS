@@ -371,12 +371,12 @@ diskReset:         ;ah = 0Dh
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr]
     mov di, word [diskReqHdr + drvReqHdr.status]    ;Disk error occured!
     and di, 0FFh    ;Only bottom byte
-    mov word [errorExt], di     ;Save driver error code
-    add word [errorExt], 13h    ;Add offset to driver error codes
+    mov word [errorExCde], di     ;Save driver error code
+    add word [errorExCde], drvErrShft    ;Add offset to driver error codes
     mov byte [errorDrv], al     ;Save the drive on which the error occured
-    mov byte [errorLocus], 2    ;Error in Block Device Request code
-    mov byte [errorClass], 11   ;Media error occured (bad BPB or other) code
-    mov byte [errorAction], 1   ;Retry request code
+    mov byte [errorLocus], eLocDsk   ;Error in Block Device Request code
+    mov byte [errorClass], eClsMedia ;Media error (bad BPB or other) code
+    mov byte [errorAction], eActRet   ;Retry request code
     call criticalDOSError       ;Critical error handler
     test al, al ;Ignore the troublesome buffer and mark it as free
     jz .drIgnore
@@ -402,11 +402,11 @@ selectDisk:        ;ah = 0Eh
 .error:
     mov rbp, qword [oldRSP]
     or qword [rbp + callerFrame.flags], 1   ;Set the CY flag
-    mov eax, 15                 ;Invalid drive error
-    mov word [errorExt], ax     
-    mov byte [errorLocus], 1    ;Not appropriate
-    mov byte [errorClass], 8    ;Drive not found
-    mov byte [errorAction], 7   ;Retry after user intervention
+    mov eax, errBadDrv          ;Invalid drive error
+    mov word [errorExCde], ax     
+    mov byte [errorLocus], eLocUnk    ;Not appropriate
+    mov byte [errorClass], eClsNotFnd    ;Drive not found
+    mov byte [errorAction], eActRetUsr   ;Retry after user intervention
     ret
 getCurrentDisk:    ;ah = 19h, get current default drive
     mov al, byte [currentDrv]
@@ -433,11 +433,11 @@ FATinfoDevice:     ;ah = 1Ch
 ;Simply return with CY set and error code in al with extended error info
     mov rbp, qword [oldRSP]
     or qword [rbp + callerFrame.flags], 1   ;Set the CY flag
-    mov eax, 15                 ;Invalid drive error
-    mov word [errorExt], ax     
-    mov byte [errorLocus], 1    ;Not appropriate
-    mov byte [errorClass], 8    ;Drive not found
-    mov byte [errorAction], 7   ;Retry after user intervention
+    mov eax, errBadDrv          ;Invalid drive error
+    mov word [errorExCde], errBadDrv     
+    mov byte [errorLocus], eLocUnk    ;Not appropriate
+    mov byte [errorClass], eClsNotFnd    ;Drive not found
+    mov byte [errorAction], eActRetUsr   ;Retry after user intervention
     ret
 .fidDPBFound:
     mov al, byte [rbp + dpb.bMaxSectorInCluster]
@@ -507,10 +507,10 @@ getDeviceDPBptr:   ;ah = 32h
     test al, al
     jz .gddpMediaCheck
 ;Put in here error info
-    mov word [errorExt], 15 ;Invalid drive spec
-    mov byte [errorLocus], 2    ;Block device driver
-    mov byte [errorClass], 8    ;Drive not found
-    mov byte [errorAction], 7   ;Retry after intervention
+    mov word [errorExCde], errBadDrv ;Invalid drive spec
+    mov byte [errorLocus], eLocDsk    ;Block device driver
+    mov byte [errorClass], eClsNotFnd    ;Drive not found
+    mov byte [errorAction], eActRetUsr   ;Retry after intervention
     ret ;Return. al = -1
 .gddpMediaCheck:
 ;Media Check Section
@@ -584,7 +584,7 @@ getDeviceDPBptr:   ;ah = 32h
 .gddpretdpbFail:
     mov rdx, qword [oldRSP]
     or qword [rdx + callerFrame.flags], 1   ;Set CF=CY
-    mov word [errorExt], 83 ;Fail on INT 44h error code
+    mov word [errorExCde], errFI24 ;Fail on INT 44h error code
     ret
 .gddpError:
 ;Abort, Retry, Ignore are the only acceptible responses
@@ -604,12 +604,12 @@ getDeviceDPBptr:   ;ah = 32h
     mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
     and di, 0FFh    ;Save lo byte only
-    mov word [errorExt], di     ;Save driver error code
-    add word [errorExt], 13h    ;Add offset to driver error codes
+    mov word [errorExCde], di     ;Save driver error code
+    add word [errorExCde], drvErrShft    ;Add offset to driver error codes
     mov byte [errorDrv], al     ;Save the drive on which the error occured
-    mov byte [errorLocus], 2    ;Error in Block Device Request code
-    mov byte [errorClass], 11   ;Media error occured (bad BPB or other) code
-    mov byte [errorAction], 1   ;Retry request code
+    mov byte [errorLocus], eLocDsk    ;Error in Block Device Request code
+    mov byte [errorClass], eClsMedia   ;Media error (bad BPB or other) code
+    mov byte [errorAction], eActRet   ;Retry request code
     call criticalDOSError   ;Critical error handler
     test al, al
     jz .gddpretdbp  ;Ignore error, return, rbp has old dpb pointer
@@ -632,13 +632,13 @@ getDeviceDPBptr:   ;ah = 32h
 .gddpErrorType2main:    
     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
     and di, 0FFh    ;Save lo byte only
-    mov word [errorExt], di     ;Save driver error code
-    add word [errorExt], 13h    ;Add offset to driver error codes
+    mov word [errorExCde], di     ;Save driver error code
+    add word [errorExCde], drvErrShft   ;Add offset to driver error codes
     mov al, byte [rbx + bufferHdr.driveNumber]
     mov byte [errorDrv], al
-    mov byte [errorLocus], 2    ;Error in Block Device Request code
-    mov byte [errorClass], 11   ;Media error occured (bad disk write) code
-    mov byte [errorAction], 1   ;Retry request code
+    mov byte [errorLocus], eLocDsk    ;Error in Block Device Request code
+    mov byte [errorClass], eClsMedia  ;Media error (bad disk write) code
+    mov byte [errorAction], eActRet   ;Retry request code
     mov rsi, qword [rbx + bufferHdr.driveDPBPtr]
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get device driver header in rsi
     call criticalDOSError   ;Critical error handler
@@ -700,10 +700,10 @@ getDiskFreeSpace:  ;ah = 36h
     jz .gdfsDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
-    mov word [errorExt], 15     ;Invalid drive error
-    mov byte [errorLocus], 1    ;Not appropriate
-    mov byte [errorClass], 8    ;Drive not found
-    mov byte [errorAction], 7   ;Retry after user intervention
+    mov word [errorExCde], errBadDrv     ;Invalid drive error
+    mov byte [errorLocus], eLocDsk    ;Not appropriate
+    mov byte [errorClass], eClsNotFnd    ;Drive not found
+    mov byte [errorAction], eActRetUsr   ;Retry after user intervention
     mov rbp, qword [oldRSP]
     mov word [rbp + callerFrame.rax], -1    ;Set ax=FFFFh
     or qword [rbp + callerFrame.flags], 1   ;Set CF=CY
@@ -871,7 +871,7 @@ createPSP:         ;ah = 55h, creates a PSP for a program
     ret
 getExtendedError:  ;ah = 59h
     mov rdx, qword [oldRSP]
-    mov ax, word [errorExt]
+    mov ax, word [errorExCde]
     mov ch, byte [errorLocus]
     mov bh, byte [errorClass]
     mov bl, byte [errorAction]

@@ -225,10 +225,14 @@ struc mcb
 endstruc
 ;MCB equates
 mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
-mcbOwnerFree    equ 0   ;Owner =  0 => Free and available space
-mcbOwnerDOS     equ 8   ;Owner =  8 => Owned by DOS
+mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
+mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
 mcbMarkCtn      equ "M"
 mcbMarkEnd      equ "Z"
+
+memFirstFit     equ 0   ;First free block goes to application
+memBestFit      equ 1   ;Block whos size closest matches requirement
+memLastFit      equ 2   ;Last free block goes to application
 
 ;Owner = Para aligned address => Owning application PSP
 ;...To consider...
