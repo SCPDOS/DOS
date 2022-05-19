@@ -90,35 +90,33 @@ freeMemory:        ;ah = 49h
     call verifyIntegrityOfMCBChain
     ret
 reallocMemory:     ;ah = 4Ah
-;Input: r8 = address of the block to be realloc'ed (MCB + 1 para)
+;Input: r8 = address of the block to be realloc'ed
 ;       ebx = How many paras this block should contain after realloc. 
 ;               If ebx = 0, jump to free memory
-;Needs to be at least 2 paragraphs free for growth or shrink to work
     test ebx, ebx
     jz freeMemory   ;If resize to 0, equivalent to free!
     sub r8, mcb.program ;Return pointer to MCB for arena
-    add ebx, (mcb.program >> 4) ;Add one para for the mcb header too!
-    xor ecx, ecx
     mov rsi, r8     ;Get segment pointer in rsi
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .ctn
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     jne .badAddrGiven
 .ctn:
-    ;This MCB is valid
+    ;Provided block is valid
     ;Check if Growth or Shrink
-    mov rdi, rsi    ;Point rdi to same block
+    mov rdi, rsi    ;Point rdi to same block MCB
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     cmp ebx, ecx    ;If ebx is bigger than ecx, we have growth
     ja .growth
     je .exit    ;If they are equal, do nothing!
 ;We can always shrink
-    sub ecx, ebx    ;In ecx save num. paras in new arena
-    sub ecx, (mcb.program >> 4) ;Reserve space for new MCB 
+    sub ecx, ebx    ;In ecx save num. paras in new block
+    sub ecx, (mcb.program >> 4) ;Reserve space in new block for new MCB 
     mov dword [rsi + mcb.blockSize], ebx ;Save new num paras in old MCB
     and ebx, -1 ;Zero the upper bytes of qword
     shl rbx, 4
+    add rsi, mcb.program    ;Shift rsi to end of mcb
     add rsi, rbx    ;Move rsi to point to new mcb
     mov al, byte [rdi + mcb.marker] ;Get old marker
     mov byte [rdi + mcb.marker], mcbMarkCtn
@@ -132,6 +130,7 @@ reallocMemory:     ;ah = 4Ah
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]    ;Get block size in paras
     shl rcx, 4  ;Convert to bytes
+    add rsi, mcb.program    ;Shift rsi to end of mcb
     add rsi, rcx    ;Goto next arena
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .shrinkAbsorb
@@ -142,6 +141,7 @@ reallocMemory:     ;ah = 4Ah
     jne .exit
     ;It is free, absorb it
     mov ecx, dword [rsi + mcb.blockSize] ;Get the absorb arena size
+    add ecx, (mcb.program >> 4) ;Take the space of the absorbed MCB
     add dword [rdi + mcb.blockSize], ecx ;Add it to the new arena size
     xor ecx, ecx
     ;Clear absorbed MCB
@@ -157,6 +157,7 @@ reallocMemory:     ;ah = 4Ah
     mov ecx, dword [rsi + mcb.blockSize]
     shl rcx, 4
     mov rdi, rsi    
+    add rsi, mcb.program    ;Point to end of MCB
     add rsi, rcx
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .growthOK
