@@ -4,9 +4,165 @@
 ;  Memory related Kernel routines   :
 ;-----------------------------------:
 allocateMemory:    ;ah = 48h
-    ;Maintain 2 pointers, best and last
-    ; Also maintain a variable, ecx for the size of the allocation
-    ;All sizes in paragraphs
+;Input: ebx = Number of paragraphs requested
+;Output:    CF=NC: rax = Ptr to allocated memory block
+;           CF=CY: ax = Error code, ebx = Largest block available
+    xor edx, edx
+    ;Clear the pointers
+    mov qword [firstMCB], rdx
+    mov qword [bestMCB], rdx
+    mov qword [lastMCB], rdx
+    xor ebp, ebp    
+    dec ebp     ;Use ebp as the size counter for Best Fit MCB
+    mov rsi, qword [mcbChainPtr]    ;Get start of chain
+.walk:
+    mov rdi, rsi    ;Use rdi as pointer to the old block, walk with rsi
+    cmp byte [rsi + mcb.marker], mcbMarkCtn
+    je .walk1
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    jne memSysHalt
+.walk1:
+    ;Here if valid but not the last block
+    cmp qword [rsi + mcb.owner], mcbOwnerFree
+    jne .walk2
+    ;Here we consolidate adjacent free blocks if there are any
+    ;rdi points to rsi too, walk forwards with rsi, anchor with rdi. 
+    ;End consolidation at first non free block or at last block in chain
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    add rsi, mcb.program
+.cons0:
+    shl rcx, 4
+    add rsi, rcx    ;Goto next mcb block
+    cmp byte [rsi + mcb.marker], mcbMarkCtn
+    je .cons1
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    jne memSysHalt 
+.cons1:
+    cmp qword [rsi + mcb.owner], mcbOwnerFree
+    jne .det0   ;No more free blocks, now determine if rdi useful
+    ;Here rsi, points to a free block, add it to rdi
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    add ecx, (mcb.program >> 4) ;Abosorb old mcb into allocation space
+    add dword [rdi + mcb.blockSize], ecx    ;Add total block size + old mcb
+    mov al, byte [rsi + mcb.marker] ;Get the old marker
+    xor edx, edx
+    mov qword [rsi], rdx    ;Clean up absorbed MCB
+    mov qword [rsi + 8], rdx
+    cmp al, mcbMarkEnd
+    jne .cons0    ;If not Z, goto next block and check if free and ok to add!
+    ;Here we deal with if the block was the last one 
+    mov byte [rdi + mcb.marker], al ;rdi now becomes the last block!
+.det0:  ;Now determine if pointer in rdi is useful
+    mov rsi, rdi ;First return rsi back to rdi
+;ebx must be less than the arena size for the arena to be useful!
+    mov ecx, dword [rsi + mcb.blockSize]    ;Get blocksize in ecx
+    cmp ecx, ebx
+    js .walk2   ;If ebx > blocksize, skip it
+    mov qword [lastMCB], rsi    ;Store as lastMCB 
+    mov rax, qword [firstMCB]   ;Get firstMCB
+    test rax, rax   ;Is it zero? If so, place rsi there
+    jnz .det1   ;If not, must have a value, skip replacing the value
+    mov qword [firstMCB], rsi
+.det1:
+    ;Now test for best fit.
+    sub ecx, ebx    ;Block - ebx
+    cmp ecx, ebp    ;Check ecx > ebp
+    jns .walk2      ;No sign change, ecx is indeed bigger than ebp
+    mov ebp, ecx    ;IF ebp > ecx, then replace ebp with ecx and save mcb ptr
+    mov qword [bestMCB], rsi
+.walk2:
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    je .allocate    ;Dont walk any more if rsi is at the end
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    shl rcx, 4
+    add rsi, mcb.program
+    add rsi, rcx    ;Goto next mcb block
+    jmp .walk
+.allocate:
+    ;Allocation fails IF the pointer is the null pointer
+    cmp byte [allocStrat], 2   ;Get allocation strategy
+    jb .bfCommon    ;If 0 or 1, go to bf common
+    ;Fall thru if last fit
+    mov rsi, qword [lastMCB]
+    test rsi, rsi   ;Check if null pointer
+    jz .allocFail
+    mov al, byte [rsi + mcb.marker] ;Get marker
+    mov byte [rsi + mcb.marker], mcbMarkCtn ;This is no longer the end if it was
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    sub ecx, ebx
+    sub ecx, (mcb.program >> 4) ;Make space for new MCB too
+    mov dword [rsi + mcb.blockSize], ecx    ;This is the size of the allocation
+    shl rcx, 4
+    add rsi, rcx    ;Go to the new MCB we are creating
+    mov byte [rsi + mcb.marker], al ;Store marker
+    mov dword [rsi + mcb.blockSize], ebx
+    mov rdx, qword [currentPSP] ;Owner is the calling application
+    mov qword [rsi + mcb.owner], rdx
+    mov rdx, qword [oldRSP]
+    mov qword [rdx + callerFrame.rax], rsi  ;Save pointer in rax
+    and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
+    call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
+    ret
+.bfCommon:
+    mov rsi, qword [firstMCB]
+    cmp byte [allocStrat], 1    ;Check if best fit
+    cmove rsi, qword [bestMCB]  ;Replace if alloc strat is best fit
+    test rsi, rsi   ;Check if null pointer
+    jz .allocFail
+    mov al, byte [rsi + mcb.marker]
+    mov byte [rsi + mcb.marker], mcbMarkCtn
+    xor ecx, ecx
+    mov ecx, [rsi + mcb.blockSize]  ;Get current whole block size
+    sub ecx, ebx    ;Take away the allocation
+    sub ecx, (mcb.program >> 4) ;Make space for new MCB for new block
+    mov dword [rsi + mcb.blockSize], ebx    ;Save new allocation in curr MCB
+    mov rdx, qword [currentPSP]
+    mov qword [rsi + mcb.owner], rdx    ;Set owner to calling application
+    mov rdi, rsi    ;Save pointer in rdi
+    and ebx, -1 ;Zero upper dword
+    shl rbx, 4
+    add rsi, rbx
+    mov byte [rsi + mcb.marker], al ;Store old marker in new block
+    mov qword [rsi + mcb.owner], mcbOwnerFree
+    mov dword [rsi + mcb.blockSize], ecx
+    mov rdx, qword [oldRSP]
+    mov qword [rdx + callerFrame.rax], rdi  ;Save new block pointer in rax
+    and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
+    call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
+    ret
+.allocFail:
+    ;Walk the MCB chain to determine the biggest block size
+    mov rsi, [mcbChainPtr]
+    xor ebx, ebx    ;Block size container, get biggest free space size
+.af0:
+    cmp byte [rsi + mcb.marker], mcbMarkCtn
+    je .af1
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    jne memSysHalt
+.af1:
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]    ;Get blocksize
+    cmp qword [rsi + mcb.owner], mcbOwnerFree
+    jne .af2
+    cmp ecx, ebx
+    cmova ebx, ecx
+.af2:
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    je .afExit
+    shl rcx, 4
+    add rsi, rcx
+    jmp short .af1
+.afExit:
+    mov eax, errNoMem
+    mov rdx, qword [oldRSP]
+    mov byte [rdx + callerFrame.rax], al
+    mov dword [rdx + callerFrame.rbx], ebx
+    or byte [rdx + callerFrame.flags], 1
+    ret
 freeMemory:        ;ah = 49h
 ;Input: r8 = address of the block to be returned (MCB + 1 para)
 ;Output: CF=CY => al = error code, CH=NC, nothing

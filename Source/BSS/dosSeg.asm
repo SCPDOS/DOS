@@ -56,6 +56,9 @@ sysVarsPtr:
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
     singleDrv   resb 1  ;Set if last drive accessed was drive B x
 ;This is done to allow for DOS to give the user a change to swap devices
+    firstMCB    resq 1  ;First fit MCB for request
+    bestMCB     resq 1  ;Best fit MCB for request
+    lastMCB     resq 1  ;Last fit MCB for request
 
     Int44RetVal resb 1  ;Saves a copy of the Int 44 return value
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
