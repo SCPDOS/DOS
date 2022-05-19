@@ -180,6 +180,9 @@ reallocMemory:     ;ah = 4Ah
     sub edx, ebx    ;Remove ebx amount from edx
     cmp edx, 1
     je .notEnuffMem2
+    xor ecx, ecx
+    mov qword [rsi], rcx        ;Clear old MCB
+    mov qword [rsi + 8], rcx    ;Clear old MCB
     mov dword [rdi + mcb.blockSize], ebx    ;Resize OG block
     mov rsi, rdi    ;Point rsi back to original block
     shl rdx, 4      ;Convert to bytes
