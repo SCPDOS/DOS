@@ -44,7 +44,7 @@ allocateMemory:    ;ah = 48h
     ;Here rsi, points to a free block, add it to rdi
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
-    add ecx, (mcb.program >> 4) ;Abosorb old mcb into allocation space
+    add ecx, (mcb.program >> 4) ;Absorb old mcb into allocation space
     add dword [rdi + mcb.blockSize], ecx    ;Add total block size + old mcb
     mov al, byte [rsi + mcb.marker] ;Get the old marker
     xor edx, edx
@@ -154,6 +154,7 @@ allocateMemory:    ;ah = 48h
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     je .afExit
     shl rcx, 4
+    add rsi, mcb.program
     add rsi, rcx
     jmp short .af1
 .afExit:
