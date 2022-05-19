@@ -87,6 +87,7 @@ freeMemory:        ;ah = 49h
     mov rbx, qword [oldRSP]
     mov word [rbx + callerFrame.rax], ax    ;Save this word on stack
     or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on
+    call verifyIntegrityOfMCBChain
     ret
 reallocMemory:     ;ah = 4Ah
 ;Input: r8 = address of the block to be realloc'ed (MCB + 1 para)
@@ -221,6 +222,7 @@ reallocMemory:     ;ah = 4Ah
     mov byte [errorAction], eActUsr ;Retry with different value
     mov word [rdx + callerFrame.rax], ax    ;Save this word on stack
     or byte [rdx + callerFrame.flags], 1    ;Set Carry flag on
+    call verifyIntegrityOfMCBChain
     ret
 getsetMallocStrat: ;ah = 58h
     test al, al
@@ -232,6 +234,7 @@ getsetMallocStrat: ;ah = 58h
     mov ax, word [rbx + callerFrame.rbx]    ;Loword in rbx has alloc strat
     mov byte [allocStrat], al   ;Only save low word
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
+    call verifyIntegrityOfMCBChain
     ret
 .get:
     mov rbx, qword [oldRSP]
@@ -239,6 +242,7 @@ getsetMallocStrat: ;ah = 58h
     mov al, byte [allocStrat]
     mov word [rbx + callerFrame.rax], ax    ;Store word
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
+    call verifyIntegrityOfMCBChain
     ret
 .bad:
     mov byte [errorDrv], -1 ;No drive
@@ -249,11 +253,14 @@ getsetMallocStrat: ;ah = 58h
     mov rbx, qword [oldRSP]
     mov word [rbx + callerFrame.rax], ax    ;Save this word on stack
     or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on
+    call verifyIntegrityOfMCBChain
     ret
 ;-----------------------------------:
 ;      Memory related routines      :
 ;-----------------------------------:
 verifyIntegrityOfMCBChain:
+    push rax
+    push rbx
     mov rbx, qword [mcbChainPtr]    ;Get the head of the chain
 .ok:
     cmp byte [rbx + mcb.marker], mcbMarkCtn
@@ -261,6 +268,8 @@ verifyIntegrityOfMCBChain:
     cmp byte [rbx + mcb.marker], mcbMarkEnd    ;End of the chain?
     jne memSysHalt    ;It was not M or Z, fail violently
 .exit:
+    pop rbx
+    pop rax
     ret ;We have reached the end of the chain, return all good!
 .ok1:
     xor eax, eax
