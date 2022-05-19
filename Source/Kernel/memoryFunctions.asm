@@ -97,6 +97,8 @@ reallocMemory:     ;ah = 4Ah
     jz freeMemory   ;If resize to 0, equivalent to free!
     sub r8, mcb.program ;Return pointer to MCB for arena
     mov rsi, r8     ;Get segment pointer in rsi
+    cmp qword [rsi + mcb.owner], mcbOwnerHole
+    je freeMemory.blockHole
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .ctn
     cmp byte [rsi + mcb.marker], mcbMarkEnd
