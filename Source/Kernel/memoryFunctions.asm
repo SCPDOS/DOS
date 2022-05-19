@@ -96,9 +96,8 @@ reallocMemory:     ;ah = 4Ah
 ;Needs to be at least 2 paragraphs free for growth or shrink to work
     test ebx, ebx
     jz freeMemory   ;If resize to 0, equivalent to free!
-    cmp ebx, 1      ;Can't resize to only 1 paragraph
-    je .notEnuffMem
     sub r8, mcb.program ;Return pointer to MCB for arena
+    add ebx, (mcb.program >> 4) ;Add one para for the mcb header too!
     xor ecx, ecx
     mov rsi, r8     ;Get segment pointer in rsi
     cmp byte [rsi + mcb.marker], mcbMarkCtn
