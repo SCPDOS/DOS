@@ -437,6 +437,10 @@ verifyIntegrityOfMCBChain:
 memSysHalt:
 ;Only arrive here if the integrity of the system is not verified
 ;Lock the system
+    mov byte [errorDrv], -1 ;No drive
+    mov byte [errorLocus], eLocMem  ;Memory locus
+    mov word [errorExCde], errMCBbad   ;Destroyed MCB chain
+    mov byte [errorAction], eActKil ;Abort the system
     lea rbx, .sysHltString
     mov ah, 09h
     int 41h
