@@ -129,9 +129,7 @@ reallocMemory:     ;ah = 4Ah
     je .exit
 ;Else, now see if the block following is also free and absorb it
     mov rdi, rsi    ;Point rdi to new mcb for new arena
-    xor ecx, ecx
-    mov ecx, dword [rsi + mcb.blockSize]    ;Get block size in paras
-    shl rcx, 4  ;Convert to bytes
+    shl rcx, 4  ;Convert new block size to bytes
     add rsi, mcb.program    ;Shift rsi to end of mcb
     add rsi, rcx    ;Goto next arena
     cmp byte [rsi + mcb.marker], mcbMarkCtn
@@ -143,7 +141,7 @@ reallocMemory:     ;ah = 4Ah
     jne .exit
     ;It is free, absorb it
     mov ecx, dword [rsi + mcb.blockSize] ;Get the absorb arena size
-    add ecx, (mcb.program >> 4) ;Take the space of the absorbed MCB
+    add ecx, (mcb.program >> 4) ;Add the space of the absorbed MCB
     add dword [rdi + mcb.blockSize], ecx ;Add it to the new arena size
     xor ecx, ecx
     ;Clear absorbed MCB
