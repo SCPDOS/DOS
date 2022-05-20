@@ -654,6 +654,8 @@ defaultFileHandles:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
+
+;Resize DOS allocation
     mov r8, qword fs:[mcbChainPtr] ;Get ptr
     add r8, mcb.program
     mov ebx, dynamicDataAreaLength
@@ -661,7 +663,21 @@ defaultFileHandles:
     inc ebx
     mov ah, 4Ah
     int 41h
-    %if true
+    
+    %if DEBUG && ALLOCTEST
+;Test Allocation, Growth and Deallocation
+    mov r15, qword fs:[currentPSP]
+    mov qword fs:[currentPSP], 5A5Ah ;5A5Ah is a reserved addr
+    mov ebx, 10 ;Allocate 10 paragraphs pls
+    mov ah, 48h ;Allocate
+    int 41h
+    mov r8, rax ;Move the pointer to r8
+    mov ah, 49h ;Free
+    int 41h
+    mov qword fs:[currentPSP], r15
+    %endif
+
+    %if ENDSTATUS
 debugFinal:
     ;Print system state
     push rbp    ;Only rbp really matters here

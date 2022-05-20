@@ -211,7 +211,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     call debPrintNullString
     call debPrintFunctionName
     jmp short .l0001
-.l0000 db 0Ah,0Dh,"Entering Int 41h",0Ah,0Dh,0
+.l0000 db 0Ah,0Dh,"Entering ",0
 .l0001:    
     debugExitM
     %endif
@@ -306,7 +306,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov ax, word [rbx + callerFrame.rax]  ;Get ah value
     call debPrintFunctionName
     jmp short .l0003
-.l0002 db 0Ah,0Dh,"Exiting Int 41h",0Ah,0Dh,0
+.l0002 db 0Ah,0Dh,"Exiting ",0
 .l0003:    
     debugExitM
     %endif

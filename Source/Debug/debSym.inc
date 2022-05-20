@@ -7,6 +7,9 @@
 %define DEBUG true
 %define DPBINFO true
 %define REGS true
+%define ENDSTATUS true
+%define ALLOCTEST false
+
 
 ;Use this space as the debug stack
 %define debStackTop 80000h

@@ -28,6 +28,8 @@ allocateMemory:    ;ah = 48h
     ;Here we consolidate adjacent free blocks if there are any
     ;rdi points to rsi too, walk forwards with rsi, anchor with rdi. 
     ;End consolidation at first non free block or at last block in chain
+    cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we at the end
+    je .det0    ;Determine if this block is useful
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     add rsi, mcb.program
@@ -59,7 +61,7 @@ allocateMemory:    ;ah = 48h
 ;ebx must be less than the arena size for the arena to be useful!
     mov ecx, dword [rsi + mcb.blockSize]    ;Get blocksize in ecx
     cmp ecx, ebx
-    js .walk2   ;If ebx > blocksize, skip it
+    jb .walk2   ;If ebx > blocksize, skip it
     mov qword [lastMCB], rsi    ;Store as lastMCB 
     mov rax, qword [firstMCB]   ;Get firstMCB
     test rax, rax   ;Is it zero? If so, place rsi there
@@ -68,9 +70,9 @@ allocateMemory:    ;ah = 48h
 .det1:
     ;Now test for best fit.
     sub ecx, ebx    ;Block - ebx
-    cmp ecx, ebp    ;Check ecx > ebp
-    jns .walk2      ;No sign change, ecx is indeed bigger than ebp
-    mov ebp, ecx    ;IF ebp > ecx, then replace ebp with ecx and save mcb ptr
+    cmp ebp, ecx    ;Check if ebp > ecx
+    jb .walk2
+    mov ebp, ecx  ;IF ebp > ecx, then replace ebp with ecx and save mcb ptr
     mov qword [bestMCB], rsi
 .walk2:
     cmp byte [rsi + mcb.marker], mcbMarkEnd
@@ -97,13 +99,16 @@ allocateMemory:    ;ah = 48h
     sub ecx, (mcb.program >> 4) ;Make space for new MCB too
     mov dword [rsi + mcb.blockSize], ecx    ;This is the size of the allocation
     shl rcx, 4
+    add rsi, mcb.program
     add rsi, rcx    ;Go to the new MCB we are creating
     mov byte [rsi + mcb.marker], al ;Store marker
     mov dword [rsi + mcb.blockSize], ebx
     mov rdx, qword [currentPSP] ;Owner is the calling application
     mov qword [rsi + mcb.owner], rdx
     mov rdx, qword [oldRSP]
-    mov qword [rdx + callerFrame.rax], rsi  ;Save pointer in rax
+    add rsi, mcb.program    ;Point to program area
+    mov rax, rsi
+    mov qword [rdx + callerFrame.rax], rax  ;Save pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
     ret
@@ -123,6 +128,7 @@ allocateMemory:    ;ah = 48h
     mov rdx, qword [currentPSP]
     mov qword [rsi + mcb.owner], rdx    ;Set owner to calling application
     mov rdi, rsi    ;Save pointer in rdi
+    add rsi, mcb.program
     and ebx, -1 ;Zero upper dword
     shl rbx, 4
     add rsi, rbx
@@ -130,7 +136,9 @@ allocateMemory:    ;ah = 48h
     mov qword [rsi + mcb.owner], mcbOwnerFree
     mov dword [rsi + mcb.blockSize], ecx
     mov rdx, qword [oldRSP]
-    mov qword [rdx + callerFrame.rax], rdi  ;Save new block pointer in rax
+    add rdi, mcb.program    ;Point to program area
+    mov rax, rdi
+    mov qword [rdx + callerFrame.rax], rax  ;Save new block pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
     ret
@@ -174,7 +182,7 @@ freeMemory:        ;ah = 49h
     mov rdi, rsi
     mov ecx, dword [rsi + mcb.blockSize]
     shl rcx, 4  ;Turn to bytes
-    add rcx, mcb.program
+    add rsi, mcb.program
     add rsi, rcx    ;Go to next block
 .mainLoop:
     xor ecx, ecx
@@ -206,6 +214,12 @@ freeMemory:        ;ah = 49h
     mov ecx, dword [rsi + mcb.blockSize]
     add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
     add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
+    ;Replace block marker
+    mov al, byte [rsi + mcb.marker] ;Get free'd marker
+    mov byte [rdi + mcb.marker], al ;Replace!
+    xor ecx, ecx
+    mov qword [rsi], rcx
+    mov qword [rsi + 8], rcx
     mov rsi, rdi    ;Now point rsi to this block
 .blockFoundCheckFollowing:
     ;First check if we are the last block in chain
@@ -223,6 +237,12 @@ freeMemory:        ;ah = 49h
     mov ecx, dword [rsi + mcb.blockSize]
     add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
     add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
+    ;Replace block marker
+    mov al, byte [rsi + mcb.marker]
+    mov byte [rdi + mcb.marker], al
+    xor ecx, ecx
+    mov qword [rsi], rcx
+    mov qword [rsi + 8], rcx
 .blockFoundExit:
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
     mov rbx, qword [oldRSP]
@@ -442,7 +462,7 @@ memSysHalt:
     mov byte [errorLocus], eLocMem  ;Memory locus
     mov word [errorExCde], errMCBbad   ;Destroyed MCB chain
     mov byte [errorAction], eActKil ;Abort the system
-    lea rbx, .sysHltString
+    lea rdx, .sysHltString
     mov ah, 09h
     int 41h
     ;Only halt IRQ's in production!
@@ -453,6 +473,6 @@ memSysHalt:
     out 021h, al
     %endif
     hlt             ;Halt the system
-    jmp short $ - 3 ;Go back far enough to capture the hlt
+    jmp short $ - 1 ;Go back far enough to capture the hlt
 .sysHltString db "Memory allocation error",0Dh,0Ah,
               db "Cannot load COMMAND, system halted$"
