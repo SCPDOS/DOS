@@ -671,8 +671,13 @@ defaultFileHandles:
     mov ebx, 10 ;Allocate 10 paragraphs pls
     mov ah, 48h ;Allocate
     int 41h
+
     mov r8, rax ;Move the pointer to r8
-    mov ah, 49h ;Free
+    mov ebx, 20 ;Increase allocation to 20 paragraphs
+    mov ah, 4Ah
+    int 41h
+
+    mov ah, 49h ;Free r8
     int 41h
     mov qword fs:[currentPSP], r15
     %endif

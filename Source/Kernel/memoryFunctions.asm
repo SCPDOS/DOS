@@ -274,15 +274,15 @@ reallocMemory:     ;ah = 4Ah
     jz freeMemory   ;If resize to 0, equivalent to free!
     sub r8, mcb.program ;Return pointer to MCB for arena
     mov rsi, r8     ;Get segment pointer in rsi
-    cmp qword [rsi + mcb.owner], mcbOwnerHole
-    je freeMemory.blockHole
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .ctn
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     jne .badAddrGiven
 .ctn:
-    ;Provided block is valid
+    ;Provided block is valid and not a hole
     ;Check if Growth or Shrink
+    cmp qword [rsi + mcb.owner], mcbOwnerHole
+    je freeMemory.blockHole
     mov rdi, rsi    ;Point rdi to same block MCB
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
