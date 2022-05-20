@@ -5,8 +5,8 @@
 
 ;Switch the DEBUG to false in production!
 %define DEBUG true
-%define DPBINFO true
-%define REGS true
+%define DPBINFO false
+%define REGS false
 %define ENDSTATUS true
 %define ALLOCTEST true
 

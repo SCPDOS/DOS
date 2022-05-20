@@ -363,9 +363,10 @@ reallocMemory:     ;ah = 4Ah
     mov qword [rsi + 8], rcx    ;Clear old MCB
     mov dword [rdi + mcb.blockSize], ebx    ;Resize OG block
     mov rsi, rdi    ;Point rsi back to original block
-    shl rdx, 4      ;Convert to bytes
-    add rsi, rdx    ;Move rsi to next block header position
-    shr rdx, 4      ;Convert back to paragraphs
+    add rsi, mcb.program    ;Go to the program area
+    shl rbx, 4      ;Convert to bytes
+    add rsi, rbx    ;Move rsi to next block header position
+    shr rbx, 4      ;Convert back to paragraphs
     mov byte [rsi + mcb.marker], al ;This ensures if a new mcb is created,
     ; it has the same marker as the old one, and if it was completely absorbed,
     ; then the absorbing MCB has the marker of the absorbed MCB
