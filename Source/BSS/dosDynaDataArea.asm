@@ -1,5 +1,6 @@
 ;This is the scratch space allocated by DOS. This also forms the start of 
 ; the MCB chain!
+ddaStart:
 dosMCB          resb mcb_size
 
 ;Create SFT header and corresponding array of five default sft entries
@@ -28,4 +29,4 @@ initCDS         resb cds_size
 tmpBufHdr       resb bufferHdr_size
 msdTempBuffer   resb 4096    ;Reserve one (MAX) sectors' worth of space
 ;This buffer is used as a temp read buffer by the MSDdriver directly (no header)
-dynamicDataAreaLength equ $
+dynamicDataAreaLength equ $ - ddaStart

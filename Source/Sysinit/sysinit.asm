@@ -654,6 +654,13 @@ defaultFileHandles:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
+    mov r8, qword fs:[mcbChainPtr] ;Get ptr
+    add r8, mcb.program
+    mov ebx, dynamicDataAreaLength
+    shr ebx, 4  ;Convert to paragraphs
+    inc ebx
+    mov ah, 4Ah
+    int 41h
     %if true
 debugFinal:
     ;Print system state
