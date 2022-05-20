@@ -302,11 +302,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     debugEnterM
     lea rbp, .l0002
     call debPrintNullString
-    mov rbx, qword [oldRSP]
-    mov ax, word [rbx + callerFrame.rax]  ;Get ah value
-    call debPrintFunctionName
     jmp short .l0003
-.l0002 db 0Ah,0Dh,"Exiting ",0
+.l0002 db "Exiting Int 41h",0Ah,0Dh,0
 .l0003:    
     debugExitM
     %endif
