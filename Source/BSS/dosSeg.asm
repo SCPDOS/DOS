@@ -34,6 +34,7 @@ sysVarsPtr:
     nulDevHdr   resb drvHdr_size
 
 ;Start of Swappable Data Area, this bit can remain static
+sda:
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
@@ -49,32 +50,65 @@ sysVarsPtr:
     lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch x
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
     currentDrv  resb 1  ;Default drive x
-    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
-    verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
-;SDA, needs to be replaced between processes
-    xInt44hRSP  resq 1  ;RSP across an Int 44h call
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
     singleDrv   resb 1  ;Set if last drive accessed was drive B x
 ;This is done to allow for DOS to give the user a change to swap devices
+    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
+    verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
+;SDA, needs to be replaced between processes
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
-
+    xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44RetVal resb 1  ;Saves a copy of the Int 44 return value
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
+
+    drvrPtr     resq 1  ;Addr of drv strat/inter rout. placed here and called
 ;Time stuff
-    CLOCKrecrd  resb 6  ;Clock driver record
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
     monthOfYear resb 1  ;01h - 0Ch (1 - 12)
     years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
-;String Stuff
-    asciiBuffer resb 255    ;Have a 255 char buffer for the ascii terminal
+
+;Buffers
+    filename1   resb 128    ;Space for one path and file name
+    filename2   resb 128    ;Space for a second path and file name
+    CLOCKrecrd  resb 6  ;Clock driver record
+    singleIObyt resb 1  ;For single IO byte buffers
+;Misc bookkeeping flags and vars
+    ;secClusConv resb 1  ;For networking, do we convert sector to cluster?
+    rwFlag      resb 1  ;00h=Read, 01h=Write
+    fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
+    fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
+    typePSPcopy resb 1  ;00=Simple copy, -1=Make Child process
+    spliceFlag  resb 1  ;01 = file name and directory name together
+;File Access stuff
+    curDrvDPB   resq 1  ;Ptr to the DPB of the drive being accessed
+    curDrvCDS   resq 1  ;Ptr to the CDS of the drive being accessed
+    currentJFT  resq 1  ;Ptr to JFT num in caller PSP of file being accessed
+    currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
+    currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
+    currClust   resd 1  ;Relative cluster in file being r/w to/from
+    currClustA  resd 1  ;Current Cluster (abs) on disk being read/written to/from
+    ClustFact   resb 1  ;NUMBER of sectors per cluster
+    currSect    resb 1  ;Current Sector in Cluster being r/w to/from
+    currByte    resw 1  ;Current Byte in sector being r/w to/from
+    currByteA   resd 1  ;Current Byte in file being r/w to/from
+    lastClust   resd 1  ;Number of the last (rel) cluster of the file
+    lastClustA  resd 1  ;Number of hte last (abs) cluster of file on disk
+    bytesAdded  resd 1  ;Number of bytes added to file (max 2Gb filesize!)
+;Directory stuff
+    dirClust    resd 1  ;Cluster number of current directory
+    dirClustA   resd 1  ;Absolute cluster number of current directory
+    dirSect     resb 1  ;Sector of current directory
+    dirEntry    resb 1  ;32 byte offset in dir sect for file being searched for
+
+    
 ;Stacks
     critStack   resq 165
     critStakTop resq 1

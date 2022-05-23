@@ -1,3 +1,15 @@
+;---------------------------------------------------:
+;                   KERNEL FUNCTIONS                :
+;---------------------------------------------------:
+makeDIR:           ;ah = 39h
+removeDIR:         ;ah = 3Ah
+changeCurrentDIR:  ;ah = 3Bh, changes directory for current drive
+getCurrentDIR:     ;ah = 47h
+getSetFileDateTime:;ah = 57h
+trueName:          ;ah = 60h, get fully qualified name
+    ret
+
+
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
@@ -314,13 +326,3 @@ getNextSectorOfFile:
     movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
     and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
     jmp short .goToNextClusterCommon
-;---------------------------------------------------:
-;                   KERNEL FUNCTIONS                :
-;---------------------------------------------------:
-makeDIR:           ;ah = 39h
-removeDIR:         ;ah = 3Ah
-changeCurrentDIR:  ;ah = 3Bh, changes directory for current drive
-getCurrentDIR:     ;ah = 47h
-getSetFileDateTime:;ah = 57h
-trueName:          ;ah = 60h, get fully qualified name
-    ret
