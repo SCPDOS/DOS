@@ -487,7 +487,7 @@ getDOSversion:     ;ah = 30h
 terminateStayRes:  ;ah = 31h
     ret
 ;-------------------------------------------
-getCurrentDPBptr:  ;ah = 1Fh, simply calls int 41h ah = 32h with dl = 0
+getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
     xor dl, dl
 getDeviceDPBptr:   ;ah = 32h
 ;On entry: dl = Drive number
@@ -529,9 +529,8 @@ getDeviceDPBptr:   ;ah = 32h
     je .gddpretdbp
     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 0
     jne .gddpBuildBPB   ;This means Media changed declared
-    call findDirtyBufferForDrive
-    test rbx, -1    ;This is the case if no dirty buffers for drive
-    jne .gddpretdbp ;If there is a dirty buffer for the drive, dont build bpb
+    call testDirtyBufferForDrive
+    jc .gddpretdbp    ;If there is a dirty buffer for the drive, skip build bpb
 .gddpBuildBPB:
 ;BPB Build Section, only here if need a new bpb, i.e. sure of a new device
     call findLRUBuffer  ;Get lru buffer pointer in rbx

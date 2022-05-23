@@ -95,8 +95,9 @@ sda:
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
     currClust   resd 1  ;Relative cluster in file being r/w to/from
     currClustA  resd 1  ;Current Cluster (abs) on disk being read/written to/from
-    ClustFact   resb 1  ;NUMBER of sectors per cluster
+    clustFact   resb 1  ;NUMBER of sectors per cluster
     currSect    resb 1  ;Current Sector in Cluster being r/w to/from
+    currSectA   resq 1  ;Current absolute Sector number on Disk
     currByte    resw 1  ;Current Byte in sector being r/w to/from
     currByteA   resd 1  ;Current Byte in file being r/w to/from
     lastClust   resd 1  ;Number of the last (rel) cluster of the file

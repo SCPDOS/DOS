@@ -1,27 +1,30 @@
-;This file contains miscellaneous disk buffer related functions that
-; dont fit anywhere else
+;This file contains FAT disk buffer related functions that
+; dont fit anywhere else. These functions form a part of the FAT driver
 ;----------------------------------------------------
 ;           Externally referenced functions         :
 ;----------------------------------------------------
-findDirtyBufferForDrive:    ;External Linkage
+testDirtyBufferForDrive:    ;External linkage
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
 ;Input: dl = Drive number
-;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
+;Output: CF=CY => Dirty buffer found, CF=NC => No dirty buffer found
+    push rbx
     mov rbx, qword [bufHeadPtr]
-.fdbfdCheckBuffer:
+.tdbfdCheckBuffer:
     cmp byte [rbx + bufferHdr.driveNumber], dl
-    jne .fdbfdGotoNextBuffer
+    jne .tdbfdGotoNextBuffer
     test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
-    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
-.fdbfdExit:
+    jz .tdbfdGotoNextBuffer ;Bit not set, goto next buffer
+    stc ;Else dirty buffer found, set carry flag
+.tdbfdExit:
+    pop rbx
     ret
-.fdbfdGotoNextBuffer:
+.tdbfdGotoNextBuffer:
     mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
-    je .fdbfdExit
-    jmp short .fdbfdCheckBuffer
+    cmp rbx, -1     ;If rbx points to -1, exit (Also clears CF)
+    je .tdbfdExit
+    jmp short .tdbfdCheckBuffer
 
-readBuffer: ;External Linkage
+readBuffer: ;External Linkage (fat.asm)
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL!
@@ -30,8 +33,7 @@ readBuffer: ;External Linkage
 ; find the most appropriate buffer, flush and read the relevant data into the 
 ; buffer, again then returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
-;        cl = Data type being read (DOS, FAT, DIR, Data) 
-;       rsi = DPB of transacting drive
+;        cl = Data type being read (DOS, FAT, DIR, Data)
 ;Exit:  CF = NC : All ok!
 ;       rbx = Pointer to buffer header with valid data in buffer.
 ;       All other registers as before
@@ -40,6 +42,9 @@ readBuffer: ;External Linkage
 ;       ch = 1 -> Data Not Read From Disk
 ;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
     push rdx
+    push rsi
+    push rbp
+    mov rsi, qword [curDrvDPB]  ;Get DPB of transacting device
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
     cmp rbx, -1
@@ -47,6 +52,8 @@ readBuffer: ;External Linkage
 .rbExit:
     clc
 .rbExitNoFlag:
+    pop rbp
+    pop rsi
     pop rdx
     ret
 .rbReadNewSector:
@@ -219,3 +226,22 @@ findSectorInBuffer:     ;Internal linkage
     cmp rbx, -1     ;If rbx points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
+
+
+findDirtyBufferForDrive:    ;No Use
+;Searches the buffer chain for a dirty buffer for a given drive letter.
+;Input: dl = Drive number
+;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
+    mov rbx, qword [bufHeadPtr]
+.fdbfdCheckBuffer:
+    cmp byte [rbx + bufferHdr.driveNumber], dl
+    jne .fdbfdGotoNextBuffer
+    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
+    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
+.fdbfdExit:
+    ret
+.fdbfdGotoNextBuffer:
+    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
+    cmp rbx, -1     ;If rbx points to -1, exit
+    je .fdbfdExit
+    jmp short .fdbfdCheckBuffer
