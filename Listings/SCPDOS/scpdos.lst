@@ -2599,219 +2599,225 @@
     17                                  %include "./Source/Kernel/bufferFunctions.asm"
     18                              <1> ;This file contains miscellaneous disk buffer related functions that
     19                              <1> ; dont fit anywhere else
-    20                              <1> 
-    21                              <1> readBuffer: ;EXTERNAL LINKAGE
-    22                              <1> ;
-    23                              <1> ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
-    24                              <1> ;TO CALL!
-    25                              <1> ;
-    26                              <1> ;This function will return a pointer to the desired data sector OR 
-    27                              <1> ; find the most appropriate buffer, flush and read the relevant data into the 
-    28                              <1> ; buffer, again then returning a pointer to the sector buffer in rbx.
-    29                              <1> ;Entry: rax = Sector to read
-    30                              <1> ;        cl = Data type being read (DOS, FAT, DIR, Data) 
-    31                              <1> ;       rsi = DPB of transacting drive
-    32                              <1> ;Exit:  CF = NC : All ok!
-    33                              <1> ;       rbx = Pointer to buffer header with valid data in buffer.
-    34                              <1> ;       All other registers as before
-    35                              <1> ;       CF = CY: Something went wrong, return error code or INT 44h
-    36                              <1> ;       ch = 0 -> Data Not Flushed To Disk
-    37                              <1> ;       ch = 1 -> Data Not Read From Disk
-    38                              <1> ;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
-    39 000004B7 52                  <1>     push rdx
-    40 000004B8 8A16                <1>     mov dl, byte [rsi + dpb.bDriveNumber]
-    41 000004BA E848010000          <1>     call findSectorInBuffer ;rax = sector to read, dl = drive number
-    42 000004BF 4881FBFFFFFFFF      <1>     cmp rbx, -1
-    43 000004C6 7403                <1>     je .rbReadNewSector
-    44                              <1> .rbExit:
-    45 000004C8 F8                  <1>     clc
-    46                              <1> .rbExitNoFlag:
-    47 000004C9 5A                  <1>     pop rdx
-    48 000004CA C3                  <1>     ret
-    49                              <1> .rbReadNewSector:
-    50 000004CB E8C6000000          <1>     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
-    51 000004D0 4889DD              <1>     mov rbp, rbx
-    52 000004D3 30ED                <1>     xor ch, ch
-    53 000004D5 E869000000          <1>     call flushBuffer
-    54 000004DA 72ED                <1>     jc .rbExitNoFlag    ;Exit in error
-    55                              <1> ;rbp points to bufferHdr that has been appropriately linked to the head of chain
-    56 000004DC 51                  <1>     push rcx
-    57 000004DD 885508              <1>     mov byte [rbp + bufferHdr.driveNumber], dl
-    58 000004E0 884D09              <1>     mov byte [rbp + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
-    59 000004E3 4889450A            <1>     mov qword [rbp + bufferHdr.bufferLBA], rax
-    60 000004E7 80F902              <1>     cmp cl, fatBuffer
-    61 000004EA B201                <1>     mov dl, 1   ;Default values if not fat buffer
-    62 000004EC B900000000          <1>     mov ecx, 0  ;Ditto!
-    63 000004F1 7506                <1>     jne .rbNonFATbuffer
-    64 000004F3 8A5607              <1>     mov dl, byte [rsi + dpb.bNumberOfFATs]
-    65 000004F6 8B4E12              <1>     mov ecx, dword [rsi + dpb.dFATlength]
-    66                              <1> .rbNonFATbuffer:
-    67 000004F9 885512              <1>     mov byte [rbp + bufferHdr.bufFATcopy], dl
-    68 000004FC 894D13              <1>     mov dword [rbp + bufferHdr.bufFATsize], ecx
-    69 000004FF 48897517            <1>     mov qword [rbp + bufferHdr.driveDPBPtr], rsi
-    70 00000503 C6451F00            <1>     mov byte [rbp + bufferHdr.reserved], 0
-    71 00000507 59                  <1>     pop rcx
-    72 00000508 FEC5                <1>     inc ch  ;If an error occurs, have the signature in ch
-    73 0000050A E802000000          <1>     call readSectorBuffer ;Carry the flag from the request
-    74 0000050F EBB8                <1>     jmp short .rbExitNoFlag
-    75                              <1> 
-    76                              <1> readSectorBuffer:
-    77                              <1> ;Reads a sector into a built sector buffer
-    78                              <1> ;Entry: rbp = Pointer to buffer header
-    79                              <1> ;Exit:  CF=NC : Success
-    80                              <1> ;       CF=CY : Fail, terminate the request
-    81                              <1> ;       rbx pointing to buffer header
-    82                              <1> ;First make request to device driver
-    83 00000511 50                  <1>     push rax
-    84 00000512 53                  <1>     push rbx
-    85 00000513 51                  <1>     push rcx
-    86 00000514 52                  <1>     push rdx
-    87 00000515 56                  <1>     push rsi
-    88                              <1> .rsRequest0:
-    89 00000516 BE03000000          <1>     mov esi, 3  ;Repeat attempt counter
-    90                              <1> .rsRequest1:
-    91 0000051B 8A4508              <1>     mov al, byte [rbp + bufferHdr.driveNumber]
-    92 0000051E B901000000          <1>     mov ecx, 1  ;One sector to copy
-    93 00000523 488B550A            <1>     mov rdx, qword [rbp + bufferHdr.bufferLBA]
-    94 00000527 488B5D20            <1>     mov rbx, qword [rbp + bufferHdr.dataarea]
-    95 0000052B E8380C0000          <1>     call absDiskRead    ;Call INT 45h
-    96 00000530 7207                <1>     jc .rsFail
-    97                              <1> .rsExit:
-    98 00000532 F8                  <1>     clc
-    99                              <1> .rsExitBad:
-   100 00000533 5E                  <1>     pop rsi
-   101 00000534 5A                  <1>     pop rdx
-   102 00000535 59                  <1>     pop rcx
-   103 00000536 5B                  <1>     pop rbx
-   104 00000537 58                  <1>     pop rax
-   105 00000538 C3                  <1>     ret
-   106                              <1> .rsFail:
-   107                              <1> ;Enter here only if the request failed
-   108 00000539 FFCE                <1>     dec esi
-   109 0000053B 75DE                <1>     jnz .rsRequest1 ;Try the request again!
-   110                              <1> ;Request failed thrice, critical error call
-   111 0000053D F9                  <1>     stc
-   112 0000053E E9F0FFFFFF          <1>     jmp .rsExitBad  ;Abort
-   113                              <1> 
-   114                              <1> flushBuffer:
-   115                              <1> ;Flushes the data in a sector buffer to disk!
-   116                              <1> ;Entry: rbp = Pointer to buffer header for this buffer
-   117                              <1> ;Exit:  CF=NC : Success
-   118                              <1> ;       CF=CY : Fail, terminate the request
-   119                              <1> ;First make request to device driver
-   120 00000543 50                  <1>     push rax
-   121 00000544 53                  <1>     push rbx
-   122 00000545 51                  <1>     push rcx
-   123 00000546 52                  <1>     push rdx
-   124 00000547 56                  <1>     push rsi
-   125 00000548 F6450940            <1>     test byte [rbp + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
-   126 0000054C 7433                <1>     jz .fbFreeExit  ;Skip write to disk if data not modified
-   127                              <1> .fbRequest0:
-   128 0000054E BE03000000          <1>     mov esi, 3  ;Repeat attempt counter
-   129                              <1> .fbRequest1:
-   130 00000553 8A4508              <1>     mov al, byte [rbp + bufferHdr.driveNumber]
-   131 00000556 B901000000          <1>     mov ecx, 1  ;One sector to copy
-   132 0000055B 488B550A            <1>     mov rdx, qword [rbp + bufferHdr.bufferLBA]
-   133 0000055F 488B5D20            <1>     mov rbx, qword [rbp + bufferHdr.dataarea]
-   134 00000563 E8890B0000          <1>     call absDiskWrite    ;Call INT 46h
-   135 00000568 7222                <1>     jc .fbFail
-   136                              <1> ;Now check if the buffer was a FAT, to write additional copies
-   137 0000056A F6450902            <1>     test byte [rbp + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
-   138 0000056E 7411                <1>     jz .fbFreeExit  ;If not, exit
-   139 00000570 FE4D12              <1>     dec byte [rbp + bufferHdr.bufFATcopy]
-   140 00000573 740C                <1>     jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
-   141 00000575 8B4513              <1>     mov eax, dword [rbp + bufferHdr.bufFATsize]
-   142 00000578 4801450A            <1>     add qword [rbp + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
-   143 0000057C E9CDFFFFFF          <1>     jmp .fbRequest0 ;Make another request
-   144                              <1> .fbFreeExit:
-   145                              <1> ;Free the buffer if it was flushed successfully
-   146 00000581 C64508FF            <1>     mov byte [rbp + bufferHdr.driveNumber], -1
-   147 00000585 F8                  <1>     clc
-   148                              <1> .fbExitBad:
-   149 00000586 5E                  <1>     pop rsi
-   150 00000587 5A                  <1>     pop rdx
-   151 00000588 59                  <1>     pop rcx
-   152 00000589 5B                  <1>     pop rbx
-   153 0000058A 58                  <1>     pop rax
-   154 0000058B C3                  <1>     ret
-   155                              <1> .fbFail:
-   156                              <1> ;Enter here only if the request failed
-   157 0000058C FFCE                <1>     dec esi
-   158 0000058E 75C3                <1>     jnz .fbRequest1 ;Try the request again!
-   159                              <1> ;Request failed thrice, critical error call
-   160 00000590 F9                  <1>     stc
-   161 00000591 E9F0FFFFFF          <1>     jmp .fbExitBad  ;Abort
-   162                              <1>     
-   163                              <1> findLRUBuffer: 
-   164                              <1> ;Finds first free or least recently used buffer, links it and returns ptr to it 
-   165                              <1> ; in rbx
-   166                              <1> ;Input: Nothing
-   167                              <1> ;Output: rbx = Pointer to the buffer hdr to use
-   168 00000596 52                  <1>     push rdx
-   169 00000597 488B1D(A2C00300)    <1>     mov rbx, qword [bufHeadPtr]
-   170 0000059E 807B08FF            <1>     cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
-   171 000005A2 7436                <1>     je .flbExit 
-   172 000005A4 48813BFFFFFFFF      <1>     cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
-   173 000005AB 742D                <1>     je .flbExit
-   174                              <1> .flbWalk:
-   175 000005AD 4889DA              <1>     mov rdx, rbx    ;Save a ptr to the previous buffer header
-   176 000005B0 488B1A              <1>     mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
-   177 000005B3 807B08FF            <1>     cmp byte [rbx + bufferHdr.driveNumber], -1
-   178 000005B7 7423                <1>     je .flbFreeLink ;If free, link to head, and xlink prev and next buffs
-   179 000005B9 48813BFFFFFFFF      <1>     cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
-   180 000005C0 75EB                <1>     jne .flbWalk   ;If not LRU, keep walking, else process
-   181 000005C2 48C702FFFFFFFF      <1>     mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
-   182                              <1> .flbHeadLink:
-   183 000005C9 488B15(A2C00300)    <1>     mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
-   184 000005D0 48891D(A2C00300)    <1>     mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
-   185 000005D7 488913              <1>     mov qword [rbx + bufferHdr.nextBufPtr], rdx
-   186                              <1> .flbExit:
-   187 000005DA 5A                  <1>     pop rdx
-   188 000005DB C3                  <1>     ret
-   189                              <1> .flbFreeLink:
-   190 000005DC 51                  <1>     push rcx
-   191 000005DD 488B0B              <1>     mov rcx, qword [rbx + bufferHdr.nextBufPtr]
-   192 000005E0 48890A              <1>     mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
-   193 000005E3 59                  <1>     pop rcx
-   194 000005E4 EBE3                <1>     jmp short .flbHeadLink
-   195                              <1> 
-   196                              <1> findDirtyBufferForDrive:    ;EXTERNAL LINKAGE
-   197                              <1> ;Searches the buffer chain for a dirty buffer for a given drive letter.
-   198                              <1> ;Input: dl = Drive number
-   199                              <1> ;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
-   200 000005E6 488B1D(A2C00300)    <1>     mov rbx, qword [bufHeadPtr]
-   201                              <1> .fdbfdCheckBuffer:
-   202 000005ED 385308              <1>     cmp byte [rbx + bufferHdr.driveNumber], dl
-   203 000005F0 7507                <1>     jne .fdbfdGotoNextBuffer
-   204 000005F2 F6430940            <1>     test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
-   205 000005F6 7401                <1>     jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
-   206                              <1> .fdbfdExit:
-   207 000005F8 C3                  <1>     ret
-   208                              <1> .fdbfdGotoNextBuffer:
-   209 000005F9 488B1B              <1>     mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-   210 000005FC 4881FBFFFFFFFF      <1>     cmp rbx, -1     ;If rbx points to -1, exit
-   211 00000603 74F3                <1>     je .fdbfdExit
-   212 00000605 EBE6                <1>     jmp short .fdbfdCheckBuffer
-   213                              <1> 
-   214                              <1> findSectorInBuffer:     ;EXTERNAL LINKAGE
-   215                              <1> ;Finds the Buffer for a sector
-   216                              <1> ;If the sector is not in a buffer, returns with a -1
-   217                              <1> ;Input: rax = Sector number
-   218                              <1> ;        dl = Drive number
-   219                              <1> ;Output: rbx = Buffer hdr pointer or -1
-   220 00000607 488B1D(A2C00300)    <1>     mov rbx, qword [bufHeadPtr]
-   221                              <1> .fsiCheckBuffer:
-   222 0000060E 385308              <1>     cmp byte [rbx + bufferHdr.driveNumber], dl
-   223 00000611 7507                <1>     jne .fsiGotoNextBuffer
-   224 00000613 4839430A            <1>     cmp qword [rbx + bufferHdr.bufferLBA], rax
-   225 00000617 7501                <1>     jne .fsiGotoNextBuffer
-   226                              <1> .fsiExit:
-   227 00000619 C3                  <1>     ret
-   228                              <1> .fsiGotoNextBuffer:
-   229 0000061A 488B1B              <1>     mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-   230 0000061D 4881FBFFFFFFFF      <1>     cmp rbx, -1     ;If rbx points to -1, exit
-   231 00000624 74F3                <1>     je .fsiExit
-   232 00000626 EBE6                <1>     jmp short .fsiCheckBuffer
+    20                              <1> ;----------------------------------------------------
+    21                              <1> ;           Externally referenced functions         :
+    22                              <1> ;----------------------------------------------------
+    23                              <1> findDirtyBufferForDrive:    ;External Linkage
+    24                              <1> ;Searches the buffer chain for a dirty buffer for a given drive letter.
+    25                              <1> ;Input: dl = Drive number
+    26                              <1> ;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
+    27 000004B7 488B1D(A2C00300)    <1>     mov rbx, qword [bufHeadPtr]
+    28                              <1> .fdbfdCheckBuffer:
+    29 000004BE 385308              <1>     cmp byte [rbx + bufferHdr.driveNumber], dl
+    30 000004C1 7507                <1>     jne .fdbfdGotoNextBuffer
+    31 000004C3 F6430940            <1>     test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
+    32 000004C7 7401                <1>     jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
+    33                              <1> .fdbfdExit:
+    34 000004C9 C3                  <1>     ret
+    35                              <1> .fdbfdGotoNextBuffer:
+    36 000004CA 488B1B              <1>     mov rbx, qword [rbx + bufferHdr.nextBufPtr]
+    37 000004CD 4881FBFFFFFFFF      <1>     cmp rbx, -1     ;If rbx points to -1, exit
+    38 000004D4 74F3                <1>     je .fdbfdExit
+    39 000004D6 EBE6                <1>     jmp short .fdbfdCheckBuffer
+    40                              <1> 
+    41                              <1> readBuffer: ;External Linkage
+    42                              <1> ;
+    43                              <1> ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
+    44                              <1> ;TO CALL!
+    45                              <1> ;
+    46                              <1> ;This function will return a pointer to the desired data sector OR 
+    47                              <1> ; find the most appropriate buffer, flush and read the relevant data into the 
+    48                              <1> ; buffer, again then returning a pointer to the sector buffer in rbx.
+    49                              <1> ;Entry: rax = Sector to read
+    50                              <1> ;        cl = Data type being read (DOS, FAT, DIR, Data) 
+    51                              <1> ;       rsi = DPB of transacting drive
+    52                              <1> ;Exit:  CF = NC : All ok!
+    53                              <1> ;       rbx = Pointer to buffer header with valid data in buffer.
+    54                              <1> ;       All other registers as before
+    55                              <1> ;       CF = CY: Something went wrong, return error code or INT 44h
+    56                              <1> ;       ch = 0 -> Data Not Flushed To Disk
+    57                              <1> ;       ch = 1 -> Data Not Read From Disk
+    58                              <1> ;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
+    59 000004D8 52                  <1>     push rdx
+    60 000004D9 8A16                <1>     mov dl, byte [rsi + dpb.bDriveNumber]
+    61 000004DB E827010000          <1>     call findSectorInBuffer ;rax = sector to read, dl = drive number
+    62 000004E0 4881FBFFFFFFFF      <1>     cmp rbx, -1
+    63 000004E7 7403                <1>     je .rbReadNewSector
+    64                              <1> .rbExit:
+    65 000004E9 F8                  <1>     clc
+    66                              <1> .rbExitNoFlag:
+    67 000004EA 5A                  <1>     pop rdx
+    68 000004EB C3                  <1>     ret
+    69                              <1> .rbReadNewSector:
+    70 000004EC E8C6000000          <1>     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
+    71 000004F1 4889DD              <1>     mov rbp, rbx
+    72 000004F4 30ED                <1>     xor ch, ch
+    73 000004F6 E869000000          <1>     call flushBuffer
+    74 000004FB 72ED                <1>     jc .rbExitNoFlag    ;Exit in error
+    75                              <1> ;rbp points to bufferHdr that has been appropriately linked to the head of chain
+    76 000004FD 51                  <1>     push rcx
+    77 000004FE 885508              <1>     mov byte [rbp + bufferHdr.driveNumber], dl
+    78 00000501 884D09              <1>     mov byte [rbp + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
+    79 00000504 4889450A            <1>     mov qword [rbp + bufferHdr.bufferLBA], rax
+    80 00000508 80F902              <1>     cmp cl, fatBuffer
+    81 0000050B B201                <1>     mov dl, 1   ;Default values if not fat buffer
+    82 0000050D B900000000          <1>     mov ecx, 0  ;Ditto!
+    83 00000512 7506                <1>     jne .rbNonFATbuffer
+    84 00000514 8A5607              <1>     mov dl, byte [rsi + dpb.bNumberOfFATs]
+    85 00000517 8B4E12              <1>     mov ecx, dword [rsi + dpb.dFATlength]
+    86                              <1> .rbNonFATbuffer:
+    87 0000051A 885512              <1>     mov byte [rbp + bufferHdr.bufFATcopy], dl
+    88 0000051D 894D13              <1>     mov dword [rbp + bufferHdr.bufFATsize], ecx
+    89 00000520 48897517            <1>     mov qword [rbp + bufferHdr.driveDPBPtr], rsi
+    90 00000524 C6451F00            <1>     mov byte [rbp + bufferHdr.reserved], 0
+    91 00000528 59                  <1>     pop rcx
+    92 00000529 FEC5                <1>     inc ch  ;If an error occurs, have the signature in ch
+    93 0000052B E802000000          <1>     call readSectorBuffer ;Carry the flag from the request
+    94 00000530 EBB8                <1>     jmp short .rbExitNoFlag
+    95                              <1> 
+    96                              <1> ;----------------------------------------------------
+    97                              <1> ;           Internally referenced functions         :
+    98                              <1> ;----------------------------------------------------
+    99                              <1> 
+   100                              <1> readSectorBuffer:   ;Internal Linkage
+   101                              <1> ;Reads a sector into a built sector buffer
+   102                              <1> ;Entry: rbp = Pointer to buffer header
+   103                              <1> ;Exit:  CF=NC : Success
+   104                              <1> ;       CF=CY : Fail, terminate the request
+   105                              <1> ;       rbx pointing to buffer header
+   106                              <1> ;First make request to device driver
+   107 00000532 50                  <1>     push rax
+   108 00000533 53                  <1>     push rbx
+   109 00000534 51                  <1>     push rcx
+   110 00000535 52                  <1>     push rdx
+   111 00000536 56                  <1>     push rsi
+   112                              <1> .rsRequest0:
+   113 00000537 BE03000000          <1>     mov esi, 3  ;Repeat attempt counter
+   114                              <1> .rsRequest1:
+   115 0000053C 8A4508              <1>     mov al, byte [rbp + bufferHdr.driveNumber]
+   116 0000053F B901000000          <1>     mov ecx, 1  ;One sector to copy
+   117 00000544 488B550A            <1>     mov rdx, qword [rbp + bufferHdr.bufferLBA]
+   118 00000548 488B5D20            <1>     mov rbx, qword [rbp + bufferHdr.dataarea]
+   119 0000054C E8170C0000          <1>     call absDiskRead    ;Call INT 45h
+   120 00000551 7207                <1>     jc .rsFail
+   121                              <1> .rsExit:
+   122 00000553 F8                  <1>     clc
+   123                              <1> .rsExitBad:
+   124 00000554 5E                  <1>     pop rsi
+   125 00000555 5A                  <1>     pop rdx
+   126 00000556 59                  <1>     pop rcx
+   127 00000557 5B                  <1>     pop rbx
+   128 00000558 58                  <1>     pop rax
+   129 00000559 C3                  <1>     ret
+   130                              <1> .rsFail:
+   131                              <1> ;Enter here only if the request failed
+   132 0000055A FFCE                <1>     dec esi
+   133 0000055C 75DE                <1>     jnz .rsRequest1 ;Try the request again!
+   134                              <1> ;Request failed thrice, critical error call
+   135 0000055E F9                  <1>     stc
+   136 0000055F E9F0FFFFFF          <1>     jmp .rsExitBad  ;Abort
+   137                              <1> 
+   138                              <1> flushBuffer:    ;Internal Linkage
+   139                              <1> ;Flushes the data in a sector buffer to disk!
+   140                              <1> ;Entry: rbp = Pointer to buffer header for this buffer
+   141                              <1> ;Exit:  CF=NC : Success
+   142                              <1> ;       CF=CY : Fail, terminate the request
+   143                              <1> ;First make request to device driver
+   144 00000564 50                  <1>     push rax
+   145 00000565 53                  <1>     push rbx
+   146 00000566 51                  <1>     push rcx
+   147 00000567 52                  <1>     push rdx
+   148 00000568 56                  <1>     push rsi
+   149 00000569 F6450940            <1>     test byte [rbp + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
+   150 0000056D 7433                <1>     jz .fbFreeExit  ;Skip write to disk if data not modified
+   151                              <1> .fbRequest0:
+   152 0000056F BE03000000          <1>     mov esi, 3  ;Repeat attempt counter
+   153                              <1> .fbRequest1:
+   154 00000574 8A4508              <1>     mov al, byte [rbp + bufferHdr.driveNumber]
+   155 00000577 B901000000          <1>     mov ecx, 1  ;One sector to copy
+   156 0000057C 488B550A            <1>     mov rdx, qword [rbp + bufferHdr.bufferLBA]
+   157 00000580 488B5D20            <1>     mov rbx, qword [rbp + bufferHdr.dataarea]
+   158 00000584 E8680B0000          <1>     call absDiskWrite    ;Call INT 46h
+   159 00000589 7222                <1>     jc .fbFail
+   160                              <1> ;Now check if the buffer was a FAT, to write additional copies
+   161 0000058B F6450902            <1>     test byte [rbp + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
+   162 0000058F 7411                <1>     jz .fbFreeExit  ;If not, exit
+   163 00000591 FE4D12              <1>     dec byte [rbp + bufferHdr.bufFATcopy]
+   164 00000594 740C                <1>     jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
+   165 00000596 8B4513              <1>     mov eax, dword [rbp + bufferHdr.bufFATsize]
+   166 00000599 4801450A            <1>     add qword [rbp + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
+   167 0000059D E9CDFFFFFF          <1>     jmp .fbRequest0 ;Make another request
+   168                              <1> .fbFreeExit:
+   169                              <1> ;Free the buffer if it was flushed successfully
+   170 000005A2 C64508FF            <1>     mov byte [rbp + bufferHdr.driveNumber], -1
+   171 000005A6 F8                  <1>     clc
+   172                              <1> .fbExitBad:
+   173 000005A7 5E                  <1>     pop rsi
+   174 000005A8 5A                  <1>     pop rdx
+   175 000005A9 59                  <1>     pop rcx
+   176 000005AA 5B                  <1>     pop rbx
+   177 000005AB 58                  <1>     pop rax
+   178 000005AC C3                  <1>     ret
+   179                              <1> .fbFail:
+   180                              <1> ;Enter here only if the request failed
+   181 000005AD FFCE                <1>     dec esi
+   182 000005AF 75C3                <1>     jnz .fbRequest1 ;Try the request again!
+   183                              <1> ;Request failed thrice, critical error call
+   184 000005B1 F9                  <1>     stc
+   185 000005B2 E9F0FFFFFF          <1>     jmp .fbExitBad  ;Abort
+   186                              <1>     
+   187                              <1> findLRUBuffer: ;Internal Linkage
+   188                              <1> ;Finds first free or least recently used buffer, links it and returns ptr to it 
+   189                              <1> ; in rbx
+   190                              <1> ;Input: Nothing
+   191                              <1> ;Output: rbx = Pointer to the buffer hdr to use
+   192 000005B7 52                  <1>     push rdx
+   193 000005B8 488B1D(A2C00300)    <1>     mov rbx, qword [bufHeadPtr]
+   194 000005BF 807B08FF            <1>     cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
+   195 000005C3 7436                <1>     je .flbExit 
+   196 000005C5 48813BFFFFFFFF      <1>     cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
+   197 000005CC 742D                <1>     je .flbExit
+   198                              <1> .flbWalk:
+   199 000005CE 4889DA              <1>     mov rdx, rbx    ;Save a ptr to the previous buffer header
+   200 000005D1 488B1A              <1>     mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
+   201 000005D4 807B08FF            <1>     cmp byte [rbx + bufferHdr.driveNumber], -1
+   202 000005D8 7423                <1>     je .flbFreeLink ;If free, link to head, and xlink prev and next buffs
+   203 000005DA 48813BFFFFFFFF      <1>     cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
+   204 000005E1 75EB                <1>     jne .flbWalk   ;If not LRU, keep walking, else process
+   205 000005E3 48C702FFFFFFFF      <1>     mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
+   206                              <1> .flbHeadLink:
+   207 000005EA 488B15(A2C00300)    <1>     mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
+   208 000005F1 48891D(A2C00300)    <1>     mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
+   209 000005F8 488913              <1>     mov qword [rbx + bufferHdr.nextBufPtr], rdx
+   210                              <1> .flbExit:
+   211 000005FB 5A                  <1>     pop rdx
+   212 000005FC C3                  <1>     ret
+   213                              <1> .flbFreeLink:
+   214 000005FD 51                  <1>     push rcx
+   215 000005FE 488B0B              <1>     mov rcx, qword [rbx + bufferHdr.nextBufPtr]
+   216 00000601 48890A              <1>     mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
+   217 00000604 59                  <1>     pop rcx
+   218 00000605 EBE3                <1>     jmp short .flbHeadLink
+   219                              <1> 
+   220                              <1> findSectorInBuffer:     ;Internal linkage
+   221                              <1> ;Finds the Buffer for a sector
+   222                              <1> ;If the sector is not in a buffer, returns with a -1
+   223                              <1> ;Input: rax = Sector number
+   224                              <1> ;        dl = Drive number
+   225                              <1> ;Output: rbx = Buffer hdr pointer or -1
+   226 00000607 488B1D(A2C00300)    <1>     mov rbx, qword [bufHeadPtr]
+   227                              <1> .fsiCheckBuffer:
+   228 0000060E 385308              <1>     cmp byte [rbx + bufferHdr.driveNumber], dl
+   229 00000611 7507                <1>     jne .fsiGotoNextBuffer
+   230 00000613 4839430A            <1>     cmp qword [rbx + bufferHdr.bufferLBA], rax
+   231 00000617 7501                <1>     jne .fsiGotoNextBuffer
+   232                              <1> .fsiExit:
+   233 00000619 C3                  <1>     ret
+   234                              <1> .fsiGotoNextBuffer:
+   235 0000061A 488B1B              <1>     mov rbx, qword [rbx + bufferHdr.nextBufPtr]
+   236 0000061D 4881FBFFFFFFFF      <1>     cmp rbx, -1     ;If rbx points to -1, exit
+   237 00000624 74F3                <1>     je .fsiExit
+   238 00000626 EBE6                <1>     jmp short .fsiCheckBuffer
     18                                  %include "./Source/Kernel/fat.asm"
     19                              <1> ;---------------------------------------------------:
     20                              <1> ;                   KERNEL FUNCTIONS                :
@@ -3062,7 +3068,7 @@
    265 0000079B B108                <1>     mov cl, dataBuffer
    266                              <1> .getSectorRead:
    267 0000079D 4C89CE              <1>     mov rsi, r9
-   268 000007A0 E812FDFFFF          <1>     call readBuffer
+   268 000007A0 E833FDFFFF          <1>     call readBuffer
    269 000007A5 7211                <1>     jc .getSectorFailed
    270 000007A7 4881C320000000      <1>     add rbx, bufferHdr.dataarea ;Goto data area
    271                              <1> .getSectorExit:
@@ -3091,7 +3097,7 @@
    294 000007C9 410FB75905          <1>     movzx ebx, word [r9 + dpb.wFAToffset]
    295 000007CE 01D8                <1>     add eax, ebx    ;Add the FAT offset to the sector
    296 000007D0 B102                <1>     mov cl, fatBuffer
-   297 000007D2 E8E0FCFFFF          <1>     call readBuffer ;Buffer Header in ebx
+   297 000007D2 E801FDFFFF          <1>     call readBuffer ;Buffer Header in ebx
    298 000007D7 72DF                <1>     jc .getSectorFailed
    299                              <1>     ;Check if FAT 12, 16, 32
    300 000007D9 4885FF              <1>     test rdi, rdi
@@ -3113,7 +3119,7 @@
    316                              <1> ;eax has the sector of the FAT, offset into the sector is in edx
    317 00000807 4889DF              <1>     mov rdi, rbx    ;Save previous buffer header in rdi
    318 0000080A FFC0                <1>     inc eax ;Get next sector
-   319 0000080C E8A6FCFFFF          <1>     call readBuffer ;Buffer Header in ebx
+   319 0000080C E8C7FCFFFF          <1>     call readBuffer ;Buffer Header in ebx
    320 00000811 72A5                <1>     jc .getSectorFailed
    321                              <1>     ;rdi has first buffer header, rbx has second buffer header
    322                              <1>     ;rdx has offset into first header for entry
@@ -4476,7 +4482,7 @@
    364 00001510 F6450940            <1>     test byte [rbp + bufferHdr.bufferFlags], dirtyBuffer
    365 00001514 7407                <1>     jz .drGotoNextBuffer
    366                              <1> .drFlushBuffer:
-   367 00001516 E828F0FFFF          <1>     call flushBuffer    ;Called with rbp = buffer header
+   367 00001516 E849F0FFFF          <1>     call flushBuffer    ;Called with rbp = buffer header
    368 0000151B 720E                <1>     jc .drError
    369                              <1> .drGotoNextBuffer:
    370 0000151D 488B6D00            <1>     mov rbp, qword [rbp + bufferHdr.nextBufPtr]
@@ -4671,19 +4677,19 @@
    554 0000174A 0F84B0000000        <1>     je .gddpretdbp
    555 00001750 803D(5CC00300)00    <1>     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 0
    556 00001757 7512                <1>     jne .gddpBuildBPB   ;This means Media changed declared
-   557 00001759 E888EEFFFF          <1>     call findDirtyBufferForDrive
+   557 00001759 E859EDFFFF          <1>     call findDirtyBufferForDrive
    558 0000175E 48F7C3FFFFFFFF      <1>     test rbx, -1    ;This is the case if no dirty buffers for drive
    559 00001765 0F8595000000        <1>     jne .gddpretdbp ;If there is a dirty buffer for the drive, dont build bpb
    560                              <1> .gddpBuildBPB:
    561                              <1> ;BPB Build Section, only here if need a new bpb, i.e. sure of a new device
-   562 0000176B E826EEFFFF          <1>     call findLRUBuffer  ;Get lru buffer pointer in rbx
+   562 0000176B E847EEFFFF          <1>     call findLRUBuffer  ;Get lru buffer pointer in rbx
    563 00001770 3A5308              <1>     cmp dl, byte [rbx + bufferHdr.driveNumber]  ;Does buffer belong to old drv?
    564 00001773 7414                <1>     je .gddpBuildBPBInvalidateBuffer    ;Yes, immediately invalidate data
    565                              <1>     ;If no, flush the data to disk.
    566                              <1> .gddpBuildBPBFlush:
    567 00001775 4889EE              <1>     mov rsi, rbp    ;Save rbp as pointer to old dl drive dpb
    568 00001778 4889DD              <1>     mov rbp, rbx    ;Get buffer header pointer in rbp
-   569 0000177B E8C3EDFFFF          <1>     call flushBuffer    ;Flush the buffer to disk, rbx preserved
+   569 0000177B E8E4EDFFFF          <1>     call flushBuffer    ;Flush the buffer to disk, rbx preserved
    570 00001780 4889F5              <1>     mov rbp, rsi    ;Return old drive dpb pointer to rbp
    571 00001783 0F820F010000        <1>     jc .gddpErrorType2  ;rbx points to buffer header
    572                              <1> .gddpBuildBPBInvalidateBuffer:

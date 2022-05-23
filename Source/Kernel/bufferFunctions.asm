@@ -1,7 +1,27 @@
 ;This file contains miscellaneous disk buffer related functions that
 ; dont fit anywhere else
+;----------------------------------------------------
+;           Externally referenced functions         :
+;----------------------------------------------------
+findDirtyBufferForDrive:    ;External Linkage
+;Searches the buffer chain for a dirty buffer for a given drive letter.
+;Input: dl = Drive number
+;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
+    mov rbx, qword [bufHeadPtr]
+.fdbfdCheckBuffer:
+    cmp byte [rbx + bufferHdr.driveNumber], dl
+    jne .fdbfdGotoNextBuffer
+    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
+    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
+.fdbfdExit:
+    ret
+.fdbfdGotoNextBuffer:
+    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
+    cmp rbx, -1     ;If rbx points to -1, exit
+    je .fdbfdExit
+    jmp short .fdbfdCheckBuffer
 
-readBuffer: ;EXTERNAL LINKAGE
+readBuffer: ;External Linkage
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL!
@@ -56,7 +76,11 @@ readBuffer: ;EXTERNAL LINKAGE
     call readSectorBuffer ;Carry the flag from the request
     jmp short .rbExitNoFlag
 
-readSectorBuffer:
+;----------------------------------------------------
+;           Internally referenced functions         :
+;----------------------------------------------------
+
+readSectorBuffer:   ;Internal Linkage
 ;Reads a sector into a built sector buffer
 ;Entry: rbp = Pointer to buffer header
 ;Exit:  CF=NC : Success
@@ -94,7 +118,7 @@ readSectorBuffer:
     stc
     jmp .rsExitBad  ;Abort
 
-flushBuffer:
+flushBuffer:    ;Internal Linkage
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rbp = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
@@ -143,7 +167,7 @@ flushBuffer:
     stc
     jmp .fbExitBad  ;Abort
     
-findLRUBuffer: 
+findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
 ; in rbx
 ;Input: Nothing
@@ -176,25 +200,7 @@ findLRUBuffer:
     pop rcx
     jmp short .flbHeadLink
 
-findDirtyBufferForDrive:    ;EXTERNAL LINKAGE
-;Searches the buffer chain for a dirty buffer for a given drive letter.
-;Input: dl = Drive number
-;Output: rbx = Pointer to dirty buffer for drive letter if exists or -1 if not
-    mov rbx, qword [bufHeadPtr]
-.fdbfdCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
-    jne .fdbfdGotoNextBuffer
-    test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
-    jz .fdbfdGotoNextBuffer ;Bit not set, goto next buffer
-.fdbfdExit:
-    ret
-.fdbfdGotoNextBuffer:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
-    je .fdbfdExit
-    jmp short .fdbfdCheckBuffer
-
-findSectorInBuffer:     ;EXTERNAL LINKAGE
+findSectorInBuffer:     ;Internal linkage
 ;Finds the Buffer for a sector
 ;If the sector is not in a buffer, returns with a -1
 ;Input: rax = Sector number
