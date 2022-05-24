@@ -4,7 +4,7 @@
 %define false 0
 
 ;Switch the DEBUG to false in production!
-%define DEBUG true
+%define DEBUG false
 %define DPBINFO false
 %define REGS true
 %define ENDSTATUS true

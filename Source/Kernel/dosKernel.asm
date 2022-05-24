@@ -89,100 +89,6 @@ terminateProcess:   ;Int 40h
 terminateHandler:   ;Int 42h
 ctrlCHandler:       ;Int 43h
     iretq
-absDiskWrite:       ;Int 46h
-;al = Drive number
-;rbx = Memory Buffer address to read from
-;ecx = Number of sectors to write
-;rdx = Start LBA to write to
-    %if DEBUG
-    ;Print DPB 
-    debugEnterM
-    lea rbp, .l0000
-    call debPrintNullString
-    jmp short .l0001
-.l0000 db "Entering Int 46h",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
-    push rax
-    push rbx
-    push rdx
-    push rbp
-    mov ah, drvWRITE
-    add ah, byte [verifyFlag]   ;Change to Write/Verify if set
-    jmp short absDiskReadWriteCommon
-absDiskRead:        ;Int 45h
-;al = Drive number
-;rbx = Memory Buffer address to write to
-;ecx = Number of sectors to read
-;rdx = Start LBA to read from
-    %if DEBUG
-    ;Print DPB 
-    debugEnterM
-    lea rbp, .l0000
-    call debPrintNullString
-    jmp short .l0001
-.l0000 db "Entering Int 45h",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
-    push rax
-    push rbx
-    push rdx
-    push rbp
-    mov ah, drvREAD
-absDiskReadWriteCommon:
-;Entered with the appropriate function number in ah
-    push rdx    ;Save start LBA
-    push rax
-    mov dl, al
-    call findDPB   ;Get dpb ptr in rbp
-    pop rax
-    pop rdx
-
-    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
-    mov byte [diskReqHdr + ioReqPkt.unitnm], al
-    mov byte [diskReqHdr + ioReqPkt.cmdcde], ah
-    mov word [diskReqHdr + ioReqPkt.status], 0
-    mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + ioReqPkt.medesc], al
-    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx
-    mov qword [diskReqHdr + ioReqPkt.strtsc], rdx
-    mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx
-    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver pointer
-
-    lea rbx, diskReqHdr
-    call qword [rdx + drvHdr.strPtr]  ;Call with ptr to request block in rbx
-    call qword [rdx + drvHdr.intPtr]
-    pop rbp
-    pop rdx
-    pop rbx
-    pop rax
-    test word [diskReqHdr + ioReqPkt.status], 8000h
-    je .absDiskError
-    clc
-    ret
-.absDiskError:
-    mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
-    mov ah, 80h ;Attachment failure
-    cmp al, 0Ch ;Gen error
-    je .absExit
-    mov ah, 40h ;Seek error
-    cmp al, 06h
-    je .absExit
-    mov ah, 08h ;Bad CRC
-    cmp al, 04h
-    je .absExit
-    mov ah, 04h ;Sector not found
-    cmp al, 08h
-    je .absExit
-    xor ah, ah  ;Write Protect Violation
-    test al, al
-    je .absExit
-    mov ah, 02h ;Other Error
-.absExit:
-    stc
-    ret
 
 terminateResident:  ;Int 47h
 inDosHandler:       ;Int 48h
@@ -518,12 +424,11 @@ getDeviceDPBptr:   ;ah = 32h
     mov al, byte [rbp + dpb.bMediaDescriptor]
     mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
     mov al, dl  ;Save device number in al
-    mov rdx, qword [rbp + dpb.qDriverHeaderPtr]
+    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    mov qword [drvrPtr], rdx
     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
-    call [rdx + drvHdr.strPtr]
-    call [rdx + drvHdr.intPtr]
-    test word [diskReqHdr + mediaCheckReqPkt.status], 8000h
-    jnz .gddpError
+    call goDriver
+    jc .gddpError
     mov dl, al
     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 1 ;Certified no change
     je .gddpretdbp
@@ -560,12 +465,12 @@ getDeviceDPBptr:   ;ah = 32h
     mov al, byte [rbp + dpb.bMediaDescriptor]
     mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rbx ;Put lru pointer in rbx
+
     mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    mov qword [drvrPtr], rdx
     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
-    call [rdx + drvHdr.strPtr]
-    call [rdx + drvHdr.intPtr]
-    test word [diskReqHdr + bpbBuildReqPkt.status], 8000h
-    jnz .gddpError
+    call goDriver
+    jc .gddpError
     mov rsi, qword [diskReqHdr + bpbBuildReqPkt.bpbptr]
     ;rbp points to dpb so we good to go
     ;Call int 41h ah=53h Build DPB without reentering Int 41h
@@ -600,6 +505,7 @@ getDeviceDPBptr:   ;ah = 32h
     mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
     and di, 0FFh    ;Save lo byte only
+    mov qword [rdiErrorPtr], rdi    ;Save this byte
     mov word [errorExCde], di     ;Save driver error code
     add word [errorExCde], drvErrShft    ;Add offset to driver error codes
     mov byte [errorDrv], al     ;Save the drive on which the error occured

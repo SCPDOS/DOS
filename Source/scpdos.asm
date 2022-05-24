@@ -22,6 +22,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Kernel/FileIO/handleFunctions.asm"
 %include "./Source/Kernel/memFunc.asm"
 %include "./Source/Kernel/localisation.asm"
+%include "./Source/Kernel/dosPrim.asm"
 %include "./Source/Kernel/dosKernel.asm"
 %include "./Source/Misc/int44h.asm"
 %include "./Source/Drivers/drvData.asm"

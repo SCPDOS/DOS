@@ -89,7 +89,8 @@ sda:
     spliceFlag  resb 1  ;01 = file name and directory name together
 ;File Access stuff
     curDrvDPB   resq 1  ;Ptr to the DPB of the drive being accessed
-    curDrvCDS   resq 1  ;Ptr to the CDS of the drive being accessed
+    curCDSPtr   resq 1  ;Ptr to the CDS of the drive being accessed
+    curDrvCDS   resb cds_size   ;Working cp of CDS of drv being accessed
     currentJFT  resq 1  ;Ptr to JFT num in caller PSP of file being accessed
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
