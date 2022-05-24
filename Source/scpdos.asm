@@ -13,6 +13,7 @@ Segment dSeg nobits align=1 start=0     ;BSS data segment
 %include "./Source/BSS/dosSeg.asm"
 Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Data/staticData.asm"
+%include "./Source/Data/dispTbl.asm"
 %include "./Source/Debug/debug.asm"
 %include "./Source/Kernel/FAT/bufferFunctions.asm"
 %include "./Source/Kernel/FAT/fat.asm"
@@ -23,6 +24,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Kernel/memFunc.asm"
 %include "./Source/Kernel/localisation.asm"
 %include "./Source/Kernel/dosPrim.asm"
+%include "./Source/Kernel/dosUtils.asm"
 %include "./Source/Kernel/dosKernel.asm"
 %include "./Source/Misc/int44h.asm"
 %include "./Source/Drivers/drvData.asm"

@@ -281,17 +281,6 @@ mcbBuild:
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
-;Adjust Int 41h address table
-adjInt41h:
-    mov ecx, kernelDispatchTableL/8 ;Number of elements in table
-    mov rbx, kernelDispatchTable ;Get EA of table
-    lea rbx, qword [rbp + rbx]    ;Point to the start of the relocated table 
-.ai41h:
-    add qword [rbx], rbp    ;Add base address value to entry in reloc table
-    add rbx, 8              ;Each entry is size 8
-    dec ecx
-    jnz .ai41h  ;Keep looping until all entries have been adjusted
-
 ;Adjust Interrupt Entries Int 40h-49h
 adjInts:
     mov bl, 40h
