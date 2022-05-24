@@ -1,7 +1,7 @@
 ;Driver Primitives, functions for Disk IO and calling a device driver
 ; are placed here (Int 45h Int 46h and goDriver)
 
-goDriver:
+goDriver:   ;Executes the driver packet pointed to by rbx
 ;Called with rbx = Ptr to the request header for the driver call!
     push rsi
     mov rsi, qword [drvrPtr]    ;Get the driver pointer

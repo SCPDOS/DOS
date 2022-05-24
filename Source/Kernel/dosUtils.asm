@@ -1,11 +1,29 @@
 ;DOS utility functions (Will be made available through Int 4F ah=12xx eventually)
 
-;Utility
+;Utilities
 getUserRegsInRSI:
 ;Returns ptr to user regs in rsi
     mov rsi, [oldRSP]
     ret
 
+getCDS:
+    ;Gets the CDS for the current drive in rax
+    ;Input: rax = Drive number, 0 = A ...
+    ;Output: rbx = Pointer to CDS for drive in rax
+    push rax
+    push rcx
+    push rdx
+    lea rbx, qword [cdsHeadPtr] ;Point to cds array
+    mov rcx, cds_size   
+    xor edx, edx
+    mul ecx 
+    add rbx, rax    ;Move rbx to the right offset in the array
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+
+;DOS KERNEL FUNCTIONS
 ;AH = 1Fh/32h - GET (current) DISK DPB
 getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
     xor dl, dl
@@ -92,13 +110,13 @@ getDeviceDPBptr:   ;ah = 32h
     call createDPB 
 .gddpretdbp: 
     mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
-    mov rdx, qword [oldRSP]
-    mov qword [rdx + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
+    call getUserRegsInRSI
+    mov qword [rsi + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
     xor al, al  ;Set al = 0 to indicate rbx=dpb pointer
     ret
 .gddpretdpbFail:
-    mov rdx, qword [oldRSP]
-    or qword [rdx + callerFrame.flags], 1   ;Set CF=CY
+    call getUserRegsInRSI
+    or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
     mov word [errorExCde], errFI24 ;Fail on INT 44h error code
     ret
 .gddpError:

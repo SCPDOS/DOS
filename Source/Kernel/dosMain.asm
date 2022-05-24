@@ -65,22 +65,6 @@ findDPB:
     debugExitM
     %endif
     ret
-getCDS:
-    ;Gets the CDS for the current drive in rax
-    ;Input: rax = Drive number, 0 = A ...
-    ;Output: rbx = Pointer to CDS for drive in rax
-    push rax
-    push rcx
-    push rdx
-    lea rbx, qword [cdsHeadPtr] ;Point to cds array
-    mov rcx, cds_size   
-    xor edx, edx
-    mul ecx 
-    add rbx, rax    ;Move rbx to the right offset in the array
-    pop rdx
-    pop rcx
-    pop rax
-    ret
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
@@ -303,8 +287,8 @@ selectDisk:        ;ah = 0Eh
     mov byte [currentDrv], dl   ;Only save dl if it is a valid number
     ret ;al = lastdrv as retcode
 .error:
-    mov rbp, qword [oldRSP]
-    or qword [rbp + callerFrame.flags], 1   ;Set the CY flag
+    call getUserRegsInRSI
+    or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
     mov eax, errBadDrv          ;Invalid drive error
     mov word [errorExCde], ax     
     mov byte [errorLocus], eLocUnk    ;Not appropriate
@@ -334,8 +318,8 @@ FATinfoDevice:     ;ah = 1Ch
     jz .fidDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
-    mov rbp, qword [oldRSP]
-    or qword [rbp + callerFrame.flags], 1   ;Set the CY flag
+    call getUserRegsInRSI
+    or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
     mov eax, errBadDrv          ;Invalid drive error
     mov word [errorExCde], errBadDrv     
     mov byte [errorLocus], eLocUnk    ;Not appropriate
@@ -351,10 +335,10 @@ FATinfoDevice:     ;ah = 1Ch
     shl ebx, cl
     mov ecx, ebx    ;Save the value in ecx
     lea rbx, qword [rbp + dpb.bMediaDescriptor]
-    mov rbp, qword [oldRSP]
-    mov qword [rbp + callerFrame.rdx], rdx
-    mov word [rbp + callerFrame.rcx], cx
-    mov qword [rbp + callerFrame.rbx], rbx
+    call getUserRegsInRSI
+    mov qword [rsi + callerFrame.rdx], rdx
+    mov word [rsi + callerFrame.rcx], cx
+    mov qword [rsi + callerFrame.rbx], rbx
     ret
 ;===============================
 setIntVector:      ;ah = 25h
@@ -367,15 +351,15 @@ setIntVector:      ;ah = 25h
     mov bl, al  ;Set interrupt number 
     mov eax, 0F007h ;Get the descriptor
     int 35h
+    call getUserRegsInRSI
+    mov rbx, qword [rsi + callerFrame.rdx]  ;Pointer passed in rdx
     mov esi, eax    ;Move segment selector info to esi
     mov ecx, ebp    ;Get the interrupt number into cl
 ;dx preserves the attribute word
-    mov rbp, qword [oldRSP]
-    mov rbx, qword [rbp + callerFrame.rdx]  ;Pointer passed in rdx
     mov eax, 0F008h ;Set descriptor
     int 35h
-
-    mov al, byte [rbp + callerFrame.rax]    ;Preserve low byte of rax
+    call getUserRegsInRSI
+    mov al, byte [rsi + callerFrame.rax]    ;Preserve low byte of rax
     ret
 createNewPSP:      ;ah = 26h
     ret
@@ -384,11 +368,11 @@ setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     and byte [verifyFlag], 1       ;Only save the bottom bit
     ret
 getDOSversion:     ;ah = 30h
-    mov rdx, qword [oldRSP]
+    call getUserRegsInRSI
     xor ah, ah ;Continue the mainline PC-DOS identification line
-    mov byte [rdx + callerFrame.rbx + 1], ah    ;Clear bh 
+    mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
     mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
-    mov word [rdx + callerFrame.rax], ax    ;Save ax
+    mov word [rsi + callerFrame.rax], ax    ;Save ax
     ret
 terminateStayRes:  ;ah = 31h
     ret
@@ -402,8 +386,8 @@ ctrlBreakCheck:    ;ah = 33h
     iretq
 getInDOSflagPtr:   ;ah = 34h
     lea rdx, inDOS
-    mov rbx, qword [oldRSP]
-    mov qword [rbx + callerFrame.rbx], rdx  ;save ptr in rbx
+    call getUserRegsInRSI
+    mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
     ret
 getIntVector:      ;ah = 35h
 ;Called with:
@@ -413,9 +397,9 @@ getIntVector:      ;ah = 35h
     mov bl, al  ;Get the interrupt vector number into bl
     mov eax, 0F007h
     int 35h
-    mov rdx, qword [oldRSP]
-    mov qword [rdx + callerFrame.rbx], rbx  ;Save pointer in rbx
-    mov al, byte [rdx + callerFrame.rax]    ;Get the low byte in al
+    call getUserRegsInRSI
+    mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
+    mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
     ret
 getDiskFreeSpace:  ;ah = 36h
     test dl, dl
@@ -434,9 +418,9 @@ getDiskFreeSpace:  ;ah = 36h
     mov byte [errorLocus], eLocDsk    ;Not appropriate
     mov byte [errorClass], eClsNotFnd    ;Drive not found
     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
-    mov rbp, qword [oldRSP]
-    mov word [rbp + callerFrame.rax], -1    ;Set ax=FFFFh
-    or qword [rbp + callerFrame.flags], 1   ;Set CF=CY
+    call getUserRegsInRSI
+    mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
+    or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
     ret
 .gdfsDPBFound:
     mov al, byte [rbp + dpb.bMaxSectorInCluster]
@@ -447,10 +431,10 @@ getDiskFreeSpace:  ;ah = 36h
     shl ebx, cl
     mov ecx, ebx    ;Save the value in ecx
     mov ebx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
-    mov rbp, qword [oldRSP]
-    mov qword [rbp + callerFrame.rdx], rdx
-    mov word [rbp + callerFrame.rcx], cx
-    mov qword [rbp + callerFrame.rbx], rbx
+    call getUserRegsInRSI
+    mov qword [rsi + callerFrame.rdx], rdx
+    mov word [rsi + callerFrame.rcx], cx
+    mov qword [rsi + callerFrame.rbx], rbx
     ret
 
 loadExecChild:     ;ah = 4Bh, EXEC
@@ -465,8 +449,8 @@ getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
     iretq
 getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr
-    mov rbx, qword [oldRSP]
-    mov qword [rbx + callerFrame.rbx], rdx
+    call getUserRegsInRSI
+    mov qword [rsi + callerFrame.rbx], rdx
     ret
 getVerifySetting:  ;ah = 54h
     mov al, byte [verifyFlag]   ;al is the return value in this case
@@ -474,14 +458,14 @@ getVerifySetting:  ;ah = 54h
 createPSP:         ;ah = 55h, creates a PSP for a program
     ret
 getExtendedError:  ;ah = 59h
-    mov rdx, qword [oldRSP]
+    call getUserRegsInRSI
     mov ax, word [errorExCde]
     mov ch, byte [errorLocus]
     mov bh, byte [errorClass]
     mov bl, byte [errorAction]
-    mov word [rdx + callerFrame.rax], ax
-    mov word [rdx + callerFrame.rbx], bx
-    mov byte [rdx + callerFrame.rcx + 1], ch
+    mov word [rsi + callerFrame.rax], ax
+    mov word [rsi + callerFrame.rbx], bx
+    mov byte [rsi + callerFrame.rcx + 1], ch
     ret
 getCritErrorInfo:  ;ah = 5Dh
 networkServices:   ;ah = 5Eh, do nothing
