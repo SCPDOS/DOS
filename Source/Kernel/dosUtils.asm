@@ -1,29 +1,31 @@
 ;DOS utility functions (Will be made available through Int 4F ah=12xx eventually)
 
 ;Utilities
-getUserRegsInRSI:
-;Returns ptr to user regs in rsi
-    mov rsi, [oldRSP]
-    ret
+;Any function which takes args in rax (or any subpart of it), has that 
+; argument provided on the stack when called from Int 4Fh interface (when 
+; that gets set up)
 
-getCDS:
+getCDS:     ;Int 4Fh AX=1217h
     ;Gets the CDS for the current drive in rax
     ;Input: rax = Drive number, 0 = A ...
-    ;Output: rbx = Pointer to CDS for drive in rax
+    ;Output: rsi = Pointer to CDS for drive in rax
     push rax
-    push rcx
     push rdx
-    lea rbx, qword [cdsHeadPtr] ;Point to cds array
-    mov rcx, cds_size   
+    mov rsi, cds_size
     xor edx, edx
-    mul ecx 
-    add rbx, rax    ;Move rbx to the right offset in the array
+    mul esi ;Get the multiples of CDS's to skip
+    lea rax, qword [cdsHeadPtr] ;Get the first CDS
+    add rsi, rax    ;Add the CDS array to the offset into it
     pop rdx
-    pop rcx
     pop rax
     ret
 
-;DOS KERNEL FUNCTIONS
+getUserRegsInRSI:   ;Int 4Fh AX=1218h
+;Returns ptr to user regs in rsi
+    mov rsi, qword [oldRSP]
+    ret
+
+;DOS KERNEL FUNCTIONS, accessible through Int 41h
 ;AH = 1Fh/32h - GET (current) DISK DPB
 getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
     xor dl, dl
