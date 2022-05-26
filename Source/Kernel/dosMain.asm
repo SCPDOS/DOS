@@ -249,7 +249,7 @@ getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
 getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
     mov rdx, qword [currentPSP]
     iretq
-    
+
 setDriverLookahead:;ah = 64h, reserved
     iretq
 
@@ -340,7 +340,7 @@ FATinfoDevice:     ;ah = 1Ch
 ;   edx = Number of clusters
 ;   cx =  Size of a clsuter
     test dl, dl
-    jz .fidSkipdefault
+    jnz .fidSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
     inc dl
 .fidSkipdefault:
@@ -429,7 +429,7 @@ getIntVector:      ;ah = 35h
     ret
 getDiskFreeSpace:  ;ah = 36h
     test dl, dl
-    jz .gdfsSkipdefault
+    jnz .gdfsSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
     inc dl
 .gdfsSkipdefault:
