@@ -643,8 +643,7 @@ defaultFileHandles:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
-
-;Resize DOS allocation
+;Resize DOS allocation before loading COMMAND.COM
     mov r8, qword fs:[mcbChainPtr] ;Get ptr
     add r8, mcb.program
     mov ebx, dynamicDataAreaLength
