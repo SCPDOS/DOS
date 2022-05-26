@@ -56,7 +56,8 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     mov byte fs:[numLogDrv], 0     ;Number of logical drives
-    mov byte fs:[numFiles], 5      ;Default 8 files, at start 5
+    mov word fs:[numFiles], 5      ;Default 8 files, at start 5
+    mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
     ;If no detected Int 33h devices, halt 
     shr r8, 2*8

@@ -27,7 +27,8 @@ sysVarsPtr:
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     numBuffers  resb 1    ;Buffers=30 default
-    numFiles    resb 1    ;FILES=5 default
+    numFiles    resw 1    ;FILES=5 default
+    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
     sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     numJoinDrv  resb 1    ;Number of Joined Drives
@@ -95,6 +96,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     curDrvCDS   resb cds_size   ;Working cp of CDS of drv being accessed
     currentJFT  resq 1  ;Ptr to JFT num in caller PSP of file being accessed
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
+    currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
     currClust   resd 1  ;Relative cluster in file being r/w to/from
     currClustA  resd 1  ;Current Cluster (abs) on disk being read/written to/from

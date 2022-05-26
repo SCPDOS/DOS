@@ -279,6 +279,19 @@ struc fcb
     ;Used for random read and write operations to find the right record
 endstruc
 
+struc ffBlock   ;The structure of the Find First structure at the DTA
+    .driveNum   resb 1  ;Drive we are searching on
+    .template   resb 11 ;Search template (? meaning anything)
+    .attrib     resb 1  ;Search attribute
+    .dirOffset  resd 1  ;Entry within dir (made a dword but will never be so)
+    .parCluster resd 1  ;Parent cluster number
+    .atrribFnd  resb 1  ;Attrib of file found
+    .fileTime   resw 1  ;File time
+    .fileDate   resw 1  ;File date
+    .fileSize   resd 1  ;Number of bytes
+    .asciizName resb 13 ;ASCIIZ name with dot and terminating nul
+endstruc
+
 struc psp
     .return     resb 2  ;Should always be CDh 40h, same place as DOS
     .startSeg   resq 1  ;Pointer to the start of the PSP

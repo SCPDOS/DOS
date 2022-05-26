@@ -9,8 +9,18 @@ openFileHdl:       ;ah = 3Dh, handle function
 closeFileHdl:      ;ah = 3Eh, handle function
     ret
 readFileHdl:       ;ah = 3Fh, handle function
-    ret
+    mov byte [rwFlag], 0    ;Read
+    jmp short rwFileHndleCommon
 writeFileHdl:      ;ah = 40h, handle function
+    mov byte [rwFlag], 1    ;Write
+rwFileHndleCommon:
+;bx has file handle, ecx has number of bytes to read
+    mov word [currentHdl], bx
+    call getSFTPtr  ;Get SFT ptr in var
+    jnc .rwfhc0
+    ret ;If carry is set and error code in al, exit!
+.rwfhc0:
+    
     ret
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
@@ -34,16 +44,20 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 getSFTPtr:
 ;Gets the SFT pointer for a given file handle from the calling application
 ;On entry:
-;   bl = File handle from JFT for calling application
+;   bx = File handle from JFT for calling application
 ;On exit: CF=NC, SFT found and placed in var
 ;         CF=CY, SFT not found, abort!
     push rax
     push rbx
     push rsi
     push rdi
+    cmp bx, word [maxHndls]  ;current max number of file handles
+    jnb .gspFail
     mov rsi, qword [currentPSP]
-    movzx rbx, bl
+    movzx rbx, bx
     mov bl, byte [rsi + psp.jobFileTbl + rbx]   ;Use jft entry to get sft num
+    cmp bl, -1  ;Non-existant SFT reference?
+    je .gspFail
     xor eax, eax
     mov rdi, qword [sftHeadPtr]
 .gsp0:
@@ -75,6 +89,7 @@ getSFTPtr:
     pop rax
     ret
 .gspFail:
+    mov al, errBadHdl
     stc
     jmp short .gspExit
 
