@@ -4156,303 +4156,301 @@
     64 000011FD 84D2                <1>     test dl, dl
     65 000011FF 7508                <1>     jnz .gddpskipdefault
     66 00001201 8A15(1EC10300)      <1>     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    67 00001207 EB02                <1>     jmp short .gddpcommon
+    67 00001207 FEC2                <1>     inc dl
     68                              <1> .gddpskipdefault:
     69                              <1>     ;Decrement the drive letter since 0 = Default, 1 = A etc...
     70 00001209 FECA                <1>     dec dl
-    71                              <1> .gddpcommon:
-    72 0000120B E830030000          <1>     call findDPB ;Get in rbp the dpb pointer for drive dl
-    73 00001210 84C0                <1>     test al, al
-    74 00001212 741F                <1>     jz .gddpMediaCheck
-    75                              <1> ;Put in here error info
-    76 00001214 66C705(EFC00300)0F- <1>     mov word [errorExCde], errBadDrv ;Invalid drive spec
-    76 0000121C 00                  <1>
-    77 0000121D C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Block device driver
-    78 00001224 C605(F2C00300)08    <1>     mov byte [errorClass], eClsNotFnd    ;Drive not found
-    79 0000122B C605(F1C00300)07    <1>     mov byte [errorAction], eActRetUsr   ;Retry after intervention
-    80 00001232 C3                  <1>     ret ;Return. al = -1
-    81                              <1> .gddpMediaCheck:
-    82                              <1> ;Media Check Section
-    83 00001233 C605(4EC00300)17    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
-    84 0000123A 8815(4FC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], dl
-    85 00001240 C605(50C00300)01    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
-    86 00001247 66C705(51C00300)00- <1>     mov word [diskReqHdr + mediaCheckReqPkt.status], 0
-    86 0000124F 00                  <1>
-    87 00001250 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-    88 00001253 8805(5BC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
-    89 00001259 88D0                <1>     mov al, dl  ;Save device number in al
-    90 0000125B 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-    91 0000125F 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
-    92 00001266 E8B4FEFFFF          <1>     call goDriver
-    93 0000126B 0F82D5000000        <1>     jc .gddpError
-    94 00001271 88C2                <1>     mov dl, al
-    95 00001273 803D(5CC00300)01    <1>     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 1 ;Certified no change
-    96 0000127A 0F849F000000        <1>     je .gddpretdbp
-    97 00001280 803D(5CC00300)00    <1>     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 0
-    98 00001287 750B                <1>     jne .gddpBuildBPB   ;This means Media changed declared
-    99 00001289 E8FDF2FFFF          <1>     call testDirtyBufferForDrive
-   100 0000128E 0F828B000000        <1>     jc .gddpretdbp    ;If there is a dirty buffer for the drive, skip build bpb
-   101                              <1> .gddpBuildBPB:
-   102                              <1> ;BPB Build Section, only here if need a new bpb, i.e. sure of a new device
-   103 00001294 E800F4FFFF          <1>     call findLRUBuffer  ;Get lru buffer pointer in rbx
-   104 00001299 3A5308              <1>     cmp dl, byte [rbx + bufferHdr.driveNumber]  ;Does buffer belong to old drv?
-   105 0000129C 7414                <1>     je .gddpBuildBPBInvalidateBuffer    ;Yes, immediately invalidate data
-   106                              <1>     ;If no, flush the data to disk.
-   107                              <1> .gddpBuildBPBFlush:
-   108 0000129E 4889EE              <1>     mov rsi, rbp    ;Save rbp as pointer to old dl drive dpb
-   109 000012A1 4889DD              <1>     mov rbp, rbx    ;Get buffer header pointer in rbp
-   110 000012A4 E89DF3FFFF          <1>     call flushBuffer    ;Flush the buffer to disk, rbx preserved
-   111 000012A9 4889F5              <1>     mov rbp, rsi    ;Return old drive dpb pointer to rbp
-   112 000012AC 0F8208010000        <1>     jc .gddpErrorType2  ;rbx points to buffer header
-   113                              <1> .gddpBuildBPBInvalidateBuffer:
-   114                              <1>     ;Write new buffer header
-   115 000012B2 885308              <1>     mov byte [rbx + bufferHdr.driveNumber], dl
-   116 000012B5 C6430908            <1>     mov byte [rbx + bufferHdr.bufferFlags], dataBuffer
-   117 000012B9 48C7430A00000000    <1>     mov qword [rbx + bufferHdr.bufferLBA], 0
-   118 000012C1 C6431201            <1>     mov byte [rbx + bufferHdr.bufFATcopy], 1
-   119 000012C5 C7431300000000      <1>     mov dword [rbx + bufferHdr.bufFATsize], 0
-   120 000012CC 48896B17            <1>     mov qword [rbx + bufferHdr.driveDPBPtr], rbp
-   121 000012D0 488D5B20            <1>     lea rbx, qword [rbx + bufferHdr.dataarea]
-   122                              <1>     ;Build BPB request
-   123 000012D4 C605(4EC00300)1E    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
-   124 000012DB 8815(4FC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], dl
-   125 000012E1 C605(50C00300)02    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-   126 000012E8 66C705(51C00300)00- <1>     mov word [diskReqHdr + bpbBuildReqPkt.status], 0 
-   126 000012F0 00                  <1>
-   127 000012F1 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   128 000012F4 8805(5BC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
-   129 000012FA 48891D(5CC00300)    <1>     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rbx ;Put lru pointer in rbx
-   130                              <1> 
-   131 00001301 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-   132 00001305 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
-   133 0000130C E80EFEFFFF          <1>     call goDriver
-   134 00001311 7233                <1>     jc .gddpError
-   135 00001313 488B35(64C00300)    <1>     mov rsi, qword [diskReqHdr + bpbBuildReqPkt.bpbptr]
-   136                              <1>     ;rbp points to dpb so we good to go
-   137                              <1>     ;Call int 41h ah=53h Build DPB without reentering Int 41h
-   138                              <1>     ;Since this function doesnt modify the caller stack, it is safe to do so
-   139 0000131A E83E010000          <1>     call createDPB 
-   140                              <1> .gddpretdbp: 
-   141 0000131F C64523FF            <1>     mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
-   142 00001323 E8CBFEFFFF          <1>     call getUserRegs
-   143 00001328 48896E08            <1>     mov qword [rsi + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
-   144 0000132C 30C0                <1>     xor al, al  ;Set al = 0 to indicate rbx=dpb pointer
-   145 0000132E C3                  <1>     ret
-   146                              <1> .gddpretdpbFail:
-   147 0000132F E8BFFEFFFF          <1>     call getUserRegs
-   148 00001334 48814E5801000000    <1>     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
-   149 0000133C 66C705(EFC00300)53- <1>     mov word [errorExCde], errFI24 ;Fail on INT 44h error code
-   149 00001344 00                  <1>
-   150 00001345 C3                  <1>     ret
-   151                              <1> .gddpError:
-   152                              <1> ;Abort, Retry, Ignore are the only acceptible responses
-   153                              <1> ;Entered with rbp = dpb for failing drive
-   154                              <1> ;             rdx = driver header that caused fault
-   155 00001346 4889D6              <1>     mov rsi, rdx    ;rdx points to driver header in both cases
-   156 00001349 488B1D(4DC10300)    <1>     mov rbx, qword [oldRSP]
-   157 00001350 8A4318              <1>     mov al, byte [rbx + callerFrame.rdx]    ;Get low byte = dl = Drive number
-   158 00001353 88C2                <1>     mov dl, al  ;Save in dl
-   159 00001355 84C0                <1>     test al, al
-   160 00001357 7508                <1>     jnz .gddpE0
-   161 00001359 8A05(1EC10300)      <1>     mov al, byte [currentDrv]
-   162 0000135F EB02                <1>     jmp short .gddpE1
-   163                              <1> .gddpE0:
-   164 00001361 FEC8                <1>     dec al
-   165                              <1> .gddpE1:
-   166 00001363 B436                <1>     mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
-   167 00001365 668B3D(51C00300)    <1>     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
-   168 0000136C 6681E7FF00          <1>     and di, 0FFh    ;Save lo byte only
-   169 00001371 48893D(0BC10300)    <1>     mov qword [rdiErrorPtr], rdi    ;Save this byte
-   170 00001378 66893D(EFC00300)    <1>     mov word [errorExCde], di     ;Save driver error code
-   171 0000137F 668105(EFC00300)13- <1>     add word [errorExCde], drvErrShft    ;Add offset to driver error codes
-   171 00001387 00                  <1>
-   172 00001388 8805(EDC00300)      <1>     mov byte [errorDrv], al     ;Save the drive on which the error occured
-   173 0000138E C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Error in Block Device Request code
-   174 00001395 C605(F2C00300)0B    <1>     mov byte [errorClass], eClsMedia   ;Media error (bad BPB or other) code
-   175 0000139C C605(F1C00300)01    <1>     mov byte [errorAction], eActRet   ;Retry request code
-   176 000013A3 E84FFDFFFF          <1>     call criticalDOSError   ;Critical error handler
-   177 000013A8 84C0                <1>     test al, al
-   178 000013AA 0F846FFFFFFF        <1>     jz .gddpretdbp  ;Ignore error, return, rbp has old dpb pointer
-   179 000013B0 3C01                <1>     cmp al, 1
-   180 000013B2 0F8445FEFFFF        <1>     je getDeviceDPBptr ;Reenter the function, dl has drive code
-   181 000013B8 CD43                <1>     int 43h ;Else, restart DOS
-   182                              <1> .gddpErrorType2:
-   183                              <1> ;Error flushing the old buffer
-   184                              <1> ;   rbx = Buffer header for data transfer
-   185 000013BA B439                <1>     mov ah, 39h ;Write operation, abort/retry/ignore/fail, disk error
-   186 000013BC 807B0901            <1>     cmp byte [rbx + bufferHdr.bufferFlags], dosBuffer
-   187 000013C0 7414                <1>     je .gddpErrorType2main
-   188 000013C2 80CC02              <1>     or ah, 2h   ;Set bit 1
-   189 000013C5 807B0902            <1>     cmp byte [rbx + bufferHdr.bufferFlags], fatBuffer
-   190 000013C9 740B                <1>     je .gddpErrorType2main
-   191 000013CB B43D                <1>     mov ah, 3Dh ;Set bit 2, clear bit 1
-   192 000013CD 807B0904            <1>     cmp byte [rbx + bufferHdr.bufferFlags], dirBuffer
-   193 000013D1 7403                <1>     je .gddpErrorType2main
-   194 000013D3 80CC02              <1>     or ah, 2h   ;Set bit 2 and 1
-   195                              <1> .gddpErrorType2main:    
-   196 000013D6 668B3D(51C00300)    <1>     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
-   197 000013DD 6681E7FF00          <1>     and di, 0FFh    ;Save lo byte only
-   198 000013E2 66893D(EFC00300)    <1>     mov word [errorExCde], di     ;Save driver error code
-   199 000013E9 668105(EFC00300)13- <1>     add word [errorExCde], drvErrShft   ;Add offset to driver error codes
-   199 000013F1 00                  <1>
-   200 000013F2 8A4308              <1>     mov al, byte [rbx + bufferHdr.driveNumber]
-   201 000013F5 8805(EDC00300)      <1>     mov byte [errorDrv], al
-   202 000013FB C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Error in Block Device Request code
-   203 00001402 C605(F2C00300)0B    <1>     mov byte [errorClass], eClsMedia  ;Media error (bad disk write) code
-   204 00001409 C605(F1C00300)01    <1>     mov byte [errorAction], eActRet   ;Retry request code
-   205 00001410 488B7317            <1>     mov rsi, qword [rbx + bufferHdr.driveDPBPtr]
-   206 00001414 488B761A            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get device driver header in rsi
-   207 00001418 E8DAFCFFFF          <1>     call criticalDOSError   ;Critical error handler
-   208 0000141D 807B0902            <1>     cmp byte [rbx + bufferHdr.bufferFlags], fatBuffer
-   209 00001421 7420                <1>     je .gddpErrorType2FatDir
-   210 00001423 807B0904            <1>     cmp byte [rbx + bufferHdr.bufferFlags], dirBuffer
-   211 00001427 741A                <1>     je .gddpErrorType2FatDir
-   212 00001429 84C0                <1>     test al, al
-   213 0000142B 0F8481FEFFFF        <1>     jz .gddpBuildBPBInvalidateBuffer ;Ignore error, invalidate data
-   214 00001431 3C01                <1>     cmp al, 1
-   215 00001433 0F8465FEFFFF        <1>     je .gddpBuildBPBFlush   ;Retry flush, rbx has buffer pointer
-   216 00001439 3C03                <1>     cmp al, 3
-   217 0000143B 0F84EEFEFFFF        <1>     je .gddpretdpbFail
-   218 00001441 CD43                <1>     int 43h ;al = 2, means just abort
-   219                              <1> .gddpErrorType2FatDir:
-   220 00001443 84C0                <1>     test al, al ;Ignore converted to fail
-   221 00001445 0F84E4FEFFFF        <1>     jz .gddpretdpbFail
-   222 0000144B 3C01                <1>     cmp al, 1
-   223 0000144D 0F844BFEFFFF        <1>     je .gddpBuildBPBFlush   ;Retry flush, rbx has buffer pointer
-   224 00001453 3C03                <1>     cmp al, 3
-   225 00001455 0F84D4FEFFFF        <1>     je .gddpretdpbFail
-   226 0000145B CD43                <1>     int 43h ;al = 2, means just abort
-   227                              <1> ;-------------------------------------------
+    71 0000120B E830030000          <1>     call findDPB ;Get in rbp the dpb pointer for drive dl
+    72 00001210 84C0                <1>     test al, al
+    73 00001212 741F                <1>     jz .gddpMediaCheck
+    74                              <1> ;Put in here error info
+    75 00001214 66C705(EFC00300)0F- <1>     mov word [errorExCde], errBadDrv ;Invalid drive spec
+    75 0000121C 00                  <1>
+    76 0000121D C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Block device driver
+    77 00001224 C605(F2C00300)08    <1>     mov byte [errorClass], eClsNotFnd    ;Drive not found
+    78 0000122B C605(F1C00300)07    <1>     mov byte [errorAction], eActRetUsr   ;Retry after intervention
+    79 00001232 C3                  <1>     ret ;Return. al = -1
+    80                              <1> .gddpMediaCheck:
+    81                              <1> ;Media Check Section
+    82 00001233 C605(4EC00300)17    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    83 0000123A 8815(4FC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], dl
+    84 00001240 C605(50C00300)01    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
+    85 00001247 66C705(51C00300)00- <1>     mov word [diskReqHdr + mediaCheckReqPkt.status], 0
+    85 0000124F 00                  <1>
+    86 00001250 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+    87 00001253 8805(5BC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
+    88 00001259 88D0                <1>     mov al, dl  ;Save device number in al
+    89 0000125B 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    90 0000125F 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
+    91 00001266 E8B4FEFFFF          <1>     call goDriver
+    92 0000126B 0F82D5000000        <1>     jc .gddpError
+    93 00001271 88C2                <1>     mov dl, al
+    94 00001273 803D(5CC00300)01    <1>     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 1 ;Certified no change
+    95 0000127A 0F849F000000        <1>     je .gddpretdbp
+    96 00001280 803D(5CC00300)00    <1>     cmp byte [diskReqHdr + mediaCheckReqPkt.medret], 0
+    97 00001287 750B                <1>     jne .gddpBuildBPB   ;This means Media changed declared
+    98 00001289 E8FDF2FFFF          <1>     call testDirtyBufferForDrive
+    99 0000128E 0F828B000000        <1>     jc .gddpretdbp    ;If there is a dirty buffer for the drive, skip build bpb
+   100                              <1> .gddpBuildBPB:
+   101                              <1> ;BPB Build Section, only here if need a new bpb, i.e. sure of a new device
+   102 00001294 E800F4FFFF          <1>     call findLRUBuffer  ;Get lru buffer pointer in rbx
+   103 00001299 3A5308              <1>     cmp dl, byte [rbx + bufferHdr.driveNumber]  ;Does buffer belong to old drv?
+   104 0000129C 7414                <1>     je .gddpBuildBPBInvalidateBuffer    ;Yes, immediately invalidate data
+   105                              <1>     ;If no, flush the data to disk.
+   106                              <1> .gddpBuildBPBFlush:
+   107 0000129E 4889EE              <1>     mov rsi, rbp    ;Save rbp as pointer to old dl drive dpb
+   108 000012A1 4889DD              <1>     mov rbp, rbx    ;Get buffer header pointer in rbp
+   109 000012A4 E89DF3FFFF          <1>     call flushBuffer    ;Flush the buffer to disk, rbx preserved
+   110 000012A9 4889F5              <1>     mov rbp, rsi    ;Return old drive dpb pointer to rbp
+   111 000012AC 0F8208010000        <1>     jc .gddpErrorType2  ;rbx points to buffer header
+   112                              <1> .gddpBuildBPBInvalidateBuffer:
+   113                              <1>     ;Write new buffer header
+   114 000012B2 885308              <1>     mov byte [rbx + bufferHdr.driveNumber], dl
+   115 000012B5 C6430908            <1>     mov byte [rbx + bufferHdr.bufferFlags], dataBuffer
+   116 000012B9 48C7430A00000000    <1>     mov qword [rbx + bufferHdr.bufferLBA], 0
+   117 000012C1 C6431201            <1>     mov byte [rbx + bufferHdr.bufFATcopy], 1
+   118 000012C5 C7431300000000      <1>     mov dword [rbx + bufferHdr.bufFATsize], 0
+   119 000012CC 48896B17            <1>     mov qword [rbx + bufferHdr.driveDPBPtr], rbp
+   120 000012D0 488D5B20            <1>     lea rbx, qword [rbx + bufferHdr.dataarea]
+   121                              <1>     ;Build BPB request
+   122 000012D4 C605(4EC00300)1E    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+   123 000012DB 8815(4FC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], dl
+   124 000012E1 C605(50C00300)02    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+   125 000012E8 66C705(51C00300)00- <1>     mov word [diskReqHdr + bpbBuildReqPkt.status], 0 
+   125 000012F0 00                  <1>
+   126 000012F1 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   127 000012F4 8805(5BC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
+   128 000012FA 48891D(5CC00300)    <1>     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rbx ;Put lru pointer in rbx
+   129                              <1> 
+   130 00001301 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+   131 00001305 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
+   132 0000130C E80EFEFFFF          <1>     call goDriver
+   133 00001311 7233                <1>     jc .gddpError
+   134 00001313 488B35(64C00300)    <1>     mov rsi, qword [diskReqHdr + bpbBuildReqPkt.bpbptr]
+   135                              <1>     ;rbp points to dpb so we good to go
+   136                              <1>     ;Call int 41h ah=53h Build DPB without reentering Int 41h
+   137                              <1>     ;Since this function doesnt modify the caller stack, it is safe to do so
+   138 0000131A E83E010000          <1>     call createDPB 
+   139                              <1> .gddpretdbp: 
+   140 0000131F C64523FF            <1>     mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
+   141 00001323 E8CBFEFFFF          <1>     call getUserRegs
+   142 00001328 48896E08            <1>     mov qword [rsi + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
+   143 0000132C 30C0                <1>     xor al, al  ;Set al = 0 to indicate rbx=dpb pointer
+   144 0000132E C3                  <1>     ret
+   145                              <1> .gddpretdpbFail:
+   146 0000132F E8BFFEFFFF          <1>     call getUserRegs
+   147 00001334 48814E5801000000    <1>     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
+   148 0000133C 66C705(EFC00300)53- <1>     mov word [errorExCde], errFI24 ;Fail on INT 44h error code
+   148 00001344 00                  <1>
+   149 00001345 C3                  <1>     ret
+   150                              <1> .gddpError:
+   151                              <1> ;Abort, Retry, Ignore are the only acceptible responses
+   152                              <1> ;Entered with rbp = dpb for failing drive
+   153                              <1> ;             rdx = driver header that caused fault
+   154 00001346 4889D6              <1>     mov rsi, rdx    ;rdx points to driver header in both cases
+   155 00001349 488B1D(4DC10300)    <1>     mov rbx, qword [oldRSP]
+   156 00001350 8A4318              <1>     mov al, byte [rbx + callerFrame.rdx]    ;Get low byte = dl = Drive number
+   157 00001353 88C2                <1>     mov dl, al  ;Save in dl
+   158 00001355 84C0                <1>     test al, al
+   159 00001357 7508                <1>     jnz .gddpE0
+   160 00001359 8A05(1EC10300)      <1>     mov al, byte [currentDrv]
+   161 0000135F FEC0                <1>     inc al
+   162                              <1> .gddpE0:
+   163 00001361 FEC8                <1>     dec al
+   164 00001363 B436                <1>     mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
+   165 00001365 668B3D(51C00300)    <1>     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
+   166 0000136C 6681E7FF00          <1>     and di, 0FFh    ;Save lo byte only
+   167 00001371 48893D(0BC10300)    <1>     mov qword [rdiErrorPtr], rdi    ;Save this byte
+   168 00001378 66893D(EFC00300)    <1>     mov word [errorExCde], di     ;Save driver error code
+   169 0000137F 668105(EFC00300)13- <1>     add word [errorExCde], drvErrShft    ;Add offset to driver error codes
+   169 00001387 00                  <1>
+   170 00001388 8805(EDC00300)      <1>     mov byte [errorDrv], al     ;Save the drive on which the error occured
+   171 0000138E C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Error in Block Device Request code
+   172 00001395 C605(F2C00300)0B    <1>     mov byte [errorClass], eClsMedia   ;Media error (bad BPB or other) code
+   173 0000139C C605(F1C00300)01    <1>     mov byte [errorAction], eActRet   ;Retry request code
+   174 000013A3 E84FFDFFFF          <1>     call criticalDOSError   ;Critical error handler
+   175 000013A8 84C0                <1>     test al, al
+   176 000013AA 0F846FFFFFFF        <1>     jz .gddpretdbp  ;Ignore error, return, rbp has old dpb pointer
+   177 000013B0 3C01                <1>     cmp al, 1
+   178 000013B2 0F8445FEFFFF        <1>     je getDeviceDPBptr ;Reenter the function, dl has drive code
+   179 000013B8 CD43                <1>     int 43h ;Else, restart DOS
+   180                              <1> .gddpErrorType2:
+   181                              <1> ;Error flushing the old buffer
+   182                              <1> ;   rbx = Buffer header for data transfer
+   183 000013BA B439                <1>     mov ah, 39h ;Write operation, abort/retry/ignore/fail, disk error
+   184 000013BC 807B0901            <1>     cmp byte [rbx + bufferHdr.bufferFlags], dosBuffer
+   185 000013C0 7414                <1>     je .gddpErrorType2main
+   186 000013C2 80CC02              <1>     or ah, 2h   ;Set bit 1
+   187 000013C5 807B0902            <1>     cmp byte [rbx + bufferHdr.bufferFlags], fatBuffer
+   188 000013C9 740B                <1>     je .gddpErrorType2main
+   189 000013CB B43D                <1>     mov ah, 3Dh ;Set bit 2, clear bit 1
+   190 000013CD 807B0904            <1>     cmp byte [rbx + bufferHdr.bufferFlags], dirBuffer
+   191 000013D1 7403                <1>     je .gddpErrorType2main
+   192 000013D3 80CC02              <1>     or ah, 2h   ;Set bit 2 and 1
+   193                              <1> .gddpErrorType2main:    
+   194 000013D6 668B3D(51C00300)    <1>     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
+   195 000013DD 6681E7FF00          <1>     and di, 0FFh    ;Save lo byte only
+   196 000013E2 66893D(EFC00300)    <1>     mov word [errorExCde], di     ;Save driver error code
+   197 000013E9 668105(EFC00300)13- <1>     add word [errorExCde], drvErrShft   ;Add offset to driver error codes
+   197 000013F1 00                  <1>
+   198 000013F2 8A4308              <1>     mov al, byte [rbx + bufferHdr.driveNumber]
+   199 000013F5 8805(EDC00300)      <1>     mov byte [errorDrv], al
+   200 000013FB C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Error in Block Device Request code
+   201 00001402 C605(F2C00300)0B    <1>     mov byte [errorClass], eClsMedia  ;Media error (bad disk write) code
+   202 00001409 C605(F1C00300)01    <1>     mov byte [errorAction], eActRet   ;Retry request code
+   203 00001410 488B7317            <1>     mov rsi, qword [rbx + bufferHdr.driveDPBPtr]
+   204 00001414 488B761A            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get device driver header in rsi
+   205 00001418 E8DAFCFFFF          <1>     call criticalDOSError   ;Critical error handler
+   206 0000141D 807B0902            <1>     cmp byte [rbx + bufferHdr.bufferFlags], fatBuffer
+   207 00001421 7420                <1>     je .gddpErrorType2FatDir
+   208 00001423 807B0904            <1>     cmp byte [rbx + bufferHdr.bufferFlags], dirBuffer
+   209 00001427 741A                <1>     je .gddpErrorType2FatDir
+   210 00001429 84C0                <1>     test al, al
+   211 0000142B 0F8481FEFFFF        <1>     jz .gddpBuildBPBInvalidateBuffer ;Ignore error, invalidate data
+   212 00001431 3C01                <1>     cmp al, 1
+   213 00001433 0F8465FEFFFF        <1>     je .gddpBuildBPBFlush   ;Retry flush, rbx has buffer pointer
+   214 00001439 3C03                <1>     cmp al, 3
+   215 0000143B 0F84EEFEFFFF        <1>     je .gddpretdpbFail
+   216 00001441 CD43                <1>     int 43h ;al = 2, means just abort
+   217                              <1> .gddpErrorType2FatDir:
+   218 00001443 84C0                <1>     test al, al ;Ignore converted to fail
+   219 00001445 0F84E4FEFFFF        <1>     jz .gddpretdpbFail
+   220 0000144B 3C01                <1>     cmp al, 1
+   221 0000144D 0F844BFEFFFF        <1>     je .gddpBuildBPBFlush   ;Retry flush, rbx has buffer pointer
+   222 00001453 3C03                <1>     cmp al, 3
+   223 00001455 0F84D4FEFFFF        <1>     je .gddpretdpbFail
+   224 0000145B CD43                <1>     int 43h ;al = 2, means just abort
+   225                              <1> ;-------------------------------------------
+   226                              <1> 
+   227                              <1> 
    228                              <1> 
-   229                              <1> 
-   230                              <1> 
-   231                              <1> ;AH = 53h - CREATE DPB
-   232                              <1> createDPB:         ;generates a DPB from a given BPB
-   233                              <1> ;Only translates the data that can be garnered from a BPB to the DPB
-   234                              <1> ;This is done so that the other fields of the DPB can be recycled
-   235                              <1> ;Input: rsi = ptr to the BPB
-   236                              <1> ;       rbp = ptr to the DPB
-   237                              <1> ;bMediaDescriptor
-   238 0000145D 8A4615              <1>     mov al, byte [rsi + bpb.media]
-   239 00001460 884522              <1>     mov byte [rbp + dpb.bMediaDescriptor], al
-   240                              <1> ;bAccessFlag
-   241 00001463 C64523FF            <1>     mov byte [rbp + dpb.bAccessFlag], -1    ;Not accessed
-   242                              <1> ;dFirstFreeCluster
-   243 00001467 C7452C00000000      <1>     mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
-   244                              <1> ;dNumberOfFreeClusters
-   245 0000146E C74530FFFFFFFF      <1>     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
-   246                              <1> ;bBytesPerSectorShift
-   247 00001475 668B460B            <1>     mov ax, word [rsi + bpb.bytsPerSec]
-   248 00001479 B107                <1>     mov cl, 7   ;Start with 128 byte sectors (not supported, min 512)
-   249 0000147B 66D3E8              <1>     shr ax, cl  ;Shift down
-   250                              <1> .cd0:
-   251 0000147E 66D1E8              <1>     shr ax, 1
-   252 00001481 7404                <1>     jz .cd1
-   253 00001483 FEC1                <1>     inc cl
-   254 00001485 EBF7                <1>     jmp short .cd0
-   255                              <1> .cd1:
-   256 00001487 884D02              <1>     mov byte [rbp + dpb.bBytesPerSectorShift], cl
-   257                              <1> ;bMaxSectorInCluster
-   258 0000148A 8A460D              <1>     mov al, byte [rsi + bpb.secPerClus]
-   259 0000148D FEC8                <1>     dec al  ;Subtract one to get the max number of the last sector in a cluster
-   260 0000148F 884503              <1>     mov byte [rbp + dpb.bMaxSectorInCluster], al
-   261                              <1> ;bSectorsPerClusterShift
-   262 00001492 FEC0                <1>     inc al
-   263 00001494 30C9                <1>     xor cl, cl
-   264                              <1> .cd2:
-   265 00001496 D0E8                <1>     shr al, 1
-   266 00001498 7404                <1>     jz .cd3
-   267 0000149A FEC1                <1>     inc cl
-   268 0000149C EBF8                <1>     jmp short .cd2
-   269                              <1> .cd3:
-   270 0000149E 884D04              <1>     mov byte [rbp + dpb.bSectorsPerClusterShift], cl
-   271                              <1> ;wFAToffset, number of reserved sectors in partition
-   272 000014A1 668B460E            <1>     mov ax, word [rsi + bpb.revdSecCnt]
-   273 000014A5 66894505            <1>     mov word [rbp + dpb.wFAToffset], ax
-   274                              <1> ;bNumberOfFATs
-   275 000014A9 8A4610              <1>     mov al, byte [rsi + bpb.numFATs]
-   276 000014AC 884507              <1>     mov byte [rbp + dpb.bNumberOfFATs], al
-   277                              <1> ;wNumberRootDirSectors
-   278 000014AF 0FB74611            <1>     movzx eax, word [rsi + bpb.rootEntCnt] ;Must be 0 on FAT 32
-   279 000014B3 C1E005              <1>     shl eax, 5  ;Multiply by 32
-   280 000014B6 0FB74E0B            <1>     movzx ecx, word [rsi + bpb.bytsPerSec]
-   281 000014BA FFC9                <1>     dec ecx
-   282 000014BC 01C8                <1>     add eax, ecx
-   283 000014BE 31D2                <1>     xor edx, edx    ;Clear for divide
-   284 000014C0 F7F1                <1>     div ecx ;Divide 0:eax by ecx, (e)ax has number of clusters
-   285 000014C2 66894508            <1>     mov word [rbp + dpb.wNumberRootDirSectors], ax  ;0 for FAT32
-   286                              <1> ;dFATlength, get the FAT length
-   287 000014C6 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
-   288 000014CA 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
-   289 000014CD 85C0                <1>     test eax, eax   ;If FATsz16 = 0, then use FATsz32
-   290 000014CF 0F44C3              <1>     cmovz eax, ebx  ;Only move 32bit value if sz16 was 0
-   291 000014D2 894512              <1>     mov dword [rbp + dpb.dFATlength], eax
-   292                              <1> ;Complex cases below...
-   293                              <1> ;dClusterHeapOffset, start sector of the data area
-   294 000014D5 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
-   295 000014D9 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
-   296 000014DC 85C0                <1>     test eax, eax
-   297 000014DE 0F44C3              <1>     cmovz eax, ebx
-   298                              <1> ;eax = FATsz
-   299 000014E1 0FB75E13            <1>     movzx ebx, word [rsi + bpb.totSec16]
-   300 000014E5 8B4E20              <1>     mov ecx, dword [rsi + bpb.totSec32]
-   301 000014E8 85DB                <1>     test ebx, ebx
-   302 000014EA 0F44D9              <1>     cmovz ebx, ecx 
-   303                              <1> ;ebx = TotSec
-   304 000014ED 8A4E10              <1>     mov cl, byte [rsi + bpb.numFATs]
-   305 000014F0 31D2                <1>     xor edx, edx    ;Use edx = NumFATs * FATsz temporarily
-   306                              <1> .cd4:
-   307 000014F2 01C2                <1>     add edx, eax
-   308 000014F4 FEC9                <1>     dec cl
-   309 000014F6 75FA                <1>     jnz .cd4
-   310 000014F8 89D0                <1>     mov eax, edx    ;Store product in eax
-   311 000014FA 0FB7560E            <1>     movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
-   312 000014FE 01D0                <1>     add eax, edx
-   313 00001500 0FB75508            <1>     movzx edx, word [rbp + dpb.wNumberRootDirSectors]
-   314 00001504 01D0                <1>     add eax, edx    ;This adds nothing if FAT32
-   315                              <1>     ;eax = BPB_ResvdSecCnt + (BPB_NumFATs * FATSz) + RootDirSectors
-   316                              <1>     ;aka eax = Start sector of the data area in volume
-   317 00001506 89450A              <1>     mov dword [rbp + dpb.dClusterHeapOffset], eax
-   318                              <1> ;dClusterCount
-   319 00001509 29C3                <1>     sub ebx, eax    ;ebx = Number of sectors in the data area
-   320 0000150B 89D8                <1>     mov eax, ebx    ;Move number of sectors in data area into eax
-   321 0000150D 31D2                <1>     xor edx, edx
-   322 0000150F BB01000000          <1>     mov ebx, 1
-   323 00001514 8A4D04              <1>     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
-   324 00001517 D3E3                <1>     shl ebx, cl ;Get sectors per cluster
-   325 00001519 F7F3                <1>     div ebx ;Data area sector / sectors per cluster = cluster count
-   326 0000151B FFC0                <1>     inc eax ;Maximum valid cluster value is eax + 1
-   327 0000151D 89450E              <1>     mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
-   328                              <1> ;dFirstUnitOfRootDir
-   329 00001520 3DF5FF0000          <1>     cmp eax, fat16MaxClustCnt  ;If above, its FAT32
-   330 00001525 8B462C              <1>     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
-   331 00001528 7709                <1>     ja .cd5
-   332                              <1>     ;Else, we need to find the first sector of the root directory
-   333                              <1>     ;Get the start sector of data area in volume 
-   334                              <1>     ; and sub the number of sectors in the root directory
-   335 0000152A 8B450A              <1>     mov eax, dword [rbp + dpb.dClusterHeapOffset]
-   336 0000152D 0FB75D08            <1>     movzx ebx, word [rbp + dpb.wNumberRootDirSectors]
-   337 00001531 29D8                <1>     sub eax, ebx    ;eax now has start sector of root dir
-   338                              <1> .cd5:
-   339 00001533 894516              <1>     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
-   340                              <1> ;Exit epilogue
-   341 00001536 488B1D(4DC10300)    <1>     mov rbx, qword [oldRSP]
-   342 0000153D 8A03                <1>     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
-   343                              <1>     %if DEBUG && DPBINFO
-   344                              <1>     ;Print DPB 
-   345                              <1>     debugEnterM
-   346                              <1>     push rbp
-   347                              <1>     lea rbp, .l0000
-   348                              <1>     call debPrintNullString
-   349                              <1>     pop rbp
-   350                              <1>     call debDPBBPBptr
-   351                              <1>     call debMakeDebuggerRespond
-   352                              <1>     jmp short .l0001
-   353                              <1> .l0000 db "Constructed DPB from given device BPB",0Ah,0Dh,0
-   354                              <1> .l0001:
-   355                              <1>     debugExitM
-   356                              <1>     %endif
-   357 0000153F C3                  <1>     ret
+   229                              <1> ;AH = 53h - CREATE DPB
+   230                              <1> createDPB:         ;generates a DPB from a given BPB
+   231                              <1> ;Only translates the data that can be garnered from a BPB to the DPB
+   232                              <1> ;This is done so that the other fields of the DPB can be recycled
+   233                              <1> ;Input: rsi = ptr to the BPB
+   234                              <1> ;       rbp = ptr to the DPB
+   235                              <1> ;bMediaDescriptor
+   236 0000145D 8A4615              <1>     mov al, byte [rsi + bpb.media]
+   237 00001460 884522              <1>     mov byte [rbp + dpb.bMediaDescriptor], al
+   238                              <1> ;bAccessFlag
+   239 00001463 C64523FF            <1>     mov byte [rbp + dpb.bAccessFlag], -1    ;Not accessed
+   240                              <1> ;dFirstFreeCluster
+   241 00001467 C7452C00000000      <1>     mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
+   242                              <1> ;dNumberOfFreeClusters
+   243 0000146E C74530FFFFFFFF      <1>     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
+   244                              <1> ;bBytesPerSectorShift
+   245 00001475 668B460B            <1>     mov ax, word [rsi + bpb.bytsPerSec]
+   246 00001479 B107                <1>     mov cl, 7   ;Start with 128 byte sectors (not supported, min 512)
+   247 0000147B 66D3E8              <1>     shr ax, cl  ;Shift down
+   248                              <1> .cd0:
+   249 0000147E 66D1E8              <1>     shr ax, 1
+   250 00001481 7404                <1>     jz .cd1
+   251 00001483 FEC1                <1>     inc cl
+   252 00001485 EBF7                <1>     jmp short .cd0
+   253                              <1> .cd1:
+   254 00001487 884D02              <1>     mov byte [rbp + dpb.bBytesPerSectorShift], cl
+   255                              <1> ;bMaxSectorInCluster
+   256 0000148A 8A460D              <1>     mov al, byte [rsi + bpb.secPerClus]
+   257 0000148D FEC8                <1>     dec al  ;Subtract one to get the max number of the last sector in a cluster
+   258 0000148F 884503              <1>     mov byte [rbp + dpb.bMaxSectorInCluster], al
+   259                              <1> ;bSectorsPerClusterShift
+   260 00001492 FEC0                <1>     inc al
+   261 00001494 30C9                <1>     xor cl, cl
+   262                              <1> .cd2:
+   263 00001496 D0E8                <1>     shr al, 1
+   264 00001498 7404                <1>     jz .cd3
+   265 0000149A FEC1                <1>     inc cl
+   266 0000149C EBF8                <1>     jmp short .cd2
+   267                              <1> .cd3:
+   268 0000149E 884D04              <1>     mov byte [rbp + dpb.bSectorsPerClusterShift], cl
+   269                              <1> ;wFAToffset, number of reserved sectors in partition
+   270 000014A1 668B460E            <1>     mov ax, word [rsi + bpb.revdSecCnt]
+   271 000014A5 66894505            <1>     mov word [rbp + dpb.wFAToffset], ax
+   272                              <1> ;bNumberOfFATs
+   273 000014A9 8A4610              <1>     mov al, byte [rsi + bpb.numFATs]
+   274 000014AC 884507              <1>     mov byte [rbp + dpb.bNumberOfFATs], al
+   275                              <1> ;wNumberRootDirSectors
+   276 000014AF 0FB74611            <1>     movzx eax, word [rsi + bpb.rootEntCnt] ;Must be 0 on FAT 32
+   277 000014B3 C1E005              <1>     shl eax, 5  ;Multiply by 32
+   278 000014B6 0FB74E0B            <1>     movzx ecx, word [rsi + bpb.bytsPerSec]
+   279 000014BA FFC9                <1>     dec ecx
+   280 000014BC 01C8                <1>     add eax, ecx
+   281 000014BE 31D2                <1>     xor edx, edx    ;Clear for divide
+   282 000014C0 F7F1                <1>     div ecx ;Divide 0:eax by ecx, (e)ax has number of clusters
+   283 000014C2 66894508            <1>     mov word [rbp + dpb.wNumberRootDirSectors], ax  ;0 for FAT32
+   284                              <1> ;dFATlength, get the FAT length
+   285 000014C6 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
+   286 000014CA 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
+   287 000014CD 85C0                <1>     test eax, eax   ;If FATsz16 = 0, then use FATsz32
+   288 000014CF 0F44C3              <1>     cmovz eax, ebx  ;Only move 32bit value if sz16 was 0
+   289 000014D2 894512              <1>     mov dword [rbp + dpb.dFATlength], eax
+   290                              <1> ;Complex cases below...
+   291                              <1> ;dClusterHeapOffset, start sector of the data area
+   292 000014D5 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
+   293 000014D9 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
+   294 000014DC 85C0                <1>     test eax, eax
+   295 000014DE 0F44C3              <1>     cmovz eax, ebx
+   296                              <1> ;eax = FATsz
+   297 000014E1 0FB75E13            <1>     movzx ebx, word [rsi + bpb.totSec16]
+   298 000014E5 8B4E20              <1>     mov ecx, dword [rsi + bpb.totSec32]
+   299 000014E8 85DB                <1>     test ebx, ebx
+   300 000014EA 0F44D9              <1>     cmovz ebx, ecx 
+   301                              <1> ;ebx = TotSec
+   302 000014ED 8A4E10              <1>     mov cl, byte [rsi + bpb.numFATs]
+   303 000014F0 31D2                <1>     xor edx, edx    ;Use edx = NumFATs * FATsz temporarily
+   304                              <1> .cd4:
+   305 000014F2 01C2                <1>     add edx, eax
+   306 000014F4 FEC9                <1>     dec cl
+   307 000014F6 75FA                <1>     jnz .cd4
+   308 000014F8 89D0                <1>     mov eax, edx    ;Store product in eax
+   309 000014FA 0FB7560E            <1>     movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
+   310 000014FE 01D0                <1>     add eax, edx
+   311 00001500 0FB75508            <1>     movzx edx, word [rbp + dpb.wNumberRootDirSectors]
+   312 00001504 01D0                <1>     add eax, edx    ;This adds nothing if FAT32
+   313                              <1>     ;eax = BPB_ResvdSecCnt + (BPB_NumFATs * FATSz) + RootDirSectors
+   314                              <1>     ;aka eax = Start sector of the data area in volume
+   315 00001506 89450A              <1>     mov dword [rbp + dpb.dClusterHeapOffset], eax
+   316                              <1> ;dClusterCount
+   317 00001509 29C3                <1>     sub ebx, eax    ;ebx = Number of sectors in the data area
+   318 0000150B 89D8                <1>     mov eax, ebx    ;Move number of sectors in data area into eax
+   319 0000150D 31D2                <1>     xor edx, edx
+   320 0000150F BB01000000          <1>     mov ebx, 1
+   321 00001514 8A4D04              <1>     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+   322 00001517 D3E3                <1>     shl ebx, cl ;Get sectors per cluster
+   323 00001519 F7F3                <1>     div ebx ;Data area sector / sectors per cluster = cluster count
+   324 0000151B FFC0                <1>     inc eax ;Maximum valid cluster value is eax + 1
+   325 0000151D 89450E              <1>     mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
+   326                              <1> ;dFirstUnitOfRootDir
+   327 00001520 3DF5FF0000          <1>     cmp eax, fat16MaxClustCnt  ;If above, its FAT32
+   328 00001525 8B462C              <1>     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
+   329 00001528 7709                <1>     ja .cd5
+   330                              <1>     ;Else, we need to find the first sector of the root directory
+   331                              <1>     ;Get the start sector of data area in volume 
+   332                              <1>     ; and sub the number of sectors in the root directory
+   333 0000152A 8B450A              <1>     mov eax, dword [rbp + dpb.dClusterHeapOffset]
+   334 0000152D 0FB75D08            <1>     movzx ebx, word [rbp + dpb.wNumberRootDirSectors]
+   335 00001531 29D8                <1>     sub eax, ebx    ;eax now has start sector of root dir
+   336                              <1> .cd5:
+   337 00001533 894516              <1>     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
+   338                              <1> ;Exit epilogue
+   339 00001536 488B1D(4DC10300)    <1>     mov rbx, qword [oldRSP]
+   340 0000153D 8A03                <1>     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
+   341                              <1>     %if DEBUG && DPBINFO
+   342                              <1>     ;Print DPB 
+   343                              <1>     debugEnterM
+   344                              <1>     push rbp
+   345                              <1>     lea rbp, .l0000
+   346                              <1>     call debPrintNullString
+   347                              <1>     pop rbp
+   348                              <1>     call debDPBBPBptr
+   349                              <1>     call debMakeDebuggerRespond
+   350                              <1>     jmp short .l0001
+   351                              <1> .l0000 db "Constructed DPB from given device BPB",0Ah,0Dh,0
+   352                              <1> .l0001:
+   353                              <1>     debugExitM
+   354                              <1>     %endif
+   355 0000153F C3                  <1>     ret
     30                                  %include "./Source/Kernel/dosMain.asm"
     31                              <1> ;-----------------------------------:
     32                              <1> ;       Misc System routines        :

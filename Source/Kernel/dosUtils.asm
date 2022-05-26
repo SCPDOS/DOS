@@ -35,11 +35,10 @@ getDeviceDPBptr:   ;ah = 32h
     test dl, dl
     jnz .gddpskipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    jmp short .gddpcommon
+    inc dl
 .gddpskipdefault:
     ;Decrement the drive letter since 0 = Default, 1 = A etc...
     dec dl
-.gddpcommon:
     call findDPB ;Get in rbp the dpb pointer for drive dl
     test al, al
     jz .gddpMediaCheck
@@ -130,10 +129,9 @@ getDeviceDPBptr:   ;ah = 32h
     test al, al
     jnz .gddpE0
     mov al, byte [currentDrv]
-    jmp short .gddpE1
+    inc al
 .gddpE0:
     dec al
-.gddpE1:
     mov ah, 36h ;Read operation, data area, abort/retry/ignore, disk error
     mov di, word [diskReqHdr + drvReqHdr.status]   ;Get low byte of status
     and di, 0FFh    ;Save lo byte only
