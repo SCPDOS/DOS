@@ -50,7 +50,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currentPSP  resq 1  ;Address of current PSP x
     rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this di)
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
-    lastRetCode resw 1  ;Last return code returned by Int 41h/4Ch x
+    errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
     currentDrv  resb 1  ;Default drive x
 ;Only used on single remdrive systems, marks if drive A or B was last accessed

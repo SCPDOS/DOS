@@ -515,7 +515,7 @@ tempCDS:
     mov byte fs:[critErrFlag], al   ;Not in critical error
     mov byte fs:[inDOS], al      ;Not in DOS
     mov byte fs:[errorDrv], -1   ;No error drive
-    mov word fs:[lastRetCode], ax   ;Last return code is 0, no error
+    mov word fs:[errorLevel], ax   ;Last return code is 0, no error
     mov byte fs:[allocStrat], al    ;First Fit
 
     ;SYSVARS PSP Init

@@ -20,7 +20,7 @@ getCDS:     ;Int 4Fh AX=1217h
     pop rax
     ret
 
-getUserRegsInRSI:   ;Int 4Fh AX=1218h
+getUserRegs:   ;Int 4Fh AX=1218h
 ;Returns ptr to user regs in rsi
     mov rsi, qword [oldRSP]
     ret
@@ -112,12 +112,12 @@ getDeviceDPBptr:   ;ah = 32h
     call createDPB 
 .gddpretdbp: 
     mov byte [rbp + dpb.bAccessFlag], -1    ;Clear access flag
-    call getUserRegsInRSI
+    call getUserRegs
     mov qword [rsi + callerFrame.rbx], rbp  ;Here, all paths have rbp as dpbptr
     xor al, al  ;Set al = 0 to indicate rbx=dpb pointer
     ret
 .gddpretdpbFail:
-    call getUserRegsInRSI
+    call getUserRegs
     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
     mov word [errorExCde], errFI24 ;Fail on INT 44h error code
     ret

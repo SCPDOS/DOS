@@ -324,7 +324,7 @@ selectDisk:        ;ah = 0Eh
     mov byte [currentDrv], dl   ;Only save dl if it is a valid number
     ret ;al = lastdrv as retcode
 .error:
-    call getUserRegsInRSI
+    call getUserRegs
     or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
     mov eax, errBadDrv          ;Invalid drive error
     mov word [errorExCde], ax     
@@ -355,7 +355,7 @@ FATinfoDevice:     ;ah = 1Ch
     jz .fidDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
-    call getUserRegsInRSI
+    call getUserRegs
     or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
     mov eax, errBadDrv          ;Invalid drive error
     mov word [errorExCde], errBadDrv     
@@ -372,7 +372,7 @@ FATinfoDevice:     ;ah = 1Ch
     shl ebx, cl
     mov ecx, ebx    ;Save the value in ecx
     lea rbx, qword [rbp + dpb.bMediaDescriptor]
-    call getUserRegsInRSI
+    call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx
     mov qword [rsi + callerFrame.rbx], rbx
@@ -388,14 +388,14 @@ setIntVector:      ;ah = 25h
     mov bl, al  ;Set interrupt number 
     mov eax, 0F007h ;Get the descriptor
     int 35h
-    call getUserRegsInRSI
+    call getUserRegs
     mov rbx, qword [rsi + callerFrame.rdx]  ;Pointer passed in rdx
     mov esi, eax    ;Move segment selector info to esi
     mov ecx, ebp    ;Get the interrupt number into cl
 ;dx preserves the attribute word
     mov eax, 0F008h ;Set descriptor
     int 35h
-    call getUserRegsInRSI
+    call getUserRegs
     mov al, byte [rsi + callerFrame.rax]    ;Preserve low byte of rax
     ret
 createNewPSP:      ;ah = 26h
@@ -405,7 +405,7 @@ setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     and byte [verifyFlag], 1       ;Only save the bottom bit
     ret
 getDOSversion:     ;ah = 30h
-    call getUserRegsInRSI
+    call getUserRegs
     xor ah, ah ;Continue the mainline PC-DOS identification line
     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
     mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
@@ -436,7 +436,7 @@ ctrlBreakCheck:    ;ah = 33h
 
 getInDOSflagPtr:   ;ah = 34h
     lea rdx, inDOS
-    call getUserRegsInRSI
+    call getUserRegs
     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
     ret
 getIntVector:      ;ah = 35h
@@ -447,7 +447,7 @@ getIntVector:      ;ah = 35h
     mov bl, al  ;Get the interrupt vector number into bl
     mov eax, 0F007h
     int 35h
-    call getUserRegsInRSI
+    call getUserRegs
     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
     mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
     ret
@@ -468,7 +468,7 @@ getDiskFreeSpace:  ;ah = 36h
     mov byte [errorLocus], eLocDsk    ;Not appropriate
     mov byte [errorClass], eClsNotFnd    ;Drive not found
     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
-    call getUserRegsInRSI
+    call getUserRegs
     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
     ret
@@ -481,13 +481,17 @@ getDiskFreeSpace:  ;ah = 36h
     shl ebx, cl
     mov ecx, ebx    ;Save the value in ecx
     mov ebx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
-    call getUserRegsInRSI
+    call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx
     mov qword [rsi + callerFrame.rbx], rbx
     ret
 
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
+    xor eax, eax
+    xchg ax, word [errorLevel]
+    call getUserRegs
+    mov word [rsi + callerFrame.rax], ax
     ret
 setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
     mov qword [currentPSP], rbx ;Set the pointer
@@ -497,7 +501,7 @@ getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
     iretq
 getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr
-    call getUserRegsInRSI
+    call getUserRegs
     mov qword [rsi + callerFrame.rbx], rdx
     ret
 getVerifySetting:  ;ah = 54h
@@ -506,7 +510,7 @@ getVerifySetting:  ;ah = 54h
 createPSP:         ;ah = 55h, creates a PSP for a program
     ret
 getExtendedError:  ;ah = 59h
-    call getUserRegsInRSI
+    call getUserRegs
     mov ax, word [errorExCde]
     mov ch, byte [errorLocus]
     mov bh, byte [errorClass]
