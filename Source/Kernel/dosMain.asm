@@ -168,6 +168,11 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
     mov byte [errorDrv], -1     ;Set the drive which caused the error to none
 
+    push rax
+    mov ah, 82h ;Cancel all critical section!
+    int 4ah ;DOS critical section semphore handler (default, iretq)
+    pop rax
+
     mov byte [int48Flag], 0     ;Turn off the ability to trigger Int 48h
     lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
     test byte [breakFlag], -1   ;Test if set
@@ -213,7 +218,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     call dosPopRegs  ;Pop the frame
     iretq
 .fdExitBad:
-    mov ah, 0
+    xor al, al
     iretq
 dosPopRegs:
     pop qword [dosReturn]   ;Put return here resetting RSP
@@ -425,11 +430,26 @@ terminateStayRes:  ;ah = 31h
 
 ctrlBreakCheck:    ;ah = 33h
     test al, al
-    jz .cbcget  ;Get the state
-    mov byte [breakFlag], dl    ;Set the state
-.cbcget:
+    jnz .cbcget  ;Get the state or other functions
     mov dl, byte [breakFlag]    ;Get the state
     iretq
+.cbcget:
+    cmp al, 02h
+    ja .cbcBad
+    jz .cbcxchg ;Function 2
+    push rdx
+    and dl, 1   ;Get only the bottom bit
+    mov byte [breakFlag], dl    ;Set the state
+    pop rdx
+    iretq
+.cbcxchg:
+    and dl, 1
+    xchg byte [breakFlag], dl
+    iretq
+.cbcBad:
+    mov al, -1
+    iretq
+
 getInDOSflagPtr:   ;ah = 34h
     lea rdx, inDOS
     call getUserRegsInRSI
