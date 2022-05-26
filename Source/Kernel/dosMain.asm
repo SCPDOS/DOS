@@ -157,7 +157,6 @@ functionDispatch:   ;Int 41h Main function dispatcher
 
     push rax
     mov ah, 82h ;Cancel all critical section!
-    xchg bx, bx
     int 4ah ;DOS critical section semphore handler (default, iretq)
     pop rax
 
