@@ -68,16 +68,6 @@ findDPB:
 ;-----------------------------------:
 ;        Interrupt routines         :
 ;-----------------------------------:
-terminateProcess:   ;Int 40h
-    iretq
-terminateHandler:   ;Int 42h
-ctrlCHandler:       ;Int 43h
-    iretq
-
-terminateResident:  ;Int 47h
-inDosHandler:       ;Int 48h
-;Called when DOS idle
-    iretq
 fastOutput:         ;Int 49h
 ;Called with char to transfer in al
     push rax
@@ -85,10 +75,7 @@ fastOutput:         ;Int 49h
     int 30h
     pop rax
     iretq
-passCommand:        ;Int 4Eh, hooked by COMMAND.COM
-    iretq
-multiplex:          ;Int 4Fh, kept as iretq for now
-    iretq
+
 ;-----------------------------------:
 ;        Main Kernel routines       :
 ;-----------------------------------:
@@ -170,6 +157,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 
     push rax
     mov ah, 82h ;Cancel all critical section!
+    xchg bx, bx
     int 4ah ;DOS critical section semphore handler (default, iretq)
     pop rax
 
@@ -219,6 +207,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     iretq
 .fdExitBad:
     xor al, al
+defaultIretq:
     iretq
 dosPopRegs:
     pop qword [dosReturn]   ;Put return here resetting RSP
@@ -271,8 +260,6 @@ dosCrit2Exit:
 ;========================================:
 ;            Kernel Functions            :
 ;========================================:
-simpleTerminate:   ;ah = 00h
-    ret
 diskReset:         ;ah = 0Dh
 ;Flush all dirty buffers to disk
     mov rbp, qword [bufHeadPtr]
@@ -425,8 +412,6 @@ getDOSversion:     ;ah = 30h
     mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
     mov word [rsi + callerFrame.rax], ax    ;Save ax
     ret
-terminateStayRes:  ;ah = 31h
-    ret
 
 ctrlBreakCheck:    ;ah = 33h
     test al, al
@@ -503,8 +488,6 @@ getDiskFreeSpace:  ;ah = 36h
     mov qword [rsi + callerFrame.rbx], rbx
     ret
 
-loadExecChild:     ;ah = 4Bh, EXEC
-terminateClean:    ;ah = 4Ch, EXIT
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     ret
 setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)

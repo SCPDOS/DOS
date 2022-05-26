@@ -297,7 +297,7 @@ adjInts:
     int 35h
     add rdi, 8
     inc ecx
-    cmp ecx, 4Ah
+    cmp ecx, 50h
     jne .ai0
 
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
@@ -884,13 +884,19 @@ intData:
     dq terminateProcess ;Int 40h
     dq functionDispatch ;Int 41h
     dq errorInit        ;Int 42h, If sysinit terminates, halt system
-    dq ctrlCHandler     ;Int 43h, ignore any CTRL+C during init
+    dq defaultIretq     ;Int 43h, ignore any CTRL+C during init
     dq errorInit        ;Int 44h, If critical error in sysinit, halt system
     dq absDiskRead      ;Int 45h
     dq absDiskWrite     ;Int 46h
-    dq terminateResident    ;Int 47h
-    dq inDosHandler     ;Int 48h
+    dq terminateRes     ;Int 47h
+    dq defaultIretq     ;Int 48h
     dq fastOutput       ;Int 49h
+    dq defaultIretq     ;Int 4Ah
+    dq defaultIretq     ;Int 4Bh
+    dq defaultIretq     ;Int 4Ch
+    dq defaultIretq     ;Int 4Dh
+    dq defaultIretq     ;Int 4Eh
+    dq multiplexHdlr    ;Int 4Fh, multiplex default handler
 nData:
     dq conHdr
     dw 08004h
