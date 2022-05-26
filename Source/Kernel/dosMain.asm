@@ -144,7 +144,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     movzx ebx, ah   ;Move the function number bl zero extended to rbx
     shl ebx, 1      ;Multiply the function number by 2 for offset into table
     push rax        ;Push rax onto the stack
-    lea rax, qword [kDispTbl]
+    lea rax, kDispTbl
     add rbx, rax    ;Add dispatch table offset into rbx
     movzx rbx, word [rbx]    ;Get the address from the dispatch table
     add rbx, rax    ;Add the table base (since it is the base addr for table)
@@ -205,7 +205,6 @@ functionDispatch:   ;Int 41h Main function dispatcher
     %endif
 .fdExit:
     cli     ;Redisable interrupts
-    ;???
     dec byte [inDOS]            ;Decrement the inDOS count
     mov rsp, qword [oldRSP]     ;Point rsp to old stack
     mov byte [rsp], al   ;Put the ret code into its pos on the register frame
@@ -240,6 +239,30 @@ dosPushRegs:
     push rbx
     push rax
     jmp qword [dosReturn]
+dosCrit1Enter:
+    ret     ;Needs to be patched with 50h (PUSH RAX)
+    mov eax, 8001h
+    int 4ah
+    pop rax
+    ret
+dosCrit1Exit:
+    ret
+    mov eax, 8101h
+    int 4ah
+    pop rax
+    ret
+dosCrit2Enter:
+    ret
+    mov eax, 8002h
+    int 4ah
+    pop rax
+    ret
+dosCrit2Exit:
+    ret
+    mov eax, 8102h
+    int 4ah
+    pop rax
+    ret
 ;========================================:
 ;            Kernel Functions            :
 ;========================================:

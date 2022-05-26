@@ -33,9 +33,9 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 
-;Start of Swappable Data Area, this bit can remain static
-sda:
-    dosReturn   resq 1  ;Used as a var to return when juggling stack
+    critPtchTbl resw 4  ;Offsets from DosDataArea addr to the 4 funcs
+                resb 1  ;Alignment byte
+sda:    ;Start of Swappable Data Area, this bit can remain static
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
@@ -43,6 +43,8 @@ sda:
     errorExCde  resw 1  ;Extended Error Code
     errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
+
+    dosReturn   resq 1  ;Used as a var to return when juggling stack
 
     currentDTA  resq 1  ;Address of the current DTA x
     currentPSP  resq 1  ;Address of current PSP x
