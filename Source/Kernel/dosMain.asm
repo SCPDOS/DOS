@@ -299,10 +299,9 @@ FATinfoDevice:     ;ah = 1Ch
     test dl, dl
     jz .fidSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    jmp short .fidMain
+    inc dl
 .fidSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
-.fidMain:
 ;Walk the dpb chain manually
     call findDPB    ;Get in rbp the dpb pointer for drive dl
     test al, al
@@ -409,10 +408,9 @@ getDiskFreeSpace:  ;ah = 36h
     test dl, dl
     jz .gdfsSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    jmp short .gdfsMain
+    inc dl
 .gdfsSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
-.gdfsMain:
     call findDPB ;Get in rbp the dpb pointer for drive dl
     test al, al
     jz .gdfsDPBFound

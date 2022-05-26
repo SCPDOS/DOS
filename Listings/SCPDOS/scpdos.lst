@@ -4754,195 +4754,193 @@
    329 000017CB 84D2                <1>     test dl, dl
    330 000017CD 7408                <1>     jz .fidSkipdefault
    331 000017CF 8A15(1EC10300)      <1>     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-   332 000017D5 EB02                <1>     jmp short .fidMain
+   332 000017D5 FEC2                <1>     inc dl
    333                              <1> .fidSkipdefault:
    334 000017D7 FECA                <1>     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
-   335                              <1> .fidMain:
-   336                              <1> ;Walk the dpb chain manually
-   337 000017D9 E862FDFFFF          <1>     call findDPB    ;Get in rbp the dpb pointer for drive dl
-   338 000017DE 84C0                <1>     test al, al
-   339 000017E0 7431                <1>     jz .fidDPBFound
-   340                              <1> ;Else, we at an error.
-   341                              <1> ;Simply return with CY set and error code in al with extended error info
-   342 000017E2 E80CFAFFFF          <1>     call getUserRegs
-   343 000017E7 48814E5801000000    <1>     or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
-   344 000017EF B80F000000          <1>     mov eax, errBadDrv          ;Invalid drive error
-   345 000017F4 66C705(EFC00300)0F- <1>     mov word [errorExCde], errBadDrv     
-   345 000017FC 00                  <1>
-   346 000017FD C605(EEC00300)01    <1>     mov byte [errorLocus], eLocUnk    ;Not appropriate
-   347 00001804 C605(F2C00300)08    <1>     mov byte [errorClass], eClsNotFnd    ;Drive not found
-   348 0000180B C605(F1C00300)07    <1>     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
-   349 00001812 C3                  <1>     ret
-   350                              <1> .fidDPBFound:
-   351 00001813 8A4503              <1>     mov al, byte [rbp + dpb.bMaxSectorInCluster]
-   352 00001816 FEC0                <1>     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
-   353 00001818 8B550E              <1>     mov edx, dword [rbp + dpb.dClusterCount]
-   354 0000181B 8A4D02              <1>     mov cl, byte [rbp + dpb.bBytesPerSectorShift]
-   355 0000181E BB01000000          <1>     mov ebx, 1
-   356 00001823 D3E3                <1>     shl ebx, cl
-   357 00001825 89D9                <1>     mov ecx, ebx    ;Save the value in ecx
-   358 00001827 488D5D22            <1>     lea rbx, qword [rbp + dpb.bMediaDescriptor]
-   359 0000182B E8C3F9FFFF          <1>     call getUserRegs
-   360 00001830 48895618            <1>     mov qword [rsi + callerFrame.rdx], rdx
-   361 00001834 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx
-   362 00001838 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx
-   363 0000183C C3                  <1>     ret
-   364                              <1> ;===============================
-   365                              <1> setIntVector:      ;ah = 25h
-   366                              <1> ;Called with:
-   367                              <1> ;   rdx = Pointer to interrupt handler
-   368                              <1> ;   al = Interrupt number
-   369 0000183D 89C5                <1>     mov ebp, eax ;al has interrupt number which we need to save
-   370 0000183F 81E5FF000000        <1>     and ebp, 0FFh   ;Zero everything but the bottom byte
-   371                              <1> ;First call to get default BIOS segement selector and attribute word
-   372 00001845 88C3                <1>     mov bl, al  ;Set interrupt number 
-   373 00001847 B807F00000          <1>     mov eax, 0F007h ;Get the descriptor
-   374 0000184C CD35                <1>     int 35h
-   375 0000184E E8A0F9FFFF          <1>     call getUserRegs
-   376 00001853 488B5E18            <1>     mov rbx, qword [rsi + callerFrame.rdx]  ;Pointer passed in rdx
-   377 00001857 89C6                <1>     mov esi, eax    ;Move segment selector info to esi
-   378 00001859 89E9                <1>     mov ecx, ebp    ;Get the interrupt number into cl
-   379                              <1> ;dx preserves the attribute word
-   380 0000185B B808F00000          <1>     mov eax, 0F008h ;Set descriptor
-   381 00001860 CD35                <1>     int 35h
-   382 00001862 E88CF9FFFF          <1>     call getUserRegs
-   383 00001867 8A06                <1>     mov al, byte [rsi + callerFrame.rax]    ;Preserve low byte of rax
-   384 00001869 C3                  <1>     ret
-   385                              <1> createNewPSP:      ;ah = 26h
-   386 0000186A C3                  <1>     ret
-   387                              <1> setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
-   388 0000186B 8805(21C10300)      <1>     mov byte [verifyFlag], al
-   389 00001871 8025(21C10300)01    <1>     and byte [verifyFlag], 1       ;Only save the bottom bit
-   390 00001878 C3                  <1>     ret
-   391                              <1> getDOSversion:     ;ah = 30h
-   392 00001879 E875F9FFFF          <1>     call getUserRegs
-   393 0000187E 30E4                <1>     xor ah, ah ;Continue the mainline PC-DOS identification line
-   394 00001880 886609              <1>     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
-   395 00001883 668B0576E7FFFF      <1>     mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
-   396 0000188A 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Save ax
-   397 0000188D C3                  <1>     ret
-   398                              <1> 
-   399                              <1> ctrlBreakCheck:    ;ah = 33h
-   400 0000188E 84C0                <1>     test al, al
-   401 00001890 7508                <1>     jnz .cbcget  ;Get the state or other functions
-   402 00001892 8A15(20C10300)      <1>     mov dl, byte [breakFlag]    ;Get the state
-   403 00001898 48CF                <1>     iretq
-   404                              <1> .cbcget:
-   405 0000189A 3C02                <1>     cmp al, 02h
-   406 0000189C 771A                <1>     ja .cbcBad
-   407 0000189E 740D                <1>     jz .cbcxchg ;Function 2
-   408 000018A0 52                  <1>     push rdx
-   409 000018A1 80E201              <1>     and dl, 1   ;Get only the bottom bit
-   410 000018A4 8815(20C10300)      <1>     mov byte [breakFlag], dl    ;Set the state
-   411 000018AA 5A                  <1>     pop rdx
-   412 000018AB 48CF                <1>     iretq
-   413                              <1> .cbcxchg:
-   414 000018AD 80E201              <1>     and dl, 1
-   415 000018B0 8615(20C10300)      <1>     xchg byte [breakFlag], dl
-   416 000018B6 48CF                <1>     iretq
-   417                              <1> .cbcBad:
-   418 000018B8 B0FF                <1>     mov al, -1
-   419 000018BA 48CF                <1>     iretq
-   420                              <1> 
-   421                              <1> getInDOSflagPtr:   ;ah = 34h
-   422 000018BC 488D15(ECC00300)    <1>     lea rdx, inDOS
-   423 000018C3 E82BF9FFFF          <1>     call getUserRegs
-   424 000018C8 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
-   425 000018CC C3                  <1>     ret
-   426                              <1> getIntVector:      ;ah = 35h
-   427                              <1> ;Called with:
-   428                              <1> ;   al = Interrupt Number
-   429                              <1> ;Returns:
-   430                              <1> ;   rbx = Pointer to interrupt handler
-   431 000018CD 88C3                <1>     mov bl, al  ;Get the interrupt vector number into bl
-   432 000018CF B807F00000          <1>     mov eax, 0F007h
-   433 000018D4 CD35                <1>     int 35h
-   434 000018D6 E818F9FFFF          <1>     call getUserRegs
-   435 000018DB 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
-   436 000018DF 8A06                <1>     mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
-   437 000018E1 C3                  <1>     ret
-   438                              <1> getDiskFreeSpace:  ;ah = 36h
-   439 000018E2 84D2                <1>     test dl, dl
-   440 000018E4 7408                <1>     jz .gdfsSkipdefault
-   441 000018E6 8A15(1EC10300)      <1>     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-   442 000018EC EB02                <1>     jmp short .gdfsMain
-   443                              <1> .gdfsSkipdefault:
-   444 000018EE FECA                <1>     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
-   445                              <1> .gdfsMain:
-   446 000018F0 E84BFCFFFF          <1>     call findDPB ;Get in rbp the dpb pointer for drive dl
-   447 000018F5 84C0                <1>     test al, al
-   448 000018F7 7431                <1>     jz .gdfsDPBFound
-   449                              <1> ;Else, we at an error.
-   450                              <1> ;Simply return with CY set and error code in al with extended error info
-   451 000018F9 66C705(EFC00300)0F- <1>     mov word [errorExCde], errBadDrv     ;Invalid drive error
-   451 00001901 00                  <1>
-   452 00001902 C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Not appropriate
-   453 00001909 C605(F2C00300)08    <1>     mov byte [errorClass], eClsNotFnd    ;Drive not found
-   454 00001910 C605(F1C00300)07    <1>     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
-   455 00001917 E8D7F8FFFF          <1>     call getUserRegs
-   456 0000191C 66C706FFFF          <1>     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
-   457 00001921 48814E5801000000    <1>     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
-   458 00001929 C3                  <1>     ret
-   459                              <1> .gdfsDPBFound:
-   460 0000192A 8A4503              <1>     mov al, byte [rbp + dpb.bMaxSectorInCluster]
-   461 0000192D FEC0                <1>     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
-   462 0000192F 8B550E              <1>     mov edx, dword [rbp + dpb.dClusterCount]
-   463 00001932 8A4D02              <1>     mov cl, byte [rbp + dpb.bBytesPerSectorShift]
-   464 00001935 BB01000000          <1>     mov ebx, 1
-   465 0000193A D3E3                <1>     shl ebx, cl
-   466 0000193C 89D9                <1>     mov ecx, ebx    ;Save the value in ecx
-   467 0000193E 8B5D30              <1>     mov ebx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
-   468 00001941 E8ADF8FFFF          <1>     call getUserRegs
-   469 00001946 48895618            <1>     mov qword [rsi + callerFrame.rdx], rdx
-   470 0000194A 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx
-   471 0000194E 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx
-   472 00001952 C3                  <1>     ret
-   473                              <1> 
-   474                              <1> getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
-   475 00001953 31C0                <1>     xor eax, eax
-   476 00001955 668705(1BC10300)    <1>     xchg ax, word [errorLevel]
-   477 0000195C E892F8FFFF          <1>     call getUserRegs
-   478 00001961 668906              <1>     mov word [rsi + callerFrame.rax], ax
-   479 00001964 C3                  <1>     ret
-   480                              <1> setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
-   481 00001965 48891D(03C10300)    <1>     mov qword [currentPSP], rbx ;Set the pointer
-   482 0000196C 48CF                <1>     iretq
-   483                              <1> getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
-   484 0000196E 488B15(03C10300)    <1>     mov rdx, qword [currentPSP]
-   485 00001975 48CF                <1>     iretq
-   486                              <1> getSysVarsPtr:     ;ah = 52h
-   487 00001977 488D15(80C00300)    <1>     lea rdx, sysVarsPtr
-   488 0000197E E870F8FFFF          <1>     call getUserRegs
-   489 00001983 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx
-   490 00001987 C3                  <1>     ret
-   491                              <1> getVerifySetting:  ;ah = 54h
-   492 00001988 8A05(21C10300)      <1>     mov al, byte [verifyFlag]   ;al is the return value in this case
-   493 0000198E C3                  <1>     ret
-   494                              <1> createPSP:         ;ah = 55h, creates a PSP for a program
-   495 0000198F C3                  <1>     ret
-   496                              <1> getExtendedError:  ;ah = 59h
-   497 00001990 E85EF8FFFF          <1>     call getUserRegs
-   498 00001995 668B05(EFC00300)    <1>     mov ax, word [errorExCde]
-   499 0000199C 8A2D(EEC00300)      <1>     mov ch, byte [errorLocus]
-   500 000019A2 8A3D(F2C00300)      <1>     mov bh, byte [errorClass]
-   501 000019A8 8A1D(F1C00300)      <1>     mov bl, byte [errorAction]
-   502 000019AE 668906              <1>     mov word [rsi + callerFrame.rax], ax
-   503 000019B1 66895E08            <1>     mov word [rsi + callerFrame.rbx], bx
-   504 000019B5 886E11              <1>     mov byte [rsi + callerFrame.rcx + 1], ch
-   505 000019B8 C3                  <1>     ret
-   506                              <1> getCritErrorInfo:  ;ah = 5Dh
-   507                              <1> networkServices:   ;ah = 5Eh, do nothing
-   508                              <1> networkRedirection:;ah = 5Fh, do nothing
-   509 000019B9 C3                  <1>     ret
-   510                              <1> getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
-   511 000019BA 488B15(03C10300)    <1>     mov rdx, qword [currentPSP]
-   512 000019C1 48CF                <1>     iretq
-   513                              <1>                     ;ah = 63h, reserved
-   514                              <1> setDriverLookahead:;ah = 64h, reserved
-   515 000019C3 48CF                <1>     iretq
-   516                              <1> getsetDiskSerial:  ;ah = 69h, get/set disk serial number
-   517                              <1> return:
-   518 000019C5 C3                  <1>     ret
+   335                              <1> ;Walk the dpb chain manually
+   336 000017D9 E862FDFFFF          <1>     call findDPB    ;Get in rbp the dpb pointer for drive dl
+   337 000017DE 84C0                <1>     test al, al
+   338 000017E0 7431                <1>     jz .fidDPBFound
+   339                              <1> ;Else, we at an error.
+   340                              <1> ;Simply return with CY set and error code in al with extended error info
+   341 000017E2 E80CFAFFFF          <1>     call getUserRegs
+   342 000017E7 48814E5801000000    <1>     or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
+   343 000017EF B80F000000          <1>     mov eax, errBadDrv          ;Invalid drive error
+   344 000017F4 66C705(EFC00300)0F- <1>     mov word [errorExCde], errBadDrv     
+   344 000017FC 00                  <1>
+   345 000017FD C605(EEC00300)01    <1>     mov byte [errorLocus], eLocUnk    ;Not appropriate
+   346 00001804 C605(F2C00300)08    <1>     mov byte [errorClass], eClsNotFnd    ;Drive not found
+   347 0000180B C605(F1C00300)07    <1>     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
+   348 00001812 C3                  <1>     ret
+   349                              <1> .fidDPBFound:
+   350 00001813 8A4503              <1>     mov al, byte [rbp + dpb.bMaxSectorInCluster]
+   351 00001816 FEC0                <1>     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
+   352 00001818 8B550E              <1>     mov edx, dword [rbp + dpb.dClusterCount]
+   353 0000181B 8A4D02              <1>     mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+   354 0000181E BB01000000          <1>     mov ebx, 1
+   355 00001823 D3E3                <1>     shl ebx, cl
+   356 00001825 89D9                <1>     mov ecx, ebx    ;Save the value in ecx
+   357 00001827 488D5D22            <1>     lea rbx, qword [rbp + dpb.bMediaDescriptor]
+   358 0000182B E8C3F9FFFF          <1>     call getUserRegs
+   359 00001830 48895618            <1>     mov qword [rsi + callerFrame.rdx], rdx
+   360 00001834 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx
+   361 00001838 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx
+   362 0000183C C3                  <1>     ret
+   363                              <1> ;===============================
+   364                              <1> setIntVector:      ;ah = 25h
+   365                              <1> ;Called with:
+   366                              <1> ;   rdx = Pointer to interrupt handler
+   367                              <1> ;   al = Interrupt number
+   368 0000183D 89C5                <1>     mov ebp, eax ;al has interrupt number which we need to save
+   369 0000183F 81E5FF000000        <1>     and ebp, 0FFh   ;Zero everything but the bottom byte
+   370                              <1> ;First call to get default BIOS segement selector and attribute word
+   371 00001845 88C3                <1>     mov bl, al  ;Set interrupt number 
+   372 00001847 B807F00000          <1>     mov eax, 0F007h ;Get the descriptor
+   373 0000184C CD35                <1>     int 35h
+   374 0000184E E8A0F9FFFF          <1>     call getUserRegs
+   375 00001853 488B5E18            <1>     mov rbx, qword [rsi + callerFrame.rdx]  ;Pointer passed in rdx
+   376 00001857 89C6                <1>     mov esi, eax    ;Move segment selector info to esi
+   377 00001859 89E9                <1>     mov ecx, ebp    ;Get the interrupt number into cl
+   378                              <1> ;dx preserves the attribute word
+   379 0000185B B808F00000          <1>     mov eax, 0F008h ;Set descriptor
+   380 00001860 CD35                <1>     int 35h
+   381 00001862 E88CF9FFFF          <1>     call getUserRegs
+   382 00001867 8A06                <1>     mov al, byte [rsi + callerFrame.rax]    ;Preserve low byte of rax
+   383 00001869 C3                  <1>     ret
+   384                              <1> createNewPSP:      ;ah = 26h
+   385 0000186A C3                  <1>     ret
+   386                              <1> setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
+   387 0000186B 8805(21C10300)      <1>     mov byte [verifyFlag], al
+   388 00001871 8025(21C10300)01    <1>     and byte [verifyFlag], 1       ;Only save the bottom bit
+   389 00001878 C3                  <1>     ret
+   390                              <1> getDOSversion:     ;ah = 30h
+   391 00001879 E875F9FFFF          <1>     call getUserRegs
+   392 0000187E 30E4                <1>     xor ah, ah ;Continue the mainline PC-DOS identification line
+   393 00001880 886609              <1>     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
+   394 00001883 668B0576E7FFFF      <1>     mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
+   395 0000188A 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Save ax
+   396 0000188D C3                  <1>     ret
+   397                              <1> 
+   398                              <1> ctrlBreakCheck:    ;ah = 33h
+   399 0000188E 84C0                <1>     test al, al
+   400 00001890 7508                <1>     jnz .cbcget  ;Get the state or other functions
+   401 00001892 8A15(20C10300)      <1>     mov dl, byte [breakFlag]    ;Get the state
+   402 00001898 48CF                <1>     iretq
+   403                              <1> .cbcget:
+   404 0000189A 3C02                <1>     cmp al, 02h
+   405 0000189C 771A                <1>     ja .cbcBad
+   406 0000189E 740D                <1>     jz .cbcxchg ;Function 2
+   407 000018A0 52                  <1>     push rdx
+   408 000018A1 80E201              <1>     and dl, 1   ;Get only the bottom bit
+   409 000018A4 8815(20C10300)      <1>     mov byte [breakFlag], dl    ;Set the state
+   410 000018AA 5A                  <1>     pop rdx
+   411 000018AB 48CF                <1>     iretq
+   412                              <1> .cbcxchg:
+   413 000018AD 80E201              <1>     and dl, 1
+   414 000018B0 8615(20C10300)      <1>     xchg byte [breakFlag], dl
+   415 000018B6 48CF                <1>     iretq
+   416                              <1> .cbcBad:
+   417 000018B8 B0FF                <1>     mov al, -1
+   418 000018BA 48CF                <1>     iretq
+   419                              <1> 
+   420                              <1> getInDOSflagPtr:   ;ah = 34h
+   421 000018BC 488D15(ECC00300)    <1>     lea rdx, inDOS
+   422 000018C3 E82BF9FFFF          <1>     call getUserRegs
+   423 000018C8 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
+   424 000018CC C3                  <1>     ret
+   425                              <1> getIntVector:      ;ah = 35h
+   426                              <1> ;Called with:
+   427                              <1> ;   al = Interrupt Number
+   428                              <1> ;Returns:
+   429                              <1> ;   rbx = Pointer to interrupt handler
+   430 000018CD 88C3                <1>     mov bl, al  ;Get the interrupt vector number into bl
+   431 000018CF B807F00000          <1>     mov eax, 0F007h
+   432 000018D4 CD35                <1>     int 35h
+   433 000018D6 E818F9FFFF          <1>     call getUserRegs
+   434 000018DB 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
+   435 000018DF 8A06                <1>     mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
+   436 000018E1 C3                  <1>     ret
+   437                              <1> getDiskFreeSpace:  ;ah = 36h
+   438 000018E2 84D2                <1>     test dl, dl
+   439 000018E4 7408                <1>     jz .gdfsSkipdefault
+   440 000018E6 8A15(1EC10300)      <1>     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
+   441 000018EC FEC2                <1>     inc dl
+   442                              <1> .gdfsSkipdefault:
+   443 000018EE FECA                <1>     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
+   444 000018F0 E84BFCFFFF          <1>     call findDPB ;Get in rbp the dpb pointer for drive dl
+   445 000018F5 84C0                <1>     test al, al
+   446 000018F7 7431                <1>     jz .gdfsDPBFound
+   447                              <1> ;Else, we at an error.
+   448                              <1> ;Simply return with CY set and error code in al with extended error info
+   449 000018F9 66C705(EFC00300)0F- <1>     mov word [errorExCde], errBadDrv     ;Invalid drive error
+   449 00001901 00                  <1>
+   450 00001902 C605(EEC00300)02    <1>     mov byte [errorLocus], eLocDsk    ;Not appropriate
+   451 00001909 C605(F2C00300)08    <1>     mov byte [errorClass], eClsNotFnd    ;Drive not found
+   452 00001910 C605(F1C00300)07    <1>     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
+   453 00001917 E8D7F8FFFF          <1>     call getUserRegs
+   454 0000191C 66C706FFFF          <1>     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
+   455 00001921 48814E5801000000    <1>     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
+   456 00001929 C3                  <1>     ret
+   457                              <1> .gdfsDPBFound:
+   458 0000192A 8A4503              <1>     mov al, byte [rbp + dpb.bMaxSectorInCluster]
+   459 0000192D FEC0                <1>     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
+   460 0000192F 8B550E              <1>     mov edx, dword [rbp + dpb.dClusterCount]
+   461 00001932 8A4D02              <1>     mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+   462 00001935 BB01000000          <1>     mov ebx, 1
+   463 0000193A D3E3                <1>     shl ebx, cl
+   464 0000193C 89D9                <1>     mov ecx, ebx    ;Save the value in ecx
+   465 0000193E 8B5D30              <1>     mov ebx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
+   466 00001941 E8ADF8FFFF          <1>     call getUserRegs
+   467 00001946 48895618            <1>     mov qword [rsi + callerFrame.rdx], rdx
+   468 0000194A 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx
+   469 0000194E 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx
+   470 00001952 C3                  <1>     ret
+   471                              <1> 
+   472                              <1> getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
+   473 00001953 31C0                <1>     xor eax, eax
+   474 00001955 668705(1BC10300)    <1>     xchg ax, word [errorLevel]
+   475 0000195C E892F8FFFF          <1>     call getUserRegs
+   476 00001961 668906              <1>     mov word [rsi + callerFrame.rax], ax
+   477 00001964 C3                  <1>     ret
+   478                              <1> setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+   479 00001965 48891D(03C10300)    <1>     mov qword [currentPSP], rbx ;Set the pointer
+   480 0000196C 48CF                <1>     iretq
+   481                              <1> getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
+   482 0000196E 488B15(03C10300)    <1>     mov rdx, qword [currentPSP]
+   483 00001975 48CF                <1>     iretq
+   484                              <1> getSysVarsPtr:     ;ah = 52h
+   485 00001977 488D15(80C00300)    <1>     lea rdx, sysVarsPtr
+   486 0000197E E870F8FFFF          <1>     call getUserRegs
+   487 00001983 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx
+   488 00001987 C3                  <1>     ret
+   489                              <1> getVerifySetting:  ;ah = 54h
+   490 00001988 8A05(21C10300)      <1>     mov al, byte [verifyFlag]   ;al is the return value in this case
+   491 0000198E C3                  <1>     ret
+   492                              <1> createPSP:         ;ah = 55h, creates a PSP for a program
+   493 0000198F C3                  <1>     ret
+   494                              <1> getExtendedError:  ;ah = 59h
+   495 00001990 E85EF8FFFF          <1>     call getUserRegs
+   496 00001995 668B05(EFC00300)    <1>     mov ax, word [errorExCde]
+   497 0000199C 8A2D(EEC00300)      <1>     mov ch, byte [errorLocus]
+   498 000019A2 8A3D(F2C00300)      <1>     mov bh, byte [errorClass]
+   499 000019A8 8A1D(F1C00300)      <1>     mov bl, byte [errorAction]
+   500 000019AE 668906              <1>     mov word [rsi + callerFrame.rax], ax
+   501 000019B1 66895E08            <1>     mov word [rsi + callerFrame.rbx], bx
+   502 000019B5 886E11              <1>     mov byte [rsi + callerFrame.rcx + 1], ch
+   503 000019B8 C3                  <1>     ret
+   504                              <1> getCritErrorInfo:  ;ah = 5Dh
+   505                              <1> networkServices:   ;ah = 5Eh, do nothing
+   506                              <1> networkRedirection:;ah = 5Fh, do nothing
+   507 000019B9 C3                  <1>     ret
+   508                              <1> getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+   509 000019BA 488B15(03C10300)    <1>     mov rdx, qword [currentPSP]
+   510 000019C1 48CF                <1>     iretq
+   511                              <1>                     ;ah = 63h, reserved
+   512                              <1> setDriverLookahead:;ah = 64h, reserved
+   513 000019C3 48CF                <1>     iretq
+   514                              <1> getsetDiskSerial:  ;ah = 69h, get/set disk serial number
+   515                              <1> return:
+   516 000019C5 C3                  <1>     ret
     31                                  %include "./Source/Kernel/multiplx.asm"
     32                              <1> ;Default multiplexer. Current only installed function is ah=12h
     33                              <1> 
