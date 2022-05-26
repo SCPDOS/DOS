@@ -30,8 +30,10 @@ findDPB:
     debugExitM
     %endif
     ret
+
 ;-----------------------------------:
-;        Main Kernel routines       :
+;        Main Kernel dispatch       :
+;            and routines           :
 ;-----------------------------------:
 functionDispatch:   ;Int 41h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
@@ -211,6 +213,47 @@ dosCrit2Exit:
     pop rax
     ret
 ;========================================:
+;      Reentrant Kernel Functions        :
+;========================================:
+ctrlBreakCheck:    ;ah = 33h
+    test al, al
+    jnz .cbcget  ;Get the state or other functions
+    mov dl, byte [breakFlag]    ;Get the state
+    iretq
+.cbcget:
+    cmp al, 02h
+    ja .cbcBad
+    jz .cbcxchg ;Function 2
+    push rdx
+    and dl, 1   ;Get only the bottom bit
+    mov byte [breakFlag], dl    ;Set the state
+    pop rdx
+    iretq
+.cbcxchg:
+    and dl, 1
+    xchg byte [breakFlag], dl
+    iretq
+.cbcBad:
+    mov al, -1
+    iretq
+
+
+setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+    mov qword [currentPSP], rbx ;Set the pointer
+    iretq
+
+getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
+    mov rdx, qword [currentPSP]
+    iretq
+
+getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+    mov rdx, qword [currentPSP]
+    iretq
+    
+setDriverLookahead:;ah = 64h, reserved
+    iretq
+
+;========================================:
 ;            Kernel Functions            :
 ;========================================:
 diskReset:         ;ah = 0Dh
@@ -365,27 +408,7 @@ getDOSversion:     ;ah = 30h
     mov word [rsi + callerFrame.rax], ax    ;Save ax
     ret
 
-ctrlBreakCheck:    ;ah = 33h
-    test al, al
-    jnz .cbcget  ;Get the state or other functions
-    mov dl, byte [breakFlag]    ;Get the state
-    iretq
-.cbcget:
-    cmp al, 02h
-    ja .cbcBad
-    jz .cbcxchg ;Function 2
-    push rdx
-    and dl, 1   ;Get only the bottom bit
-    mov byte [breakFlag], dl    ;Set the state
-    pop rdx
-    iretq
-.cbcxchg:
-    and dl, 1
-    xchg byte [breakFlag], dl
-    iretq
-.cbcBad:
-    mov al, -1
-    iretq
+
 
 getInDOSflagPtr:   ;ah = 34h
     lea rdx, inDOS
@@ -445,12 +468,7 @@ getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     call getUserRegs
     mov word [rsi + callerFrame.rax], ax
     ret
-setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
-    mov qword [currentPSP], rbx ;Set the pointer
-    iretq
-getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
-    mov rdx, qword [currentPSP]
-    iretq
+
 getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr
     call getUserRegs
@@ -475,12 +493,6 @@ getCritErrorInfo:  ;ah = 5Dh
 networkServices:   ;ah = 5Eh, do nothing
 networkRedirection:;ah = 5Fh, do nothing
     ret
-getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
-    mov rdx, qword [currentPSP]
-    iretq
-                    ;ah = 63h, reserved
-setDriverLookahead:;ah = 64h, reserved
-    iretq
 getsetDiskSerial:  ;ah = 69h, get/set disk serial number
 return:
     ret
