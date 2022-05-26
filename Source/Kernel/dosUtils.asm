@@ -58,8 +58,7 @@ getDeviceDPBptr:   ;ah = 32h
     mov al, byte [rbp + dpb.bMediaDescriptor]
     mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
     mov al, dl  ;Save device number in al
-    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-    mov qword [drvrPtr], rdx
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
     call goDriver
     jc .gddpError
@@ -100,8 +99,7 @@ getDeviceDPBptr:   ;ah = 32h
     mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rbx ;Put lru pointer in rbx
 
-    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-    mov qword [drvrPtr], rdx
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
     call goDriver
     jc .gddpError

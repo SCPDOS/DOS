@@ -2,16 +2,16 @@
 ; are placed here (Int 45h Int 46h and goDriver)
 
 goDriver:   ;Executes the driver packet pointed to by rbx
-;Called with rbx = Ptr to the request header for the driver call!
-    push rsi
-    mov rsi, qword [drvrPtr]    ;Get the driver pointer
+;Input: rsi = Ptr to the driver to handler the call!
+;       rbx = Ptr to the request header for the driver call!
+    call dosCrit2Enter
     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
     call qword [rsi + drvHdr.intPtr]
+    call dosCrit2Exit
     test word [diskReqHdr + ioReqPkt.status], 8000h ;Clear carry flag and test
     jz .exit    ;Skip the setting in an error sitch
     stc 
 .exit:
-    pop rsi
     ret
 
 absDiskWrite:       ;Int 46h
@@ -74,12 +74,13 @@ absDiskReadWriteCommon:
     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx
     mov qword [diskReqHdr + ioReqPkt.strtsc], rdx
     mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx
-    
-    mov rdx, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver pointer
-    mov qword [drvrPtr], rdx    ;Store ptr in global variable
 
+    push rsi
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver pointer
     lea rbx, diskReqHdr ;Get ReqHeader pointer in rbx
     call goDriver   ;If carry set, command failed
+    pop rsi
+
     pop rbp
     pop rdx
     pop rbx

@@ -10,8 +10,7 @@ stdinReadEcho:     ;ah = 01h
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 01
 
-    mov rax, qword [conPtr]   ;Get ptr to current con device header
-    mov qword [drvrPtr], rax    ;Place it in the glob variable
+    mov rsi, qword [conPtr]   ;Get ptr to current con device header
     call goDriver
 
     cmp byte [singleIObyt], 00h
@@ -39,8 +38,7 @@ stdoutWrite:       ;ah = 02h
     mov qword [rbx + ioReqPkt.bufptr], rdx
     mov dword [rbx + ioReqPkt.tfrlen], 01
 
-    mov rax, qword [conPtr]   ;Get ptr to current con device header
-    mov qword [drvrPtr], rax    ;Place it in the glob variable
+    mov rsi, qword [conPtr]   ;Get ptr to current con device header
     call goDriver
     ret
 .stdoutWriteBuffer db 0
@@ -58,8 +56,7 @@ waitDirectInNoEcho:;ah = 07h
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 01
 
-    mov rax, qword [conPtr]   ;Get ptr to current con device header
-    mov qword [drvrPtr], rax    ;Place it in the glob variable
+    mov rsi, qword [conPtr]   ;Get ptr to current con device header
     call goDriver
     mov al, byte [singleIObyt]
     ret
@@ -82,8 +79,7 @@ printString:       ;ah = 09h
     mov qword [rbx + ioReqPkt.bufptr], rdx
     mov dword [rbx + ioReqPkt.tfrlen], ecx
     
-    mov rax, qword [conPtr]   ;Get ptr to current con device header
-    mov qword [drvrPtr], rax    ;Place it in the glob variable
+    mov rsi, qword [conPtr]   ;Get ptr to current con device header
     call goDriver   ;Called with rbx pointing to the request header
 
     mov rbx, qword [oldRSP]

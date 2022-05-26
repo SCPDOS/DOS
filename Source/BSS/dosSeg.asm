@@ -70,7 +70,6 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
 
-    drvrPtr     resq 1  ;Addr of drv strat/inter rout. placed here and called
 ;Time stuff
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
     monthOfYear resb 1  ;01h - 0Ch (1 - 12)
