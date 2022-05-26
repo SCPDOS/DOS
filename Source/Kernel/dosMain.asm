@@ -123,7 +123,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     cmp ah, 50h
     je setCurrProcessID
 .fsbegin:
-    pushDOS ;Push the usual prologue registers
+    call dosPushRegs ;Push the usual prologue registers
     mov rax, qword [oldRSP]
     mov qword [oldoldRSP], rax
     inc byte [inDOS]    ;Increment in DOS flag
@@ -211,12 +211,35 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov byte [rsp], al   ;Put the ret code into its pos on the register frame
     mov rax, qword [oldoldRSP]
     mov qword [oldRSP], rax
-    popDOS  ;Pop the frame
+    call dosPopRegs  ;Pop the frame
     iretq
 .fdExitBad:
     mov ah, 0
     iretq
-
+dosPopRegs:
+    pop qword [dosReturn]   ;Put return here resetting RSP
+    pop rax
+    pop rbx
+    pop rcx
+    pop rdx
+    pop rsi
+    pop rdi
+    pop rbp
+    pop r8
+    pop r9
+    jmp qword [dosReturn]
+dosPushRegs:
+    pop qword [dosReturn]   ;Put return here resetting RSP
+    push r9
+    push r8
+    push rbp
+    push rdi
+    push rsi
+    push rdx
+    push rcx
+    push rbx
+    push rax
+    jmp qword [dosReturn]
 ;========================================:
 ;            Kernel Functions            :
 ;========================================:

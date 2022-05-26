@@ -35,6 +35,7 @@ sysVarsPtr:
 
 ;Start of Swappable Data Area, this bit can remain static
 sda:
+    dosReturn   resq 1  ;Used as a var to return when juggling stack
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x

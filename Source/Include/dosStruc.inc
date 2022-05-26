@@ -259,29 +259,6 @@ struc callerFrame
     .flags  resq 1
 endstruc
 
-%macro pushDOS 0
-    push r9
-    push r8
-    push rbp
-    push rdi
-    push rsi
-    push rdx
-    push rcx
-    push rbx
-    push rax
-%endmacro
-
-%macro popDOS 0
-    pop rax
-    pop rbx
-    pop rcx
-    pop rdx
-    pop rsi
-    pop rdi
-    pop rbp
-    pop r8
-    pop r9
-%endmacro
 struc fcb
 ;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
     .driveNum   resb 1
