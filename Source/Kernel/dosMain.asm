@@ -31,17 +31,6 @@ findDPB:
     %endif
     ret
 ;-----------------------------------:
-;        Interrupt routines         :
-;-----------------------------------:
-fastOutput:         ;Int 49h
-;Called with char to transfer in al
-    push rax
-    mov ah, 0Eh
-    int 30h
-    pop rax
-    iretq
-
-;-----------------------------------:
 ;        Main Kernel routines       :
 ;-----------------------------------:
 functionDispatch:   ;Int 41h Main function dispatcher

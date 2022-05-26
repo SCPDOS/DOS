@@ -139,6 +139,14 @@ conDriver:
     jmp .conExit
 
 .conBuf db 0    ;Single byte buffer
+fastOutput:         ;This CON driver supports Int 49h
+;Called with char to transfer in al
+    push rax
+    mov ah, 0Eh
+    int 30h
+    pop rax
+    iretq
+
 clkDriver:
     push rax
     push rbx
