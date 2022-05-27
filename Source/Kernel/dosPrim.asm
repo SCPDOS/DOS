@@ -32,7 +32,7 @@ absDiskWrite:       ;Int 46h
     push rax
     push rbx
     push rdx
-    push rbp
+    push rsi
     mov ah, drvWRITE
     add ah, byte [verifyFlag]   ;Change to Write/Verify if set
     jmp short absDiskReadWriteCommon
@@ -54,14 +54,13 @@ absDiskRead:        ;Int 45h
     push rax
     push rbx
     push rdx
-    push rbp
+    push rsi
     mov ah, drvREAD
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
     push rdx    ;Save start LBA
     push rax
-    mov dl, al
-    call findDPB   ;Get dpb ptr in rbp
+    call getDPBptr   ;Get dpb ptr in rsi
     pop rax
     pop rdx
 
@@ -69,19 +68,17 @@ absDiskReadWriteCommon:
     mov byte [diskReqHdr + ioReqPkt.unitnm], al
     mov byte [diskReqHdr + ioReqPkt.cmdcde], ah
     mov word [diskReqHdr + ioReqPkt.status], 0
-    mov al, byte [rbp + dpb.bMediaDescriptor]
+    mov al, byte [rsi + dpb.bMediaDescriptor]
     mov byte [diskReqHdr + ioReqPkt.medesc], al
     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx
     mov qword [diskReqHdr + ioReqPkt.strtsc], rdx
     mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx
 
-    push rsi
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver pointer
+    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver pointer in rsi
     lea rbx, diskReqHdr ;Get ReqHeader pointer in rbx
     call goDriver   ;If carry set, command failed
-    pop rsi
 
-    pop rbp
+    pop rsi
     pop rdx
     pop rbx
     pop rax
@@ -109,3 +106,8 @@ absDiskReadWriteCommon:
 .absExit:
     stc
     ret
+;Primitive Driver Requests
+;First are Disk requests, then Char device requests
+;All Disk Driver Requests come with at least rsi pointing to DPB
+;All Char Requests come with rsi pointing to the Char device driver
+

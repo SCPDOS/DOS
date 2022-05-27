@@ -1,37 +1,4 @@
 ;-----------------------------------:
-;       Misc System routines        :
-;-----------------------------------:
-findDPB:
-;Finds the DPB for a given drive
-;Input:  dl = Drive number (0=A, 1=B etc...)
-;Output: al = 00, rbp = Pointer to the DPB
-;        al = -1, Failed, no DPB for device, rbx destroyed
-    mov rbx, qword [dpbHeadPtr]
-.fd1:
-    xor al, al
-    cmp byte [rbp + dpb.bDriveNumber], dl
-    je .fd2
-    mov rbp, qword [rbp + dpb.qNextDPBPtr]
-    mov al, -1
-    cmp rbp, -1 ;If rbx followed last item in list, no DPB exists for dl
-    jne .fd1
-.fd2:
-    %if DEBUG
-    ;Print DPB 
-    debugEnterM
-    mov r8, rbp ;Save dpb pointer
-    lea rbp, .l0000
-    call debPrintNullString
-    mov rbp, r8
-    call debDPBptr
-    jmp short .l0001
-.l0000 db "Internal call to find DPB",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
-    ret
-
-;-----------------------------------:
 ;        Main Kernel dispatch       :
 ;            and routines           :
 ;-----------------------------------:
@@ -331,9 +298,11 @@ selectDisk:        ;ah = 0Eh
     mov byte [errorClass], eClsNotFnd    ;Drive not found
     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
     ret
+
 getCurrentDisk:    ;ah = 19h, get current default drive
     mov al, byte [currentDrv]
     ret
+
 FATinfoDefault:    ;ah = 1Bh
     xor dl, dl
 FATinfoDevice:     ;ah = 1Ch
@@ -348,9 +317,9 @@ FATinfoDevice:     ;ah = 1Ch
 .fidSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
 ;Walk the dpb chain manually
-    call findDPB    ;Get in rbp the dpb pointer for drive dl
-    test al, al
-    jz .fidDPBFound
+    mov al, dl  ;Move drive number into al
+    call getDPBptr    ;Get in rsi the dpb pointer for drive in al
+    jnc .fidDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
     call getUserRegs
@@ -362,14 +331,14 @@ FATinfoDevice:     ;ah = 1Ch
     mov byte [errorAction], eActRetUsr   ;Retry after user intervention
     ret
 .fidDPBFound:
-    mov al, byte [rbp + dpb.bMaxSectorInCluster]
+    mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
-    mov edx, dword [rbp + dpb.dClusterCount]
-    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    mov edx, dword [rsi + dpb.dClusterCount]
+    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
     mov ebx, 1
     shl ebx, cl
     mov ecx, ebx    ;Save the value in ecx
-    lea rbx, qword [rbp + dpb.bMediaDescriptor]
+    lea rbx, qword [rsi + dpb.bMediaDescriptor]
     call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx
@@ -429,6 +398,7 @@ getIntVector:      ;ah = 35h
     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
     mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
     ret
+
 getDiskFreeSpace:  ;ah = 36h
     test dl, dl
     jnz .gdfsSkipdefault
@@ -436,9 +406,9 @@ getDiskFreeSpace:  ;ah = 36h
     inc dl
 .gdfsSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
-    call findDPB ;Get in rbp the dpb pointer for drive dl
-    test al, al
-    jz .gdfsDPBFound
+    mov al, dl
+    call getDPBptr ;Get in rsi the dpb pointer for drive al
+    jnc .gdfsDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
     mov word [errorExCde], errBadDrv     ;Invalid drive error
@@ -450,14 +420,14 @@ getDiskFreeSpace:  ;ah = 36h
     or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
     ret
 .gdfsDPBFound:
-    mov al, byte [rbp + dpb.bMaxSectorInCluster]
+    mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
-    mov edx, dword [rbp + dpb.dClusterCount]
-    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    mov edx, dword [rsi + dpb.dClusterCount]
+    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
     mov ebx, 1
     shl ebx, cl
     mov ecx, ebx    ;Save the value in ecx
-    mov ebx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
+    mov ebx, dword [rsi + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
     call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx

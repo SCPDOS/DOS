@@ -20,6 +20,35 @@ getCDS:     ;Int 4Fh AX=1217h
     pop rax
     ret
 
+getDPBptr:
+;Called with al = Drive number
+;Returns in rsi a pointer to the DPB or if CF=CY, invalid drive number
+    mov rsi, qword [sftHeadPtr]  ;Get variable pointing to first DPB
+.walk:
+    cmp rsi, -1
+    je .exitBad
+    cmp byte [rsi + dpb.bDriveNumber], al
+    je .exit    ;Drive found
+    mov rsi, qword [rsi + dpb.qNextDPBPtr]  ;Go to next drive 
+    jmp short .walk
+.exitBad:
+    stc
+.exit:
+    %if DEBUG
+    ;Print DPB 
+    debugEnterM
+    mov r8, rbp ;Save dpb pointer
+    lea rbp, .l0000
+    call debPrintNullString
+    mov rbp, r8
+    call debDPBptr
+    jmp short .l0001
+.l0000 db "Internal call to find DPB",0Ah,0Dh,0
+.l0001:
+    debugExitM
+    %endif
+    ret
+
 getUserRegs:   ;Int 4Fh AX=1218h
 ;Returns ptr to user regs in rsi
     mov rsi, qword [oldRSP]
@@ -39,9 +68,9 @@ getDeviceDPBptr:   ;ah = 32h
 .gddpskipdefault:
     ;Decrement the drive letter since 0 = Default, 1 = A etc...
     dec dl
-    call findDPB ;Get in rbp the dpb pointer for drive dl
-    test al, al
-    jz .gddpMediaCheck
+    mov al, dl
+    call getDPBptr ;Get in rsi the dpb pointer for drive dl
+    jnc .gddpMediaCheck
 ;Put in here error info
     mov word [errorExCde], errBadDrv ;Invalid drive spec
     mov byte [errorLocus], eLocDsk    ;Block device driver
@@ -50,6 +79,7 @@ getDeviceDPBptr:   ;ah = 32h
     ret ;Return. al = -1
 .gddpMediaCheck:
 ;Media Check Section
+    mov rbp, rsi    ;Save dpb pointer in rbp
     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], dl
     mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
