@@ -318,7 +318,7 @@ FATinfoDevice:     ;ah = 1Ch
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
 ;Walk the dpb chain manually
     mov al, dl  ;Move drive number into al
-    call getDPBptr    ;Get in rsi the dpb pointer for drive in al
+    call walkDPBchain    ;Get in rsi the dpb pointer for drive in al
     jnc .fidDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
@@ -407,7 +407,7 @@ getDiskFreeSpace:  ;ah = 36h
 .gdfsSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
     mov al, dl
-    call getDPBptr ;Get in rsi the dpb pointer for drive al
+    call walkDPBchain ;Get in rsi the dpb pointer for drive al
     jnc .gdfsDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info

@@ -5,12 +5,12 @@
 ;----------------------------------------------------
 testDirtyBufferForDrive:    ;External linkage
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
-;Input: dl = Drive number
+;Input: al = Drive number (0 based)
 ;Output: CF=CY => Dirty buffer found, CF=NC => No dirty buffer found
     push rbx
     mov rbx, qword [bufHeadPtr]
 .tdbfdCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
+    cmp byte [rbx + bufferHdr.driveNumber], al
     jne .tdbfdGotoNextBuffer
     test byte [rbx + bufferHdr.bufferFlags], dirtyBuffer
     jz .tdbfdGotoNextBuffer ;Bit not set, goto next buffer
