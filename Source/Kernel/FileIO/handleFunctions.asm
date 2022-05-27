@@ -20,7 +20,7 @@ rwFileHndleCommon:
     jnc .rwfhc0
     ret ;If carry is set and error code in al, exit!
 .rwfhc0:
-    
+
     ret
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
@@ -55,7 +55,9 @@ getSFTPtr:
     jnb .gspFail
     mov rsi, qword [currentPSP]
     movzx rbx, bx
-    mov bl, byte [rsi + psp.jobFileTbl + rbx]   ;Use jft entry to get sft num
+    lea rbx, qword [rsi + psp.jobFileTbl + rbx] 
+    mov [currentJFT], rbx   ;Save a pointer to the JFT entry
+    mov bl, byte [rbx]   ;Use jft entry to get sft num
     cmp bl, -1  ;Non-existant SFT reference?
     je .gspFail
     xor eax, eax
@@ -93,3 +95,21 @@ getSFTPtr:
     stc
     jmp short .gspExit
 
+copySFTtoSDA:
+;Called with rsi pointing to SFT structure
+;Prepares the scratch SFT in SDA for use
+    lea rdi, scratchSFT
+    mov rsi, qword [currentSFT]   ;Get current SFT
+    jmp short copySScommon
+copySDAtoSFT:
+    lea rsi, scratchSFT
+    mov rdi, qword [currentSFT]   ;Get current SFT
+copySScommon:
+    push rcx
+    mov ecx, sft_size
+    rep movsb   ;Copy
+    pop rcx
+    ret
+
+getSectorInCluster:
+;Gets the sector in cluster from

@@ -190,7 +190,7 @@ getStartSectorOfCluster:
     ;eax now has the first sector of the current cluster
     pop rcx
     ret
-getNextSectorOfFile:
+getNextSectorOfFileBROKEN:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
 ; the file handle of the file being read/written to the new cluster
@@ -211,15 +211,15 @@ getNextSectorOfFile:
     push rsi
     push rdi
     ;Check if we need to go to next cluster
-    mov ax, word [r8 + sft.wRelSect]    ;Upper byte is ALWAYS 0
+    ;mov ax, word [r8 + sft.wRelSect]    ;Upper byte is ALWAYS 0
     cmp al, byte [r9 + dpb.bMaxSectorInCluster]
     je .gotoNextCluster
     ;Goto next sector
-    inc word [r8 + sft.wRelSect]    ;Goto next sector in cluster
+    ;inc word [r8 + sft.wRelSect]    ;Goto next sector in cluster
 .getSector:
     mov eax, dword [r8 + sft.dAbsClusr] ;Get cluster number
     call getStartSectorOfCluster
-    movzx ebx, word [r8 + sft.wRelSect] ;Get relative sector number
+    ;movzx ebx, word [r8 + sft.wRelSect] ;Get relative sector number
     ;eax now has the correct sector in the cluster
     add eax, ebx    
     ;Read the sector into a buffer
@@ -282,7 +282,7 @@ getNextSectorOfFile:
     and eax, 0FFFFFFFh  ;Zero upper nybble
 .goToNextClusterCommon:
     mov dword [r8 + sft.dAbsClusr], eax ;Save new cluster number
-    mov word [r8 + sft.wRelSect], 0 ;First sector in next cluster
+    ;mov word [r8 + sft.wRelSect], 0 ;First sector in next cluster
     jmp .getSector
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors

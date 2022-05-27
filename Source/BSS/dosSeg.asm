@@ -70,6 +70,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
+    dosInvoke   resb 1  ;FIXED 0, any other value fails calls (-1 = server invoke)
 
 ;Time stuff
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
@@ -106,7 +107,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currByte    resw 1  ;Current Byte in sector being r/w to/from
     currByteA   resd 1  ;Current Byte in file being r/w to/from
     lastClust   resd 1  ;Number of the last (rel) cluster of the file
-    lastClustA  resd 1  ;Number of hte last (abs) cluster of file on disk
+    lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
     bytesAdded  resd 1  ;Number of bytes added to file (max 2Gb filesize!)
 ;Directory stuff
     dirClust    resd 1  ;Cluster number of current directory
@@ -115,9 +116,12 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     dirEntry    resb 1  ;32 byte offset in dir sect for file being searched for
 
     
-;Stacks
+;Stacks and scratch SFT
     critStack   resq 165
     critStakTop resq 1
+
+    scratchSFT  resb sft_size
+
     IOStack     resq 199
     IOStakTop   resq 1
     DiskStack   resq 199

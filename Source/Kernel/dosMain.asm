@@ -71,6 +71,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov qword [oldoldRSP], rax
     inc byte [inDOS]    ;Increment in DOS flag
     mov qword [oldRSP], rsp
+;Network related variable resetting
+    mov byte [dosInvoke], 0 ;Invoked Locally
 ;Here, we want to save oldRSP in the callers PSP
     cmp byte [inDOS], 1 ;Check how many times we are in DOS
     jne .fsb1   ;If this is first entry, save rsp in callers PSP
