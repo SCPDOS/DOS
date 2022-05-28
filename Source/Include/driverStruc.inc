@@ -62,6 +62,7 @@ endstruc
     drvBadDskChnge  equ 15  ;Invalid disk change
 
 ;Drive structures
+    drvErrStatus    equ 8000h   
 struc drvReqHdr
     drvReqHdrM
 endstruc

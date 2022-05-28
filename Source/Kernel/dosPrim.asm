@@ -121,8 +121,12 @@ getDiskDPB:
 
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
+    call diskDrvMedCheck
+    jnc .exit   ;If CF=NC, dpb pointer in rbp is OK to use
+    xor ah, ah
+    xchg byte [rbp + dpb.bAccessFlag], ah   ;Get the old access flag
+.exit:
     ret
-
 
 
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
@@ -152,7 +156,7 @@ diskDrvMedCheck:
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver
     movzx rdi, word [rbx + mediaCheckReqPkt.status]
-    test edi, 8000h
+    test edi, drvErrStatus
     jnz diskDrvCritErr
     test byte [rbx + mediaCheckReqPkt.medret], -1 ;Carry flag always cleared!
     js .requestBPB  ;If byte is -1, set carry flag on return
@@ -187,7 +191,7 @@ diskDrvGetBPB:
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver
     movzx rdi, word [rbx + bpbBuildReqPkt.status]
-    test edi, 8000h ;Clears CF
+    test edi, drvErrStatus ;Clears CF
     jnz diskDrvCritErr
     mov rdi, qword [rbx + bpbBuildReqPkt.bpbptr]
     jmp short diskDrvCommonExit
