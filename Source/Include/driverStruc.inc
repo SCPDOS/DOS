@@ -61,8 +61,11 @@ endstruc
     drvGenFault     equ 12  ;General Fault
     drvBadDskChnge  equ 15  ;Invalid disk change
 
-;Drive structures
-    drvErrStatus    equ 8000h   
+;Driver status word status bit meanings
+    drvErrStatus    equ 8000h  
+    drvDonStatus    equ 0100h
+    drvBsyStatus    equ 0200h
+;Driver structures
 struc drvReqHdr
     drvReqHdrM
 endstruc
