@@ -34,7 +34,7 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 
-    critPtchTbl resw 4  ;Offsets from DosDataArea addr to the 4 funcs
+    critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
