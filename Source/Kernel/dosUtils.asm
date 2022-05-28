@@ -1,14 +1,25 @@
 ;DOS utility functions (Will be made available through Int 4F ah=12xx eventually)
 
-;Utilities
+;Basic Drive related Utilities
 ;Any function which takes args in rax (or any subpart of it), has that 
 ; argument provided on the stack when called from Int 4Fh interface (when 
 ; that gets set up)
 
+
+setDPBAsWorking:
+;Gets dpb in rbp and saves to curDrvDPB (working dpb)
+    mov qword [workingDPB], rbp
+    ret
+
+getUserRegs:   ;Int 4Fh AX=1218h
+;Returns ptr to user regs in rsi
+    mov rsi, qword [oldRSP]
+    ret
+
 walkCDSarray:     ;Int 4Fh AX=1217h
     ;Gets the CDS for the current drive in al
     ;Input: al = Drive number, 0 = A ...
-    ;Output: CF=NC => rsi = Pointer to CDS for drive in al
+    ;Output: CF=NC => rsi = Pointer to CDS for drive in al (and workingCDS var)
     ;        CF=CY => al not valid
     cmp al, byte [lastdrvNum]
     jb .ctn
@@ -23,7 +34,7 @@ walkCDSarray:     ;Int 4Fh AX=1217h
     mul esi ;Get the multiples of CDS's to skip
     lea rax, qword [cdsHeadPtr] ;Get the first CDS
     add rsi, rax    ;Add the CDS array to the offset into it
-    mov qword [curCDSPtr], rsi  ;Save in data area
+    mov qword [workingCDS], rsi  ;Save in data area
     pop rdx
     pop rax
     clc
@@ -58,16 +69,11 @@ walkDPBchain:
     %endif
     ret
 
-getUserRegs:   ;Int 4Fh AX=1218h
-;Returns ptr to user regs in rsi
-    mov rsi, qword [oldRSP]
-    ret
-
-
 getCDS:
 ;Gets the device DPB and saves it in the DOS variable
 ;Input: al = 1 based drive number
-;Sets in var the CDS for the device. If device on a network, sets CF (currently error)
+;Sets workingCDS var with the CDS for the device. 
+;   If device on a network, sets CF (currently error)
     test al, al
     jnz .skip
     mov al, byte [currentDrv]   ;Get current drive
@@ -95,8 +101,10 @@ getCDS:
 .exitOk:
     pop rsi
     ret
-
-;DOS KERNEL FUNCTIONS, accessible through Int 41h
+    
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;           DOS KERNEL FUNCTIONS, accessible through Int 41h
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;AH = 1Fh/32h - GET (current) DISK DPB
 getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
     xor dl, dl
@@ -111,19 +119,21 @@ getDeviceDPBptr:   ;ah = 32h
     ;Decrement the drive letter since 0 = Default, 1 = A etc...
     dec dl
     mov al, dl
-    call walkDPBchain ;Get in rsi the dpb pointer for drive dl
-    jnc .gddpMediaCheck
-;Put in here error info
-    mov word [errorExCde], errBadDrv ;Invalid drive spec
-    mov byte [errorLocus], eLocDsk    ;Block device driver
-    mov byte [errorClass], eClsNotFnd    ;Drive not found
-    mov byte [errorAction], eActRetUsr   ;Retry after intervention
-    ret ;Return. al = -1
-.gddpMediaCheck:
+    call getCDS ;Get in rsi the dpb pointer for drive dl
+    jc .bad
+    mov rdi, qword [workingCDS]  ;Get pointer to current CDS in rdi
+    test rdi, 8000h ;Is dev a virtual, network, drv (they have no DPB)?
+    jnz .bad
+    call dosCrit1Enter  ;Enter class 1 critical section
+    call getDiskDPB   ;See if the Disk structures are still ok 
+    call dosCrit1Exit   ;Exit class 1 critical section
+    jc .bad
+    call getUserRegs
+    mov [rsi + callerFrame.rbx], rbp    ;RBP has DPB pointer
     ret
-
-
-
+.bad:
+    mov al, -1
+    ret
 
 ;AH = 53h - CREATE DPB
 createDPB:         ;generates a DPB from a given BPB

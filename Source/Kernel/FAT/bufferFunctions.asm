@@ -44,7 +44,7 @@ readBuffer: ;External Linkage (fat.asm)
     push rdx
     push rsi
     push rbp
-    mov rsi, qword [curDrvDPB]  ;Get DPB of transacting device
+    mov rsi, qword [workingDPB]  ;Get DPB of transacting device
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
     cmp rbx, -1

@@ -102,7 +102,32 @@ absDiskReadWriteCommon:
 .absExit:
     stc
     ret
-;Primitive Driver Requests
+
+
+getDiskDPB:
+;Gets the disk DPB if the Disk is physical
+;Otherwise will return a pointer to the drive DPB
+;Called with rdi pointing to the CDS
+;CF=NC => RBP=DPBptr, CF=CY => Error exit
+    mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov [workingDrv], al    ;Save working drive number in working drive variable
+    call setDPBAsWorking
+    call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
+.bad:
+    stc
+.exit:
+    ret
+
+ensureDiskValid:
+;Do a media check, if need be to rebuild the DPB, do it!
+    ret
+
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++
+;           Primitive Driver Requests
+;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;First are Disk requests, then Char device requests
 ;All Disk Driver Requests come with at least rbp pointing to DPB
 ;All Char Requests come with rsi pointing to the Char device driver
@@ -167,5 +192,3 @@ diskDrvGetBPB:
     mov rdi, qword [rbx + bpbBuildReqPkt.bpbptr]
     jmp short diskDrvCommonExit
 
-diskDrvReadWrite:
-;rbp has DPB pointer for device
