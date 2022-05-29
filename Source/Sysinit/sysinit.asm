@@ -399,7 +399,7 @@ tempBufferInit:
     mov qword fs:[bufHeadPtr], rdi  ;Save pointer to temp buffer "list"
     xor eax, eax
     dec rax
-    stosq   ;.nextBufPTr, end of list
+    stosq   ;.nextBufPtr, end of list
     stosb   ;.driveNumber, Free entry
     inc rax
     stosb   ;.bufferFlags, No flags

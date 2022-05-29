@@ -114,6 +114,10 @@ getDiskDPB:
     mov [workingDrv], al    ;Save working drive number in working drive variable
     call setDPBAsWorking
     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
+    jc .bad
+    ;Here re-init the CDS and proceed as normal. 
+    call initPhysWorkingCDS
+    jnc .exit
 .bad:
     stc
 .exit:
@@ -121,13 +125,41 @@ getDiskDPB:
 
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
-    call diskDrvMedCheck
-    jnc .exit   ;If CF=NC, dpb pointer in rbp is OK to use
-    xor ah, ah
-    xchg byte [rbp + dpb.bAccessFlag], ah   ;Get the old access flag
+.medChk:
+    call diskDrvMedCheck    ;Prepare disk io packet for media check
+    lea rbx, diskReqHdr
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    call goDriver   ;Request!
+    movzx rdi, word [rbx + mediaCheckReqPkt.status]
+    test edi, drvErrStatus
+    jnz diskDrvCritErr
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get the drive number
+    mov byte [rbp + dpb.bAccessFlag], 0   ;Clear access flag
+    test byte [rbx + mediaCheckReqPkt.medret], -1 ;Carry flag always cleared!
+    js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
+    jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
+    call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
+    cmc ;Compliment the carry flag to ensure we return CF=NC if dirty buffer found
+    jc .requestBPB   ;Exit ONLY if a dirty buffer found!
 .exit:
     ret
-
+.invalidateBuffers:    ;Invalidate buffers for drive IF it has been changed
+;Invalidate by replacing the drive number by -1
+    call freeBuffersForDrive    ;Free all the buffers for the drive in al
+.requestBPB:
+    call findLRUBuffer  ;Get a buffer to read BPB into rbx
+    mov rdi, rbx
+    call diskDrvGetBPB  ;Prepare to get BPB
+    lea rbx, diskReqHdr
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    call goDriver   ;Request!
+    movzx rdi, word [rbx + bpbBuildReqPkt.status]
+    test edi, drvErrStatus
+    jnz diskDrvCritErr
+    ;Now rebuild the dpb fields for this drive
+    mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
+    call createDPB
+    jmp .medChk ;Now check if media valid
 
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
@@ -138,13 +170,14 @@ ensureDiskValid:
 
 diskDrvCritErr:
 ;Critical Errors fall through here
+    stc
+    ret
 
 diskDrvMedCheck:
+;Prepare the diskIO packet for mediacheck
 ;rbp has DPB pointer for device to check media on
-;On ret: CF=CY => Req new BPB and make new DPB, CDS etc. CF=NC => Same disk!
     push rax
     push rbx
-    push rsi
     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
     mov byte [rbx + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
@@ -153,21 +186,6 @@ diskDrvMedCheck:
     mov byte [rbx + mediaCheckReqPkt.unitnm], al
     mov byte [rbx + mediaCheckReqPkt.cmdcde], drvMEDCHK
     mov word [rbx + mediaCheckReqPkt.status], 0
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-    call goDriver
-    movzx rdi, word [rbx + mediaCheckReqPkt.status]
-    test edi, drvErrStatus
-    jnz diskDrvCritErr
-    test byte [rbx + mediaCheckReqPkt.medret], -1 ;Carry flag always cleared!
-    js .requestBPB  ;If byte is -1, set carry flag on return
-    jnz .exit ;If it is not-zero, it must be 1, so not changed
-;Come here, if unsure. Check dirty buffers for a drive, if found, exit
-    mov al, byte [rbp + dpb.bDriveNumber]
-    call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
-.requestBPB:    ;Jump here if need to set carry flag from clear
-    cmc ;Compliment CF from above tests
-.exit:
-    pop rsi
 diskDrvCommonExit:
     pop rbx
     pop rax
@@ -176,23 +194,26 @@ diskDrvCommonExit:
 diskDrvGetBPB:
 ;rbp has DPB pointer for device
 ;rdi has sector buffer pointer for transfer
-;Returns a BPB pointer in rdi if CF=NC. An error occured if CF=CY
+
     push rax
     push rbx
     lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
     mov qword [rbx + bpbBuildReqPkt.bufptr], rdi
     mov byte [rbx + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [rbx + mediaCheckReqPkt.medesc], al
+    mov byte [rbx + bpbBuildReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
     mov byte [rbx + bpbBuildReqPkt.unitnm], al
     mov byte [rbx + bpbBuildReqPkt.cmdcde], drvBUILDBPB
     mov word [rbx + bpbBuildReqPkt.status], 0
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-    call goDriver
-    movzx rdi, word [rbx + bpbBuildReqPkt.status]
-    test edi, drvErrStatus ;Clears CF
-    jnz diskDrvCritErr
-    mov rdi, qword [rbx + bpbBuildReqPkt.bpbptr]
     jmp short diskDrvCommonExit
 
+diskWriteSetup:
+    mov ah, drvWRITE
+    add ah, byte [verifyFlag]
+    jmp short diskRWCommon
+diskReadSetup:
+    mov ah, drvREAD
+diskRWCommon:
+;Sets up the IO request packet with non-DPB specific fields
+    mov al, ioReqPkt_size

@@ -24,6 +24,26 @@ testDirtyBufferForDrive:    ;External linkage
     je .tdbfdExit
     jmp short .tdbfdCheckBuffer
 
+
+freeBuffersForDrive:
+;Walks the buffer chain and sets ALL buffers with the given drive number 
+; to have a drive number of -1, thus freeing it
+;Given drive number is in al
+    push rbx
+    mov rbx, qword [bufHeadPtr]
+.i0:
+    cmp byte [rbx + bufferHdr.driveNumber], al  ;Chosen drive?
+    jne .i1 ;If no, skip freeing
+    mov byte [rbx + bufferHdr.driveNumber], -1  ;Free buffer
+.i1:
+    mov rbx, qword [rbx + bufferHdr.nextBufPtr] ;goto next buffer
+    cmp rbx, -1
+    jne .i0
+.exit:
+    pop rbx
+    ret
+
+
 readBuffer: ;External Linkage (fat.asm)
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
@@ -174,7 +194,7 @@ flushBuffer:    ;Internal Linkage
     stc
     jmp .fbExitBad  ;Abort
     
-findLRUBuffer: ;Internal Linkage
+findLRUBuffer: ;Internal AND External Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
 ; in rbx
 ;Input: Nothing
