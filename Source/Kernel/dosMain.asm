@@ -482,11 +482,10 @@ createDPB:         ;generates a DPB from a given BPB
 ;This is done so that the other fields of the DPB can be recycled
 ;Input: rsi = ptr to the BPB
 ;       rbp = ptr to the DPB
+;Leave accessed flag alone! A brand new DPB should have -1 as accessed flag!
 ;bMediaDescriptor
     mov al, byte [rsi + bpb.media]
     mov byte [rbp + dpb.bMediaDescriptor], al
-;bAccessFlag
-    mov byte [rbp + dpb.bAccessFlag], -1    ;Not accessed
 ;dFirstFreeCluster
     mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
 ;dNumberOfFreeClusters

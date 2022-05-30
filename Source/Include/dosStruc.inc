@@ -207,7 +207,7 @@ struc bufferHdr
     .dataarea:             ;Points to the start of the data area
 endstruc
 ;Buffer Flag equates
-    dosBuffer   equ 1h  ;DOS data sector in buffer
+    dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
     fatBuffer   equ 2h  ;FAT sector in buffer
     dirBuffer   equ 4h  ;Directory sector in buffer
     dataBuffer  equ 8h  ;File Data sector in buffer

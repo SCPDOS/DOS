@@ -100,36 +100,3 @@ getCDS:
 .exitOk:
     pop rsi
     ret
-
-initPhysWorkingCDS:
-;Initialises the CDS in the workingCDS variable. Uses the other working Vars
-    push rax
-    push rcx
-    push rdi
-    push rbp
-    mov rbp, qword [workingDPB]
-    mov rdi, qword [workingCDS]
-    test word [rdi + cds.wFlags], cdsPhysDrive
-    jnz .proceed
-    stc
-    jmp short .exit
-.proceed: 
-    mov ecx, 67
-    xor al, al  ;Store ASCII nuls
-    push rdi
-    rep stosb   ;Clear command line
-    pop rdi
-    mov eax, "A:\ "
-    mov al, byte [currentDrv]
-    add al, 'A' ;Convert first char from a 0 based number to a ASCII char
-    stosd   ;Store all four chars
-    sub rdi, 4  ;Go back to head of structure
-    mov eax, dword [rbp + dpb.dClusterHeapOffset]
-    mov dword [rdi + cds.dStartCluster], eax
-    mov word [rdi + cds.wBackslashOffset], 2
-.exit:
-    pop rbp 
-    pop rdi
-    pop rcx
-    pop rax
-    ret

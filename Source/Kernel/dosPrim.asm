@@ -113,18 +113,37 @@ getDiskDPB:
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov [workingDrv], al    ;Save working drive number in working drive variable
     call setDPBAsWorking
+    push rdi    ;Save the CDS ptr
     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
-    jc .bad
-    ;Here re-init the CDS and proceed as normal. 
-    call initPhysWorkingCDS
-    jnc .exit
-.bad:
-    stc
+    pop rdi
+    jc .exitBad ;Preserve CF
+    jnz .exit
+    ;Here re-init all CDS's that refer to the dpb if the disk was switched
+    mov cl, byte [lastdrvNum]
+    xor rax, rax
+    dec rax ; -1 means start of root dir and never accessed (i.e. reset path)!
+    mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
+    mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
+.checkCDS:
+    cmp rsi, qword [rdi + cds.qDPBPtr]
+    jne .next
+    test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
+    jz .next    ;IF yes, skip it
+    mov dword [rdi + cds.qDPBPtr], eax  ;Reset start cluster!
+.next:
+    add rdi, cds_size
+    dec cl
+    jnz .checkCDS
 .exit:
+    clc
+.exitBad:
     ret
 
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
+;On entry: rbp = DPB
+;On exit: CF=NC => Passed, CF=CY => Fail
+;         ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
 .medChk:
     call diskDrvMedCheck    ;Prepare disk io packet for media check
     lea rbx, diskReqHdr
@@ -133,21 +152,25 @@ ensureDiskValid:
     movzx rdi, word [rbx + mediaCheckReqPkt.status]
     test edi, drvErrStatus
     jnz diskDrvCritErr
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get the drive number
-    mov byte [rbp + dpb.bAccessFlag], 0   ;Clear access flag
-    test byte [rbx + mediaCheckReqPkt.medret], -1 ;Carry flag always cleared!
+    mov al, byte [workingDrv]   ;Get the drive number for test
+    xor ah, ah
+    xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
+    test byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
     cmc ;Compliment the carry flag to ensure we return CF=NC if dirty buffer found
-    jc .requestBPB   ;Exit ONLY if a dirty buffer found!
+    jc .invalidateBuffers   ;Exit ONLY if a dirty buffer found!
+    ;ZF=NZ from test for dirty buffers
 .exit:
     ret
-.invalidateBuffers:    ;Invalidate buffers for drive IF it has been changed
-;Invalidate by replacing the drive number by -1
-    call freeBuffersForDrive    ;Free all the buffers for the drive in al
-.requestBPB:
-    call findLRUBuffer  ;Get a buffer to read BPB into rbx
+.invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
+    mov byte [diskChange], -1   ;In disk Change!
+    call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
+    ;Get a buffer to read BPB into in rdi
+    mov cl, dosBuffer
+    call readBuffer ;Get a disk buffer
+    jc diskDrvCritErr  ;Critical error if CF is set
     mov rdi, rbx
     call diskDrvGetBPB  ;Prepare to get BPB
     lea rbx, diskReqHdr
@@ -158,8 +181,15 @@ ensureDiskValid:
     jnz diskDrvCritErr
     ;Now rebuild the dpb fields for this drive
     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
-    call createDPB
-    jmp .medChk ;Now check if media valid
+    call createDPB  
+    ;Adjust the buffer header information
+    mov eax, dword [rbp + dpb.dFATlength]
+    mov dword [rbx + bufferHdr.bufFATsize], eax
+    mov al, byte [rbp + dpb.bNumberOfFATs]
+    mov byte [rbx + bufferHdr.bufFATsize], al
+    xor ah, ah
+    mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
+    ret
 
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests

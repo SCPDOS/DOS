@@ -238,7 +238,7 @@ getNextSectorOfFileBROKEN:
     mov cl, dataBuffer
 .getSectorRead:
     mov rsi, r9
-    call readBuffer
+    ;call readBuffer
     jc .getSectorFailed
     add rbx, bufferHdr.dataarea ;Goto data area
 .getSectorExit:
@@ -267,7 +267,7 @@ getNextSectorOfFileBROKEN:
     movzx ebx, word [r9 + dpb.wFAToffset]
     add eax, ebx    ;Add the FAT offset to the sector
     mov cl, fatBuffer
-    call readBuffer ;Buffer Header in ebx
+    ;call readBuffer ;Buffer Header in ebx
     jc .getSectorFailed
     ;Check if FAT 12, 16, 32
     test rdi, rdi
@@ -289,7 +289,7 @@ getNextSectorOfFileBROKEN:
 ;eax has the sector of the FAT, offset into the sector is in edx
     mov rdi, rbx    ;Save previous buffer header in rdi
     inc eax ;Get next sector
-    call readBuffer ;Buffer Header in ebx
+    ;call readBuffer ;Buffer Header in ebx
     jc .getSectorFailed
     ;rdi has first buffer header, rbx has second buffer header
     ;rdx has offset into first header for entry

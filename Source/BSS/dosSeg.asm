@@ -127,4 +127,5 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     IOStakTop   resq 1
     DiskStack   resq 199
     DiskStakTop resq 1
+    diskChange  resb 1  ;-1 = disk has been changed!
     dSegLen     equ     $

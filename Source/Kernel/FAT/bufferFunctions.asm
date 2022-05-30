@@ -7,6 +7,7 @@ testDirtyBufferForDrive:    ;External linkage
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
 ;Input: al = Drive number (0 based)
 ;Output: CF=CY => Dirty buffer found, CF=NC => No dirty buffer found
+;Consequently, ZF=NZ => Dirty buffer found, ZF=ZE => No dirty buffer found
     push rbx
     mov rbx, qword [bufHeadPtr]
 .tdbfdCheckBuffer:
@@ -24,6 +25,24 @@ testDirtyBufferForDrive:    ;External linkage
     je .tdbfdExit
     jmp short .tdbfdCheckBuffer
 
+freeBuffersForDPB:
+;Walks the buffer chain and sets ALL buffers with the given DPB 
+; to have a drive number of -1, thus freeing it
+;Given DPB is in rbp
+    push rbx
+    mov rbx, qword [bufHeadPtr]
+.i0:
+    cmp qword [rbx + bufferHdr.driveDPBPtr], rbp  ;Chosen DPB?
+    jne .i1 ;If no, skip freeing
+    mov word [rbx + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
+.i1:
+    mov rbx, qword [rbx + bufferHdr.nextBufPtr] ;goto next buffer
+    cmp rbx, -1
+    jne .i0
+.exit:
+    pop rbx
+    ret
+
 
 freeBuffersForDrive:
 ;Walks the buffer chain and sets ALL buffers with the given drive number 
@@ -34,7 +53,7 @@ freeBuffersForDrive:
 .i0:
     cmp byte [rbx + bufferHdr.driveNumber], al  ;Chosen drive?
     jne .i1 ;If no, skip freeing
-    mov byte [rbx + bufferHdr.driveNumber], -1  ;Free buffer
+    mov word [rbx + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
 .i1:
     mov rbx, qword [rbx + bufferHdr.nextBufPtr] ;goto next buffer
     cmp rbx, -1
@@ -80,8 +99,14 @@ readBuffer: ;External Linkage (fat.asm)
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
     mov rbp, rbx
     xor ch, ch
+    cmp byte [diskChange], -1 ;Are we in disk change?
+    jne .flush  ;No, flush
+    cmp rsi, qword [rbp + bufferHdr.driveDPBPtr]    ;If yes...
+    je .skipFlush   ;Avoid flushing if same DPB being used
+.flush:
     call flushBuffer
     jc .rbExitNoFlag    ;Exit in error
+.skipFlush:
 ;rbp points to bufferHdr that has been appropriately linked to the head of chain
     push rcx
     mov byte [rbp + bufferHdr.driveNumber], dl
@@ -177,7 +202,7 @@ flushBuffer:    ;Internal Linkage
     jmp .fbRequest0 ;Make another request
 .fbFreeExit:
 ;Free the buffer if it was flushed successfully
-    mov byte [rbp + bufferHdr.driveNumber], -1
+    mov word [rbp + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
     clc
 .fbExitBad:
     pop rsi
