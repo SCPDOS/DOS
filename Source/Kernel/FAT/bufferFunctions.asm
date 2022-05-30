@@ -63,7 +63,7 @@ freeBuffersForDrive:
     ret
 
 
-readBuffer: ;External Linkage (fat.asm)
+getBuffer: ;External Linkage (fat.asm)
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL!
@@ -108,21 +108,19 @@ readBuffer: ;External Linkage (fat.asm)
     jc .rbExitNoFlag    ;Exit in error
 .skipFlush:
 ;rbp points to bufferHdr that has been appropriately linked to the head of chain
-    push rcx
     mov byte [rbp + bufferHdr.driveNumber], dl
     mov byte [rbp + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
     mov qword [rbp + bufferHdr.bufferLBA], rax
     cmp cl, fatBuffer
     mov dl, 1   ;Default values if not fat buffer
-    mov ecx, dword [rsi + dpb.dFATlength]
     jne .rbNonFATbuffer
     mov dl, byte [rsi + dpb.bNumberOfFATs]
 .rbNonFATbuffer:
     mov byte [rbp + bufferHdr.bufFATcopy], dl
-    mov dword [rbp + bufferHdr.bufFATsize], ecx
+    mov edx, dword [rsi + dpb.dFATlength]
+    mov dword [rbp + bufferHdr.bufFATsize], edx
     mov qword [rbp + bufferHdr.driveDPBPtr], rsi
     mov byte [rbp + bufferHdr.reserved], 0
-    pop rcx
     inc ch  ;If an error occurs, have the signature in ch
     call readSectorBuffer ;Carry the flag from the request
     jmp short .rbExitNoFlag

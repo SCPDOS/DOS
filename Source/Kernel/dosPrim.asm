@@ -169,7 +169,7 @@ ensureDiskValid:
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
     ;Get a buffer to read BPB into in rdi
     mov cl, dosBuffer
-    call readBuffer ;Get a disk buffer
+    call getBuffer ;Get a disk buffer
     jc diskDrvCritErr  ;Critical error if CF is set
     mov rdi, rbx
     call diskDrvGetBPB  ;Prepare to get BPB
