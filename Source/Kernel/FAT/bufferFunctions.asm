@@ -67,6 +67,10 @@ getBuffer: ;External Linkage (fat.asm)
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL!
+;Flushes if not in disk change mode. 
+;If in disk change mode, will check to see if the selected buffer 
+; has data referring a device using the same DPB as we are changing.
+; If it is, skip flushing, if not, flush first!
 ;
 ;This function will return a pointer to the desired data sector OR 
 ; find the most appropriate buffer, flush and read the relevant data into the 
