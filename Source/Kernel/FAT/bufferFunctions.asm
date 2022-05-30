@@ -100,7 +100,7 @@ readBuffer: ;External Linkage (fat.asm)
     mov rbp, rbx
     xor ch, ch
     cmp byte [diskChange], -1 ;Are we in disk change?
-    jne .flush  ;No, flush
+    jne .flush  ;We are not, flush buffer
     cmp rsi, qword [rbp + bufferHdr.driveDPBPtr]    ;If yes...
     je .skipFlush   ;Avoid flushing if same DPB being used
 .flush:
@@ -114,10 +114,9 @@ readBuffer: ;External Linkage (fat.asm)
     mov qword [rbp + bufferHdr.bufferLBA], rax
     cmp cl, fatBuffer
     mov dl, 1   ;Default values if not fat buffer
-    mov ecx, 0  ;Ditto!
+    mov ecx, dword [rsi + dpb.dFATlength]
     jne .rbNonFATbuffer
     mov dl, byte [rsi + dpb.bNumberOfFATs]
-    mov ecx, dword [rsi + dpb.dFATlength]
 .rbNonFATbuffer:
     mov byte [rbp + bufferHdr.bufFATcopy], dl
     mov dword [rbp + bufferHdr.bufFATsize], ecx
