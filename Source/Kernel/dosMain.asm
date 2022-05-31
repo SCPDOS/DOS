@@ -344,7 +344,7 @@ FATinfoDevice:     ;ah = 1Ch
     mov word [rsi + callerFrame.rcx], cx
     mov qword [rsi + callerFrame.rbx], rbx
     ret
-;===============================
+
 setIntVector:      ;ah = 25h
 ;Called with:
 ;   rdx = Pointer to interrupt handler
