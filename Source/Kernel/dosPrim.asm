@@ -114,7 +114,7 @@ absDiskReadWriteCommon:
     jz absDiskExit  ;Skip error code checking
     mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
     ;DOS uses the following pairs in a table
-    ;AH/AL= 80/02, 40/06, 02/0C, 10/04, 04/08, 03/00, 01/80
+    ;AH/AL= 80/02, 40/06, 02/0C, 10/04, 04/08, 03/00
     mov ah, 80h ;Attachment failure
     cmp al, 0Ch ;Gen error
     je .absExit
