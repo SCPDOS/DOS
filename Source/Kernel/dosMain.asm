@@ -404,6 +404,7 @@ getDeviceDPBptr:   ;ah = 32h
     jc .bad
     call getUserRegs
     mov [rsi + callerFrame.rbx], rbp    ;RBP has DPB pointer
+    xor al, al
     ret
 .bad:
     mov al, -1
