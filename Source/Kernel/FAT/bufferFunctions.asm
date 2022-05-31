@@ -63,10 +63,10 @@ freeBuffersForDrive:
     ret
 
 
-getBuffer: ;External Linkage (fat.asm)
+getBuffer: ;External Linkage (dosPrim.asm)
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
-;TO CALL!
+;TO CALL! WORKS ON THE WORKING DPB!
 ;Flushes if not in disk change mode. 
 ;If in disk change mode, will check to see if the selected buffer 
 ; has data referring a device using the same DPB as we are changing.
@@ -220,7 +220,7 @@ flushBuffer:    ;Internal Linkage
     stc
     jmp .fbExitBad  ;Abort
     
-findLRUBuffer: ;Internal AND External Linkage
+findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
 ; in rbx
 ;Input: Nothing
