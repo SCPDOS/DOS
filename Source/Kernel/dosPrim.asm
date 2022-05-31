@@ -29,7 +29,7 @@ setupPhysicalDiskRequest:
     test qword [rbp +cds.wFlags], cdsNetDrive   ;On a network?
     jnz .netError
     mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the DPB pointer for request
-    mov qword [workingDPB], rbp ;Save the DPB as the working DPB
+    call setDPBAsWorking ;Save the DPB as the working DPB
     ret
 .netError:
     mov word [errorExCde], errNoNet ;Network request not supported
