@@ -4231,180 +4231,181 @@
    141 000012B8 58                  <1>     pop rax
    142 000012B9 7427                <1>     jz absDiskExit  ;Skip error code checking
    143 000012BB 8A05(51C00300)      <1>     mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
-   144                              <1>     ;DOS uses the following table
-   145 000012C1 B480                <1>     mov ah, 80h ;Attachment failure
-   146 000012C3 3C0C                <1>     cmp al, 0Ch ;Gen error
-   147 000012C5 741A                <1>     je .absExit
-   148 000012C7 B440                <1>     mov ah, 40h ;Seek error
-   149 000012C9 3C06                <1>     cmp al, 06h
-   150 000012CB 7414                <1>     je .absExit
-   151 000012CD B408                <1>     mov ah, 08h ;Bad CRC
-   152 000012CF 3C04                <1>     cmp al, 04h
-   153 000012D1 740E                <1>     je .absExit
-   154 000012D3 B404                <1>     mov ah, 04h ;Sector not found
-   155 000012D5 3C08                <1>     cmp al, 08h
-   156 000012D7 7408                <1>     je .absExit
-   157 000012D9 30E4                <1>     xor ah, ah  ;Write Protect Violation
-   158 000012DB 84C0                <1>     test al, al
-   159 000012DD 7402                <1>     je .absExit
-   160 000012DF B402                <1>     mov ah, 02h ;Other Error
-   161                              <1> .absExit:
-   162 000012E1 F9                  <1>     stc
-   163                              <1> absDiskExit:
-   164 000012E2 FA                  <1>     cli
-   165 000012E3 FE0D(07C10300)      <1>     dec byte [inDOS]
-   166 000012E9 488B25(68C10300)    <1>     mov rsp, qword [oldRSP]
-   167 000012F0 FB                  <1>     sti ;Reenable interrupts
-   168 000012F1 C3                  <1>     ret ;Return from interrupt without popping flags!
-   169                              <1>     
-   170                              <1> 
-   171                              <1> getDiskDPB:
-   172                              <1> ;Gets the disk DPB if the Disk is physical
-   173                              <1> ;Otherwise will return a pointer to the drive DPB
-   174                              <1> ;Called with rdi pointing to the CDS
-   175                              <1> ;CF=NC => RBP=DPBptr, CF=CY => Error exit
-   176 000012F2 488B6F45            <1>     mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
-   177 000012F6 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
-   178 000012F9 8805(8BC20300)      <1>     mov [workingDrv], al    ;Save working drive number in working drive variable
-   179 000012FF E874010000          <1>     call setDPBAsWorking
-   180 00001304 57                  <1>     push rdi    ;Save the CDS ptr
-   181 00001305 E838000000          <1>     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
-   182 0000130A 5F                  <1>     pop rdi
-   183 0000130B 7234                <1>     jc .exitBad ;Preserve CF
-   184 0000130D 7531                <1>     jnz .exit
-   185                              <1>     ;Here re-init all CDS's that refer to the dpb if the disk was switched
-   186 0000130F 8A0D(B2C00300)      <1>     mov cl, byte [lastdrvNum]
-   187 00001315 4831C0              <1>     xor rax, rax
-   188 00001318 48FFC8              <1>     dec rax ; -1 means start of root dir and never accessed (i.e. reset path)!
-   189 0000131B 488B7745            <1>     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
-   190 0000131F 488B3D(AAC00300)    <1>     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
-   191                              <1> .checkCDS:
-   192 00001326 483B7745            <1>     cmp rsi, qword [rdi + cds.qDPBPtr]
-   193 0000132A 7509                <1>     jne .next
-   194 0000132C 48854745            <1>     test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
-   195 00001330 7403                <1>     jz .next    ;IF yes, skip it
-   196 00001332 894745              <1>     mov dword [rdi + cds.qDPBPtr], eax  ;Reset start cluster!
-   197                              <1> .next:
-   198 00001335 4881C75B000000      <1>     add rdi, cds_size
-   199 0000133C FEC9                <1>     dec cl
-   200 0000133E 75E6                <1>     jnz .checkCDS
-   201                              <1> .exit:
-   202 00001340 F8                  <1>     clc
-   203                              <1> .exitBad:
-   204 00001341 C3                  <1>     ret
-   205                              <1> 
-   206                              <1> ensureDiskValid:
-   207                              <1> ;Do a media check, if need be to rebuild the DPB, do it!
-   208                              <1> ;On entry: rbp = DPB
-   209                              <1> ;On exit: CF=NC => Passed, CF=CY => Fail
-   210                              <1> ;         ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
-   211                              <1> .medChk:
-   212 00001342 E898000000          <1>     call diskDrvMedCheck    ;Prepare disk io packet for media check
-   213 00001347 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr
-   214 0000134E 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-   215 00001352 E850FEFFFF          <1>     call goDriver   ;Request!
-   216 00001357 480FB73D(51C00300)  <1>     movzx rdi, word [diskReqHdr + mediaCheckReqPkt.status]
-   217 0000135F F7C700800000        <1>     test edi, drvErrStatus
-   218 00001365 7576                <1>     jnz diskDrvCritErr
-   219 00001367 8A05(8BC20300)      <1>     mov al, byte [workingDrv]   ;Get the drive number for test
-   220 0000136D 30E4                <1>     xor ah, ah
-   221 0000136F 866523              <1>     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
-   222 00001372 84630E              <1>     test byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
-   223 00001375 780B                <1>     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
-   224 00001377 7508                <1>     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
-   225 00001379 E80DF2FFFF          <1>     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
-   226 0000137E F5                  <1>     cmc ;Compliment the carry flag to ensure we return CF=NC if dirty buffer found
-   227 0000137F 7201                <1>     jc .invalidateBuffers   ;Exit ONLY if a dirty buffer found!
-   228                              <1>     ;ZF=NZ from test for dirty buffers
-   229                              <1> .exit:
-   230 00001381 C3                  <1>     ret
-   231                              <1> .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
-   232 00001382 C605(32D50300)FF    <1>     mov byte [diskChange], -1   ;In disk Change!
-   233 00001389 E821F2FFFF          <1>     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
-   234                              <1>     ;Get a buffer to read BPB into in rdi
-   235 0000138E B101                <1>     mov cl, dosBuffer
-   236 00001390 E85DF2FFFF          <1>     call getBuffer ;Get a disk buffer
-   237 00001395 7246                <1>     jc diskDrvCritErr  ;Critical error if CF is set
-   238 00001397 4889DF              <1>     mov rdi, rbx
-   239 0000139A E86C000000          <1>     call diskDrvGetBPB  ;Prepare to get BPB
-   240 0000139F 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr
-   241 000013A6 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
-   242 000013AA E8F8FDFFFF          <1>     call goDriver   ;Request!
-   243 000013AF 480FB73D(51C00300)  <1>     movzx rdi, word [diskReqHdr + bpbBuildReqPkt.status]
-   244 000013B7 F7C700800000        <1>     test edi, drvErrStatus
-   245 000013BD 751E                <1>     jnz diskDrvCritErr
-   246                              <1>     ;Now rebuild the dpb fields for this drive
-   247 000013BF 488B730E            <1>     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
-   248 000013C3 E8CD050000          <1>     call createDPB  
-   249                              <1>     ;Adjust the buffer header information
-   250 000013C8 8B4512              <1>     mov eax, dword [rbp + dpb.dFATlength]
-   251 000013CB 894313              <1>     mov dword [rbx + bufferHdr.bufFATsize], eax
-   252 000013CE 8A4507              <1>     mov al, byte [rbp + dpb.bNumberOfFATs]
-   253 000013D1 884313              <1>     mov byte [rbx + bufferHdr.bufFATsize], al
-   254 000013D4 30E4                <1>     xor ah, ah
-   255 000013D6 8825(32D50300)      <1>     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
-   256 000013DC C3                  <1>     ret
-   257                              <1> 
-   258                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
-   259                              <1> ;           Primitive Driver Requests
-   260                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
-   261                              <1> ;First are Disk requests, then Char device requests
-   262                              <1> ;All Disk Driver Requests come with at least rbp pointing to DPB
-   263                              <1> ;All Char Requests come with rsi pointing to the Char device driver
-   264                              <1> 
-   265                              <1> diskDrvCritErr:
-   266                              <1> ;Critical Errors fall through here
-   267 000013DD F9                  <1>     stc
-   268 000013DE C3                  <1>     ret
-   269                              <1> 
-   270                              <1> diskDrvMedCheck:
-   271                              <1> ;Prepare the diskIO packet for mediacheck
-   272                              <1> ;rbp has DPB pointer for device to check media on
-   273 000013DF 50                  <1>     push rax
-   274 000013E0 C605(4EC00300)17    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
-   275 000013E7 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   276 000013EA 8805(5BC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
-   277 000013F0 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
-   278 000013F3 8805(4FC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], al
-   279 000013F9 C605(50C00300)01    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
-   280 00001400 66C705(51C00300)00- <1>     mov word [diskReqHdr + mediaCheckReqPkt.status], 0
-   280 00001408 00                  <1>
-   281                              <1> diskDrvCommonExit:
-   282 00001409 58                  <1>     pop rax
-   283 0000140A C3                  <1>     ret
-   284                              <1> 
-   285                              <1> diskDrvGetBPB:
-   286                              <1> ;rbp has DPB pointer for device
-   287                              <1> ;rdi has sector buffer pointer for transfer
-   288 0000140B 50                  <1>     push rax
-   289 0000140C 48893D(5CC00300)    <1>     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rdi
-   290 00001413 C605(4EC00300)1E    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
-   291 0000141A 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   292 0000141D 8805(5BC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
-   293 00001423 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
-   294 00001426 8805(4FC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], al
-   295 0000142C C605(50C00300)02    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-   296 00001433 66C705(51C00300)00- <1>     mov word [diskReqHdr + bpbBuildReqPkt.status], 0
-   296 0000143B 00                  <1>
-   297 0000143C EBCB                <1>     jmp short diskDrvCommonExit
-   298                              <1> 
-   299                              <1> diskWriteSetup:
-   300 0000143E 50                  <1>     push rax
-   301 0000143F B408                <1>     mov ah, drvWRITE    ;Command code
-   302 00001441 0225(3CC10300)      <1>     add ah, byte [verifyFlag]   ;Add verify if needed to be added
-   303 00001447 EB02                <1>     jmp short diskRWCommon
-   304                              <1> diskReadSetup:
-   305 00001449 B404                <1>     mov ah, drvREAD
-   306                              <1> diskRWCommon:
-   307                              <1> ;Sets up the IO request packet with non-DPB specific fields
-   308 0000144B B02A                <1>     mov al, ioReqPkt_size
-   309 0000144D 48891D(5CC00300)    <1>     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
-   310 00001454 890D(64C00300)      <1>     mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
-   311 0000145A 488915(68C00300)    <1>     mov qword [diskReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
-   312 00001461 C605(4EC00300)2A    <1>     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
-   313 00001468 25FFFF0000          <1>     and eax, 0000FFFFh  ;Clear the upper word (status word)
-   314 0000146D 8905(4FC00300)      <1>     mov dword [diskReqHdr + ioReqPkt.unitnm], eax
-   315 00001473 E991FFFFFF          <1>     jmp diskDrvCommonExit   ;Jump popping rax
+   144                              <1>     ;DOS uses the following pairs in a table
+   145                              <1>     ;AH/AL= 80/02, 40/06, 02/0C, 10/04, 04/08, 03/00, 01/80
+   146 000012C1 B480                <1>     mov ah, 80h ;Attachment failure
+   147 000012C3 3C0C                <1>     cmp al, 0Ch ;Gen error
+   148 000012C5 741A                <1>     je .absExit
+   149 000012C7 B440                <1>     mov ah, 40h ;Seek error
+   150 000012C9 3C06                <1>     cmp al, 06h
+   151 000012CB 7414                <1>     je .absExit
+   152 000012CD B408                <1>     mov ah, 08h ;Bad CRC
+   153 000012CF 3C04                <1>     cmp al, 04h
+   154 000012D1 740E                <1>     je .absExit
+   155 000012D3 B404                <1>     mov ah, 04h ;Sector not found
+   156 000012D5 3C08                <1>     cmp al, 08h
+   157 000012D7 7408                <1>     je .absExit
+   158 000012D9 30E4                <1>     xor ah, ah  ;Write Protect Violation
+   159 000012DB 84C0                <1>     test al, al
+   160 000012DD 7402                <1>     je .absExit
+   161 000012DF B402                <1>     mov ah, 02h ;Other Error
+   162                              <1> .absExit:
+   163 000012E1 F9                  <1>     stc
+   164                              <1> absDiskExit:
+   165 000012E2 FA                  <1>     cli
+   166 000012E3 FE0D(07C10300)      <1>     dec byte [inDOS]
+   167 000012E9 488B25(68C10300)    <1>     mov rsp, qword [oldRSP]
+   168 000012F0 FB                  <1>     sti ;Reenable interrupts
+   169 000012F1 C3                  <1>     ret ;Return from interrupt without popping flags!
+   170                              <1>     
+   171                              <1> 
+   172                              <1> getDiskDPB:
+   173                              <1> ;Gets the disk DPB if the Disk is physical
+   174                              <1> ;Otherwise will return a pointer to the drive DPB
+   175                              <1> ;Called with rdi pointing to the CDS
+   176                              <1> ;CF=NC => RBP=DPBptr, CF=CY => Error exit
+   177 000012F2 488B6F45            <1>     mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
+   178 000012F6 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+   179 000012F9 8805(8BC20300)      <1>     mov [workingDrv], al    ;Save working drive number in working drive variable
+   180 000012FF E874010000          <1>     call setDPBAsWorking
+   181 00001304 57                  <1>     push rdi    ;Save the CDS ptr
+   182 00001305 E838000000          <1>     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
+   183 0000130A 5F                  <1>     pop rdi
+   184 0000130B 7234                <1>     jc .exitBad ;Preserve CF
+   185 0000130D 7531                <1>     jnz .exit
+   186                              <1>     ;Here re-init all CDS's that refer to the dpb if the disk was switched
+   187 0000130F 8A0D(B2C00300)      <1>     mov cl, byte [lastdrvNum]
+   188 00001315 4831C0              <1>     xor rax, rax
+   189 00001318 48FFC8              <1>     dec rax ; -1 means start of root dir and never accessed (i.e. reset path)!
+   190 0000131B 488B7745            <1>     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
+   191 0000131F 488B3D(AAC00300)    <1>     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
+   192                              <1> .checkCDS:
+   193 00001326 483B7745            <1>     cmp rsi, qword [rdi + cds.qDPBPtr]
+   194 0000132A 7509                <1>     jne .next
+   195 0000132C 48854745            <1>     test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
+   196 00001330 7403                <1>     jz .next    ;IF yes, skip it
+   197 00001332 894745              <1>     mov dword [rdi + cds.qDPBPtr], eax  ;Reset start cluster!
+   198                              <1> .next:
+   199 00001335 4881C75B000000      <1>     add rdi, cds_size
+   200 0000133C FEC9                <1>     dec cl
+   201 0000133E 75E6                <1>     jnz .checkCDS
+   202                              <1> .exit:
+   203 00001340 F8                  <1>     clc
+   204                              <1> .exitBad:
+   205 00001341 C3                  <1>     ret
+   206                              <1> 
+   207                              <1> ensureDiskValid:
+   208                              <1> ;Do a media check, if need be to rebuild the DPB, do it!
+   209                              <1> ;On entry: rbp = DPB
+   210                              <1> ;On exit: CF=NC => Passed, CF=CY => Fail
+   211                              <1> ;         ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
+   212                              <1> .medChk:
+   213 00001342 E898000000          <1>     call diskDrvMedCheck    ;Prepare disk io packet for media check
+   214 00001347 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr
+   215 0000134E 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+   216 00001352 E850FEFFFF          <1>     call goDriver   ;Request!
+   217 00001357 480FB73D(51C00300)  <1>     movzx rdi, word [diskReqHdr + mediaCheckReqPkt.status]
+   218 0000135F F7C700800000        <1>     test edi, drvErrStatus
+   219 00001365 7576                <1>     jnz diskDrvCritErr
+   220 00001367 8A05(8BC20300)      <1>     mov al, byte [workingDrv]   ;Get the drive number for test
+   221 0000136D 30E4                <1>     xor ah, ah
+   222 0000136F 866523              <1>     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
+   223 00001372 84630E              <1>     test byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
+   224 00001375 780B                <1>     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
+   225 00001377 7508                <1>     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
+   226 00001379 E80DF2FFFF          <1>     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
+   227 0000137E F5                  <1>     cmc ;Compliment the carry flag to ensure we return CF=NC if dirty buffer found
+   228 0000137F 7201                <1>     jc .invalidateBuffers   ;Exit ONLY if a dirty buffer found!
+   229                              <1>     ;ZF=NZ from test for dirty buffers
+   230                              <1> .exit:
+   231 00001381 C3                  <1>     ret
+   232                              <1> .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
+   233 00001382 C605(32D50300)FF    <1>     mov byte [diskChange], -1   ;In disk Change!
+   234 00001389 E821F2FFFF          <1>     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
+   235                              <1>     ;Get a buffer to read BPB into in rdi
+   236 0000138E B101                <1>     mov cl, dosBuffer
+   237 00001390 E85DF2FFFF          <1>     call getBuffer ;Get a disk buffer
+   238 00001395 7246                <1>     jc diskDrvCritErr  ;Critical error if CF is set
+   239 00001397 4889DF              <1>     mov rdi, rbx
+   240 0000139A E86C000000          <1>     call diskDrvGetBPB  ;Prepare to get BPB
+   241 0000139F 488D1D(4EC00300)    <1>     lea rbx, diskReqHdr
+   242 000013A6 488B751A            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+   243 000013AA E8F8FDFFFF          <1>     call goDriver   ;Request!
+   244 000013AF 480FB73D(51C00300)  <1>     movzx rdi, word [diskReqHdr + bpbBuildReqPkt.status]
+   245 000013B7 F7C700800000        <1>     test edi, drvErrStatus
+   246 000013BD 751E                <1>     jnz diskDrvCritErr
+   247                              <1>     ;Now rebuild the dpb fields for this drive
+   248 000013BF 488B730E            <1>     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
+   249 000013C3 E8CD050000          <1>     call createDPB  
+   250                              <1>     ;Adjust the buffer header information
+   251 000013C8 8B4512              <1>     mov eax, dword [rbp + dpb.dFATlength]
+   252 000013CB 894313              <1>     mov dword [rbx + bufferHdr.bufFATsize], eax
+   253 000013CE 8A4507              <1>     mov al, byte [rbp + dpb.bNumberOfFATs]
+   254 000013D1 884313              <1>     mov byte [rbx + bufferHdr.bufFATsize], al
+   255 000013D4 30E4                <1>     xor ah, ah
+   256 000013D6 8825(32D50300)      <1>     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
+   257 000013DC C3                  <1>     ret
+   258                              <1> 
+   259                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
+   260                              <1> ;           Primitive Driver Requests
+   261                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
+   262                              <1> ;First are Disk requests, then Char device requests
+   263                              <1> ;All Disk Driver Requests come with at least rbp pointing to DPB
+   264                              <1> ;All Char Requests come with rsi pointing to the Char device driver
+   265                              <1> 
+   266                              <1> diskDrvCritErr:
+   267                              <1> ;Critical Errors fall through here
+   268 000013DD F9                  <1>     stc
+   269 000013DE C3                  <1>     ret
+   270                              <1> 
+   271                              <1> diskDrvMedCheck:
+   272                              <1> ;Prepare the diskIO packet for mediacheck
+   273                              <1> ;rbp has DPB pointer for device to check media on
+   274 000013DF 50                  <1>     push rax
+   275 000013E0 C605(4EC00300)17    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+   276 000013E7 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   277 000013EA 8805(5BC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
+   278 000013F0 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
+   279 000013F3 8805(4FC00300)      <1>     mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], al
+   280 000013F9 C605(50C00300)01    <1>     mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
+   281 00001400 66C705(51C00300)00- <1>     mov word [diskReqHdr + mediaCheckReqPkt.status], 0
+   281 00001408 00                  <1>
+   282                              <1> diskDrvCommonExit:
+   283 00001409 58                  <1>     pop rax
+   284 0000140A C3                  <1>     ret
+   285                              <1> 
+   286                              <1> diskDrvGetBPB:
+   287                              <1> ;rbp has DPB pointer for device
+   288                              <1> ;rdi has sector buffer pointer for transfer
+   289 0000140B 50                  <1>     push rax
+   290 0000140C 48893D(5CC00300)    <1>     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rdi
+   291 00001413 C605(4EC00300)1E    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+   292 0000141A 8A4522              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   293 0000141D 8805(5BC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
+   294 00001423 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
+   295 00001426 8805(4FC00300)      <1>     mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], al
+   296 0000142C C605(50C00300)02    <1>     mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+   297 00001433 66C705(51C00300)00- <1>     mov word [diskReqHdr + bpbBuildReqPkt.status], 0
+   297 0000143B 00                  <1>
+   298 0000143C EBCB                <1>     jmp short diskDrvCommonExit
+   299                              <1> 
+   300                              <1> diskWriteSetup:
+   301 0000143E 50                  <1>     push rax
+   302 0000143F B408                <1>     mov ah, drvWRITE    ;Command code
+   303 00001441 0225(3CC10300)      <1>     add ah, byte [verifyFlag]   ;Add verify if needed to be added
+   304 00001447 EB02                <1>     jmp short diskRWCommon
+   305                              <1> diskReadSetup:
+   306 00001449 B404                <1>     mov ah, drvREAD
+   307                              <1> diskRWCommon:
+   308                              <1> ;Sets up the IO request packet with non-DPB specific fields
+   309 0000144B B02A                <1>     mov al, ioReqPkt_size
+   310 0000144D 48891D(5CC00300)    <1>     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
+   311 00001454 890D(64C00300)      <1>     mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
+   312 0000145A 488915(68C00300)    <1>     mov qword [diskReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
+   313 00001461 C605(4EC00300)2A    <1>     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+   314 00001468 25FFFF0000          <1>     and eax, 0000FFFFh  ;Clear the upper word (status word)
+   315 0000146D 8905(4FC00300)      <1>     mov dword [diskReqHdr + ioReqPkt.unitnm], eax
+   316 00001473 E991FFFFFF          <1>     jmp diskDrvCommonExit   ;Jump popping rax
     29                                  %include "./Source/Kernel/dosUtils.asm"
     30                              <1> ;DOS utility functions (Will be made available through Int 4F ah=12xx eventually)
     31                              <1> 
