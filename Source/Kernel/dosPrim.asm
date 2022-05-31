@@ -285,4 +285,9 @@ diskRWCommon:
     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     and eax, 0000FFFFh  ;Clear the upper word (status word)
     mov dword [diskReqHdr + ioReqPkt.unitnm], eax
+    push rsi
+    mov rsi, qword [currentDPB] ;Get current DPB in rsi
+    mov al, byte [rsi + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.medesc], al ;Put media descriptor packet
+    pop rsi
     jmp diskDrvCommonExit   ;Jump popping rax
