@@ -48,7 +48,6 @@ setupAbsDiskEntry:
     inc byte [inDOS]
     sti ;Renable interrupts once inDOS and RSP are set
     cld ;Set string ops in the right direction
-    push rbp
     call setupPhysicalDiskRequest
     jc .exit    ;Error exit
     mov byte [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
@@ -68,7 +67,6 @@ setupAbsDiskEntry:
     pop rax
     pop rsi
 .exit:
-    pop rbp
     jc setupPhysicalDiskRequest.netError    ;Recycle error
     ret
 
@@ -80,6 +78,7 @@ absDiskWrite:       ;Int 46h
     cli
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
     lea rsp, DiskStakTop
+    push rbp
     call setupAbsDiskEntry
     jc absDiskExit
     call diskWriteSetup
@@ -92,6 +91,7 @@ absDiskRead:        ;Int 45h
     cli 
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
     lea rsp, DiskStakTop
+    push rbp    ;Save to use rbp as DPB pointer
     call setupAbsDiskEntry
     jc absDiskExit
     call diskReadSetup
@@ -99,12 +99,8 @@ absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
     push rbx
     push rsi
-    ;Adjust DPB specific field of request packet with media descriptor
-    mov rsi, qword [workingDPB] ;Get current DPB in rsi
-    mov bl, byte [rsi + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + ioReqPkt.medesc], bl ;Put medesc in packet
     ;Prepare for goDriver now
-    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Point to device driver
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
     lea rbx, diskReqHdr
     call goDriver   ;Make request
     pop rsi
@@ -140,6 +136,7 @@ absDiskReadWriteCommon:
 .absExit:
     stc
 absDiskExit:
+    pop rbp
     cli
     dec byte [inDOS]
     mov rsp, qword [oldRSP]
@@ -283,7 +280,12 @@ diskWriteSetup:
 diskReadSetup:
     mov ah, drvREAD
 diskRWCommon:
-;Sets up the IO request packet with non-DPB specific fields
+;Sets up the IO request packet with:
+; rbp = DPB ptr
+; rbx = Data storage buffer ptr
+; ecx = Number of sectors to transfer
+; rdx = Starting sector to read from
+; All regs preserved
     mov al, ioReqPkt_size
     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
     mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
@@ -291,4 +293,6 @@ diskRWCommon:
     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     and eax, 0000FFFFh  ;Clear the upper word (status word)
     mov dword [diskReqHdr + ioReqPkt.unitnm], eax
+    mov al, byte [rbp + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.strtsc], al ;Store medesc!
     jmp diskDrvCommonExit   ;Jump popping rax
