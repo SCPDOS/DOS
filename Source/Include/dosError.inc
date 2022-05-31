@@ -38,6 +38,7 @@ errGF       equ 31  ;General fault
 errIDC      equ 34  ;Driver code, Invalid Disk Change
 errNoFCB    equ 35  ;FCB unavailable
 ;Numbers 36-82 reserved
+errNoNet    equ 50  ;Network request not supported, generic net fail
 errFI24     equ 83  ;Fail on INT 24h
 ;Numbers 84-88 reserved
 ;-----------------------------------------------------------------------------

@@ -10,79 +10,110 @@ goDriver:   ;Executes the driver packet pointed to by rbx
     call dosCrit2Exit
     ret
 
+setupPhysicalDiskRequest:
+;Ensure that al has valid disk number
+;Prepares working vars with data (Drv, DPB and CDS)
+;If CF=NC, rbp = DPB ptr.
+;If CF=CY, exit error
+    test al, al
+    jc .diskError
+    cmp al, byte [lastdrvNum]
+    jae .diskError
+    push rax
+    inc al  ;Get 1 based number for drive for get CDS
+    call getCDS ;Gets Current CDS in Working CDS variable
+    pop rax
+    jc .error
+    mov byte [workingDrv], al   ;Save al as the working drive number
+    mov rbp, qword [workingCDS]  ;Get the current CDS pointer
+    test qword [rbp +cds.wFlags], cdsNetDrive   ;On a network?
+    jnz .netError
+    mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the DPB pointer for request
+    mov qword [workingDPB], rbp ;Save the DPB as the working DPB
+    ret
+.netError:
+    mov word [errorExCde], errNoNet ;Network request not supported
+    jmp short .error
+.diskError:
+    mov word [errorExCde], errBadDrv
+.error:
+    mov byte [errorLocus], eLocDsk
+    mov byte [errorAction], eActRetUsr
+    mov byte [errorClass], eClsBadFmt
+    stc
+    ret
+
+setupAbsDiskEntry:
+;Prepares to sets up the CDS and DPB for the request
+    inc byte [inDOS]
+    sti ;Renable interrupts once inDOS and RSP are set
+    cld ;Set string ops in the right direction
+    push rbp
+    call setupPhysicalDiskRequest
+    jc .exit    ;Error exit
+    mov byte [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
+    push rsi
+    push rax
+    lea rsi, path1  ;Point to one of the pathspaces
+    mov byte [rsi], al  ;Construct a path
+    add byte [rsi], "A" ;Convert to ASCII char
+    mov byte [rsi + 1], ":" ;Path Colon
+    clc
+;++++++++++++++++++++++++++++
+;CRITICAL ENTRY, CHECK IF CAN DO DIRECT DISK IO!
+;Entered with path in rsi (ah=03h)
+    mov eax, 0300h  
+    int 4Ah ;If ret with CF=CY, DO NOT PROCEED WITH ACCESS
+;++++++++++++++++++++++++++++
+    pop rax
+    pop rsi
+.exit:
+    pop rbp
+    jc setupPhysicalDiskRequest.netError    ;Recycle error
+    ret
+
 absDiskWrite:       ;Int 46h
 ;al = Drive number
 ;rbx = Memory Buffer address to read from
 ;ecx = Number of sectors to write
 ;rdx = Start LBA to write to
-    %if DEBUG
-    ;Print DPB 
-    debugEnterM
-    lea rbp, .l0000
-    call debPrintNullString
-    jmp short .l0001
-.l0000 db "Entering Int 46h",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
-    push rax
-    push rbx
-    push rdx
-    push rsi
-    mov ah, drvWRITE
-    add ah, byte [verifyFlag]   ;Change to Write/Verify if set
+    cli
+    mov qword [oldRSP], rsp ;Save the stack pointer in the var space
+    lea rsp, DiskStakTop
+    call setupAbsDiskEntry
+    jc absDiskExit
+    call diskWriteSetup
     jmp short absDiskReadWriteCommon
 absDiskRead:        ;Int 45h
 ;al = Drive number
 ;rbx = Memory Buffer address to write to
 ;ecx = Number of sectors to read
 ;rdx = Start LBA to read from
-    %if DEBUG
-    ;Print DPB 
-    debugEnterM
-    lea rbp, .l0000
-    call debPrintNullString
-    jmp short .l0001
-.l0000 db "Entering Int 45h",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
-    push rax
-    push rbx
-    push rdx
-    push rsi
-    mov ah, drvREAD
+    cli 
+    mov qword [oldRSP], rsp ;Save the stack pointer in the var space
+    lea rsp, DiskStakTop
+    call setupAbsDiskEntry
+    jc absDiskExit
+    call diskReadSetup
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
-    push rdx    ;Save start LBA
-    push rax
-    call walkDPBchain   ;Get dpb ptr in rsi
-    pop rax
-    pop rdx
-
-    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
-    mov byte [diskReqHdr + ioReqPkt.unitnm], al
-    mov byte [diskReqHdr + ioReqPkt.cmdcde], ah
-    mov word [diskReqHdr + ioReqPkt.status], 0
-    mov al, byte [rsi + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + ioReqPkt.medesc], al
-    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx
-    mov qword [diskReqHdr + ioReqPkt.strtsc], rdx
-    mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx
-
-    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver pointer in rsi
-    lea rbx, diskReqHdr ;Get ReqHeader pointer in rbx
-    call goDriver   ;If carry set, command failed
-
-    pop rsi
-    pop rdx
+    push rbx
+    lea rbx, diskReqHdr
+    mov rsi, qword [workingDPB] ;Get the dpb for the current drive
+    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Point to device driver
+    call goDriver   ;Make request
     pop rbx
+    push rax
+    push rcx
+    mov eax, dword [diskReqHdr + ioReqPkt.tfrlen]   ;Get actual number transferred
+    sub ecx, eax    ;Get positive difference of the two 
+    movzx eax, word [diskReqHdr + ioReqPkt.status]
+    test ax, drvErrStatus   ;Is error bit set?
+    pop rcx
     pop rax
-    jc .absDiskError
-    clc
-    ret
-.absDiskError:
+    jz absDiskExit  ;Skip error code checking
     mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
+    ;DOS uses the following table
     mov ah, 80h ;Attachment failure
     cmp al, 0Ch ;Gen error
     je .absExit
@@ -101,8 +132,13 @@ absDiskReadWriteCommon:
     mov ah, 02h ;Other Error
 .absExit:
     stc
-    ret
-
+absDiskExit:
+    cli
+    dec byte [inDOS]
+    mov rsp, qword [oldRSP]
+    sti ;Reenable interrupts
+    ret ;Return from interrupt without popping flags!
+    
 
 getDiskDPB:
 ;Gets the disk DPB if the Disk is physical
@@ -149,7 +185,7 @@ ensureDiskValid:
     lea rbx, diskReqHdr
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
-    movzx rdi, word [rbx + mediaCheckReqPkt.status]
+    movzx rdi, word [diskReqHdr + mediaCheckReqPkt.status]
     test edi, drvErrStatus
     jnz diskDrvCritErr
     mov al, byte [workingDrv]   ;Get the drive number for test
@@ -176,7 +212,7 @@ ensureDiskValid:
     lea rbx, diskReqHdr
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
-    movzx rdi, word [rbx + bpbBuildReqPkt.status]
+    movzx rdi, word [diskReqHdr + bpbBuildReqPkt.status]
     test edi, drvErrStatus
     jnz diskDrvCritErr
     ;Now rebuild the dpb fields for this drive
@@ -207,43 +243,45 @@ diskDrvMedCheck:
 ;Prepare the diskIO packet for mediacheck
 ;rbp has DPB pointer for device to check media on
     push rax
-    push rbx
-    lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
-    mov byte [rbx + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [rbx + mediaCheckReqPkt.medesc], al
+    mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [rbx + mediaCheckReqPkt.unitnm], al
-    mov byte [rbx + mediaCheckReqPkt.cmdcde], drvMEDCHK
-    mov word [rbx + mediaCheckReqPkt.status], 0
+    mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], al
+    mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
+    mov word [diskReqHdr + mediaCheckReqPkt.status], 0
 diskDrvCommonExit:
-    pop rbx
     pop rax
     ret
 
 diskDrvGetBPB:
 ;rbp has DPB pointer for device
 ;rdi has sector buffer pointer for transfer
-
     push rax
-    push rbx
-    lea rbx, diskReqHdr ;rbx needs to point to diskReqHdr
-    mov qword [rbx + bpbBuildReqPkt.bufptr], rdi
-    mov byte [rbx + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+    mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rdi
+    mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [rbx + bpbBuildReqPkt.medesc], al
+    mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [rbx + bpbBuildReqPkt.unitnm], al
-    mov byte [rbx + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-    mov word [rbx + bpbBuildReqPkt.status], 0
+    mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], al
+    mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+    mov word [diskReqHdr + bpbBuildReqPkt.status], 0
     jmp short diskDrvCommonExit
 
 diskWriteSetup:
-    mov ah, drvWRITE
-    add ah, byte [verifyFlag]
+    push rax
+    mov ah, drvWRITE    ;Command code
+    add ah, byte [verifyFlag]   ;Add verify if needed to be added
     jmp short diskRWCommon
 diskReadSetup:
     mov ah, drvREAD
 diskRWCommon:
 ;Sets up the IO request packet with non-DPB specific fields
     mov al, ioReqPkt_size
+    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
+    mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
+    mov qword [diskReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
+    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    and eax, 0000FFFFh  ;Clear the upper word (status word)
+    mov dword [diskReqHdr + ioReqPkt.unitnm], eax
+    jmp diskDrvCommonExit   ;Jump popping rax
