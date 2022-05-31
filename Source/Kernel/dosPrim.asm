@@ -98,10 +98,16 @@ absDiskRead:        ;Int 45h
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
     push rbx
-    lea rbx, diskReqHdr
-    mov rsi, qword [workingDPB] ;Get the dpb for the current drive
+    push rsi
+    ;Adjust DPB specific field of request packet with media descriptor
+    mov rsi, qword [workingDPB] ;Get current DPB in rsi
+    mov bl, byte [rsi + dpb.bMediaDescriptor]
+    mov byte [diskReqHdr + ioReqPkt.medesc], bl ;Put medesc in packet
+    ;Prepare for goDriver now
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Point to device driver
+    lea rbx, diskReqHdr
     call goDriver   ;Make request
+    pop rsi
     pop rbx
     push rax
     push rcx
@@ -285,9 +291,4 @@ diskRWCommon:
     mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     and eax, 0000FFFFh  ;Clear the upper word (status word)
     mov dword [diskReqHdr + ioReqPkt.unitnm], eax
-    push rsi
-    mov rsi, qword [currentDPB] ;Get current DPB in rsi
-    mov al, byte [rsi + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + ioReqPkt.medesc], al ;Put media descriptor packet
-    pop rsi
     jmp diskDrvCommonExit   ;Jump popping rax
