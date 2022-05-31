@@ -499,274 +499,275 @@
     65                              <1> ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
     66                              <1> ; another, we save the number of chars to skip to that deep level).
     67                              <1> ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
-    68                              <1> ; Flags: Bit 15 set = Network drive
-    69                              <1> ;        Bit 14 set = Physical drive
-    70                              <1> ;        Bit 13 set = JOIN'ed drive
-    71                              <1> ;        Bit 12 set = SUBST'ed drive
-    72                              <1> ;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
-    73                              <1> endstruc
-    74                              <1> ;CDS equates
-    75                              <1>     cdsNetDrive     equ 8000h
-    76                              <1>     cdsPhysDrive    equ 4000h
-    77                              <1>     cdsJoinDrive    equ 2000h
-    78                              <1>     cdsSubstDrive   equ 1000h
-    79                              <1>     cdsRedirDrive   equ 0080h
-    80                              <1> ;------------------------------------------------------------------------;
-    81                              <1> ; The SFT is a way to allow applications to open file handles to files 
-    82                              <1> ; and devices. As things stand, the SFT chain will have 5 file handles
-    83                              <1> ; under the first header, and then a second header will be linked to the 
-    84                              <1> ; first one after CONFIG.SYS has been read, to allow for FILES= to specify
-    85                              <1> ; a size for the second SFT (default 10 files). Same for System FCBs, 
-    86                              <1> ; using the FCBS= command. Default FCBS=5.
-    87                              <1> ;
-    88                              <1> ; A file handle describes the file, and the location within the file that
-    89                              <1> ; we are reading. The file handle can be manipulated without the file
-    90                              <1> ; being in memory, thus allowing the user to access data without needing 
-    91                              <1> ; to take up large portions of memory. Similarly, file handles allow for
-    92                              <1> ; accessing devices, by treating them as files with their drivers 
-    93                              <1> ; responding and translating the manipulations of the file handle itself.
-    94                              <1> ; Neither the driver nor the application should see or use the SFT for
-    95                              <1> ; the handle, as it is subject to change (and will change when file 
-    96                              <1> ; sharing provisions are included). The DOS will make requests to the 
-    97                              <1> ; driver in a generic way and the driver will respond, with DOS keeping
-    98                              <1> ; track of the information in the SFT entry for that handle. 
-    99                              <1> ;
-   100                              <1> ; One SFT entry can have multiple handles and multiple SFT entries
-   101                              <1> ; can point to the same file. It all depends on what the applications 
-   102                              <1> ; want to do with the File.
-   103                              <1> ;
-   104                              <1> ; !!!!IMPORTANT!!!!
-   105                              <1> ; Currently there are plans for File Sharing, but I include minimal 
-   106                              <1> ; provisions for it. I really just wanna get a DOS out the door.
-   107                              <1> ;
-   108                              <1> ;Each SFT may look like this:
-   109                              <1> ;sysvars-->sfth------------>sfth------------>|ENDOFLIST|
-   110                              <1> ;            |                |
-   111                              <1> ;       wNumFiles*sft    wNumFiles*sft
-   112                              <1> ;
-   113                              <1> ; Two SFT chains are built; one for files, and a one for so called 
-   114                              <1> ; System FCBs.
-   115                              <1> ;
-   116                              <1> ; Each SFT header has an array of SFT's below it, with the number of 
-   117                              <1> ; SFTs given by wNumFiles. The SFT headers form a linked list.
-   118                              <1> ;
-   119                              <1> ; DEFAULT FILES=8, MINIMUM FILES=5
-   120                              <1> ; DEFAULT FCBS=5, MINIMUM FCBS=5
-   121                              <1> ;------------------------------------------------------------------------;
-   122                              <1> struc sfth   ;System file table header
-   123                              <1> ; This is the SFT header.
-   124                              <1> ; This structure comes before the start of the first file in the array/table.
-   125 00000000 ????????????????    <1>     .qNextSFTPtr resq 1    ;Pointer to the next SFT
-   126 00000008 ????                <1>     .wNumFiles   resw 1    ;Number of files in this table
-   127                              <1> endstruc
-   128                              <1> 
-   129                              <1> struc sft
-   130                              <1> ;This is the file struc itself
-   131 00000000 ????                <1>     .wNumHandles resw 1    ;Number of handles pointing to this file
-   132 00000002 ????                <1>     .wOpenMode   resw 1    ;File access permissions and behvaiours
-   133 00000004 ??                  <1>     .bFileAttrib resb 1    ;Regular File Attributes
-   134 00000005 ????                <1>     .wDeviceInfo resw 1    ;Includes Device number
-   135 00000007 ????????????????    <1>     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
-   136 0000000F ????????            <1>     .dStartClust resd 1    ;Start cluster of file
-   137 00000013 ????                <1>     .wTime       resw 1    ;File Time
-   138 00000015 ????                <1>     .wDate       resw 1    ;File Date
-   139 00000017 ????????            <1>     .dFileSize   resd 1    ;File Size, in bytes
-   140 0000001B ????????            <1>     .dCurntOff   resd 1    ;Current Offset in file, in bytes
-   141 0000001F ????????            <1>     .dRelClust   resd 1    ;Rel cluster in file, the last cluster read
-   142 00000023 ????????????????    <1>     .qDirSect    resq 1    ;Abs number of sector containing directory entry 
-   143 0000002B ??                  <1>     .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
-   144 0000002C <res Bh>            <1>     .sFileName   resb 11   ;8.3 Filename
-   145 00000037 ????????????????    <1>     .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
-   146 0000003F ????????            <1>     .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
-   147                              <1> endstruc
-   148                              <1> ;Open Mode equates
-   149                              <1> ;Access modes   Bits[2:0]
-   150                              <1>     ReadAccess      equ 0h
-   151                              <1>     WriteAccess     equ 1h
-   152                              <1>     RWAccess        equ 2h
-   153                              <1> ;Bit 3 reserved 0
-   154                              <1> ;Sharing modes  Bits[6:4]
-   155                              <1>     CompatShare     equ 0h
-   156                              <1>     denyRWShare     equ 10h
-   157                              <1>     denyWriteShare  equ 20h
-   158                              <1>     denyReadShare   equ 30h
-   159                              <1>     denyNoneShare   equ 40h
-   160                              <1> ;Bit 7 reserved 0
-   161                              <1> ;Bits 8-12 reserved 0
-   162                              <1> ;Critical Error handling
-   163                              <1>     critErrHdl      equ 2000h   ;If set, return error code. If clear, INT 44h
-   164                              <1> ;Buffering on writes
-   165                              <1>     noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
-   166                              <1> ;FCB opened file?
-   167                              <1>     FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
-   168                              <1> ;Attribute Byte
-   169                              <1>     readOnlyFile    equ 1h
-   170                              <1>     hiddenFile      equ 2h
-   171                              <1>     systemFile      equ 4h
-   172                              <1>     volumeLabel     equ 8h
-   173                              <1>     directoryFile   equ 10h ;Directory entry
-   174                              <1>     archiveFile     equ 20h
-   175                              <1> ;Device Info equates
-   176                              <1> ;For a block device, bits [5:0] contain the drive number
-   177                              <1>     charDevConIn    equ 1h  ;If set, device is CON input
-   178                              <1>     charDevConOut   equ 2h  ;If set, device is CON output
-   179                              <1>     charDevNulDev   equ 4h  ;If set, device is NULL device
-   180                              <1>     charDevClockDev equ 8h  ;If set, device is CLOCK device
-   181                              <1>     charDevFastOut  equ 10h ;If set, device supports INT 49h
-   182                              <1>     devBinary       equ 20h ;If set, r/w device in Binary mode!!!
-   183                              <1>     charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
-   184                              <1>     blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
-   185                              <1>     devCharDev      equ 80h ;If set, it is a char device!
-   186                              <1>     charDevNetSpool equ 800h    ;If set, device is a network spooler
-   187                              <1>     devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
-   188                              <1>     charDevNamePipe equ 2000h   ;If set, device is a named pipe
-   189                              <1>     blokDevDTSet    equ 4000h   ;If set, date and time updated for all i/o
-   190                              <1>     devRedirDev     equ 8000h   ;If set, dev/file is redirected!
-   191                              <1> ;------------------------------------------------------------------------;
-   192                              <1> ; Buffers allow for buffered drive IO, by first transferring a sector 
-   193                              <1> ; to an internal buffer, and then copying it to the specified location
-   194                              <1> ; in memory. The buffer is kept in the buffer chain,  in the event that 
-   195                              <1> ; another request for the same sector from the same device is made, so 
-   196                              <1> ; that is can be read from the device directly. Buffers are uniform in 
-   197                              <1> ; size, selected according to the largest detected sector size during 
-   198                              <1> ; the initial loadup.
-   199                              <1> ;
-   200                              <1> ; The buffer pointer in SysVars points to most recently used Buffer
-   201                              <1> ;
-   202                              <1> ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
-   203                              <1> ;------------------------------------------------------------------------;
-   204                              <1> 
-   205                              <1> struc bufferHdr
-   206 00000000 ????????????????    <1>     .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
-   207 00000008 ??                  <1>     .driveNumber resb  1   ;Drive number the buffer is used for (or -1 for free)
-   208 00000009 ??                  <1>     .bufferFlags resb  1   ;Standard Flags
-   209 0000000A ????????????????    <1>     .bufferLBA   resq  1   ;LBA the buffer contains
-   210 00000012 ??                  <1>     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
-   211 00000013 ????????            <1>     .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
-   212 00000017 ????????????????    <1>     .driveDPBPtr resq  1   ;Pointer to the device DPB block
-   213 0000001F ??                  <1>     .reserved    resb  1   ;Alignment byte
-   214                              <1>     .dataarea:             ;Points to the start of the data area
-   215                              <1> endstruc
-   216                              <1> ;Buffer Flag equates
-   217                              <1>     dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
-   218                              <1>     fatBuffer   equ 2h  ;FAT sector in buffer
-   219                              <1>     dirBuffer   equ 4h  ;Directory sector in buffer
-   220                              <1>     dataBuffer  equ 8h  ;File Data sector in buffer
-   221                              <1>     refBuffer   equ 20h ;Data in buffer referenced by an application
-   222                              <1>     dirtyBuffer equ 40h ;Data in buffer modified by an application
-   223                              <1> ;------------------------------------------------------------------------;
-   224                              <1> ; Memory control block for each memory arena
-   225                              <1> ;------------------------------------------------------------------------;
-   226                              <1> struc mcb
-   227 00000000 ??                  <1>     .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
-   228 00000001 ????????????????    <1>     .owner      resq 1  ;Owning application PSP (para aligned) or 0 for free
-   229 00000009 ????????            <1>     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
-   230 0000000D ??????              <1>     .reserved   resb 3  ;Reserved three bytes
-   231                              <1>     .program:
-   232                              <1> endstruc
-   233                              <1> ;MCB equates
-   234                              <1> mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
-   235                              <1> mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
-   236                              <1> mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
-   237                              <1> mcbMarkCtn      equ "M"
-   238                              <1> mcbMarkEnd      equ "Z"
-   239                              <1> 
-   240                              <1> memFirstFit     equ 0   ;First free block goes to application
-   241                              <1> memBestFit      equ 1   ;Block whos size closest matches requirement
-   242                              <1> memLastFit      equ 2   ;Last free block goes to application
-   243                              <1> 
-   244                              <1> ;Owner = Para aligned address => Owning application PSP
-   245                              <1> ;...To consider...
-   246                              <1> ;Owner = Non-para aligned address => Error? Should maybe lock up system?
-   247                              <1> ;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
-   248                              <1> ;------------------------------------------------------------------------;
-   249                              <1> ; For Int 41h, the callers registers are saved on their stack in the 
-   250                              <1> ; following order, thus allowing for return values to be placed in the 
-   251                              <1> ; registers by accessing the caller register stack frame.
-   252                              <1> ;------------------------------------------------------------------------;
-   253                              <1> struc callerFrame
-   254 00000000 ????????????????    <1>     .rax    resq 1  ;Bottom of frame, pointer to rax saved in oldRSP
-   255 00000008 ????????????????    <1>     .rbx    resq 1    
-   256 00000010 ????????????????    <1>     .rcx    resq 1
-   257 00000018 ????????????????    <1>     .rdx    resq 1
-   258 00000020 ????????????????    <1>     .rsi    resq 1
-   259 00000028 ????????????????    <1>     .rdi    resq 1
-   260 00000030 ????????????????    <1>     .rbp    resq 1
-   261 00000038 ????????????????    <1>     .r8     resq 1  ;To be removed if truly not needed
-   262 00000040 ????????????????    <1>     .r9     resq 1
-   263                              <1> ;Pushed by Processor when invoked via Interrupt
-   264 00000048 ????????????????    <1>     .rip    resq 1
-   265 00000050 ????????????????    <1>     .cs     resq 1
-   266 00000058 ????????????????    <1>     .flags  resq 1
-   267                              <1> endstruc
-   268                              <1> 
-   269                              <1> struc fcb
-   270                              <1> ;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
-   271 00000000 ??                  <1>     .driveNum   resb 1
-   272 00000001 ????????????????    <1>     .filename   resb 8
-   273 00000009 ??????              <1>     .fileext    resb 3
-   274 0000000C ????                <1>     .curBlock   resb 2  ;Current block number relative to 0
-   275                              <1> ;One block consists of 128 records, of size denoted in the below
-   276 0000000E ????                <1>     .recordSize resb 2  ;Record size, default 80h
-   277 00000010 ????????            <1>     .fileSize   resb 4  ;File size, in bytes
-   278 00000014 ????                <1>     .fileDate   resb 2  ;Standard date format
-   279 00000016 ????                <1>     .fileTime   resb 2  ;Standard time format
-   280 00000018 ??                  <1>     .fcbByte    resb 1  ;Res. byte, bit7 = Logical drive, bit 6 = open file
-   281 00000019 ????????            <1>     .cluster    resb 4  ;Res. dword, Current Cluster number on disk
-   282 0000001D ??????              <1>     .reserved   resb 3  ;Res. 3 alignment bytes
-   283 00000020 ??                  <1>     .recordNum  resb 1  ;Current record in block
-   284 00000021 ????????            <1>     .randRecrd  resb 4  ;Relative record number, relative to start of file
-   285                              <1>     ;If record size > 64, high byte is ignored.
-   286                              <1>     ;Used for random read and write operations to find the right record
-   287                              <1> endstruc
-   288                              <1> 
-   289                              <1> struc ffBlock   ;The structure of the Find First structure at the DTA
-   290 00000000 ??                  <1>     .driveNum   resb 1  ;Drive we are searching on
-   291 00000001 <res Bh>            <1>     .template   resb 11 ;Search template (? meaning anything)
-   292 0000000C ??                  <1>     .attrib     resb 1  ;Search attribute
-   293 0000000D ????????            <1>     .dirOffset  resd 1  ;Entry within dir (made a dword but will never be so)
-   294 00000011 ????????            <1>     .parCluster resd 1  ;Parent cluster number
-   295 00000015 ??                  <1>     .atrribFnd  resb 1  ;Attrib of file found
-   296 00000016 ????                <1>     .fileTime   resw 1  ;File time
-   297 00000018 ????                <1>     .fileDate   resw 1  ;File date
-   298 0000001A ????????            <1>     .fileSize   resd 1  ;Number of bytes
-   299 0000001E <res Dh>            <1>     .asciizName resb 13 ;ASCIIZ name with dot and terminating nul
-   300                              <1> endstruc
-   301                              <1> 
-   302                              <1> struc psp
-   303 00000000 ????                <1>     .return     resb 2  ;Should always be CDh 40h, same place as DOS
-   304 00000002 ????????????????    <1>     .startSeg   resq 1  ;Pointer to the start of the PSP
-   305 0000000A ????????????????    <1>     .oldInt42h  resq 1  ;Int 42h pointer on overlay load
-   306 00000012 ????????????????    <1>     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
-   307 0000001A ????????????????    <1>     .oldInt44h  resq 1  ;Int 44h pointer on overlay load
-   308 00000022 ????????????????    <1>     .parentPtr  resq 1  ;Pointer to parent process PSP
-   309 0000002A <res 14h>           <1>     .jobFileTbl resb 20 ;Main File handle array, JFT
-   310 0000003E ????????????????    <1>     .envPtr     resq 1  ;Pointer to the environment
-   311 00000046 ????????????????    <1>     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
-   312 0000004E ????                <1>     .xtraHdlSz  resw 1  ;Additional File Handle array size, 0 by default
-   313 00000050 ??????              <1>     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
-   314 00000053 ????????????????    <1>     .prevPSP    resq 1  ;Pointer to the previous PSP in chain
-   315 0000005B ??                  <1>     .xtraHdlNum resb 1  ;Lookup number of extra handle array, -1 = unused
-   316                              <1> ;Extra handle arrays are grouped into a linked list
-   317                              <1> ;The below are in the same place as in DOS
-   318 0000005C <res 10h>           <1>     .fcb1       resb 16  ;First FCB
-   319 0000006C <res 14h>           <1>     .fcb2       resb 20  ;Second FCB
-   320                              <1>     .dta:   ;Pointer to the default DTA in the PSP
-   321 00000080 ??                  <1>     .parmList   resb 1   ;Number of characters in command tail
-   322 00000081 <res 7Fh>           <1>     .progTail   resb 127 ;Default DTA/Program tail
-   323                              <1> endstruc
-   324                              <1> 
-   325                              <1> struc clkStruc
-   326 00000000 ????                <1>     .dateWord   resw 1
-   327 00000002 ??                  <1>     .minutes    resb 1
-   328 00000003 ??                  <1>     .hours      resb 1
-   329 00000004 ??                  <1>     .hseconds   resb 1  ;Hundreths of seconds
-   330 00000005 ??                  <1>     .seconds    resb 1
-   331                              <1> endstruc
-   332                              <1> 
-   333                              <1> ;60 4kb pages, giving a total of 264kb of space allocated to paging
-   334                              <1> ;for a space of 64Gb
-   335                              <1> dosAPTsize  equ 60*4096
+    68                              <1> ; Only affects for SUBST drives, not JOIN
+    69                              <1> ; Flags: Bit 15 set = Network drive
+    70                              <1> ;        Bit 14 set = Physical drive
+    71                              <1> ;        Bit 13 set = JOIN'ed drive
+    72                              <1> ;        Bit 12 set = SUBST'ed drive
+    73                              <1> ;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
+    74                              <1> endstruc
+    75                              <1> ;CDS equates
+    76                              <1>     cdsNetDrive     equ 8000h
+    77                              <1>     cdsPhysDrive    equ 4000h
+    78                              <1>     cdsJoinDrive    equ 2000h
+    79                              <1>     cdsSubstDrive   equ 1000h
+    80                              <1>     cdsRedirDrive   equ 0080h
+    81                              <1> ;------------------------------------------------------------------------;
+    82                              <1> ; The SFT is a way to allow applications to open file handles to files 
+    83                              <1> ; and devices. As things stand, the SFT chain will have 5 file handles
+    84                              <1> ; under the first header, and then a second header will be linked to the 
+    85                              <1> ; first one after CONFIG.SYS has been read, to allow for FILES= to specify
+    86                              <1> ; a size for the second SFT (default 10 files). Same for System FCBs, 
+    87                              <1> ; using the FCBS= command. Default FCBS=5.
+    88                              <1> ;
+    89                              <1> ; A file handle describes the file, and the location within the file that
+    90                              <1> ; we are reading. The file handle can be manipulated without the file
+    91                              <1> ; being in memory, thus allowing the user to access data without needing 
+    92                              <1> ; to take up large portions of memory. Similarly, file handles allow for
+    93                              <1> ; accessing devices, by treating them as files with their drivers 
+    94                              <1> ; responding and translating the manipulations of the file handle itself.
+    95                              <1> ; Neither the driver nor the application should see or use the SFT for
+    96                              <1> ; the handle, as it is subject to change (and will change when file 
+    97                              <1> ; sharing provisions are included). The DOS will make requests to the 
+    98                              <1> ; driver in a generic way and the driver will respond, with DOS keeping
+    99                              <1> ; track of the information in the SFT entry for that handle. 
+   100                              <1> ;
+   101                              <1> ; One SFT entry can have multiple handles and multiple SFT entries
+   102                              <1> ; can point to the same file. It all depends on what the applications 
+   103                              <1> ; want to do with the File.
+   104                              <1> ;
+   105                              <1> ; !!!!IMPORTANT!!!!
+   106                              <1> ; Currently there are plans for File Sharing, but I include minimal 
+   107                              <1> ; provisions for it. I really just wanna get a DOS out the door.
+   108                              <1> ;
+   109                              <1> ;Each SFT may look like this:
+   110                              <1> ;sysvars-->sfth------------>sfth------------>|ENDOFLIST|
+   111                              <1> ;            |                |
+   112                              <1> ;       wNumFiles*sft    wNumFiles*sft
+   113                              <1> ;
+   114                              <1> ; Two SFT chains are built; one for files, and a one for so called 
+   115                              <1> ; System FCBs.
+   116                              <1> ;
+   117                              <1> ; Each SFT header has an array of SFT's below it, with the number of 
+   118                              <1> ; SFTs given by wNumFiles. The SFT headers form a linked list.
+   119                              <1> ;
+   120                              <1> ; DEFAULT FILES=8, MINIMUM FILES=5
+   121                              <1> ; DEFAULT FCBS=5, MINIMUM FCBS=5
+   122                              <1> ;------------------------------------------------------------------------;
+   123                              <1> struc sfth   ;System file table header
+   124                              <1> ; This is the SFT header.
+   125                              <1> ; This structure comes before the start of the first file in the array/table.
+   126 00000000 ????????????????    <1>     .qNextSFTPtr resq 1    ;Pointer to the next SFT
+   127 00000008 ????                <1>     .wNumFiles   resw 1    ;Number of files in this table
+   128                              <1> endstruc
+   129                              <1> 
+   130                              <1> struc sft
+   131                              <1> ;This is the file struc itself
+   132 00000000 ????                <1>     .wNumHandles resw 1    ;Number of handles pointing to this file
+   133 00000002 ????                <1>     .wOpenMode   resw 1    ;File access permissions and behvaiours
+   134 00000004 ??                  <1>     .bFileAttrib resb 1    ;Regular File Attributes
+   135 00000005 ????                <1>     .wDeviceInfo resw 1    ;Includes Device number
+   136 00000007 ????????????????    <1>     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
+   137 0000000F ????????            <1>     .dStartClust resd 1    ;Start cluster of file
+   138 00000013 ????                <1>     .wTime       resw 1    ;File Time
+   139 00000015 ????                <1>     .wDate       resw 1    ;File Date
+   140 00000017 ????????            <1>     .dFileSize   resd 1    ;File Size, in bytes
+   141 0000001B ????????            <1>     .dCurntOff   resd 1    ;Current Offset in file, in bytes
+   142 0000001F ????????            <1>     .dRelClust   resd 1    ;Rel cluster in file, the last cluster read
+   143 00000023 ????????????????    <1>     .qDirSect    resq 1    ;Abs number of sector containing directory entry 
+   144 0000002B ??                  <1>     .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
+   145 0000002C <res Bh>            <1>     .sFileName   resb 11   ;8.3 Filename
+   146 00000037 ????????????????    <1>     .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
+   147 0000003F ????????            <1>     .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
+   148                              <1> endstruc
+   149                              <1> ;Open Mode equates
+   150                              <1> ;Access modes   Bits[2:0]
+   151                              <1>     ReadAccess      equ 0h
+   152                              <1>     WriteAccess     equ 1h
+   153                              <1>     RWAccess        equ 2h
+   154                              <1> ;Bit 3 reserved 0
+   155                              <1> ;Sharing modes  Bits[6:4]
+   156                              <1>     CompatShare     equ 0h
+   157                              <1>     denyRWShare     equ 10h
+   158                              <1>     denyWriteShare  equ 20h
+   159                              <1>     denyReadShare   equ 30h
+   160                              <1>     denyNoneShare   equ 40h
+   161                              <1> ;Bit 7 reserved 0
+   162                              <1> ;Bits 8-12 reserved 0
+   163                              <1> ;Critical Error handling
+   164                              <1>     critErrHdl      equ 2000h   ;If set, return error code. If clear, INT 44h
+   165                              <1> ;Buffering on writes
+   166                              <1>     noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
+   167                              <1> ;FCB opened file?
+   168                              <1>     FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
+   169                              <1> ;Attribute Byte
+   170                              <1>     readOnlyFile    equ 1h
+   171                              <1>     hiddenFile      equ 2h
+   172                              <1>     systemFile      equ 4h
+   173                              <1>     volumeLabel     equ 8h
+   174                              <1>     directoryFile   equ 10h ;Directory entry
+   175                              <1>     archiveFile     equ 20h
+   176                              <1> ;Device Info equates
+   177                              <1> ;For a block device, bits [5:0] contain the drive number
+   178                              <1>     charDevConIn    equ 1h  ;If set, device is CON input
+   179                              <1>     charDevConOut   equ 2h  ;If set, device is CON output
+   180                              <1>     charDevNulDev   equ 4h  ;If set, device is NULL device
+   181                              <1>     charDevClockDev equ 8h  ;If set, device is CLOCK device
+   182                              <1>     charDevFastOut  equ 10h ;If set, device supports INT 49h
+   183                              <1>     devBinary       equ 20h ;If set, r/w device in Binary mode!!!
+   184                              <1>     charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
+   185                              <1>     blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
+   186                              <1>     devCharDev      equ 80h ;If set, it is a char device!
+   187                              <1>     charDevNetSpool equ 800h    ;If set, device is a network spooler
+   188                              <1>     devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
+   189                              <1>     charDevNamePipe equ 2000h   ;If set, device is a named pipe
+   190                              <1>     blokDevDTSet    equ 4000h   ;If set, date and time updated for all i/o
+   191                              <1>     devRedirDev     equ 8000h   ;If set, dev/file is redirected!
+   192                              <1> ;------------------------------------------------------------------------;
+   193                              <1> ; Buffers allow for buffered drive IO, by first transferring a sector 
+   194                              <1> ; to an internal buffer, and then copying it to the specified location
+   195                              <1> ; in memory. The buffer is kept in the buffer chain,  in the event that 
+   196                              <1> ; another request for the same sector from the same device is made, so 
+   197                              <1> ; that is can be read from the device directly. Buffers are uniform in 
+   198                              <1> ; size, selected according to the largest detected sector size during 
+   199                              <1> ; the initial loadup.
+   200                              <1> ;
+   201                              <1> ; The buffer pointer in SysVars points to most recently used Buffer
+   202                              <1> ;
+   203                              <1> ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
+   204                              <1> ;------------------------------------------------------------------------;
+   205                              <1> 
+   206                              <1> struc bufferHdr
+   207 00000000 ????????????????    <1>     .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
+   208 00000008 ??                  <1>     .driveNumber resb  1   ;Drive number the buffer is used for (or -1 for free)
+   209 00000009 ??                  <1>     .bufferFlags resb  1   ;Standard Flags
+   210 0000000A ????????????????    <1>     .bufferLBA   resq  1   ;LBA the buffer contains
+   211 00000012 ??                  <1>     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
+   212 00000013 ????????            <1>     .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
+   213 00000017 ????????????????    <1>     .driveDPBPtr resq  1   ;Pointer to the device DPB block
+   214 0000001F ??                  <1>     .reserved    resb  1   ;Alignment byte
+   215                              <1>     .dataarea:             ;Points to the start of the data area
+   216                              <1> endstruc
+   217                              <1> ;Buffer Flag equates
+   218                              <1>     dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
+   219                              <1>     fatBuffer   equ 2h  ;FAT sector in buffer
+   220                              <1>     dirBuffer   equ 4h  ;Directory sector in buffer
+   221                              <1>     dataBuffer  equ 8h  ;File Data sector in buffer
+   222                              <1>     refBuffer   equ 20h ;Data in buffer referenced by an application
+   223                              <1>     dirtyBuffer equ 40h ;Data in buffer modified by an application
+   224                              <1> ;------------------------------------------------------------------------;
+   225                              <1> ; Memory control block for each memory arena
+   226                              <1> ;------------------------------------------------------------------------;
+   227                              <1> struc mcb
+   228 00000000 ??                  <1>     .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
+   229 00000001 ????????????????    <1>     .owner      resq 1  ;Owning application PSP (para aligned) or 0 for free
+   230 00000009 ????????            <1>     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
+   231 0000000D ??????              <1>     .reserved   resb 3  ;Reserved three bytes
+   232                              <1>     .program:
+   233                              <1> endstruc
+   234                              <1> ;MCB equates
+   235                              <1> mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
+   236                              <1> mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
+   237                              <1> mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
+   238                              <1> mcbMarkCtn      equ "M"
+   239                              <1> mcbMarkEnd      equ "Z"
+   240                              <1> 
+   241                              <1> memFirstFit     equ 0   ;First free block goes to application
+   242                              <1> memBestFit      equ 1   ;Block whos size closest matches requirement
+   243                              <1> memLastFit      equ 2   ;Last free block goes to application
+   244                              <1> 
+   245                              <1> ;Owner = Para aligned address => Owning application PSP
+   246                              <1> ;...To consider...
+   247                              <1> ;Owner = Non-para aligned address => Error? Should maybe lock up system?
+   248                              <1> ;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
+   249                              <1> ;------------------------------------------------------------------------;
+   250                              <1> ; For Int 41h, the callers registers are saved on their stack in the 
+   251                              <1> ; following order, thus allowing for return values to be placed in the 
+   252                              <1> ; registers by accessing the caller register stack frame.
+   253                              <1> ;------------------------------------------------------------------------;
+   254                              <1> struc callerFrame
+   255 00000000 ????????????????    <1>     .rax    resq 1  ;Bottom of frame, pointer to rax saved in oldRSP
+   256 00000008 ????????????????    <1>     .rbx    resq 1    
+   257 00000010 ????????????????    <1>     .rcx    resq 1
+   258 00000018 ????????????????    <1>     .rdx    resq 1
+   259 00000020 ????????????????    <1>     .rsi    resq 1
+   260 00000028 ????????????????    <1>     .rdi    resq 1
+   261 00000030 ????????????????    <1>     .rbp    resq 1
+   262 00000038 ????????????????    <1>     .r8     resq 1  ;To be removed if truly not needed
+   263 00000040 ????????????????    <1>     .r9     resq 1
+   264                              <1> ;Pushed by Processor when invoked via Interrupt
+   265 00000048 ????????????????    <1>     .rip    resq 1
+   266 00000050 ????????????????    <1>     .cs     resq 1
+   267 00000058 ????????????????    <1>     .flags  resq 1
+   268                              <1> endstruc
+   269                              <1> 
+   270                              <1> struc fcb
+   271                              <1> ;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
+   272 00000000 ??                  <1>     .driveNum   resb 1
+   273 00000001 ????????????????    <1>     .filename   resb 8
+   274 00000009 ??????              <1>     .fileext    resb 3
+   275 0000000C ????                <1>     .curBlock   resb 2  ;Current block number relative to 0
+   276                              <1> ;One block consists of 128 records, of size denoted in the below
+   277 0000000E ????                <1>     .recordSize resb 2  ;Record size, default 80h
+   278 00000010 ????????            <1>     .fileSize   resb 4  ;File size, in bytes
+   279 00000014 ????                <1>     .fileDate   resb 2  ;Standard date format
+   280 00000016 ????                <1>     .fileTime   resb 2  ;Standard time format
+   281 00000018 ??                  <1>     .fcbByte    resb 1  ;Res. byte, bit7 = Logical drive, bit 6 = open file
+   282 00000019 ????????            <1>     .cluster    resb 4  ;Res. dword, Current Cluster number on disk
+   283 0000001D ??????              <1>     .reserved   resb 3  ;Res. 3 alignment bytes
+   284 00000020 ??                  <1>     .recordNum  resb 1  ;Current record in block
+   285 00000021 ????????            <1>     .randRecrd  resb 4  ;Relative record number, relative to start of file
+   286                              <1>     ;If record size > 64, high byte is ignored.
+   287                              <1>     ;Used for random read and write operations to find the right record
+   288                              <1> endstruc
+   289                              <1> 
+   290                              <1> struc ffBlock   ;The structure of the Find First structure at the DTA
+   291 00000000 ??                  <1>     .driveNum   resb 1  ;Drive we are searching on
+   292 00000001 <res Bh>            <1>     .template   resb 11 ;Search template (? meaning anything)
+   293 0000000C ??                  <1>     .attrib     resb 1  ;Search attribute
+   294 0000000D ????????            <1>     .dirOffset  resd 1  ;Entry within dir (made a dword but will never be so)
+   295 00000011 ????????            <1>     .parCluster resd 1  ;Parent cluster number
+   296 00000015 ??                  <1>     .atrribFnd  resb 1  ;Attrib of file found
+   297 00000016 ????                <1>     .fileTime   resw 1  ;File time
+   298 00000018 ????                <1>     .fileDate   resw 1  ;File date
+   299 0000001A ????????            <1>     .fileSize   resd 1  ;Number of bytes
+   300 0000001E <res Dh>            <1>     .asciizName resb 13 ;ASCIIZ name with dot and terminating nul
+   301                              <1> endstruc
+   302                              <1> 
+   303                              <1> struc psp
+   304 00000000 ????                <1>     .return     resb 2  ;Should always be CDh 40h, same place as DOS
+   305 00000002 ????????????????    <1>     .startSeg   resq 1  ;Pointer to the start of the PSP
+   306 0000000A ????????????????    <1>     .oldInt42h  resq 1  ;Int 42h pointer on overlay load
+   307 00000012 ????????????????    <1>     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
+   308 0000001A ????????????????    <1>     .oldInt44h  resq 1  ;Int 44h pointer on overlay load
+   309 00000022 ????????????????    <1>     .parentPtr  resq 1  ;Pointer to parent process PSP
+   310 0000002A <res 14h>           <1>     .jobFileTbl resb 20 ;Main File handle array, JFT
+   311 0000003E ????????????????    <1>     .envPtr     resq 1  ;Pointer to the environment
+   312 00000046 ????????????????    <1>     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
+   313 0000004E ????                <1>     .xtraHdlSz  resw 1  ;Additional File Handle array size, 0 by default
+   314 00000050 ??????              <1>     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
+   315 00000053 ????????????????    <1>     .prevPSP    resq 1  ;Pointer to the previous PSP in chain
+   316 0000005B ??                  <1>     .xtraHdlNum resb 1  ;Lookup number of extra handle array, -1 = unused
+   317                              <1> ;Extra handle arrays are grouped into a linked list
+   318                              <1> ;The below are in the same place as in DOS
+   319 0000005C <res 10h>           <1>     .fcb1       resb 16  ;First FCB
+   320 0000006C <res 14h>           <1>     .fcb2       resb 20  ;Second FCB
+   321                              <1>     .dta:   ;Pointer to the default DTA in the PSP
+   322 00000080 ??                  <1>     .parmList   resb 1   ;Number of characters in command tail
+   323 00000081 <res 7Fh>           <1>     .progTail   resb 127 ;Default DTA/Program tail
+   324                              <1> endstruc
+   325                              <1> 
+   326                              <1> struc clkStruc
+   327 00000000 ????                <1>     .dateWord   resw 1
+   328 00000002 ??                  <1>     .minutes    resb 1
+   329 00000003 ??                  <1>     .hours      resb 1
+   330 00000004 ??                  <1>     .hseconds   resb 1  ;Hundreths of seconds
+   331 00000005 ??                  <1>     .seconds    resb 1
+   332                              <1> endstruc
+   333                              <1> 
+   334                              <1> ;60 4kb pages, giving a total of 264kb of space allocated to paging
+   335                              <1> ;for a space of 64Gb
+   336                              <1> dosAPTsize  equ 60*4096
      8                                  %include "./Source/Debug/debSym.inc"
      9                              <1> ;This file will include the debuging symbols
     10                              <1> 

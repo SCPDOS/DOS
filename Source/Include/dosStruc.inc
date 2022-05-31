@@ -58,6 +58,7 @@ struc cds       ;Current Directory structure
 ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
 ; another, we save the number of chars to skip to that deep level).
 ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
+; Only affects for SUBST drives, not JOIN
 ; Flags: Bit 15 set = Network drive
 ;        Bit 14 set = Physical drive
 ;        Bit 13 set = JOIN'ed drive
