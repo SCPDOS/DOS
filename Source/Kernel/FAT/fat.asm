@@ -3,7 +3,7 @@
 ;---------------------------------------------------:
 makeDIR:           ;ah = 39h
 removeDIR:         ;ah = 3Ah
-changeCurrentDIR:  ;ah = 3Bh, changes directory for current drive
+setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
 getCurrentDIR:     ;ah = 47h
 getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name

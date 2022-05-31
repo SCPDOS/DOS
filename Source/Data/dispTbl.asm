@@ -60,7 +60,7 @@ kDispTbl:
     dw getsetCountryInfo - kDispTbl   ;AH = 38H, MISC. SYS. FUNCTION
     dw makeDIR - kDispTbl             ;AH = 39H, DIRECTORY OPERATION
     dw removeDIR - kDispTbl           ;AH = 3AH, DIRECTORY OPERATION
-    dw changeCurrentDIR - kDispTbl    ;AH = 3BH, DIRECTORY OPERATION
+    dw setCurrentDIR - kDispTbl       ;AH = 3BH, DIRECTORY OPERATION
     dw createFileHdl - kDispTbl       ;AH = 3CH, FILE OPERATION       HANDLE
     dw openFileHdl - kDispTbl         ;AH = 3DH, FILE OPERATION       HANDLE
     dw closeFileHdl - kDispTbl        ;AH = 3EH, FILE OPERATION       HANDLE
