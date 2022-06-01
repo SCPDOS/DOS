@@ -29,9 +29,9 @@ stdinReadEcho:     ;ah = 01h
 
 stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
-    mov byte [.stdoutWriteBuffer], dl
+    mov byte [singleIObyt], dl
     lea rbx, charReqHdr ;Get the address of this request block
-    lea rdx, .stdoutWriteBuffer
+    lea rdx, singleIObyt
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
     mov word [rbx + ioReqPkt.status], 0 ;Zero status word
@@ -41,7 +41,6 @@ stdoutWrite:       ;ah = 02h
     mov rsi, qword [conPtr]   ;Get ptr to current con device header
     call goDriver
     ret
-.stdoutWriteBuffer db 0
 stdauxRead:        ;ah = 03h
 stdauxWrite:       ;ah = 04h
 stdprnWrite:       ;ah = 05h
