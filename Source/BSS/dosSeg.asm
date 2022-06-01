@@ -80,8 +80,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
 ;Buffers
-    path1       resb 128  ;Space for one path and file name
-    path2       resb 128  ;Space for a second path and file name
+    buffer1     resb 128  ;Space for one path and file name
+    buffer2     resb 128  ;Space for a second path and file name
     CLOCKrecrd  resb 6  ;Clock driver record
     singleIObyt resb 1  ;For single IO byte buffers
 ;Misc bookkeeping flags and vars

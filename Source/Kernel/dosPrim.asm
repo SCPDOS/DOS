@@ -53,7 +53,7 @@ setupAbsDiskEntry:
     mov byte [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
     push rsi
     push rax
-    lea rsi, path1  ;Point to one of the pathspaces
+    lea rsi, buffer1  ;Point to one of the pathspaces
     mov byte [rsi], al  ;Construct a path
     add byte [rsi], "A" ;Convert to ASCII char
     mov byte [rsi + 1], ":" ;Path Colon

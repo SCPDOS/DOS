@@ -63,7 +63,7 @@ struc cds       ;Current Directory structure
 ;        Bit 14 set = Physical drive
 ;        Bit 13 set = JOIN'ed drive
 ;        Bit 12 set = SUBST'ed drive
-;        Bit 7  set = Redirected, not network, drive (This is how MSCDEX worked)
+;        Bit 7  set = Redirected, not net. drive (This is how MSCDEX worked)
 endstruc
 ;CDS equates
     cdsNetDrive     equ 8000h
