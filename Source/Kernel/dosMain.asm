@@ -90,6 +90,9 @@ functionDispatch:   ;Int 41h Main function dispatcher
     test byte [breakFlag], -1   ;Test if set
     jz .fdGoToFunction
 ; HANDLE CTRL+BREAK HERE!
+    push rax
+    call checkBreakOnCon    ; Check for a ^C in the CON buffer
+    pop rax
 .fdGoToFunction:
     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
     ;Potentially point rbp to caller reg frame for easy access of registers 

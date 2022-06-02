@@ -87,3 +87,53 @@ printString:       ;ah = 09h
 buffStdinInput:    ;ah = 0Ah
 checkStdinStatus:  ;ah = 0Bh
 clearbuffDoFunc:   ;ah = 0Ch
+
+;Utility functions
+checkBreakOnCon:
+;Reads bytes from CON if there are any bytes to read and 
+; if it is a ^C or CTRL+BREAK, then exit via INT 43h
+    cmp byte [inDOS], 1
+    je checkBreak  ;Only check ^C on first entry to DOS
+    ret
+checkBreak:
+;Returns in al the keystroke that is available IF one is available
+; or al=0 if no keystroke available
+    push rbx
+    push rsi
+    mov rsi, qword [conPtr] ;Get pointer to Console device driver
+    xor eax, eax
+    ;Place command code and a zero status word at the same time
+    mov al, drvNONDESTREAD
+    mov dword [charReqHdr + nonDestInNoWaitReqPkt.cmdcde], eax
+    ;Place the packet size in the hdrlen field
+    mov al, nonDestInNoWaitReqPkt_size
+    mov byte [charReqHdr + nonDestInNoWaitReqPkt.hdrlen], al
+    lea rbx, charReqHdr
+    call goDriver   ;Called with rsi and rbx with appropriate pointers
+    ;Check if the busy bit is set (No keystroke available)
+    test word [charReqHdr + nonDestInNoWaitReqPkt.status], drvBsyStatus
+    jz .charFound
+.exit:
+    pop rsi
+    pop rbx
+    ret
+.charFound:
+;Keystroke available, proceed
+    mov al, byte [charReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
+    cmp al, 03h ;BREAK/^C =ASCII 03h
+    jne .exit   ;If not equal exit
+;Now we pull the char out of the buffer
+    xor eax, eax
+    mov al, drvREAD ;Read command
+    mov dword [charReqHdr + ioReqPkt.cmdcde], eax
+    ;Place packet size
+    mov byte [charReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    ;Place pointers and number of chars
+    mov dword [charReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
+    lea rax, singleIObyt    ;IO Byte buffer
+    mov qword [charReqHdr + ioReqPkt.bufptr], rax
+    call goDriver   ;RSI and RBX as before
+    ret ;Stopgap right now, do nothing
+
+
+    
