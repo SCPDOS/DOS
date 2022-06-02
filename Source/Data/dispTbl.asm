@@ -108,3 +108,7 @@ kDispTbl:
     dw commitFile - kDispTbl          ;AH = 68H, FILE OPERATION       HANDLE
     dw getsetDiskSerial - kDispTbl    ;AH = 69H, RESERVED INTERNAL, GET/SET DISK SER. NUM
 kDispTblL  equ $ - kDispTbl 
+
+mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
+    dw multiplexTest - mDispTbl ;Installation check, return FFh
+mDispTblL   equ     $ - mDispTbl

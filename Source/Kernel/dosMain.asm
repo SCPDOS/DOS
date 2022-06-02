@@ -18,7 +18,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     cli ;Halt external interrupts
     cld ;Ensure all string ops occur in the right direction
     cmp ah, kDispTblL/2    ;Number of functions
-    ja .fdExitBad
+    jae .fdExitBad  ;If equal or above, exit error
     ;Cherry pick functions
     cmp ah, 33h ;CTRL+BREAK check
     jb .fsbegin   ;If below skip these checks
