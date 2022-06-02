@@ -86,7 +86,7 @@ getBuffer: ;External Linkage (dosPrim.asm)
 ;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
     push rdx
     push rsi
-    push rbp
+    push rdi
     mov rsi, qword [workingDPB]  ;Get DPB of transacting device
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
@@ -95,36 +95,36 @@ getBuffer: ;External Linkage (dosPrim.asm)
 .rbExit:
     clc
 .rbExitNoFlag:
-    pop rbp
+    pop rdi
     pop rsi
     pop rdx
     ret
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
-    mov rbp, rbx
+    mov rdi, rbx
     xor ch, ch
     cmp byte [diskChange], -1 ;Are we in disk change?
     jne .flush  ;We are not, flush buffer
-    cmp rsi, qword [rbp + bufferHdr.driveDPBPtr]    ;If yes...
+    cmp rsi, qword [rdi + bufferHdr.driveDPBPtr]    ;If yes...
     je .skipFlush   ;Avoid flushing if same DPB being used
 .flush:
     call flushBuffer
     jc .rbExitNoFlag    ;Exit in error
 .skipFlush:
-;rbp points to bufferHdr that has been appropriately linked to the head of chain
-    mov byte [rbp + bufferHdr.driveNumber], dl
-    mov byte [rbp + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
-    mov qword [rbp + bufferHdr.bufferLBA], rax
+;rdi points to bufferHdr that has been appropriately linked to the head of chain
+    mov byte [rdi + bufferHdr.driveNumber], dl
+    mov byte [rdi + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
+    mov qword [rdi + bufferHdr.bufferLBA], rax
     cmp cl, fatBuffer
     mov dl, 1   ;Default values if not fat buffer
     jne .rbNonFATbuffer
     mov dl, byte [rsi + dpb.bNumberOfFATs]
 .rbNonFATbuffer:
-    mov byte [rbp + bufferHdr.bufFATcopy], dl
+    mov byte [rdi + bufferHdr.bufFATcopy], dl
     mov edx, dword [rsi + dpb.dFATlength]
-    mov dword [rbp + bufferHdr.bufFATsize], edx
-    mov qword [rbp + bufferHdr.driveDPBPtr], rsi
-    mov byte [rbp + bufferHdr.reserved], 0
+    mov dword [rdi + bufferHdr.bufFATsize], edx
+    mov qword [rdi + bufferHdr.driveDPBPtr], rsi
+    mov byte [rdi + bufferHdr.reserved], 0
     inc ch  ;If an error occurs, have the signature in ch
     call readSectorBuffer ;Carry the flag from the request
     jmp short .rbExitNoFlag
@@ -135,7 +135,7 @@ getBuffer: ;External Linkage (dosPrim.asm)
 
 readSectorBuffer:   ;Internal Linkage
 ;Reads a sector into a built sector buffer
-;Entry: rbp = Pointer to buffer header
+;Entry: rdi = Pointer to buffer header
 ;Exit:  CF=NC : Success
 ;       CF=CY : Fail, terminate the request
 ;       rbx pointing to buffer header
@@ -148,10 +148,10 @@ readSectorBuffer:   ;Internal Linkage
 .rsRequest0:
     mov esi, 3  ;Repeat attempt counter
 .rsRequest1:
-    mov al, byte [rbp + bufferHdr.driveNumber]
+    mov al, byte [rdi + bufferHdr.driveNumber]
     mov ecx, 1  ;One sector to copy
-    mov rdx, qword [rbp + bufferHdr.bufferLBA]
-    mov rbx, qword [rbp + bufferHdr.dataarea]
+    mov rdx, qword [rdi + bufferHdr.bufferLBA]
+    mov rbx, qword [rdi + bufferHdr.dataarea]
     call absDiskRead    ;Call INT 45h
     jc .rsFail
 .rsExit:
@@ -173,7 +173,7 @@ readSectorBuffer:   ;Internal Linkage
 
 flushBuffer:    ;Internal Linkage
 ;Flushes the data in a sector buffer to disk!
-;Entry: rbp = Pointer to buffer header for this buffer
+;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
 ;       CF=CY : Fail, terminate the request
 ;First make request to device driver
@@ -182,28 +182,28 @@ flushBuffer:    ;Internal Linkage
     push rcx
     push rdx
     push rsi
-    test byte [rbp + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
+    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
     jz .fbFreeExit  ;Skip write to disk if data not modified
 .fbRequest0:
     mov esi, 3  ;Repeat attempt counter
 .fbRequest1:
-    mov al, byte [rbp + bufferHdr.driveNumber]
+    mov al, byte [rdi + bufferHdr.driveNumber]
     mov ecx, 1  ;One sector to copy
-    mov rdx, qword [rbp + bufferHdr.bufferLBA]
-    mov rbx, qword [rbp + bufferHdr.dataarea]
+    mov rdx, qword [rdi + bufferHdr.bufferLBA]
+    mov rbx, qword [rdi + bufferHdr.dataarea]
     call absDiskWrite    ;Call INT 46h
     jc .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
-    test byte [rbp + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
+    test byte [rdi + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
     jz .fbFreeExit  ;If not, exit
-    dec byte [rbp + bufferHdr.bufFATcopy]
+    dec byte [rdi + bufferHdr.bufFATcopy]
     jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
-    mov eax, dword [rbp + bufferHdr.bufFATsize]
-    add qword [rbp + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
+    mov eax, dword [rdi + bufferHdr.bufFATsize]
+    add qword [rdi + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
     jmp .fbRequest0 ;Make another request
 .fbFreeExit:
 ;Free the buffer if it was flushed successfully
-    mov word [rbp + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
+    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
     clc
 .fbExitBad:
     pop rsi
