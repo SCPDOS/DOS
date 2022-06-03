@@ -37,6 +37,7 @@ sysVarsPtr:
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
+    oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
@@ -71,6 +72,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
     dosInvoke   resb 1  ;FIXED 0, any other value fails calls (-1 = server invoke)
+    critExit    resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
+;The above flag tells DOS to print ^C in the termination function
 
 ;Time stuff
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)

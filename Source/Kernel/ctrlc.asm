@@ -32,3 +32,29 @@ criticalDOSError:
     mov byte [critErrFlag], 0   ;Clear critical error flag
     sti ;Reenable Interrupts
     ret
+
+ctrlBreakHdlr:
+;Handles a control break, juggles stacks and enters int 41h 
+	cli
+	mov rsp, qword [oldRSP]	;Get registers frame
+	call dosPopRegs ;Get user state back
+    mov qword [xInt43hRSP], rsp  ;Save user rsp
+    clc
+    int 43h ;Call critical error handler
+    cli ;Clear interrupts again
+    mov qword [oldRAX], rax ;Save rax
+    pushfq  ;Get flags in rax
+    pop rax 
+    cmp rsp, qword [xInt43hRSP] ;Did the user return with ret 8?
+    jne .checkCF
+.returnToDOS:
+    mov rax, qword [oldRAX]
+    jmp functionDispatch    ;Goto int 41h
+.checkCF:
+    add rsp, 8  ;Account for the flags left on the stack
+    test al, 1  ;CF set?
+    jz .returnToDOS ;Yes, subfunction number must be in al
+    mov eax, 4c00h  ;Exit without error code
+    mov byte [critExit], -1  ;CTRL+BREAK termination
+    jmp functionDispatch
+

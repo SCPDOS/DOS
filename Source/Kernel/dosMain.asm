@@ -75,6 +75,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     jmp short .fdGoToFunction
 .fddiskOp:
     ;Disk operations go here
+    ;Save rax on entry to a disk funciton
+    mov qword [oldRAX], rax
     ;Clear up error info
     mov byte [errorLocus], 1    ;Reset to generic, unknown locus
     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
