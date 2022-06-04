@@ -56,8 +56,8 @@ conDriver:
     int 36h
 .cre11:
     stosb
-    test al, al ;Was the ascii code 0?
-    jnz .cre12  ;No, skip storing scancode
+    test al, al ;Was the ascii code stored 0?
+    jnz .cre12  ;No, skip storing scancode in buffer
     mov byte [.conBuf], ah  ;Save scancode
 .cre12:
     inc ecx ;Inc chars stored in buffer
@@ -145,6 +145,10 @@ fastOutput:         ;This CON driver supports Int 49h
     mov ah, 0Eh
     int 30h
     pop rax
+    iretq
+ctrlBreak:
+;CON Int 3Bh handler to detect CTRL+BREAK
+    mov byte [conDriver.conBuf], 03h    ;Place a ^C in buffer
     iretq
 
 clkDriver:

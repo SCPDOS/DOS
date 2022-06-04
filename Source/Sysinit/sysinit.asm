@@ -365,6 +365,13 @@ adjDrivers:
     call qword [rbp + nulDevHdr + drvHdr.intPtr]
 ;Open CON
 conInit:    ;Rather than keeping this resident... do it here
+;Start by hooking int 3Bh and int 49h as part of the CON driver
+    lea rdx, qword [rbp + fastOutput]
+    mov eax, 2549h
+    int 41h ;Hook int 49h (fast CON output)
+    lea rdx, qword [rbp + ctrlBreak]
+    mov eax, 253Bh
+    int 41h ;Hook int 3Bh
 .ci0:
     mov ah, 01      ;Get buffer status
     int 36h
@@ -890,7 +897,7 @@ intData:
     dq absDiskWrite     ;Int 46h
     dq terminateRes     ;Int 47h
     dq defaultIretq     ;Int 48h
-    dq fastOutput       ;Int 49h
+    dq defaultIretq     ;Int 49h
     dq defaultIretq     ;Int 4Ah
     dq defaultIretq     ;Int 4Bh
     dq defaultIretq     ;Int 4Ch
