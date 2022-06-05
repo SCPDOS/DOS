@@ -41,6 +41,90 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
+setFileAccessVariables:
+;This will set up the file access variables and currentSFT 
+; for the SFT pointer in rsi
+;Only used if the SFT is pointing and reading/writing to/from a 
+; hardfile (not device)
+;Sets up the variables for the SFT AS IT IS WHEN THE FUNCTION IS INVOKED
+;Input: rsi = SFT to setup for
+;Output: Variables initialised:
+;   currentSFT, workingDPB
+;   currClust, currClustA, clustFact, currSect, currSectA, currByte
+;   currByteA
+    push rax
+    push rcx
+    push rdx
+    push rsi
+    push rbp
+;Set current SFT
+    call setCurrentSFT  ;Set rsi the current SFT ptr
+    xor eax, eax
+;Get Disk Relative (absolute) cluster
+    mov eax, dword [rsi + sft.dAbsClusr]
+    mov dword [currClustA], eax 
+;Get File Relative Cluster
+    mov eax, dword [rsi + sft.dRelClust]
+    mov dword [currClust], eax
+;Set working DPB
+    mov rbp, qword [rsi + sft.qPtr] ;Get DPB ptr
+    call setWorkingDPB
+;Get Number of Sectors per Cluster
+    xor eax, eax
+    inc eax
+    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    shl eax, cl ;Get number of Sectors Per Cluster
+    mov byte [clustFact], al 
+;Get Current Byte in File we are pointing to relative to the start of the file
+    mov ecx, dword [rsi + sft.dCurntOff]
+    mov dword [currByteA], ecx
+;___
+; | DO THE FOLLOWING TOGETHER
+; | Get Cluster Relative Sector being pointed to
+; | Get Current Byte in File we are pointing to relative to the sector
+;_|_
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    add cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    ;Get in cl bytes per Cluster shift
+    mov eax, dword [currClust]  ;Get current file cluster number
+    shl eax, cl ;Get number of bytes to the current File Relative cluster
+    mov ecx, dword [currByteA]
+    sub ecx, eax    ;Get the difference
+    ;ecx now has the offset in bytes into the current cluster
+    movzx rax, byte [clustFact] ;Get number of sectors per cluster into al
+    movzx ecx, byte [rbp + dpb.bBytesPerSectorShift]
+    shl eax, cl ;Get bytes per cluster in eax
+    ;eax now has the number of bytes in a cluster
+    xchg eax, ecx   ;Swap em
+    xor edx, edx
+    div ecx ;Offset into cluster (bytes)/bytes in sector (bytes)
+    ;edx has the offset into the current sector in bytes (remainder)
+    ;eax has the number of sectors into the cluster in sectors (quotient)
+    mov word [currByte], dx ;Save sector offset
+    mov byte [currSect], al ;Save cluster relative sector number
+;Get Disk Relative (absolute) Sector being pointed to
+    mov eax, [currClustA]   ;Get current absolute cluster
+    call getStartSectorOfCluster    ;rbp points to dpb and eax has cluster num
+    ;rax has starting disk sector of cluster
+    movzx rcx, byte [currSect]  ;Get cluster relative sector offset
+    add rax, rcx    
+    mov qword [currSectA], rax  ;Save the current disk relative sector number
+    pop rbp
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+
+setCurrentSFT:
+;Set the pointer in rsi as current SFT 
+    mov qword [currentSFT], rsi
+    ret
+getCurrentSFT:
+;Get the current SFT pointer in rsi
+    mov rsi, qword [currentSFT]
+    ret
+
 getSFTPtr:
 ;Gets the SFT pointer for a given file handle from the calling application
 ;On entry:

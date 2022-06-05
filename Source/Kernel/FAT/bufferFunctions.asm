@@ -77,6 +77,7 @@ getBuffer: ;External Linkage (dosPrim.asm)
 ; buffer, again then returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (DOS, FAT, DIR, Data)
+;       qword [workingDPB] = DPB to use for transaction
 ;Exit:  CF = NC : All ok!
 ;       rbx = Pointer to buffer header with valid data in buffer.
 ;       All other registers as before

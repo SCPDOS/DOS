@@ -120,6 +120,7 @@ searchDirectorySectorForEntry:
     pop rdx
     clc
     jmp short .exitOk
+
 getFATtype:
 ;Gets a pointer to a DPB and returns the FAT type on the drive
 ;Entry: rsi = DPB to ascertain FAT
@@ -139,13 +140,13 @@ getFATtype:
 
 clust2FATEntry:
 ;Converts a cluster number to a offset in the FAT
-;Entry:  rsi points to the DPB for the transacting device
+;Entry:  rbp points to the DPB for the transacting device
 ;        eax = Cluster number to look for
 ;Exit:   eax = Sector on disk of FAT 
 ;        ecx = 0 => FAT12, 1 => FAT16, 2 => FAT32
 ;        edx = 1.5Byte/Word/DWord in sector of entry
     push rbx
-    mov ebx, dword [rsi + dpb.dClusterCount]
+    mov ebx, dword [rbp + dpb.dClusterCount]
     cmp ebx, fat16MaxClustCnt
     jae .fat32
     cmp ebx, fat12MaxClustCnt
@@ -165,38 +166,43 @@ clust2FATEntry:
     shl eax, 2  ;Multiply cluster number by 4
 .common:
 ;eax has the FAToffset
-    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
     mov edx, 1
     shl edx, cl    ;Turn edx to number of bytes per sector
     mov ecx, edx
     xor edx, edx    ;edx = 0
     div ecx         ;Divide by bytes per sector (0:eax / ecx)
-    movzx ebx, word [rsi + dpb.wFAToffset]   ;Add the offset to the first FAT
+    movzx ebx, word [rbp + dpb.wFAToffset]   ;Add the offset to the first FAT
     add eax, ebx
     pop rcx ;Pop the FAT type back into rcx
     pop rbx
     ret
+
 getStartSectorOfCluster:
 ;Input: eax = Cluster Number
-;       r9 = dpb pointer
-;Output: eax = Starting Sector number for cluster
+;       rbp = dpb pointer
+;Output: rax = Starting Sector number for cluster
 ;Gives the data sector we are at in the current cluster
 ;Start Sector = (ClusterNumber - 2)*SecPerClust + DataAreaStartSector
     push rcx
-    sub eax, 2
-    mov cl, byte [r9 + dpb.bSectorsPerClusterShift]
-    shl eax, cl
-    add eax, [r9 + dpb.dClusterHeapOffset]
-    ;eax now has the first sector of the current cluster
+    or eax, eax ;Zero upper dword
+    sub rax, 2
+    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    shl rax, cl
+    xor ecx, ecx
+    mov ecx, dword [rbp + dpb.dClusterHeapOffset]
+    add rax, rcx
+    ;rax now has the first sector of the current cluster
     pop rcx
     ret
+
+
 getNextSectorOfFileBROKEN:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
 ; the file handle of the file being read/written to the new cluster
 ;
-;Input: r8 = sft pointer
-;       r9 = dpb pointer
+;Input: qword [currentSFT] = sft pointer
 ;Output:
 ;       rbx = Pointer to buffer data
 ;       CF = NC, buffer OK to read
@@ -210,26 +216,30 @@ getNextSectorOfFileBROKEN:
     push rdx
     push rsi
     push rdi
+    push rbp
     ;Check if we need to go to next cluster
-    ;mov ax, word [r8 + sft.wRelSect]    ;Upper byte is ALWAYS 0
-    cmp al, byte [r9 + dpb.bMaxSectorInCluster]
+    mov rsi, qword [currentSFT] ;Get the current SFT
+    mov rbp, qword [rsi + sft.qPtr] ;Get DPB pointer for file
+    mov qword [workingDPB], rbp ;Make the DPB the working DPB
+    ;mov ax, word [rsi + sft.wRelSect]    ;Upper byte is ALWAYS 0
+    cmp al, byte [rbp + dpb.bMaxSectorInCluster]
     je .gotoNextCluster
     ;Goto next sector
-    ;inc word [r8 + sft.wRelSect]    ;Goto next sector in cluster
+    ;inc word [rsi + sft.wRelSect]    ;Goto next sector in cluster
 .getSector:
-    mov eax, dword [r8 + sft.dAbsClusr] ;Get cluster number
+    mov eax, dword [rsi + sft.dAbsClusr] ;Get cluster number
     call getStartSectorOfCluster
-    ;movzx ebx, word [r8 + sft.wRelSect] ;Get relative sector number
+    ;movzx ebx, word [rsi + sft.wRelSect] ;Get relative sector number
     ;eax now has the correct sector in the cluster
     add eax, ebx    
     ;Read the sector into a buffer
     ;The sector read here is either DATA or DOS
-    lea rsi, qword [r8 + sft.sFileName]
+    lea rsi, qword [rsi + sft.sFileName]
     lea rdi, dosBIOSName    ;Check if the file being read is the BIOS
     mov ecx, 11             ;File name length
     repe cmpsb
     je .OSFile
-    lea rsi, qword [r8 + sft.sFileName]
+    lea rsi, qword [rsi + sft.sFileName]
     lea rdi, dosKernName
     mov ecx, 11             ;File name length
     repe cmpsb
@@ -237,11 +247,11 @@ getNextSectorOfFileBROKEN:
     ;Not an OS file, dataBuffer
     mov cl, dataBuffer
 .getSectorRead:
-    mov rsi, r9
-    ;call readBuffer
+    call getBuffer  ;Get ptr to buffer header in rbx
     jc .getSectorFailed
     add rbx, bufferHdr.dataarea ;Goto data area
 .getSectorExit:
+    pop rbp
     pop rdi
     pop rsi
     pop rdx
@@ -258,13 +268,11 @@ getNextSectorOfFileBROKEN:
     test ch, ch ;This sets the zero flag correctly, but mangles CF
     stc ;Set the carry flag!
     jmp short .getSectorExit
-
 .gotoNextCluster:
     ;Read FAT, find next cluster in cluster map, update SFT entries
-    mov eax, dword [r8 + sft.dAbsClusr] ;Get the current cluster
-    mov rsi, r9 ;Move dpb pointer into rsi, eax has cluster number
+    mov eax, dword [rsi + sft.dAbsClusr] ;Get the current cluster
     call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
-    movzx ebx, word [r9 + dpb.wFAToffset]
+    movzx ebx, word [rbp + dpb.wFAToffset]
     add eax, ebx    ;Add the FAT offset to the sector
     mov cl, fatBuffer
     ;call readBuffer ;Buffer Header in ebx
@@ -281,8 +289,8 @@ getNextSectorOfFileBROKEN:
     mov eax, dword [rbx + bufferHdr.dataarea + rdx]
     and eax, 0FFFFFFFh  ;Zero upper nybble
 .goToNextClusterCommon:
-    mov dword [r8 + sft.dAbsClusr], eax ;Save new cluster number
-    ;mov word [r8 + sft.wRelSect], 0 ;First sector in next cluster
+    mov dword [rsi + sft.dAbsClusr], eax ;Save new cluster number
+    ;mov word [rsi + sft.wRelSect], 0 ;First sector in next cluster
     jmp .getSector
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors

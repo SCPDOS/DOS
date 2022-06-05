@@ -5,7 +5,7 @@
 ; argument provided on the stack when called from Int 4Fh interface (when 
 ; that gets set up)
 
-setDPBAsWorking:
+setWorkingDPB:
 ;Gets dpb in rbp and saves to curDrvDPB (working dpb)
     mov qword [workingDPB], rbp
     ret

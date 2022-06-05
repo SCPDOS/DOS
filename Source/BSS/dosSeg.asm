@@ -94,7 +94,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     typePSPcopy resb 1  ;00=Simple copy, -1=Make Child process
     spliceFlag  resb 1  ;01 = file name and directory name together
-;File Access stuff
+
     workingDrv  resb 1  ;Working drive number
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
@@ -103,13 +103,15 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
+;Needs to be set up before any file access  |
     currClust   resd 1  ;Relative cluster in file being r/w to/from
-    currClustA  resd 1  ;Current Cluster (abs) on disk being read/written to/from
+    currClustA  resd 1  ;Current Cluster (abs) on disk being r/w to/from
     clustFact   resb 1  ;NUMBER of sectors per cluster
     currSect    resb 1  ;Current Sector in Cluster being r/w to/from
     currSectA   resq 1  ;Current absolute Sector number on Disk
     currByte    resw 1  ;Current Byte in sector being r/w to/from
     currByteA   resd 1  ;Current Byte in file being r/w to/from
+;*****************************************  |
     lastClust   resd 1  ;Number of the last (rel) cluster of the file
     lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
     bytesAdded  resd 1  ;Number of bytes added to file (max 2Gb filesize!)

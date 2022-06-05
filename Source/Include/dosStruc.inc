@@ -66,11 +66,11 @@ struc cds       ;Current Directory structure
 ;        Bit 7  set = Redirected, not net. drive (This is how MSCDEX worked)
 endstruc
 ;CDS equates
-    cdsNetDrive     equ 8000h
-    cdsPhysDrive    equ 4000h
-    cdsJoinDrive    equ 2000h
-    cdsSubstDrive   equ 1000h
-    cdsRedirDrive   equ 0080h
+cdsNetDrive     equ 8000h
+cdsPhysDrive    equ 4000h
+cdsJoinDrive    equ 2000h
+cdsSubstDrive   equ 1000h
+cdsRedirDrive   equ 0080h
 ;------------------------------------------------------------------------;
 ; The SFT is a way to allow applications to open file handles to files 
 ; and devices. As things stand, the SFT chain will have 5 file handles
@@ -111,7 +111,7 @@ endstruc
 ; SFTs given by wNumFiles. The SFT headers form a linked list.
 ;
 ; DEFAULT FILES=8, MINIMUM FILES=5
-; DEFAULT FCBS=5, MINIMUM FCBS=5
+; DEFAULT FCBS=5,  MINIMUM FCBS=5
 ;------------------------------------------------------------------------;
 struc sfth   ;System file table header
 ; This is the SFT header.
@@ -127,61 +127,61 @@ struc sft
     .bFileAttrib resb 1    ;Regular File Attributes
     .wDeviceInfo resw 1    ;Includes Device number
     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
-    .dStartClust resd 1    ;Start cluster of file
+    .dStartClust resd 1    ;Start cluster of file pointed to by SFT entry
     .wTime       resw 1    ;File Time
     .wDate       resw 1    ;File Date
     .dFileSize   resd 1    ;File Size, in bytes
-    .dCurntOff   resd 1    ;Current Offset in file, in bytes
-    .dRelClust   resd 1    ;Rel cluster in file, the last cluster read
+    .dCurntOff   resd 1    ;Current Offset pointed to by SFT entry, in bytes
+    .dRelClust   resd 1    ;Rel cluster pointed to by SFT entry
     .qDirSect    resq 1    ;Abs number of sector containing directory entry 
     .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
     .sFileName   resb 11   ;8.3 Filename
     .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
-    .dAbsClusr   resd 1    ;Absolute cluster of last cluster accessed
+    .dAbsClusr   resd 1    ;Absolute cluster pointed to by SFT entry
 endstruc
 ;Open Mode equates
 ;Access modes   Bits[2:0]
-    ReadAccess      equ 0h
-    WriteAccess     equ 1h
-    RWAccess        equ 2h
+ReadAccess      equ 0h
+WriteAccess     equ 1h
+RWAccess        equ 2h
 ;Bit 3 reserved 0
 ;Sharing modes  Bits[6:4]
-    CompatShare     equ 0h
-    denyRWShare     equ 10h
-    denyWriteShare  equ 20h
-    denyReadShare   equ 30h
-    denyNoneShare   equ 40h
+CompatShare     equ 0h
+denyRWShare     equ 10h
+denyWriteShare  equ 20h
+denyReadShare   equ 30h
+denyNoneShare   equ 40h
 ;Bit 7 reserved 0
 ;Bits 8-12 reserved 0
 ;Critical Error handling
-    critErrHdl      equ 2000h   ;If set, return error code. If clear, INT 44h
+critErrHdl      equ 2000h   ;If set, return error code. If clear, INT 44h
 ;Buffering on writes
-    noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
+noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
 ;FCB opened file?
-    FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
+FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
 ;Attribute Byte
-    readOnlyFile    equ 1h
-    hiddenFile      equ 2h
-    systemFile      equ 4h
-    volumeLabel     equ 8h
-    directoryFile   equ 10h ;Directory entry
-    archiveFile     equ 20h
+readOnlyFile    equ 1h
+hiddenFile      equ 2h
+systemFile      equ 4h
+volumeLabel     equ 8h
+directoryFile   equ 10h ;Directory entry
+archiveFile     equ 20h
 ;Device Info equates
 ;For a block device, bits [5:0] contain the drive number
-    charDevConIn    equ 1h  ;If set, device is CON input
-    charDevConOut   equ 2h  ;If set, device is CON output
-    charDevNulDev   equ 4h  ;If set, device is NULL device
-    charDevClockDev equ 8h  ;If set, device is CLOCK device
-    charDevFastOut  equ 10h ;If set, device supports INT 49h
-    devBinary       equ 20h ;If set, r/w device in Binary mode!!!
-    charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
-    blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
-    devCharDev      equ 80h ;If set, it is a char device!
-    charDevNetSpool equ 800h    ;If set, device is a network spooler
-    devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
-    charDevNamePipe equ 2000h   ;If set, device is a named pipe
-    blokDevDTSet    equ 4000h   ;If set, date and time updated for all i/o
-    devRedirDev     equ 8000h   ;If set, dev/file is redirected!
+charDevConIn    equ 1h  ;If set, device is CON input
+charDevConOut   equ 2h  ;If set, device is CON output
+charDevNulDev   equ 4h  ;If set, device is NULL device
+charDevClockDev equ 8h  ;If set, device is CLOCK device
+charDevFastOut  equ 10h ;If set, device supports INT 49h
+devBinary       equ 20h ;If set, r/w device in Binary mode!!!
+charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
+blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
+devCharDev      equ 80h ;If set, it is a char device!
+charDevNetSpool equ 800h    ;If set, device is a network spooler
+devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
+charDevNamePipe equ 2000h   ;If set, device is a named pipe
+blokDevDTSet    equ 4000h   ;If set, date and time updated for all i/o
+devRedirDev     equ 8000h   ;If set, dev/file is redirected!
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 
 ; to an internal buffer, and then copying it to the specified location
@@ -208,12 +208,12 @@ struc bufferHdr
     .dataarea:             ;Points to the start of the data area
 endstruc
 ;Buffer Flag equates
-    dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
-    fatBuffer   equ 2h  ;FAT sector in buffer
-    dirBuffer   equ 4h  ;Directory sector in buffer
-    dataBuffer  equ 8h  ;File Data sector in buffer
-    refBuffer   equ 20h ;Data in buffer referenced by an application
-    dirtyBuffer equ 40h ;Data in buffer modified by an application
+dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
+fatBuffer   equ 2h  ;FAT sector in buffer
+dirBuffer   equ 4h  ;Directory sector in buffer
+dataBuffer  equ 8h  ;File Data sector in buffer
+refBuffer   equ 20h ;Data in buffer referenced by an application
+dirtyBuffer equ 40h ;Data in buffer modified by an application
 ;------------------------------------------------------------------------;
 ; Memory control block for each memory arena
 ;------------------------------------------------------------------------;
