@@ -167,7 +167,25 @@ getStartSectorOfCluster:
     ;rax now has the first sector of the current cluster
     pop rcx
     ret
-
+getFreeCluster:
+;Walks the FAT to find a free cluster and returns the cluster number in eax
+;Works on the workingDPB
+    push rcx
+    push rbp
+    mov rbp, qword [workingDPB]
+    movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
+    mov qword [tempSect], rax   ;Save the sector number temporarily
+    mov cl, fatBuffer
+    call getBuffer
+    jc .readError
+    call getFATtype ;Gets FAT type (for number of elements in sector)
+.exit:
+    pop rbp
+    pop rcx
+    ret
+.readError:
+    stc
+    jmp short .exit
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
