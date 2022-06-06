@@ -174,5 +174,78 @@ copySScommon:
     pop rcx
     ret
 
-getSectorInCluster:
-;Gets the sector in cluster from
+updateCurrentSFT:
+;Updates the Current SFT fields before returning from a file handle operation
+    push rsi
+    push rax
+    mov rsi, qword [currentSFT]
+    mov eax, dword [currByteA]
+    mov dword [rsi + sft.dCurntOff], eax
+    mov eax, dword [currClustA]
+    mov dword [rsi + sft.dAbsClusr], eax
+    mov eax, dword [currClust]
+    mov dword [rsi + sft.dRelClust], eax
+    pop rax
+    pop rsi
+    ret
+
+setClusterVars:
+;Uses the number given in eax as the file pointer, to compute
+; sft fields (ONLY CALLED AT THE START OF LSEEK)
+;Works on the SFT pointer provided in rsi
+;Input: rsi = SFT entry pointer
+;Output: rsi = SFT cluster fields updated IF CF=NC
+;       CF=CY => Fail request with Int 44h
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+;Use variables instead of SFT fields in case the disk fails
+    mov dword [currByteA], eax
+    xor ecx, ecx
+    xor edx, edx
+    mov rbp, qword [rsi + sft.qPtr] ;Get DPB pointer
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    add cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    ;Get in cl bytes per Cluster shift
+    mov edx, 1
+    shl edx, cl ;Get number of bytes in a cluster in edx
+    mov ecx, edx    ;Move the number of bytes in a cluster to ecx
+    xor edx, edx
+    mov ebx, eax    ;Save byte pointer in ebx
+    div ecx
+    ;eax = Quotient => Relative cluster number
+    ;edx = Remainder => Byte offset into cluster
+    mov dword [currClust], eax    ;Save relative cluster 
+;Now walk the FAT relative cluster number of times
+    mov ecx, eax
+    mov eax, dword [rsi + sft.dStartClust]
+    mov qword [workingDPB], rbp ;Make the dpb working for walkFAT
+.fatWalk:
+    cmp eax, -1
+    je .getFreeSector
+    call walkFAT
+    jc .diskFail
+    dec ecx
+    jnz .fatWalk
+;eax has absolute cluster number now, set SFT fields
+    mov dword [rsi + sft.dAbsClusr], eax
+    mov eax, dword [currClust]
+    mov dword [rsi + sft.dRelClust], eax
+    mov eax, dword [currByteA]
+    mov dword [rsi + sft.dCurntOff], eax
+    clc
+.exit:
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
+.diskFail:
+;FAT read failed, error
+    stc
+    jmp short .exit
+.getFreeSector:
+;Simply need to get the first free sector and add it to the file allocation
