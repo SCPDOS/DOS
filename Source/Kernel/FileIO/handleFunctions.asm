@@ -46,6 +46,8 @@ setFileAccessVariables:
 ; for the SFT pointer in rsi
 ;Only used if the SFT is pointing and reading/writing to/from a 
 ; hardfile (not device)
+;Uses the file pointer value in the given SFT and the given SFT for
+; computations.
 ;Sets up the variables for the SFT AS IT IS WHEN THE FUNCTION IS INVOKED
 ;Input: rsi = SFT to setup for
 ;Output: Variables initialised:
@@ -82,39 +84,16 @@ setFileAccessVariables:
 ; | DO THE FOLLOWING TOGETHER
 ; | Get Cluster Relative Sector being pointed to
 ; | Get Current Byte in File we are pointing to relative to the sector
+; | Get Disk Relative (absolute) Sector being pointed to
 ;_|_
-    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
-    add cl, byte [rbp + dpb.bSectorsPerClusterShift]
-    ;Get in cl bytes per Cluster shift
-    mov eax, dword [currClust]  ;Get current file cluster number
-    shl eax, cl ;Get number of bytes to the current File Relative cluster
-    mov ecx, dword [currByteA]
-    sub ecx, eax    ;Get the difference
-    ;ecx now has the offset in bytes into the current cluster
-    movzx rax, byte [clustFact] ;Get number of sectors per cluster into al
-    movzx ecx, byte [rbp + dpb.bBytesPerSectorShift]
-    shl eax, cl ;Get bytes per cluster in eax
-    ;eax now has the number of bytes in a cluster
-    xchg eax, ecx   ;Swap em
-    xor edx, edx
-    div ecx ;Offset into cluster (bytes)/bytes in sector (bytes)
-    ;edx has the offset into the current sector in bytes (remainder)
-    ;eax has the number of sectors into the cluster in sectors (quotient)
-    mov word [currByte], dx ;Save sector offset
-    mov byte [currSect], al ;Save cluster relative sector number
-;Get Disk Relative (absolute) Sector being pointed to
-    mov eax, [currClustA]   ;Get current absolute cluster
-    call getStartSectorOfCluster    ;rbp points to dpb and eax has cluster num
-    ;rax has starting disk sector of cluster
-    movzx rcx, byte [currSect]  ;Get cluster relative sector offset
-    add rax, rcx    
-    mov qword [currSectA], rax  ;Save the current disk relative sector number
+    call setSectorVars
     pop rbp
     pop rsi
     pop rdx
     pop rcx
     pop rax
     ret
+
 
 setCurrentSFT:
 ;Set the pointer in rsi as current SFT 

@@ -13,37 +13,6 @@ trueName:          ;ah = 60h, get fully qualified name
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:
-name2Clust:
-;Converts a file name to a first cluster number
-;Entry : rbx = Points to ASCIIZ string to parse for a Cluster number
-;Exit : rax = Cluster number or -1 if file not found
-;Three cases:
-;1) Start with a letter and a : => Full path and Drive specified
-;2) Start with \ or / => Current Drive and relative path from root
-;3) Else => File name in Current Dir or a subdir from current dir
-    push rsi
-    push rdi
-    push rcx
-    push rdx
-    mov rdi, rbx    ;Save string ptr in rdi
-    cmp byte [rdi + 1], ":" ;Check it is a colon for full path
-    je .fullPath
-    cmp byte [rdi], "\"
-    je .relPath
-    cmp byte [rdi], "/"
-    je .relPath ;Both CPM and UNIX are considered acceptible path separators
-    ;Else search the current dir for an entry
-
-.localFileNoRoot:
-.relPath:
-.fullPath:
-.exit:
-    pop rdx
-    pop rcx
-    pop rdi
-    pop rsi
-    ret
-
 searchDirectorySectorForEntry:
 ;Proc that searches the sector for the string 
 ; UP UNTIL the NULL char or the path separator
@@ -123,10 +92,10 @@ searchDirectorySectorForEntry:
 
 getFATtype:
 ;Gets a pointer to a DPB and returns the FAT type on the drive
-;Entry: rsi = DPB to ascertain FAT
+;Entry: rbp = DPB to ascertain FAT
 ;Exit: ecx = 0 => FAT 12, ecx = 1 => FAT 16, ecx = 2 => FAT 32
     push rbx
-    mov ebx, dword [rsi + dpb.dClusterCount]
+    mov ebx, dword [rbp + dpb.dClusterCount]
     mov ecx, 1  ;FAT 16 marker
     cmp ebx, fat16MaxClustCnt
     jae .exit
@@ -140,12 +109,14 @@ getFATtype:
 
 clust2FATEntry:
 ;Converts a cluster number to a offset in the FAT
-;Entry:  rbp points to the DPB for the transacting device
+;Entry:  Uses the workingDPB to convert cluster number
 ;        eax = Cluster number to look for
 ;Exit:   eax = Sector on disk of FAT 
 ;        ecx = 0 => FAT12, 1 => FAT16, 2 => FAT32
 ;        edx = 1.5Byte/Word/DWord in sector of entry
     push rbx
+    push rbp
+    mov rbp, qword [workingDPB]
     mov ebx, dword [rbp + dpb.dClusterCount]
     cmp ebx, fat16MaxClustCnt
     jae .fat32
@@ -175,6 +146,7 @@ clust2FATEntry:
     movzx ebx, word [rbp + dpb.wFAToffset]   ;Add the offset to the first FAT
     add eax, ebx
     pop rcx ;Pop the FAT type back into rcx
+    pop rbp
     pop rbx
     ret
 
@@ -196,8 +168,7 @@ getStartSectorOfCluster:
     pop rcx
     ret
 
-
-getNextSectorOfFileBROKEN:
+getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
 ; the file handle of the file being read/written to the new cluster
@@ -219,19 +190,15 @@ getNextSectorOfFileBROKEN:
     push rbp
     ;Check if we need to go to next cluster
     mov rsi, qword [currentSFT] ;Get the current SFT
-    mov rbp, qword [rsi + sft.qPtr] ;Get DPB pointer for file
-    mov qword [workingDPB], rbp ;Make the DPB the working DPB
-    ;mov ax, word [rsi + sft.wRelSect]    ;Upper byte is ALWAYS 0
+    mov rbp, qword [workingDPB] ;Get DPB pointer for file
+    mov al, byte [currSect]    ;Get current sector rel Cluster
     cmp al, byte [rbp + dpb.bMaxSectorInCluster]
     je .gotoNextCluster
-    ;Goto next sector
-    ;inc word [rsi + sft.wRelSect]    ;Goto next sector in cluster
+    ;Goto next sector in same cluster
+    inc byte [currSect]    ;Goto next sector in cluster
+    inc qword [currSectA]  ;Goto next sector on Disk
 .getSector:
-    mov eax, dword [rsi + sft.dAbsClusr] ;Get cluster number
-    call getStartSectorOfCluster
-    ;movzx ebx, word [rsi + sft.wRelSect] ;Get relative sector number
-    ;eax now has the correct sector in the cluster
-    add eax, ebx    
+    mov rax, qword [currSectA]  ;Get the disk sector number to read
     ;Read the sector into a buffer
     ;The sector read here is either DATA or DOS
     lea rsi, qword [rsi + sft.sFileName]
@@ -268,44 +235,73 @@ getNextSectorOfFileBROKEN:
     test ch, ch ;This sets the zero flag correctly, but mangles CF
     stc ;Set the carry flag!
     jmp short .getSectorExit
+
 .gotoNextCluster:
-    ;Read FAT, find next cluster in cluster map, update SFT entries
-    mov eax, dword [rsi + sft.dAbsClusr] ;Get the current cluster
+    mov eax, dword [currClustA] ;Get absolute cluster number
+    call walkFAT
+    jc .getSectorFailed
+    ;eax now has the next cluster number to read (or -1 if EOF)
+    cmp eax, -1
+    jne .getSector
+;Else, we are at the last sector, we return the first free cluster sector
+; on disk. If it is a write operation, this cluster will be added to the 
+; file's cluster chain. If it is a read operation, then it fails.
+
+walkFAT:
+;Given a cluster number, it gives us the next cluster in the cluster chain
+; or -1 to indicate end of cluster chain on the device with workingDPB
+;Input: eax = Cluster number (zero extended to 32 bits)
+;Output: eax = Next Cluster number (-1 indicates end of chain)
+;If carry set, getBuffer failed!
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
     call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
+    mov edi, ecx    ;Move FAT signature into edi
     movzx ebx, word [rbp + dpb.wFAToffset]
     add eax, ebx    ;Add the FAT offset to the sector
     mov cl, fatBuffer
-    ;call readBuffer ;Buffer Header in ebx
-    jc .getSectorFailed
+    call getBuffer ;Buffer Header in ebx
+    jc .getFATFailed
     ;Check if FAT 12, 16, 32
-    test rdi, rdi
+    test edi, edi
     jz .gotoNextClusterFat12    ;Handle FAT 12 separately
-    test rdi, 1
-    jz .goToNextClusterCommonFat32
+    test edi, 1
+    jz .goToNextClusterFat32
     ;Here we handle FAT16
-    movzx eax, word [rbx + bufferHdr.dataarea + rdx]
-    jmp short .goToNextClusterCommon
-.goToNextClusterCommonFat32:
+    movsx eax, word [rbx + bufferHdr.dataarea + rdx]
+    ;movsx will sign extended, so if word is FFFFh then it becomes FFFFFFFFh
+    jmp short .exit
+.goToNextClusterFat32:
     mov eax, dword [rbx + bufferHdr.dataarea + rdx]
+    cmp eax, -1
+    je .exit   ;If EOC, skip zeroing nybble
     and eax, 0FFFFFFFh  ;Zero upper nybble
-.goToNextClusterCommon:
-    mov dword [rsi + sft.dAbsClusr], eax ;Save new cluster number
-    ;mov word [rsi + sft.wRelSect], 0 ;First sector in next cluster
-    jmp .getSector
+.exit:
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    ret
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors
 ;eax has the sector of the FAT, offset into the sector is in edx
     mov rdi, rbx    ;Save previous buffer header in rdi
     inc eax ;Get next sector
-    ;call readBuffer ;Buffer Header in ebx
-    jc .getSectorFailed
+    call getBuffer ;Buffer Header in ebx
+    jc .getFATFailed
     ;rdi has first buffer header, rbx has second buffer header
     ;rdx has offset into first header for entry
-    test dword [r8 + sft.dAbsClusr], 1  ;Check if cluster is odd
+    test dword [rsi + sft.dAbsClusr], 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
     mov eax, 1
-    mov cl, byte [r8 + dpb.bBytesPerSectorShift]
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
     shl eax, cl
     sub eax, edx
     dec eax ;If edx = BytesPerSector - 1 then it crosses, else no
@@ -315,13 +311,131 @@ getNextSectorOfFileBROKEN:
     mov al, byte [rdi + bufferHdr.dataarea + rdx]
     mov ah, byte [rbx + bufferHdr.dataarea]  ;Read first entry of next sector
     shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
-    jmp short .goToNextClusterCommon
+    jmp short .checkIfLastFAT12Cluster
 .gotoNextClusterFat12NoCross:
     movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
     shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
-    jmp short .goToNextClusterCommon
+    jmp short .checkIfLastFAT12Cluster
 .gotoNextClusterFat12Even:
     ;Here the cluster is even and can't cross a sector boundary
     movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
     and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
-    jmp short .goToNextClusterCommon
+.checkIfLastFAT12Cluster:
+    cmp ax, 0FFFh
+    jne .exit
+    mov eax, -1
+    jmp .exit
+.getFATFailed:
+    stc
+    jmp .exit
+
+setClusterVars:
+;Uses the number given in eax as the file pointer, to compute
+; sft fields (ONLY CALLED AT THE START OF LSEEK)
+;Works on the SFT pointer provided in rsi
+;Input: rsi = SFT entry pointer
+;Output: rsi = SFT cluster fields updated IF CF=NC
+;       CF=CY => Fail request with Int 44h
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rbp
+;Use variables instead of SFT fields in case the disk fails
+    mov dword [currByteA], eax
+    xor ecx, ecx
+    xor edx, edx
+    mov rbp, qword [rsi + sft.qPtr] ;Get DPB pointer
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    add cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    ;Get in cl bytes per Cluster shift
+    mov edx, 1
+    shl edx, cl ;Get number of bytes in a cluster in edx
+    mov ecx, edx    ;Move the number of bytes in a cluster to ecx
+    xor edx, edx
+    mov ebx, eax    ;Save byte pointer in ebx
+    div ecx
+    ;eax = Quotient => Relative cluster number
+    ;edx = Remainder => Byte offset into cluster
+    mov dword [currClust], eax    ;Save relative cluster 
+;Now walk the FAT relative cluster number of times
+    mov ecx, eax
+    mov eax, dword [rsi + sft.dStartClust]
+.fatWalk:
+    call walkFAT
+    jc .diskFail
+    dec ecx
+    jnz .fatWalk
+;eax has absolute cluster number now, set SFT fields
+    mov dword [rsi + sft.dAbsClusr], eax
+    mov eax, dword [currClust]
+    mov dword [rsi + sft.dRelClust], eax
+    mov eax, dword [currByteA]
+    mov dword [rsi + sft.dCurntOff], eax
+    clc
+.exit:
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    ret
+.diskFail:
+;FAT read failed, error
+    stc
+    jmp short .exit
+
+updateCurrentSFT:
+;Updates the Current SFT fields before returning from a file handle operation
+    push rsi
+    push rax
+    mov rsi, qword [currentSFT]
+    mov eax, dword [currByteA]
+    mov dword [rsi + sft.dCurntOff], eax
+    mov eax, dword [currClustA]
+    mov dword [rsi + sft.dAbsClusr], eax
+    mov eax, dword [currClust]
+    mov dword [rsi + sft.dRelClust], eax
+    pop rax
+    pop rsi
+    ret
+
+setSectorVars:
+;Uses the currByteA and cluster variables to update the sector variables
+;   currByte (byte granular sector offset), currSect and currSectA
+    push rax
+    push rcx
+    push rdx
+    push rbp
+    mov rbp, qword [workingDPB]
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    add cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    ;Get in cl bytes per Cluster shift
+    mov eax, dword [currClust]  ;Get current file cluster number
+    shl eax, cl ;Get number of bytes to the current File Relative cluster
+    mov ecx, dword [currByteA]
+    sub ecx, eax    ;Get the difference
+    ;ecx now has the offset in bytes into the current cluster
+    movzx rax, byte [clustFact] ;Get number of sectors per cluster into al
+    movzx ecx, byte [rbp + dpb.bBytesPerSectorShift]
+    shl eax, cl ;Get bytes per cluster in eax
+    ;eax now has the number of bytes in a cluster
+    xchg eax, ecx   ;Swap em
+    xor edx, edx
+    div ecx ;Offset into cluster (bytes)/bytes in sector (bytes)
+    ;edx has the offset into the current sector in bytes (remainder)
+    ;eax has the number of sectors into the cluster in sectors (quotient)
+    mov word [currByte], dx ;Save sector offset
+    mov byte [currSect], al ;Save cluster relative sector number
+;Get Disk Relative (absolute) Sector being pointed to
+    mov eax, [currClustA]   ;Get current absolute cluster
+    call getStartSectorOfCluster    ;rbp points to dpb and eax has cluster num
+    ;rax has starting disk sector of cluster
+    movzx rcx, byte [currSect]  ;Get cluster relative sector offset
+    add rax, rcx    
+    mov qword [currSectA], rax  ;Save the current disk relative sector number
+    pop rbp
+    pop rdx
+    pop rcx
+    pop rax
+    ret
