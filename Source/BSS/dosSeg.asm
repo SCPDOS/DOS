@@ -103,8 +103,9 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
-;Temp vars, used when walking FAT or changing sectors, in the event of failure
+;Temp vars, used when walking FAT or changing sectors
     tempSect    resq 1  ;A scratch sector number
+    entries     resw 1  ;FAT entries per FAT sector
 ;Needs to be set up before any file access          |
 ;These vars keep track of file access properties    |
 ;  and must be used only for such purposes.         |

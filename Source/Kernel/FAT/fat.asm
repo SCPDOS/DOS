@@ -167,25 +167,105 @@ getStartSectorOfCluster:
     ;rax now has the first sector of the current cluster
     pop rcx
     ret
-getFreeCluster:
-;Walks the FAT to find a free cluster and returns the cluster number in eax
+
+findFreeCluster:
+;Walks the FAT to find a free cluster and returns the 
+;   zero extended cluster number in eax (-1 means no free cluster)
 ;Works on the workingDPB
+    push rbx
     push rcx
+    push rdx
+    push rdi
     push rbp
     mov rbp, qword [workingDPB]
     movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
     mov qword [tempSect], rax   ;Save the sector number temporarily
-    mov cl, fatBuffer
-    call getBuffer
-    jc .readError
+;Use ebp as sector counter
+    mov edx, dword [rbp + dpb.dFATlength]
+;Get Sector Size in bytes in ebx
+    mov ebx, 1
+    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
+    shl ebx, cl ;Get sector size in ebx
+;Get FAT type
     call getFATtype ;Gets FAT type (for number of elements in sector)
+    jz .fat12
+    test cl, 1
+    jnz .fat16
+;FAT32 proceeds here
+    shr ebx, 2  ;Divide by 4 to get number of FAT entries in a sector buffer
+    mov word [entries], bx
+.fat32Search:
+    mov cl, fatBuffer
+    mov rax, qword [tempSect]
+    call getBuffer ;Buffer Header in ebx
+    jc .readError
+    lea rdi, qword [rbx + bufferHdr.dataarea]
+    xor eax, eax
+    movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
+    repne scasd ;Look for the zero dword 
+    je .fat32Found  ;If found, report cluster number (offset into FAT)
+    dec edx ;Dec number of sectors left to search
+    jz .noFreeClusters
+    inc qword [tempSect]    ;Go to the next FAT sector
+    jmp short .fat32Search
+.fat32Found:
+    sub edi, 4  ;edi is one dword past the entry
+.computeEntry:
+    movzx rcx, word [rbp + dpb.wFAToffset] ;Get start sector number of FAT 
+    mov rax, qword [tempSect]   ;Get disk sector number of FAT into rax
+    sub rax, rcx   ;Get Offset into FAT in rax
+    movzx ecx, word [entries] ;Get number of entries in a FAT sector
+    push rdx
+    mul rcx ;Multiply rax with rcx (technically eax with ecx)
+    pop rdx
+;rbx points to current buffer header
+    lea rdx, qword [rbx + bufferHdr.dataarea]
+    sub rdi, rdx
+    add rax, rdi    ;Add the offset into the sector to rax to get cluster number
 .exit:
     pop rbp
+    pop rdi
+    pop rdx
     pop rcx
+    pop rbx
     ret
 .readError:
     stc
     jmp short .exit
+.noFreeClusters:
+    mov eax, -1 ;No free cluster marker
+    jmp short .exit
+.fat16:
+    shr ebx, 1  ;Divide by 2 to get number of FAT entries in a sector buffer
+    mov word [entries], bx
+.fat16Search:
+    mov cl, fatBuffer
+    mov rax, qword [tempSect]
+    call getBuffer ;Buffer Header in ebx
+    jc .readError
+    lea rdi, qword [rbx + bufferHdr.dataarea]
+    xor eax, eax
+    movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
+    repne scasw ;Look for the zero word 
+    je .fat16Found  ;If found, report cluster number (offset into FAT)
+    dec edx ;Dec number of sectors left to search
+    jz .noFreeClusters
+    inc qword [tempSect]    ;Go to the next FAT sector
+    jmp short .fat16Search
+.fat16Found:
+    sub edi, 2  ;edi is one dword past the entry
+    jmp short .computeEntry
+.fat12:
+    mov eax, ebx    ;Get sectorsize in ax
+    shl eax, 1  ;Multiply by 2
+    mov ecx, 3  ;1.5 bytes per FAT entry *2
+    push rdx    ;Preserve number of sectors in FAT counter
+    xor edx, edx
+    div ecx
+    pop rdx
+    mov word [entries], ax ;Get quotient (number of whole entries in sector) 
+
+
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
@@ -201,6 +281,7 @@ getNextSectorOfFile:
     ;Read next sector. If at last sector in cluster, walk map, get
     ; next cluster and read first sector 
     push rax
+    push rbx
     push rcx
     push rdx
     push rsi
@@ -241,6 +322,7 @@ getNextSectorOfFile:
     pop rsi
     pop rdx
     pop rcx
+    pop rbx
     pop rax
     ret
 .OSFile:

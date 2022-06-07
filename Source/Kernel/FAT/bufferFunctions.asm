@@ -63,7 +63,7 @@ freeBuffersForDrive:
     ret
 
 
-getBuffer: ;External Linkage (dosPrim.asm)
+getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL! WORKS ON THE WORKING DPB!
