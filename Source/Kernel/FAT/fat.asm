@@ -356,20 +356,22 @@ walkFAT:
     push rbx
     push rcx
     push rdx
-    push rsi
     push rdi
     push rbp
+    mov edi, eax    ;Save cluster number in edi
     call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
-    mov edi, ecx    ;Move FAT signature into edi
+    ;and FAT type in ecx
     movzx ebx, word [rbp + dpb.wFAToffset]
     add eax, ebx    ;Add the FAT offset to the sector
+    push rcx    ;Move FAT signature onto stack
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
+    pop rcx
     jc .getFATFailed
     ;Check if FAT 12, 16, 32
-    test edi, edi
+    test ecx, ecx
     jz .gotoNextClusterFat12    ;Handle FAT 12 separately
-    test edi, 1
+    test ecx, 1
     jz .goToNextClusterFat32
     ;Here we handle FAT16
     movzx eax, word [rbx + bufferHdr.dataarea + rdx]
@@ -385,7 +387,6 @@ walkFAT:
 .exit:
     pop rbp
     pop rdi
-    pop rsi
     pop rdx
     pop rcx
     pop rbx
@@ -393,13 +394,17 @@ walkFAT:
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors
 ;eax has the sector of the FAT, offset into the sector is in edx
+
+    push rdi    ;Save the cluster number on the stack
     mov rdi, rbx    ;Save previous buffer header in rdi
     inc eax ;Get next sector
+    mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
+    pop rcx ;Return the cluster number in rcx
     jc .getFATFailed
     ;rdi has first buffer header, rbx has second buffer header
     ;rdx has offset into first header for entry
-    test dword [rsi + sft.dAbsClusr], 1  ;Check if cluster is odd
+    test ecx, 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
     mov eax, 1
