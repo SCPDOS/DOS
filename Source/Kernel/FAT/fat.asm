@@ -383,7 +383,8 @@ getNextSectorOfFile:
     jne .getSector
 ;Else, we are at the last sector, we return the first free cluster sector
 ; on disk. If it is a write operation, this cluster will be added to the 
-; file's cluster chain. If it is a read operation, then it fails.
+; file's cluster chain. If it is a read operation, the handle call fails.
+    call findFreeCluster    ;Get in eax first free sector
 
 walkFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain

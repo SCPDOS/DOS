@@ -65,7 +65,7 @@ eClsAuth    equ 3   ;Authorisation, e.g. file permission error
 eClsInt     equ 4   ;Internal DOS error or bug
 eClsHrdFlt  equ 5   ;Hardware Failure
 eClsSysFlt  equ 6   ;System Failure, i.e. missing or bad cfg files
-eClsAppFlt  equ 7   ;Application Program error, inconsistent requestss etc...
+eClsAppFlt  equ 7   ;Application Program error, inconsistent requests etc...
 eClsNotFnd  equ 8   ;Resource not found
 eClsBadFmt  equ 9   ;Bad format for resource
 eClsLocked  equ 10  ;Resource Locked

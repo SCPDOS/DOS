@@ -16,7 +16,7 @@ writeFileHdl:      ;ah = 40h, handle function
 rwFileHndleCommon:
 ;bx has file handle, ecx has number of bytes to read
     mov word [currentHdl], bx
-    call getSFTPtr  ;Get SFT ptr in var
+    call getSFTPtr  ;Get SFT ptr in var in rdi and var
     jnc .rwfhc0
     ret ;If carry is set and error code in al, exit!
 .rwfhc0:
@@ -24,7 +24,43 @@ rwFileHndleCommon:
     ret
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
-movFileReadPtr:    ;ah = 42h, handle function, LSEEK
+lseekHdl:          ;ah = 42h, handle function, LSEEK
+;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
+    call getSFTPtr
+    jnc .sftValid
+    ;Error code and exit
+    ;al (eax) has error code for bad file handle
+    mov word [errorExCde], ax
+.exitBad:
+    mov byte [errorLocus], eLocUnk  ;Unknown Locus
+    mov byte [errorAction], eActUsr ;Reinput data
+    mov byte [errorClass], eClsNotFnd
+    call getUserRegs    ;Get user regs in rsi
+    or byte [rsi + callerFrame.flags], 1    ;Set CF
+    ret
+.sftValid:
+    cmp al, 3
+    jb .validFunction
+    ;Error code and exit
+    mov ax, errInvFnc
+    jmp short .exitBad
+.validFunction:
+    cmp al, 1
+    ja .seekend
+    jb .seekset
+;Here we are at seekcur, seek from current (signed)
+    add edx, dword [rdi + sft.dCurntOff]    ;Get offset from current
+.seekset:
+;Seek from the start (unsigned)
+    mov dword [rdi + sft.dCurntOff], edx ;Store the new offset
+    call getUserRegs    ;Get user regs in rsi
+    mov dword [rsi + callerFrame.rdx], edx
+    xor al, al  ;Return OK!
+    ret
+.seekend:
+;Here we are at seekend, seek from end (signed)
+    add edx, dword [rdi + sft.dFileSize]    ;Add to file size
+    jmp short .seekset
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 ioctrl:            ;ah = 44h, handle function
 duplicateHandle:   ;ah = 45h, handle function
@@ -108,12 +144,11 @@ getSFTPtr:
 ;Gets the SFT pointer for a given file handle from the calling application
 ;On entry:
 ;   bx = File handle from JFT for calling application
-;On exit: CF=NC, SFT found and placed in var
-;         CF=CY, SFT not found, abort!
+;On exit: CF=NC, SFT found and placed in var and rdi
+;         CF=CY, SFT not found, abort! al=BadHdl errorcode
     push rax
     push rbx
     push rsi
-    push rdi
     cmp bx, word [maxHndls]  ;current max number of file handles
     jnb .gspFail
     mov rsi, qword [currentPSP]
@@ -148,13 +183,12 @@ getSFTPtr:
     mov qword [currentSFT], rdi ;Save pointer in variable
     clc
 .gspExit:
-    pop rdi
     pop rsi
     pop rbx
     pop rax
     ret
 .gspFail:
-    mov al, errBadHdl
+    mov eax, errBadHdl  ;al, zero rest of it
     stc
     jmp short .gspExit
 
@@ -191,7 +225,7 @@ updateCurrentSFT:
 
 setClusterVars:
 ;Uses the number given in eax as the file pointer, to compute
-; sft fields (ONLY CALLED AT THE START OF LSEEK)
+; sft fields
 ;Works on the SFT pointer provided in rsi
 ;Input: rsi = SFT entry pointer
 ;Output: rsi = SFT cluster fields updated IF CF=NC

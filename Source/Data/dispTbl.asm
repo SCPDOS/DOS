@@ -67,7 +67,7 @@ kDispTbl:
     dw readFileHdl - kDispTbl         ;AH = 3FH, RECORD OPERATION     HANDLE
     dw writeFileHdl - kDispTbl        ;AH = 40H, RECORD OPERATION     HANDLE
     dw deleteFileHdl - kDispTbl       ;AH = 41H, FILE OPERATION       HANDLE
-    dw movFileReadPtr - kDispTbl      ;AH = 42H, RECORD OPERATION     HANDLE
+    dw lseekHdl - kDispTbl            ;AH = 42H, RECORD OPERATION     HANDLE
     dw changeFileModeHdl - kDispTbl   ;AH = 43H, FILE OPERATION       HANDLE
     dw ioctrl - kDispTbl              ;AH = 44H, MISC. SYS. FUNCTION
     dw duplicateHandle - kDispTbl     ;AH = 45H, FILE OPERATION       HANDLE
