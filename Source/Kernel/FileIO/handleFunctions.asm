@@ -17,10 +17,27 @@ rwFileHndleCommon:
 ;bx has file handle, ecx has number of bytes to read
     mov word [currentHdl], bx
     call getSFTPtr  ;Get SFT ptr in var in rdi and var
-    jnc .rwfhc0
-    ret ;If carry is set and error code in al, exit!
-.rwfhc0:
-
+    jc short lseekHdl.exitBad ;If file handle not good, recycle error
+    ;Now check if device or disk file
+    test word [rsi + sft.wDeviceInfo], devCharDev   ;Is it a char dev?
+    jnz .charDev
+    ;We are a disk (eventually, network too) file.
+    ;Check if we can set the cluster fields first (is dCurntOff <= dFileSize)
+    ;rdi has the SFT pointer
+    mov eax, dword [rsi + sft.dCurntOff]
+    cmp eax, dword [rsi + sft.dFileSize]
+    jae .above
+.above:
+;If it is a read, operation, return 0 bytes.
+    test byte [rwFlag], 1
+    jnz .writeAbove
+    xor eax, eax    ;No characters transferred
+    jmp .exitOK
+.writeAbove:
+.charDev:
+.exitOK:
+    call getUserRegs
+    mov dword [rsi + callerFrame.rax], eax  ;Store number of chars transferred
     ret
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
