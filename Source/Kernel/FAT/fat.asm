@@ -253,7 +253,7 @@ findFreeCluster:
     inc qword [tempSect]    ;Go to the next FAT sector
     jmp short .fat16Search
 .fat16Found:
-    sub edi, 2  ;edi is one dword past the entry
+    sub edi, 2  ;edi is one word past the entry
     jmp short .computeEntry
 .fat12:
     mov eax, ebx    ;Get sectorsize in ax
@@ -264,7 +264,45 @@ findFreeCluster:
     div ecx
     pop rdx
     mov word [entries], ax ;Get quotient (number of whole entries in sector) 
-
+    ;The value is rounded down so we can read the next sector for the 
+    ;last entry manually (thus buffering it if it not already buffered)
+    mov cl, fatBuffer
+    mov rax, qword [tempSect]
+    call getBuffer ;Buffer Header in ebx
+    jc .readError
+    lea rdi, qword [rbx + bufferHdr.dataarea]
+.fat12SearchNewSector:
+    movzx ecx, word [entries]   ;This is total entries in Sector rounded down
+.fat12Search:
+    movzx eax, word [rdi]   ;Get first word (EVEN ENTRY)
+    and eax, 0FFFh   ;Clear upper nybble
+    jz .fat12EntryFound
+    inc rdi ;Goto next byte
+    dec ecx ;Dec the number of entries to search in sector
+    movzx eax, word [rdi]  ;Get second word (ODD ENTRY)
+    shr eax, 4  ;Shift down by 4
+    jz .fat12EntryFound
+    inc rdi ;Goto next entry
+    dec ecx ;Dec the number of entries to search in sector
+    jnz .fat12Search
+;We arrive here when we are at the last entry in the sector
+    inc qword [tempSect]    ;Get next Sector
+    mov rax, qword [tempSect]   ;Get this sector in rax
+    mov cl, fatBuffer
+    call getBuffer ;Buffer Header in ebx
+    jc .readError
+    movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
+    lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
+    mov ah, byte [rcx]  ;Get first byte in new sector
+    shr eax, 4  ;Clear out bottom nybble
+    jz .fat12EntryFound ;Found a sector!
+    ;Empty cluster not found in sector
+    dec edx ;Decrement sector count
+    jz .noFreeClusters
+    mov rdi, rcx    ;Set rdi to point at start of next sector
+    jmp short .fat12SearchNewSector ;Reload the number of entries and search
+.fat12EntryFound:
+    jmp .computeEntry   ;Unnecessary redirection
 
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
