@@ -15,7 +15,7 @@ getUserRegs:   ;Int 4Fh AX=1218h
     mov rsi, qword [oldRSP]
     ret
 
-walkCDSarray:     ;Int 4Fh AX=1217h
+getCDSforDrive:     ;Int 4Fh AX=1217h
     ;Gets the CDS for the current drive in al
     ;Input: al = Drive number, 0 = A ...
     ;Output: CF=NC => rsi = Pointer to CDS for drive in al (and workingCDS var)
@@ -54,8 +54,8 @@ walkDPBchain:
     stc
 .exit:
     ret
-getDriveCDSAndCheckDriveValid:
-;Gets a drive CDS and checks it is a valid physical drive
+setDrive:   ;Int 4Fh AX=1219h   
+;Gets a drive CDS, sets it as working and checks it is a valid physical drive
 ;Input: al = 0-based drive number
 ;Output: al = 0-based drive number
 ;   CF=NC => Drive can be set as Current Drive (i.e. Not Network or Join)
@@ -73,6 +73,7 @@ getDriveCDSAndCheckDriveValid:
     ret
 getCDS:
 ;Gets the device DPB and saves it in the DOS variable
+;This can be called to get CDS for network drives too!
 ;Input: al = 1 based drive number
 ;Sets workingCDS var with the CDS for the device. 
 ;   If device on a network, sets CF
@@ -89,10 +90,10 @@ getCDS:
     jz .physDrive
     ;Invalid invokation (21/5D00 invokation not yet supported)
     ;If returned with CF=CY, consider it an error for now
-    ;Eventually, here we will build a fresh DPB for the network drive
+    ;Eventually, here we will build a fresh CDS for the network drive
     jmp short .exitBad1
 .physDrive:
-    call walkCDSarray ;Get CDS pointer in RSI and in curCDSPtr
+    call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
     jc .exitBad
     test word [rsi + cds.wFlags], cdsPhysDrive
     jnz .exitOk ;Exit with flag cleared

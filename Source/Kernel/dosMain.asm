@@ -286,7 +286,7 @@ selectDisk:        ;ah = 0Eh
 ;Called with dl = drive number, 0 = A, 1 = B etc...
     mov al, dl
     inc al  ;Convert to 1-based number to avoid 0 meaning current drive
-    call getDriveCDSAndCheckDriveValid  ;Must make sure provided drive is valid
+    call setDrive  ;Must make sure provided drive is valid
     jc .skipSettingCurrent  ;Join and network drives cant be current drive!
     mov byte [currentDrv], al   ;Set drive as current
 .skipSettingCurrent:
