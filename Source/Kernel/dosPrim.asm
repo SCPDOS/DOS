@@ -97,22 +97,7 @@ absDiskRead:        ;Int 45h
     call diskReadSetup
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
-    push rbx
-    push rsi
-    ;Prepare for goDriver now
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
-    lea rbx, diskReqHdr
-    call goDriver   ;Make request
-    pop rsi
-    pop rbx
-    push rax
-    push rcx
-    mov eax, dword [diskReqHdr + ioReqPkt.tfrlen]   ;Get actual number transferred
-    sub ecx, eax    ;Get positive difference of the two 
-    movzx eax, word [diskReqHdr + ioReqPkt.status]
-    test ax, drvErrStatus   ;Is error bit set?
-    pop rcx
-    pop rax
+    call absDiskDriverCall
     jz absDiskExit  ;Skip error code checking
     mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
     ;DOS uses the following pairs in a table
@@ -142,7 +127,27 @@ absDiskExit:
     mov rsp, qword [oldRSP]
     sti ;Reenable interrupts
     ret ;Return from interrupt without popping flags!
-    
+absDiskDriverCall:
+;Input: rbp = Transacting DPB, ecx = Number of sectors to transfer
+;Output: ZF=ZE => No error, ZF=NZ => Error 
+;       eax = Number of sectors transferred
+    push rcx
+    push rbx
+    push rsi
+    ;Get number of sectors to transfer in ecx (if not in ecx already)
+    mov ecx, dword [diskReqHdr + ioReqPkt.tfrlen]
+    ;Prepare for goDriver now
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
+    lea rbx, diskReqHdr
+    call goDriver   ;Make request
+    pop rsi
+    pop rbx
+    mov eax, dword [diskReqHdr + ioReqPkt.tfrlen]   ;Get actual num tfrd
+    sub ecx, eax    ;Get positive difference of the two 
+    movzx eax, word [diskReqHdr + ioReqPkt.status]
+    test ax, drvErrStatus   ;Is error bit set?
+    pop rcx
+    ret
 
 getDiskDPB:
 ;Gets the disk DPB if the Disk is physical
@@ -278,6 +283,7 @@ diskWriteSetup:
     add ah, byte [verifyFlag]   ;Add verify if needed to be added
     jmp short diskRWCommon
 diskReadSetup:
+    push rax
     mov ah, drvREAD
 diskRWCommon:
 ;Sets up the IO request packet with:

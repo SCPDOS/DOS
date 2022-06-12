@@ -146,6 +146,7 @@ readSectorBuffer:   ;Internal Linkage
     push rcx
     push rdx
     push rsi
+    push rbp
 .rsRequest0:
     mov esi, 3  ;Repeat attempt counter
 .rsRequest1:
@@ -153,11 +154,14 @@ readSectorBuffer:   ;Internal Linkage
     mov ecx, 1  ;One sector to copy
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     mov rbx, qword [rdi + bufferHdr.dataarea]
-    call absDiskRead    ;Call INT 45h
-    jc .rsFail
+    mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
+    call diskReadSetup  ;Setup request (preserves setup registers)
+    call absDiskDriverCall    ;Make Driver Request
+    jnz .rsFail
 .rsExit:
     clc
 .rsExitBad:
+    pop rbp
     pop rsi
     pop rdx
     pop rcx
@@ -183,6 +187,7 @@ flushBuffer:    ;Internal Linkage
     push rcx
     push rdx
     push rsi
+    push rbp
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
     jz .fbFreeExit  ;Skip write to disk if data not modified
 .fbRequest0:
@@ -192,8 +197,10 @@ flushBuffer:    ;Internal Linkage
     mov ecx, 1  ;One sector to copy
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     mov rbx, qword [rdi + bufferHdr.dataarea]
-    call absDiskWrite    ;Call INT 46h
-    jc .fbFail
+    mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
+    call diskWriteSetup  ;Setup request (preserves setup registers)
+    call absDiskDriverCall    ;Make Driver Request
+    jnz .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
     test byte [rdi + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
     jz .fbFreeExit  ;If not, exit
@@ -207,6 +214,7 @@ flushBuffer:    ;Internal Linkage
     mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
     clc
 .fbExitBad:
+    pop rbp
     pop rsi
     pop rdx
     pop rcx
