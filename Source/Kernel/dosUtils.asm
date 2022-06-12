@@ -90,7 +90,7 @@ getCDS:
     jz .physDrive
     ;Invalid invokation (21/5D00 invokation not yet supported)
     ;If returned with CF=CY, consider it an error for now
-    ;Eventually, here we will build a fresh CDS for the network drive
+    ;Eventually, here we will build a fresh DPB for the non-physical drive
     jmp short .exitBad1
 .physDrive:
     call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
