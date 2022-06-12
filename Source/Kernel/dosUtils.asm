@@ -53,19 +53,6 @@ walkDPBchain:
 .exitBad:
     stc
 .exit:
-    %if DEBUG
-    ;Print DPB 
-    debugEnterM
-    mov r8, rbp ;Save dpb pointer
-    lea rbp, .l0000
-    call debPrintNullString
-    mov rbp, r8
-    call debDPBptr
-    jmp short .l0001
-.l0000 db "Internal call to find DPB",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
     ret
 getDriveCDSAndCheckDriveValid:
 ;Gets a drive CDS and checks it is a valid physical drive
