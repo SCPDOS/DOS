@@ -23,13 +23,20 @@ criticalDOSError:
 ;                  = 2 - Terminate the Program  (Abort)
 ;                  = 3 - Fail the DOS call      (Fail)
 ; Return response from int 44h in al
+; Caller must preserve rsp, rbx, rcx, rdx if they wish to return to DOS
     cli ;Disable Interrupts
     mov byte [critErrFlag], 1   ;Set flag for critical error
+    mov byte [Int44RetVal], 0   ;Clear the return value
+    mov byte [Int44bitfld], ah  ;Save the bitfield
     mov qword [xInt44hRSP], rsp
+    mov di, word [Int44Error]   ;Get the error code in di
     mov rsp, qword [oldRSP] ;Get the old RSP value
+    sti
     int 44h ;Call critical error handler
+    cli
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
     mov byte [critErrFlag], 0   ;Clear critical error flag
+    mov byte [Int44RetVal], al  ;Save the return value
     sti ;Reenable Interrupts
     ret
 

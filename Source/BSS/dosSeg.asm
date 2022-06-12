@@ -50,7 +50,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 
     currentDTA  resq 1  ;Address of the current DTA x
     currentPSP  resq 1  ;Address of current PSP x
-    rdiErrorPtr resq 1  ;Saves RDI value of last error (could make this di)
+    Int44Error  resw 1  ;Saves Error code from request status word
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
