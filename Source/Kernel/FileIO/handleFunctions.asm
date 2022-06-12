@@ -19,13 +19,13 @@ rwFileHndleCommon:
     call getSFTPtr  ;Get SFT ptr in var in rdi and var
     jc short lseekHdl.exitBad ;If file handle not good, recycle error
     ;Now check if device or disk file
-    test word [rsi + sft.wDeviceInfo], devCharDev   ;Is it a char dev?
+    test word [rdi + sft.wDeviceInfo], devCharDev   ;Is it a char dev?
     jnz .charDev
     ;We are a disk (eventually, network too) file.
     ;Check if we can set the cluster fields first (is dCurntOff <= dFileSize)
     ;rdi has the SFT pointer
-    mov eax, dword [rsi + sft.dCurntOff]
-    cmp eax, dword [rsi + sft.dFileSize]
+    mov eax, dword [rdi + sft.dCurntOff]
+    cmp eax, dword [rdi + sft.dFileSize]
     jae .above
 .above:
 ;If it is a read, operation, return 0 bytes.
@@ -197,7 +197,8 @@ getSFTPtr:
     dec al
     jnz .gsp11  ;Keep adding one until al is zero
 .gsp12:
-    mov qword [currentSFT], rdi ;Save pointer in variable
+    mov rsi, rdi
+    call setCurrentSFT ;Set Current SFT pointer to rsi value
     clc
 .gspExit:
     pop rsi

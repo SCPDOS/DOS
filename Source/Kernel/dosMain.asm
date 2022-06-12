@@ -71,7 +71,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 ;Char operations here
     test byte [critErrFlag], 1  ;Are we in critical error?
     jnz .fdGoToFunction         ;If we are, stay on Critical Error Stack
-    lea rsp, IOStakTop          ;Otherwise, switch to IO stack
+    lea rsp, AuxStakTop        ;Otherwise, switch to IO stack
     jmp short .fdGoToFunction
 .fddiskOp:
     ;Disk operations go here
@@ -284,24 +284,13 @@ diskReset:         ;ah = 0Dh
 
 selectDisk:        ;ah = 0Eh
 ;Called with dl = drive number, 0 = A, 1 = B etc...
-    mov al, byte [numLogDrv]        ;Value 1 based
-    mov bl, byte [lastdrvNum]       ;Value 1 based
-    dec al
-    dec bl
-    cmp bl, al
-    cmova eax, ebx    ;If bl > al, move bl to al
-    cmp dl, al  ;If dl is bigger than al
-    ja .error
-    mov byte [currentDrv], dl   ;Only save dl if it is a valid number
-    ret ;al = lastdrv as retcode
-.error:
-    call getUserRegs
-    or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
-    mov eax, errBadDrv          ;Invalid drive error
-    mov word [errorExCde], ax     
-    mov byte [errorLocus], eLocUnk    ;Not appropriate
-    mov byte [errorClass], eClsNotFnd    ;Drive not found
-    mov byte [errorAction], eActRetUsr   ;Retry after user intervention
+    mov al, dl
+    inc al  ;Convert to 1-based number to avoid 0 meaning current drive
+    call getDriveCDSAndCheckDriveValid  ;Must make sure provided drive is valid
+    jc .skipSettingCurrent  ;Join and network drives cant be current drive!
+    mov byte [currentDrv], al   ;Set drive as current
+.skipSettingCurrent:
+    movzx eax, byte [lastdrvNum]   ;Return lastdrive as "errorcode"
     ret
 
 getCurrentDisk:    ;ah = 19h, get current default drive

@@ -133,8 +133,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 
     scratchSFT  resb sft_size
 
-    IOStack     resq 199
-    IOStakTop   resq 1
+    AuxStack    resq 199
+    AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)
     DiskStack   resq 199
     DiskStakTop resq 1
     diskChange  resb 1  ;-1 = disk has been changed!

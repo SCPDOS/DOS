@@ -50,7 +50,7 @@ setupAbsDiskEntry:
     cld ;Set string ops in the right direction
     call setupPhysicalDiskRequest
     jc .exit    ;Error exit
-    mov byte [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
+    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
     push rsi
     push rax
     lea rsi, buffer1  ;Point to one of the pathspaces
@@ -77,7 +77,7 @@ absDiskWrite:       ;Int 46h
 ;rdx = Start LBA to write to
     cli
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
-    lea rsp, DiskStakTop
+    lea rsp, AuxStakTop
     push rbp
     call setupAbsDiskEntry
     jc absDiskExit
@@ -90,7 +90,7 @@ absDiskRead:        ;Int 45h
 ;rdx = Start LBA to read from
     cli 
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
-    lea rsp, DiskStakTop
+    lea rsp, AuxStakTop
     push rbp    ;Save to use rbp as DPB pointer
     call setupAbsDiskEntry
     jc absDiskExit

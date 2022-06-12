@@ -67,12 +67,29 @@ walkDPBchain:
     debugExitM
     %endif
     ret
-
+getDriveCDSAndCheckDriveValid:
+;Gets a drive CDS and checks it is a valid physical drive
+;Input: al = 0-based drive number
+;Output: al = 0-based drive number
+;   CF=NC => Drive can be set as Current Drive (i.e. Not Network or Join)
+;   CF=CY => 0-based drive number invalid OR CDS returned with Net or Join flags
+;            set.
+    call getCDS ;Setup working CDS DOS variable for this drive
+    jc .exit    ;Carry the CF flag if not Physical
+    push rsi
+    mov rsi, qword [workingCDS] ;Get CDS
+    test word [rsi + cds.wFlags], cdsJoinDrive  ;Check if Join
+    pop rsi
+    jz .exit
+    stc
+.exit:
+    ret
 getCDS:
 ;Gets the device DPB and saves it in the DOS variable
 ;Input: al = 1 based drive number
 ;Sets workingCDS var with the CDS for the device. 
-;   If device on a network, sets CF (currently error)
+;   If device on a network, sets CF
+;Returns al with 0-based drive number
     test al, al
     jnz .skip
     mov al, byte [currentDrv]   ;Get current drive
