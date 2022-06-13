@@ -90,8 +90,6 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     cmp rbx, -1
     je .rbReadNewSector
 .rbExit:
-    clc
-.rbExitNoFlag:
     pop rdi
     pop rsi
     pop rdx
@@ -124,7 +122,7 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     mov byte [rdi + bufferHdr.reserved], 0
     inc ch  ;If an error occurs, have the signature in ch
     call readSectorBuffer ;Carry the flag from the request
-    jmp short .rbExitNoFlag
+    jmp short .rbExit
 
 ;----------------------------------------------------
 ;           Internally referenced functions         :
