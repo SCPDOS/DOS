@@ -149,6 +149,9 @@ readSectorBuffer:   ;Internal Linkage
     push rbp
 .rsRequest0:
     mov esi, 3  ;Repeat attempt counter
+    test byte [rdi + bufferHdr.bufferFlags], fatBuffer
+    jz .rsRequest1
+    add esi, 2  ;FAT sectors have 5 attempts
 .rsRequest1:
     mov al, byte [rdi + bufferHdr.driveNumber]
     mov ecx, 1  ;One sector to copy
@@ -173,6 +176,8 @@ readSectorBuffer:   ;Internal Linkage
     dec esi
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
+;Here make Critical Error call
+    
     stc
     jmp .rsExitBad  ;Abort
 
@@ -192,6 +197,9 @@ flushBuffer:    ;Internal Linkage
     jz .fbFreeExit  ;Skip write to disk if data not modified
 .fbRequest0:
     mov esi, 3  ;Repeat attempt counter
+    test byte [rdi + bufferHdr.bufferFlags], fatBuffer
+    jz .fbRequest1
+    add esi, 2  ;FAT sectors have 5 attempts
 .fbRequest1:
     mov al, byte [rdi + bufferHdr.driveNumber]
     mov ecx, 1  ;One sector to copy
@@ -205,10 +213,13 @@ flushBuffer:    ;Internal Linkage
     test byte [rdi + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
     jz .fbFreeExit  ;If not, exit
     dec byte [rdi + bufferHdr.bufFATcopy]
-    jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
+    jz .fbFreeExit1  ;Once this goes to 0, stop writing FAT copies
     mov eax, dword [rdi + bufferHdr.bufFATsize]
     add qword [rdi + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
     jmp .fbRequest0 ;Make another request
+.fbFreeExit1:
+    mov bl, byte [rbp + dpb.bNumberOfFATs]
+    mov byte [rdi + bufferHdr.bufFATcopy], bl    ;Just in case, replace this
 .fbFreeExit:
 ;Free the buffer if it was flushed successfully
     mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
@@ -231,7 +242,7 @@ flushBuffer:    ;Internal Linkage
     
 findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
-; in rbx
+; in rbx and the currBuff variable
 ;Input: Nothing
 ;Output: rbx = Pointer to the buffer hdr to use
     push rdx
@@ -254,6 +265,7 @@ findLRUBuffer: ;Internal Linkage
     mov qword [rbx + bufferHdr.nextBufPtr], rdx
 .flbExit:
     pop rdx
+    mov qword [currBuff], rbx   ;Save in variable too
     ret
 .flbFreeLink:
     push rcx

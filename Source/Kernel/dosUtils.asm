@@ -56,7 +56,7 @@ walkDPBchain:
     ret
 setDrive:   ;Int 4Fh AX=1219h   
 ;Gets a drive CDS, sets it as working and checks it is a valid physical drive
-;Input: al = 0-based drive number
+;Input: al = 1-based drive number
 ;Output: al = 0-based drive number
 ;   CF=NC => Drive can be set as Current Drive (i.e. Not Network or Join)
 ;   CF=CY => 0-based drive number invalid OR CDS returned with Net or Join flags
