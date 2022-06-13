@@ -121,7 +121,6 @@ findFreeCluster:
     mov cl, fatBuffer
     mov rax, qword [tempSect]
     call getBuffer ;Buffer Header in ebx
-    jc .readError
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
     movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
@@ -152,9 +151,6 @@ findFreeCluster:
     pop rcx
     pop rbx
     ret
-.readError:
-    stc
-    jmp short .exit
 .noFreeClusters:
     mov eax, -1 ;No free cluster marker
     jmp short .exit
@@ -165,7 +161,6 @@ findFreeCluster:
     mov cl, fatBuffer
     mov rax, qword [tempSect]
     call getBuffer ;Buffer Header in ebx
-    jc .readError
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
     movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
@@ -192,7 +187,6 @@ findFreeCluster:
     mov cl, fatBuffer
     mov rax, qword [tempSect]
     call getBuffer ;Buffer Header in ebx
-    jc .readError
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .fat12SearchNewSector:
     movzx ecx, word [entries]   ;This is total entries in Sector rounded down
@@ -213,7 +207,6 @@ findFreeCluster:
     mov rax, qword [tempSect]   ;Get this sector in rax
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
-    jc .readError
     movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
     lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
     mov ah, byte [rcx]  ;Get first byte in new sector
@@ -275,7 +268,6 @@ getNextSectorOfFile:
     mov cl, dataBuffer
 .getSectorRead:
     call getBuffer  ;Get ptr to buffer header in rbx
-    jc .getSectorFailed
     add rbx, bufferHdr.dataarea ;Goto data area
 .getSectorExit:
     pop rbp
@@ -289,18 +281,11 @@ getNextSectorOfFile:
 .OSFile:
     mov cl, dosBuffer
     jmp short .getSectorRead
-.getSectorFailed:
-    ;CF = CY => Something went wrong!
-    ;   Set the Zero flag for data not flushed to disk
-    ;   Clear Zero flag for data not read from disk
-    test ch, ch ;This sets the zero flag correctly, but mangles CF
-    stc ;Set the carry flag!
-    jmp short .getSectorExit
+
 
 .gotoNextCluster:
     mov eax, dword [currClustA] ;Get absolute cluster number
     call walkFAT
-    jc .getSectorFailed
     ;eax now has the next cluster number to read (or -1 if EOF)
     cmp eax, -1
     jne .getSector
@@ -329,7 +314,6 @@ walkFAT:
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
     pop rcx
-    jc .getFATFailed
     ;Check if FAT 12, 16, 32
     test ecx, ecx
     jz .gotoNextClusterFat12    ;Handle FAT 12 separately
@@ -363,7 +347,6 @@ walkFAT:
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
     pop rcx ;Return the cluster number in rcx
-    jc .getFATFailed
     ;rdi has first buffer header, rbx has second buffer header
     ;rdx has offset into first header for entry
     test ecx, 1  ;Check if cluster is odd
@@ -393,9 +376,6 @@ walkFAT:
     cmp ax, 0FFFh
     jne .exit
     mov eax, -1
-    jmp .exit
-.getFATFailed:
-    stc
     jmp .exit
 
 setSectorVars:

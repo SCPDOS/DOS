@@ -327,3 +327,20 @@ endstruc
 ;60 4kb pages, giving a total of 264kb of space allocated to paging
 ;for a space of 64Gb
 dosAPTsize  equ 60*4096
+
+;Critical Error AH bitfield equates
+critRead    equ 0h
+critWrite   equ 1h
+critDOS     equ 0h
+critFAT     equ 2h
+critDir     equ 4h
+critData    equ 6h
+critFailOK  equ 8h
+critRetryOK equ 10h
+critIgnorOK equ 20h
+critCharDev equ 80h
+
+critIgnore  equ 0
+critRetry   equ 1
+critAbort   equ 2
+critFail    equ 3

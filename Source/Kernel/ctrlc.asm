@@ -24,6 +24,7 @@ criticalDOSError:
 ;                  = 3 - Fail the DOS call      (Fail)
 ; Return response from int 44h in al
 ; Caller must preserve rsp, rbx, rcx, rdx if they wish to return to DOS
+    push rax
     cli ;Disable Interrupts
     mov byte [critErrFlag], 1   ;Set flag for critical error
     mov byte [Int44RetVal], 0   ;Clear the return value
@@ -38,6 +39,7 @@ criticalDOSError:
     mov byte [critErrFlag], 0   ;Clear critical error flag
     mov byte [Int44RetVal], al  ;Save the return value
     sti ;Reenable Interrupts
+    pop rax
     ret
 
 ctrlBreakHdlr:

@@ -215,7 +215,6 @@ ensureDiskValid:
     ;Get a buffer to read BPB into in rdi
     mov cl, dosBuffer
     call getBuffer ;Get a disk buffer
-    jc diskDrvCritErr  ;Critical error if CF is set
     mov rdi, rbx
     call diskDrvGetBPB  ;Prepare to get BPB
     lea rbx, diskReqHdr

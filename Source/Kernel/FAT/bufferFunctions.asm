@@ -78,13 +78,9 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (DOS, FAT, DIR, Data)
 ;       qword [workingDPB] = DPB to use for transaction
-;Exit:  CF = NC : All ok!
-;       rbx = Pointer to buffer header with valid data in buffer.
-;       All other registers as before
-;       CF = CY: Something went wrong, return error code or INT 44h
-;       ch = 0 -> Data Not Flushed To Disk
-;       ch = 1 -> Data Not Read From Disk
-;       rbx = Pointer to buffer containing sector without valid data in buffer ;            (either unflushed or unread)
+;Exit:  rbx = Pointer to buffer header with valid data in buffer.
+; Critical errors are handled by the functions
+    push rcx
     push rdx
     push rsi
     push rdi
@@ -99,6 +95,7 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     pop rdi
     pop rsi
     pop rdx
+    pop rcx
     ret
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
@@ -110,7 +107,6 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     je .skipFlush   ;Avoid flushing if same DPB being used
 .flush:
     call flushBuffer
-    jc .rbExitNoFlag    ;Exit in error
 .skipFlush:
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
     mov byte [rdi + bufferHdr.driveNumber], dl
@@ -163,7 +159,6 @@ readSectorBuffer:   ;Internal Linkage
     jnz .rsFail
 .rsExit:
     clc
-.rsExitBad:
     pop rbp
     pop rsi
     pop rdx
@@ -177,9 +172,38 @@ readSectorBuffer:   ;Internal Linkage
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
 ;Here make Critical Error call
-    
-    stc
-    jmp .rsExitBad  ;Abort
+    push rax
+    push rsi
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
+    mov ah, byte [rdi + bufferHdr.bufferFlags]  ;Get buffer flag
+    test ah, dosBuffer
+    jnz .rsFail0
+    mov ah, critDOS
+    jmp short .rsFailMain
+.rsFail0:
+    test ah, fatBuffer
+    jnz .rsFail1
+    mov ah, critFAT
+    jmp short .rsFailMain
+.rsFail1:
+    test ah, dirBuffer
+    jnz .rsFail2
+    mov ah, critDir
+    jmp short .rsFailMain
+.rsFail2:
+;Here it must be a data buffer
+    mov ah, critData
+.rsFailMain:
+    or ah, critRead | critIgnorOK | critRetryOK ;Add rest of AH bits
+    call criticalDOSError
+    pop rsi
+    pop rax
+    cmp byte [Int44RetVal], critIgnore
+    je .rsExit
+    cmp byte [Int44RetVal], critRetry
+    je .rsRequest0
+    ;Else we call Int 43h (Abort and Fail=Abort here)
+    jmp ctrlBreakHdlr 
 
 flushBuffer:    ;Internal Linkage
 ;Flushes the data in a sector buffer to disk!
@@ -237,8 +261,38 @@ flushBuffer:    ;Internal Linkage
     dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    stc
-    jmp .fbExitBad  ;Abort
+   push rax
+    push rsi
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
+    mov ah, byte [rdi + bufferHdr.bufferFlags]  ;Get buffer flag
+    test ah, dosBuffer
+    jnz .fbFail0
+    mov ah, critDOS
+    jmp short .fbFailMain
+.fbFail0:
+    test ah, fatBuffer
+    jnz .fbFail1
+    mov ah, critFAT
+    jmp short .fbFailMain
+.fbFail1:
+    test ah, dirBuffer
+    jnz .fbFail2
+    mov ah, critDir
+    jmp short .fbFailMain
+.fbFail2:
+;Here it must be a data buffer
+    mov ah, critData
+.fbFailMain:
+    or ah, critWrite | critIgnorOK | critRetryOK ;Add rest of AH bits
+    call criticalDOSError
+    pop rsi
+    pop rax
+    cmp byte [Int44RetVal], critIgnore
+    je .fbFreeExit
+    cmp byte [Int44RetVal], critRetry
+    je .fbRequest0
+    ;Else we call Int 43h (Abort and Fail=Abort here)
+    jmp ctrlBreakHdlr 
     
 findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
