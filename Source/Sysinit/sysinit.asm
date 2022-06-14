@@ -892,7 +892,7 @@ intData:
     dq functionDispatch ;Int 41h
     dq errorInit        ;Int 42h, If sysinit terminates, halt system
     dq defaultIretq     ;Int 43h, ignore any CTRL+C during init
-    dq errorInit        ;Int 44h, If critical error in sysinit, halt system
+    dq dosDefCritErrHdlr 
     dq absDiskRead      ;Int 45h
     dq absDiskWrite     ;Int 46h
     dq terminateRes     ;Int 47h

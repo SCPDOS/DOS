@@ -1,6 +1,11 @@
 ;Driver Primitives, functions for Disk IO and calling a device driver
 ; are placed here (Int 45h Int 46h and goDriver)
 
+dosDefCritErrHdlr:
+;The DOS default critical error handler always returns FAIL
+    mov al, critFail
+    iretq
+
 goDriver:   ;Executes the driver packet pointed to by rbx
 ;Input: rsi = Ptr to the driver to handler the call!
 ;       rbx = Ptr to the request header for the driver call!
@@ -195,7 +200,8 @@ ensureDiskValid:
     call goDriver   ;Request!
     movzx rdi, word [diskReqHdr + mediaCheckReqPkt.status]
     test edi, drvErrStatus
-    jnz diskDrvCritErr
+    jnz .diskDrvCritErrMedChk
+.medChkIgnore:
     mov al, byte [workingDrv]   ;Get the drive number for test
     xor ah, ah
     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
@@ -213,16 +219,18 @@ ensureDiskValid:
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
     ;Get a buffer to read BPB into in rdi
     mov cl, dosBuffer
+    xor eax, eax   ;Dummy read sector 0 in
     call getBuffer ;Get a disk buffer
     jc .exit    ;Immediately exit with the carry flag set
     mov rdi, rbx
+.repeatEP:
     call diskDrvGetBPB  ;Prepare to get BPB
     lea rbx, diskReqHdr
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
-    movzx rdi, word [diskReqHdr + bpbBuildReqPkt.status]
-    test edi, drvErrStatus
-    jnz diskDrvCritErr
+    movzx eax, word [diskReqHdr + bpbBuildReqPkt.status]
+    test eax, drvErrStatus
+    jnz .diskDrvCritErrBPB
     ;Now rebuild the dpb fields for this drive
     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
     call createDPB  
@@ -234,17 +242,47 @@ ensureDiskValid:
     xor ah, ah
     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
     ret
+.diskDrvCritErrMedChk:
+;Critical Errors fall through here
+    ;rbp has dpb ptr, di has status word
+    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov ah, critRead | critDOS | critFailOK | critRetryOK | critIgnorOK
+    mov byte [Int44bitfld], ah  ;Save the permissions in var
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
+    call criticalDOSError
+    mov rbp, qword [tmpDPBPtr]
+    cmp al, critRetry
+    je .medChk
+    cmp al, critIgnore
+    je .medChkIgnore
+    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
+    stc ;Set error flag to indicate fail
+    ret ;And exit from function with CF set
+
+.diskDrvCritErrBPB:
+    ;eax has status word, rbp has dpb ptr
+    ;rdi has buffer header pointer
+    push rdi
+    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov ah, critRead | critDOS | critFailOK | critRetryOK ;Set bits
+    mov byte [Int44bitfld], ah  ;Save the permissions in var
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
+    call criticalDOSError
+    pop rdi
+    cmp al, critRetry
+    je .repeatEP
+    ;Else we fail (Ignore=Fail here)
+    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
+    stc ;Set error flag to indicate fail
+    ret ;And exit from function with CF set
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;First are Disk requests, then Char device requests
 ;All Disk Driver Requests come with at least rbp pointing to DPB
 ;All Char Requests come with rsi pointing to the Char device driver
-
-diskDrvCritErr:
-;Critical Errors fall through here
-    stc
-    ret
 
 diskDrvMedCheck:
 ;Prepare the diskIO packet for mediacheck
@@ -263,8 +301,9 @@ diskDrvCommonExit:
 
 diskDrvGetBPB:
 ;rbp has DPB pointer for device
-;rdi has sector buffer pointer for transfer
+;rdi has sector buffer header pointer for transfer
     push rax
+    lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
     mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rdi
     mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]

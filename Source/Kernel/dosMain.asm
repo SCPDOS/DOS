@@ -232,55 +232,19 @@ setDriverLookahead:;ah = 64h, reserved
 ;========================================:
 diskReset:         ;ah = 0Dh
 ;Flush all dirty buffers to disk
-    mov rbp, qword [bufHeadPtr]
+    mov rdi, qword [bufHeadPtr]
 .drCheckBuffer:
-    test byte [rbp + bufferHdr.bufferFlags], dirtyBuffer
+    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer
     jz .drGotoNextBuffer
 .drFlushBuffer:
-    call flushBuffer    ;Called with rbp = buffer header
-    jc .drError
+    call flushBuffer    ;Called with rdi = buffer header
+    jc .drExit
 .drGotoNextBuffer:
-    mov rbp, qword [rbp + bufferHdr.nextBufPtr]
-    cmp rbp, -1     ;If rbp points to -1, exit
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    cmp rdi, -1     ;If rdi points to -1, exit
     jne .drCheckBuffer
+.drExit:
     ret
-.drError:
-;Abort/Retry/Ignore
-;Abort returns to DOS, 
-;Retry retries the write on the buffer, 
-;Ignore marks the buffer as clean and proceeds as normal
-    mov al, byte [rbp + bufferHdr.bufferFlags]
-    and al, 0Fh ;Clear the upper nybble
-    mov ah, 31h ;Disk Error, Ignore,Retry and Write operation
-    cmp al, dosBuffer
-    je .drErrorMain
-    add ah, 2
-    cmp al, fatBuffer
-    je .drErrorMain
-    add ah, 2
-    cmp al, dirBuffer
-    add ah, 2
-.drErrorMain:
-    mov al, byte [rbp + bufferHdr.driveNumber]
-    mov rsi, qword [rbp + bufferHdr.driveDPBPtr]
-    mov rsi, qword [rsi + dpb.qDriverHeaderPtr]
-    mov di, word [diskReqHdr + drvReqHdr.status]    ;Disk error occured!
-    and di, 0FFh    ;Only bottom byte
-    mov word [errorExCde], di     ;Save driver error code
-    add word [errorExCde], drvErrShft    ;Add offset to driver error codes
-    mov byte [errorDrv], al     ;Save the drive on which the error occured
-    mov byte [errorLocus], eLocDsk   ;Error in Block Device Request code
-    mov byte [errorClass], eClsMedia ;Media error (bad BPB or other) code
-    mov byte [errorAction], eActRet   ;Retry request code
-    call criticalDOSError       ;Critical error handler
-    test al, al ;Ignore the troublesome buffer and mark it as free
-    jz .drIgnore
-    cmp al, 1   ;Retry flushing the buffer
-    je .drFlushBuffer
-    int 43h     ;Abort and fail both abort through int 43h
-.drIgnore:
-    mov byte [rbp + bufferHdr.driveNumber], -1  ;Mark buffer as free
-    jmp .drGotoNextBuffer
 
 selectDisk:        ;ah = 0Eh
 ;Called with dl = drive number, 0 = A, 1 = B etc...

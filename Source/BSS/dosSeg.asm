@@ -65,8 +65,9 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
-    Int44RetVal resb 1  ;Saves a copy of the Int 44 return value
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
+    Int44Fail   resb 1  ;Set to -1 if we are returning Fail
+    Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     oldRSP      resq 1  ;RSP when entering Int 41h
@@ -125,7 +126,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     dirClustA   resd 1  ;Absolute cluster number of current directory
     dirSect     resb 1  ;Sector of current directory
     dirEntry    resb 1  ;32 byte offset in dir sect for file being searched for
-
+;Error DPB 
+    tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
     
 ;Stacks and scratch SFT
     critStack   resq 165

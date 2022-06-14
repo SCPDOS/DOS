@@ -236,9 +236,7 @@ getNextSectorOfFile:
 ;Output:
 ;       rbx = Pointer to buffer data
 ;       CF = NC, buffer OK to read
-;       CF = CY, buffer not ok, something went wrong
-;           ZF = ZE(1), Data not flushed to disk
-;           ZF = NZ(0), Data no read from disk
+;       CF = CY, Fail request
     ;Read next sector. If at last sector in cluster, walk map, get
     ; next cluster and read first sector 
     push rax

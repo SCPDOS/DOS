@@ -171,13 +171,15 @@ readSectorBuffer:   ;Internal Linkage
     dec esi
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-;Here make Critical Error call
-    mov word [Int44Error], ax   ;ax has status word
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
-    mov ah, byte [rdi + bufferHdr.bufferFlags]  ;Get buffer flag
+    push rdi
+    mov edi, eax    ;Save status word in di
+    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov ah, critRead | critFailOK | critRetryOK ;Set bits
+    ;Test for correct buffer data type
     test ah, dosBuffer
     jnz .rsFail0
-    mov ah, critDOS
+    or ah, critDOS
     jmp short .rsFailMain
 .rsFail0:
     test ah, fatBuffer
@@ -193,15 +195,16 @@ readSectorBuffer:   ;Internal Linkage
 ;Here it must be a data buffer
     mov ah, critData
 .rsFailMain:
-    or ah, critWrite | critFailOK | critRetryOK ;Add rest of AH bits
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov byte [Int44bitfld], ah  ;Save the permissions in var
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     call criticalDOSError
-    cmp byte [Int44RetVal], critAbort
-    je ctrlBreakHdlr 
-    cmp byte [Int44RetVal], critRetry
+    pop rdi
+    cmp al, critRetry
     je .rsRequest0
-    stc 
-    jmp short .rsExitFail
+    ;Else we fail (Ignore=Fail here)
+    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
+    stc ;Set error flag to indicate fail
+    jmp .rsExitFail
 
 flushBuffer:    ;Internal Linkage
 ;Flushes the data in a sector buffer to disk!
@@ -246,7 +249,7 @@ flushBuffer:    ;Internal Linkage
 ;Free the buffer if it was flushed successfully
     mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
     clc
-.fbExitBad:
+.fbExitFail:
     pop rbp
     pop rsi
     pop rdx
@@ -259,36 +262,40 @@ flushBuffer:    ;Internal Linkage
     dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
-    mov ah, byte [rdi + bufferHdr.bufferFlags]  ;Get buffer flag
+    push rdi
+    mov edi, eax    ;Save status word in di
+    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov ah, critWrite | critFailOK | critRetryOK ;Set bits
+    ;Test for correct buffer data type
     test ah, dosBuffer
     jnz .fbFail0
-    mov byte [Int44bitfld], critDOS
+    or ah, critDOS
     jmp short .fbFailMain
 .fbFail0:
     test ah, fatBuffer
     jnz .fbFail1
-    mov byte [Int44bitfld], critFAT
+    mov ah, critFAT
     jmp short .fbFailMain
 .fbFail1:
     test ah, dirBuffer
     jnz .fbFail2
-    mov byte [Int44bitfld], critDir
+    mov ah, critDir
     jmp short .fbFailMain
 .fbFail2:
 ;Here it must be a data buffer
-    mov byte [Int44bitfld], critData
+    mov ah, critData
 .fbFailMain:
-    or byte [Int44bitfld], critWrite | critFailOK | critRetryOK ;Add other bits
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
-    call criticalDOSError
-    cmp byte [Int44RetVal], critAbort
-    je ctrlBreakHdlr 
-    cmp byte [Int44RetVal], critRetry
+    mov byte [Int44bitfld], ah  ;Save the permissions in var
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
+    call criticalDOSError   ;Return in al the return code
+    pop rdi
+    cmp al, critRetry
     je .fbRequest0
     ;Else we fail (Ignore=Fail here)
+    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
-    jmp short .fbExitBad
+    jmp .fbExitFail
     
 findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
