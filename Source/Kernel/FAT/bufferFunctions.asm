@@ -171,7 +171,8 @@ readSectorBuffer:   ;Internal Linkage
     dec esi
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    push rdi
+    mov qword [xInt44RDI], rdi  ;Save rdi
+    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov edi, eax    ;Save status word in di
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
@@ -198,7 +199,8 @@ readSectorBuffer:   ;Internal Linkage
     mov byte [Int44bitfld], ah  ;Save the permissions in var
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     call criticalDOSError
-    pop rdi
+    mov rdi, qword [xInt44RDI]
+    mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
     je .rsRequest0
     ;Else we fail (Ignore=Fail here)
@@ -262,7 +264,8 @@ flushBuffer:    ;Internal Linkage
     dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    push rdi
+    mov qword [xInt44RDI], rdi  ;Save rdi
+    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov edi, eax    ;Save status word in di
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
@@ -289,7 +292,8 @@ flushBuffer:    ;Internal Linkage
     mov byte [Int44bitfld], ah  ;Save the permissions in var
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     call criticalDOSError   ;Return in al the return code
-    pop rdi
+    mov rdi, qword [xInt44RDI]
+    mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
     je .fbRequest0
     ;Else we fail (Ignore=Fail here)

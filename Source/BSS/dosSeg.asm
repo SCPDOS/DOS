@@ -64,6 +64,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
+    xInt44RDI   resq 1  ;Preserved rdi across a critical error
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
     Int44Fail   resb 1  ;Set to -1 if we are returning Fail

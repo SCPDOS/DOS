@@ -244,13 +244,14 @@ ensureDiskValid:
     ret
 .diskDrvCritErrMedChk:
 ;Critical Errors fall through here
-    ;rbp has dpb ptr, di has status word
+    ;rbp has dpb ptr, di has status word, rsi points to the driver
+    mov qword [xInt44RDI], rdi  ;Save rdi
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov ah, critRead | critDOS | critFailOK | critRetryOK | critIgnorOK
     mov byte [Int44bitfld], ah  ;Save the permissions in var
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     call criticalDOSError
+    mov rdi, qword [xInt44RDI]
     mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
     je .medChk
@@ -262,15 +263,16 @@ ensureDiskValid:
 
 .diskDrvCritErrBPB:
     ;eax has status word, rbp has dpb ptr
-    ;rdi has buffer header pointer
-    push rdi
+    ;rdi has buffer header pointer, rsi points to the driver
+    mov qword [xInt44RDI], rdi  ;Save rdi
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
+    mov edi, eax    ;Transfer the status word over
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov ah, critRead | critDOS | critFailOK | critRetryOK ;Set bits
     mov byte [Int44bitfld], ah  ;Save the permissions in var
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     call criticalDOSError
-    pop rdi
+    mov rdi, qword [xInt44RDI]
+    mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
     je .repeatEP
     ;Else we fail (Ignore=Fail here)
