@@ -234,7 +234,7 @@ getNextSectorOfFile:
 ;
 ;Input: qword [currentSFT] = sft pointer
 ;Output:
-;       rbx = Pointer to buffer data
+;       qword [currBuff] = ptr to buffer data (if rbx = -1, end of file reached)
 ;       CF = NC, buffer OK to read
 ;       CF = CY, Fail request
     ;Read next sector. If at last sector in cluster, walk map, get
@@ -272,9 +272,8 @@ getNextSectorOfFile:
     ;Not an OS file, dataBuffer
     mov cl, dataBuffer
 .getSectorRead:
-    call getBuffer  ;Get ptr to buffer header in rbx
+    call getBuffer  ;Get ptr to buffer header in [currBuff]
     jc .exitFail
-    add rbx, bufferHdr.dataarea ;Goto data area
 .getSectorExit:
     clc
 .exitFail:
@@ -295,10 +294,10 @@ getNextSectorOfFile:
     ;eax now has the next cluster number to read (or -1 if EOF)
     cmp eax, -1
     jne .getSector
-;Else, we are at the last sector, we return the first free cluster sector
-; on disk. If it is a write operation, this cluster will be added to the 
-; file's cluster chain. If it is a read operation, the handle call fails.
-    call findFreeCluster    ;Get in eax first free sector
+;Else, we are at the last sector, we return -1 ,and the caller decides 
+; based on the call what to do!
+    mov qword [currBuff], -1    ;Set current buffer to -1
+    jmp short .getSectorExit
 
 walkFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain

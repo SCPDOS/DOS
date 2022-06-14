@@ -65,7 +65,7 @@ criticalDOSError:
     jnz .exit
 .setFail:
     mov al, critFail
-    ;mov byte [Int44Fail], -1    ;Note we are returning fail!
+    inc byte [Int44Fail]        ;Inc the fail counter!
     jmp short .checkResponse    ;Double check if I can return Fail
 .abort:
 ;Prepare to abort. We abort from within!

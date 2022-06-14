@@ -67,7 +67,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     xInt44RDI   resq 1  ;Preserved rdi across a critical error
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
-    ;Int44Fail   resb 1  ;Set to -1 if we are returning Fail
+    Int44Fail   resb 1  ;Counts the number of fails that have occured
     Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
