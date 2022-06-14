@@ -67,7 +67,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     xInt44RDI   resq 1  ;Preserved rdi across a critical error
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
-    Int44Fail   resb 1  ;Set to -1 if we are returning Fail
+    ;Int44Fail   resb 1  ;Set to -1 if we are returning Fail
     Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
@@ -134,7 +134,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     critStack   resq 165
     critStakTop resq 1
 
-    scratchSFT  resb sft_size
+    scratchSFT  resb sft_size   ;Used in FCB calls to emulate a SFT
 
     AuxStack    resq 199
     AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)

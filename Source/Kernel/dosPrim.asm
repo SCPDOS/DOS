@@ -190,7 +190,7 @@ getDiskDPB:
 
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
-;On entry: rbp = DPB
+;On entry: rbp = DPB (and working DPB = DPB)
 ;On exit: CF=NC => Passed, CF=CY => Fail
 ; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
 .medChk:
@@ -209,7 +209,7 @@ ensureDiskValid:
     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
-    cmc ;Compliment the carry flag to ensure we return CF=NC if dirty buffer found
+    cmc ;Compliment CF to ensure we return CF=NC if dirty buffer found
     jc .invalidateBuffers   ;Exit ONLY if a dirty buffer found!
     ;ZF=NZ from test for dirty buffers
 .exit:

@@ -78,7 +78,8 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (DOS, FAT, DIR, Data)
 ;       qword [workingDPB] = DPB to use for transaction
-;Exit:  CF=NC => rbx = Pointer to buffer header with valid data in buffer.
+;Exit:  CF=NC => 
+;           Ptr to buffer header with valid data in buffer in rbx and [currBuf]
 ;       CF=CY => Critical Error returned Fail
     push rcx
     push rdx

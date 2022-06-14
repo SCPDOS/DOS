@@ -26,6 +26,7 @@ criticalDOSError:
 ; Return response from int 44h in al
 ; Caller must preserve rsp, rbx, rcx, rdx if they wish to return to DOS
 ; This function will terminate the program if an abort was requested!
+; This function also destroys RBP
     cmp byte [critErrFlag], 1
     jb .noIntError  ;If not 0, enter
     mov al, critFail    ;Else, return Fail always
@@ -36,6 +37,7 @@ criticalDOSError:
     dec byte [inDOS]    ;Exiting DOS
     mov qword [xInt44hRSP], rsp
     mov rsp, qword [oldRSP] ;Get the old RSP value
+    xor ebp, ebp
     int 44h ;Call critical error handler, sets interrupts on again
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
     mov byte [critErrFlag], 0   ;Clear critical error flag
@@ -63,7 +65,7 @@ criticalDOSError:
     jnz .exit
 .setFail:
     mov al, critFail
-    mov byte [Int44Fail], -1    ;Note we are returning fail!
+    ;mov byte [Int44Fail], -1    ;Note we are returning fail!
     jmp short .checkResponse    ;Double check if I can return Fail
 .abort:
 ;Prepare to abort. We abort from within!
