@@ -80,7 +80,7 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;       qword [workingDPB] = DPB to use for transaction
 ;Exit:  CF=NC => 
 ;           Ptr to buffer header with valid data in buffer in rbx and [currBuf]
-;       CF=CY => Critical Error returned Fail
+;       CF=CY => Critical Error returned Fail, rbx undefined
     push rcx
     push rdx
     push rsi
@@ -97,6 +97,7 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     pop rsi
     pop rdx
     pop rcx
+    mov rbx, qword [currBuff]   ;Get current buffer
     ret
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
@@ -208,7 +209,7 @@ readSectorBuffer:   ;Internal Linkage
     stc ;Set error flag to indicate fail
     jmp .rsExitFail
 
-flushAndFreeBuffer:    ;Internal Linkage Int 4Fh eax=1209h
+flushAndFreeBuffer:    ;Internal Linkage Int 4Fh AX=1209h
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success

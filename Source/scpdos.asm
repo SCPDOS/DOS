@@ -17,6 +17,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Debug/debug.asm"
 %include "./Source/Kernel/FAT/bufferFunctions.asm"
 %include "./Source/Kernel/FAT/fat.asm"
+%include "./Source/Kernel/FAT/fileSearch.asm"
 %include "./Source/Kernel/CharDevs/charFunctions.asm"
 %include "./Source/Kernel/CharDevs/dateTimeFunctions.asm"
 %include "./Source/Kernel/FileIO/fcbFunctions.asm"
