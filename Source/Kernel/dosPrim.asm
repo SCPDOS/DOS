@@ -188,7 +188,7 @@ ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
 ;On entry: rbp = DPB
 ;On exit: CF=NC => Passed, CF=CY => Fail
-;         ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
+; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
 .medChk:
     call diskDrvMedCheck    ;Prepare disk io packet for media check
     lea rbx, diskReqHdr
@@ -215,6 +215,7 @@ ensureDiskValid:
     ;Get a buffer to read BPB into in rdi
     mov cl, dosBuffer
     call getBuffer ;Get a disk buffer
+    jc .exit    ;Immediately exit with the carry flag set
     mov rdi, rbx
     call diskDrvGetBPB  ;Prepare to get BPB
     lea rbx, diskReqHdr
@@ -234,7 +235,6 @@ ensureDiskValid:
     xor ah, ah
     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
     ret
-
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++

@@ -95,6 +95,7 @@ findFreeCluster:
 ;Walks the FAT to find a free cluster and returns the 
 ;   zero extended cluster number in eax (-1 means no free cluster)
 ;Works on the workingDPB
+;If returns with CF=CY => Fail set, return immediately to caller
     push rbx
     push rcx
     push rdx
@@ -121,6 +122,7 @@ findFreeCluster:
     mov cl, fatBuffer
     mov rax, qword [tempSect]
     call getBuffer ;Buffer Header in ebx
+    jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
     movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
@@ -145,6 +147,8 @@ findFreeCluster:
     sub rdi, rdx
     add rax, rdi    ;Add the offset into the sector to rax to get cluster number
 .exit:
+    clc
+.exitFail:      ;Keep carry flag
     pop rbp
     pop rdi
     pop rdx
@@ -161,6 +165,7 @@ findFreeCluster:
     mov cl, fatBuffer
     mov rax, qword [tempSect]
     call getBuffer ;Buffer Header in ebx
+    jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
     movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
@@ -187,6 +192,7 @@ findFreeCluster:
     mov cl, fatBuffer
     mov rax, qword [tempSect]
     call getBuffer ;Buffer Header in ebx
+    jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .fat12SearchNewSector:
     movzx ecx, word [entries]   ;This is total entries in Sector rounded down
@@ -207,6 +213,7 @@ findFreeCluster:
     mov rax, qword [tempSect]   ;Get this sector in rax
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
+    jc .exitFail
     movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
     lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
     mov ah, byte [rcx]  ;Get first byte in new sector
@@ -268,8 +275,11 @@ getNextSectorOfFile:
     mov cl, dataBuffer
 .getSectorRead:
     call getBuffer  ;Get ptr to buffer header in rbx
+    jc .exitFail
     add rbx, bufferHdr.dataarea ;Goto data area
 .getSectorExit:
+    clc
+.exitFail:
     pop rbp
     pop rdi
     pop rsi
@@ -281,8 +291,6 @@ getNextSectorOfFile:
 .OSFile:
     mov cl, dosBuffer
     jmp short .getSectorRead
-
-
 .gotoNextCluster:
     mov eax, dword [currClustA] ;Get absolute cluster number
     call walkFAT
@@ -314,6 +322,7 @@ walkFAT:
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
     pop rcx
+    jc .exitFail
     ;Check if FAT 12, 16, 32
     test ecx, ecx
     jz .gotoNextClusterFat12    ;Handle FAT 12 separately
@@ -331,6 +340,8 @@ walkFAT:
     je .exit   ;If EOC, skip zeroing nybble
     and eax, 0FFFFFFFh  ;Zero upper nybble
 .exit:
+    clc
+.exitFail:
     pop rbp
     pop rdi
     pop rdx
@@ -347,6 +358,7 @@ walkFAT:
     mov cl, fatBuffer
     call getBuffer ;Buffer Header in ebx
     pop rcx ;Return the cluster number in rcx
+    jc .exitFail
     ;rdi has first buffer header, rbx has second buffer header
     ;rdx has offset into first header for entry
     test ecx, 1  ;Check if cluster is odd

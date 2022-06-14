@@ -78,8 +78,8 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (DOS, FAT, DIR, Data)
 ;       qword [workingDPB] = DPB to use for transaction
-;Exit:  rbx = Pointer to buffer header with valid data in buffer.
-; Critical errors are handled by the functions
+;Exit:  CF=NC => rbx = Pointer to buffer header with valid data in buffer.
+;       CF=CY => Critical Error returned Fail
     push rcx
     push rdx
     push rsi
@@ -90,6 +90,8 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     cmp rbx, -1
     je .rbReadNewSector
 .rbExit:
+    clc
+.rbExitNoFlag:
     pop rdi
     pop rsi
     pop rdx
@@ -98,13 +100,13 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
     mov rdi, rbx
-    xor ch, ch
     cmp byte [diskChange], -1 ;Are we in disk change?
     jne .flush  ;We are not, flush buffer
     cmp rsi, qword [rdi + bufferHdr.driveDPBPtr]    ;If yes...
     je .skipFlush   ;Avoid flushing if same DPB being used
 .flush:
     call flushBuffer
+    jc .rbExitNoFlag    ;Preserve the set carry flag
 .skipFlush:
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
     mov byte [rdi + bufferHdr.driveNumber], dl
@@ -120,9 +122,8 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     mov dword [rdi + bufferHdr.bufFATsize], edx
     mov qword [rdi + bufferHdr.driveDPBPtr], rsi
     mov byte [rdi + bufferHdr.reserved], 0
-    inc ch  ;If an error occurs, have the signature in ch
     call readSectorBuffer ;Carry the flag from the request
-    jmp short .rbExit
+    jmp short .rbExitNoFlag
 
 ;----------------------------------------------------
 ;           Internally referenced functions         :
@@ -157,6 +158,7 @@ readSectorBuffer:   ;Internal Linkage
     jnz .rsFail
 .rsExit:
     clc
+.rsExitFail:
     pop rbp
     pop rsi
     pop rdx
@@ -192,16 +194,16 @@ readSectorBuffer:   ;Internal Linkage
 ;Here it must be a data buffer
     mov ah, critData
 .rsFailMain:
-    or ah, critRead | critIgnorOK | critRetryOK ;Add rest of AH bits
+    or ah, critWrite | critFailOK | critRetryOK ;Add rest of AH bits
     call criticalDOSError
     pop rsi
     pop rax
-    cmp byte [Int44RetVal], critIgnore
-    je .rsExit
+    cmp byte [Int44RetVal], critAbort
+    je ctrlBreakHdlr 
     cmp byte [Int44RetVal], critRetry
     je .rsRequest0
-    ;Else we call Int 43h (Abort and Fail=Abort here)
-    jmp ctrlBreakHdlr 
+    stc 
+    jmp short .rsExitFail
 
 flushBuffer:    ;Internal Linkage
 ;Flushes the data in a sector buffer to disk!
@@ -281,16 +283,17 @@ flushBuffer:    ;Internal Linkage
 ;Here it must be a data buffer
     mov ah, critData
 .fbFailMain:
-    or ah, critWrite | critIgnorOK | critRetryOK ;Add rest of AH bits
+    or ah, critWrite | critFailOK | critRetryOK ;Add rest of AH bits
     call criticalDOSError
     pop rsi
     pop rax
-    cmp byte [Int44RetVal], critIgnore
-    je .fbFreeExit
+    cmp byte [Int44RetVal], critAbort
+    je ctrlBreakHdlr 
     cmp byte [Int44RetVal], critRetry
     je .fbRequest0
-    ;Else we call Int 43h (Abort and Fail=Abort here)
-    jmp ctrlBreakHdlr 
+    ;Else we fail (Fail=Ignore here)
+    stc ;Set error flag to indicate fail
+    jmp short .fbExitBad
     
 findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
