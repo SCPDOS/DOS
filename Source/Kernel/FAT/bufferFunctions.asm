@@ -88,7 +88,7 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     mov rsi, qword [workingDPB]  ;Get DPB of transacting device
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
-    cmp rbx, -1
+    cmp rdi, -1
     je .rbReadNewSector
 .rbExit:
     clc
@@ -99,14 +99,13 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     pop rcx
     ret
 .rbReadNewSector:
-    call findLRUBuffer  ;Get the LRU or first free buffer entry in rbx
-    mov rdi, rbx
+    call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
     cmp byte [diskChange], -1 ;Are we in disk change?
     jne .flush  ;We are not, flush buffer
     cmp rsi, qword [rdi + bufferHdr.driveDPBPtr]    ;If yes...
     je .skipFlush   ;Avoid flushing if same DPB being used
 .flush:
-    call flushBuffer
+    call flushAndFreeBuffer
     jc .rbExitNoFlag    ;Preserve the set carry flag
 .skipFlush:
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
@@ -209,7 +208,7 @@ readSectorBuffer:   ;Internal Linkage
     stc ;Set error flag to indicate fail
     jmp .rsExitFail
 
-flushBuffer:    ;Internal Linkage
+flushAndFreeBuffer:    ;Internal Linkage
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
@@ -306,33 +305,34 @@ findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
 ; in rbx and the currBuff variable
 ;Input: Nothing
-;Output: rbx = Pointer to the buffer hdr to use
+;Output: rdi = Pointer to the buffer hdr to use
+;       [currBuff] = Pointer to the buffer hdr to use
     push rdx
-    mov rbx, qword [bufHeadPtr]
-    cmp byte [rbx + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
+    mov rdi, qword [bufHeadPtr]
+    cmp byte [rdi + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
     je .flbExit 
-    cmp qword [rbx + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
+    cmp qword [rdi + bufferHdr.nextBufPtr], -1  ;Check if 1st entry is last
     je .flbExit
 .flbWalk:
-    mov rdx, rbx    ;Save a ptr to the previous buffer header
-    mov rbx, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
-    cmp byte [rbx + bufferHdr.driveNumber], -1
+    mov rdx, rdi    ;Save a ptr to the previous buffer header
+    mov rdi, qword [rdx + bufferHdr.nextBufPtr] ;Get next buffer header ptr
+    cmp byte [rdi + bufferHdr.driveNumber], -1
     je .flbFreeLink ;If free, link to head, and xlink prev and next buffs
-    cmp qword [rbx + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
+    cmp qword [rdi + bufferHdr.nextBufPtr], -1 ;Check if at LRU buffer
     jne .flbWalk   ;If not LRU, keep walking, else process
     mov qword [rdx + bufferHdr.nextBufPtr], -1  ;Make prev node the LRU node
 .flbHeadLink:
     mov rdx, qword [bufHeadPtr]    ;Now copy old MRU buffer ptr to rdx
-    mov qword [bufHeadPtr], rbx    ;Sysvars to point to new buffer
-    mov qword [rbx + bufferHdr.nextBufPtr], rdx
+    mov qword [bufHeadPtr], rdi    ;Sysvars to point to new buffer
+    mov qword [rdi + bufferHdr.nextBufPtr], rdx
 .flbExit:
     pop rdx
-    mov qword [currBuff], rbx   ;Save in variable too
+    mov qword [currBuff], rdi   ;Save in variable too
     ret
 .flbFreeLink:
     push rcx
-    mov rcx, qword [rbx + bufferHdr.nextBufPtr]
-    mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rbx
+    mov rcx, qword [rdi + bufferHdr.nextBufPtr]
+    mov qword [rdx + bufferHdr.nextBufPtr], rcx  ;Point prev buff past rdi
     pop rcx
     jmp short .flbHeadLink
 
@@ -341,18 +341,18 @@ findSectorInBuffer:     ;Internal linkage
 ;If the sector is not in a buffer, returns with a -1
 ;Input: rax = Sector number
 ;        dl = Drive number
-;Output: rbx = Buffer hdr pointer or -1
-    mov rbx, qword [bufHeadPtr]
+;Output: rdi = Buffer hdr pointer or -1
+    mov rdi, qword [bufHeadPtr]
 .fsiCheckBuffer:
-    cmp byte [rbx + bufferHdr.driveNumber], dl
+    cmp byte [rdi + bufferHdr.driveNumber], dl
     jne .fsiGotoNextBuffer
-    cmp qword [rbx + bufferHdr.bufferLBA], rax
+    cmp qword [rdi + bufferHdr.bufferLBA], rax
     jne .fsiGotoNextBuffer
 .fsiExit:
     ret
 .fsiGotoNextBuffer:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr]
-    cmp rbx, -1     ;If rbx points to -1, exit
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    cmp rdi, -1     ;If rdi points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
 

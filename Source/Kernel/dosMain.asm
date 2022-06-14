@@ -237,7 +237,7 @@ diskReset:         ;ah = 0Dh
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer
     jz .drGotoNextBuffer
 .drFlushBuffer:
-    call flushBuffer    ;Called with rdi = buffer header
+    call flushAndFreeBuffer    ;Called with rdi = buffer header
     jc .drExit
 .drGotoNextBuffer:
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
