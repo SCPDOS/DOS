@@ -208,7 +208,7 @@ readSectorBuffer:   ;Internal Linkage
     stc ;Set error flag to indicate fail
     jmp .rsExitFail
 
-flushAndFreeBuffer:    ;Internal Linkage
+flushAndFreeBuffer:    ;Internal Linkage Int 4Fh eax=1209h
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
