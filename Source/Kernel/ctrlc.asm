@@ -1,7 +1,8 @@
 criticalDOSError:
 ;Will swap stacks and enter int 44h safely and handle passing the right data 
 ; to the critical error handler.
-; Called with ax, di and rsi set as required by Int 44h (caller decides)
+; Called with al, and rsi set as required by Int 44h (caller decides)
+; and with Int44Bitfield and Int44Error set
 ;               AH = Critical Error Bitfield
 ;               Bit 7 = 0 - Disk Error, Bit 7 = 1 - Char Device Error
 ;               Bit 6 - Reserved
@@ -24,11 +25,17 @@ criticalDOSError:
 ;                  = 3 - Fail the DOS call      (Fail)
 ; Return response from int 44h in al
 ; Caller must preserve rsp, rbx, rcx, rdx if they wish to return to DOS
+    cmp byte [critErrFlag], 1
+    jb .noIntError  ;If not 0, enter
+    mov byte [Int44RetVal], critFail    ;Else, return Fail always
+    ret
+.noIntError:
     push rax
+    push rdi
     cli ;Disable Interrupts
     mov byte [critErrFlag], 1   ;Set flag for critical error
     mov byte [Int44RetVal], 0   ;Clear the return value
-    mov byte [Int44bitfld], ah  ;Save the bitfield
+    mov ah, byte [Int44bitfld]  ;Get the bitfield
     mov qword [xInt44hRSP], rsp
     mov di, word [Int44Error]   ;Get the error code in di
     mov rsp, qword [oldRSP] ;Get the old RSP value
@@ -39,6 +46,7 @@ criticalDOSError:
     mov byte [critErrFlag], 0   ;Clear critical error flag
     mov byte [Int44RetVal], al  ;Save the return value
     sti ;Reenable Interrupts
+    pop rdi
     pop rax
     ret
 

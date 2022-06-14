@@ -172,8 +172,7 @@ readSectorBuffer:   ;Internal Linkage
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
 ;Here make Critical Error call
-    push rax
-    push rsi
+    mov word [Int44Error], ax   ;ax has status word
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     mov ah, byte [rdi + bufferHdr.bufferFlags]  ;Get buffer flag
     test ah, dosBuffer
@@ -195,9 +194,8 @@ readSectorBuffer:   ;Internal Linkage
     mov ah, critData
 .rsFailMain:
     or ah, critWrite | critFailOK | critRetryOK ;Add rest of AH bits
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     call criticalDOSError
-    pop rsi
-    pop rax
     cmp byte [Int44RetVal], critAbort
     je ctrlBreakHdlr 
     cmp byte [Int44RetVal], critRetry
@@ -261,37 +259,34 @@ flushBuffer:    ;Internal Linkage
     dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-   push rax
-    push rsi
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
     mov ah, byte [rdi + bufferHdr.bufferFlags]  ;Get buffer flag
     test ah, dosBuffer
     jnz .fbFail0
-    mov ah, critDOS
+    mov byte [Int44bitfld], critDOS
     jmp short .fbFailMain
 .fbFail0:
     test ah, fatBuffer
     jnz .fbFail1
-    mov ah, critFAT
+    mov byte [Int44bitfld], critFAT
     jmp short .fbFailMain
 .fbFail1:
     test ah, dirBuffer
     jnz .fbFail2
-    mov ah, critDir
+    mov byte [Int44bitfld], critDir
     jmp short .fbFailMain
 .fbFail2:
 ;Here it must be a data buffer
-    mov ah, critData
+    mov byte [Int44bitfld], critData
 .fbFailMain:
-    or ah, critWrite | critFailOK | critRetryOK ;Add rest of AH bits
+    or byte [Int44bitfld], critWrite | critFailOK | critRetryOK ;Add other bits
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     call criticalDOSError
-    pop rsi
-    pop rax
     cmp byte [Int44RetVal], critAbort
     je ctrlBreakHdlr 
     cmp byte [Int44RetVal], critRetry
     je .fbRequest0
-    ;Else we fail (Fail=Ignore here)
+    ;Else we fail (Ignore=Fail here)
     stc ;Set error flag to indicate fail
     jmp short .fbExitBad
     

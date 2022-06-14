@@ -130,8 +130,8 @@ absDiskExit:
 absDiskDriverCall:
 ;Input: rbp = Transacting DPB, ecx = Number of sectors to transfer
 ;Output: ZF=ZE => No error, ZF=NZ => Error 
-;       eax = Number of sectors transferred
-    push rcx
+;       eax = Status word from request
+;       ecx = Number of sectors transferred
     push rbx
     push rsi
     ;Get number of sectors to transfer in ecx (if not in ecx already)
@@ -146,7 +146,6 @@ absDiskDriverCall:
     sub ecx, eax    ;Get positive difference of the two 
     movzx eax, word [diskReqHdr + ioReqPkt.status]
     test ax, drvErrStatus   ;Is error bit set?
-    pop rcx
     ret
 
 getDiskDPB:
