@@ -108,9 +108,11 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 ;Temp vars, used when walking FAT or changing sectors
     tempSect    resq 1  ;A scratch sector number
     entries     resw 1  ;FAT entries per FAT sector
-;Needs to be set up before any file access          |
-;These vars keep track of file access properties    |
-;  and must be used only for such purposes.         |
+;***************************************************|
+; Needs to be set up before any file access         |
+; These vars keep track of file access properties   |
+;   and must be used only for such purposes.        |
+;***************************************************|
     currClust   resd 1  ;Relative cluster in file being r/w to/from
     currClustA  resd 1  ;Current Cluster (abs) on disk being r/w to/from
     clustFact   resb 1  ;NUMBER of sectors per cluster
@@ -118,10 +120,11 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currSectA   resq 1  ;Current absolute Sector number on Disk
     currByte    resw 1  ;Current Byte in sector being r/w to/from
     currByteA   resd 1  ;Current Byte in file being r/w to/from
-;*****************************************          |
+;***************************************************|
     lastClust   resd 1  ;Number of the last (rel) cluster of the file
     lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
     bytesAdded  resd 1  ;Number of bytes added to file (max 2Gb filesize!)
+    tfrLen      resd 1  ;Number of bytes/sectors to transfer
 ;Directory stuff
     dirClust    resd 1  ;Cluster number of current directory
     dirClustA   resd 1  ;Absolute cluster number of current directory

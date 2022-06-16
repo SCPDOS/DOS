@@ -35,8 +35,80 @@ readFileHdl:       ;ah = 3Fh, handle function
     call setWorkingDPB  ;Set the DPB pointer as working
     mov bl, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], bl
-    ;movzx ebx, 
-    ;cmp eax, 
+    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    ;Here we divide
+    xor edx, edx
+    div ebx ;Divide the number of bytes by bytes per sector
+    ;eax has sector number in file
+    ;edx has offset in sector
+    mov dword [currByte], edx
+    mov edx, eax    ;Save sector number in edx
+    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    shr eax, cl ;Divide eax by sectors/cluster (to get cluster number)
+    mov dword [currClust], eax    ;Save rounded down value (cluster number)
+    shl eax, cl     ;Go up again
+    sub edx, eax    ;Get the sector offset INTO the cluster in eax
+    mov byte [currSect], dl ;Save this number
+;Now we need to find the absolute cluster number
+    mov ecx, dword [currClust]
+    mov eax, dword [rsi + sft.dStartClust]  ;Get the start cluster for the file
+.clusterSearch:
+    cmp eax, -1
+    je .readPastFile    ;This is a fail condition. The handle is past the EOF
+    call walkFAT    ;eax has next cluster
+    dec ecx
+    jnz .clusterSearch
+;eax should have the absolute cluster of the file pointer
+    mov dword [currClustA], eax
+    call getStartSectorOfCluster    ;Get start sector of cluster
+    movzx ecx, byte [currSect]  ;Get sector offset into cluster 
+    add rax, rcx    ;Get starting sector number
+    mov qword [currSectA], rax  ;Save it!
+;Update SFT with entries
+    call updateCurrentSFT
+;Now enact data transfer
+;eax has the sector number
+    lea rbx, readWriteBytesBinary
+    lea rdx, readBytesASCII
+    test byte [rsi + sft.wDeviceInfo], devBinary
+    cmovz rbx, rdx  ;Move only if bit not set i.e. in ASCII mode
+    call getUserRegs
+    mov rdi, qword [rsi + callerFrame.rdx]  ;Get Read Destination
+    mov ecx, dword [rsi + callerFrame.rcx]  ;Get number of bytes to transfer
+    mov dword [tfrLen], ecx
+    movzx edx, word [rbp + dpb.wBytesPerSector]
+    movzx eax, byte [currByte]  ;Get current byte in the sector
+    sub edx, eax    ;edx has the remaining bytes to read in this sector
+    call getDataSector  ;Gets the set up data sector in [currSectA]
+    jc .exitFail
+    mov rsi, qword [currBuff]
+    lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
+    add rsi, rax    ;Go to the current byte in the sector
+    ;Now we compare which number is smaller and transfer that
+    cmp ecx, edx
+    cmova ecx, edx  ;if ecx >= edx, then transfer edx bytes only!
+    call rbx   ;Call the tfr func, ecx rets num. bytes transferred
+    sub dword [tfrLen], ecx
+    jz .exit
+    ;Now we must goto the next sector and repeat
+.exit:
+    call getUserRegs
+    and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
+    xor al, al  ;No error
+    ret
+
+.readPastFile:
+;If the caller is trying to read a byte past the end of the file, return 0
+    xor ecx, ecx
+.exitSetFlag:
+    call getUserRegs
+    mov dword [rsi + callerFrame.rcx], ecx
+    ret
+.exitFail:
+;Exit on Int 44h
+    mov eax, errFI44
+    mov word [errorExCde], ax
+    jmp short .exitSetFlag
 .notDiskDev:    ;qPtr here is a device driver
 
 writeFileHdl:      ;ah = 40h, handle function
@@ -197,5 +269,28 @@ updateCurrentSFT:
     mov eax, dword [currClust]
     mov dword [rsi + sft.dRelClust], eax
     pop rax
+    pop rsi
+    ret
+readBytesASCII:
+;Input: ecx = number of bytes to read in ASCII mode
+writeBytesASCII:
+;Input: ecx = number of bytes to write in ASCII mode
+    ret
+readWriteBytesBinary:
+;Input: ecx = number of bytes to read in Binary mode
+;       rdi = Points to where in caller buffer to place bytes
+;       rsi = Points to where in DOS buffer to place pointer
+;xchg rdi and rsi if rwFlag is set (i.e. a write operation)
+;Preserve all registers so we know how many bytes transferred
+    push rsi
+    push rdi
+    push rcx
+    test byte [rwFlag], -1   ;Is this a write operaiton
+    jz .noSwap
+    xchg rdi, rsi
+.noSwap:
+    rep movsb
+    pop rcx
+    pop rdi
     pop rsi
     ret

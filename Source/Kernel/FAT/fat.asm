@@ -222,82 +222,72 @@ findFreeCluster:
 .fat12EntryFound:
     jmp .computeEntry   ;Unnecessary redirection
 
+getDataSector:
+;This function will request the sector of data in [currSectA].
+;This call can only be used for DATA sectors.
+;Preserves all registers
+;On ret: CF=NC => currBuff = Buffer with data
+;        CF=CY => Critical error occurred and was FAILed
+    push rax
+    push rbx
+    push rcx
+    mov rax, qword [currSectA]  ;Get the disk sector number to read
+    mov ebx, dosBuffer
+    mov ecx, dataBuffer 
+    test rax, rax
+    cmovz ecx, ebx  ;If sector 0, change to DOS buffer
+.getSectorRead:
+    call getBuffer  ;Get ptr to buffer header in [currBuff]
+    pop rcx
+    pop rbx
+    pop rax
+    ret
+
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
 ; the file handle of the file being read/written to the new cluster
 ;
-;Input: qword [currentSFT] = sft pointer
+;Input: rbp = dpb pointer
 ;Output:
-;       qword [currBuff] = ptr to buffer data (if rbx = -1, end of file reached)
-;       CF = NC, buffer OK to read
-;       CF = CY, Fail request
-    ;Read next sector. If at last sector in cluster, walk map, get
-    ; next cluster and read first sector 
-    push rax
-    push rbx
-    push rcx
-    push rdx
-    push rsi
-    push rdi
-    push rbp
+;       CF=NC => rax = Next sector to read into a memory buffer
+; If rax = -1 => [currClust] = Last Cluster of File
+;       CF=CY => Critical error occurred and was FAILed
+;Read next sector. If at last sector in cluster, walk map, get
+; next cluster and read first sector 
     ;Check if we need to go to next cluster
-    mov rsi, qword [currentSFT] ;Get the current SFT
-    mov rbp, qword [workingDPB] ;Get DPB pointer for file
     mov al, byte [currSect]    ;Get current sector rel Cluster
     cmp al, byte [rbp + dpb.bMaxSectorInCluster]
     je .gotoNextCluster
     ;Goto next sector in same cluster
     inc byte [currSect]    ;Goto next sector in cluster
     inc qword [currSectA]  ;Goto next sector on Disk
-.getSector:
-    mov rax, qword [currSectA]  ;Get the disk sector number to read
-    ;Read the sector into a buffer
-    ;The sector read here is either DATA or DOS
-    lea rsi, qword [rsi + sft.sFileName]
-    lea rdi, dosBIOSName    ;Check if the file being read is the BIOS
-    mov ecx, 11             ;File name length
-    repe cmpsb
-    je .OSFile
-    lea rsi, qword [rsi + sft.sFileName]
-    lea rdi, dosKernName
-    mov ecx, 11             ;File name length
-    repe cmpsb
-    je .OSFile
-    ;Not an OS file, dataBuffer
-    mov cl, dataBuffer
-.getSectorRead:
-    call getBuffer  ;Get ptr to buffer header in [currBuff]
-    jc .exitFail
-.getSectorExit:
+    mov rax, qword [currSectA]
+.exitOK:
     clc
 .exitFail:
-    pop rbp
-    pop rdi
-    pop rsi
-    pop rdx
-    pop rcx
-    pop rbx
-    pop rax
     ret
-.OSFile:
-    mov cl, dosBuffer
-    jmp short .getSectorRead
 .gotoNextCluster:
     mov eax, dword [currClustA] ;Get absolute cluster number
     call walkFAT
+    jc .exitFail
     ;eax now has the next cluster number to read (or -1 if EOF)
     cmp eax, -1
-    jne .getSector
-;Else, we are at the last sector, we return -1 ,and the caller decides 
-; based on the call what to do!
-    mov qword [currBuff], -1    ;Set current buffer to -1
-    jmp short .getSectorExit
+    je .exitOK
+;Update the new cluster and sector information
+    mov dword [currClustA], eax ;Update disk location of next cluster
+    inc dword [currClust]   ;Goto next file cluster
+    call getStartSectorOfCluster    ;Get start sector of Cluster
+    mov qword [currSectA], rax  ;Save it
+    mov byte [currSect], 0      ;We are at sector 0 rel Clust
+    jmp short .exitOK
+
 
 walkFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain
 ; or -1 to indicate end of cluster chain on the device with workingDPB
 ;Input: eax = Cluster number (zero extended to 32 bits)
+;       rbp = DPB number
 ;Output: eax = Next Cluster number (-1 indicates end of chain)
 ;If carry set, getBuffer failed!
     push rbx
