@@ -16,7 +16,7 @@ struc dpb        ;Drive Parameter Block
 
     .bDriveNumber            resb 1  ;Drive number (0=A, 1=B ...) x
     .bUnitNumber             resb 1  ;Unit number in device x
-    .bBytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)x
+    .wBytesPerSector         resw 1  ;min 512, max 4096 x
     .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1 x
     .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent x
     .wFAToffset              resw 1  ;Number of reserved sectors in partition x

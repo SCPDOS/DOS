@@ -60,10 +60,7 @@ clust2FATEntry:
     shl eax, 2  ;Multiply cluster number by 4
 .common:
 ;eax has the FAToffset
-    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
-    mov edx, 1
-    shl edx, cl    ;Turn edx to number of bytes per sector
-    mov ecx, edx
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
     xor edx, edx    ;edx = 0
     div ecx         ;Divide by bytes per sector (0:eax / ecx)
     movzx ebx, word [rbp + dpb.wFAToffset]   ;Add the offset to the first FAT
@@ -107,9 +104,7 @@ findFreeCluster:
 ;Use ebp as sector counter
     mov edx, dword [rbp + dpb.dFATlength]
 ;Get Sector Size in bytes in ebx
-    mov ebx, 1
-    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
-    shl ebx, cl ;Get sector size in ebx
+    movzx ebx, word [rbp + dpb.wBytesPerSector]
 ;Get FAT type
     call getFATtype ;Gets FAT type (for number of elements in sector)
     jz .fat12
@@ -361,9 +356,7 @@ walkFAT:
     test ecx, 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
-    mov eax, 1
-    mov cl, byte [rbp + dpb.bBytesPerSectorShift]
-    shl eax, cl
+    movzx eax, word [rbp + dpb.wBytesPerSector]
     sub eax, edx
     dec eax ;If edx = BytesPerSector - 1 then it crosses, else no
     jnz .gotoNextClusterFat12NoCross

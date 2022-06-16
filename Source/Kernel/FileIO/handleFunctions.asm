@@ -28,13 +28,15 @@ readFileHdl:       ;ah = 3Fh, handle function
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [currByteA], eax
     ;If the file is readable, check if it is a disk or char device
-    movzx eax, word [rdi + sft.wDeviceInfo]
-    test eax, devRedirDev | devCharDev  ;Either of these get handled separately
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test ebx, devRedirDev | devCharDev  ;Either of these get handled separately
     jnz .notDiskDev
     mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer
     call setWorkingDPB  ;Set the DPB pointer as working
     mov bl, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], bl
+    ;movzx ebx, 
+    ;cmp eax, 
 .notDiskDev:    ;qPtr here is a device driver
 
 writeFileHdl:      ;ah = 40h, handle function

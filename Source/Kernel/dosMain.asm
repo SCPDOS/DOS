@@ -292,10 +292,7 @@ FATinfoDevice:     ;ah = 1Ch
     mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
     mov edx, dword [rsi + dpb.dClusterCount]
-    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
-    mov ebx, 1
-    shl ebx, cl
-    mov ecx, ebx    ;Save the value in ecx
+    movzx ecx, word [rsi + dpb.wBytesPerSector] ; Save the value in ecx
     lea rbx, qword [rsi + dpb.bMediaDescriptor]
     call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
@@ -410,10 +407,7 @@ getDiskFreeSpace:  ;ah = 36h
     mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
     mov edx, dword [rsi + dpb.dClusterCount]
-    mov cl, byte [rsi + dpb.bBytesPerSectorShift]
-    mov ebx, 1
-    shl ebx, cl
-    mov ecx, ebx    ;Save the value in ecx
+    movzx ecx, word [rsi + dpb.wBytesPerSector] ;Save the value in ecx
     mov ebx, dword [rsi + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
     call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
@@ -449,17 +443,9 @@ createDPB:         ;generates a DPB from a given BPB
     mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
 ;dNumberOfFreeClusters
     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
-;bBytesPerSectorShift
-    mov ax, word [rsi + bpb.bytsPerSec]
-    mov cl, 7   ;Start with 128 byte sectors (not supported, min 512)
-    shr ax, cl  ;Shift down
-.cd0:
-    shr ax, 1
-    jz .cd1
-    inc cl
-    jmp short .cd0
-.cd1:
-    mov byte [rbp + dpb.bBytesPerSectorShift], cl
+;wBytesPerSector
+    movzx eax, word [rsi + bpb.bytsPerSec]
+    mov word [rbp + dpb.wBytesPerSector], ax
 ;bMaxSectorInCluster
     mov al, byte [rsi + bpb.secPerClus]
     dec al  ;Subtract one to get the max number of the last sector in a cluster
