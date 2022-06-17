@@ -237,7 +237,7 @@ getDataSector:
     test rax, rax
     cmovz ecx, ebx  ;If sector 0, change to DOS buffer
 .getSectorRead:
-    call getBuffer  ;Get ptr to buffer header in [currBuff]
+    call getBuffer  ;Get ptr to buffer header in [currBuff] (and rbx but ignore)
     pop rcx
     pop rbx
     pop rax

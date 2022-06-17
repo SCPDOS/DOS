@@ -50,13 +50,14 @@ readFileHdl:       ;ah = 3Fh, handle function
     sub edx, eax    ;Get the sector offset INTO the cluster in eax
     mov byte [currSect], dl ;Save this number
 ;Now we need to find the absolute cluster number
-    mov ecx, dword [currClust]
+    mov edx, dword [currClust]
     mov eax, dword [rsi + sft.dStartClust]  ;Get the start cluster for the file
+    xor ecx, ecx    ;If fail, have 0 bytes ready
 .clusterSearch:
     cmp eax, -1
-    je .readPastFile    ;This is a fail condition. The handle is past the EOF
+    je .exitSetFlag ;This is a fail condition. The handle is past the EOF
     call walkFAT    ;eax has next cluster
-    dec ecx
+    dec edx
     jnz .clusterSearch
 ;eax should have the absolute cluster of the file pointer
     mov dword [currClustA], eax
@@ -67,50 +68,89 @@ readFileHdl:       ;ah = 3Fh, handle function
 ;Update SFT with entries
     call updateCurrentSFT
 ;Now enact data transfer
-;eax has the sector number
+    call getDataSector  ;Gets sector in [currSectA] in [currBuff]
+    jc .exitFail
+;Now load rbx with function to call
     lea rbx, readWriteBytesBinary
     lea rdx, readBytesASCII
     test byte [rsi + sft.wDeviceInfo], devBinary
     cmovz rbx, rdx  ;Move only if bit not set i.e. in ASCII mode
+    mov qword [dosReturn], rbx ;Save the function to call in this var
     call getUserRegs
     mov rdi, qword [rsi + callerFrame.rdx]  ;Get Read Destination
     mov ecx, dword [rsi + callerFrame.rcx]  ;Get number of bytes to transfer
-    mov dword [tfrLen], ecx
+    mov dword [tfrLen], ecx ;Set user requested transfer length in var
+    call getCurrentSFT  ;Return rsi to current SFT
+    ;Check if the transfer length is possible
+    ;If not, then transfer the max length possible
+    mov ecx, dword [rsi + sft.dFileSize]    ;When file ptr == ecx, EOF
+    sub ecx, dword [currByteA]  ;Get the bytes left in the file
+    mov edx, dword [tfrLen]
+    cmp edx, ecx ;If userRequest > bytesLeftInFile, swap 
+    cmova edx, ecx
+    mov dword [tfrLen], edx 
+    
     movzx edx, word [rbp + dpb.wBytesPerSector]
     movzx eax, byte [currByte]  ;Get current byte in the sector
     sub edx, eax    ;edx has the remaining bytes to read in this sector
-    call getDataSector  ;Gets the set up data sector in [currSectA]
-    jc .exitFail
     mov rsi, qword [currBuff]
     lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
     add rsi, rax    ;Go to the current byte in the sector
-    ;Now we compare which number is smaller and transfer that
-    cmp ecx, edx
-    cmova ecx, edx  ;if ecx >= edx, then transfer edx bytes only!
-    call rbx   ;Call the tfr func, ecx rets num. bytes transferred
-    sub dword [tfrLen], ecx
-    jz .exit
-    ;Now we must goto the next sector and repeat
+    ;Now we check to see if we have less than a partial sector's worth of 
+    ; data to transfer.
+    mov ecx, dword [tfrLen] ;Get the current settled length of transfer
+    cmp ecx, edx    ;edx has the bytes left in the sector
+    cmova ecx, edx  ;if transferLength > bytes left in sector, swap
+    mov dword [tfrLen], ecx
+    ;Here, tfrLen is settled, so set tfrCntr too
+    mov dword [tfrCntr], ecx   ;Populate the counter
+.mainReadLoop:
+    call qword [dosReturn]  ;Call the tfr func, ecx rets num. bytes transferred
+    jz .exit   ;If rbx returns with ZF=ZE then we are done!
+    ;Else we must goto the next sector and repeat
+    call getNextSectorOfFile    ;Increments the cluster and sector vars
+    jc .exitFailInTfr
+    call getDataSector  ;Get data buffer
+    jc .exitFailInTfr
+    call updateCurrentSFT   ;Ensure the SFT is up to date after a transfer
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    mov edx, dword [tfrCntr]    ;Get bytes left to transfer in edx
+    cmp edx, ecx    ;If bytes left > bytes in sector, dont swap!
+    cmovb ecx, edx
+    ;Reposition rsi again
+    mov rsi, qword [currBuff]
+    lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
+    jmp short .mainReadLoop
 .exit:
+    call getBytesTransferred    ;Gets bytes transferred in ecx
     call getUserRegs
+    mov dword [rsi + callerFrame.rcx], ecx
     and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
     xor al, al  ;No error
     ret
-
-.readPastFile:
-;If the caller is trying to read a byte past the end of the file, return 0
-    xor ecx, ecx
 .exitSetFlag:
     call getUserRegs
     mov dword [rsi + callerFrame.rcx], ecx
+    or dword [rsi + callerFrame.flags], 1    ;Set CF
     ret
+.exitFailInTfr:
+    call getBytesTransferred    ;Gets bytes transferred in ecx
 .exitFail:
 ;Exit on Int 44h
     mov eax, errFI44
     mov word [errorExCde], ax
     jmp short .exitSetFlag
 .notDiskDev:    ;qPtr here is a device driver
-
+;Here only char devices. Redirector is not yet implemented!
+;Arrive here with ebx = wDeviceInfo for device
+    test ebx, devRedirDev  ;Test for network redirector drive
+    jz .charDev
+    mov al, errNoNet    ;No network pls
+    xor ecx, ecx    ;No bytes transferred
+    jmp short .exitSetFlag
+.charDev:
+;When reading from a char device, if it is the console, we must give it
+; special treatment if the handle is in ASCII mode.
 writeFileHdl:      ;ah = 40h, handle function
     ret
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
@@ -256,7 +296,11 @@ copySScommon:
     rep movsb   ;Copy
     pop rcx
     ret
-
+getBytesTransferred:
+    mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
+    neg ecx ;Multiply by -1
+    add ecx, dword [tfrLen]     ;Add total bytes to transfer
+    ret ;Return bytes transferred in ecx
 updateCurrentSFT:
 ;Updates the Current SFT fields before returning from a file handle operation
     push rsi
@@ -281,9 +325,9 @@ readWriteBytesBinary:
 ;       rdi = Points to where in caller buffer to place bytes
 ;       rsi = Points to where in DOS buffer to place pointer
 ;xchg rdi and rsi if rwFlag is set (i.e. a write operation)
-;Preserve all registers so we know how many bytes transferred
-    push rsi
-    push rdi
+;Preserve rcx so we know how many bytes transferred
+;Update the currByteA variable
+;Returns (rsi and rdi) + (ecx on entry)
     push rcx
     test byte [rwFlag], -1   ;Is this a write operaiton
     jz .noSwap
@@ -291,6 +335,6 @@ readWriteBytesBinary:
 .noSwap:
     rep movsb
     pop rcx
-    pop rdi
-    pop rsi
+    add dword [currByteA], ecx  ;Move file pointer by ecx bytes
+    sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     ret

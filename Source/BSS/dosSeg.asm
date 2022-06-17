@@ -125,6 +125,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
     bytesAdded  resd 1  ;Number of bytes added to file (max 2Gb filesize!)
     tfrLen      resd 1  ;Number of bytes/sectors to transfer
+    tfrCntr     resd 1  ;Number of bytes left to transfer
 ;Directory stuff
     dirClust    resd 1  ;Cluster number of current directory
     dirClustA   resd 1  ;Absolute cluster number of current directory
