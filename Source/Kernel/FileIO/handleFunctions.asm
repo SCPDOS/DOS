@@ -51,7 +51,7 @@ readFileHdl:       ;ah = 3Fh, handle function
     mov byte [currSect], dl ;Save this number
 ;Now we need to find the absolute cluster number
     mov edx, dword [currClust]
-    mov eax, dword [rsi + sft.dStartClust]  ;Get the start cluster for the file
+    mov eax, dword [rdi + sft.dStartClust]  ;Get the start cluster for the file
     xor ecx, ecx    ;If fail, have 0 bytes ready
 .clusterSearch:
     cmp eax, -1
@@ -73,14 +73,14 @@ readFileHdl:       ;ah = 3Fh, handle function
 ;Now load rbx with function to call
     lea rbx, readWriteBytesBinary
     lea rdx, readBytesASCII
-    test byte [rsi + sft.wDeviceInfo], devBinary
+    test byte [rdi + sft.wDeviceInfo], devBinary
     cmovz rbx, rdx  ;Move only if bit not set i.e. in ASCII mode
     mov qword [dosReturn], rbx ;Save the function to call in this var
     call getUserRegs
     mov rdi, qword [rsi + callerFrame.rdx]  ;Get Read Destination
     mov ecx, dword [rsi + callerFrame.rcx]  ;Get number of bytes to transfer
     mov dword [tfrLen], ecx ;Set user requested transfer length in var
-    call getCurrentSFT  ;Return rsi to current SFT
+    call getCurrentSFT  ;Set rsi to current SFT
     ;Check if the transfer length is possible
     ;If not, then transfer the max length possible
     mov ecx, dword [rsi + sft.dFileSize]    ;When file ptr == ecx, EOF
@@ -107,7 +107,7 @@ readFileHdl:       ;ah = 3Fh, handle function
     mov dword [tfrCntr], ecx   ;Populate the counter
 .mainReadLoop:
     call qword [dosReturn]  ;Call the tfr func, ecx rets num. bytes transferred
-    jz .exit   ;If rbx returns with ZF=ZE then we are done!
+    jz .exit   ;If we return with ZF=ZE then we are done!
     ;Else we must goto the next sector and repeat
     call getNextSectorOfFile    ;Increments the cluster and sector vars
     jc .exitFailInTfr
@@ -124,6 +124,8 @@ readFileHdl:       ;ah = 3Fh, handle function
     lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
     jmp short .mainReadLoop
 .exit:
+    call getCurrentSFT
+    movzx ebx, word [rdi + sft.wDeviceInfo]
     call getBytesTransferred    ;Gets bytes transferred in ecx
     call getUserRegs
     mov dword [rsi + callerFrame.rcx], ecx
