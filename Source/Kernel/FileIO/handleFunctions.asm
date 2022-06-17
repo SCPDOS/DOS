@@ -125,7 +125,8 @@ readFileHdl:       ;ah = 3Fh, handle function
     jmp short .mainReadLoop
 .exit:
     call getCurrentSFT
-    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test word [rsi + sft.wDeviceInfo], blokDevDTSet ;Should I set the time/date?
+    ;For now do nothing, but eventually, make CLOCK$ request
     call getBytesTransferred    ;Gets bytes transferred in ecx
     call getUserRegs
     mov dword [rsi + callerFrame.rcx], ecx
