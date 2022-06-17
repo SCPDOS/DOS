@@ -94,6 +94,7 @@ readFileHdl:       ;ah = 3Fh, handle function
     movzx eax, byte [currByte]  ;Get current byte in the sector
     sub edx, eax    ;edx has the remaining bytes to read in this sector
     mov rsi, qword [currBuff]
+    or byte [rsi + bufferHdr.bufferFlags], refBuffer ;Set referenced bit
     lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
     add rsi, rax    ;Go to the current byte in the sector
     ;Now we check to see if we have less than a partial sector's worth of 
@@ -119,6 +120,7 @@ readFileHdl:       ;ah = 3Fh, handle function
     cmovb ecx, edx
     ;Reposition rsi again
     mov rsi, qword [currBuff]
+    or byte [rsi + bufferHdr.bufferFlags], refBuffer ;Set referenced bit
     lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
     jmp short .mainReadLoop
 .exit:
