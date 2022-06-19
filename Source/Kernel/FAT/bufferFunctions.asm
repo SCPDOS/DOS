@@ -210,6 +210,13 @@ readSectorBuffer:   ;Internal Linkage
     jmp .rsExitFail
 
 flushAndFreeBuffer:    ;Internal Linkage Int 4Fh AX=1209h
+    call flushBuffer
+    jnc .exit
+    ;Free the buffer if it was flushed successfully (CF=NC)
+    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
+.exit:
+    ret
+flushBuffer:
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
@@ -249,8 +256,6 @@ flushAndFreeBuffer:    ;Internal Linkage Int 4Fh AX=1209h
     mov bl, byte [rbp + dpb.bNumberOfFATs]
     mov byte [rdi + bufferHdr.bufFATcopy], bl    ;Just in case, replace this
 .fbFreeExit:
-;Free the buffer if it was flushed successfully
-    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
     clc
 .fbExitFail:
     pop rbp
