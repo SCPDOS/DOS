@@ -216,7 +216,7 @@ flushAndFreeBuffer:    ;Internal Linkage Int 4Fh AX=1209h
     mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
 .exit:
     ret
-flushBuffer:
+flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
