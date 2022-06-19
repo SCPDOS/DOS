@@ -118,3 +118,15 @@ swapPathSeparator:  ;INT 4Fh, AX=1204h, Normalise Path Separator
     mov al, "\" ;Set char in al to normal path separator
 .exit:
     ret
+uppercaseChar:
+;Convert a lowercase char to uppercase
+; Leave alone uppercase chars and invalid chars
+;Input: al = Char to convert to uppercase
+;Output: al = Processed char
+    cmp al, "z"
+    ja .exit
+    cmp al, "a"
+    jb .exit
+    sub al, "a" - "A"   ;Convert the char
+.exit:
+    ret
