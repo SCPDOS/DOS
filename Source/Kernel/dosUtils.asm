@@ -112,9 +112,8 @@ swapPathSeparator:  ;INT 4Fh, AX=1204h, Normalise Path Separator
 ;If path separator, set ZF=ZE
     cmp al, "\"
     je .exit
-    cmp al, "/"
+    cmp al, "/" ;Will set ZF=ZE if / (aka, path separator)
     jne .exit
-    xor al, al  ;Clear ZF
     mov al, "\" ;Set char in al to normal path separator
 .exit:
     ret
