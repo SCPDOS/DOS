@@ -105,3 +105,16 @@ getCDS:
 .exitOk:
     pop rsi
     ret
+swapPathSeparator:  ;INT 4Fh, AX=1204h, Normalise Path Separator
+;Swap / to \ in a path. Leave all other chars alone.
+;Input: AL = Char to normalise.
+;Output: AL = Normalised Char (if / swap to \. Leave all other chars alone)
+;If path separator, set ZF=ZE
+    cmp al, "\"
+    je .exit
+    cmp al, "/"
+    jne .exit
+    xor al, al  ;Clear ZF
+    mov al, "\" ;Set char in al to normal path separator
+.exit:
+    ret
