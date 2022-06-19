@@ -1,4 +1,4 @@
-criticalDOSError:   ;Int 4Fh, AX=1206h, Critical Error Function 
+criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function 
 ;Will swap stacks and enter int 44h safely and handle passing the right data 
 ; to the critical error handler.
 ; Called with rsi set as required by Int 44h (caller decides), ax, di
