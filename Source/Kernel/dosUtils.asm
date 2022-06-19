@@ -118,7 +118,7 @@ swapPathSeparator:  ;INT 4Fh, AX=1204h, Normalise Path Separator
     mov al, "\" ;Set char in al to normal path separator
 .exit:
     ret
-uppercaseChar:
+uppercaseChar:      ;INT 4Fh, AX=1213h, Uppercase Char
 ;Convert a lowercase char to uppercase
 ; Leave alone uppercase chars and invalid chars
 ;Input: al = Char to convert to uppercase
