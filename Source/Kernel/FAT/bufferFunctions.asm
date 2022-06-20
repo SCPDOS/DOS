@@ -13,6 +13,7 @@ makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
     mov rdi, qword [bufHeadPtr]
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
     ret
+    
 makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
 ;Sets the buffer in rdi to the head of the chain
 ;Input: rdi = Buffer header to move to the head of the chain
