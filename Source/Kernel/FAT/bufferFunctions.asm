@@ -362,6 +362,39 @@ findSectorInBuffer:     ;Internal linkage
     je .fsiExit
     jmp short .fsiCheckBuffer
 
+makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
+;Sets the buffer in rdi to the head of the chain and gets the 
+; second buffer in the chain in rdi
+;Input: rdi = Buffer header to move to the head of the chain
+;Output: rdi = Second buffer in the chain
+    call makeBufferMostRecentlyUsed
+    mov rdi, qword [bufHeadPtr]
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    ret
+makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
+;Sets the buffer in rdi to the head of the chain
+;Input: rdi = Buffer header to move to the head of the chain
+;Output: Buffer header set to the head of the chain
+    cmp qword [bufHeadPtr], rdi ;Is buffer already at the head?
+    je .exit
+    push rsi
+    mov rsi, qword [bufHeadPtr] ;Go to the head of the pointer
+.mainlp:
+    cmp qword [rsi + bufferHdr.nextBufPtr], rdi ;Is the next buffer ours?
+    je .fnd  ;Found the buffer as the next buffer in the chain
+    mov rsi, qword [rsi + bufferHdr.nextBufPtr]   ;Goto next buffer
+    jmp short .mainlp
+.fnd:
+    push rdi
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Get next buffer from rdi in rdi
+    mov qword [rsi + bufferHdr.nextBufPtr], rdi ;Set prev buf to goto next buf
+    pop rdi ;Get original buf back
+    mov rsi, rdi    ;Save new head buf in rsi
+    xchg qword [bufHeadPtr], rsi ;Set rsi to head, get new 2nd buf in rsi
+    mov qword [rdi + bufferHdr.nextBufPtr], rsi ;Set 2nd buf to rsi
+    pop rsi
+.exit:
+    ret
 
 findDirtyBufferForDrive:    ;No Use
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
