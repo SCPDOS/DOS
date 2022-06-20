@@ -11,9 +11,6 @@ closeFileHdl:      ;ah = 3Eh, handle function
 readFileHdl:       ;ah = 3Fh, handle function
     lea rsi, readBytes
 .common:
-    call getSFTNdxFromHandle
-    jb .error
-    mov al, byte [rdi]  ;Get the SFT index into al
     call getSFTPtr ;Get SFT ptr in rdi (if file is r/w-able from machine)
     jb .error
     call setCurrentSFT  ;Set the current SFT (from rdi)
@@ -170,7 +167,6 @@ getSFTNdxFromHandle:    ;Int 4Fh AX=1220h
 getSFTPtr:
 ;This gets the SFT pointer and checks it was opened by this machine
 ;Input: bx = JFT handle
-;       ax = SFT ndx
 ;Output: CF=NC: rdi = SFT pointer
 ;        CF=CY: Error, ax=Error code
     call derefSFTPtr
