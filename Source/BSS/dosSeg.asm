@@ -42,6 +42,8 @@ sysVarsPtr:
                 resb 1  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
     oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
+    sharePSP    resq 1  ;PSP of the share program
+    machineNum  resw 1  ;for sharing/networking 00h = default number (us)
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
@@ -105,7 +107,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
-    currentJFT  resq 1  ;Ptr to JFT num in caller PSP of file being accessed
+    curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed

@@ -133,11 +133,15 @@ struc sft
     .dFileSize   resd 1    ;File Size, in bytes
     .dCurntOff   resd 1    ;Current Offset pointed to by SFT entry, in bytes
     .dRelClust   resd 1    ;Rel cluster pointed to by SFT entry
+    .dAbsClusr   resd 1    ;Absolute cluster pointed to by SFT entry
     .qDirSect    resq 1    ;Abs number of sector containing directory entry 
     .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
     .sFileName   resb 11   ;8.3 Filename
+    .qSharePtr   resq 1    ;SHARE pointer to previous SFT sharing same file
+    .wMachNum    resw 1    ;SHARE number of network machine opening file
     .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
-    .dAbsClusr   resd 1    ;Absolute cluster pointed to by SFT entry
+    .wShareRec   resw 1    ;offset within SHARE code segment of sharing record
+;                           0 means no record
 endstruc
 ;Open Mode equates
 ;Access modes   Bits[2:0]

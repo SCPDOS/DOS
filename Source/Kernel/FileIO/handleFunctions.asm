@@ -228,63 +228,96 @@ getCurrentSFT:
 ;Get the current SFT pointer in rsi
     mov rsi, qword [currentSFT]
     ret
-
-getSFTPtr:
-;Gets the SFT pointer for a given file handle from the calling application
-;On entry:
-;   bx = File handle from JFT for calling application
-;On exit: CF=NC, SFT found.
-; Set the following vars: currentSFT, currentJFT, currentHdl
-; Set rdi = currentSFT entry
-;         CF=CY, SFT not found, abort! al=BadHdl errorcode
-    push rax
-    push rbx
-    push rsi
-    cmp bx, word [maxHndls]  ;current max number of file handles
-    jnb .gspFail
-    mov rsi, qword [currentPSP]
-    mov eax, ebx    ;Save handle number in eax
-    movzx rbx, bx
-    lea rbx, qword [rsi + psp.jobFileTbl + rbx] 
-    mov [currentJFT], rbx   ;Save a pointer to the JFT entry
-    mov bl, byte [rbx]   ;Use jft entry to get sft num
-    cmp bl, -1  ;Non-existant SFT reference?
-    je .gspFail
-    mov word [currentHdl], ax   ;Current handle number saved here
-    xor eax, eax
-    mov rdi, qword [sftHeadPtr]
-.gsp0:
-    add ax, word [rdi + sfth.wNumFiles]
-    cmp al, bl  ;Check if the file header block contains the entry
-    jbe .gsp1   ;IF bl is below or equal to al then it does
-    cmp rdi, -1 ;End of list
-    je .gspFail   ;If we have a number greater than the last entry, fail
-    mov rdi, qword [rdi + sfth.qNextSFTPtr] ;Walk the chain
-    jmp short .gsp0 ;Search again
-.gsp1: 
-    ;Now point to the right entry
-    sub al, bl  ;Subtract the number from the total so far to get offset
-    movzx eax, al
-    add rdi, sfth_size  ;Point to first file in table
-    test al, al ;Check if rdi points to the first file in this block
-    jz .gsp12   ;Skip walking down the sft blocks
-.gsp11:
-    add rdi, sft_size
-    dec al
-    jnz .gsp11  ;Keep adding one until al is zero
-.gsp12:
-    mov rsi, rdi
-    call setCurrentSFT ;Set Current SFT pointer to rsi value
-    clc
-.gspExit:
-    pop rsi
-    pop rbx
-    pop rax
-    ret
-.gspFail:
-    mov eax, errBadHdl  ;al, zero rest of it
+    
+getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
+;Return a pointer to the SFT entry in rdi
+;Input: rbx = Valid SFT ndx number (word)
+;Output: rdi = SFT pointer
+    mov rdi, qword [sftHeadPtr] ;Get head of SFT pointer
+.walk:
+    cmp bx, word [rdi + sfth.wNumFiles]
+    jb .thisTable
+    sub bx, word [rdi + sfth.wNumFiles] ;Subtract
+    mov rdi, qword [rdi + sfth.qNextSFTPtr] ;Goto next table
+    cmp rdi, -1
+    jne .walk
     stc
-    jmp short .gspExit
+    ret
+.thisTable:
+    push rax
+    push rdx
+    mov eax, sft_size
+    mul ebx
+    add rdi, rax    ;Shift rdi to go to SFT entry in current table
+    pop rdx
+    pop rax
+    add rdi, sfth_size  ;Go past the header
+    ret
+
+getSFTNdxFromHandle:    ;Int 4Fh AX=1220h
+;Return a zero extended value in rdi for the SFT entry
+;Input: bx = JFT handle
+;Output: CF=NC => rdi = SFT ndx
+;        CF=CY => al = Error code, Fail
+;rbx destroyed
+    movzx ebx, bx   ;Ensure we zero extended
+    cmp bx, word [maxHndls] ;0-19 acceptable ONLY!
+    jb .ok
+    mov al, errBadHdl
+    stc
+    ret
+.ok:
+    mov rdi, qword [currentPSP]
+    movzx rdi, byte [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
+    clc
+    ret
+getSFTPtr:
+;This gets the SFT pointer and checks it was opened by this machine
+;Input: bx = JFT handle
+;       ax = SFT ndx
+;Output: CF=NC: rdi = SFT pointer
+;        CF=CY: Error, ax=Error code
+    call derefSFTPtr
+    jnc .ok
+    ret ;Error return with CF=CY
+.ok:
+    push rax
+    movzx eax, word [machineNum]    ;Get the machine number from SDA
+    cmp ax, word [rdi + sft.wMachNum]   ;Compare to SFT machine number
+    pop rax
+    je .exit    ;If the file belongs to this machine, proceed!
+    mov al, errBadHdl   ;Error code
+    stc ;Reset CF
+.exit:
+    ret
+derefSFTPtr:
+;Walk the whole way from a handle to SFT pointer (for the current process)
+;Input: bx = File handle
+;Output: CF=NC: rdi = SFT pointer
+;        CF=CY: Error, ax=Error code
+    call getSFTNdxFromHandle    ;Get the ptr to the value in rdi
+    jb .fail
+    cmp byte [rdi], -1  ;Is this JFT entry unassigned?
+    jne .ok
+.fail:
+    mov al, errBadHdl
+    stc
+    ret
+.ok:
+    push rbx    ;Preserve the JFT handle
+    movzx ebx, byte [rdi]  ;Get byte entry into rbx
+    call getSFTPtrfromSFTNdx    ;Get SFT pointer in rdi
+    pop rbx 
+    ret
+
+setCurrentJFTandHdl:
+; Set the following vars currentJFT, currentHdl
+;Input: bx = JFT Handle number
+    mov word [currentHdl], bx
+    push rdi
+    call getSFTNdxFromHandle
+    mov qword [curJFTNum], rdi
+    pop rdi
 
 copySFTtoSDA:
 ;Called with rsi pointing to SFT structure
