@@ -53,6 +53,8 @@ buildNewCDS:   ;Int 4Fh AX=121Fh
 ;Input: al = Drive Letter for drive
 ;       workingCDS = Set to the CDS array slot for the drive
 ;Output: rdi = newly filled in workingCDS
+;CF=NC => CDS valid and has a DPB
+;CF=CY => Either drive letter not ok OR No DPB for drive
     push rax
     sub al, "A"-1
     cmp al, byte [numPhysVol]    ;al must be bigger than # of block drives
@@ -78,7 +80,6 @@ buildNewCDS:   ;Int 4Fh AX=121Fh
 .skipSettingDPB:
     pop rsi
     pop rax
-    clc
 .exit:
     ret
 
