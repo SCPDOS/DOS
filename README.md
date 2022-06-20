@@ -3,7 +3,9 @@ Some notes on documentation
 
 ## Various interfaces:
 Int 41h = DOS API (DAPI)
+
 Int 4Fh AX=11xxh = DOS Redirector Interface (DRI)
+
 Int 4Fh AX=12xxh = Internal DOS Interface (IDI)
 
 ## API function states
