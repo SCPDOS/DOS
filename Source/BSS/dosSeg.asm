@@ -7,7 +7,6 @@ dosDataArea:
     bootDrive   resb 1    ;The Int 33h device we booted from x
     numRemDrv   resb 1    ;Number of physical removable MSDs in system x
     numFixDrv   resb 1    ;Number of physical fixed drives in system
-    numLogDrv   resb 1    ;Number of logical drives in system x
     loProtMem   resd 1    ;Num bytes free in (lo) protected from userbase
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
@@ -25,15 +24,20 @@ sysVarsPtr:
     maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain x
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
-    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
-    numBuffers  resb 1    ;Buffers=30 default
-    numFiles    resw 1    ;FILES=5 default
-    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
     sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
+    ;Old numLogicalDrives is now numPhysical volumes
+    numPhysVol  resb 1    ;Number of physical volumes in the system x
+    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
+    numBuffers  resb 1    ;Buffers=30 default
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 
+;Additional internal variables
+    numFiles    resw 1    ;FILES=5 default
+    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
+
+;Swappable Data Area
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
@@ -100,7 +104,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     workingDrv  resb 1  ;Working drive number
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
-    curDrvCDS   resb cds_size   ;Working cp of CDS of drv being accessed
+    tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     currentJFT  resq 1  ;Ptr to JFT num in caller PSP of file being accessed
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here

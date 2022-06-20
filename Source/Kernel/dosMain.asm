@@ -351,8 +351,9 @@ getDeviceDPBptr:   ;ah = 32h
     call getCDS ;Get in rsi the dpb pointer for drive dl
     jc .bad
     mov rdi, qword [workingCDS]  ;Get pointer to current CDS in rdi
-    test rdi, cdsNetDrive ;Is dev a network drv (since they have no DPB)?
-    jnz .bad
+    test word [rdi + cds.wFlags], cdsRedirDrive ;Is dev a redir drv?
+    jnz .bad    ;Redirector Drives have no DPBs!
+    ;Here ONLY if accessing critical Disk data structures
     call dosCrit1Enter  ;Enter class 1 critical section
     call getDiskDPB   ;See if the Disk structures are still ok 
     call dosCrit1Exit   ;Exit class 1 critical section

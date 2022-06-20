@@ -55,7 +55,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
-    mov byte fs:[numLogDrv], 0     ;Number of logical drives
+    mov byte fs:[numPhysVol], 0     ;Number of logical drives
     mov word fs:[numFiles], 5      ;Default 8 files, at start 5
     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
@@ -422,7 +422,7 @@ storageInits:
     ;mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
     ;mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
     ;mov word [rbx + initReqPkt.status], 0       ;Zero status word
-    ;mov al, byte fs:[numLogDrv]
+    ;mov al, byte fs:[numPhysVol]
     ;mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
     ;call qword [rbp + msdHdr + drvHdr.strPtr]
     ;call qword [rbp + msdHdr + drvHdr.intPtr]
@@ -430,13 +430,13 @@ storageInits:
     ;test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
     ;jnz errorInit   ;If the bit is set, halt execution
     ;mov al, byte [rbx + initReqPkt.numunt]
-    ;mov byte fs:[numLogDrv], al
+    ;mov byte fs:[numPhysVol], al
     ;mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
 
     ;mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
     call diskInit
     mov rdi, rbp ;Save rbp in rdi temporarily
-    mov al, byte fs:[numLogDrv]
+    mov al, byte fs:[numPhysVol]
     lea rdx, qword [rbp + msdDriver.msdBPBTbl]
     xor cl, cl  ;Clear counter
     mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
@@ -735,7 +735,7 @@ debugFinal:
     lea r9, qword [r8 + overlayByte]
 
     add rbx, 25+19
-    movzx rax, byte fs:[numLogDrv]
+    movzx rax, byte fs:[numPhysVol]
     call r9
 
     add rbx, 30
@@ -925,7 +925,7 @@ diskInit:
     mov r8, 2   ;Device number 2 = C:
     mov dl, 80h ;Start with HDD 0
 .primary:
-    cmp byte fs:[numLogDrv], 3  ;Are we at maximum devices (A: B: reserved)?
+    cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
     je .remInit
     xor ecx, ecx    ;Sector 0
     call .initReadSector ;Sets rbx to msdtempbuffer
@@ -983,7 +983,7 @@ diskInit:
     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
     mov qword [rbx], rsi
     inc r8  ;Goto next logical drive
-    inc byte fs:[numLogDrv] ;Increment the number of valid drives we have
+    inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
 .primaryEpilog:
     inc dl  ;Goto next BIOS drive
     mov dh, dl
@@ -992,7 +992,7 @@ diskInit:
     jne .primary    ;Whilst we have fewer, go back
 .extended:
 ;We have gone through all the devices once
-    ;cmp byte fs:[numLogDrv], 3  ;Are we at maximum devices (A: B: reserved)?
+    ;cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
     ;je .remInit ;If yes, get removable devices
     ;mov dl, 80h ;Go back to hard drive 80h
     ;xor ecx, ecx    ;Get MBR back
@@ -1026,7 +1026,7 @@ diskInit:
     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
     mov qword [rbx], rsi
     inc r8  ;Goto next logical drive
-    inc byte fs:[numLogDrv] ;Increment the number of valid drives we have    
+    inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
 .removableEpilogue:
     inc dl  ;Goto next BIOS device now
     cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
@@ -1049,7 +1049,7 @@ diskInit:
     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
-    inc byte fs:[numLogDrv] ;Gotta register the phantom drive!
+    inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
     ret
 .initReadSector:
 ;Called with sector number in rcx and BIOS device number in dl

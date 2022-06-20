@@ -66,11 +66,11 @@ struc cds       ;Current Directory structure
 ;        Bit 7  set = Redirected, not net. drive (This is how MSCDEX worked)
 endstruc
 ;CDS equates
-cdsNetDrive     equ 8000h
-cdsPhysDrive    equ 4000h
-cdsJoinDrive    equ 2000h
-cdsSubstDrive   equ 1000h
-cdsRedirDrive   equ 0080h
+cdsRedirDrive   equ 8000h   ;All drives which use the Redirector interface
+cdsPhysDrive    equ 4000h   ;CDS initialised 
+cdsJoinDrive    equ 2000h   ;CDS for joined drives
+cdsSubstDrive   equ 1000h   ;Drives formed by Subst
+cdsRdirLocDrive equ 0080h   ;Redirector but Local
 ;------------------------------------------------------------------------;
 ; The SFT is a way to allow applications to open file handles to files 
 ; and devices. As things stand, the SFT chain will have 5 file handles

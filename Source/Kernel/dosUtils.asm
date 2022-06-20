@@ -15,6 +15,117 @@ getUserRegs:   ;Int 4Fh AX=1218h
     mov rsi, qword [oldRSP]
     ret
 
+walkDPBchain:
+;Called with al = 0 based drive number
+;Returns in rsi a pointer to the DPB or if CF=CY, invalid drive number
+    mov rsi, qword [sftHeadPtr]  ;Get variable pointing to first DPB
+.walk:
+    cmp rsi, -1
+    je .exitBad
+    cmp byte [rsi + dpb.bDriveNumber], al
+    je .exit    ;Drive found
+    mov rsi, qword [rsi + dpb.qNextDPBPtr]  ;Go to next drive 
+    jmp short .walk
+.exitBad:
+    stc
+.exit:
+    ret
+setDrive:   
+;Gets a drive CDS, sets it as working and checks it is a valid physical drive
+;Input: al = 1-based drive number
+;Output: al = 0-based drive number
+;   CF=NC => Drive can be set as Current Drive (i.e. Not Network or Join)
+;   CF=CY => 0-based drive number invalid OR CDS returned with Net or Join flags
+;            set.
+    call getCDS ;Setup working CDS DOS variable for this drive
+    jc .exit    ;Carry the CF flag if not Physical
+    push rsi
+    mov rsi, qword [workingCDS] ;Get CDS
+    test word [rsi + cds.wFlags], cdsJoinDrive  ;Check if Join
+    pop rsi
+    jz .exit
+    stc
+.exit:
+    ret
+
+buildNewCDS:   ;Int 4Fh AX=121Fh
+;Allows a redirector or subst/join to build a CDS
+;Input: al = Drive Letter for drive
+;       workingCDS = Set to the CDS array slot for the drive
+;Output: rdi = newly filled in workingCDS
+    push rax
+    sub al, "A"-1
+    cmp al, byte [numPhysVol]    ;al must be bigger than # of block drives
+    mov rdi, qword [workingCDS] ;Get CDS pointer
+    mov word [rdi + cds.wFlags], 0  ;Nullify CDS (mark as invalid)
+    pop rax
+    jb .exit    ;Exit with CF=CY
+    push rax
+    or eax, 005C3A00h   ;Add path componants to eax, 5Ch=\, 3Ah=:
+    mov dword [rdi + cds.sCurrentPath], eax  ;Since al has valid drive letter
+    pop rax
+    or word [rdi + cds.wFlags], cdsPhysDrive    ;Config bit set
+    mov dword [rdi + cds.dStartCluster], 0  ;Root dir
+    mov qword [rdi + cds.qReserved], 0   ;Optional redir signature field
+    mov word [rdi + cds.wBackslashOffset], 2    ;Skip letter and :
+    ;Search for a DPB for the CDS if it is based on a physical device
+    push rax
+    push rsi
+    sub al, "A" ;Get 0 based drive letter
+    call walkDPBchain
+    jb .skipSettingDPB
+    mov qword [rdi + cds.qDPBPtr], rsi  ;Save DPB pointer for drive
+.skipSettingDPB:
+    pop rsi
+    pop rax
+    clc
+.exit:
+    ret
+
+getCDS:     ;Int 4Fh AX=1219h
+;Gets the device DPB and saves it in the DOS variable
+;This can be called to get CDS for network drives too!
+;Input: al = 1 based drive number
+;Sets workingCDS var with the CDS for the device. 
+;   If device on a network, sets CF
+;Returns al with 0-based drive number
+    test al, al
+    jnz .skip
+    mov al, byte [currentDrv]   ;Get current drive
+    inc al
+.skip:
+    dec al  ;Convert to 0 based (0=A: ...)
+    push rsi
+    mov byte [errorLocus], eLocDsk  ;Set the locus
+    test byte [dosInvoke], -1   ;If non-zero, invalid
+    jz .physDrive
+    ;Invokation via 21/5D00, not yet fully supported
+    ;If returned with CF=CY, consider it an error for now
+    push rax
+    push rdi
+    lea rdi, tmpCDS ;Get the temporary CDS buffer
+    mov qword [workingCDS], rdi ;Make it current
+    add al, "A" ;Convert to a drive letter
+    call buildNewCDS    ;Build a new CDS
+    test word [rdi + cds.wFlags], cdsPhysDrive  ;Is the CDS valid?
+    pop rdi
+    pop rax
+    jz .exitBad    ;If the valid flag not set, fail!
+    jmp short .exitOk   ;All oki
+.physDrive:
+    call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
+    jc .exitBad
+    test word [rsi + cds.wFlags], cdsPhysDrive
+    jnz .exitOk ;Exit with flag cleared
+    ;Else Return to unknown error locus
+.exitBad:
+    mov byte [errorLocus], eLocUnk
+.exitBad1:
+    stc
+.exitOk:
+    pop rsi
+    ret
+
 getCDSforDrive:     ;Int 4Fh AX=1217h
     ;Gets the CDS for the current drive in al
     ;Input: al = Drive number, 0 = A ...
@@ -39,73 +150,8 @@ getCDSforDrive:     ;Int 4Fh AX=1217h
     clc
     ret
 
-walkDPBchain:
-;Called with al = 0 based drive number
-;Returns in rsi a pointer to the DPB or if CF=CY, invalid drive number
-    mov rsi, qword [sftHeadPtr]  ;Get variable pointing to first DPB
-.walk:
-    cmp rsi, -1
-    je .exitBad
-    cmp byte [rsi + dpb.bDriveNumber], al
-    je .exit    ;Drive found
-    mov rsi, qword [rsi + dpb.qNextDPBPtr]  ;Go to next drive 
-    jmp short .walk
-.exitBad:
-    stc
-.exit:
-    ret
-setDrive:   ;Int 4Fh AX=1219h   
-;Gets a drive CDS, sets it as working and checks it is a valid physical drive
-;Input: al = 1-based drive number
-;Output: al = 0-based drive number
-;   CF=NC => Drive can be set as Current Drive (i.e. Not Network or Join)
-;   CF=CY => 0-based drive number invalid OR CDS returned with Net or Join flags
-;            set.
-    call getCDS ;Setup working CDS DOS variable for this drive
-    jc .exit    ;Carry the CF flag if not Physical
-    push rsi
-    mov rsi, qword [workingCDS] ;Get CDS
-    test word [rsi + cds.wFlags], cdsJoinDrive  ;Check if Join
-    pop rsi
-    jz .exit
-    stc
-.exit:
-    ret
-getCDS:
-;Gets the device DPB and saves it in the DOS variable
-;This can be called to get CDS for network drives too!
-;Input: al = 1 based drive number
-;Sets workingCDS var with the CDS for the device. 
-;   If device on a network, sets CF
-;Returns al with 0-based drive number
-    test al, al
-    jnz .skip
-    mov al, byte [currentDrv]   ;Get current drive
-    inc al
-.skip:
-    dec al  ;Convert to 0 based (0=A: ...)
-    push rsi
-    mov byte [errorLocus], eLocDsk  ;Set the locus
-    test byte [dosInvoke], -1   ;If non-zero, invalid
-    jz .physDrive
-    ;Invalid invokation (21/5D00 invokation not yet supported)
-    ;If returned with CF=CY, consider it an error for now
-    ;Eventually, here we will build a fresh DPB for the non-physical drive
-    jmp short .exitBad1
-.physDrive:
-    call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
-    jc .exitBad
-    test word [rsi + cds.wFlags], cdsPhysDrive
-    jnz .exitOk ;Exit with flag cleared
-    ;Else Return to unknown error locus
-.exitBad:
-    mov byte [errorLocus], eLocUnk
-.exitBad1:
-    stc
-.exitOk:
-    pop rsi
-    ret
-swapPathSeparator:  ;INT 4Fh, AX=1204h, Normalise Path Separator
+
+swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
 ;Swap / to \ in a path. Leave all other chars alone.
 ;Input: AL = Char to normalise.
 ;Output: AL = Normalised Char (if / swap to \. Leave all other chars alone)
@@ -117,7 +163,8 @@ swapPathSeparator:  ;INT 4Fh, AX=1204h, Normalise Path Separator
     mov al, "\" ;Set char in al to normal path separator
 .exit:
     ret
-uppercaseChar:      ;INT 4Fh, AX=1213h, Uppercase Char
+
+uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
 ;Convert a lowercase char to uppercase
 ; Leave alone uppercase chars and invalid chars
 ;Input: al = Char to convert to uppercase
