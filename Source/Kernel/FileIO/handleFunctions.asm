@@ -9,155 +9,31 @@ openFileHdl:       ;ah = 3Dh, handle function
 closeFileHdl:      ;ah = 3Eh, handle function
     ret
 readFileHdl:       ;ah = 3Fh, handle function
-    mov byte [rwFlag], 0    ;Read
-    ;bx has file handle, ecx has number of bytes to read
-    ;Set the following vars: currentSFT, currentJFT, currentHdl
-    call getSFTPtr  ;Get SFT ptr in var in rdi
-    jc lseekHdl.exitBad ;If file handle not good, recycle error (in al)
-    ;Now check if we have permissions to read from file
-    movzx eax, word [rdi + sft.wOpenMode]   ;Get handle permissions in ax
-    and al, 0Fh ;Save low nybble
-    cmp al, WriteAccess ;Was this file opened with write access only?
-    jne .readable
-    call invalidFilePermissions
-    ;Set CF on caller stack
+    lea rsi, readBytes
+.common:
+    call getSFTNdxFromHandle
+    jb .error
+    mov al, byte [rdi]  ;Get the SFT index into al
+    call getSFTPtr ;Get SFT ptr in rdi (if file is r/w-able from machine)
+    jb .error
+    call setCurrentSFT  ;Set the current SFT (from rdi)
+    push qword [currentDTA] ;Save the current Disk Transfer Area
+    call rsi
+    pop qword [currentDTA]
+    jb .errorFromDataTransfer
     call getUserRegs
-    or byte [rsi + callerFrame.flags], 1
-    ret ;Exit with error code in al
-.readable:
-    mov eax, dword [rdi + sft.dCurntOff]
-    mov dword [currByteA], eax
-    ;If the file is readable, check if it is a disk or char device
-    movzx ebx, word [rdi + sft.wDeviceInfo]
-    test ebx, devRedirDev | devCharDev  ;Either of these get handled separately
-    jnz .notDiskDev
-    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer
-    call setWorkingDPB  ;Set the DPB pointer as working
-    mov bl, byte [rbp + dpb.bDriveNumber]
-    mov byte [workingDrv], bl
-    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-    ;Here we divide
-    xor edx, edx
-    div ebx ;Divide the number of bytes by bytes per sector
-    ;eax has sector number in file
-    ;edx has offset in sector
-    mov dword [currByte], edx
-    mov edx, eax    ;Save sector number in edx
-    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
-    shr eax, cl ;Divide eax by sectors/cluster (to get cluster number)
-    mov dword [currClust], eax    ;Save rounded down value (cluster number)
-    shl eax, cl     ;Go up again
-    sub edx, eax    ;Get the sector offset INTO the cluster in eax
-    mov byte [currSect], dl ;Save this number
-;Now we need to find the absolute cluster number
-    mov edx, dword [currClust]
-    mov eax, dword [rdi + sft.dStartClust]  ;Get the start cluster for the file
-    xor ecx, ecx    ;If fail, have 0 bytes ready
-.clusterSearch:
-    cmp eax, -1
-    je .exitSetFlag ;This is a fail condition. The handle is past the EOF
-    call walkFAT    ;eax has next cluster
-    dec edx
-    jnz .clusterSearch
-;eax should have the absolute cluster of the file pointer
-    mov dword [currClustA], eax
-    call getStartSectorOfCluster    ;Get start sector of cluster
-    movzx ecx, byte [currSect]  ;Get sector offset into cluster 
-    add rax, rcx    ;Get starting sector number
-    mov qword [currSectA], rax  ;Save it!
-;Update SFT with entries
-    call updateCurrentSFT
-;Now enact data transfer
-    call getDataSector  ;Gets sector in [currSectA] in [currBuff]
-    jc .exitFail
-;Now load rbx with function to call
-    lea rbx, readWriteBytesBinary
-    lea rdx, readBytesASCII
-    test byte [rdi + sft.wDeviceInfo], devBinary
-    cmovz rbx, rdx  ;Move only if bit not set i.e. in ASCII mode
-    mov qword [dosReturn], rbx ;Save the function to call in this var
-    call getUserRegs
-    mov rdi, qword [rsi + callerFrame.rdx]  ;Get Read Destination
-    mov ecx, dword [rsi + callerFrame.rcx]  ;Get number of bytes to transfer
-    mov dword [tfrLen], ecx ;Set user requested transfer length in var
-    call getCurrentSFT  ;Set rsi to current SFT
-    ;Check if the transfer length is possible
-    ;If not, then transfer the max length possible
-    mov ecx, dword [rsi + sft.dFileSize]    ;When file ptr == ecx, EOF
-    sub ecx, dword [currByteA]  ;Get the bytes left in the file
-    mov edx, dword [tfrLen]
-    cmp edx, ecx ;If userRequest > bytesLeftInFile, swap 
-    cmova edx, ecx
-    mov dword [tfrLen], edx 
-    
-    movzx edx, word [rbp + dpb.wBytesPerSector]
-    movzx eax, byte [currByte]  ;Get current byte in the sector
-    sub edx, eax    ;edx has the remaining bytes to read in this sector
-    mov rsi, qword [currBuff]
-    or byte [rsi + bufferHdr.bufferFlags], refBuffer ;Set referenced bit
-    lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
-    add rsi, rax    ;Go to the current byte in the sector
-    ;Now we check to see if we have less than a partial sector's worth of 
-    ; data to transfer.
-    mov ecx, dword [tfrLen] ;Get the current settled length of transfer
-    cmp ecx, edx    ;edx has the bytes left in the sector
-    cmova ecx, edx  ;if transferLength > bytes left in sector, swap
-    mov dword [tfrLen], ecx
-    ;Here, tfrLen is settled, so set tfrCntr too
-    mov dword [tfrCntr], ecx   ;Populate the counter
-.mainReadLoop:
-    call qword [dosReturn]  ;Call the tfr func, ecx rets num. bytes transferred
-    jz .exit   ;If we return with ZF=ZE then we are done!
-    ;Else we must goto the next sector and repeat
-    call getNextSectorOfFile    ;Increments the cluster and sector vars
-    jc .exitFailInTfr
-    call getDataSector  ;Get data buffer
-    jc .exitFailInTfr
-    call updateCurrentSFT   ;Ensure the SFT is up to date after a transfer
-    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-    mov edx, dword [tfrCntr]    ;Get bytes left to transfer in edx
-    cmp edx, ecx    ;If bytes left > bytes in sector, dont swap!
-    cmovb ecx, edx
-    ;Reposition rsi again
-    mov rsi, qword [currBuff]
-    or byte [rsi + bufferHdr.bufferFlags], refBuffer ;Set referenced bit
-    lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
-    jmp short .mainReadLoop
-.exit:
-    call getCurrentSFT
-    test word [rsi + sft.wDeviceInfo], blokDevDTSet ;Should I set the time/date?
-    ;For now do nothing, but eventually, make CLOCK$ request
-    call getBytesTransferred    ;Gets bytes transferred in ecx
-    call getUserRegs
-    mov dword [rsi + callerFrame.rcx], ecx
+    mov dword [rsi + callerFrame.rax], ecx  ;Put actual number of bytes tfrd
     and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
-    xor al, al  ;No error
     ret
-.exitSetFlag:
+;Temporary Error handler, simply return with CF set
+.error:
+.errorFromDataTransfer:
     call getUserRegs
-    mov dword [rsi + callerFrame.rcx], ecx
-    or dword [rsi + callerFrame.flags], 1    ;Set CF
+    or byte [rsi + callerFrame.flags], 1    ;Set CF
     ret
-.exitFailInTfr:
-    call getBytesTransferred    ;Gets bytes transferred in ecx
-.exitFail:
-;Exit on Int 44h
-    mov eax, errFI44
-    mov word [errorExCde], ax
-    jmp short .exitSetFlag
-.notDiskDev:    ;qPtr here is a device driver
-;Here only char devices. Redirector is not yet implemented!
-;Arrive here with ebx = wDeviceInfo for device
-    test ebx, devRedirDev  ;Test for network redirector drive
-    jz .charDev
-    mov al, errNoNet    ;No network pls
-    xor ecx, ecx    ;No bytes transferred
-    jmp short .exitSetFlag
-.charDev:
-;When reading from a char device, if it is the console, we must give it
-; special treatment if the handle is in ASCII mode.
 writeFileHdl:      ;ah = 40h, handle function
-    ret
+    lea rsi, writeBytes
+    jmp readFileHdl.common
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     ret
 lseekHdl:          ;ah = 42h, handle function, LSEEK
@@ -211,22 +87,42 @@ setHandleCount:    ;ah = 67h
 commitFile:        ;ah = 68h, flushes buffers for handle to disk 
     ret
 ;-----------------------------------:
-;        File Handle routines       :
+;       Main File IO Routines       :
 ;-----------------------------------:
-invalidFilePermissions:
+readBytes:
+;Reads the bytes into the user buffer
+    call getCurrentSFT  ;Get current SFT in rdi
+    movzx eax, word [rdi + sft.wOpenMode]
+    and al, 0Fh ;Eliminate except access mode
+    cmp al, WriteAccess
+    jne .readable
     mov eax, errAccDen
     mov word [errorExCde], ax
-    xor ecx, ecx    ;To allow for using jrcxz to exit
     stc
-    ret
-
+    ret ;Exit with error code 
+.readable:
+writeBytes:
+;Writes the bytes from the user buffer
+    call getCurrentSFT  ;Get current SFT in rdi
+    movzx eax, word [rdi + sft.wOpenMode]
+    and al, 0Fh ;Eliminate except access mode
+    cmp al, ReadAccess
+    jne .writeable
+    mov eax, errAccDen
+    mov word [errorExCde], ax
+    stc
+    ret ;Exit with error code 
+.writeable:
+;-----------------------------------:
+;        File Handle routines       :
+;-----------------------------------:
 setCurrentSFT:
-;Set the pointer in rsi as current SFT 
-    mov qword [currentSFT], rsi
+;Set the pointer in rdi as current SFT 
+    mov qword [currentSFT], rdi
     ret
 getCurrentSFT:
-;Get the current SFT pointer in rsi
-    mov rsi, qword [currentSFT]
+;Get the current SFT pointer in rdi
+    mov rdi, qword [currentSFT]
     ret
     
 getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
@@ -376,3 +272,152 @@ readWriteBytesBinary:
     add dword [currByteA], ecx  ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     ret
+oldReadHdl: ;Kept for backup and reference
+    mov byte [rwFlag], 0    ;Read
+    ;bx has file handle, ecx has number of bytes to read
+    ;Set the following vars: currentSFT, currentJFT, currentHdl
+    call getSFTPtr  ;Get SFT ptr in var in rdi
+    jc lseekHdl.exitBad ;If file handle not good, recycle error (in al)
+    ;Now check if we have permissions to read from file
+    movzx eax, word [rdi + sft.wOpenMode]   ;Get handle permissions in ax
+    and al, 0Fh ;Save low nybble
+    cmp al, WriteAccess ;Was this file opened with write access only?
+    jne .readable
+    mov eax, errAccDen
+    mov word [errorExCde], ax
+    ;Set CF on caller stack
+    call getUserRegs
+    or byte [rsi + callerFrame.flags], 1
+    ret ;Exit with error code in al
+.readable:
+    mov eax, dword [rdi + sft.dCurntOff]
+    mov dword [currByteA], eax
+    ;If the file is readable, check if it is a disk or char device
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test ebx, devRedirDev | devCharDev  ;Either of these get handled separately
+    jnz .notDiskDev
+    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer
+    call setWorkingDPB  ;Set the DPB pointer as working
+    mov bl, byte [rbp + dpb.bDriveNumber]
+    mov byte [workingDrv], bl
+    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    ;Here we divide
+    xor edx, edx
+    div ebx ;Divide the number of bytes by bytes per sector
+    ;eax has sector number in file
+    ;edx has offset in sector
+    mov dword [currByte], edx
+    mov edx, eax    ;Save sector number in edx
+    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    shr eax, cl ;Divide eax by sectors/cluster (to get cluster number)
+    mov dword [currClust], eax    ;Save rounded down value (cluster number)
+    shl eax, cl     ;Go up again
+    sub edx, eax    ;Get the sector offset INTO the cluster in eax
+    mov byte [currSect], dl ;Save this number
+;Now we need to find the absolute cluster number
+    mov edx, dword [currClust]
+    mov eax, dword [rdi + sft.dStartClust]  ;Get the start cluster for the file
+    xor ecx, ecx    ;If fail, have 0 bytes ready
+.clusterSearch:
+    cmp eax, -1
+    je .exitSetFlag ;This is a fail condition. The handle is past the EOF
+    call walkFAT    ;eax has next cluster
+    dec edx
+    jnz .clusterSearch
+;eax should have the absolute cluster of the file pointer
+    mov dword [currClustA], eax
+    call getStartSectorOfCluster    ;Get start sector of cluster
+    movzx ecx, byte [currSect]  ;Get sector offset into cluster 
+    add rax, rcx    ;Get starting sector number
+    mov qword [currSectA], rax  ;Save it!
+;Update SFT with entries
+    call updateCurrentSFT
+;Now enact data transfer
+    call getDataSector  ;Gets sector in [currSectA] in [currBuff]
+    jc .exitFail
+;Now load rbx with function to call
+    lea rbx, readWriteBytesBinary
+    lea rdx, readBytesASCII
+    test byte [rdi + sft.wDeviceInfo], devBinary
+    cmovz rbx, rdx  ;Move only if bit not set i.e. in ASCII mode
+    mov qword [dosReturn], rbx ;Save the function to call in this var
+    call getUserRegs
+    mov rdi, qword [rsi + callerFrame.rdx]  ;Get Read Destination
+    mov ecx, dword [rsi + callerFrame.rcx]  ;Get number of bytes to transfer
+    mov dword [tfrLen], ecx ;Set user requested transfer length in var
+    call getCurrentSFT  ;Set rsi to current SFT
+    ;Check if the transfer length is possible
+    ;If not, then transfer the max length possible
+    mov ecx, dword [rsi + sft.dFileSize]    ;When file ptr == ecx, EOF
+    sub ecx, dword [currByteA]  ;Get the bytes left in the file
+    mov edx, dword [tfrLen]
+    cmp edx, ecx ;If userRequest > bytesLeftInFile, swap 
+    cmova edx, ecx
+    mov dword [tfrLen], edx 
+    
+    movzx edx, word [rbp + dpb.wBytesPerSector]
+    movzx eax, byte [currByte]  ;Get current byte in the sector
+    sub edx, eax    ;edx has the remaining bytes to read in this sector
+    mov rsi, qword [currBuff]
+    or byte [rsi + bufferHdr.bufferFlags], refBuffer ;Set referenced bit
+    lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
+    add rsi, rax    ;Go to the current byte in the sector
+    ;Now we check to see if we have less than a partial sector's worth of 
+    ; data to transfer.
+    mov ecx, dword [tfrLen] ;Get the current settled length of transfer
+    cmp ecx, edx    ;edx has the bytes left in the sector
+    cmova ecx, edx  ;if transferLength > bytes left in sector, swap
+    mov dword [tfrLen], ecx
+    ;Here, tfrLen is settled, so set tfrCntr too
+    mov dword [tfrCntr], ecx   ;Populate the counter
+.mainReadLoop:
+    call qword [dosReturn]  ;Call the tfr func, ecx rets num. bytes transferred
+    jz .exit   ;If we return with ZF=ZE then we are done!
+    ;Else we must goto the next sector and repeat
+    call getNextSectorOfFile    ;Increments the cluster and sector vars
+    jc .exitFailInTfr
+    call getDataSector  ;Get data buffer
+    jc .exitFailInTfr
+    call updateCurrentSFT   ;Ensure the SFT is up to date after a transfer
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    mov edx, dword [tfrCntr]    ;Get bytes left to transfer in edx
+    cmp edx, ecx    ;If bytes left > bytes in sector, dont swap!
+    cmovb ecx, edx
+    ;Reposition rsi again
+    mov rsi, qword [currBuff]
+    or byte [rsi + bufferHdr.bufferFlags], refBuffer ;Set referenced bit
+    lea rsi, qword [rsi + bufferHdr.dataarea]    ;Goto the data area
+    jmp short .mainReadLoop
+.exit:
+    call getCurrentSFT
+    test word [rsi + sft.wDeviceInfo], blokDevDTSet ;Should I set the time/date?
+    ;For now do nothing, but eventually, make CLOCK$ request
+    call getBytesTransferred    ;Gets bytes transferred in ecx
+    call getUserRegs
+    mov dword [rsi + callerFrame.rcx], ecx
+    and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
+    xor al, al  ;No error
+    ret
+.exitSetFlag:
+    call getUserRegs
+    mov dword [rsi + callerFrame.rcx], ecx
+    or dword [rsi + callerFrame.flags], 1    ;Set CF
+    ret
+.exitFailInTfr:
+    call getBytesTransferred    ;Gets bytes transferred in ecx
+.exitFail:
+;Exit on Int 44h
+    mov eax, errFI44
+    mov word [errorExCde], ax
+    jmp short .exitSetFlag
+.notDiskDev:    ;qPtr here is a device driver
+;Here only char devices. Redirector is not yet implemented!
+;Arrive here with ebx = wDeviceInfo for device
+    test ebx, devRedirDev  ;Test for network redirector drive
+    jz .charDev
+    mov al, errNoNet    ;No network pls
+    xor ecx, ecx    ;No bytes transferred
+    jmp short .exitSetFlag
+.charDev:
+;When reading from a char device, if it is the console, we must give it
+; special treatment if the handle is in ASCII mode.
