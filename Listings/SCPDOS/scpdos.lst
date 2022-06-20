@@ -5059,134 +5059,136 @@
     80                              <1> 
     81                              <1> buildNewCDS:   ;Int 4Fh AX=121Fh
     82                              <1> ;Allows a redirector or subst/join to build a CDS
-    83                              <1> ;Input: al = Drive Letter for drive
-    84                              <1> ;       workingCDS = Set to the CDS array slot for the drive
-    85                              <1> ;Output: rdi = newly filled in workingCDS
-    86                              <1> ;CF=NC => CDS valid and has a DPB
-    87                              <1> ;CF=CY => Either drive letter not ok OR No DPB for drive
-    88 00001B3E 50                  <1>     push rax
-    89 00001B3F 2C40                <1>     sub al, "A"-1
-    90 00001B41 3A05(BBC00300)      <1>     cmp al, byte [numPhysVol]    ;al must be bigger than # of block drives
-    91 00001B47 488B3D(A0C20300)    <1>     mov rdi, qword [workingCDS] ;Get CDS pointer
-    92 00001B4E 66C747430000        <1>     mov word [rdi + cds.wFlags], 0  ;Nullify CDS (mark as invalid)
-    93 00001B54 58                  <1>     pop rax
-    94 00001B55 7235                <1>     jb .exit    ;Exit with CF=CY
-    95 00001B57 50                  <1>     push rax
-    96 00001B58 0D003A5C00          <1>     or eax, 005C3A00h   ;Add path componants to eax, 5Ch=\, 3Ah=:
-    97 00001B5D 8907                <1>     mov dword [rdi + cds.sCurrentPath], eax  ;Since al has valid drive letter
-    98 00001B5F 58                  <1>     pop rax
-    99 00001B60 66814F430040        <1>     or word [rdi + cds.wFlags], cdsPhysDrive    ;Config bit set
-   100 00001B66 C7474D00000000      <1>     mov dword [rdi + cds.dStartCluster], 0  ;Root dir
-   101 00001B6D 48C7475100000000    <1>     mov qword [rdi + cds.qReserved], 0   ;Optional redir signature field
-   102 00001B75 66C747590200        <1>     mov word [rdi + cds.wBackslashOffset], 2    ;Skip letter and :
-   103                              <1>     ;Search for a DPB for the CDS if it is based on a physical device
-   104 00001B7B 50                  <1>     push rax
-   105 00001B7C 56                  <1>     push rsi
-   106 00001B7D 2C41                <1>     sub al, "A" ;Get 0 based drive letter
-   107 00001B7F E884FFFFFF          <1>     call walkDPBchain
-   108 00001B84 7204                <1>     jb .skipSettingDPB
-   109 00001B86 48897745            <1>     mov qword [rdi + cds.qDPBPtr], rsi  ;Save DPB pointer for drive
-   110                              <1> .skipSettingDPB:
-   111 00001B8A 5E                  <1>     pop rsi
-   112 00001B8B 58                  <1>     pop rax
-   113                              <1> .exit:
-   114 00001B8C C3                  <1>     ret
-   115                              <1> 
-   116                              <1> getCDS:     ;Int 4Fh AX=1219h
-   117                              <1> ;Gets the device DPB and saves it in the DOS variable
-   118                              <1> ;This can be called to get CDS for network drives too!
-   119                              <1> ;Input: al = 1 based drive number
-   120                              <1> ;Sets workingCDS var with the CDS for the device. 
-   121                              <1> ;   If device on a network, sets CF
-   122                              <1> ;Returns al with 0-based drive number
-   123 00001B8D 84C0                <1>     test al, al
-   124 00001B8F 7508                <1>     jnz .skip
-   125 00001B91 8A05(3BC10300)      <1>     mov al, byte [currentDrv]   ;Get current drive
-   126 00001B97 FEC0                <1>     inc al
-   127                              <1> .skip:
-   128 00001B99 FEC8                <1>     dec al  ;Convert to 0 based (0=A: ...)
-   129 00001B9B 56                  <1>     push rsi
-   130 00001B9C C605(11C10300)02    <1>     mov byte [errorLocus], eLocDsk  ;Set the locus
-   131 00001BA3 F605(83C10300)FF    <1>     test byte [dosInvoke], -1   ;If non-zero, invalid
-   132 00001BAA 7423                <1>     jz .physDrive
-   133                              <1>     ;Invokation via 21/5D00, not yet fully supported
-   134                              <1>     ;If returned with CF=CY, consider it an error for now
-   135 00001BAC 50                  <1>     push rax
-   136 00001BAD 57                  <1>     push rdi
-   137 00001BAE 488D3D(A8C20300)    <1>     lea rdi, tmpCDS ;Get the temporary CDS buffer
-   138 00001BB5 48893D(A0C20300)    <1>     mov qword [workingCDS], rdi ;Make it current
-   139 00001BBC 0441                <1>     add al, "A" ;Convert to a drive letter
-   140 00001BBE E87BFFFFFF          <1>     call buildNewCDS    ;Build a new CDS
-   141 00001BC3 66F747430040        <1>     test word [rdi + cds.wFlags], cdsPhysDrive  ;Is the CDS valid?
-   142 00001BC9 5F                  <1>     pop rdi
-   143 00001BCA 58                  <1>     pop rax
-   144 00001BCB 7411                <1>     jz .exitBad    ;If the valid flag not set, fail!
-   145 00001BCD EB17                <1>     jmp short .exitOk   ;All oki
-   146                              <1> .physDrive:
-   147 00001BCF E814000000          <1>     call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
-   148 00001BD4 7208                <1>     jc .exitBad
-   149 00001BD6 66F746430040        <1>     test word [rsi + cds.wFlags], cdsPhysDrive
-   150 00001BDC 7508                <1>     jnz .exitOk ;Exit with flag cleared
-   151                              <1>     ;Else Return to unknown error locus
-   152                              <1> .exitBad:
-   153 00001BDE C605(11C10300)01    <1>     mov byte [errorLocus], eLocUnk
-   154                              <1> .exitBad1:
-   155 00001BE5 F9                  <1>     stc
-   156                              <1> .exitOk:
-   157 00001BE6 5E                  <1>     pop rsi
-   158 00001BE7 C3                  <1>     ret
-   159                              <1> 
-   160                              <1> getCDSforDrive:     ;Int 4Fh AX=1217h
-   161                              <1>     ;Gets the CDS for the current drive in al
-   162                              <1>     ;Input: al = Drive number, 0 = A ...
-   163                              <1>     ;Output: CF=NC => rsi = Pointer to CDS for drive in al (and workingCDS var)
-   164                              <1>     ;        CF=CY => al not valid
-   165 00001BE8 3A05(BCC00300)      <1>     cmp al, byte [lastdrvNum]
-   166 00001BEE 7202                <1>     jb .ctn
-   167 00001BF0 F9                  <1>     stc 
-   168 00001BF1 C3                  <1>     ret
-   169                              <1> .ctn:
-   170 00001BF2 50                  <1>     push rax
-   171 00001BF3 52                  <1>     push rdx
-   172 00001BF4 0FB6C0              <1>     movzx eax, al
-   173 00001BF7 48BE5B000000000000- <1>     mov rsi, cds_size
-   173 00001C00 00                  <1>
-   174 00001C01 31D2                <1>     xor edx, edx
-   175 00001C03 F7E6                <1>     mul esi ;Get the multiples of CDS's to skip
-   176 00001C05 488D05(A9C00300)    <1>     lea rax, qword [cdsHeadPtr] ;Get the first CDS
-   177 00001C0C 4801C6              <1>     add rsi, rax    ;Add the CDS array to the offset into it
-   178 00001C0F 488935(A0C20300)    <1>     mov qword [workingCDS], rsi  ;Save in data area
-   179 00001C16 5A                  <1>     pop rdx
-   180 00001C17 58                  <1>     pop rax
-   181 00001C18 F8                  <1>     clc
-   182 00001C19 C3                  <1>     ret
-   183                              <1> 
-   184                              <1> 
-   185                              <1> swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
-   186                              <1> ;Swap / to \ in a path. Leave all other chars alone.
-   187                              <1> ;Input: AL = Char to normalise.
-   188                              <1> ;Output: AL = Normalised Char (if / swap to \. Leave all other chars alone)
-   189                              <1> ;If path separator, set ZF=ZE
-   190 00001C1A 3C5C                <1>     cmp al, "\"
-   191 00001C1C 7406                <1>     je .exit
-   192 00001C1E 3C2F                <1>     cmp al, "/" ;Will set ZF=ZE if / (aka, path separator)
-   193 00001C20 7502                <1>     jne .exit
-   194 00001C22 B05C                <1>     mov al, "\" ;Set char in al to normal path separator
-   195                              <1> .exit:
-   196 00001C24 C3                  <1>     ret
-   197                              <1> 
-   198                              <1> uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
-   199                              <1> ;Convert a lowercase char to uppercase
-   200                              <1> ; Leave alone uppercase chars and invalid chars
-   201                              <1> ;Input: al = Char to convert to uppercase
-   202                              <1> ;Output: al = Processed char
-   203 00001C25 3C7A                <1>     cmp al, "z"
-   204 00001C27 7706                <1>     ja .exit
-   205 00001C29 3C61                <1>     cmp al, "a"
-   206 00001C2B 7202                <1>     jb .exit
-   207 00001C2D 2C20                <1>     sub al, "a" - "A"   ;Convert the char
-   208                              <1> .exit:
-   209 00001C2F C3                  <1>     ret
+    83                              <1> ;Input drive letter must be above the reserved CDS entries for the system 
+    84                              <1> ; volumes, that are made at system boot.
+    85                              <1> ;Input: al = Drive Letter for drive
+    86                              <1> ;       workingCDS = Set to the CDS array slot for the drive
+    87                              <1> ;Output: rdi = newly filled in workingCDS
+    88                              <1> ;CF=NC => CDS valid and has a DPB
+    89                              <1> ;CF=CY => Either drive letter not ok OR No DPB for drive
+    90 00001B3E 50                  <1>     push rax
+    91 00001B3F 2C40                <1>     sub al, "A"-1
+    92 00001B41 3A05(BBC00300)      <1>     cmp al, byte [numPhysVol]    ;al must be bigger than # of block drives
+    93 00001B47 488B3D(A0C20300)    <1>     mov rdi, qword [workingCDS] ;Get CDS pointer
+    94 00001B4E 66C747430000        <1>     mov word [rdi + cds.wFlags], 0  ;Nullify CDS (mark as invalid)
+    95 00001B54 58                  <1>     pop rax
+    96 00001B55 7235                <1>     jb .exit    ;Exit with CF=CY
+    97 00001B57 50                  <1>     push rax
+    98 00001B58 0D003A5C00          <1>     or eax, 005C3A00h   ;Add path componants to eax, 5Ch=\, 3Ah=:
+    99 00001B5D 8907                <1>     mov dword [rdi + cds.sCurrentPath], eax  ;Since al has valid drive letter
+   100 00001B5F 58                  <1>     pop rax
+   101 00001B60 66814F430040        <1>     or word [rdi + cds.wFlags], cdsPhysDrive    ;Config bit set
+   102 00001B66 C7474D00000000      <1>     mov dword [rdi + cds.dStartCluster], 0  ;Root dir
+   103 00001B6D 48C7475100000000    <1>     mov qword [rdi + cds.qReserved], 0   ;Optional redir signature field
+   104 00001B75 66C747590200        <1>     mov word [rdi + cds.wBackslashOffset], 2    ;Skip letter and :
+   105                              <1>     ;Search for a DPB for the CDS if it is based on a physical device
+   106 00001B7B 50                  <1>     push rax
+   107 00001B7C 56                  <1>     push rsi
+   108 00001B7D 2C41                <1>     sub al, "A" ;Get 0 based drive letter
+   109 00001B7F E884FFFFFF          <1>     call walkDPBchain
+   110 00001B84 7204                <1>     jb .skipSettingDPB
+   111 00001B86 48897745            <1>     mov qword [rdi + cds.qDPBPtr], rsi  ;Save DPB pointer for drive
+   112                              <1> .skipSettingDPB:
+   113 00001B8A 5E                  <1>     pop rsi
+   114 00001B8B 58                  <1>     pop rax
+   115                              <1> .exit:
+   116 00001B8C C3                  <1>     ret
+   117                              <1> 
+   118                              <1> getCDS:     ;Int 4Fh AX=1219h
+   119                              <1> ;Gets the device DPB and saves it in the DOS variable
+   120                              <1> ;This can be called to get CDS for network drives too!
+   121                              <1> ;Input: al = 1 based drive number
+   122                              <1> ;Sets workingCDS var with the CDS for the device. 
+   123                              <1> ;   If device on a network, sets CF
+   124                              <1> ;Returns al with 0-based drive number
+   125 00001B8D 84C0                <1>     test al, al
+   126 00001B8F 7508                <1>     jnz .skip
+   127 00001B91 8A05(3BC10300)      <1>     mov al, byte [currentDrv]   ;Get current drive
+   128 00001B97 FEC0                <1>     inc al
+   129                              <1> .skip:
+   130 00001B99 FEC8                <1>     dec al  ;Convert to 0 based (0=A: ...)
+   131 00001B9B 56                  <1>     push rsi
+   132 00001B9C C605(11C10300)02    <1>     mov byte [errorLocus], eLocDsk  ;Set the locus
+   133 00001BA3 F605(83C10300)FF    <1>     test byte [dosInvoke], -1   ;If non-zero, invalid
+   134 00001BAA 7423                <1>     jz .physDrive
+   135                              <1>     ;Invokation via 21/5D00, not yet fully supported
+   136                              <1>     ;If returned with CF=CY, consider it an error for now
+   137 00001BAC 50                  <1>     push rax
+   138 00001BAD 57                  <1>     push rdi
+   139 00001BAE 488D3D(A8C20300)    <1>     lea rdi, tmpCDS ;Get the temporary CDS buffer
+   140 00001BB5 48893D(A0C20300)    <1>     mov qword [workingCDS], rdi ;Make it current
+   141 00001BBC 0441                <1>     add al, "A" ;Convert to a drive letter
+   142 00001BBE E87BFFFFFF          <1>     call buildNewCDS    ;Build a new CDS
+   143 00001BC3 66F747430040        <1>     test word [rdi + cds.wFlags], cdsPhysDrive  ;Is the CDS valid?
+   144 00001BC9 5F                  <1>     pop rdi
+   145 00001BCA 58                  <1>     pop rax
+   146 00001BCB 7411                <1>     jz .exitBad    ;If the valid flag not set, fail!
+   147 00001BCD EB17                <1>     jmp short .exitOk   ;All oki
+   148                              <1> .physDrive:
+   149 00001BCF E814000000          <1>     call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
+   150 00001BD4 7208                <1>     jc .exitBad
+   151 00001BD6 66F746430040        <1>     test word [rsi + cds.wFlags], cdsPhysDrive
+   152 00001BDC 7508                <1>     jnz .exitOk ;Exit with flag cleared
+   153                              <1>     ;Else Return to unknown error locus
+   154                              <1> .exitBad:
+   155 00001BDE C605(11C10300)01    <1>     mov byte [errorLocus], eLocUnk
+   156                              <1> .exitBad1:
+   157 00001BE5 F9                  <1>     stc
+   158                              <1> .exitOk:
+   159 00001BE6 5E                  <1>     pop rsi
+   160 00001BE7 C3                  <1>     ret
+   161                              <1> 
+   162                              <1> getCDSforDrive:     ;Int 4Fh AX=1217h
+   163                              <1>     ;Gets the CDS for the current drive in al
+   164                              <1>     ;Input: al = Drive number, 0 = A ...
+   165                              <1>     ;Output: CF=NC => rsi = Pointer to CDS for drive in al (and workingCDS var)
+   166                              <1>     ;        CF=CY => al not valid
+   167 00001BE8 3A05(BCC00300)      <1>     cmp al, byte [lastdrvNum]
+   168 00001BEE 7202                <1>     jb .ctn
+   169 00001BF0 F9                  <1>     stc 
+   170 00001BF1 C3                  <1>     ret
+   171                              <1> .ctn:
+   172 00001BF2 50                  <1>     push rax
+   173 00001BF3 52                  <1>     push rdx
+   174 00001BF4 0FB6C0              <1>     movzx eax, al
+   175 00001BF7 48BE5B000000000000- <1>     mov rsi, cds_size
+   175 00001C00 00                  <1>
+   176 00001C01 31D2                <1>     xor edx, edx
+   177 00001C03 F7E6                <1>     mul esi ;Get the multiples of CDS's to skip
+   178 00001C05 488D05(A9C00300)    <1>     lea rax, qword [cdsHeadPtr] ;Get the first CDS
+   179 00001C0C 4801C6              <1>     add rsi, rax    ;Add the CDS array to the offset into it
+   180 00001C0F 488935(A0C20300)    <1>     mov qword [workingCDS], rsi  ;Save in data area
+   181 00001C16 5A                  <1>     pop rdx
+   182 00001C17 58                  <1>     pop rax
+   183 00001C18 F8                  <1>     clc
+   184 00001C19 C3                  <1>     ret
+   185                              <1> 
+   186                              <1> 
+   187                              <1> swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
+   188                              <1> ;Swap / to \ in a path. Leave all other chars alone.
+   189                              <1> ;Input: AL = Char to normalise.
+   190                              <1> ;Output: AL = Normalised Char (if / swap to \. Leave all other chars alone)
+   191                              <1> ;If path separator, set ZF=ZE
+   192 00001C1A 3C5C                <1>     cmp al, "\"
+   193 00001C1C 7406                <1>     je .exit
+   194 00001C1E 3C2F                <1>     cmp al, "/" ;Will set ZF=ZE if / (aka, path separator)
+   195 00001C20 7502                <1>     jne .exit
+   196 00001C22 B05C                <1>     mov al, "\" ;Set char in al to normal path separator
+   197                              <1> .exit:
+   198 00001C24 C3                  <1>     ret
+   199                              <1> 
+   200                              <1> uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
+   201                              <1> ;Convert a lowercase char to uppercase
+   202                              <1> ; Leave alone uppercase chars and invalid chars
+   203                              <1> ;Input: al = Char to convert to uppercase
+   204                              <1> ;Output: al = Processed char
+   205 00001C25 3C7A                <1>     cmp al, "z"
+   206 00001C27 7706                <1>     ja .exit
+   207 00001C29 3C61                <1>     cmp al, "a"
+   208 00001C2B 7202                <1>     jb .exit
+   209 00001C2D 2C20                <1>     sub al, "a" - "A"   ;Convert the char
+   210                              <1> .exit:
+   211 00001C2F C3                  <1>     ret
     31                                  %include "./Source/Kernel/dosMain.asm"
     32                              <1> ;-----------------------------------:
     33                              <1> ;        Main Kernel dispatch       :

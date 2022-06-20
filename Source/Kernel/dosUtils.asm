@@ -50,6 +50,8 @@ setDrive:
 
 buildNewCDS:   ;Int 4Fh AX=121Fh
 ;Allows a redirector or subst/join to build a CDS
+;Input drive letter must be above the reserved CDS entries for the system 
+; volumes, that are made at system boot.
 ;Input: al = Drive Letter for drive
 ;       workingCDS = Set to the CDS array slot for the drive
 ;Output: rdi = newly filled in workingCDS
