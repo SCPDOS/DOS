@@ -40,6 +40,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
+    mov byte fs:[switchChar ], "/"  ;Default switch char
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov qword fs:[biosUBase], rsi

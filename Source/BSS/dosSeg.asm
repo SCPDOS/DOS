@@ -10,6 +10,8 @@ dosDataArea:
     loProtMem   resd 1    ;Num bytes free in (lo) protected from userbase
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
+;Only used on single remdrive systems, marks if drive A or B was last accessed
+    singleDrv   resb 1  ;Set if last drive accessed was drive B x
     charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
     diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x
     ;The device driver header with space for the largest possible packet
@@ -37,6 +39,11 @@ sysVarsPtr:
     numFiles    resw 1    ;FILES=5 default
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
 
+    switchChar  resb 1  ;Editable by 41h/37h. Set to / by default
+    allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
+;Server stuff. Default to all zeros (blank)
+    serverCnt   resb 1  ;Increments on each 41h/5D01h call
+    machineName resb 16 ;Machine name (Set via 41h/5D01h)     
 ;Swappable Data Area
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
@@ -59,10 +66,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     Int44Error  resw 1  ;Saves Error code from request status word
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
-    allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
+
     currentDrv  resb 1  ;Default drive x
-;Only used on single remdrive systems, marks if drive A or B was last accessed
-    singleDrv   resb 1  ;Set if last drive accessed was drive B x
 ;This is done to allow for DOS to give the user a change to swap devices
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
