@@ -245,11 +245,7 @@ updateCurrentSFT:
     pop rax
     pop rsi
     ret
-readBytesASCII:
-;Input: ecx = number of bytes to read in ASCII mode
-writeBytesASCII:
-;Input: ecx = number of bytes to write in ASCII mode
-    ret
+
 readWriteBytesBinary:
 ;Input: ecx = number of bytes to read in Binary mode
 ;       rdi = Points to where in caller buffer to place bytes
@@ -331,12 +327,6 @@ oldReadHdl: ;Kept for backup and reference
 ;Now enact data transfer
     call getDataSector  ;Gets sector in [currSectA] in [currBuff]
     jc .exitFail
-;Now load rbx with function to call
-    lea rbx, readWriteBytesBinary
-    lea rdx, readBytesASCII
-    test byte [rdi + sft.wDeviceInfo], devBinary
-    cmovz rbx, rdx  ;Move only if bit not set i.e. in ASCII mode
-    mov qword [dosReturn], rbx ;Save the function to call in this var
     call getUserRegs
     mov rdi, qword [rsi + callerFrame.rdx]  ;Get Read Destination
     mov ecx, dword [rsi + callerFrame.rcx]  ;Get number of bytes to transfer
@@ -367,7 +357,7 @@ oldReadHdl: ;Kept for backup and reference
     ;Here, tfrLen is settled, so set tfrCntr too
     mov dword [tfrCntr], ecx   ;Populate the counter
 .mainReadLoop:
-    call qword [dosReturn]  ;Call the tfr func, ecx rets num. bytes transferred
+    call readWriteBytesBinary
     jz .exit   ;If we return with ZF=ZE then we are done!
     ;Else we must goto the next sector and repeat
     call getNextSectorOfFile    ;Increments the cluster and sector vars

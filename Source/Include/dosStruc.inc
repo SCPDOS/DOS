@@ -177,7 +177,7 @@ charDevConOut   equ 2h  ;If set, device is CON output
 charDevNulDev   equ 4h  ;If set, device is NULL device
 charDevClockDev equ 8h  ;If set, device is CLOCK device
 charDevFastOut  equ 10h ;If set, device supports INT 49h
-devBinary       equ 20h ;If set, r/w device in Binary mode!!!
+charDevBinary   equ 20h ;If set, r/w char device in Binary mode!!!
 charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
 blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
 devCharDev      equ 80h ;If set, it is a char device!
