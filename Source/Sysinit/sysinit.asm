@@ -359,11 +359,7 @@ adjDrivers:
     loop adjDrivers
 
 ;Open NUL
-    lea rbx, qword [rbp + charReqHdr]
-    mov byte [rbx + openReqPkt.hdrlen], openReqPkt_size
-    mov byte [rbx + openReqPkt.status], 0
-    call qword [rbp + nulDevHdr + drvHdr.strPtr]
-    call qword [rbp + nulDevHdr + drvHdr.intPtr]
+;NUL opened
 ;Open CON
 conInit:    ;Rather than keeping this resident... do it here
 ;Start by hooking int 3Bh and int 49h as part of the CON driver
@@ -787,7 +783,7 @@ l2:
     jne l1
 l3:
     mov word fs:[CLOCKrecrd + clkStruc.dateWord], 0
-    lea rbx, qword [rbp + charReqHdr] ;Get the address of this request block
+    lea rbx, qword [rbp + secdReqHdr] ;Get the address of this request block
     lea rax, qword [rbp + CLOCKrecrd]
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read the time

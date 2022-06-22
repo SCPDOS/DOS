@@ -12,8 +12,15 @@ dosDataArea:
     longMem     resq 1    ;Num bytes in long memory arena
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
     singleDrv   resb 1  ;Set if last drive accessed was drive B x
-    charReqHdr  resb ioReqPkt_size  ;Character IO Request header x
-    diskReqHdr  resb ioReqPkt_size  ;Disk Action Request header x
+;A request routed through the FCB or handle uses primReqHdr for its main IO.
+;A secondary header is present to allow simultaneous echoing to console 
+; without forcing to re-build the whole primary request block.
+;Thus all disk io uses the primary and CharIO goes through the primary
+; with secondary char output going through the secondary header
+;(i.e the char input functions use the primary for main input and secondary 
+; for output)
+    secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
+    primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
     ;The device driver header with space for the largest possible packet
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:

@@ -2,7 +2,7 @@
 
 stdinReadEcho:     ;ah = 01h
 ;Return char that has been read and echoed in al
-    lea rbx, charReqHdr ;Get the address of this request block
+    lea rbx, secdReqHdr ;Get the address of this request block
     lea rax, singleIObyt
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read a byte
@@ -15,7 +15,7 @@ stdinReadEcho:     ;ah = 01h
 
     cmp byte [singleIObyt], 00h
     jz .stdireexit
-    lea rbx, charReqHdr ;Get the address of this request block
+    lea rbx, secdReqHdr ;Get the address of this request block
     lea rax, singleIObyt
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
@@ -30,7 +30,7 @@ stdinReadEcho:     ;ah = 01h
 stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     mov byte [singleIObyt], dl
-    lea rbx, charReqHdr ;Get the address of this request block
+    lea rbx, secdReqHdr ;Get the address of this request block
     lea rdx, singleIObyt
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
@@ -47,7 +47,7 @@ stdprnWrite:       ;ah = 05h
 directCONIO:       ;ah = 06h
 waitDirectInNoEcho:;ah = 07h
 ;Return char in al
-    lea rbx, charReqHdr ;Get the address of this request block
+    lea rbx, secdReqHdr ;Get the address of this request block
     lea rax, singleIObyt
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read a byte
@@ -71,7 +71,7 @@ printString:       ;ah = 09h
     inc ecx
     jmp short .ps0
 .ps1:   ;Use handle 
-    lea rbx, charReqHdr ;Get the address of this request block
+    lea rbx, secdReqHdr ;Get the address of this request block
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], 08h   ;Write a byte
     mov word [rbx + ioReqPkt.status], 0 ;Zero status word
@@ -104,14 +104,14 @@ checkBreak:
     xor eax, eax
     ;Place command code and a zero status word at the same time
     mov al, drvNONDESTREAD
-    mov dword [charReqHdr + nonDestInNoWaitReqPkt.cmdcde], eax
+    mov dword [secdReqHdr + nonDestInNoWaitReqPkt.cmdcde], eax
     ;Place the packet size in the hdrlen field
     mov al, nonDestInNoWaitReqPkt_size
-    mov byte [charReqHdr + nonDestInNoWaitReqPkt.hdrlen], al
-    lea rbx, charReqHdr
+    mov byte [secdReqHdr + nonDestInNoWaitReqPkt.hdrlen], al
+    lea rbx, secdReqHdr
     call goDriver   ;Called with rsi and rbx with appropriate pointers
     ;Check if the busy bit is set (No keystroke available)
-    test word [charReqHdr + nonDestInNoWaitReqPkt.status], drvBsyStatus
+    test word [secdReqHdr + nonDestInNoWaitReqPkt.status], drvBsyStatus
     jz .charFound
 .exit:
     pop rsi
@@ -119,19 +119,19 @@ checkBreak:
     ret
 .charFound:
 ;Keystroke available, proceed
-    mov al, byte [charReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
+    mov al, byte [secdReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
     cmp al, 03h ;BREAK/^C =ASCII 03h
     jne .exit   ;If not equal exit
 ;Now we pull the char out of the buffer
     xor eax, eax
     mov al, drvREAD ;Read command
-    mov dword [charReqHdr + ioReqPkt.cmdcde], eax
+    mov dword [secdReqHdr + ioReqPkt.cmdcde], eax
     ;Place packet size
-    mov byte [charReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [secdReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     ;Place pointers and number of chars
-    mov dword [charReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
+    mov dword [secdReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
     lea rax, singleIObyt    ;IO Byte buffer
-    mov qword [charReqHdr + ioReqPkt.bufptr], rax
+    mov qword [secdReqHdr + ioReqPkt.bufptr], rax
     call goDriver   ;RSI and RBX as before
     ret ;Stopgap right now, do nothing
 

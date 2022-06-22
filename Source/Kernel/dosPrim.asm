@@ -104,7 +104,7 @@ absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
     call absDiskDriverCall
     jz absDiskExit  ;Skip error code checking
-    mov al, byte [diskReqHdr + ioReqPkt.status] ;Get low byte into al
+    mov al, byte [primReqHdr + ioReqPkt.status] ;Get low byte into al
     ;DOS uses the following pairs in a table
     ;AH/AL= 80/02, 40/06, 02/0C, 10/04, 04/08, 03/00
     mov ah, 80h ;Attachment failure
@@ -140,16 +140,16 @@ absDiskDriverCall:
     push rbx
     push rsi
     ;Get number of sectors to transfer in ecx (if not in ecx already)
-    mov ecx, dword [diskReqHdr + ioReqPkt.tfrlen]
+    mov ecx, dword [primReqHdr + ioReqPkt.tfrlen]
     ;Prepare for goDriver now
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
-    lea rbx, diskReqHdr
+    lea rbx, primReqHdr
     call goDriver   ;Make request
     pop rsi
     pop rbx
-    mov eax, dword [diskReqHdr + ioReqPkt.tfrlen]   ;Get actual num tfrd
+    mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get actual num tfrd
     sub ecx, eax    ;Get positive difference of the two 
-    movzx eax, word [diskReqHdr + ioReqPkt.status]
+    movzx eax, word [primReqHdr + ioReqPkt.status]
     test ax, drvErrStatus   ;Is error bit set?
     ret
 
@@ -195,10 +195,10 @@ ensureDiskValid:
 ; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
 .medChk:
     call diskDrvMedCheck    ;Prepare disk io packet for media check
-    lea rbx, diskReqHdr
+    lea rbx, primReqHdr
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
-    movzx rdi, word [diskReqHdr + mediaCheckReqPkt.status]
+    movzx rdi, word [primReqHdr + mediaCheckReqPkt.status]
     test edi, drvErrStatus
     jnz .diskDrvCritErrMedChk
 .medChkIgnore:
@@ -225,10 +225,10 @@ ensureDiskValid:
     mov rdi, rbx
 .repeatEP:
     call diskDrvGetBPB  ;Prepare to get BPB
-    lea rbx, diskReqHdr
+    lea rbx, primReqHdr
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
-    movzx eax, word [diskReqHdr + bpbBuildReqPkt.status]
+    movzx eax, word [primReqHdr + bpbBuildReqPkt.status]
     test eax, drvErrStatus
     jnz .diskDrvCritErrBPB
     ;Now rebuild the dpb fields for this drive
@@ -290,13 +290,13 @@ diskDrvMedCheck:
 ;Prepare the diskIO packet for mediacheck
 ;rbp has DPB pointer for device to check media on
     push rax
-    mov byte [diskReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    mov byte [primReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + mediaCheckReqPkt.medesc], al
+    mov byte [primReqHdr + mediaCheckReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [diskReqHdr + mediaCheckReqPkt.unitnm], al
-    mov byte [diskReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
-    mov word [diskReqHdr + mediaCheckReqPkt.status], 0
+    mov byte [primReqHdr + mediaCheckReqPkt.unitnm], al
+    mov byte [primReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
+    mov word [primReqHdr + mediaCheckReqPkt.status], 0
 diskDrvCommonExit:
     pop rax
     ret
@@ -306,14 +306,14 @@ diskDrvGetBPB:
 ;rdi has sector buffer header pointer for transfer
     push rax
     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
-    mov qword [diskReqHdr + bpbBuildReqPkt.bufptr], rdi
-    mov byte [diskReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+    mov qword [primReqHdr + bpbBuildReqPkt.bufptr], rdi
+    mov byte [primReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + bpbBuildReqPkt.medesc], al
+    mov byte [primReqHdr + bpbBuildReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [diskReqHdr + bpbBuildReqPkt.unitnm], al
-    mov byte [diskReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-    mov word [diskReqHdr + bpbBuildReqPkt.status], 0
+    mov byte [primReqHdr + bpbBuildReqPkt.unitnm], al
+    mov byte [primReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+    mov word [primReqHdr + bpbBuildReqPkt.status], 0
     jmp short diskDrvCommonExit
 
 diskWriteSetup:
@@ -332,12 +332,12 @@ diskRWCommon:
 ; rdx = Starting sector to read/write from/to
 ; All regs preserved
     mov al, ioReqPkt_size
-    mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
-    mov dword [diskReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
-    mov qword [diskReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
-    mov byte [diskReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov qword [primReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
+    mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
+    mov qword [primReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
+    mov byte [primReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     and eax, 0000FFFFh  ;Clear the upper word (status word)
-    mov dword [diskReqHdr + ioReqPkt.unitnm], eax
+    mov dword [primReqHdr + ioReqPkt.unitnm], eax
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [diskReqHdr + ioReqPkt.strtsc], al ;Store medesc!
+    mov byte [primReqHdr + ioReqPkt.strtsc], al ;Store medesc!
     jmp diskDrvCommonExit   ;Jump popping rax
