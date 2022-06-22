@@ -223,7 +223,7 @@ findFreeCluster:
     jmp .computeEntry   ;Unnecessary redirection
 
 getDataSector:
-;This function will request the sector of data in [currSectA].
+;This function will request the sector of data in [currSectD].
 ;This call can only be used for DATA sectors.
 ;Preserves all registers
 ;On ret: CF=NC => currBuff = Buffer with data
@@ -231,7 +231,7 @@ getDataSector:
     push rax
     push rbx
     push rcx
-    mov rax, qword [currSectA]  ;Get the disk sector number to read
+    mov rax, qword [currSectD]  ;Get the disk sector number to read
     mov ebx, dosBuffer
     mov ecx, dataBuffer 
     test rax, rax
@@ -251,35 +251,35 @@ getNextSectorOfFile:
 ;Input: rbp = dpb pointer
 ;Output:
 ;       CF=NC => rax = Next sector to read into a memory buffer
-; If rax = -1 => [currClust] = Last Cluster of File
+; If rax = -1 => [currClustF] = Last Cluster of File
 ;       CF=CY => Critical error occurred and was FAILed
 ;Read next sector. If at last sector in cluster, walk map, get
 ; next cluster and read first sector 
     ;Check if we need to go to next cluster
-    mov al, byte [currSect]    ;Get current sector rel Cluster
+    mov al, byte [currSectC]    ;Get current sector rel Cluster
     cmp al, byte [rbp + dpb.bMaxSectorInCluster]
     je .gotoNextCluster
     ;Goto next sector in same cluster
-    inc byte [currSect]    ;Goto next sector in cluster
-    inc qword [currSectA]  ;Goto next sector on Disk
-    mov rax, qword [currSectA]
+    inc byte [currSectC]    ;Goto next sector in cluster
+    inc qword [currSectD]  ;Goto next sector on Disk
+    mov rax, qword [currSectD]
 .exitOK:
     clc
 .exitFail:
     ret
 .gotoNextCluster:
-    mov eax, dword [currClustA] ;Get absolute cluster number
+    mov eax, dword [currClustD] ;Get absolute cluster number
     call walkFAT
     jc .exitFail
     ;eax now has the next cluster number to read (or -1 if EOF)
     cmp eax, -1
     je .exitOK
 ;Update the new cluster and sector information
-    mov dword [currClustA], eax ;Update disk location of next cluster
-    inc dword [currClust]   ;Goto next file cluster
+    mov dword [currClustD], eax ;Update disk location of next cluster
+    inc dword [currClustF]   ;Goto next file cluster
     call getStartSectorOfCluster    ;Get start sector of Cluster
-    mov qword [currSectA], rax  ;Save it
-    mov byte [currSect], 0      ;We are at sector 0 rel Clust
+    mov qword [currSectD], rax  ;Save it
+    mov byte [currSectC], 0      ;We are at sector 0 rel Clust
     jmp short .exitOK
 
 

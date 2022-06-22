@@ -109,6 +109,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     spliceFlag  resb 1  ;01 = file name and directory name together
 
     workingDrv  resb 1  ;Working drive number
+qPtr:   ;Stores working DPB and/or device driver (if r/w a char device)
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
@@ -124,13 +125,17 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 ; These vars keep track of file access properties   |
 ;   and must be used only for such purposes.        |
 ;***************************************************|
-    currClust   resd 1  ;Relative cluster in file being r/w to/from
-    currClustA  resd 1  ;Current Cluster (abs) on disk being r/w to/from
+    currClustF  resd 1  ;Relative cluster in file being r/w to/from
+    currClustD  resd 1  ;Current Disk Cluster being r/w to/from
+    
     clustFact   resb 1  ;NUMBER of sectors per cluster
-    currSect    resb 1  ;Current Sector in Cluster being r/w to/from
-    currSectA   resq 1  ;Current absolute Sector number on Disk
-    currByte    resw 1  ;Current Byte in sector being r/w to/from
-    currByteA   resd 1  ;Current Byte in file being r/w to/from
+
+    currSectF   resd 1  ;Current Sector in File being r/w to/from
+    currSectC   resb 1  ;Current Sector in Cluster being r/w to/from
+    currSectD   resq 1  ;Current absolute Sector number on Disk
+
+    currByteS   resw 1  ;Current Byte in sector being r/w to/from
+    currByteF   resd 1  ;Current Byte in file being r/w to/from
 ;***************************************************|
     lastClust   resd 1  ;Number of the last (rel) cluster of the file
     lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
