@@ -46,7 +46,7 @@ errFI44     equ 83  ;Fail on INT 44h
 eLocUnk     equ 1   ;Unknown locus, nonspecific or not appropriate
 eLocDsk     equ 2   ;Disk, related to Random Access to a disk or block device
 eLocNet     equ 3   ;Network related issues, shouldnt affect us (yet!)
-eLocSer     equ 4   ;Serial Device error
+eLocChr     equ 4   ;Serial/Character Device error
 eLocMem     equ 5   ;Related to RAM
 ;-----------------------------------------------------------------------------
 ;Error Actions

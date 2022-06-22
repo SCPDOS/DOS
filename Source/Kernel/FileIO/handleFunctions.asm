@@ -98,6 +98,32 @@ readBytes:
     stc
     ret ;Exit with error code 
 .readable:
+    call setupVarsForTransfer
+    jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
+    test word [rdi + sft.wDeviceInfo], devRedirDev
+    jz .notRedir
+    mov eax, 1108h  ;Call Redir Read Bytes function
+    int 4fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
+    ret
+.exitOk:
+    clc
+    ret
+.notRedir:
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    jnz readCharDev
+    call dosCrit1Enter
+    call readDiskFile
+    call dosCrit1Exit
+    ret
+readCharDev:
+;rdi points to sft for char dev to read
+;Vars have been set up and DTA has the transfer address
+    mov byte [errorLocus], eLocChr  ;Error is with a char device operation
+    mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
+    
+readDiskFile:
+    mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
+
 writeBytes:
 ;Writes the bytes from the user buffer
     call getCurrentSFT  ;Get current SFT in rdi
@@ -110,6 +136,7 @@ writeBytes:
     stc
     ret ;Exit with error code 
 .writeable:
+    call setupVarsForTransfer
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
@@ -134,7 +161,7 @@ setupVarsForTransfer:
 ; stop at the last byte before the transfer. If the 
 ; file pointer is past the last free byte, write 0
     mov rsi, qword [rdi + sft.qPtr] ;Get qPtr in rsi
-    mov qword [qPtr], rsi ;Save whatever pointer here
+    mov qword [qPtr], rsi ;Save whatever pointer here (workingDD OR workingDPB)
     mov eax, dword [rdi + sft.dCurntOff]    ;Get current offset into file
     mov dword [currByteF], eax  ;Save Current byte in the file
     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev ;If not disk...
@@ -157,7 +184,15 @@ setupVarsForDiskTransfer:
     ;edx has the offset into that sector
     mov dword [currSectF], eax
     mov word [currByteS], dx ;CurrbyteS is a word!
-
+    mov edx, eax    ;Save file relative sector in edx
+    and al, byte [rbp + dpb.bMaxSectorInCluster]   ;Works with max 64k clusters
+    mov byte [currSectC], al    ;Save sector in cluster value in var
+    mov eax, ecx    ;Save bytes to tfr in eax
+    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    shr edx, cl ;Convert file relative sector to file relative cluster
+    mov dword [currClustF], edx ;Save in var
+    mov ecx, eax    ;Return the bytes to tfr in eax
+    clc
     ret
 
 getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216

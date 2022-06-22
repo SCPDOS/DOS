@@ -326,10 +326,10 @@ diskReadSetup:
     mov ah, drvREAD
 diskRWCommon:
 ;Sets up the IO request packet with:
-; rbp = DPB ptr
+; rbp = DPB ptr | NullPtr if a char dev
 ; rbx = Data storage buffer ptr
 ; ecx = Number of sectors to transfer
-; rdx = Starting sector to read from
+; rdx = Starting sector to read/write from/to
 ; All regs preserved
     mov al, ioReqPkt_size
     mov qword [diskReqHdr + ioReqPkt.bufptr], rbx   ;Buffer

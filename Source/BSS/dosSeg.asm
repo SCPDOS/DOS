@@ -109,7 +109,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     spliceFlag  resb 1  ;01 = file name and directory name together
 
     workingDrv  resb 1  ;Working drive number
-qPtr:   ;Stores working DPB and/or device driver (if r/w a char device)
+qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
+workingDD:  ;Create a symbol for the working device driver too
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
@@ -127,7 +128,7 @@ qPtr:   ;Stores working DPB and/or device driver (if r/w a char device)
 ;***************************************************|
     currClustF  resd 1  ;Relative cluster in file being r/w to/from
     currClustD  resd 1  ;Current Disk Cluster being r/w to/from
-    
+
     clustFact   resb 1  ;NUMBER of sectors per cluster
 
     currSectF   resd 1  ;Current Sector in File being r/w to/from
