@@ -87,7 +87,10 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;       Main File IO Routines       :
 ;-----------------------------------:
 readBytes:
-;Reads the bytes into the user buffer
+;Reads the bytes into the user buffer for the setup SFT (currentSFT)
+;Input: ecx = Number of bytes to read
+;Output: eax = Number of bytes read
+;Number of bytes read 
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
     and al, 0Fh ;Eliminate except access mode
@@ -120,7 +123,42 @@ readCharDev:
 ;Vars have been set up and DTA has the transfer address
     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
-    
+    test bl, charDevNoEOF   ;Does our device NOT generate EOF's?
+    jz .generatesEOF    ;If it does, jump
+    test bl, charDevNulDev  ;Is our device the NUL device?
+    jnz .notNul
+    ;If it is the NUL device, we can simply return successfully!
+    xor eax, eax
+    ;For now do nothing
+.notNul:
+    test bl, charDevBinary
+    jnz .binary
+    ;Here if the device is in ASCII mode
+    test bl, charDevConIn   ;Is this device STDIN?
+    jz .generalASCII    ;If not, goto generalASCII
+    ;ELSE, goto 41/01 code
+.binary:
+    ;Setup registers for transfer
+    mov rbx, qword [currentDTA] ;Get the DTA for this transfer
+    xor rbp, rbp    ;Indicate Char device to the function
+    ;ecx has the number of bytes to transfer directly
+    call primReqReadSetup   ;Setup req hdr for read and get hdr addr in rbx 
+    mov rsi, qword [workingDD]  ;Get the working device driver
+    call goDriver   ;Make the request
+    movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+    test edi, drvErrStatus  ;Did an error occur?
+    jz .noError
+    ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
+    mov ah, 86h ;Char device, data error signature
+    call binaryCharDevErr   ;ah = has part of the error 
+    ;al now has the response
+    ;Cannot return Abort as Abort returns to command interpreter through DOS
+    cmp al, critIgnore
+    cmp al, critRetry
+    cmp al, critFail
+.noError:
+.generalASCII:
+.generatesEOF:
 readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
 

@@ -19,9 +19,9 @@ dosDataArea:
 ; with secondary char output going through the secondary header
 ;(i.e the char input functions use the primary for main input and secondary 
 ; for output)
+;ioReqPkt is the largest possible packet
     secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
     primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
-    ;The device driver header with space for the largest possible packet
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain x
@@ -75,13 +75,14 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
 
     currentDrv  resb 1  ;Default drive x
-;This is done to allow for DOS to give the user a change to swap devices
+
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
 ;SDA, needs to be replaced between processes
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
+    STDIOswap   resb 1  ;Set if STDIO was changed for the current task?
     xInt44RDI   resq 1  ;Preserved rdi across a critical error
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler

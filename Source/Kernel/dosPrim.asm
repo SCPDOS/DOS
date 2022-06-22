@@ -84,6 +84,7 @@ absDiskWrite:       ;Int 46h
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
     lea rsp, AuxStakTop
     push rbp
+    push rbx    ;Save to use rbx as the driver pointer
     call setupAbsDiskEntry
     jc absDiskExit
     call primReqWriteSetup
@@ -97,11 +98,13 @@ absDiskRead:        ;Int 45h
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
     lea rsp, AuxStakTop
     push rbp    ;Save to use rbp as DPB pointer
+    push rbx    ;Save to use rbx as the driver pointer
     call setupAbsDiskEntry
     jc absDiskExit
-    call primReqReadSetup
+    call primReqReadSetup   ;Setup request header and get reqhdr in rbx
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
+; and primary request header in rbx
     call absDiskDriverCall
     jz absDiskExit  ;Skip error code checking
     mov al, byte [primReqHdr + ioReqPkt.status] ;Get low byte into al
@@ -126,6 +129,7 @@ absDiskReadWriteCommon:
 .absExit:
     stc
 absDiskExit:
+    pop rbx
     pop rbp
     cli
     dec byte [inDOS]
@@ -134,19 +138,17 @@ absDiskExit:
     ret ;Return from interrupt without popping flags!
 absDiskDriverCall:
 ;Input: rbp = Transacting DPB, ecx = Number of sectors to transfer
+;       rbx = Request header address
 ;Output: ZF=ZE => No error, ZF=NZ => Error 
 ;       eax = Status word from request
 ;       ecx = Number of sectors transferred
-    push rbx
     push rsi
     ;Get number of sectors to transfer in ecx (if not in ecx already)
     mov ecx, dword [primReqHdr + ioReqPkt.tfrlen]
     ;Prepare for goDriver now
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
-    lea rbx, primReqHdr
     call goDriver   ;Make request
     pop rsi
-    pop rbx
     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get actual num tfrd
     sub ecx, eax    ;Get positive difference of the two 
     movzx eax, word [primReqHdr + ioReqPkt.status]
@@ -195,7 +197,7 @@ ensureDiskValid:
 ; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
 .medChk:
     call diskDrvMedCheck    ;Prepare disk io packet for media check
-    lea rbx, primReqHdr
+;Return in rbx the primReqHdr address
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
     movzx rdi, word [primReqHdr + mediaCheckReqPkt.status]
@@ -224,9 +226,8 @@ ensureDiskValid:
     jc .exit    ;Immediately exit with the carry flag set
     mov rdi, rbx
 .repeatEP:
-    call diskDrvGetBPB  ;Prepare to get BPB
-    lea rbx, primReqHdr
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
+    call diskDrvGetBPB  ;Prepare to get BPB, get request header in rbx
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
     call goDriver   ;Request!
     movzx eax, word [primReqHdr + bpbBuildReqPkt.status]
     test eax, drvErrStatus
@@ -298,7 +299,10 @@ diskDrvMedCheck:
     mov byte [primReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
     mov word [primReqHdr + mediaCheckReqPkt.status], 0
 diskDrvCommonExit:
+;Returns in rbx the primary request header as these functions
+; setup the request in the primary request header space
     pop rax
+    lea rbx, primReqHdr ;Put in rbx the primary request header
     ret
 
 diskDrvGetBPB:
@@ -329,11 +333,12 @@ primReqRWCommon:
 ; rbp = DPB ptr | NullPtr if a char dev
 ; rbx = Data storage buffer ptr
 ; ecx = Number of sectors to transfer
-; rdx = Starting sector to read/write from/to
+; rdx = Starting sector to read/write from/to | NullPtr if a char dev
+; ~~~~ Set by entry function ~~~~ 
 ; ah = Command code
 ; All regs preserved
     mov qword [primReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
-    mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
+    mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
     mov byte [primReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
     and eax, 0000FF00h  ;Clear the upper word (status word) and al
     mov dword [primReqHdr + ioReqPkt.unitnm], eax   ;Clear unit number field

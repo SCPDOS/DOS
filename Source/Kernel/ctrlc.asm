@@ -1,3 +1,19 @@
+diskErr:
+    or ah, 00h
+    jmp short criticalErrorSetup
+asciiCharDevErr:
+    or ah, 00h
+    jmp short criticalErrorSetup
+binaryCharDevErr:
+;Called with ah with additional bits
+    or ah, 38h  ;Ignore,Retry,Fail OK
+criticalErrorSetup:
+    mov byte [Int44bitfld], ah  ;Save bitfield
+    mov qword [tmpDPBPtr], rbp  ;rbp should be NULLPTR
+    and edi, 00FFh  ;Save only low byte of error
+    ;For now, fall through, but change it later! 
+
+
 criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function 
 ;Will swap stacks and enter int 44h safely and handle passing the right data 
 ; to the critical error handler.
