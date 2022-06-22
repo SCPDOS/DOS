@@ -14,15 +14,6 @@ struc drvHdr  ;Device Driver Header for character and block devices
 
 endstruc
 
-%macro drvReqHdrM 0 ;Driver Request Header Macro
-
-    .hdrlen resb 1  ;Length of the request header
-    .unitnm resb 1  ;Unit number, meaningless for character devs
-    .cmdcde resb 1  ;Command code
-    .status resw 1  ;Status word
-    .devptr resq 1  ;Device queue pointer field
-
-%endmacro
 ;Command Code equates
     drvINIT         equ 0
     drvMEDCHK       equ 1
@@ -66,6 +57,17 @@ endstruc
     drvDonStatus    equ 0100h
     drvBsyStatus    equ 0200h
 ;Driver structures
+
+%macro drvReqHdrM 0 ;Driver Request Header Macro
+
+    .hdrlen resb 1  ;Length of the request header
+    .unitnm resb 1  ;Unit number, meaningless for character devs
+    .cmdcde resb 1  ;Command code
+    .status resw 1  ;Status word
+    .devptr resq 1  ;Device queue pointer field
+
+%endmacro
+
 struc drvReqHdr
     drvReqHdrM
 endstruc

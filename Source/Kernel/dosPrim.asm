@@ -86,7 +86,7 @@ absDiskWrite:       ;Int 46h
     push rbp
     call setupAbsDiskEntry
     jc absDiskExit
-    call diskWriteSetup
+    call primReqWriteSetup
     jmp short absDiskReadWriteCommon
 absDiskRead:        ;Int 45h
 ;al = Drive number
@@ -99,7 +99,7 @@ absDiskRead:        ;Int 45h
     push rbp    ;Save to use rbp as DPB pointer
     call setupAbsDiskEntry
     jc absDiskExit
-    call diskReadSetup
+    call primReqReadSetup
 absDiskReadWriteCommon:
 ;Entered with the appropriate function number in ah
     call absDiskDriverCall
@@ -316,28 +316,33 @@ diskDrvGetBPB:
     mov word [primReqHdr + bpbBuildReqPkt.status], 0
     jmp short diskDrvCommonExit
 
-diskWriteSetup:
+primReqWriteSetup:
     push rax
     mov ah, drvWRITE    ;Command code
     add ah, byte [verifyFlag]   ;Add verify if needed to be added
-    jmp short diskRWCommon
-diskReadSetup:
+    jmp short primReqRWCommon
+primReqReadSetup:
     push rax
     mov ah, drvREAD
-diskRWCommon:
+primReqRWCommon:
 ;Sets up the IO request packet with:
 ; rbp = DPB ptr | NullPtr if a char dev
 ; rbx = Data storage buffer ptr
 ; ecx = Number of sectors to transfer
 ; rdx = Starting sector to read/write from/to
+; ah = Command code
 ; All regs preserved
-    mov al, ioReqPkt_size
     mov qword [primReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
     mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors
-    mov qword [primReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
     mov byte [primReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
-    and eax, 0000FFFFh  ;Clear the upper word (status word)
-    mov dword [primReqHdr + ioReqPkt.unitnm], eax
+    and eax, 0000FF00h  ;Clear the upper word (status word) and al
+    mov dword [primReqHdr + ioReqPkt.unitnm], eax   ;Clear unit number field
+    test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
+    jz diskDrvCommonExit    ;If char request, exit!
+    ;Disk operations only here!
+    mov qword [primReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [primReqHdr + ioReqPkt.strtsc], al ;Store medesc!
+    mov byte [primReqHdr + ioReqPkt.medesc], al ;Store medesc!
+    mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
+    mov byte [primReqHdr + ioReqPkt.unitnm], al ;Store the unit number
     jmp diskDrvCommonExit   ;Jump popping rax

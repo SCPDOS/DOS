@@ -98,7 +98,7 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     mov rbx, qword [rdi + bufferHdr.dataarea]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
-    call diskWriteSetup  ;Setup request (preserves setup registers)
+    call primReqWriteSetup  ;Setup request (preserves setup registers)
     call absDiskDriverCall    ;Make Driver Request
     jnz .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
@@ -292,7 +292,7 @@ readSectorBuffer:   ;Internal Linkage
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     mov rbx, qword [rdi + bufferHdr.dataarea]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
-    call diskReadSetup  ;Setup request (preserves setup registers)
+    call primReqReadSetup  ;Setup request (preserves setup registers)
     call absDiskDriverCall    ;Make Driver Request
     jnz .rsFail
 .rsExit:
