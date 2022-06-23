@@ -87,8 +87,9 @@ printString:       ;ah = 09h
 buffStdinInput:    ;ah = 0Ah
 checkStdinStatus:  ;ah = 0Bh
 clearbuffDoFunc:   ;ah = 0Ch
-
-;Utility functions
+;------------------------
+;   Utility functions   :
+;------------------------
 checkBreakOnCon:
 ;Reads bytes from CON if there are any bytes to read and 
 ; if it is a ^C or CTRL+BREAK, then exit via INT 43h

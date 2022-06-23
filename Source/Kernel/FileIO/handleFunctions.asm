@@ -15,7 +15,7 @@ readFileHdl:       ;ah = 3Fh, handle function
     jb .error
     call setCurrentSFT  ;Set the current SFT (from rdi)
     push qword [currentDTA] ;Save the current Disk Transfer Area
-    call rsi
+    call rsi    ;Get back in ecx the bytes transferred!
     pop qword [currentDTA]
     jb .errorFromDataTransfer
     call getUserRegs
@@ -89,7 +89,7 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 readBytes:
 ;Reads the bytes into the user buffer for the setup SFT (currentSFT)
 ;Input: ecx = Number of bytes to read
-;Output: eax = Number of bytes read
+;Output: ecx = Number of bytes read
 ;Number of bytes read 
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
@@ -121,22 +121,24 @@ readBytes:
 readCharDev:
 ;rdi points to sft for char dev to read
 ;Vars have been set up and DTA has the transfer address
+;Returns in ecx, the actual bytes transferred
     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
-    test bl, charDevNoEOF   ;Does our device NOT generate EOF's?
-    jz .generatesEOF    ;If it does, jump
+    test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
+    jz rwExitOk    ;If it does, jump to exit as if EOF has been hit
     test bl, charDevNulDev  ;Is our device the NUL device?
     jnz .notNul
     ;If it is the NUL device, we can simply return successfully!
-    xor eax, eax
-    ;For now do nothing
+    xor eax, eax    ;No chars left to read!
+    jmp rwExitOk.ge1    ;Goto exit with no chars left to read (NUL)
 .notNul:
     test bl, charDevBinary
     jnz .binary
     ;Here if the device is in ASCII mode
     test bl, charDevConIn   ;Is this device STDIN?
-    jz .generalASCII    ;If not, goto generalASCII
-    ;ELSE, goto 41/01 code
+    jz .generalASCII    ;If not, goto generalASCII, else fallthru
+.consoleInput:
+    ;Console input here
 .binary:
     ;Setup registers for transfer
     mov rbx, qword [currentDTA] ;Get the DTA for this transfer
@@ -157,8 +159,14 @@ readCharDev:
     cmp al, critRetry
     cmp al, critFail
 .noError:
+    ;Get number of bytes transferred into 
+    mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
+    neg eax ;make it into -eax
+    lea eax, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
+    ;eax now has bytes left to transfer
+    jmp rwExitOk.ge1
 .generalASCII:
-.generatesEOF:
+
 readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
 
@@ -175,9 +183,26 @@ writeBytes:
     ret ;Exit with error code 
 .writeable:
     call setupVarsForTransfer
+
+rwExitOk:
+;Called with ecx = Number of bytes to transfer!
+;            rdi = Current SFT in question
+    mov eax, ecx    ;Move bytes in ecx to eax (as if first byte was EOF!)
+.ge1:
+;Called with eax = Number of bytes left to transfer
+;            rdi = Current SFT in question
+
+    ;The disk transfer must've flushed by now. 
+    and word [rdi + sft.wDeviceInfo], ~(blokDevNotFlush|charDevNoEOF) ;OR
+    ;Next char dev read should give EOF.
+    mov dword [tfrCntr], eax    ;Bytes left to transfer in var
+    call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
+    ret
+rwExitBad:
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
+
 setCurrentSFT:
 ;Set the pointer in rdi as current SFT 
     mov qword [currentSFT], rdi
@@ -186,6 +211,28 @@ getCurrentSFT:
 ;Get the current SFT pointer in rdi
     mov rdi, qword [currentSFT]
     ret
+updateCurrentSFT:
+;Updates the Current SFT fields before returning from a file handle operation
+;Return: ecx = Actual bytes transferred and CF=NC
+    push rdi
+    mov rdi, qword [currentSFT]
+    mov ecx, dword [tfrLen]     ;Get bytes to transfer
+    sub ecx, dword [tfrCntr]    ;Subtract bytes left to transfer
+    ;ecx has bytes transferred
+    test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
+    jnz .exit
+    push rax
+    mov eax, dword [currClustD]
+    mov dword [rdi + sft.dAbsClusr], eax
+    mov eax, dword [currClustF]
+    mov dword [rdi + sft.dRelClust], eax
+    pop rax
+    jecxz .exit ;Skip this if ecx = 0
+    add dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
+.exit:
+    pop rdi
+    clc
+    ret
 setupVarsForTransfer:
 ;Computes the actual bytes to be transferred and 
 ; sets up internal variables for the transfer. 
@@ -193,6 +240,8 @@ setupVarsForTransfer:
 ;Input: ecx = User desired Bytes to transfer
 ;       rdi = SFT pointer for the file
 ;Output: ecx = Actual Bytes that will be transferred 
+;Setup BOTH: tfrLen, tfrCntr, qPtr 
+;      DISK: workingDPB, workingDrv, currByteF/S, currSectF/C, currClustF
 ;
 ;Note: Does not account for a FULL disk. When writing,
 ; if the disk will get full as a result of the write,
@@ -202,6 +251,8 @@ setupVarsForTransfer:
     mov qword [qPtr], rsi ;Save whatever pointer here (workingDD OR workingDPB)
     mov eax, dword [rdi + sft.dCurntOff]    ;Get current offset into file
     mov dword [currByteF], eax  ;Save Current byte in the file
+    mov dword [tfrLen], ecx ;Save the number of bytes to transfer
+    mov dword [tfrCntr], ecx    ;Save the bytes left to transfer
     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev ;If not disk...
     jz setupVarsForDiskTransfer
     clc
@@ -313,49 +364,11 @@ derefSFTPtr:
     pop rbx 
     ret
 
-setCurrentJFTandHdl:
-; Set the following vars currentJFT, currentHdl
-;Input: bx = JFT Handle number
-    mov word [currentHdl], bx
-    push rdi
-    call getSFTNdxFromHandle
-    mov qword [curJFTNum], rdi
-    pop rdi
-
-copySFTtoSDA:
-;Called with rsi pointing to SFT structure
-;Prepares the scratch SFT in SDA for use
-    lea rdi, scratchSFT
-    mov rsi, qword [currentSFT]   ;Get current SFT
-    jmp short copySScommon
-copySDAtoSFT:
-    lea rsi, scratchSFT
-    mov rdi, qword [currentSFT]   ;Get current SFT
-copySScommon:
-    push rcx
-    mov ecx, sft_size
-    rep movsb   ;Copy
-    pop rcx
-    ret
 getBytesTransferred:
     mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
     neg ecx ;Multiply by -1
     add ecx, dword [tfrLen]     ;Add total bytes to transfer
     ret ;Return bytes transferred in ecx
-updateCurrentSFT:
-;Updates the Current SFT fields before returning from a file handle operation
-    push rsi
-    push rax
-    mov rsi, qword [currentSFT]
-    mov eax, dword [currByteF]
-    mov dword [rsi + sft.dCurntOff], eax
-    mov eax, dword [currClustD]
-    mov dword [rsi + sft.dAbsClusr], eax
-    mov eax, dword [currClustF]
-    mov dword [rsi + sft.dRelClust], eax
-    pop rax
-    pop rsi
-    ret
 
 readWriteBytesBinary:
 ;Input: ecx = number of bytes to read in Binary mode
