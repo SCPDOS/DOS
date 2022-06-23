@@ -200,7 +200,7 @@ ensureDiskValid:
 ;Return in rbx the req hdr address
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
-    movzx rdi, word [primReqHdr + mediaCheckReqPkt.status]
+    movzx edi, word [rbx + mediaCheckReqPkt.status]
     test edi, drvErrStatus
     jnz .diskDrvCritErrMedChk
 .medChkIgnore:
@@ -229,7 +229,7 @@ ensureDiskValid:
     call secdReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
     call goDriver   ;Request!
-    movzx eax, word [primReqHdr + bpbBuildReqPkt.status]
+    movzx eax, word [rbx + bpbBuildReqPkt.status]
     test eax, drvErrStatus
     jnz .diskDrvCritErrBPB
     ;Now rebuild the dpb fields for this drive
