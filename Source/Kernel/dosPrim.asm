@@ -196,8 +196,8 @@ ensureDiskValid:
 ;On exit: CF=NC => Passed, CF=CY => Fail
 ; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
 .medChk:
-    call diskDrvMedCheck    ;Prepare disk io packet for media check
-;Return in rbx the primReqHdr address
+    call secdReqMedCheckSetup    ;Prepare disk io packet for media check
+;Return in rbx the req hdr address
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
     movzx rdi, word [primReqHdr + mediaCheckReqPkt.status]
@@ -226,7 +226,7 @@ ensureDiskValid:
     jc .exit    ;Immediately exit with the carry flag set
     mov rdi, rbx
 .repeatEP:
-    call diskDrvGetBPB  ;Prepare to get BPB, get request header in rbx
+    call secdReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
     call goDriver   ;Request!
     movzx eax, word [primReqHdr + bpbBuildReqPkt.status]
@@ -287,25 +287,25 @@ ensureDiskValid:
 ;All Disk Driver Requests come with at least rbp pointing to DPB
 ;All Char Requests come with rsi pointing to the Char device driver
 
-diskDrvMedCheck:
+secdReqMedCheckSetup:
 ;Prepare the diskIO packet for mediacheck
 ;rbp has DPB pointer for device to check media on
     push rax
-    mov byte [primReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    mov byte [secdReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [primReqHdr + mediaCheckReqPkt.medesc], al
+    mov byte [secdReqHdr + mediaCheckReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [primReqHdr + mediaCheckReqPkt.unitnm], al
-    mov byte [primReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
-    mov word [primReqHdr + mediaCheckReqPkt.status], 0
-diskDrvCommonExit:
-;Returns in rbx the primary request header as these functions
-; setup the request in the primary request header space
+    mov byte [secdReqHdr + mediaCheckReqPkt.unitnm], al
+    mov byte [secdReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
+    mov word [secdReqHdr + mediaCheckReqPkt.status], 0
+secdReqCommonExit:
+;Returns in rbx the secondary request header as these functions
+; setup the request in the secondary request header space
     pop rax
-    lea rbx, primReqHdr ;Put in rbx the primary request header
+    lea rbx, secdReqHdr ;Put in rbx the secondary request header
     ret
 
-diskDrvGetBPB:
+secdReqGetBPBSetup:
 ;rbp has DPB pointer for device
 ;rdi has sector buffer header pointer for transfer
     push rax
@@ -318,7 +318,7 @@ diskDrvGetBPB:
     mov byte [primReqHdr + bpbBuildReqPkt.unitnm], al
     mov byte [primReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
     mov word [primReqHdr + bpbBuildReqPkt.status], 0
-    jmp short diskDrvCommonExit
+    jmp short secdReqCommonExit
 
 primReqWriteSetup:
     push rax
@@ -343,11 +343,16 @@ primReqRWCommon:
     and eax, 0000FF00h  ;Clear the upper word (status word) and al
     mov dword [primReqHdr + ioReqPkt.unitnm], eax   ;Clear unit number field
     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
-    jz diskDrvCommonExit    ;If char request, exit!
+    jz primReqCommonExit    ;If char request, exit!
     ;Disk operations only here!
     mov qword [primReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
     mov al, byte [rbp + dpb.bMediaDescriptor]
     mov byte [primReqHdr + ioReqPkt.medesc], al ;Store medesc!
     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
     mov byte [primReqHdr + ioReqPkt.unitnm], al ;Store the unit number
-    jmp diskDrvCommonExit   ;Jump popping rax
+primReqCommonExit:
+;Returns in rbx the primary request header as these functions
+; setup the request in the primary request header space
+    pop rax
+    lea rbx, primReqHdr ;Put in rbx the primary request header
+    ret
