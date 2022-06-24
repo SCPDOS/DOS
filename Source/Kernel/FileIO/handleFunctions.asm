@@ -129,7 +129,7 @@ readCharDev:
     test bl, charDevNulDev  ;Is our device the NUL device?
     jnz .notNul
     ;If it is the NUL device, we can simply return successfully!
-    xor eax, eax    ;No chars left to read!
+    xor eax, eax    ;No chars left to read and set ZF!
     jmp rwExitOk.ge1    ;Goto exit with no chars left to read (NUL)
 .notNul:
     test bl, charDevBinary
