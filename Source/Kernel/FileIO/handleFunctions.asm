@@ -191,11 +191,13 @@ rwExitOk:
 .ge1:
 ;Called with eax = Number of bytes left to transfer
 ;            rdi = Current SFT in question
-
-    ;The disk transfer must've flushed by now. 
-    and word [rdi + sft.wDeviceInfo], ~(blokDevNotFlush|charDevNoEOF) ;OR
-    ;Next char dev read should give EOF.
+;   ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
     mov dword [tfrCntr], eax    ;Bytes left to transfer in var
+    jnz .skipbitClear
+    ;The disk transfer must've flushed by now. 
+    and byte [rdi + sft.wDeviceInfo], ~(blokDevNotFlush|charDevNoEOF) ;OR
+    ;Next char dev read should give EOF.
+.skipbitClear:  ;Or skip that entirely
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
     ret
 rwExitBad:
