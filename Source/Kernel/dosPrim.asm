@@ -333,10 +333,11 @@ primReqRWCommon:
 ; rbp = DPB ptr | NullPtr if a char dev
 ; rbx = Data storage buffer ptr
 ; ecx = Number of sectors to transfer
-; rdx = Starting sector to read/write from/to | NullPtr if a char dev
+; rdx = Starting sector to read/write from/to | Undefined if a char dev
 ; ~~~~ Set by entry function ~~~~ 
 ; ah = Command code
-; All regs preserved
+; All regs preserved EXCEPT rbx.
+; Return: rbx = Transfer Address
     mov qword [primReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
     mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
     mov byte [primReqHdr + ioReqPkt.hdrlen], ioReqPkt_size

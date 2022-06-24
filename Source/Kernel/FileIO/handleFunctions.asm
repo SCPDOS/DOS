@@ -120,17 +120,20 @@ readBytes:
     ret
 readCharDev:
 ;rdi points to sft for char dev to read
+;ecx has the number of bytes to transfer
 ;Vars have been set up and DTA has the transfer address
 ;Returns in ecx, the actual bytes transferred
     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
+    mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
     test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
     jz rwExitOk    ;If it does, jump to exit as if EOF has been hit
     test bl, charDevNulDev  ;Is our device the NUL device?
     jnz .notNul
-    ;If it is the NUL device, we can simply return successfully!
-    xor eax, eax    ;No chars left to read and set ZF!
-    jmp rwExitOk.ge1    ;Goto exit with no chars left to read (NUL)
+    ;If it is the NUL device, we can simply return unsucessfully!
+    ;NUL never transfers bytes 
+    xor eax, eax    ;Set ZF so the next read causes EOF!
+    jmp rwExitOk    ;Goto exit
 .notNul:
     test bl, charDevBinary
     jnz .binary
@@ -141,32 +144,89 @@ readCharDev:
     ;Console input here
 .binary:
     ;Setup registers for transfer
-    mov rbx, qword [currentDTA] ;Get the DTA for this transfer
+    mov rbx, rdi    ;Transfer the buffer pointer into rbx
     xor rbp, rbp    ;Indicate Char device to the function
     ;ecx has the number of bytes to transfer directly
     call primReqReadSetup   ;Setup req hdr for read and get hdr addr in rbx 
     mov rsi, qword [workingDD]  ;Get the working device driver
     call goDriver   ;Make the request
+    mov rdx, rdi    ;Save transfer buffer in rdx
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
-    jz .noError
+    jz .binNoError
     ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
     mov ah, 86h ;Char device, data error signature
     call binaryCharDevErr   ;ah = has part of the error 
     ;al now has the response
     ;Cannot return Abort as Abort returns to command interpreter through DOS
     cmp al, critIgnore
-    cmp al, critRetry
+    je .binNoError ;Simply proceed as normal
+    mov rdi, rdx    ;Get back the buffer if it is a retry operation
     cmp al, critFail
-.noError:
+    jne .binary ;If not fail, re-try the operation (ecx isn't touched)
+    ;Fallthrough here for fail!
+.failExit:
+    
+.binNoError:
     ;Get number of bytes transferred into 
     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
     neg eax ;make it into -eax
-    lea eax, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
-    ;eax now has bytes left to transfer
-    jmp rwExitOk.ge1
+    lea ecx, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
+    ;ecx now has bytes left to transfer
+    push rax    ;Save value on stack
+    xor eax, eax ;Set ZF
+    inc eax ;Clear ZF
+    pop rax ;Get back the original value
+    jmp rwExitOk    ;GoExit with ecx=Bytes left to read
 .generalASCII:
-
+    ;ecx has bytes to transfer here
+    ;Setup registers for transfer
+    mov rbx, rdi    ;Move the DTA address into rbx for readSetup
+    push rcx
+    mov ecx, 1  ;Get one char
+    xor rbp, rbp    ;Indicate a char device
+    call primReqReadSetup   ;Setup request
+    pop rcx
+    ;rbx now has request header ptr
+    mov rsi, qword [workingDD]  ;Get device driver header ptr in rsi
+.asciiReadChar:
+    mov rdx, rdi    ;Save the current buffer pointer position in rdx
+    call checkBreakOnCon    ;Check we don't have a ^C pending on CON
+    call goDriver   ;If no ^C found (which exits DOS) Make request!
+    movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+    test edi, drvErrStatus  ;Did an error occur?
+    jz .asciiNoError
+    call asciiCharDevErr    ;Call Int 44h
+    ;Now setup number of bytes to transfer to 1 if the user requests retry
+    mov dword [primReqHdr + ioReqPkt.tfrlen], 1
+    mov rdi, rdx    ;Get the buffer position back into rdi
+    cmp al, critFail
+    je .failExit
+    cmp al, critRetry
+    je .asciiReadChar
+    ;Ignore here, pretend NULL CHAR was read
+    xor al, al
+    jmp short .asciiIgnoreEP
+.asciiNoError:
+;Now process the char, add 1 to the transfer buffer (and rdi->BufferPtr)
+; and dec 1 from ecx (tfrCntr is dealt with later)
+;Preserve RBX, RSI
+;Check EXACTLY 1 char was transferred. Any other value => exit from request
+    mov rdi, rdx    ;Get the buffer position back into rdi
+    cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
+    jne rwExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
+    mov al, byte [rdi]  ;Get byte just input from driver in al
+.asciiIgnoreEP:
+    inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
+    inc rdi ;Also advance register pointer
+    cmp al, EOF ;Was this char EOF?
+    je rwExitOk
+    cmp al, CR  ;Was this char CR?
+    loopne .asciiReadChar   ;dec rcx, jnz .asciiReadChar
+    ;Fallthrough also if al = CR (i.e ZF=ZE)
+    inc al  ;make ZF=NZ
+    jmp rwExitOk    ;Called with ecx = Number of bytes LEFT to transfer
+    
 readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
 
@@ -185,15 +245,11 @@ writeBytes:
     call setupVarsForTransfer
 
 rwExitOk:
-;Called with ecx = Number of bytes to transfer!
-;            rdi = Current SFT in question
-    mov eax, ecx    ;Move bytes in ecx to eax (as if first byte was EOF!)
-.ge1:
-;Called with eax = Number of bytes left to transfer
-;            rdi = Current SFT in question
-;   ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
-    mov dword [tfrCntr], eax    ;Bytes left to transfer in var
+;Input: ecx = Number of bytes left to transfer!
+;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
+    mov dword [tfrCntr], ecx    ;Update bytes left to transfer
     jnz .skipbitClear
+    call getCurrentSFT  ;Get currentSFT in rdi
     ;The disk transfer must've flushed by now. 
     and byte [rdi + sft.wDeviceInfo], ~(blokDevNotFlush|charDevNoEOF) ;OR
     ;Next char dev read should give EOF.

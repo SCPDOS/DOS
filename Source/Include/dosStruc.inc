@@ -355,3 +355,12 @@ critIgnore  equ 0
 critRetry   equ 1
 critAbort   equ 2
 critFail    equ 3
+
+;MISC ASCII control chars
+NUL         equ 00h
+BEL         equ 07h
+BSP         equ 08h
+TAB         equ 09h
+LF          equ 0Ah
+CR          equ 0Dh
+EOF         equ 1Ah
