@@ -10,8 +10,7 @@ dosDataArea:
     loProtMem   resd 1    ;Num bytes free in (lo) protected from userbase
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
-;Only used on single remdrive systems, marks if drive A or B was last accessed
-    singleDrv   resb 1  ;Set if last drive accessed was drive B x
+
 ;A request routed through the FCB or handle uses primReqHdr for its main IO.
 ;A secondary header is present to allow simultaneous echoing to console 
 ; without forcing to re-build the whole primary request block.
@@ -75,6 +74,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
 
     currentDrv  resb 1  ;Default drive x
+;Only used on single remdrive systems, marks if drive A or B was last accessed
+    singleDrv   resb 1  ;Set if last drive accessed was drive B x
 
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
@@ -82,7 +83,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
-    STDIOswap   resb 1  ;Set if STDIO was changed for the current task?
+    STDIOuse    resb 1  ;Set if STDIO is being used during current task
     xInt44RDI   resq 1  ;Preserved rdi across a critical error
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
@@ -92,7 +93,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
-    dosInvoke   resb 1  ;FIXED 0, any other value fails calls (-1 = server invoke)
+    dosInvoke   resb 1  ;0= Int 41h, -1 = 41h/5D01h
     critExit    resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
 ;The above flag tells DOS to print ^C in the termination function
 
@@ -121,6 +122,7 @@ qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
+    workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
@@ -169,5 +171,7 @@ workingDD:  ;Create a symbol for the working device driver too
     AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)
     DiskStack   resq 199
     DiskStakTop resq 1
+
     diskChange  resb 1  ;-1 = disk has been changed!
+    lookahead   resb 1  ;-1 => Lookahead on select Char function calls!  
     dSegLen     equ     $

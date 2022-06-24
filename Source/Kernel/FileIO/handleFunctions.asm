@@ -142,6 +142,9 @@ readCharDev:
     jz .generalASCII    ;If not, goto generalASCII, else fallthru
 .consoleInput:
     ;Console input here
+    call setupConTfr    ;Prepare CON Useage!
+    
+
 .binary:
     ;Setup registers for transfer
     mov rbx, rdi    ;Transfer the buffer pointer into rbx

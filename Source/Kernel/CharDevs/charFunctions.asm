@@ -137,4 +137,12 @@ checkBreak:
     ret ;Stopgap right now, do nothing
 
 
-    
+setupConTfr:
+;Sets STDIO bit and transfers the current SFT to working SFT
+;Called on access to ALL STDIO r/w
+    push rdi
+    mov byte [STDIOuse], 1 ;In use! (Acts as a mutex for writing to workingSFT!)
+    mov rdi, qword [currentSFT]
+    mov qword [workingSFT], rdi
+    pop rdi
+    ret
