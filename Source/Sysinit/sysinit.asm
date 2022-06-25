@@ -493,14 +493,8 @@ tempCDS:
 ;Build a temporary CDS for Drive A to use it for booting
     lea rdi, qword [rbp + tmpCDS]  ;Use Temp CDS in the SDA
     mov qword fs:[cdsHeadPtr], rdi
-    mov ecx, 67 ;Buffer length
-    xor eax, eax
-    mov rbx, rdi    ;Save CDS pointer in rbx
-    rep stosb   ;Zero out the path string
-    mov rdi, rbx
-    mov eax, 005C3A41h  ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
-    stosd   ;Store all at once
-    mov rdi, rbx
+    ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
+    mov dword [rdi + cds.sCurrentPath], 005C3A41h  
     mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
     mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
     mov qword [rdi + cds.qDPBPtr], rbx
@@ -508,7 +502,7 @@ tempCDS:
     ;On FAT12/16, startcluster = 0 => Root Dir Sector
     ;On FAT32, startcluster = 0 => Alias for root cluster. 
     ;   Read dpb.dFirstUnitOfRootDir for first cluster of root dir
-    mov dword [rdi + cds.dStartCluster], eax    ;eax was zeroed before
+    ;cds.dStartCluster is 0 since we zero-ed the data area earlier
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;

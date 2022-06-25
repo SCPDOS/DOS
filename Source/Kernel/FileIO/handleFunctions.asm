@@ -142,7 +142,7 @@ readCharDev:
     jz .generalASCII    ;If not, goto generalASCII, else fallthru
 .consoleInput:
     ;Console input here
-    call setupConTfr    ;Prepare CON Useage!
+    call swapVConDriver    ;Prepare CON Useage!
     
 
 .binary:

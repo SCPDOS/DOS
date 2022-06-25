@@ -137,20 +137,30 @@ checkBreak:
     ret ;Stopgap right now, do nothing
 
 
-setupConTfr:
-;Sets STDIO bit and transfers the current SFT to working SFT
-;Called on access to ALL STDIO r/w
+swapVConDriver:
+;Sets up the vCon to use the alternative device driver 
     push rdi
-    call setConOn
-    mov rdi, qword [currentSFT]
-    mov qword [workingSFT], rdi
+    call vConUseAlt
+    mov rdi, qword [currentSFT] ;Get current SFT pointer
+    mov qword [vConAltPtr], rdi ;Save the SFT ptr in var
     pop rdi
     ret
-;Wrapper functions for setting and clearing entry/exit to/from CON
-;STDIOuse acts as a mutex for changing internal DOS vars
-setConOn:
-    mov byte [STDIOuse], 1
+;These functions set/clear whether vCon should use vConAltPtr or vConPtr
+;If vConDrvFlg = 1 => Use vConAltPtr
+;If vConDrvFlg = 0 => Use vConPtr
+vConUseAlt:
+    mov byte [vConDrvFlg], 1    ;Set to use alternative driver
     ret
-clearConOn:
-    mov byte [STDIOuse], 0
+vConUseDef:
+    mov byte [vConDrvFlg], 0    ;Clear to use default driver
+    ret
+
+getVConDriverPtr:
+;Return: rdi = vCon Device Driver pointer
+    mov rdi, qword [vConPtr]  ;Get the usual vCon Ptr
+    test byte [vConDrvFlg], 1   ;If set, use alternative driver
+    jz .exit
+    mov rdi, qword [vConAltPtr] ;Get the alt. vCon Ptr
+    mov rdi, qword [rdi + sft.qPtr] ;Get dev drv from SFT
+.exit:
     ret

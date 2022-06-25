@@ -41,8 +41,9 @@ sysVarsPtr:
     fifthSft    resb sft_size
 
 ;Virtual CONsole Buffers
-    stdinBuf    resb 128   ;Buffer for Console Input buffer (read)
-    stdoutBuf   resb 128   ;Buffer for Console Output buffer (write)
+    vConCurs    resb 1     ;Keeps track of tab stops (and with 8 to get tabstop)
+    vConInBuf   resb 128   ;Buffer for vConsole Input buffer (read)
+    vConOutBuf  resb 128   ;Buffer for vConsole Output buffer (write)
     bufpad      resb 3     ;Used to pad so can use stdout with 41h/0Ah
    
 ;Additional internal variables
@@ -83,7 +84,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
-    STDIOuse    resb 1  ;Set if STDIO is being used during current task
+    vConDrvFlg  resb 1  ;Set if vCon controlled by a different driver to vConPtr
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
     Int44Fail   resb 1  ;Counts the number of fails that have occured
@@ -134,6 +135,7 @@ qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
+vConAltPtr:  ;Symbol for temporary alternative vCon driver ptr
     workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
