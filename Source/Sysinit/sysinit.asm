@@ -528,7 +528,8 @@ tempCDS:
     rep stosb   ;Fill with zeros
     xor al, al
     mov byte fs:[serverCnt], al ;Set server call count to zero
-
+    mov word fs:[machineNum], ax   ;Clear machine number
+    
 ;Patch Data Table init
     lea rdi, qword [rbp + critPtchTbl]
     lea rax, qword [rbp + dosCrit1Enter]

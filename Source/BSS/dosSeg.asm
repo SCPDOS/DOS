@@ -10,17 +10,8 @@ dosDataArea:
     loProtMem   resd 1    ;Num bytes free in (lo) protected from userbase
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
-
-;A request routed through the FCB or handle uses primReqHdr for its main IO.
-;A secondary header is present to allow simultaneous echoing to console 
-; without forcing to re-build the whole primary request block.
-;Thus all disk io uses the primary and CharIO goes through the primary
-; with secondary char output going through the secondary header
-;(i.e the char input functions use the primary for main input and secondary 
-; for output)
-;ioReqPkt is the largest possible packet
-    secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
-    primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
+;Above is the system stats
+;Below is the DOS vars
     vConUnread  resb 1    ;vCon: no unread data = 0, unread data != 0
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
@@ -58,6 +49,9 @@ sysVarsPtr:
     numFiles    resw 1    ;FILES=5 default
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
 
+;Only used on single remdrive systems, marks if drive A or B was last accessed
+    singleDrv   resb 1  ;Set if last drive accessed was drive B x
+    verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
     switchChar  resb 1  ;Editable by 41h/37h. Set to / by default
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
 ;Server stuff. Default to all zeros (blank)
@@ -67,9 +61,6 @@ sysVarsPtr:
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
-    oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
-    sharePSP    resq 1  ;PSP of the share program
-    machineNum  resw 1  ;for sharing/networking 00h = default number (us)
     critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
@@ -77,38 +68,35 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     errorExCde  resw 1  ;Extended Error Code
     errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
-
-    dosReturn   resq 1  ;Used as a var to return when juggling stack
-
+    xInt44RDI   resq 1  ;Preserved rdi across a critical error
     currentDTA  resq 1  ;Address of the current DTA x
     currentPSP  resq 1  ;Address of current PSP x
-    Int44Error  resw 1  ;Saves Error code from request status word
+
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
-
     currentDrv  resb 1  ;Default drive x
-;Only used on single remdrive systems, marks if drive A or B was last accessed
-    singleDrv   resb 1  ;Set if last drive accessed was drive B x
-
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
-    verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
 ;SDA, needs to be replaced between processes
+    oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
+    sharePSP    resq 1  ;PSP of the share program
+    machineNum  resw 1  ;for sharing/networking 00h = default number (us)
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
     STDIOuse    resb 1  ;Set if STDIO is being used during current task
-    xInt44RDI   resq 1  ;Preserved rdi across a critical error
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
     Int44Fail   resb 1  ;Counts the number of fails that have occured
+
     Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
+    dosReturn   resq 1  ;Used as a var to return when juggling stack
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
     dosInvoke   resb 1  ;0= Int 41h, -1 = 41h/5D01h
+;The below flag tells DOS to print ^C in the termination function
     critExit    resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
-;The above flag tells DOS to print ^C in the termination function
 
 ;Time stuff
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
@@ -116,6 +104,17 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
+
+;A request routed through the FCB or handle uses primReqHdr for its main IO.
+;A secondary header is present to allow simultaneous echoing to console 
+; without forcing to re-build the whole primary request block.
+;Thus all disk io uses the primary and CharIO goes through the primary
+; with secondary char output going through the secondary header
+;(i.e the char input functions use the primary for main input and secondary 
+; for output)
+;ioReqPkt is the largest possible packet
+    secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
+    primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
 
 ;Swappable Buffers
     buffer1     resb 128  ;Space for one path and file name
