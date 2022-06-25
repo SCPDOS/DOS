@@ -357,13 +357,15 @@ critAbort   equ 2
 critFail    equ 3
 
 ;MISC ASCII control chars
-NUL         equ 00h ;^@         | ASCII Null
-ETX         equ 03h ;^C         | ASCII Break (End of Text)
-BEL         equ 07h ;^G         | ASCII Bell
-BSP         equ 08h ;^H         | ASCII Backspace
-TAB         equ 09h ;^I         | ASCII Horizontal Tab
-LF          equ 0Ah ;^J         | ASCII Line Feed
-CR          equ 0Dh ;^M         | ASCII Carriage Return
-EOF         equ 1Ah ;^Z         | ASCII Substitute character (End of File)
-SPC         equ 20h ;Printable  | ASCII Space
-DEL         equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
+NUL equ 00h ;^@         | ASCII Null
+ETX equ 03h ;^C         | ASCII Break (End of Text)
+BEL equ 07h ;^G         | ASCII Bell
+BSP equ 08h ;^H         | ASCII Backspace
+TAB equ 09h ;^I         | ASCII Horizontal Tab
+LF  equ 0Ah ;^J         | ASCII Line Feed
+CR  equ 0Dh ;^M         | ASCII Carriage Return
+NAK equ 15h ;^U         | ASCII Negative Acknowledgement
+ETB equ 17h ;^W         | ASCII End of Transmission Block
+EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
+SPC equ 20h ;Printable  | ASCII Space
+DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
