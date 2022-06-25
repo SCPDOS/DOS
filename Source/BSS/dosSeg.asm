@@ -21,7 +21,7 @@ dosDataArea:
 ;ioReqPkt is the largest possible packet
     secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
     primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
-    vConUnread  resb 1    ;If the virtual console has no unread data, set to 0
+    vConUnread  resb 1    ;vCon: no unread data = 0, unread data != 0
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain x

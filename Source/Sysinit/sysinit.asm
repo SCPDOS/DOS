@@ -519,6 +519,7 @@ tempCDS:
     mov word fs:[errorLevel], ax   ;Last return code is 0, no error
     mov byte fs:[allocStrat], al    ;First Fit
     mov byte fs:[switchChar], "/"  ;Default switch char
+    mov byte fs:[vConUnread], al   ;vCon has no unread data!
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]
