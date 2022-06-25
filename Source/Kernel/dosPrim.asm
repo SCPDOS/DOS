@@ -82,7 +82,7 @@ absDiskWrite:       ;Int 46h
 ;rdx = Start LBA to write to
     cli
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
-    lea rsp, AuxStakTop
+    lea rsp, DiskStakTop
     push rbp
     push rbx    ;Save to use rbx as the driver pointer
     call setupAbsDiskEntry
@@ -96,7 +96,7 @@ absDiskRead:        ;Int 45h
 ;rdx = Start LBA to read from
     cli 
     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
-    lea rsp, AuxStakTop
+    lea rsp, DiskStakTop
     push rbp    ;Save to use rbp as DPB pointer
     push rbx    ;Save to use rbx as the driver pointer
     call setupAbsDiskEntry
