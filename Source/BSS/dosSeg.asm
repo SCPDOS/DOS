@@ -40,6 +40,7 @@ sysVarsPtr:
     numBuffers  resb 1    ;Buffers=30 default
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
+;CON Buffers
 
 ;Additional internal variables
     numFiles    resw 1    ;FILES=5 default
@@ -104,9 +105,13 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
-;Buffers
+;Buffers, two main buffers are shared for CONIO and pathspec as needed
+STDINBuf:   ;Symbol for Console Input buffer
     buffer1     resb 128  ;Space for one path and file name
+CONBuf:     ;Symbol for Console Output buffer
     buffer2     resb 128  ;Space for a second path and file name
+ConBufPad:  ;Padding for 0Ah,0Dh,"$" where needed! Else, leave alone
+                resb 3    
     CLOCKrecrd  resb 6  ;Clock driver record
     singleIObyt resb 1  ;For single IO byte buffers
 ;Misc bookkeeping flags and vars
