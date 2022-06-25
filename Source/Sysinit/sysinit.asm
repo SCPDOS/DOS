@@ -6,6 +6,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     dw 0AA55h           ;Initial signature
     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
 ;First move the alignment of the DOSSEG to 4Kb
+    cld ;Ensure all writes are done the right way firstly!
     push rdx    ;Save dl on stack briefly
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
@@ -40,7 +41,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
-    mov byte fs:[switchChar], "/"  ;Default switch char
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov qword fs:[biosUBase], rsi
@@ -56,7 +56,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
-    mov byte fs:[numPhysVol], 0     ;Number of logical drives
+    mov byte fs:[numPhysVol], 0    ;Number of logical drives
     mov word fs:[numFiles], 5      ;Default 8 files, at start 5
     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
@@ -389,7 +389,7 @@ conInit:    ;Rather than keeping this resident... do it here
 
     ;Save ptr to ConHdr in Sysvars
     lea rax, qword [rbp + conHdr]
-    mov qword fs:[conPtr], rax
+    mov qword fs:[vConPtr], rax
 
     ;Save ptr to ClkHdr in Sysvars
     lea rax, qword [rbp + clkHdr]
@@ -486,7 +486,7 @@ sectorSizeSearch:
 ;------------------------------------------------;
 tempCDS:
 ;Build a temporary CDS for Drive A to use it for booting
-    lea rdi, qword [rbp + initCDS]
+    lea rdi, qword [rbp + tempCDS]  ;Use Temp CDS in the SDA
     mov qword fs:[cdsHeadPtr], rdi
     mov ecx, 67 ;Buffer length
     xor eax, eax
@@ -511,7 +511,7 @@ tempCDS:
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
-    ;Additional DOS Vars init
+;Additional DOS Vars init
     xor eax, eax
     mov byte fs:[currentDrv], al ;Current Drive = Drive A
     mov byte fs:[breakFlag], al  ;Break off
@@ -522,8 +522,28 @@ tempCDS:
     mov byte fs:[errorDrv], -1   ;No error drive
     mov word fs:[errorLevel], ax   ;Last return code is 0, no error
     mov byte fs:[allocStrat], al    ;First Fit
+    mov byte fs:[switchChar], "/"  ;Default switch char
 
-    ;SYSVARS PSP Init
+;Set network machine name to... nothing!
+    lea rdi, qword [rbp + machineName]
+    mov ecx, 10h    ;16 chars long
+    mov al, SPC ;Space char
+    rep stosb   ;Fill with zeros
+    xor al, al
+    mov byte fs:[serverCnt], al ;Set server call count to zero
+
+;Patch Data Table init
+    lea rdi, qword [rbp + critPtchTbl]
+    lea rax, qword [rbp + dosCrit1Enter]
+    stosq   ;Store this address and increment rdi by 8 to next tbl entry
+    lea rax, qword [rbp + dosCrit1Exit]
+    stosq
+    lea rax, qword [rbp + dosCrit2Enter]
+    stosq
+    lea rax, qword [rbp + dosCrit2Exit]
+    stosq
+
+;Initial PSP Init
     lea rbx, qword [tempPSP]
     mov qword fs:[currentPSP], rbx    ;Save current PSP
     push rbx
@@ -575,15 +595,17 @@ defaultFileHandles:
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
     mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
     ;No EOF when reading from the device
-    mov rax, qword fs:[conPtr]  ;Get pointer to CON device
+    mov rax, qword fs:[vConPtr]  ;Get pointer to CON device
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-    lea rsi, qword [.dfhCon]
     ;11 chars in 8.3 name
-    movsq   ;8 chars
-    movsw   ;10 chars
-    movsb   ;11 chars
+    lea rsi, conName
+    mov ecx, 3
+    rep movsb   ;Move the three bytes
+    mov ecx, 8  ;8 Spaces left to print
+    mov al, SPC ;Space char
+    rep stosb
     mov rax, qword fs:[currentPSP]  ;Get current PSP
     mov qword [rbx + sft.qPSPOwner], rax
 ;GOTO NEXT ENTRY
@@ -598,11 +620,13 @@ defaultFileHandles:
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-    lea rsi, qword [.dfhAux]
     ;11 chars in 8.3 name
-    movsq   ;8 chars
-    movsw   ;10 chars
-    movsb   ;11 chars
+    lea rsi, auxName
+    mov ecx, 3
+    rep movsb   ;Move the three bytes
+    mov ecx, 8  ;8 Spaces left to print
+    mov al, SPC ;Space char
+    rep stosb
     mov rax, qword fs:[currentPSP]  ;Get current PSP
     mov qword [rbx + sft.qPSPOwner], rax
 ;GOTO NEXT ENTRY
@@ -617,18 +641,23 @@ defaultFileHandles:
     mov qword [rbx + sft.qPtr], rax
     ;Ignore disk related fields and Date/Time of open
     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-    lea rsi, qword [.dfhPrn]
     ;11 chars in 8.3 name
-    movsq   ;8 chars
-    movsw   ;10 chars
-    movsb   ;11 chars
+    lea rsi, prnName
+    mov ecx, 3
+    rep movsb   ;Move the three bytes
+    mov ecx, 8  ;8 Spaces left to print
+    mov al, SPC ;Space char
+    rep stosb
     mov rax, qword fs:[currentPSP]  ;Get current PSP
     mov qword [rbx + sft.qPSPOwner], rax
-    jmp short .dfhExit
-.dfhCon db "CON        "
-.dfhAux db "AUX        "
-.dfhPrn db "PRN        "
-.dfhExit:
+;Zero word 0 of entry 4 and 5
+    add rbx, sft_size   ;Goto SFT 4
+    xor eax, eax
+    ;To save some bytes, clear dword (which encompasses numHandles and openmode
+    ; which is ok as these are empty entries, ready to be used)
+    mov dword [rbx + sft.wNumHandles], eax
+    add rbx, sft_size   ;Goto SFT 5
+    mov dword [rbx + sft.wNumHandles], eax
 ;------------------------------------------------;
 ;               Load CONFIG.SYS                  ;
 ;------------------------------------------------;
@@ -884,6 +913,10 @@ hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
 conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
+
+aexec   db 0,":\AUTOEXEC.BAT",0 ;ASCIIZ for AUTOEXEC (with space for drvletter)
+cfgspec db 0,":\CONFIG.SYS",0 ;ASCIIZ for CONFIG (with space for drive letter)
+
 intData:
     dq terminateProcess ;Int 40h
     dq functionDispatch ;Int 41h

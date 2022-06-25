@@ -10,7 +10,7 @@ stdinReadEcho:     ;ah = 01h
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 01
 
-    mov rsi, qword [conPtr]   ;Get ptr to current con device header
+    mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
 
     cmp byte [singleIObyt], 00h
@@ -38,7 +38,7 @@ stdoutWrite:       ;ah = 02h
     mov qword [rbx + ioReqPkt.bufptr], rdx
     mov dword [rbx + ioReqPkt.tfrlen], 01
 
-    mov rsi, qword [conPtr]   ;Get ptr to current con device header
+    mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     ret
 stdauxRead:        ;ah = 03h
@@ -55,7 +55,7 @@ waitDirectInNoEcho:;ah = 07h
     mov qword [rbx + ioReqPkt.bufptr], rax
     mov dword [rbx + ioReqPkt.tfrlen], 01
 
-    mov rsi, qword [conPtr]   ;Get ptr to current con device header
+    mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     mov al, byte [singleIObyt]
     ret
@@ -78,7 +78,7 @@ printString:       ;ah = 09h
     mov qword [rbx + ioReqPkt.bufptr], rdx
     mov dword [rbx + ioReqPkt.tfrlen], ecx
     
-    mov rsi, qword [conPtr]   ;Get ptr to current con device header
+    mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver   ;Called with rbx pointing to the request header
 
     mov rbx, qword [oldRSP]
@@ -101,7 +101,7 @@ checkBreak:
 ; or al=0 if no keystroke available
     push rbx
     push rsi
-    mov rsi, qword [conPtr] ;Get pointer to Console device driver
+    mov rsi, qword [vConPtr] ;Get pointer to Console device driver
     xor eax, eax
     ;Place command code and a zero status word at the same time
     mov al, drvNONDESTREAD
@@ -141,8 +141,16 @@ setupConTfr:
 ;Sets STDIO bit and transfers the current SFT to working SFT
 ;Called on access to ALL STDIO r/w
     push rdi
-    mov byte [STDIOuse], 1 ;In use! (Acts as a mutex for writing to workingSFT!)
+    call setConOn
     mov rdi, qword [currentSFT]
     mov qword [workingSFT], rdi
     pop rdi
+    ret
+;Wrapper functions for setting and clearing entry/exit to/from CON
+;STDIOuse acts as a mutex for changing internal DOS vars
+setConOn:
+    mov byte [STDIOuse], 1
+    ret
+clearConOn:
+    mov byte [STDIOuse], 0
     ret

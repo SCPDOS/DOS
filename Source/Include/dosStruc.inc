@@ -357,10 +357,11 @@ critAbort   equ 2
 critFail    equ 3
 
 ;MISC ASCII control chars
-NUL         equ 00h
-BEL         equ 07h
-BSP         equ 08h
-TAB         equ 09h
-LF          equ 0Ah
-CR          equ 0Dh
-EOF         equ 1Ah
+NUL         equ 00h ;ASCII Null
+BEL         equ 07h ;ASCII bell
+BSP         equ 08h ;ASCII backspace
+TAB         equ 09h ;ASCII Horizontal Tab
+LF          equ 0Ah ;ASCII Line Deed
+CR          equ 0Dh ;ASCII Carriage Return
+EOF         equ 1Ah ;End of File or ASCII Substitute character
+SPC         equ 20h ;ASCII Space

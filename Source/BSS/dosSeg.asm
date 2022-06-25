@@ -21,13 +21,14 @@ dosDataArea:
 ;ioReqPkt is the largest possible packet
     secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
     primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
+    vConUnread  resb 1    ;If the virtual console has no unread data, set to 0
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain x
     sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
     clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header x
     ;                    The last driver loaded with the CLOCK$ bit[3] set 
-    conPtr      resq 1    ;Pointer to the current active CON device header  x
+    vConPtr     resq 1    ;Ptr to the devdrv of the char dev controlling vCon x
     ;                    The last driver loaded with the STDIN bit[0] set
     maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain x
@@ -40,8 +41,19 @@ sysVarsPtr:
     numBuffers  resb 1    ;Buffers=30 default
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
-;CON Buffers
+;Create SFT header and corresponding array of five default sft entries
+    firstSftHeader  resb sfth_size
+    firstSft    resb sft_size
+    secondSft   resb sft_size
+    thirdSft    resb sft_size
+    fourthSft   resb sft_size
+    fifthSft    resb sft_size
 
+;Virtual CONsole Buffers
+    stdinBuf    resb 128   ;Buffer for Console Input buffer (read)
+    stdoutBuf   resb 128   ;Buffer for Console Output buffer (write)
+    bufpad      resb 3     ;Used to pad so can use stdout with 41h/0Ah
+   
 ;Additional internal variables
     numFiles    resw 1    ;FILES=5 default
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
@@ -50,7 +62,7 @@ sysVarsPtr:
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
 ;Server stuff. Default to all zeros (blank)
     serverCnt   resb 1  ;Increments on each 41h/5D01h call
-    machineName resb 16 ;Machine name (Set via 41h/5D01h)     
+    machineName resb 16 ;Machine name (Set via 41h/5D01h) (set to SPC)    
 ;Swappable Data Area
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
@@ -105,13 +117,9 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
-;Buffers, two main buffers are shared for CONIO and pathspec as needed
-STDINBuf:   ;Symbol for Console Input buffer
+;Swappable Buffers
     buffer1     resb 128  ;Space for one path and file name
-CONBuf:     ;Symbol for Console Output buffer
     buffer2     resb 128  ;Space for a second path and file name
-ConBufPad:  ;Padding for 0Ah,0Dh,"$" where needed! Else, leave alone
-                resb 3    
     CLOCKrecrd  resb 6  ;Clock driver record
     singleIObyt resb 1  ;For single IO byte buffers
 ;Misc bookkeeping flags and vars
