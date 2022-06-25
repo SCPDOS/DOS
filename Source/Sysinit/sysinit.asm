@@ -32,6 +32,11 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;------------------------------------------------;
 ;           Sanitise the data area               ;
 ;------------------------------------------------;
+; This call initialises ALL fields in the DOS    ;
+; data area with 0's. Thus any fields, which     ;
+; need to be initialised with a 0 value, are     ;
+; initialised for free.                          ;
+;------------------------------------------------;
     mov ecx, dSegLen
     xor al, al
     push rdi    ;Temp save rdi on the stack
@@ -56,7 +61,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
-    mov byte fs:[numPhysVol], 0    ;Number of logical drives
+    ;mov byte fs:[numPhysVol], 0    ;Number of logical drives
     mov word fs:[numFiles], 5      ;Default 8 files, at start 5
     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
@@ -192,11 +197,11 @@ mcbInit:
     clc
     ret
 .mcbFail:
-    lea rbp, .mcbFailmsg
+    lea rbp, mcbFailmsg
     mov eax, 1304h
     int 30h
     jmp errorInit
-.mcbFailmsg: db "Memory Allocation Error",0Ah,0Dh,0
+
 mcbBuild:
 ;Actually build the MCB chain here
 ;Start by computing the difference between userbase and DOS area
@@ -508,28 +513,28 @@ tempCDS:
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
 ;Additional DOS Vars init
-    xor eax, eax
-    mov byte fs:[currentDrv], al ;Current Drive = Drive A
-    mov byte fs:[breakFlag], al  ;Break off
-    mov byte fs:[verifyFlag], al ;Write only
-    mov byte fs:[singleDrv], al  ;Only used on single drive systems
-    mov byte fs:[critErrFlag], al   ;Not in critical error
-    mov byte fs:[inDOS], al      ;Not in DOS
+    ;xor eax, eax
+    ;mov byte fs:[currentDrv], al ;Current Drive = Drive A
+    ;mov byte fs:[breakFlag], al  ;Break off
+    ;mov byte fs:[verifyFlag], al ;Write only
+    ;mov byte fs:[singleDrv], al  ;Only used on single drive systems
+    ;mov byte fs:[critErrFlag], al   ;Not in critical error
+    ;mov byte fs:[inDOS], al      ;Not in DOS
     mov byte fs:[errorDrv], -1   ;No error drive
-    mov word fs:[errorLevel], ax   ;Last return code is 0, no error
-    mov byte fs:[allocStrat], al    ;First Fit
+    ;mov word fs:[errorLevel], ax   ;Last return code is 0, no error
+    ;mov byte fs:[allocStrat], al    ;First Fit
     mov byte fs:[switchChar], "/"  ;Default switch char
-    mov byte fs:[vConUnread], al   ;vCon has no unread data!
+    ;mov byte fs:[vConUnread], al   ;vCon has no unread data!
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]
     mov ecx, 10h    ;16 chars long
     mov al, SPC ;Space char
-    rep stosb   ;Fill with zeros
-    xor al, al
-    mov byte fs:[serverCnt], al ;Set server call count to zero
-    mov word fs:[machineNum], ax   ;Clear machine number
-    
+    rep stosb   ;Fill with space chars
+    ;xor al, al
+    ;mov byte fs:[serverCnt], al ;Set server call count to zero
+    ;mov word fs:[machineNum], ax   ;Clear machine number
+
 ;Patch Data Table init
     lea rdi, qword [rbp + critPtchTbl]
     lea rax, qword [rbp + dosCrit1Enter]
@@ -554,11 +559,14 @@ tempCDS:
     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
     mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
     lea rdi, qword [rbx + psp.jobFileTbl]
-    mov rax, 0000000201000000h  ;Store default handles in JFT
+    mov rax, 0FFFFFF0201000000h  ;Store default handles in JFT
     stosq   ;8 bytes
     xor eax, eax
+    push rax    ;Save 0 on the stack
+    dec rax ;Turn into all -1 (free entry)
     stosq   ;16 bytes
     stosd   ;20 bytes
+    pop rax ;Get 0 back
     mov qword [rbx + psp.envPtr], -1    ;No environment
     mov word [rbx + psp.xtraHdlSz], ax  ;No size
     mov byte [rbx + psp.xtraHdlNum], -1 ;Unused
@@ -907,6 +915,7 @@ errorInit:
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
 strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
 conName db "CON",0
 auxName db "AUX",0
