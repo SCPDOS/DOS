@@ -61,10 +61,10 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     sti ;Reenable Interrupts
     ;Now we check that the response given was allowed, and translate if needed
 .checkResponse:
-    cmp al, 01h
+    cmp al, critRetry
     jb .checkIgnore
     je .checkRetry
-    cmp al, 03h
+    cmp al, critFail
     jne .abort   ;Must be abort
 ;Here is for fail
     test byte [Int44bitfld], critFailOK

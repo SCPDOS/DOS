@@ -121,7 +121,7 @@ checkBreak:
 .charFound:
 ;Keystroke available, proceed
     mov al, byte [secdReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
-    cmp al, 03h ;BREAK/^C =ASCII 03h
+    cmp al, ETX ;BREAK/^C =ASCII 03h
     jne .exit   ;If not equal exit
 ;Now we pull the char out of the buffer
     xor eax, eax
