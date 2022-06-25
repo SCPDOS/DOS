@@ -486,7 +486,7 @@ sectorSizeSearch:
 ;------------------------------------------------;
 tempCDS:
 ;Build a temporary CDS for Drive A to use it for booting
-    lea rdi, qword [rbp + tempCDS]  ;Use Temp CDS in the SDA
+    lea rdi, qword [rbp + tmpCDS]  ;Use Temp CDS in the SDA
     mov qword fs:[cdsHeadPtr], rdi
     mov ecx, 67 ;Buffer length
     xor eax, eax
