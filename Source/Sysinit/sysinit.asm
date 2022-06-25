@@ -493,12 +493,8 @@ tempCDS:
     mov rbx, rdi    ;Save CDS pointer in rbx
     rep stosb   ;Zero out the path string
     mov rdi, rbx
-    mov al, "A"
-    stosb
-    mov al, ":"
-    stosb
-    mov al, "\"
-    stosb
+    mov eax, 413A5C00h  ;"A:\"+NULL char
+    stosd   ;Store all at once
     mov rdi, rbx
     mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
     mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
