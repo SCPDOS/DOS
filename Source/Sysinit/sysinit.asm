@@ -493,7 +493,7 @@ tempCDS:
     mov rbx, rdi    ;Save CDS pointer in rbx
     rep stosb   ;Zero out the path string
     mov rdi, rbx
-    mov eax, 413A5C00h  ;"A:\"+NULL char
+    mov eax, 005C3A41h  ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
     stosd   ;Store all at once
     mov rdi, rbx
     mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
