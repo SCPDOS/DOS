@@ -108,6 +108,6 @@ ctrlBreakHdlr:
     test al, 1  ;CF set?
     jz .returnToDOS ;Yes, subfunction number must be in al
     mov eax, 4c00h  ;Exit without error code
-    mov byte [critExit], -1  ;CTRL+BREAK termination
+    mov byte [ctrlCExit], -1  ;CTRL+BREAK termination
     jmp functionDispatch
 

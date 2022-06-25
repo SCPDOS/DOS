@@ -84,20 +84,18 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
-    vConDrvFlg  resb 1  ;Set if vCon controlled by a different driver to vConPtr
+
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
     Int44Fail   resb 1  ;Counts the number of fails that have occured
 
-    Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
-    int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     dosReturn   resq 1  ;Used as a var to return when juggling stack
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
     dosInvoke   resb 1  ;0= Int 41h, -1 = 41h/5D01h
 ;The below flag tells DOS to print ^C in the termination function
-    critExit    resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
+    ctrlCExit   resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
 
 ;Time stuff
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
@@ -105,7 +103,10 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
-
+    
+    vConDrvFlg  resb 1  ;Set if vCon controlled by a different driver to vConPtr
+    int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
+    Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
 ;A request routed through the FCB or handle uses primReqHdr for its main IO.
 ;A secondary header is present to allow simultaneous echoing to console 
 ; without forcing to re-build the whole primary request block.
