@@ -138,10 +138,11 @@ qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
-vConAltPtr:  ;Symbol for temporary alternative vCon driver ptr
+vConOldSFT: ;Alternate symbol for saving the oldSFTptr during a char func
     workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
+vConCurSFT: ;Alternate symbol for the SFT to be used for char function
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed

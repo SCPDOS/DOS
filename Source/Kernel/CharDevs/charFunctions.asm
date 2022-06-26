@@ -88,6 +88,10 @@ buffStdinInput:    ;ah = 0Ah
 checkStdinStatus:  ;ah = 0Bh
 clearbuffDoFunc:   ;ah = 0Ch
 ;------------------------
+;  Primitive functions  :
+;------------------------
+
+;------------------------
 ;   Utility functions   :
 ;------------------------
 checkBreakOnCon:
@@ -142,11 +146,11 @@ swapVConDriver:
     push rdi
     call vConUseAlt
     mov rdi, qword [currentSFT] ;Get current SFT pointer
-    mov qword [vConAltPtr], rdi ;Save the SFT ptr in var
+    mov qword [vConOldSFT], rdi ;Save the SFT ptr in var
     pop rdi
     ret
-;These functions set/clear whether vCon should use vConAltPtr or vConPtr
-;If vConDrvFlg = 1 => Use vConAltPtr
+;These functions set/clear whether vCon should use vConOldSFT or vConPtr
+;If vConDrvFlg = 1 => Use vConOldSFT
 ;If vConDrvFlg = 0 => Use vConPtr
 vConUseAlt:
     mov byte [vConDrvFlg], 1    ;Set to use alternative driver
@@ -160,7 +164,7 @@ getVConDriverPtr:
     mov rdi, qword [vConPtr]  ;Get the usual vCon Ptr
     test byte [vConDrvFlg], 1   ;If set, use alternative driver
     jz .exit
-    mov rdi, qword [vConAltPtr] ;Get the alt. vCon Ptr
+    mov rdi, qword [vConOldSFT] ;Get the alt. vCon Ptr
     mov rdi, qword [rdi + sft.qPtr] ;Get dev drv from SFT
 .exit:
     ret
