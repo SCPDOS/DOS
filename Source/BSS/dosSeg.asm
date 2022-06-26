@@ -12,7 +12,8 @@ dosDataArea:
     longMem     resq 1    ;Num bytes in long memory arena
 ;Above is the system stats
 ;Below is the DOS vars
-    vConUnread  resb 1    ;vCon: no unread data = 0, unread data != 0
+    vConOutOff  resb 1    ;Offset in output buffer to the next char to output
+    ;   A value of 0 means no chars buffered.
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:
     dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain x
