@@ -34,6 +34,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     je setCurrProcessID
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
+    mov word [machineNum], 0    ;Set the machine number for the request to us!
     mov rax, qword [oldRSP]
     mov qword [oldoldRSP], rax
     inc byte [inDOS]    ;Increment in DOS flag
@@ -51,11 +52,16 @@ functionDispatch:   ;Int 41h Main function dispatcher
     lea rsp, critStakTop
     sti         ;Reenable interrupts
 
+    push rax        ;Push rax onto the stack
+    xor eax, eax
+    mov byte [vConDrvFlg], al   ;Clear the conDrvFlg (use default CON driver)
     mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
+    mov byte [Int44Fail], al    ;Clear the Int44 returned fail flag
+    mov byte [dirFlag], al  ;Default to look for dir
+
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
     movzx ebx, ah   ;Move the function number bl zero extended to rbx
     shl ebx, 1      ;Multiply the function number by 2 for offset into table
-    push rax        ;Push rax onto the stack
     lea rax, kDispTbl
     add rbx, rax    ;Add dispatch table offset into rbx
     movzx rbx, word [rbx]    ;Get the address from the dispatch table

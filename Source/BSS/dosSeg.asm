@@ -87,13 +87,13 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
-    Int44Fail   resb 1  ;Counts the number of fails that have occured
+    Int44Fail   resb 1  ;Set if Int 44h returned fail
 
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
     dosReturn   resq 1  ;Used as a var to return when juggling stack
     oldRSP      resq 1  ;RSP when entering Int 41h
     oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
-    dosInvoke   resb 1  ;0= Int 41h, -1 = 41h/5D01h
+    dirFlag     resb 1  ;Directory Flag. 0 => Search for Dir, 1 => for File
 ;The below flag tells DOS to print ^C in the termination function
     ctrlCExit   resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
 
@@ -103,7 +103,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
-    
+
     vConDrvFlg  resb 1  ;Set if vCon controlled by a different driver to vConPtr
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
@@ -130,6 +130,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     typePSPcopy resb 1  ;00=Simple copy, -1=Make Child process
     spliceFlag  resb 1  ;01 = file name and directory name together
+    dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
     workingDrv  resb 1  ;Working drive number
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
