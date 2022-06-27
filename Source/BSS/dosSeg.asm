@@ -42,12 +42,14 @@ sysVarsPtr:
     fifthSft    resb sft_size
 
 ;Virtual CONsole Buffers
-    vConCursPos resb 1     ;Keeps track of tab stops (and with 8 to get tabstop)
+    vConCursPos resb 1     ;Keeps track for tabs stops (and var with 7)
+    ;Only incremented when CON device runs vCon
 vConBuf:    ;Proper buffer symbol
     vConCurCnt  resb 1     ;Current count of chars in vConBuffer
     vConBufData resb 256   ;vConsole buffer for reads and writes
     bufpad      resb 3     ;Used to pad so can use stdout with 41h/0Ah
-   
+    vConOutQuad resb 1     ;Inc on each char output, regardless of redirection
+    ;Is and-ed with 03h, checks for ^C on every fourth char output
 ;Additional internal variables
     numFiles    resw 1    ;FILES=5 default
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
