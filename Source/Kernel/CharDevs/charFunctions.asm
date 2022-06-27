@@ -5,18 +5,18 @@ stdinReadEcho:     ;ah = 01h
     call waitStdinNoEcho
     test al, al
     jz .stdireexit
-    mov dl, al
-    call stdoutWrite    ;Output it to screen
-    mov al, dl
+    call stdoutWrite.inEP    ;Output it to screen
 .stdireexit:
     ret
 
 stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
-    mov byte [singleIObyt], dl
-    mov al, drvWRITE
+    mov al, dl
+.inEP:  ;Internal function Entry Point
+    mov byte [singleIObyt], al
+    mov ah, drvWRITE
     mov ecx, 1
-    lea rsi, singleIObyt
+    lea rdi, singleIObyt
     call secdReqCharIOReq   ;Puts in rbx the request block
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
@@ -28,31 +28,25 @@ directCONIO:       ;ah = 06h
 waitDirectInNoEcho:;ah = 07h
 waitStdinNoEcho:   ;ah = 08h
 ;Return char in al
-    lea rsi, singleIObyt    ;Get buffer 
-    mov al, drvREAD
+    lea rdi, singleIObyt    ;Get buffer 
+    mov ah, drvREAD
     mov ecx, 1
     call secdReqCharIOReq
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
-
-    mov al, byte [singleIObyt]  ;Get byte
+    mov al, byte [singleIObyt]  ;Get byte in al to return as return value
     ret
 printString:       ;ah = 09h
-    xor ecx, ecx    ;Clear char counter
-    mov eax, "$"    ;Terminating char
-    mov rdi, rdx    ;Set up for scasb
-.ps0:   ;Search for $ to get count of chars
-    scasb
+    mov rsi, rdx    ;Set up for scasb
+.ps0:
+    lodsb   ;Get char in al and inc rsi
+    cmp al, "$" ;End of string char?
     je .ps1
-    inc ecx
-    jmp short .ps0
-.ps1:   ;Use handle 
-;ecx has length of string, rdx has user buffer to print
-    mov al, drvWRITE
+    mov rdx, rsi    ;Preserve rsi in rdx
+    call stdoutWrite.inEP
     mov rsi, rdx
-    call secdReqCharIOReq
-    mov rsi, qword [vConPtr]   ;Get ptr to current con device header
-    call goDriver   ;Called with rbx pointing to the request header
+    jmp short .ps0
+.ps1:
     ret
 buffStdinInput:    ;ah = 0Ah
 checkStdinStatus:  ;ah = 0Bh
