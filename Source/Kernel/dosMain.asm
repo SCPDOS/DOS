@@ -34,6 +34,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     je setCurrProcessID
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
+    mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
     mov word [machineNum], 0    ;Set the machine number for the request to us!
     mov rax, qword [oldRSP]
     mov qword [oldoldRSP], rax
@@ -52,16 +53,14 @@ functionDispatch:   ;Int 41h Main function dispatcher
     lea rsp, critStakTop
     sti         ;Reenable interrupts
 
-    push rax        ;Push rax onto the stack
-    xor eax, eax
-    mov byte [vConDrvFlg], al   ;Clear the conDrvFlg (use default CON driver)
+    xor ebx, ebx    ;Zero rbx for later and bl for now
+    mov byte [vConDrvFlg], bl   ;Clear the conDrvFlg (use default CON driver)
     mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
-    mov byte [Int44Fail], al    ;Clear the Int44 returned fail flag
-    mov byte [dirFlag], al  ;Default to look for dir
-    pop rax
-    push rax
-    mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
-    movzx ebx, ah   ;Move the function number bl zero extended to rbx
+    mov byte [Int44Fail], bl    ;Clear the Int44 returned fail flag
+    mov byte [dirFlag], bl  ;Default to look for dir
+
+    push rax        ;Save rax to use temporarily as table base 
+    mov bl, ah      ;Move the function number bl (rbx = 0)
     shl ebx, 1      ;Multiply the function number by 2 for offset into table
     lea rax, kDispTbl
     add rbx, rax    ;Add dispatch table offset into rbx
