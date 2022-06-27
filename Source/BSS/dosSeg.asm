@@ -42,9 +42,10 @@ sysVarsPtr:
     fifthSft    resb sft_size
 
 ;Virtual CONsole Buffers
-    vConCurs    resb 1     ;Keeps track of tab stops (and with 8 to get tabstop)
-    vConInBuf   resb 128   ;Buffer for vConsole Input buffer (read)
-    vConOutBuf  resb 128   ;Buffer for vConsole Output buffer (write)
+    vConCursPos resb 1     ;Keeps track of tab stops (and with 8 to get tabstop)
+vConBuf:    ;Proper buffer symbol
+    vConCurCnt  resb 1     ;Current count of chars in vConBuffer
+    vConBufData resb 256   ;vConsole buffer for reads and writes
     bufpad      resb 3     ;Used to pad so can use stdout with 41h/0Ah
    
 ;Additional internal variables
