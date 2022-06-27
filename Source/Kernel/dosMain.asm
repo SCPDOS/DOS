@@ -58,7 +58,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
     mov byte [Int44Fail], al    ;Clear the Int44 returned fail flag
     mov byte [dirFlag], al  ;Default to look for dir
-
+    pop rax
+    push rax
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
     movzx ebx, ah   ;Move the function number bl zero extended to rbx
     shl ebx, 1      ;Multiply the function number by 2 for offset into table

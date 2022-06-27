@@ -352,3 +352,19 @@ primReqGetBPBSetup:
     mov byte [primReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
     mov word [primReqHdr + bpbBuildReqPkt.status], 0
     jmp short primReqCommonExit
+
+secdReqCharIOReq:
+;Sets up the IO request packet with:
+;Input:
+; al =  Data Request code (Read/Write/Write with Verify)
+; rsi = Data transfer buffer ptr    (if needed)
+; ecx = Number of bytes to transfer (if needed)
+;Output: 
+; rbx = Transfer Address   
+    lea rbx, secdReqHdr
+    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+    mov byte [rbx + ioReqPkt.cmdcde], al
+    mov word [rbx + ioReqPkt.status], 0
+    mov qword [rbx + ioReqPkt.bufptr], rsi
+    mov dword [rbx + ioReqPkt.tfrlen], ecx
+    ret
