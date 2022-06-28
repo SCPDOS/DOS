@@ -2,16 +2,16 @@
 
 kDispTbl:
     dw simpleTerminate - kDispTbl     ;AH = 00H, PROCESS MANAGEMENT
-    dw stdinReadEcho - kDispTbl       ;AH = 01H, CHAR IO
-    dw stdoutWrite - kDispTbl         ;AH = 02H, CHAR IO
-    dw stdauxRead - kDispTbl          ;AH = 03H, CHAR IO
-    dw stdauxWrite - kDispTbl         ;AH = 04H, CHAR IO
-    dw stdprnWrite - kDispTbl         ;AH = 05H, CHAR IO
-    dw directCONIO - kDispTbl         ;AH = 06H, CHAR IO
-    dw waitDirectInNoEcho - kDispTbl  ;AH = 07H, CHAR IO
-    dw waitStdinNoEcho - kDispTbl     ;AH = 08H, CHAR IO
-    dw printString - kDispTbl         ;AH = 09H, CHAR IO
-    dw buffStdinInput - kDispTbl      ;AH = 0AH, CHAR IO
+    dw charIn_BE - kDispTbl           ;AH = 01H, CHAR IO
+    dw charOut_B - kDispTbl           ;AH = 02H, CHAR IO
+    dw auxIn_B - kDispTbl             ;AH = 03H, CHAR IO
+    dw auxOut_B - kDispTbl            ;AH = 04H, CHAR IO
+    dw prnOut_B - kDispTbl            ;AH = 05H, CHAR IO
+    dw directConIO - kDispTbl         ;AH = 06H, CHAR IO
+    dw charIn - kDispTbl              ;AH = 07H, CHAR IO
+    dw charIn_B - kDispTbl            ;AH = 08H, CHAR IO
+    dw printString_B - kDispTbl       ;AH = 09H, CHAR IO
+    dw buffCharInput_BE - kDispTbl    ;AH = 0AH, CHAR IO
     dw checkStdinStatus - kDispTbl    ;AH = 0BH, CHAR IO
     dw clearbuffDoFunc - kDispTbl     ;AH = 0CH, CHAR IO
     dw diskReset - kDispTbl           ;AH = 0DH, DISK MANAGEMENT

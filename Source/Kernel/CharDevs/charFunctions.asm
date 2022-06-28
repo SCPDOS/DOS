@@ -1,50 +1,66 @@
-;Dos default char functions live here
+;-----------------------------------------------------------------------:
+;                  DOS default char functions live here                 :
+;                                                                       :
+; All input Char functions wait for input. Only directConIO doesnt wait :
+;                                                                       :
+;Rules for the naming of the DOS functions                              :
+;If the name is <name>     => Has NO break checking and no echo         :
+;If the name is <name>_B   => Has Break checking and no echo            :
+;If the name is <name>_E   => Has No Break checking AND Echo to STDOUT  :
+;If the name is <name>_BE  => Has Break checking AND Echo to STDOUT     :
+;                                                                       :
+;-----------------------------------------------------------------------:
 
-stdinReadEcho:     ;ah = 01h
+charIn_BE:     ;ah = 01h
 ;Return char that has been read and echoed in al
-    call waitStdinNoEcho
+    call charIn_B
     test al, al
     jz .stdireexit
-    call stdoutWrite.inEP    ;Output it to screen
+    call charOut_B.skipEP    ;Output it to screen
 .stdireexit:
     ret
 
-stdoutWrite:       ;ah = 02h
+charOut_B:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     mov al, dl
-.inEP:  ;Internal function Entry Point, with char in al
+.skipEP:  ;Internal function Entry Point, with char in al
     push rsi
     mov byte [singleIObyt], al
-    call wByteSetup ;Puts in rbx the request block
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
+    call wByteSetup ;Puts in rbx the request block
     call goDriver
     pop rsi
     ret
-stdauxRead:        ;ah = 03h
-stdauxWrite:       ;ah = 04h
-stdprnWrite:       ;ah = 05h
-directCONIO:       ;ah = 06h
-waitDirectInNoEcho:;ah = 07h
-waitStdinNoEcho:   ;ah = 08h
-;Return char in al
+auxIn_B:        ;ah = 03h
+auxOut_B:       ;ah = 04h
+prnOut_B:       ;ah = 05h
+directConIO:    ;ah = 06h
+;Only special thing about this function is that it doesn't wait for input.
+charIn:         ;ah = 07h
+;Return char in al from STDIN
+charIn_B:       ;ah = 08h
+;Return char in al from STDIN
     call rByteSetup
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     mov al, byte [singleIObyt]  ;Get byte in al to return as return value
     ret
-printString:       ;ah = 09h
+printString_B:      ;ah = 09h
     mov rsi, rdx    ;Set up for scasb
 .ps0:
     lodsb   ;Get char in al and inc rsi
     cmp al, "$" ;End of string char?
     je .ps1
-    call stdoutWrite.inEP
+    call charOut_B.skipEP
     jmp short .ps0
 .ps1:
     ret
-buffStdinInput:    ;ah = 0Ah
+buffCharInput_BE:  ;ah = 0Ah
+;Works as the main input function for the vCon keyboard buffer
 checkStdinStatus:  ;ah = 0Bh
+;Returns the status of the driver controlling vCon
 clearbuffDoFunc:   ;ah = 0Ch
+;Clears any buffers and issues a console command
 ;------------------------
 ;  Primitive functions  :
 ;------------------------
@@ -92,7 +108,6 @@ testDeviceCharBlock:
 ;Output: ZF=ZE => Block device, ZF=NZ => Char device
     test word [rdi + sft.wDeviceInfo], devCharDev
     ret
-getDriverFromSFT:
 
 ;------------------------
 ;   Utility functions   :
@@ -160,14 +175,4 @@ vConUseAlt:
     ret
 vConUseDef:
     mov byte [vConDrvFlg], 0    ;Clear to use default driver
-    ret
-
-getVConDriverPtr:
-;Return: rdi = vCon Device Driver pointer
-    mov rdi, qword [vConPtr]  ;Get the usual vCon Ptr
-    test byte [vConDrvFlg], 1   ;If set, use alternative driver
-    jz .exit
-    mov rdi, qword [vConCurSFT] ;Get the alt. vCon Ptr
-    mov rdi, qword [rdi + sft.qPtr] ;Get dev drv from SFT
-.exit:
     ret
