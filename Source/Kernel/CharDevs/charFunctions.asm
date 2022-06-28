@@ -12,7 +12,8 @@ stdinReadEcho:     ;ah = 01h
 stdoutWrite:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     mov al, dl
-.inEP:  ;Internal function Entry Point
+.inEP:  ;Internal function Entry Point, with char in al
+    push rsi
     mov byte [singleIObyt], al
     mov ah, drvWRITE
     mov ecx, 1
@@ -20,6 +21,7 @@ stdoutWrite:       ;ah = 02h
     call secdReqCharIOReq   ;Puts in rbx the request block
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
+    pop rsi
     ret
 stdauxRead:        ;ah = 03h
 stdauxWrite:       ;ah = 04h
@@ -42,9 +44,7 @@ printString:       ;ah = 09h
     lodsb   ;Get char in al and inc rsi
     cmp al, "$" ;End of string char?
     je .ps1
-    mov rdx, rsi    ;Preserve rsi in rdx
     call stdoutWrite.inEP
-    mov rsi, rdx
     jmp short .ps0
 .ps1:
     ret
@@ -54,7 +54,13 @@ clearbuffDoFunc:   ;ah = 0Ch
 ;------------------------
 ;  Primitive functions  :
 ;------------------------
-
+getCharFunHandle:
+;Gets the handle pointer for a device. 
+; If the handle is 0,1,2, if the handle is closed, then return vConPtr.
+; If the handle is 3,4, if the handle is closed, then return nullDevPtr
+; Else find SFT entry, check it is char device.
+; If it is disk device, transfer control to readHandle function.
+; Else, return device driver pointer for device.
 ;------------------------
 ;   Utility functions   :
 ;------------------------
@@ -128,7 +134,7 @@ getVConDriverPtr:
     mov rdi, qword [vConPtr]  ;Get the usual vCon Ptr
     test byte [vConDrvFlg], 1   ;If set, use alternative driver
     jz .exit
-    mov rdi, qword [vConOldSFT] ;Get the alt. vCon Ptr
+    mov rdi, qword [vConCurSFT] ;Get the alt. vCon Ptr
     mov rdi, qword [rdi + sft.qPtr] ;Get dev drv from SFT
 .exit:
     ret

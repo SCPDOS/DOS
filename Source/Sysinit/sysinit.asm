@@ -553,7 +553,7 @@ tempCDS:
     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
     mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
     lea rdi, qword [rbx + psp.jobFileTbl]
-    mov rax, 0FFFFFF0201000000h  ;Store default handles in JFT
+    mov rax, 0FFFFFF0200010101h  ;Store default handles in JFT
     stosq   ;8 bytes
     xor eax, eax
     push rax    ;Save 0 on the stack
@@ -580,6 +580,8 @@ tempCDS:
     rep stosd   ;Efficiently Clear DTA and FCBs
 ;------------------------------------------------;
 ;          Default File Handle Creation          ;
+;                                                ;
+;   Note: Devices are opened AUX, CON then PRN   ;
 ;------------------------------------------------;
 defaultFileHandles:
 ;Fill in the default file table entries
@@ -587,29 +589,9 @@ defaultFileHandles:
     mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
     mov word [rbx + sfth.wNumFiles], 5      ;5 default files
     mov qword fs:[sftHeadPtr], rbx  ;Save ptr to this sft header in SysVars
+    mov rdx, 2020202020202020h  ;Prepare the 8 spaces after the default names
 ;GOTO FIRST FILE 
     add rbx, sfth_size  ;Goto first driver
-;Write CON
-    mov word [rbx + sft.wNumHandles], 3 ;Sysinit stdin/out/err
-    mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
-    mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-    mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
-    ;No EOF when reading from the device
-    mov rax, qword fs:[vConPtr]  ;Get pointer to CON device
-    mov qword [rbx + sft.qPtr], rax
-    ;Ignore disk related fields and Date/Time of open
-    lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-    ;11 chars in 8.3 name
-    lea rsi, conName
-    mov ecx, 3
-    rep movsb   ;Move the three bytes
-    mov ecx, 8  ;8 Spaces left to print
-    mov al, SPC ;Space char
-    rep stosb
-    mov rax, qword fs:[currentPSP]  ;Get current PSP
-    mov qword [rbx + sft.qPSPOwner], rax
-;GOTO NEXT ENTRY
-    add rbx, sft_size   ;Goto next SFT
 ;Write AUX
     mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdaux
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
@@ -624,9 +606,28 @@ defaultFileHandles:
     lea rsi, auxName
     mov ecx, 3
     rep movsb   ;Move the three bytes
-    mov ecx, 8  ;8 Spaces left to print
-    mov al, SPC ;Space char
-    rep stosb
+    mov rax, rdx
+    stosq   ;Eight spaces left to print
+    mov rax, qword fs:[currentPSP]  ;Get current PSP
+    mov qword [rbx + sft.qPSPOwner], rax
+;GOTO NEXT ENTRY
+    add rbx, sft_size   ;Goto next SFT
+    ;Write CON
+    mov word [rbx + sft.wNumHandles], 3 ;Sysinit stdin/out/err
+    mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+    mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+    mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
+    ;No EOF when reading from the device
+    mov rax, qword fs:[vConPtr]  ;Get pointer to CON device
+    mov qword [rbx + sft.qPtr], rax
+    ;Ignore disk related fields and Date/Time of open
+    lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+    ;11 chars in 8.3 name
+    lea rsi, conName
+    mov ecx, 3
+    rep movsb   ;Move the three bytes
+    mov rax, rdx
+    stosq   ;Eight spaces left to print
     mov rax, qword fs:[currentPSP]  ;Get current PSP
     mov qword [rbx + sft.qPSPOwner], rax
 ;GOTO NEXT ENTRY
@@ -645,9 +646,8 @@ defaultFileHandles:
     lea rsi, prnName
     mov ecx, 3
     rep movsb   ;Move the three bytes
-    mov ecx, 8  ;8 Spaces left to print
-    mov al, SPC ;Space char
-    rep stosb
+    mov rax, rdx
+    stosq   ;Eight spaces left to print
     mov rax, qword fs:[currentPSP]  ;Get current PSP
     mov qword [rbx + sft.qPSPOwner], rax
 ;Zero word 0 of entry 4 and 5
