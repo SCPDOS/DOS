@@ -34,6 +34,8 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 ;Additional internal variables
+;Only used on single remdrive systems, marks if drive A or B was last accessed
+    singleDrv   resb 1    ;Set if last drive accessed was drive B x
     numFiles    resw 1    ;FILES=5 default
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
 ;Create SFT header and corresponding array of five default sft entries
@@ -49,17 +51,20 @@ sysVarsPtr:
     ;Only incremented when CON device runs vCon
 vConBuf:    ;Proper buffer symbol
     vConCurCnt  resb 1     ;Current count of chars in vConBuffer
-    vConBufData resb 256   ;vConsole buffer for reads and writes
-    bufpad      resb 3     ;Used to pad so can use stdout with 41h/0Ah
-    vConOutQuad resb 1     ;Inc on each char output, regardless of redirection
-    ;Is and-ed with 03h, checks for ^C on every fourth char output
+    vConBuffer  resb 128   ;General Buffer for vCon 256 bytes. 
+    ;Only 128 if also taking input and outputting simultaneously
+    vConInBuf   resb 128   ;vConsole buffer for reads ONLY
+    bufpad      resb 1     ;Used to pad with LF
 
-;Only used on single remdrive systems, marks if drive A or B was last accessed
-    singleDrv   resb 1  ;Set if last drive accessed was drive B x
+    printEcho   resb 1  ;If 0, no echo. Non-zero => Echo to PRN
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
     switchChar  resb 1  ;Editable by 41h/37h. Set to / by default
+    vConCursor  resb 1     ;Inc on each char output, regardless of redirection
+    ;Is and-ed with 03h, checks for ^C on every fourth char output
+
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
 ;Server stuff. Default to all zeros (blank)
+    shareFlag   resb 1  ;Sharing flag, set to 0 for now (future expansion)
     serverCnt   resb 1  ;Increments on each 41h/5D01h call
     machineName resb 16 ;Machine name (Set via 41h/5D01h) (set to SPC)    
 ;Swappable Data Area

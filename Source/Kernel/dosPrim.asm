@@ -354,13 +354,13 @@ primReqGetBPBSetup:
     jmp short primReqCommonExit
 
 secdReqCharIOReq:
-;Sets up the IO request packet with:
+;Sets up the request packet to transfer 1 byte to/from the singleIOByt buffer.
 ;Input:
 ; ah =  Data Request code (Read/Write/Write with Verify)
-; rdi = Data transfer buffer ptr    (if needed)
-; ecx = Number of bytes to transfer (if needed)
+; ecx = Length of buffer
+; rdi = Buffer pointer
 ;Output: 
-; rbx = Transfer Address   
+; rbx = Transfer Address 
     lea rbx, secdReqHdr
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], ah
@@ -368,3 +368,9 @@ secdReqCharIOReq:
     mov qword [rbx + ioReqPkt.bufptr], rdi
     mov dword [rbx + ioReqPkt.tfrlen], ecx
     ret
+;If the device which will process this request is a disk device
+; then we will be requesting 1 sector of data to a disk buffer.
+;Then we will read the appropriate byte from that buffer to the 
+; singleIOByt buffer.
+;Such a request will require additional setup with the following fields:
+; .unitnm, .medesc, .bufptr, .strtsc

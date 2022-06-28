@@ -15,10 +15,7 @@ stdoutWrite:       ;ah = 02h
 .inEP:  ;Internal function Entry Point, with char in al
     push rsi
     mov byte [singleIObyt], al
-    mov ah, drvWRITE
-    mov ecx, 1
-    lea rdi, singleIObyt
-    call secdReqCharIOReq   ;Puts in rbx the request block
+    call wByteSetup ;Puts in rbx the request block
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     pop rsi
@@ -30,10 +27,7 @@ directCONIO:       ;ah = 06h
 waitDirectInNoEcho:;ah = 07h
 waitStdinNoEcho:   ;ah = 08h
 ;Return char in al
-    lea rdi, singleIObyt    ;Get buffer 
-    mov ah, drvREAD
-    mov ecx, 1
-    call secdReqCharIOReq
+    call rByteSetup
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     mov al, byte [singleIObyt]  ;Get byte in al to return as return value
@@ -54,6 +48,25 @@ clearbuffDoFunc:   ;ah = 0Ch
 ;------------------------
 ;  Primitive functions  :
 ;------------------------
+wByteSetup:
+;Preserve all registers EXCEPT RBX= Request header pointer
+    push rax
+    mov ah, drvWRITE
+    jmp short rByteSetup.ep
+rByteSetup:
+;Preserve all registers EXCEPT RBX= Request header pointer
+    push rax
+    mov ah, drvREAD
+.ep:
+    push rcx
+    push rdi
+    mov ecx, 1
+    lea rdi, singleIObyt    ;Get address of symbol
+    call secdReqCharIOReq   ;Make request, return rbx = Request header
+    pop rdi
+    pop rcx
+    pop rax
+    ret
 getCharFunHandle:
 ;Gets the handle pointer for a device. 
 ; If the handle is 0,1,2, if the handle is closed, then return vConPtr.
@@ -61,6 +74,26 @@ getCharFunHandle:
 ; Else find SFT entry, check it is char device.
 ; If it is disk device, transfer control to readHandle function.
 ; Else, return device driver pointer for device.
+
+;Input: bx = File handle (zero extended to rbx)
+;Output: CF=NC -> rdi = SFT entry 
+;        CF=CY -> SFT closed, get default driver ptr
+
+    call getSFTNdxFromHandle    ;Get a ptr to the SFT entry in rdi
+    cmp byte [rdi], -1  ;SFT entry closed?
+    jne .validDevice
+    stc ;Set carry flag
+    ret ;Return with al destroyed
+.validDevice:
+    call derefSFTPtr.ok    ;bx has file handle, now get sft ptr in rdi
+    ret
+testDeviceCharBlock:
+;Input: rdi = SFT pointer
+;Output: ZF=ZE => Block device, ZF=NZ => Char device
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    ret
+getDriverFromSFT:
+
 ;------------------------
 ;   Utility functions   :
 ;------------------------
