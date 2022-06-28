@@ -392,19 +392,6 @@ getSFTPtr:
 ;Input: bx = JFT handle
 ;Output: CF=NC: rdi = SFT pointer
 ;        CF=CY: Error, ax=Error code
-;    call derefSFTPtr
-;    jnc .ok
-;    ret ;Error return with CF=CY
-;.ok:
-;    push rax
-;    movzx eax, word [machineNum]    ;Get the machine number from SDA
-;    cmp ax, word [rdi + sft.wMachNum]   ;Compare to SFT machine number
-;    pop rax
-;    je .exit    ;If the file belongs to this machine, proceed!
-;    mov al, errBadHdl   ;Error code
-;    stc ;Reset CF
-;.exit:
-;    ret
     call derefSFTPtr
     retc    ;Return if carry
     push rax

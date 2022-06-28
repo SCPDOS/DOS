@@ -36,7 +36,7 @@ labelMaker a, %1
 %endif
 %else
 %ifdef ret_%+1 ;; if ret_<CC> defined
-%if (($ - ret_&cc) le 126) and ($ gt ret_&cc)
+%if (($ - ret_%1) <= 126) and ($ > ret_%1)
  ;; if ret_<CC> is near enough
 %%a: 
     j%+1 ret_%+1     ;; a: j<CC> to ret_<CC>
@@ -54,14 +54,41 @@ labelMaker a, %1
 ;-------------------------------------------------------------------------------
 ;These macros are live and must not be touched
 ;-------------------------------------------------------------------------------
+%macro jump 1   ;Argument = Label name
+%%a:
+%ifndef %1_j
+    jmp %1  ;If %1_j not defined, just jump and define
+%else
+%if %1_j => ($$-%%a)
+    jmp %1  ;If forward reference, long jump
+%else
+%if (($$-%%a) - %1_j) > 126
+    jmp %1  ;Is the jump target more than 126 bytes behind, long jump
+%else
+    jmp short %1_j  ;Else short jump!
+%endif
+%endif
+%endif
+%assign %1_j ($$-%%a)   ;Redefine symbol %1_j
+%endmacro
+
+
+%assign cVar 0   
 %macro return 0
+%%_ret:
     ret
+%assign cVar ($$ - %%_ret)
 %endmacro
 
 %macro cret 1
-    j%-1 %%a
+%%_base:
+    %if (cVar != 0 && (($$ - %%_base) - cVar) <= 126)
+    j%+1 short cVar
+    %else 
+    j%-1 short %%a
     return
-%%a:
+    %%a:
+    %endif
 %endmacro
 
 %macro retz 0
