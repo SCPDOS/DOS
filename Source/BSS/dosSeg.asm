@@ -33,6 +33,9 @@ sysVarsPtr:
     numBuffers  resb 1    ;Buffers=30 default
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
+;Additional internal variables
+    numFiles    resw 1    ;FILES=5 default
+    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size
     firstSft    resb sft_size
@@ -50,9 +53,6 @@ vConBuf:    ;Proper buffer symbol
     bufpad      resb 3     ;Used to pad so can use stdout with 41h/0Ah
     vConOutQuad resb 1     ;Inc on each char output, regardless of redirection
     ;Is and-ed with 03h, checks for ^C on every fourth char output
-;Additional internal variables
-    numFiles    resw 1    ;FILES=5 default
-    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
 
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
     singleDrv   resb 1  ;Set if last drive accessed was drive B x
