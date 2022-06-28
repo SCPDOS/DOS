@@ -1,7 +1,8 @@
 [map all ./Listings/SCPDOS/scpdos.map]
 [DEFAULT REL]
 BITS 64
-;Defs and strucs
+;Defs, strucs and macros
+%include "./Source/Include/dosMacro.mac"
 %include "./Source/Include/driverStruc.inc"
 %include "./Source/Include/fatStruc.inc"
 %include "./Source/Include/dosStruc.inc"

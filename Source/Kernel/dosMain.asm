@@ -575,5 +575,5 @@ networkServices:   ;ah = 5Eh, do nothing
 networkRedirection:;ah = 5Fh, do nothing
     ret
 getsetDiskSerial:  ;ah = 69h, get/set disk serial number
-return:
+noOp:
     ret
