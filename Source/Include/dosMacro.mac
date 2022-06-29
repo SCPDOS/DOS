@@ -9,48 +9,9 @@
 ; are experimental. Once, I figure out how to make them work, I will
 ; use the below macros as they will make my code much smaller by always
 ; trying to find the nearest returns and valid conditional returns.
-;The below is an attempt at modifying the macro files found in the 
-; DOS 2.0 source code
 ;-------------------------------------------------------------------------------
-%macro rreturn 0
-%%a:
-    ret
-ret_l = %%a
-%endmacro
 
-%macro labelMaker 2 ;Label letter, Condition code
-    j%-2 %%a ; j<NCC> a:
-    return  ;; return
-%%a:
-    ret_%2 = ret_%1 ;; define ret_<CC> to be ret_l
-%endmacro
 
-%macro ccret 1; Condition code
-%ifdef ret_l    ;; if ret_l is defined
-%if (($ - ret_l) <= 126) and ($ > ret_l) ;; if ret_l is near enough then
-%%a: 
-    j%+1 ret_l      ;; a: j<CC> to ret_l
-    ret_%+1 = %%a     ;; define ret_<CC> to be a:
-%else
-labelMaker a, %1
-%endif
-%else
-%ifdef ret_%+1 ;; if ret_<CC> defined
-%if (($ - ret_%1) <= 126) and ($ > ret_%1)
- ;; if ret_<CC> is near enough
-%%a: 
-    j%+1 ret_%+1     ;; a: j<CC> to ret_<CC>
-    ret_%+1 = %%a ;; define ret_<CC> to be a:
-%else
-labelMaker a, %1
-%endif
-%else
-labelMaker a, %1
-%endif
-%endif
-%endmacro
-;-------------------------------------------------------------------------------
-;-------------------------------------------------------------------------------
 ;-------------------------------------------------------------------------------
 ;These macros are live and must not be touched
 ;-------------------------------------------------------------------------------
@@ -73,21 +34,27 @@ labelMaker a, %1
 %endmacro
 
 
-%assign cVar 0   
 %macro return 0
 %%_ret:
     ret
-%assign cVar ($$ - %%_ret)
+%assign retOff %%_ret-$$  ;Get offset into segment of %%_ret
 %endmacro
 
 %macro cret 1
 %%_base:
-    %if (cVar != 0 && (($$ - %%_base) - cVar) <= 126)
-    j%+1 short cVar
+%assign baseVar %%_base-$$ ;Get offset into segment of %%_base
+    %ifdef retOff
+    %if (baseVar - retOff <= 126) && (baseVar > retOff)
+    j%+1 short (retOff+currSegVBase)
     %else 
     j%-1 short %%a
     return
-    %%a:
+%%a:
+    %endif
+    %else
+    j%-1 short %%a
+    return
+%%a:
     %endif
 %endmacro
 

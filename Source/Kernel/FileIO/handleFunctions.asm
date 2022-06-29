@@ -381,12 +381,12 @@ getSFTNdxFromHandle:    ;Int 4Fh AX=1220h
     jb .ok
     mov al, errBadHdl
     stc
-    ret
+    return
 .ok:
     mov rdi, qword [currentPSP]
     movzx rdi, byte [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
     clc
-    ret
+    return
 getSFTPtr:
 ;This gets the SFT pointer and checks it was opened by this machine
 ;Input: bx = JFT handle

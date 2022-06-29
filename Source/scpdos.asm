@@ -9,10 +9,12 @@ BITS 64
 %include "./Source/Debug/debSym.inc"
 %include "./Source/Include/dosError.inc"
 Segment .text align=1   ;Init code
+%define currSegVBase 0
 %include "./Source/Sysinit/sysInit.asm"
 Segment dSeg nobits align=1 start=0     ;BSS data segment
 %include "./Source/BSS/dosSeg.asm"
 Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
+%define currSegVBase section.resSeg.vstart
 %include "./Source/Data/staticData.asm"
 %include "./Source/Data/dispTbl.asm"
 %include "./Source/Debug/debug.asm"
