@@ -18,7 +18,7 @@ charIn_BE:     ;ah = 01h
     jz .stdireexit
     call charOut_B.skipEP    ;Output it to screen
 .stdireexit:
-    ret
+    return
 
 charOut_B:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
@@ -30,7 +30,7 @@ charOut_B:       ;ah = 02h
     call wByteSetup ;Puts in rbx the request block
     call goDriver
     pop rsi
-    ret
+    return
 auxIn_B:        ;ah = 03h
 auxOut_B:       ;ah = 04h
 prnOut_B:       ;ah = 05h
@@ -44,17 +44,15 @@ charIn_B:       ;ah = 08h
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     mov al, byte [singleIObyt]  ;Get byte in al to return as return value
-    ret
+    return
 printString_B:      ;ah = 09h
     mov rsi, rdx    ;Set up for scasb
 .ps0:
     lodsb   ;Get char in al and inc rsi
     cmp al, "$" ;End of string char?
-    je .ps1
+    rete    ;Return if equal
     call charOut_B.skipEP
     jmp short .ps0
-.ps1:
-    ret
 buffCharInput_BE:  ;ah = 0Ah
 ;Works as the main input function for the vCon keyboard buffer
 checkStdinStatus:  ;ah = 0Bh
@@ -82,7 +80,7 @@ rByteSetup:
     pop rdi
     pop rcx
     pop rax
-    ret
+    return
 getCharFunHandle:
 ;Gets the handle pointer for a device. 
 ; If the handle is 0,1,2, if the handle is closed, then return vConPtr.
@@ -99,15 +97,15 @@ getCharFunHandle:
     cmp byte [rdi], -1  ;SFT entry closed?
     jne .validDevice
     stc ;Set carry flag
-    ret ;Return with al destroyed
+    return ;Return with al destroyed
 .validDevice:
     call derefSFTPtr.ok    ;bx has file handle, now get sft ptr in rdi
-    ret
+    return
 testDeviceCharBlock:
 ;Input: rdi = SFT pointer
 ;Output: ZF=ZE => Block device, ZF=NZ => Char device
     test word [rdi + sft.wDeviceInfo], devCharDev
-    ret
+    return
 
 ;------------------------
 ;   Utility functions   :
@@ -117,7 +115,7 @@ checkBreakOnCon:
 ; if it is a ^C or CTRL+BREAK, then exit via INT 43h
     cmp byte [inDOS], 1
     je checkBreak  ;Only check ^C on first entry to DOS
-    ret
+    return
 checkBreak:
 ;Returns in al the keystroke that is available IF one is available
 ; or al=0 if no keystroke available
@@ -156,7 +154,7 @@ checkBreak:
     lea rax, singleIObyt    ;IO Byte buffer
     mov qword [secdReqHdr + ioReqPkt.bufptr], rax
     call goDriver   ;RSI and RBX as before
-    ret ;Stopgap right now, do nothing
+    return ;Stopgap right now, do nothing
 
 
 swapVConDriver:
@@ -166,13 +164,13 @@ swapVConDriver:
     mov rdi, qword [currentSFT] ;Get current SFT pointer
     mov qword [vConOldSFT], rdi ;Save the SFT ptr in var
     pop rdi
-    ret
+    return
 ;These functions set/clear whether vCon should use vConOldSFT or vConPtr
 ;If vConDrvFlg = 1 => Use vConOldSFT
 ;If vConDrvFlg = 0 => Use vConPtr
 vConUseAlt:
     mov byte [vConDrvFlg], 1    ;Set to use alternative driver
-    ret
+    return
 vConUseDef:
     mov byte [vConDrvFlg], 0    ;Clear to use default driver
-    ret
+    return
