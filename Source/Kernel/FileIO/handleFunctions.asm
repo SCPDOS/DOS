@@ -358,7 +358,7 @@ getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
     cmp rdi, -1
     jne .walk
     stc
-    ret
+    return
 .thisTable:
     push rax
     push rdx
@@ -368,14 +368,12 @@ getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
     pop rdx
     pop rax
     add rdi, sfth_size  ;Go past the header
-    ret
-
-getSFTNdxFromHandle:    ;Int 4Fh AX=1220h
+    return
+getJFTPtr:    ;Int 4Fh AX=1220h
 ;Return a zero extended value in rdi for the SFT entry
-;Input: bx = JFT handle
-;Output: CF=NC => rdi = SFT ndx
+;Input: bx = JFT handle (we zero extend)
+;Output: CF=NC => rdi = Points to an SFT ndx or -1 => free space
 ;        CF=CY => al = Error code, Fail
-;rbx destroyed
     movzx ebx, bx   ;Ensure we zero extended
     cmp bx, word [maxHndls] ;0-19 acceptable ONLY!
     jb .ok
@@ -384,9 +382,10 @@ getSFTNdxFromHandle:    ;Int 4Fh AX=1220h
     return
 .ok:
     mov rdi, qword [currentPSP]
-    movzx rdi, byte [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
+    lea rdi, qword [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
     clc
     return
+
 getSFTPtr:
 ;This gets the SFT pointer and checks it was opened by this machine
 ;Input: bx = JFT handle
@@ -408,20 +407,20 @@ derefSFTPtr:
 ;Input: bx = File handle
 ;Output: CF=NC: rdi = SFT pointer
 ;        CF=CY: Error, ax=Error code
-    call getSFTNdxFromHandle    ;Get the ptr to the value in rdi
+    call getJFTPtr    ;Get the ptr to the value in rdi
     jb .fail
     cmp byte [rdi], -1  ;Is this JFT entry unassigned?
     jne .ok
 .fail:
     mov al, errBadHdl
     stc
-    ret
+    return
 .ok:
     push rbx    ;Preserve the JFT handle
     movzx ebx, byte [rdi]  ;Get byte entry into rbx
     call getSFTPtrfromSFTNdx    ;Get SFT pointer in rdi
     pop rbx 
-    ret
+    return
 
 getBytesTransferred:
     mov ecx, dword [tfrCntr]   ;Get bytes left to transfer

@@ -93,7 +93,7 @@ getCharFunHandle:
 ;Output: CF=NC -> rdi = SFT entry 
 ;        CF=CY -> SFT closed, get default driver ptr
 
-    call getSFTNdxFromHandle    ;Get a ptr to the SFT entry in rdi
+    call getJFTPtr    ;Get a ptr to the SFT entry in rdi
     cmp byte [rdi], -1  ;SFT entry closed?
     jne .validDevice
     stc ;Set carry flag
