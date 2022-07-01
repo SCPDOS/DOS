@@ -87,6 +87,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currentDrv  resb 1  ;Default drive x
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
 ;SDA, needs to be replaced between processes
+sdaMainSwap:
     oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
     sharePSP    resq 1  ;PSP of the share program
     machineNum  resw 1  ;for sharing/networking 00h = default number (us)
@@ -113,7 +114,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
-    vConDrvFlg  resb 1  ;Set if vCon controlled by a different driver to vConPtr
+    vConDrvSwp  resb 1  ;Set if vCon controlled by a different driver to vConPtr
     int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
     Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
 ;A request routed through the FCB or handle uses primReqHdr for its main IO.
@@ -126,6 +127,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 ;ioReqPkt is the largest possible packet
     secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
     primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
+    critReqHdr  resb ioReqPkt_size  ;Used for ^C detection!
 
 ;Swappable Buffers
     buffer1     resb 128  ;Space for one path and file name
@@ -146,11 +148,11 @@ qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
-vConOldSFT: ;Alternate symbol for saving the oldSFTptr during a char func
-    workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr
+;Below is the symbol for saving the oldSFTptr during a char func
+vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
+    workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr being used
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
-vConCurSFT: ;Alternate symbol for the SFT to be used for char function
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
@@ -200,4 +202,7 @@ vConCurSFT: ;Alternate symbol for the SFT to be used for char function
 
     diskChange  resb 1  ;-1 = disk has been changed!
     lookahead   resb 1  ;-1 => Lookahead on select Char function calls!  
+    sdaLen      equ     $ - sda 
+    sdaMSLen    equ     $ - sda
+
     dSegLen     equ     $

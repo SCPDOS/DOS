@@ -16,14 +16,14 @@ charIn_BE:     ;ah = 01h
     call charIn_B
     test al, al
     jz .stdireexit
-    call charOut_B.skipEP    ;Output it to screen
+    call charOut_B.in    ;Output it to screen
 .stdireexit:
     return
 
 charOut_B:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     mov al, dl
-.skipEP:  ;Internal function Entry Point, with char in al
+.in:  ;Internal function Entry Point, with char in al
     push rsi
     mov byte [singleIObyt], al
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
@@ -40,10 +40,13 @@ charIn:         ;ah = 07h
 ;Return char in al from STDIN
 charIn_B:       ;ah = 08h
 ;Return char in al from STDIN
+    call checkBreak ;First check if buffer has ^C in it already
     call rByteSetup
     mov rsi, qword [vConPtr]   ;Get ptr to current con device header
     call goDriver
     mov al, byte [singleIObyt]  ;Get byte in al to return as return value
+    cmp al, ETX
+    je ctrlBreakHdlr
     return
 printString_B:      ;ah = 09h
     mov rsi, rdx    ;Set up for scasb
@@ -51,7 +54,7 @@ printString_B:      ;ah = 09h
     lodsb   ;Get char in al and inc rsi
     cmp al, "$" ;End of string char?
     rete    ;Return if equal
-    call charOut_B.skipEP
+    call charOut_B.in
     jmp short .ps0
 buffCharInput_BE:  ;ah = 0Ah
 ;Works as the main input function for the vCon keyboard buffer
@@ -81,96 +84,120 @@ rByteSetup:
     pop rcx
     pop rax
     return
-getCharFunHandle:
-;Gets the handle pointer for a device. 
-; If the handle is 0,1,2, if the handle is closed, then return vConPtr.
-; If the handle is 3,4, if the handle is closed, then return nullDevPtr
-; Else find SFT entry, check it is char device.
-; If it is disk device, transfer control to readHandle function.
-; Else, return device driver pointer for device.
 
-;Input: bx = File handle (zero extended to rbx)
-;Output: CF=NC -> rdi = SFT entry 
-;        CF=CY -> SFT closed, get default driver ptr
-
-    call getJFTPtr    ;Get a ptr to the SFT entry in rdi
-    cmp byte [rdi], -1  ;SFT entry closed?
-    jne .validDevice
-    stc ;Set carry flag
-    return ;Return with al destroyed
-.validDevice:
-    call derefSFTPtr.ok    ;bx has file handle, now get sft ptr in rdi
+callInt48h:
+;Preserve full state, including "safetocallint48" flag
+    pushfq
+    test byte [int48Flag], -1
+    jz .exit    ;If zero, not safe
+    test byte [critErrFlag], -1 ;Are we in a critical error situation?
+    jnz .exit
+;Preserve stack alignment!!! Zero extended int48Flag to rax and push it
+    push rax
+    movzx eax, byte [int48Flag] 
+    push rax
+    int 48h
+    pop rax
+    mov byte [int48Flag], al    ;Return original value
+    pop rax
+.exit:
+    popfq
     return
+
+getCharDevSFT:
+;Gets the appropriate SFT pointer in rsi for the device in bx
+;Input: bx = zero extended handle number
+;Output: CF=NC => rsi = SFT pointer for device
+;        CF=CY => al = Error code, abort operation
+    test byte [vConDrvSwp], -1  ;Has this device been swapped?
+    jnz .swap ;If any bits are set, assume swapped (thus working SFT set)
+.getSFT:
+    push rdi
+    call derefSFTPtr   ;Get device ptr in rdi (or error in al)
+    mov rsi, rdi
+    pop rdi
+    return  ;Return with CF set
+.swap:
+;workingSFT is only set for CON calls
+    cmp ebx, 1  ;bx is zero extended anyway
+    ja .getSFT
+    mov rsi, qword [vConAltSFTPtr]  ;Get the alternate CON SFT pointer
+    clc
+    return
+
 testDeviceCharBlock:
 ;Input: rdi = SFT pointer
 ;Output: ZF=ZE => Block device, ZF=NZ => Char device
     test word [rdi + sft.wDeviceInfo], devCharDev
     return
-
 ;------------------------
 ;   Utility functions   :
 ;------------------------
-checkBreakOnCon:
+printCaretASCII:
+;Input: al = Char to print with a caret
+;Output: On STDOUT, print char with caret IF valid caret char
+;First check if the char should be careted, and then print normally if so
+    cmp al, asciiCaret  ;Is this char to be printed normally?
+    ja charOut_B.in
+    cmp al, TAB
+    je charOut_B.in
+    push rax
+    mov al, "^" ;Get caret in place
+    call charOut_B.in
+    pop rax
+    add al, "@" ;Turn into an ASCII Char
+    jmp charOut_B.in  ;Now print the char in al and return
+printCRLF:
+    mov al, CR
+    call charOut_B.in
+    mov al, LF
+    jmp charOut_B.in
+
+checkBreak:
 ;Reads bytes from CON if there are any bytes to read and 
 ; if it is a ^C or CTRL+BREAK, then exit via INT 43h
     cmp byte [inDOS], 1
-    je checkBreak  ;Only check ^C on first entry to DOS
-    return
-checkBreak:
+    retne    ;Return if not inDOS only once
 ;Returns in al the keystroke that is available IF one is available
 ; or al=0 if no keystroke available
     push rbx
     push rsi
     mov rsi, qword [vConPtr] ;Get pointer to Console device driver
-    xor eax, eax
     ;Place command code and a zero status word at the same time
-    mov al, drvNONDESTREAD
-    mov dword [secdReqHdr + nonDestInNoWaitReqPkt.cmdcde], eax
+    mov dword [critReqHdr + nonDestInNoWaitReqPkt.cmdcde], drvNONDESTREAD
     ;Place the packet size in the hdrlen field
-    mov al, nonDestInNoWaitReqPkt_size
-    mov byte [secdReqHdr + nonDestInNoWaitReqPkt.hdrlen], al
-    lea rbx, secdReqHdr
+    mov byte [critReqHdr + nonDestInNoWaitReqPkt.hdrlen], nonDestInNoWaitReqPkt_size
+    lea rbx, critReqHdr
     call goDriver   ;Called with rsi and rbx with appropriate pointers
     ;Check if the busy bit is set (No keystroke available)
-    test word [secdReqHdr + nonDestInNoWaitReqPkt.status], drvBsyStatus
+    test word [critReqHdr + nonDestInNoWaitReqPkt.status], drvBsyStatus
     jz .charFound
 .exit:
+    xor al, al
     pop rsi
     pop rbx
-    ret
+    return
 .charFound:
 ;Keystroke available, proceed
-    mov al, byte [secdReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
+    mov al, byte [critReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
     cmp al, ETX ;BREAK/^C =ASCII 03h
     jne .exit   ;If not equal exit
 ;Now we pull the char out of the buffer
-    xor eax, eax
-    mov al, drvREAD ;Read command
-    mov dword [secdReqHdr + ioReqPkt.cmdcde], eax
-    ;Place packet size
-    mov byte [secdReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov dword [critReqHdr + ioReqPkt.cmdcde], drvREAD ;Read command
+    mov byte [critReqHdr + ioReqPkt.hdrlen], ioReqPkt_size  ;Place packet size
     ;Place pointers and number of chars
-    mov dword [secdReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
-    lea rax, singleIObyt    ;IO Byte buffer
-    mov qword [secdReqHdr + ioReqPkt.bufptr], rax
+    mov dword [critReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
+    ;Use media byte space as the char buffer (to avoid issues & save a byte)
+    lea rax, qword [critReqHdr + ioReqPkt.medesc]
+    mov qword [critReqHdr + ioReqPkt.bufptr], rax
     call goDriver   ;RSI and RBX as before
-    return ;Stopgap right now, do nothing
+    jmp ctrlBreakHdlr   ;Read the char and jump to ^C handler
 
-
-swapVConDriver:
-;Sets up the vCon to use the alternative device driver 
+vConSwapDriver:
+;Sets up the vCon to use the alternative SFT pointer
     push rdi
-    call vConUseAlt
+    mov byte [vConDrvSwp], 1    ;Set to use alternative driver
     mov rdi, qword [currentSFT] ;Get current SFT pointer
-    mov qword [vConOldSFT], rdi ;Save the SFT ptr in var
+    mov qword [vConAltSFTPtr], rdi ;Save the SFT ptr in var
     pop rdi
-    return
-;These functions set/clear whether vCon should use vConOldSFT or vConPtr
-;If vConDrvFlg = 1 => Use vConOldSFT
-;If vConDrvFlg = 0 => Use vConPtr
-vConUseAlt:
-    mov byte [vConDrvFlg], 1    ;Set to use alternative driver
-    return
-vConUseDef:
-    mov byte [vConDrvFlg], 0    ;Clear to use default driver
     return

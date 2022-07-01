@@ -3,11 +3,11 @@
 ;-----------------------------------:
 
 createFileHdl:     ;ah = 3Ch, handle function
-    ret
+    return 
 openFileHdl:       ;ah = 3Dh, handle function
-    ret
+    return 
 closeFileHdl:      ;ah = 3Eh, handle function
-    ret
+    return 
 readFileHdl:       ;ah = 3Fh, handle function
     lea rsi, readBytes
 .common:
@@ -21,18 +21,18 @@ readFileHdl:       ;ah = 3Fh, handle function
     call getUserRegs
     mov dword [rsi + callerFrame.rax], ecx  ;Put actual number of bytes tfrd
     and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
-    ret
+    return 
 ;Temporary Error handler, simply return with CF set
 .error:
 .errorFromDataTransfer:
     call getUserRegs
     or byte [rsi + callerFrame.flags], 1    ;Set CF
-    ret
+    return 
 writeFileHdl:      ;ah = 40h, handle function
     lea rsi, writeBytes
     jmp readFileHdl.common
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
-    ret
+    return 
 lseekHdl:          ;ah = 42h, handle function, LSEEK
 ;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
     call getSFTPtr
@@ -46,7 +46,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     mov byte [errorClass], eClsNotFnd
     call getUserRegs    ;Get user regs in rsi
     or byte [rsi + callerFrame.flags], 1    ;Set CF
-    ret
+    return 
 .sftValid:
     cmp al, 3
     jb .validFunction
@@ -65,7 +65,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     call getUserRegs    ;Get user regs in rsi
     mov dword [rsi + callerFrame.rdx], edx
     xor al, al  ;Return OK!
-    ret
+    return 
 .seekend:
 ;Here we are at seekend, seek from end (signed)
     add edx, dword [rdi + sft.dFileSize]    ;Add to file size
@@ -82,7 +82,7 @@ createNewFile:     ;ah = 5Bh
 lockUnlockFile:    ;ah = 5Ch
 setHandleCount:    ;ah = 67h
 commitFile:        ;ah = 68h, flushes buffers for handle to disk 
-    ret
+    return 
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
@@ -99,7 +99,7 @@ readBytes:
     mov eax, errAccDen
     mov word [errorExCde], ax
     stc
-    ret ;Exit with error code 
+    return ;Exit with error code 
 .readable:
     call setupVarsForTransfer
     jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
@@ -107,17 +107,17 @@ readBytes:
     jz .notRedir
     mov eax, 1108h  ;Call Redir Read Bytes function
     int 4fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
-    ret
+    return 
 .exitOk:
     clc
-    ret
+    return 
 .notRedir:
     test word [rdi + sft.wDeviceInfo], devCharDev
     jnz readCharDev
     call dosCrit1Enter
     call readDiskFile
     call dosCrit1Exit
-    ret
+    return 
 readCharDev:
 ;rdi points to sft for char dev to read
 ;ecx has the number of bytes to transfer
@@ -142,7 +142,7 @@ readCharDev:
     jz .generalASCII    ;If not, goto generalASCII, else fallthru
 .consoleInput:
     ;Console input here
-    call swapVConDriver    ;Prepare CON Useage!
+    call vConSwapDriver    ;Prepare CON Useage!
     
 
 .binary:
@@ -194,7 +194,7 @@ readCharDev:
     mov rsi, qword [workingDD]  ;Get device driver header ptr in rsi
 .asciiReadChar:
     mov rdx, rdi    ;Save the current buffer pointer position in rdx
-    call checkBreakOnCon    ;Check we don't have a ^C pending on CON
+    call checkBreak ;Check we don't have a ^C pending on CON
     call goDriver   ;If no ^C found (which exits DOS) Make request!
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
@@ -243,7 +243,7 @@ writeBytes:
     mov eax, errAccDen
     mov word [errorExCde], ax
     stc
-    ret ;Exit with error code 
+    return ;Exit with error code 
 .writeable:
     call setupVarsForTransfer
 
@@ -258,7 +258,7 @@ rwExitOk:
     ;Next char dev read should give EOF.
 .skipbitClear:  ;Or skip that entirely
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
-    ret
+    return 
 rwExitBad:
 ;-----------------------------------:
 ;        File Handle routines       :
@@ -267,11 +267,11 @@ rwExitBad:
 setCurrentSFT:
 ;Set the pointer in rdi as current SFT 
     mov qword [currentSFT], rdi
-    ret
+    return 
 getCurrentSFT:
 ;Get the current SFT pointer in rdi
     mov rdi, qword [currentSFT]
-    ret
+    return 
 updateCurrentSFT:
 ;Updates the Current SFT fields before returning from a file handle operation
 ;Return: ecx = Actual bytes transferred and CF=NC
@@ -293,7 +293,7 @@ updateCurrentSFT:
 .exit:
     pop rdi
     clc
-    ret
+    return 
 setupVarsForTransfer:
 ;Computes the actual bytes to be transferred and 
 ; sets up internal variables for the transfer. 
@@ -317,7 +317,7 @@ setupVarsForTransfer:
     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev ;If not disk...
     jz setupVarsForDiskTransfer
     clc
-    ret ;Else just exit here
+    return ;Else just exit here
 setupVarsForDiskTransfer:
 ;Extension of the above, but for Disk files only
 ;Input: ecx = User desired Bytes to transfer
@@ -343,7 +343,7 @@ setupVarsForDiskTransfer:
     mov dword [currClustF], edx ;Save in var
     mov ecx, eax    ;Return the bytes to tfr in eax
     clc
-    ret
+    return 
 
 getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
 ;Return a pointer to the SFT entry in rdi
@@ -404,7 +404,7 @@ getSFTPtr:
 
 derefSFTPtr:
 ;Walk the whole way from a handle to SFT pointer (for the current process)
-;Input: bx = File handle
+;Input: bx = File handle (gets zero extended)
 ;Output: CF=NC: rdi = SFT pointer
 ;        CF=CY: Error, ax=Error code
     call getJFTPtr    ;Get the ptr to the value in rdi
@@ -426,7 +426,7 @@ getBytesTransferred:
     mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
     neg ecx ;Multiply by -1
     add ecx, dword [tfrLen]     ;Add total bytes to transfer
-    ret ;Return bytes transferred in ecx
+    return ;Return bytes transferred in ecx
 
 readWriteBytesBinary:
 ;Input: ecx = number of bytes to read in Binary mode
@@ -445,4 +445,4 @@ readWriteBytesBinary:
     pop rcx
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
-    ret
+    return

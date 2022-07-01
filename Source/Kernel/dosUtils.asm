@@ -8,12 +8,12 @@
 setWorkingDPB:
 ;Gets dpb in rbp and saves to curDrvDPB (working dpb)
     mov qword [workingDPB], rbp
-    ret
+    return
 
 getUserRegs:   ;Int 4Fh AX=1218h
 ;Returns ptr to user regs in rsi
     mov rsi, qword [oldRSP]
-    ret
+    return
 
 walkDPBchain:
 ;Called with al = 0 based drive number
@@ -29,7 +29,7 @@ walkDPBchain:
 .exitBad:
     stc
 .exit:
-    ret
+    return
 setDrive:   
 ;Gets a drive CDS, sets it as working and checks it is a valid physical drive
 ;Input: al = 1-based drive number
@@ -46,7 +46,7 @@ setDrive:
     jz .exit
     stc
 .exit:
-    ret
+    return
 
 buildNewCDS:   ;Int 4Fh AX=121Fh
 ;Allows a redirector or subst/join to build a CDS
@@ -83,7 +83,7 @@ buildNewCDS:   ;Int 4Fh AX=121Fh
     pop rsi
     pop rax
 .exit:
-    ret
+    return
 
 getCDS:     ;Int 4Fh AX=1219h
 ;Gets the device DPB and saves it in the DOS variable
@@ -127,7 +127,7 @@ getCDS:     ;Int 4Fh AX=1219h
     stc
 .exitOk:
     pop rsi
-    ret
+    return
 
 getCDSforDrive:     ;Int 4Fh AX=1217h
     ;Gets the CDS for the current drive in al
@@ -137,7 +137,7 @@ getCDSforDrive:     ;Int 4Fh AX=1217h
     cmp al, byte [lastdrvNum]
     jb .ctn
     stc 
-    ret
+    return
 .ctn:
     push rax
     push rdx
@@ -151,7 +151,7 @@ getCDSforDrive:     ;Int 4Fh AX=1217h
     pop rdx
     pop rax
     clc
-    ret
+    return
 
 
 swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
@@ -165,7 +165,7 @@ swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
     jne .exit
     mov al, "\" ;Set char in al to normal path separator
 .exit:
-    ret
+    return
 
 uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
 ;Convert a lowercase char to uppercase
@@ -178,4 +178,4 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     jb .exit
     sub al, "a" - "A"   ;Convert the char
 .exit:
-    ret
+    return

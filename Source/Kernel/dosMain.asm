@@ -54,7 +54,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     sti         ;Reenable interrupts
 
     xor ebx, ebx    ;Zero rbx for later and bl for now
-    mov byte [vConDrvFlg], bl   ;Clear the conDrvFlg (use default CON driver)
+    mov byte [vConDrvSwp], bl   ;Clear the conDrvSwp (use default CON driver)
     mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
     mov byte [Int44Fail], bl    ;Clear the Int44 returned fail flag
     mov byte [dirFlag], bl  ;Default to look for dir
@@ -99,7 +99,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     jz .fdGoToFunction
 ; HANDLE CTRL+BREAK HERE!
     push rax
-    call checkBreakOnCon    ; Check for a ^C in the CON buffer
+    call checkBreak   ; Check for a ^C
     pop rax
 .fdGoToFunction:
     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back

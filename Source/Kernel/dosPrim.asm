@@ -5,7 +5,10 @@ dosDefCritErrHdlr:
 ;The DOS default critical error handler always returns FAIL
     mov al, critFail
     iretq
-
+goDriverChar:
+;Shortcut for Char requests, make a driver request
+; with rsi pointing to the SFT entry as qPtr is the driver pointer
+    mov rsi, qword [rsi + sft.qPtr]
 goDriver:   ;Executes the driver packet pointed to by rbx
 ;Input: rsi = Ptr to the driver to handler the call!
 ;       rbx = Ptr to the request header for the driver call!
@@ -13,7 +16,7 @@ goDriver:   ;Executes the driver packet pointed to by rbx
     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
     call qword [rsi + drvHdr.intPtr]
     call dosCrit2Exit
-    ret
+    return
 
 setupPhysicalDiskRequest:
 ;Ensure that al has valid disk number
@@ -35,7 +38,7 @@ setupPhysicalDiskRequest:
     jnz .netError
     mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the DPB pointer for request
     call setWorkingDPB ;Save the DPB as the working DPB
-    ret
+    return
 .netError:
     mov word [errorExCde], errNoNet ;Network request not supported
     jmp short .error
@@ -46,7 +49,7 @@ setupPhysicalDiskRequest:
     mov byte [errorAction], eActRetUsr
     mov byte [errorClass], eClsBadFmt
     stc
-    ret
+    return
 
 setupAbsDiskEntry:
 ;Prepares to sets up the CDS and DPB for the request
@@ -73,7 +76,7 @@ setupAbsDiskEntry:
     pop rsi
 .exit:
     jc setupPhysicalDiskRequest.netError    ;Recycle error
-    ret
+    return
 
 absDiskWrite:       ;Int 46h
 ;al = Drive number
@@ -135,7 +138,7 @@ absDiskExit:
     dec byte [inDOS]
     mov rsp, qword [oldRSP]
     sti ;Reenable interrupts
-    ret ;Return from interrupt without popping flags!
+    return ;Return from interrupt without popping flags!
 absDiskDriverCall:
 ;Input: rbp = Transacting DPB, ecx = Number of sectors to transfer
 ;       rbx = Request header address
@@ -153,7 +156,7 @@ absDiskDriverCall:
     sub ecx, eax    ;Get positive difference of the two 
     movzx eax, word [primReqHdr + ioReqPkt.status]
     test ax, drvErrStatus   ;Is error bit set?
-    ret
+    return
 
 getDiskDPB:
 ;Gets the disk DPB if the Disk is physical
@@ -188,7 +191,7 @@ getDiskDPB:
 .exit:
     clc
 .exitBad:
-    ret
+    return
 
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
@@ -215,7 +218,7 @@ ensureDiskValid:
     jc .invalidateBuffers   ;Exit ONLY if a dirty buffer found!
     ;ZF=NZ from test for dirty buffers
 .exit:
-    ret
+    return
 .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
     mov byte [diskChange], -1   ;In disk Change!
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
@@ -242,7 +245,7 @@ ensureDiskValid:
     mov byte [rbx + bufferHdr.bufFATsize], al
     xor ah, ah
     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
-    ret
+    return
 .diskDrvCritErrMedChk:
 ;Critical Errors fall through here
     ;rbp has dpb ptr, di has status word, rsi points to the driver
@@ -260,7 +263,7 @@ ensureDiskValid:
     je .medChkIgnore
     mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
-    ret ;And exit from function with CF set
+    return ;And exit from function with CF set
 
 .diskDrvCritErrBPB:
     ;eax has status word, rbp has dpb ptr
@@ -279,7 +282,7 @@ ensureDiskValid:
     ;Else we fail (Ignore=Fail here)
     mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
-    ret ;And exit from function with CF set
+    return ;And exit from function with CF set
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
@@ -323,7 +326,7 @@ primReqCommonExit:
 ; setup the request in the primary request header space
     pop rax
     lea rbx, primReqHdr ;Put in rbx the primary request header
-    ret
+    return
 
 primReqMedCheckSetup:
 ;Prepare the diskIO packet for mediacheck
@@ -367,7 +370,7 @@ secdReqCharIOReq:
     mov word [rbx + ioReqPkt.status], 0
     mov qword [rbx + ioReqPkt.bufptr], rdi
     mov dword [rbx + ioReqPkt.tfrlen], ecx
-    ret
+    return
 ;If the device which will process this request is a disk device
 ; then we will be requesting 1 sector of data to a disk buffer.
 ;Then we will read the appropriate byte from that buffer to the 

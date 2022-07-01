@@ -87,6 +87,12 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
 ;Prepare to abort. We abort from within!
 ;Currently fall into ^C
 ctrlBreakHdlr:
+    mov al, 03h ;Always guarantee a ^C will be printed
+    call printCaretASCII
+    call printCRLF
+    ;Reset the console back to 0
+    mov byte [vConDrvSwp],  0   ;Set to 0
+.avoidCON:
 ;Handles a control break, juggles stacks and enters int 41h 
 	cli
 	mov rsp, qword [oldRSP]	;Get registers frame
