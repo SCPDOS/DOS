@@ -74,7 +74,7 @@ conDriver:
 
 .conNondestructiveRead:  ;Function 5
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], nonDestInNoWaitReqPkt_size
+    cmp byte [rbx + drvReqHdr.hdrlen], ndInNoWaitPkt_size
     jne .conWriteErrorCode
     cmp byte [.conBuf], 0
     jnz .cnr2
@@ -83,10 +83,10 @@ conDriver:
     jz .cnr1        ;If zero clear => no key, go forwards
     ;Keystroke available
 .cnr0:
-    mov byte [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Move char in al
+    mov byte [rbx + ndInNoWaitPkt.retbyt], al   ;Move char in al
     jmp .conExit
 .cnr1: ;No keystroke available
-    mov word [rbx + nonDestInNoWaitReqPkt.status], 0200h   ;Set busy bit
+    mov word [rbx + ndInNoWaitPkt.status], 0200h   ;Set busy bit
     jmp .conExit
 .cnr2:
     mov al, byte [.conBuf]  ;Copy scancode but dont reset it
@@ -428,7 +428,7 @@ comIntr:
 .comNondestructiveRead:
 ;Acts like a "read one character if there is one" function
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], nonDestInNoWaitReqPkt_size
+    cmp byte [rbx + drvReqHdr.hdrlen], ndInNoWaitPkt_size
     jne .comWriteErrorCode
 .cndr1:
     mov eax, 02h    ;Recieve 
@@ -438,10 +438,10 @@ comIntr:
     jc .comErrorNoCount ;Dont save a char transfer number
     cmp ah, 80h ;Did a "timeout" occur? If so, return with busy = 1
     je .cndr2
-    mov byte [rbx + nonDestInNoWaitReqPkt.retbyt], al   ;Get next char
+    mov byte [rbx + ndInNoWaitPkt.retbyt], al   ;Get next char
     jmp short .comExit
 .cndr2:
-    mov word [rbx + nonDestInNoWaitReqPkt.status], 200h ;Busy bit set
+    mov word [rbx + ndInNoWaitPkt.status], 200h ;Busy bit set
     jmp short .comExit
 
 .comFlushInputBuffers:

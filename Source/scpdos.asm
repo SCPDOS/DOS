@@ -17,6 +17,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %define currSegVBase section.resSeg.vstart
 %include "./Source/Data/staticData.asm"
 %include "./Source/Data/dispTbl.asm"
+%include "./Source/Data/chrIOtbl.asm"
 %include "./Source/Debug/debug.asm"
 %include "./Source/Kernel/FAT/buffun.asm"
 %include "./Source/Kernel/FAT/fat.asm"

@@ -125,11 +125,6 @@ getCharDevSFT:
     clc
     return
 
-testDeviceCharBlock:
-;Input: rdi = SFT pointer
-;Output: ZF=ZE => Block device, ZF=NZ => Char device
-    test word [rdi + sft.wDeviceInfo], devCharDev
-    return
 ;------------------------
 ;   Utility functions   :
 ;------------------------
@@ -164,13 +159,13 @@ checkBreak:
     push rsi
     mov rsi, qword [vConPtr] ;Get pointer to Console device driver
     ;Place command code and a zero status word at the same time
-    mov dword [critReqHdr + nonDestInNoWaitReqPkt.cmdcde], drvNONDESTREAD
+    mov dword [critReqHdr + ndInNoWaitPkt.cmdcde], drvNONDESTREAD
     ;Place the packet size in the hdrlen field
-    mov byte [critReqHdr + nonDestInNoWaitReqPkt.hdrlen], nonDestInNoWaitReqPkt_size
+    mov byte [critReqHdr + ndInNoWaitPkt.hdrlen], ndInNoWaitPkt_size
     lea rbx, critReqHdr
     call goDriver   ;Called with rsi and rbx with appropriate pointers
     ;Check if the busy bit is set (No keystroke available)
-    test word [critReqHdr + nonDestInNoWaitReqPkt.status], drvBsyStatus
+    test word [critReqHdr + ndInNoWaitPkt.status], drvBsyStatus
     jz .charFound
 .exit:
     xor al, al
@@ -179,7 +174,7 @@ checkBreak:
     return
 .charFound:
 ;Keystroke available, proceed
-    mov al, byte [critReqHdr + nonDestInNoWaitReqPkt.retbyt]    ;Get char
+    mov al, byte [critReqHdr + ndInNoWaitPkt.retbyt]    ;Get char
     cmp al, ETX ;BREAK/^C =ASCII 03h
     jne .exit   ;If not equal exit
 ;Now we pull the char out of the buffer

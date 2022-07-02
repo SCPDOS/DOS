@@ -133,7 +133,8 @@ sdaMainSwap:
     buffer1     resb 128  ;Space for one path and file name
     buffer2     resb 128  ;Space for a second path and file name
     CLOCKrecrd  resb 6  ;Clock driver record
-    singleIObyt resb 1  ;For single IO byte buffers
+    ;We add an additional byte to save ah too
+    singleIObyt resw 1  ;For single IO byte buffers
 ;Misc bookkeeping flags and vars
     ;secClusConv resb 1  ;For networking, do we convert sector to cluster?
     rwFlag      resb 1  ;00h=Read, 01h=Write

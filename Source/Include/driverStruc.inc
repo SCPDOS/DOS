@@ -111,7 +111,7 @@ struc ioReqPkt   ;IO Request Packet
 
 endstruc
 
-struc nonDestInNoWaitReqPkt    ;Nondestructive Input No Wait Request Packet
+struc ndInNoWaitPkt    ;Nondestructive Input No Wait Request Packet
     
     drvReqHdrM    ;Common Driver Header Macro
     .retbyt resb 1  ;Byte read non destructively
