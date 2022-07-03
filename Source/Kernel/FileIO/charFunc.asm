@@ -104,6 +104,82 @@ callInt48h:
     popfq
     return
 
+
+asciiSTDIN:
+;Gets chars in ASCII mode from STDIN.
+;
+;^C will terminate application
+;^S will pause screen processing until another key is struck on STDIN
+;^P will toggle the printer echo feature of the vConsole
+;
+;Output: CF=NC : AL = Char that was typed
+;        CF=CY : Error
+    call checkBreak ;Check if there is a ^C on CON
+    push rbx
+    xor ebx, ebx    ;Get STDIN handle in rsi
+    call getCharDevSFT
+    pop rbx
+    retc    ;Return if CF=CY
+    mov ah, 01  ;Non destructively read CON
+    call mainCharIO
+    jz callInt48h   ;If ZF=ZE, BUSY set, no char in al, return thru Int 48h
+    ;Check if we have a ^C, ^S or a ^P to process as needed
+    cmp al, DC3 ;^S ?
+    jne .checkPrintOrExit    ;Nope, check ^P or ^C?
+    xor ah, ah  ;Pull ^S out of the device buffer
+    call mainCharIO
+    jmp .getNextChar  ;Pause processing until char pressed again!
+.checkPrintOrExit:
+    cmp al, DLE ;Do we have ^P?
+    jmp short .printToggle    ;Yes, jmp to toggle print echo
+    cmp al, ETX ;Do we have ^C?
+    jmp short .printToggle    ;Yes, toggle echo and proceed with ^C exit
+    return  ;We dont have ^S, ^P or ^C, no need for extra processing. Return!
+.printToggle:
+    not byte [printEcho]    ;Compliment the flag.
+    push rbx
+    mov ebx, 4  ;PRN handle
+    call getCharDevSFT  ;Get device SFT in rsi here
+    pop rbx
+    retc    ;If CF=CY, exit
+    push rdi
+    mov rdi, rsi    ;Move SFT pointer into rdi
+    test word [rdi + sft.wDeviceInfo], charDevNetSpool  ;Check if net spooler
+    jz .notNet
+    push rax
+    mov eax, 1124h  ;Network redirector! Toggle Remote Printer Echo!
+    int 4Fh
+    pop rax
+    jmp short .printExit    ;Skip the following for local printers
+.notNet:
+    cmp byte [printEcho], 00
+    ;Do some printer magic here
+.printExit:
+    pop rdi
+    return
+.sigNextChar:   ;Signal Int 48h before next char
+    call callInt48h
+.getNextChar:   ;Here get next char
+    mov ah, 01h ;ND read
+    call mainCharIO
+    jz .sigNextChar    ;IF device busy, Int 48h and keep waiting
+    push rbx
+    xor ebx, ebx
+    call getCharDevSFT
+    pop rbx
+    retc    ;Return if STDIN closed
+    xor ah, ah  ;Pull char out of buffer
+    call mainCharIO
+    cmp al, DLE ;Was char ^P, printer echo?
+    jnz .checkBreak2
+    ;Here a Printing flag must be checked! This flag, DS:0F83h is unknown 
+    ; as of yet. 
+.checkBreak2:
+    cmp al, ETX
+    retne   ;Return if not equal
+    jmp ctrlBreakHdlr   ;If it is ^C, error exit!
+
+
 getCharDevSFT:
 ;Gets the appropriate SFT pointer in rsi for the device in bx
 ;Input: bx = zero extended handle number
@@ -135,6 +211,10 @@ printCaretASCII:
     cmp al, asciiCaret  ;Is this char to be printed normally?
     ja charOut_B.in
     cmp al, TAB
+    je charOut_B.in
+    cmp al, NAK
+    je charOut_B.in
+    cmp al, DC4
     je charOut_B.in
     push rax
     mov al, "^" ;Get caret in place

@@ -358,12 +358,15 @@ critFail    equ 3
 
 ;MISC ASCII control chars
 NUL equ 00h ;^@         | ASCII Null
-ETX equ 03h ;^C         | ASCII Break (End of Text)
+ETX equ 03h ;^C         | ASCII Break (End of Text) 
 BEL equ 07h ;^G         | ASCII Bell
 BSP equ 08h ;^H         | ASCII Backspace
 TAB equ 09h ;^I         | ASCII Horizontal Tab
 LF  equ 0Ah ;^J         | ASCII Line Feed
 CR  equ 0Dh ;^M         | ASCII Carriage Return
+DLE equ 10h ;^P         | ASCII Data Link End (Toggle Print Echo)
+DC3 equ 13h ;^S         | ASCII Device Control 3 (Toggle Scroll Lock)
+DC4 equ 14h ;^T         | ASCII Device Control 4
 NAK equ 15h ;^U         | ASCII Negative Acknowledgement
 ETB equ 17h ;^W         | ASCII End of Transmission Block
 EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
