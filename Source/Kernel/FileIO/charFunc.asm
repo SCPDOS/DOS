@@ -736,7 +736,7 @@ buffCharInput_BE:  ;ah = 0Ah
     repne scasb ;Search for the char to start printing from
     pop rdi
     jne .fforceExit ;If char not found, return
-    not ecx
+    not cl
     add cl, bl
     sub cl, bh
     return

@@ -803,13 +803,17 @@ debugFinal:
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
-    lea rdx, tmpBuffer
-    mov ah, 0Ah  ;Buffered input
-    int 41h
     mov ah, 02h
     mov dl, 0Ah
     int 41h
+    mov ah, 09h
+    lea rdx, .str
+    int 41h
+    lea rdx, tmpBuffer
+    mov ah, 0Ah  ;Buffered input
+    int 41h
     jmp short l1
+.str: db "C:\>$"
 ;l2:
 ;    mov ah, 07h
 ;    int 41h
