@@ -3,7 +3,7 @@ commonStrat:
     mov qword [reqHdrPtr], rbx
     ret
 nulStrat:
-    mov word [rbx + drvReqHdr.status], 0100h    ;Set done bit directly
+    mov word [rbx + drvReqHdr.status], drvDonStatus    ;Set done bit directly
 nulIntr:
     ret
 conDriver:
