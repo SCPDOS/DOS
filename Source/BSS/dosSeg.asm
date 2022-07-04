@@ -59,7 +59,7 @@ vConBuf:    ;Proper buffer symbol
     printEcho   resb 1  ;If 0, no echo. Non-zero => Echo to PRN
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
     switchChar  resb 1  ;Editable by 41h/37h. Set to / by default
-    vConCursor  resb 1     ;Inc on each char output, regardless of redirection
+    vConErr     resb 1  ;Inc on each char output call
     ;Is and-ed with 03h, checks for ^C on every fourth char output
 
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
@@ -205,5 +205,9 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     lookahead   resb 1  ;-1 => Lookahead on select Char function calls!  
     sdaLen      equ     $ - sda 
     sdaMSLen    equ     $ - sda
+
+    ;Prevent toggling print if in the middle of reading an extended ASCII char
+inExtASCII:
+    noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
 
     dSegLen     equ     $

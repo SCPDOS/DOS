@@ -79,6 +79,7 @@ mainCharIO:
     lea rbx, secdReqHdr
     call goDriverChar   ;GoDriver with an SFT in rsi
     mov di, word [secdReqHdr + drvReqHdr.status]    ;Get status
+    test edi, drvErrStatus
     jnz .error
 .ignoreRet:
     cmp byte [secdReqHdr + drvReqHdr.cmdcde], drvNONDESTREAD
@@ -91,7 +92,7 @@ mainCharIO:
     and ah, (drvBsyStatus >> 8) ;Set ZF=ZE if BSY set on for NDRead commands
     call dosPopRegs ;Get back the context
     mov ax, word [singleIObyt]  ;Get back OG high byte and return char in al
-    ret ;Return to caller
+    return ;Return to caller
 .error:
     ;cl has flags
     mov ah, cl

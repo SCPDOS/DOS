@@ -56,6 +56,32 @@ endstruc
     drvErrStatus    equ 8000h  
     drvDonStatus    equ 0100h
     drvBsyStatus    equ 0200h
+
+;Driver Attribute Word bit meanings
+    devDrvConIn    equ 1h  ;If set, device is CON input
+    devDrvConOut   equ 2h  ;If set, device is CON output
+    devDrvNulDev   equ 4h  ;If set, device is NULL device
+    devDrvClockDev equ 8h  ;If set, device is CLOCK device
+    devDrvFastOut  equ 10h ;If set, device supports INT 49h
+    devDrvExtFun   equ 40h ;If set, functions 13, 17, 18 supported (must be)
+    devDrvIOCTL2   equ 80h ;If set, IOCTL function 19 supported
+    devDrvHdlCTL   equ 800h ;If set, Open, Close and Rem media supported (must)
+    devDrvIOCTL    equ 4000h ;If set, Generic IOCTL supported
+    devDrvChar     equ 8000h ;If set, Char device
+;Bit 0 1=console input
+;    1 1=console output (character devices)
+;    2 1=NUL device
+;    3 1=CLOCK device
+;    4 1=INT 49 output (CON)
+;    6 1=extended functions supported (13,17,18) (3.2+)
+;    7 1=query IOCTL function supported (19) (5.0+)
+;   11 1=open/close/removable media supported (3.0+)
+;   13 1=output until busy supported (character devices) (3.0+)
+;      1=media descriptor in FAT required (block devices)
+;   14 1=IOCTL supported
+;   15 0=block device
+;      1=character device
+
 ;Driver structures
 
 %macro drvReqHdrM 0 ;Driver Request Header Macro
