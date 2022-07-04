@@ -53,8 +53,10 @@ mainCharIO:
 ;    .desptr resq 1
 
     ;Setup parts of the req ptr AS IF IT WERE FOR IO
+    push rbx    ; PRESERVE THE STATE OF RBX OR GOD HELP YOU ALL!!!!!
     lea rbx, singleIObyt   ;Get lea of return byte pointer
     mov qword [secdReqHdr + ioReqPkt.bufptr], rbx
+    pop rbx
     mov dword [secdReqHdr + ioReqPkt.tfrlen], 1 ;Request 1 byte if read/write
     mov word [singleIObyt], ax  ;Save al for transfer and ah for preservation
     test word [rsi + sft.wDeviceInfo], devRedirDev

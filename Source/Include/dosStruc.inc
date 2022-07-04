@@ -359,6 +359,7 @@ critFail    equ 3
 ;MISC ASCII control chars
 NUL equ 00h ;^@         | ASCII Null
 ETX equ 03h ;^C         | ASCII Break (End of Text) 
+ACK equ 06h ;^F         | ASCII Acknowledgement
 BEL equ 07h ;^G         | ASCII Bell
 BSP equ 08h ;^H         | ASCII Backspace
 TAB equ 09h ;^I         | ASCII Horizontal Tab
@@ -375,3 +376,15 @@ SPC equ 20h ;Printable  | ASCII Space
 DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
 
 asciiCaret  equ 20h ;Used to check which chars need to be printed with caret
+;Extended Ascii Codes
+eF1     equ 3Bh ;F1 second byte
+eF2     equ 3Ch ;F2 second byte
+eF3     equ 3Dh ;F3 second byte
+eF4     equ 3Eh ;F4 second byte
+eF5     equ 3Fh ;F5 second byte
+eF6     equ 40h ;F6 second byte
+eF7     equ 41h ;F7 second byte
+eCursL  equ 4Bh ;Cursor Left second byte
+eCursR  equ 4Dh ;Cursor Right second byte
+eIns    equ 52h ;Insert second byte
+eDel    equ 53h ;DEL second byte (not necessarily delete key)

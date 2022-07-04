@@ -400,6 +400,9 @@ conInit:    ;Rather than keeping this resident... do it here
     lea rax, qword [rbp + clkHdr]
     mov qword fs:[clockPtr], rax
 
+    ;Fix the oem ESC function handler address
+    lea rax, qword [rbp + editKeys]
+    mov qword fs:[oemKeyFunc], rax
 ;------------------------------------------------;
 ;         Link DOS to temporary Buffer           ;
 ;------------------------------------------------;
@@ -800,7 +803,11 @@ debugFinal:
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
-    mov ah, 01h  ;Write with echo
+    lea rdx, tmpBuffer
+    mov ah, 0Ah  ;Buffered input
+    int 41h
+    mov ah, 02h
+    mov dl, 0Ah
     int 41h
     jmp short l1
 ;l2:
@@ -1086,3 +1093,4 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
+tmpBuffer db 80h, 00h, (80h-2) dup (00)

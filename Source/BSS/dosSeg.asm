@@ -144,6 +144,8 @@ sdaMainSwap:
     spliceFlag  resb 1  ;01 = file name and directory name together
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
+    vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)
+
     workingDrv  resb 1  ;Working drive number
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
@@ -209,5 +211,4 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
-
     dSegLen     equ     $

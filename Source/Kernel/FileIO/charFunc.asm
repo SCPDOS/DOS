@@ -73,6 +73,7 @@ charOut_B:       ;ah = 02h
     cmp al, TAB
     jne .skipCurs   ;Treat as normal
     ;TAB key here
+.tab:
     push rcx
     movzx ecx, byte [vConCursPos]
     or cl, ~7
@@ -197,8 +198,7 @@ printString_B:      ;ah = 09h
     rete    ;Return if equal
     call charOut_B.in
     jmp short .ps0
-buffCharInput_BE:  ;ah = 0Ah
-;Works as the main input function for the vCon keyboard buffer
+
 checkStdinStatus:  ;ah = 0Bh
 ;Returns the status of the driver controlling vCon
     call vConCtrlCheck  ;Get status (handling special case chars)
@@ -435,7 +435,7 @@ printCaretASCII:
 ;Output: On STDOUT, print char with caret IF valid caret char
 ;First check if the char should be careted, and then print normally if so
     cmp al, asciiCaret  ;Is this char to be printed normally?
-    ja charOut_B.in
+    jae charOut_B.in
     cmp al, TAB
     je charOut_B.in
     cmp al, NAK
@@ -502,3 +502,288 @@ vConSwapDriver:
     mov qword [vConAltSFTPtr], rdi ;Save the SFT ptr in var
     pop rdi
     return
+
+;--------------------------------------------------
+;      Main Keyboard Buffered Input Function      :
+;--------------------------------------------------
+buffCharInput_BE:  ;ah = 0Ah
+;Buffer pointer in rdx
+; byte [rdx + 0], buffer length
+; byte [rdx + 1], number of chars in buffer
+; byte [rdx + 2], buffer start
+; If [rdx+2 + [rdx + 1]] == CR => Enable Function Edit keys
+;Register use
+; dh = Char offset in internal buffer
+; dl = Buffer length
+; bh = Char offset in user buffer
+; bl = Number of chars already in the buffer
+; rdi = Internal buffer
+; rsi = User buffer
+    mov rsi, rdx
+    lodsw   ;Get buffer metadata in ax
+    test al, al
+    retz    ;If buffer length zero, return
+    movzx ebx, ah   ;Move buffer number of chars in buffer into ebx
+    cmp al, bl  ;Compare the buffer length to the number of chars in the buffer
+    jbe .avoidcheck
+    cmp byte [rsi + rbx], CR     ;zero extended through rbx
+    je .functionKeyOk
+.avoidcheck:
+    xor bl, bl  ;Reset number of chars in buffer to 0
+.functionKeyOk:
+    movzx edx, al  ;Move the buffer length to dl to use as buffer counter
+    dec dl  ;One less char to make space for terminating 0Dh
+.breakEP:
+    mov al, byte [vConCursPos]  ;Set the current buffer cnt to curs. pos.
+    mov byte [vConCurCnt], al
+    push rsi    ;Push user buffer address
+    lea rdi, vConBuffer
+    mov byte [vConInsert], 0    ;Set insert mode off by default
+.mainLoop:
+    call charIn_B   ;Get a char in AL from 41/08h
+    cmp al, LF
+    jne .checkControlChars
+.mainLoop2:
+    call charIn_B
+.checkControlChars:
+    cmp al, ACK
+    je .mainLoop2   ;Get another char
+    cmp al, byte [oemESC]   ;Is it our ESC key?
+    je .escape
+    cmp al, DEL
+    je .delete
+    cmp al, BSP
+    je .delete
+    cmp al, ETB
+    ;Add space for patched jump instructions
+    db 5 dup (90h)  ;NOP
+    cmp al, NAK
+    db 5 dup (90h)
+    cmp al, CR
+    je .carriageReturn
+    cmp al, LF
+    je .lineFeed
+    cmp al, byte [oemBreak] ;Is this our Break key?
+    je .break
+.checkIfCanInsert:
+    cmp dh, dl
+    jae .bufOflw
+    stosb   ;Store the byte and increment rdi!
+    inc dh  ;Inc the count of bytes in the buffer
+    call printCaretASCII    ;Print the char with a caret if needed or as is!
+    cmp byte [vConInsert], 00h  ;Are we in insert mode? 0 = No, 1 = Yes
+    jne .mainLoop2
+    ;IF not in insert mode, we fall here
+    ;Here we follow the chars in the user buffer so we can overwrite 
+    ; or insert chars if needed.
+    cmp bh, bl  ;IS the number of chars in the buffer equal to the number placed
+    jae .mainLoop2  ;If geq dont follow in user buffer
+    inc rsi ;Otherwise, goto the next char in the user buffer
+    inc bh  ;Incrememnt the counter of the char in user buffer we now point at
+    jmp short .mainLoop2
+.bufOflw:
+;Buffer overflow
+    mov al, BEL ;Sound the bell
+    call charOut_B.in   ;Call this with char in al
+    jmp short .mainLoop2
+.break:
+;Break, Place a "\", and do a CRLF
+    mov al, "\"
+    call charOut_B.in
+    pop rsi ;Realign stack
+.breakAlt:  ;Enter with stack aligned, print tab aligned CRLF
+    call printCRLF
+    ;Align to next tabstop
+    call charOut_B.tab
+    jmp .breakEP
+.carriageReturn:
+    stosb
+    call charOut_B.in
+    pop rdi ;User buffer address was pushed 
+    mov byte [rdi - 1], dh  ;Save count of chars stored
+    inc dh  ;Inc count of chars by one (add the terminating CR)
+.carriageReturnAlt: ;EP without affecting buffer counts
+    lea rsi, vConBuffer
+    movzx ecx, dh   ;Move chars between buffers now
+    repz movsb  ;If the inc dh cause an overflow, dont copy! 
+    return
+.lineFeed:
+    call printCRLF
+    jmp .mainLoop2
+.delete:
+    call .removeChar
+    jmp .mainLoop2
+.removeChar:
+    test dh, dh ;Is char count 0?
+    jz .normalChar   ;If so, skip going back!
+    call .vConErase
+    mov al, byte [rdi]  ;Get the byte that was just erased
+    cmp al, SPC
+    jae .normalChar
+    cmp al, TAB
+    je .eraTab
+    cmp al, NAK
+    je .normalChar
+    cmp al, DC4
+    je .normalChar
+    call .vConEraseNoDec    ;Else, was not a normal char. Remove caret prefix
+.normalChar:
+    cmp byte [vConInsert], 00   ;We in insert mode?
+    retne ;Yes, return
+    test bh, bh ;Beginning of user buffer?
+    retz    ;Yes, return
+    dec rsi ;Else, go back a space in the user buffer
+    dec bh
+    return
+.eraTab:
+;Remember, the tab char is placed in the buffer but the vCon has 
+; up to a tab stop worth of space chars printed
+    push rdi
+    dec rdi
+    std ;Go backwards
+    movzx ecx, dh    ;Use as counter
+    mov al, SPC
+    push rbx
+    mov ebx, 7
+    jecxz .onTabstop
+.scanString:
+    scasb   ;Is rdi pointing to a space or ctrl char? (also dec scasb)
+    jbe .notChar    ;No, skip handling
+    cmp byte [rdi + 1], TAB ;Was the char a tab?
+    je .tabChar
+    dec bl
+.notChar:
+    loop .scanString
+.onTabstop:
+    sub bl, [vConCurCnt]    ;Subtract the current count in internal from bl
+.tabChar:
+    sub bl, dh  ;Same on tabstop
+    add cl, bl
+    and cl, 7
+    pop rbx
+    pop rdi
+    cld
+    jz .normalChar
+    ;Now erase all the spaces placed on the vCon
+.vConDelTab:
+    call .vConEraseNoDec
+    loop .vConDelTab
+    jmp .normalChar
+.vConErase:
+;Erase the char on the vCon
+;Return through the output function
+    dec rdi ;Go back a space in the 
+    dec dh  ;Decrement char count in the buffer
+.vConEraseNoDec:
+    mov al, BSP ;Move cursor back
+    call charOut_B.in
+    mov al, SPC ;Replace with a space
+    call charOut_B.in
+    mov al, BSP ;Move cursor back again
+    jmp charOut_B.in    ;Return to caller through charOut_B return
+.escape:
+;ESCAPE, meaning null here. This technique allows a user to install
+; a custom handler to handle the extended ascii keys if they wish, 
+; including the function keys.
+    jmp [oemKeyFunc]    ;Jump to the "OEM "address here
+.f2:
+    call .fCommon2
+    jmp short .fCommon
+.f3:
+    movzx ecx, bl  ;Get chars in user buffer
+    sub cl, bh  ;Sub our current position
+    jmp short .fCommon
+.f1:
+    mov ecx, 1  ;Get one char
+.fCommon:
+    mov byte [vConInsert], 0    ;Turn off insert if on
+    cmp dh, dl  ;Are we already at the end of internal buffer?
+    je .mainLoop2
+    cmp bh, bl  ;Are we already at the end of user stored string?
+    je .mainLoop2
+    ;Else, copy byte by byte, and retain char in al
+    lodsb
+    stosb
+    call printCaretASCII    ;Print caret if necessary, else print normal
+    inc bh
+    inc dh
+    loop .fCommon   ;Keep loading until end of string or buffers
+    jmp .mainLoop2
+.f4:
+    call .fCommon2
+    add rsi, rcx
+    add bh, cl
+    jmp .mainLoop2
+.fCommon2:
+    call charIn_B   ;Get a char in al
+    cmp al, byte [oemESC]   ;IS this the escape char?
+    jne .fnotEscape
+    ;Get another char if they typed escape and force it in the buffer
+    ; Do not return to caller
+    call charIn_B
+.fforceExit:
+    pop rcx ;Get original return address from stack
+    jmp .mainLoop2
+.fnotEscape:
+    movzx ecx, bl   ;Zero extend to rcx
+    sub cl, bh
+    jz .fforceExit
+    dec ecx
+    jz .fforceExit
+    push rdi
+    mov rdi, rsi
+    inc rdi
+    repne scasb ;Search for the char to start printing from
+    pop rdi
+    jne .fforceExit ;If char not found, return
+    not ecx
+    add cl, bl
+    sub cl, bh
+    return
+.f5:
+    mov al, "@"
+    call charOut_B.in   ;Print the char
+    pop rdi ;Get old rsi into rdi and push it anew
+    push rdi
+    call .carriageReturnAlt ;Enter with og user buffer ptr in rdi
+    pop rsi ;Pop the old user buffer back into rsi
+    mov bl, dh
+    jmp .breakAlt
+.f6:
+;If the user wants to insert a EOF, they can use F6
+    mov al, EOF
+    jmp .checkIfCanInsert
+.f7:
+;If the user wants to insert a readl ESC char, they can use F7
+    mov al, byte [oemESC]
+    jmp .checkIfCanInsert
+.toggleIns:
+    not byte [vConInsert]   ;Toggle
+    return
+.eDel:
+    cmp bh, bl
+    je .mainLoop2
+    inc bh
+    inc rsi
+    jmp .mainLoop2
+editKeys:
+    call charIn_B   ;Get the next char in al
+    mov ecx, oemKeyTbl_len  ;Get number of entries in table
+    push rdi    ;Preserve rdi
+    lea rdi, oemKeyTbl
+    push rdi
+    ;Each entry is 4 bytes. 1st byte is char, 2nd is reserved, 2nd word is
+    ; offset of function from oemKeyTbl
+.lp:
+    scasb   ;Compare byte 1 to al, inc rdi
+    je .charFound
+    dec ecx ;If this goes to zero, reenter count.
+    jz buffCharInput_BE.mainLoop2
+    add rdi, 3  ;Skip next three bytes
+    jmp short .lp
+.charFound:
+    pop rcx ;Pop back the effective address of the table
+    movzx rdi, word [rdi + 1]   ;Get high word into rdi zero extended
+    add rcx, rdi    ;Add offset from table to table address to get jump addr
+    pop rdi
+    jmp rcx
