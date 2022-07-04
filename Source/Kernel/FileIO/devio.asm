@@ -127,14 +127,15 @@ closeSFT:
     call dosPushRegs
     mov al, drvCLOSE
 openCloseCommon:
+;Only signals an open/close to a block device if SHARE is loaded
     test word [rdi + sft.wDeviceInfo], devRedirDev  ;We a network device?
     jz .exit    ;Exit if so
     test byte [rdi + sft.wDeviceInfo], devCharDev
     mov rdi, qword [rdi + sft.qPtr] ;Get DPB or Device Driver header
     jnz .charDev
     ;Here a disk drive, rdi is a DPB ptr
-    ;cmp byte [02B1], 00    ;Unknown var at 02B1h
-    ;je .exit   ;Exit if it is zero
+    cmp byte [shareFlag], 00    ;Is SHARE loaded?
+    je .exit   ;Exit if it is zero (Share not loaded)
     mov ah, byte [rdi + dpb.bUnitNumber]    ;Get to populate request header
     mov cl, byte [rdi + dpb.bDriveNumber]   ;Get for error if an error occurs
     mov rdi, qword [rdi + dpb.qDriverHeaderPtr]

@@ -65,6 +65,7 @@ vConBuf:    ;Proper buffer symbol
     allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
 ;Server stuff. Default to all zeros (blank)
     shareFlag   resb 1  ;Sharing flag, set to 0 for now (future expansion)
+    ;When share is loaded, this flag is set to -1 !!!!!
     serverCnt   resb 1  ;Increments on each 41h/5D01h call
     machineName resb 16 ;Machine name (Set via 41h/5D01h) (set to SPC)    
 ;Swappable Data Area
