@@ -1,15 +1,12 @@
 diskErr:
     or ah, 00h
     jmp short criticalErrorSetup
-asciiCharDevErr:
-    or ah, 00h
-    jmp short criticalErrorSetup
-binaryCharDevErr:
+charDevErr:
 ;Called with ah with additional bits
     or ah, 38h  ;Ignore,Retry,Fail OK
 criticalErrorSetup:
     mov byte [Int44bitfld], ah  ;Save bitfield
-    mov qword [tmpDPBPtr], rbp  ;rbp should be NULLPTR
+    mov qword [tmpDPBPtr], rbp  ;rbp is the DPB if a disk operation errored
     and edi, 00FFh  ;Save only low byte of error
     ;For now, fall through, but change it later! 
 
@@ -71,7 +68,7 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     jnz .abort
 .exit:
     mov byte [errorDrv], -1 ;Unknown drive (to be set)
-    ret
+    return
 .checkIgnore:
     test byte [Int44bitfld], critIgnorOK
     jnz .exit

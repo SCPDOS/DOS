@@ -98,7 +98,7 @@ mainCharIO:
 .error:
     ;cl has flags
     mov ah, cl
-    ;call charDevHardErr
+    call charDevErr
     cmp al, critRetry   ;Did the user request a retry
     jne .errorIgnore
     ;Fallthrough => Retry

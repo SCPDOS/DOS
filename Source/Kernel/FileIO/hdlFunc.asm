@@ -159,7 +159,7 @@ readCharDev:
     jz .binNoError
     ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
     mov ah, 86h ;Char device, data error signature
-    call binaryCharDevErr   ;ah = has part of the error 
+    call charDevErr   ;ah = has part of the error 
     ;al now has the response
     ;Cannot return Abort as Abort returns to command interpreter through DOS
     cmp al, critIgnore
@@ -199,7 +199,7 @@ readCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .asciiNoError
-    call asciiCharDevErr    ;Call Int 44h
+    call charDevErr    ;Call Int 44h
     ;Now setup number of bytes to transfer to 1 if the user requests retry
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
     mov rdi, rdx    ;Get the buffer position back into rdi
