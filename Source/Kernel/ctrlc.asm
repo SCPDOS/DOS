@@ -8,7 +8,7 @@ criticalErrorSetup:
     mov byte [Int44bitfld], ah  ;Save bitfield
     mov qword [tmpDPBPtr], rbp  ;rbp is the DPB if a disk operation errored
     and edi, 00FFh  ;Save only low byte of error
-    ;For now, fall through, but change it later! 
+    ;For now, fall through, but need much work to change it later! 
 
 
 criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function 

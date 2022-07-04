@@ -68,8 +68,26 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     return 
 .seekend:
 ;Here we are at seekend, seek from end (signed)
+    test word [rdi + sft.wDeviceInfo], devRedirDev
+    jnz .netCheck
+.proceedDisk:
     add edx, dword [rdi + sft.dFileSize]    ;Add to file size
     jmp short .seekset
+.netCheck:
+    test word [rdi + sft.wOpenMode], FCBopenedFile  ;Is this a FCB opened file?
+    jnz .proceedDisk
+    movzx eax, word [rdi + sft.wOpenMode]   ;Get the open mode
+    ;Check it's share mode
+    and eax, 0F0h    ;Isolate share bits
+    cmp eax, denyNoneShare  ;Don't deny? Proceed
+    je .netSeek
+    cmp eax, denyReadShare
+    jne .proceedDisk
+.netSeek:
+    mov eax, 1121h  ;Make net seek from end request
+    int 4fh
+    ;TEMPORARY RETURN!!!
+    return
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 ioctrl:            ;ah = 44h, handle function
 duplicateHandle:   ;ah = 45h, handle function
