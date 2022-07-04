@@ -548,7 +548,7 @@ buffCharInput_BE:  ;ah = 0Ah
 .checkControlChars:
     cmp al, ACK
     je .mainLoop2   ;Get another char
-    cmp al, byte [oemESC]   ;Is it our ESC key?
+    cmp al, byte [extESC]   ;Is it our ESC key?
     je .escape
     cmp al, DEL
     je .delete
@@ -563,7 +563,7 @@ buffCharInput_BE:  ;ah = 0Ah
     je .carriageReturn
     cmp al, LF
     je .lineFeed
-    cmp al, byte [oemBreak] ;Is this our Break key?
+    cmp al, byte [extBreak] ;Is this our Break key?
     je .break
 .checkIfCanInsert:
     cmp dh, dl
@@ -685,7 +685,7 @@ buffCharInput_BE:  ;ah = 0Ah
 ;ESCAPE, meaning null here. This technique allows a user to install
 ; a custom handler to handle the extended ascii keys if they wish, 
 ; including the function keys.
-    jmp [oemKeyFunc]    ;Jump to the "OEM "address here
+    jmp [extKeyFunc]    ;Jmp to user customisable extended key handler here
 .f2:
     call .fCommon2
     jmp short .fCommon
@@ -716,7 +716,7 @@ buffCharInput_BE:  ;ah = 0Ah
     jmp .mainLoop2
 .fCommon2:
     call charIn_B   ;Get a char in al
-    cmp al, byte [oemESC]   ;IS this the escape char?
+    cmp al, byte [extESC]   ;IS this the escape char?
     jne .fnotEscape
     ;Get another char if they typed escape and force it in the buffer
     ; Do not return to caller
@@ -755,7 +755,7 @@ buffCharInput_BE:  ;ah = 0Ah
     jmp .checkIfCanInsert
 .f7:
 ;If the user wants to insert a readl ESC char, they can use F7
-    mov al, byte [oemESC]
+    mov al, byte [extESC]
     jmp .checkIfCanInsert
 .toggleIns:
     not byte [vConInsert]   ;Toggle
@@ -766,24 +766,26 @@ buffCharInput_BE:  ;ah = 0Ah
     inc bh
     inc rsi
     jmp .mainLoop2
+
 editKeys:
+;Our Default Extended keys handler
     call charIn_B   ;Get the next char in al
-    mov ecx, oemKeyTbl_len  ;Get number of entries in table
+    mov ecx, extKeyTbl_len  ;Get number of entries in table
     push rdi    ;Preserve rdi
-    lea rdi, oemKeyTbl
+    lea rdi, extKeyTbl
     push rdi
-    ;Each entry is 4 bytes. 1st byte is char, 2nd is reserved, 2nd word is
-    ; offset of function from oemKeyTbl
+    ;Each entry is 3 bytes. 1st byte is char, 2nd word is
+    ; offset of function from extKeyTbl
 .lp:
-    scasb   ;Compare byte 1 to al, inc rdi
+    scasb   ;Compare byte 1 to al, inc rdi to point to word offset
     je .charFound
     dec ecx ;If this goes to zero, reenter count.
     jz buffCharInput_BE.mainLoop2
-    add rdi, 3  ;Skip next three bytes
+    add rdi, 2  ;Skip next two bytes
     jmp short .lp
 .charFound:
     pop rcx ;Pop back the effective address of the table
-    movzx rdi, word [rdi + 1]   ;Get high word into rdi zero extended
+    movzx rdi, word [rdi]   ;Get high word into rdi zero extended
     add rcx, rdi    ;Add offset from table to table address to get jump addr
     pop rdi
     jmp rcx

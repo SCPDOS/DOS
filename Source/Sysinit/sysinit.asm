@@ -400,9 +400,9 @@ conInit:    ;Rather than keeping this resident... do it here
     lea rax, qword [rbp + clkHdr]
     mov qword fs:[clockPtr], rax
 
-    ;Fix the oem ESC function handler address
+    ;Fix the ext ESC function handler address
     lea rax, qword [rbp + editKeys]
-    mov qword fs:[oemKeyFunc], rax
+    mov qword fs:[extKeyFunc], rax
 ;------------------------------------------------;
 ;         Link DOS to temporary Buffer           ;
 ;------------------------------------------------;
