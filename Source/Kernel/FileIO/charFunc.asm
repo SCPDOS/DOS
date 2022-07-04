@@ -92,13 +92,77 @@ charOut_B:       ;ah = 02h
 .back:
     dec byte [vConCursPos]
     jmp .skipCurs   ;And echo
+
 auxIn_B:        ;ah = 03h
+    call vConCtrlCheck  ;Check if STDIN has a ^C pending regardless
+    mov ebx, 3
+    call getCharDevSFT
+    retc    ;Return if CF set (handle 3 is closed)
+.auxloop:
+    mov ah, 01h ;Do a non-destructive read of rsi (AUX SFT ptr)
+    call mainCharIO
+    jz .signalLoop
+    xor ah, ah  ;Read the char in
+    call mainCharIO
+    return
+.signalLoop:
+    call callInt48h
+    jmp short .auxloop
+
 auxOut_B:       ;ah = 04h
+    push rbx
+    mov ebx, 3  ;STDAUX handle
+    jmp short auxOutCmn
 prnOut_B:       ;ah = 05h
+    push rbx
+    mov ebx, 4  ;STDPRN handle
+auxOutCmn: ;Auxilliary output device common 
+    mov al, dl  ;Get the char into al
+    push rax
+    call vConCtrlCheck  ;Check if STDIN has a ^C pending
+    pop rax
+    push rsi
+    call outputToHandle ;bx has handle, convert to sft ptr and output char!
+    pop rsi
+    pop rbx
+    return
+
 directConIO:    ;ah = 06h
-;Only special thing about this function is that it doesn't wait for input.
+    mov al, dl  ;Move the char to print/subfunction into al
+    cmp al, -1  ;Anything other than -1 means output the char
+    jne outputOnStdout  ;So output on stdout and return via output function
+;Here is the read char direct function
+    xor ebx, ebx    
+    call getCharDevSFT  ;Get the sft pointer in rsi
+    retc    ;Return error if ebx closed
+    mov rbp, qword [oldRSP] ;Get pointer to stack frame
+    mov ah, 01h ;ND read from rsi sft ptr
+    call mainCharIO
+    call callInt48h ;This preserves flags so call here!
+    jnz .readChar
+    or byte [rbp + callerFrame.flags], 40h  ;Set Zero Flag
+    xor al, al  ;Set caller return code to 0
+    return
+.readChar:
+    and byte [rbp + callerFrame.flags], ~40h    ;Clear Zero Flag
+    ;Fallthrough here to get the char at STDIN
 charIn:         ;ah = 07h
 ;Return char in al from STDIN without waiting
+    xor ebx, ebx
+    call getCharDevSFT
+    retc
+    mov ah, 01  ;ND read for char
+    call mainCharIO
+    jnz .getChar
+    mov ah, 84h ;Multitasking keyboard loop
+    int 4Ah
+    call callInt48h
+    jmp short charIn    ;Loop again awaiting the char
+.getChar:
+    ;Get the char in al and exit
+    xor ah, ah
+    call mainCharIO
+    return
 charIn_B:       ;ah = 08h
 ;Return char in al from STDIN
     push rsi
@@ -125,7 +189,6 @@ charIn_B:       ;ah = 08h
 .exit:
     return
 
-
 printString_B:      ;ah = 09h
     mov rsi, rdx    ;Set up for scasb
 .ps0:
@@ -138,8 +201,48 @@ buffCharInput_BE:  ;ah = 0Ah
 ;Works as the main input function for the vCon keyboard buffer
 checkStdinStatus:  ;ah = 0Bh
 ;Returns the status of the driver controlling vCon
+    call vConCtrlCheck  ;Get status (handling special case chars)
+    mov al, 00  ;Set return code to 0 without affecting flags
+    retz    ;If BSY set (no chars available), return with al=00
+    dec al  ;Set al to -1 if char available
+    return  ;Exit
 clearbuffDoFunc:   ;ah = 0Ch
-;Clears any buffers and issues a console command
+;Clears any buffers and issues a console read command (the command in al)
+;If al neq 01, 06 (dl neq -1), 07, 08, 0A, then set al = 0 and return
+    push rax
+    push rdx
+    xor ebx, ebx    ;Handle 0, STDIN
+    call getCharDevSFT  ;Get sft ptr for device
+    jc .skipFlush   ;If the handle is closed, attempt a read regardless
+    mov ah, 04h ;Flush input buffers
+    call mainCharIO ;Remember sft ptr in rsi
+.skipFlush:
+    pop rdx
+    pop rax
+    mov ah, al  ;Move function number into ah
+    cmp al, 06h ;Special case (check if dl == FFh)
+    jne .others
+    cmp dl, 0FFh ;Is the char invalid?
+    jz .bad ;Yes, exit
+    jmp short .callFunction ;Else, call function in ah
+.others:
+    cmp al, 01h
+    je .callFunction
+    cmp al, 07h
+    je .callFunction
+    cmp al, 08h
+    je .callFunction
+    cmp al, 0Ah
+    je .callFunction
+.bad:
+    xor al, al
+    return
+.callFunction:
+    cli ;Prepare to swap stack pointer
+    ;The below address avoids "properly" reentering DOS
+    ;We simply reuse the function dispatch aspect and 
+    ; return the stack pointer to the top.
+    jmp functionDispatch.charFun0CEP    ;Go to the entry point
 ;------------------------
 ;  Primitive functions  :
 ;------------------------
@@ -166,6 +269,10 @@ outputOnStdout:
     pop rbx
     return
 
+outputToHandle:
+;Char to output must be in al
+    call getCharDevSFT  ;Get SFT pointer in rsi and fall into output on SFT
+    retc    ;Return if carry flag set (bx has invalid pointer)
 outputOnSFT:
 ;Output char in al to SFT in rsi
 ;Waits until device is not busy to send char.
@@ -178,15 +285,13 @@ outputOnSFT:
     mov ah, 02h ;Output char in al
     call mainCharIO
     clc
-    ret
+    return
 .signalLoop:
     call callInt48h
     jmp short outputOnSFT
 
-
-
 callInt48h:
-;Preserve full state, including "safetocallint48" flag
+;Preserve full state, including "safetocallint48" flag and flags
     pushfq
     test byte [int48Flag], -1
     jz .exit    ;If zero, not safe

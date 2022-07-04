@@ -50,6 +50,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .fsb1:
     pop rax     ;Get old rax back
     push rax    ;and push it back onto the stack
+.charFun0CEP:
     lea rsp, critStakTop
     sti         ;Reenable interrupts
 
