@@ -115,3 +115,61 @@ mainCharIO:
     inc al
     pop rax
     return
+
+openSFT:
+;Signals an open to a file (e.g. when printer echo is to begin)
+;Input: rdi = SFT pointer
+    call dosPushRegs
+    mov al, drvOPEN
+    jmp short openCloseCommon
+closeSFT:
+;Signals a close to a file (e.g. when printer echo is to end)
+    call dosPushRegs
+    mov al, drvCLOSE
+openCloseCommon:
+    test word [rdi + sft.wDeviceInfo], devRedirDev  ;We a network device?
+    jz .exit    ;Exit if so
+    test byte [rdi + sft.wDeviceInfo], devCharDev
+    mov rdi, qword [rdi + sft.qPtr] ;Get DPB or Device Driver header
+    jnz .charDev
+    ;Here a disk drive, rdi is a DPB ptr
+    ;cmp byte [02B1], 00    ;Unknown var at 02B1h
+    ;je .exit   ;Exit if it is zero
+    mov ah, byte [rdi + dpb.bUnitNumber]    ;Get to populate request header
+    mov cl, byte [rdi + dpb.bDriveNumber]   ;Get for error if an error occurs
+    mov rdi, qword [rdi + dpb.qDriverHeaderPtr]
+.charDev:
+    test word [rdi + drvHdr.attrib], devDrvHdlCTL   ;Can we open/close?
+    jz .exit    ;No, exit!
+    mov rsi, rdi    ;Save driver header in rsi for the request
+    lea rbx, primReqHdr ;Get the primary request header space in rbx
+    movzx eax, ax   ;Zero extend (al = unit num if block, ah = cmdcde)
+.retryEP:
+    mov dword [rbx + 1], eax    ;Store unitnm (if block), cmdcde and 0 status
+    mov byte [rbx], openReqPkt_size ;Same length as closeReqPkt
+    push rax    ;Save the dword
+    call goDriver
+    movzx edi, word [primReqHdr + drvReqHdr.status] ;Get the status
+    test edi, drvErrStatus
+    jz .exitPop
+    ;Error here, check if char or block drive
+    test word [rsi + drvHdr.attrib], devDrvChar
+    jz .blockError
+    ;Char error here
+    mov ah, critCharDev | critData  ;Data on char dev error
+    jmp short .errorCmn
+.blockError:
+    mov al, cl  ;Move drive number into al
+    mov ah, critData    ;Data on block dev error
+.errorCmn:
+;Permit only Abort, Retry or Ignore. Abort doesn't come through.
+    call charDevErr ;Call temperror handler (handler due to change, not ep)
+    mov al, critRetry   ;al returns user response
+    jne .exitPop    ;Ignore, proceed as if nothing happened
+    pop rax ;Get back zero extended eax into eax to store
+    jmp short .retryEP  ;Reset
+.exitPop:
+    pop rax    
+.exit:
+    call dosPopRegs
+    return

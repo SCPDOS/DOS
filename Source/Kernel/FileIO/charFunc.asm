@@ -374,10 +374,10 @@ vConCtrlCheck:
 ; 0Dh or 0Eh
     cmp byte [printEcho], 00
     jnz .echoOn
-    ;Here do something with echo off!
+    call closeSFT   ;Reduce open count for SFT in rdi
     jmp short .printExit
 .echoOn:
-    ;Here do something with echo on!
+    call openSFT    ;Increase open count for SFT in rdi
 .printExit:
     pop rdi
     return
