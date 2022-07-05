@@ -212,4 +212,9 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
+    keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
+    ;Every time this overflows, we read the clock and update the DOS internal
+    ; copy of the date/time record
+    bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
+    ;for saving the current header when quickly doing a second request
     dSegLen     equ     $
