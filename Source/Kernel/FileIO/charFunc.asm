@@ -183,11 +183,9 @@ charIn_B:       ;ah = 08h
     call dosPushRegs
     clc ;Clear CF, write primary header to backup
     call swapPrimaryHeader
-    call readTime
+    call readDateTimeRecord
     stc ;Set CF, write backup to primary header
     call swapPrimaryHeader
-    ;Don't emulate the bit I don't like until we understand when it comes 
-    ; into play. SHARE doesn't affect it. Pehaps Windows?
     call dosPopRegs
 .skipClockRead:
     inc word [keybTicks]

@@ -174,8 +174,3 @@ openCloseCommon:
 .exit:
     call dosPopRegs
     return
-
-readTime:
-;Will read the clock using the primary request header
-    mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
-    return

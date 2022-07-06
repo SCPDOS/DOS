@@ -111,7 +111,7 @@ sdaMainSwap:
 ;Time stuff
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
     monthOfYear resb 1  ;01h - 0Ch (1 - 12)
-    years       resb 1  ;00h - FFh (00 = 1980 - 128 = 2107)
+    years       resb 1  ;00h - 7Fh (00 = 1980 - 127 = 2107)
     daysOffset  resw 1  ;Days since 1-1-1980
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
@@ -209,12 +209,14 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     sdaLen      equ     $ - sda 
     sdaMSLen    equ     $ - sda
 
+;Additional variables NOT in the SDA
+    bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
+    ;for saving the current header when quickly doing a second request
+
     ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
     ;Every time this overflows, we read the clock and update the DOS internal
     ; copy of the date/time record
-    bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
-    ;for saving the current header when quickly doing a second request
     dSegLen     equ     $

@@ -312,21 +312,7 @@ clkDriver:
     pop rcx
     ret
 .clkDate    dw 0    ;Number of days since 01/01/1980
-;When counting the number of days, first compute the number of years since
-; 1980 and your year. 
-;Then, using the table below, find the number of leap years between 1980
-; and (YourYear - 1). 
-;Then do (YourYear - 1980) * 365 + numberOfLeapYears to get the number of 
-; days since 01/01/1980 and 01/01/YourYear.
-;Use the months table to get the number of days in a normal month as leap 
-; years are added using the previous comment.
-;Finally check if the date is after 28th Feb. If it is, check if your year is 
-; a leap year using the table. If it is, add an extra day.
-.clkLeapYears:
-    db 00, 04, 08, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 
-    db 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96
-.clkMonths:
-    db 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+
 ;COM Driver headers and main interrupt strat
 com1Intr:
     mov byte [comIntr.comDevice], 0
