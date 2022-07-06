@@ -109,6 +109,7 @@ sdaMainSwap:
     ctrlCExit   resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
 
 ;Time stuff
+;Read the below two as a word
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
     monthOfYear resb 1  ;01h - 0Ch (1 - 12)
     years       resb 1  ;00h - 7Fh (00 = 1980 - 127 = 2107)

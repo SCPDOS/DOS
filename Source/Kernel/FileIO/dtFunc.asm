@@ -3,14 +3,30 @@
 getDate:           ;ah = 2Ah
     call readDateTimeRecord ;Update date if necessary
     call getUserRegs
-    mov dl, byte [dayOfMonth]
-    mov dh, byte [monthOfYear]
-    movzx ecx, word [years]
+    mov dx, word [dayOfMonth]   ;Read as a word to get monthOfYear in dh
+;    mov dh, byte [monthOfYear]
+    movzx ecx, byte [years]
     mov al, byte [dayOfWeek]
     mov word [rsi + callerFrame.rdx], dx
     mov word [rsi + callerFrame.rcx], cx
     return  ;al is returned as error code
 setDate:           ;ah = 2Bh
+;	CX = year (1980-2099)
+;   DH = month (1-12)
+;	DL = day (1-31)
+;Sanity check values first
+    cmp cx, 120
+    jae .exitBad
+    cmp dh, 12
+    ja .exitBad
+    cmp dl, 31
+    ja .exitBad
+    call writeDate
+    xor al, al
+    return
+.exitBad:
+    mov al, -1
+    return
 getTime:           ;ah = 2Ch
     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
     call getUserRegs
@@ -25,8 +41,13 @@ setTime:           ;ah = 2Dh
 ;------------------------
 ;   Utility functions   :
 ;------------------------
+writeDate:
+    call readDateTimeRecord ;Read current date/time
+    return
+
 readDateTimeRecord:
 ;Will read the clock using the primary request header
+;Preserves all regs except eax and flags
     push rbx
     push rcx
     push rdx
@@ -45,12 +66,7 @@ readDateTimeRecord:
     mov rsi, qword [clockPtr]   ;Get clock driver pointer
     call goDriver
     movzx eax, word [CLOCKrecrd + clkStruc.dateWord]
-    movzx ecx, word [CLOCKrecrd + clkStruc.minutes]    ;cl = Mins, ch = Hours
-    movzx edx, word [CLOCKrecrd + clkStruc.hseconds]   ;dl = hSecs, dh = Secs
-;Here we have:  ax = Days since 1/1/1980, 
-;               cl = Minutes, ch = Hours, 
-;               dl = HSeconds, dh = Seconds
-;
+;Here we have:  ax = Days since 1/1/1980
 ;Updates the internal date fields
 ;Internal time fields are in the clock record
 ;So now we check if the number of days since 1980 are the same.
