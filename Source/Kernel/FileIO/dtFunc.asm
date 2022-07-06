@@ -14,7 +14,7 @@ setDate:           ;ah = 2Bh
 ;	CX = year (1980-2099)
 ;   DH = month (1-12)
 ;	DL = day (1-31)
-    call writeDate
+    call writeDate  ;Set ax to 0 or -1 depending
     return
 getTime:           ;ah = 2Ch
     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
@@ -25,8 +25,35 @@ getTime:           ;ah = 2Ch
     mov word [rsi + callerFrame.rcx], cx
     return  ;al is returned as error code
 setTime:           ;ah = 2Dh
+;   CH = hour (0-23)
+;	CL = minutes (0-59)
+;	DH = seconds (0-59)
+;	DL = hundredths (0-99)
+    cmp ch, 23
+    ja .exitBad
+    cmp cl, 59
+    ja .exitBad
+    cmp dh, 59
+    ja .exitBad
+    cmp dl, 99
+    ja .exitBad
+;Now we read date (updating internal count if necessary)
+    call readDateTimeRecord
+    lea rbx, CLOCKrecrd ;Read into clock record
+    movzx eax, word [daysOffset]    ;Get day offset into eax
+    mov word [rbx + clkStruc.dateWord], ax  ;Write CLOCK Record
+    mov word [rbx + clkStruc.minutes], cx
+    mov word [rbx + clkStruc.hseconds], dx
+    mov ecx, 6
+    xor rbp, rbp    ;Tell it we are a chardev
+    call primReqWriteSetup   ;rbx now points to request header
+    mov rsi, qword [clockPtr]   ;Get clock driver pointer
+    call goDriver
+    xor al, al
     return
-
+.exitBad:
+    mov al, -1
+    return
 ;------------------------
 ;   Utility functions   :
 ;------------------------
@@ -37,8 +64,59 @@ writeDate:
     ja .exitBad
     cmp dl, 31
     ja .exitBad
-    call readDateTimeRecord ;Read current date/time
-    xor al, al
+    mov word [dayOfMonth], dx   ;Write as a word
+    ;mov byte [monthOfYear], dh
+    mov byte [years], cl    ;Save the years count
+    call setDaysInFeb   ;Set days in february this year
+    mov ch, cl ;Get years count in ch
+    and cl, 4   ;Get the number of years to the current 4 year bunch
+    and ch, 3   ;Get the offset into the current 4 year bunch
+    movzx eax, cl ;Zero extend to eax
+    mov ebx, 366+3*365  ;Move number of days in 4 year bunch to ebx
+    mul ebx ;Multiply number of years in 4 year bunch with days in 4 year bunch
+    ;eax has the number of days from 01/01/1980 to 01/01/start of 4 year bunch
+    movzx ecx, ch ;Zero extend ch to ecx
+.addYears:
+    jecxz .addLeap
+    add eax, 365    ;Add the days in the normal years
+    dec ecx
+    jmp short .addYears
+.addLeap:
+    add eax, 366    ;Add the days in the leap year
+    mov edx, eax    ;Save this number in edx
+    ;Now to add day offset
+    movzx ecx, byte [monthOfYear]
+    lea rsi, monthsTbl
+.addDaysInMonth:
+    dec ecx ;Turn ecx to a 0 based count and decrement
+    jecxz .addMonthOffset
+    lodsb   ;Get the number of days in the month in al
+    movzx eax, al
+    add edx, eax
+    jmp short .addDaysInMonth
+.addMonthOffset:
+    movzx ecx, byte [dayOfMonth]
+    dec ecx
+    add edx, ecx    ;Add month offset
+    ;edx has the number of days since 01/01/1980
+    mov word [daysOffset], dx   ;Store!
+;Now read and then write CLOCKrecrd
+    lea rbx, CLOCKrecrd ;Read into clock record
+    mov ecx, 6
+    xor rbp, rbp    ;Tell it we are a chardev
+    call primReqReadSetup   ;rbx now points to request header
+    mov rsi, qword [clockPtr]   ;Get clock driver pointer
+    call goDriver
+;Now we change daycount and write it back
+    movzx eax, word [daysOffset]    ;Get day offset into eax
+    lea rbx, CLOCKrecrd ;Read into clock record
+    mov word [rbx + clkStruc.dateWord], ax
+    mov ecx, 6
+    xor rbp, rbp    ;Tell it we are a chardev
+    call primReqWriteSetup   ;rbx now points to request header
+    mov rsi, qword [clockPtr]   ;Get clock driver pointer
+    call goDriver
+    call setDayofWeek
     return
 .exitBad:
     mov al, -1
