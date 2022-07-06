@@ -1,8 +1,24 @@
 ;Major kernel date time functions and subroutines
 
 getDate:           ;ah = 2Ah
+    call readDateTimeRecord ;Update date if necessary
+    call getUserRegs
+    mov dl, byte [dayOfMonth]
+    mov dh, byte [monthOfYear]
+    movzx ecx, word [years]
+    mov al, byte [dayOfWeek]
+    mov word [rsi + callerFrame.rdx], dx
+    mov word [rsi + callerFrame.rcx], cx
+    return  ;al is returned as error code
 setDate:           ;ah = 2Bh
 getTime:           ;ah = 2Ch
+    call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
+    call getUserRegs
+    mov cx, word [CLOCKrecrd + clkStruc.hours]
+    mov dx, word [CLOCKrecrd + clkStruc.hseconds]
+    mov word [rsi + callerFrame.rdx], dx
+    mov word [rsi + callerFrame.rcx], cx
+    return  ;al is returned as error code
 setTime:           ;ah = 2Dh
     return
 
