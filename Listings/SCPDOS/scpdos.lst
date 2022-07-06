@@ -2620,8 +2620,8 @@
     64 000000BB 6215                <1>     dw parseFilenameFCB - kDispTbl    ;AH = 29H, FILE OPERATION       FCB
     65 000000BD F813                <1>     dw getDate - kDispTbl             ;AH = 2AH, TIME AND DATE
     66 000000BF 1F14                <1>     dw setDate - kDispTbl             ;AH = 2BH, TIME AND DATE
-    67 000000C1 3B14                <1>     dw getTime - kDispTbl             ;AH = 2CH, TIME AND DATE
-    68 000000C3 5C14                <1>     dw setTime - kDispTbl             ;AH = 2DH, TIME AND DATE
+    67 000000C1 2514                <1>     dw getTime - kDispTbl             ;AH = 2CH, TIME AND DATE
+    68 000000C3 4614                <1>     dw setTime - kDispTbl             ;AH = 2DH, TIME AND DATE
     69 000000C5 DE27                <1>     dw setResetVerify - kDispTbl      ;AH = 2EH, DISK MANAGEMENT
     70 000000C7 6315                <1>     dw getDTA - kDispTbl              ;AH = 2FH, RECORD OPERATION     F/H
     71 000000C9 EC27                <1>     dw getDOSversion - kDispTbl       ;AH = 30H, MISC. SYS. FUNCTION
@@ -5275,174 +5275,173 @@
     40                              <1> ;	CX = year (1980-2099)
     41                              <1> ;   DH = month (1-12)
     42                              <1> ;	DL = day (1-31)
-    43                              <1> ;Sanity check values first
-    44 00001488 6681F97800          <1>     cmp cx, 120
-    45 0000148D 7312                <1>     jae .exitBad
-    46 0000148F 80FE0C              <1>     cmp dh, 12
-    47 00001492 770D                <1>     ja .exitBad
-    48 00001494 80FA1F              <1>     cmp dl, 31
-    49 00001497 7708                <1>     ja .exitBad
-    50 00001499 E828000000          <1>     call writeDate
-    51 0000149E 30C0                <1>     xor al, al
-    52                              <1>     return
+    43 00001488 E823000000          <1>     call writeDate
+    44                              <1>     return
     18                              <2> %%_ret:
-    19 000014A0 C3                  <2>  ret
+    19 0000148D C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-    53                              <1> .exitBad:
-    54 000014A1 B0FF                <1>     mov al, -1
-    55                              <1>     return
+    45                              <1> getTime:           ;ah = 2Ch
+    46 0000148E E839000000          <1>     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
+    47 00001493 E8A90F0000          <1>     call getUserRegs
+    48 00001498 668B0D(6FC50300)    <1>     mov cx, word [CLOCKrecrd + clkStruc.hours]
+    49 0000149F 668B15(70C50300)    <1>     mov dx, word [CLOCKrecrd + clkStruc.hseconds]
+    50 000014A6 66895618            <1>     mov word [rsi + callerFrame.rdx], dx
+    51 000014AA 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx
+    52                              <1>     return  ;al is returned as error code
     18                              <2> %%_ret:
-    19 000014A3 C3                  <2>  ret
+    19 000014AE C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-    56                              <1> getTime:           ;ah = 2Ch
-    57 000014A4 E823000000          <1>     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
-    58 000014A9 E8930F0000          <1>     call getUserRegs
-    59 000014AE 668B0D(6FC50300)    <1>     mov cx, word [CLOCKrecrd + clkStruc.hours]
-    60 000014B5 668B15(70C50300)    <1>     mov dx, word [CLOCKrecrd + clkStruc.hseconds]
-    61 000014BC 66895618            <1>     mov word [rsi + callerFrame.rdx], dx
-    62 000014C0 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx
-    63                              <1>     return  ;al is returned as error code
+    53                              <1> setTime:           ;ah = 2Dh
+    54                              <1>     return
     18                              <2> %%_ret:
-    19 000014C4 C3                  <2>  ret
+    19 000014AF C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-    64                              <1> setTime:           ;ah = 2Dh
-    65                              <1>     return
+    55                              <1> 
+    56                              <1> ;------------------------
+    57                              <1> ;   Utility functions   :
+    58                              <1> ;------------------------
+    59                              <1> writeDate:
+    60 000014B0 6681F97800          <1>     cmp cx, 120
+    61 000014B5 7312                <1>     jae .exitBad
+    62 000014B7 80FE0C              <1>     cmp dh, 12
+    63 000014BA 770D                <1>     ja .exitBad
+    64 000014BC 80FA1F              <1>     cmp dl, 31
+    65 000014BF 7708                <1>     ja .exitBad
+    66 000014C1 E806000000          <1>     call readDateTimeRecord ;Read current date/time
+    67 000014C6 30C0                <1>     xor al, al
+    68                              <1>     return
     18                              <2> %%_ret:
-    19 000014C5 C3                  <2>  ret
+    19 000014C8 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-    66                              <1> 
-    67                              <1> ;------------------------
-    68                              <1> ;   Utility functions   :
-    69                              <1> ;------------------------
-    70                              <1> writeDate:
-    71 000014C6 E801000000          <1>     call readDateTimeRecord ;Read current date/time
-    72                              <1>     return
+    69                              <1> .exitBad:
+    70 000014C9 B0FF                <1>     mov al, -1
+    71                              <1>     return
     18                              <2> %%_ret:
     19 000014CB C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-    73                              <1> 
-    74                              <1> readDateTimeRecord:
-    75                              <1> ;Will read the clock using the primary request header
-    76                              <1> ;Preserves all regs except eax and flags
-    77 000014CC 53                  <1>     push rbx
-    78 000014CD 51                  <1>     push rcx
-    79 000014CE 52                  <1>     push rdx
-    80 000014CF 56                  <1>     push rsi
-    81 000014D0 55                  <1>     push rbp
-    82                              <1> 
-    83 000014D1 66C705(81D80300)00- <1>     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
-    83 000014D9 00                  <1>
-    84 000014DA 488D1D(6CC50300)    <1>     lea rbx, CLOCKrecrd ;Read into clock record
-    85 000014E1 B906000000          <1>     mov ecx, 6
-    86 000014E6 4831ED              <1>     xor rbp, rbp    ;Tell it we are a chardev
-    87                              <1> ; rbp = DPB ptr | NullPtr if a char dev
-    88                              <1> ; rbx = Data storage buffer ptr
-    89                              <1> ; ecx = Number of sectors to transfer
-    90                              <1> ; rdx = Starting sector to read/write from/to | Undefined if a char dev
-    91 000014E9 E8840E0000          <1>     call primReqReadSetup   ;rbx now points to request header
-    92 000014EE 488B35(3CC00300)    <1>     mov rsi, qword [clockPtr]   ;Get clock driver pointer
-    93 000014F5 E8C50B0000          <1>     call goDriver
-    94 000014FA 0FB705(6CC50300)    <1>     movzx eax, word [CLOCKrecrd + clkStruc.dateWord]
-    95                              <1> ;Here we have:  ax = Days since 1/1/1980
-    96                              <1> ;Updates the internal date fields
-    97                              <1> ;Internal time fields are in the clock record
-    98                              <1> ;So now we check if the number of days since 1980 are the same.
-    99                              <1> ;If so, we can skip updating.
-   100 00001501 663B05(E8C30300)    <1>     cmp ax, word [daysOffset]
-   101 00001508 7466                <1>     je .exit    ;Return if equal
-   102 0000150A 3D36AB0000          <1>     cmp eax, 365*120 + 25 + 5  ;Number of days until max date, 31/12/2099
-   103 0000150F 735F                <1>     jnb .exit  ;If it is equal or above (implying we are past max date), exit
-   104 00001511 668905(E8C30300)    <1>     mov word [daysOffset], ax   ;Save this new offset
-   105                              <1>     ;Now want to update years, month and day fields
-   106                              <1>     ;ax has the number of days since 01/01/1980
-   107                              <1>     ;Get days in a 4 year period
-   108 00001518 BBB5050000          <1>     mov ebx, 365*4 + 1
-   109 0000151D 31D2                <1>     xor edx, edx
-   110 0000151F 89D1                <1>     mov ecx, edx  ;Zero ecx
-   111 00001521 F7F3                <1>     div ebx ;Divide # of days since 01/01/1980 into 4 year bunches
-   112                              <1>     ;eax has # of 4 year bunches elapsed since 01/01/1980
-   113                              <1>     ;edx has offset into current 4 year bunch
-   114 00001523 BB6E010000          <1>     mov ebx, 366    ;Number of days in a leap year
-   115 00001528 39DA                <1>     cmp edx, ebx    ;Are we in the first year of this bunch? (The leap year)
-   116 0000152A 7210                <1>     jb .foundBunch
-   117 0000152C 29DA                <1>     sub edx, ebx    ;Subtract edx to hone in on the year we are in
-   118 0000152E FFC1                <1>     inc ecx
-   119 00001530 FFCB                <1>     dec ebx ;Number of days in a normal year
-   120                              <1> .findBunch:
-   121 00001532 39DA                <1>     cmp edx, ebx
-   122 00001534 7206                <1>     jb .foundBunch
-   123 00001536 29DA                <1>     sub edx, ebx
-   124 00001538 FFC1                <1>     inc ecx
-   125 0000153A EBF6                <1>     jmp short .findBunch
-   126                              <1> .foundBunch:
-   127                              <1>     ;If ecx = 0, february has 29 days!
-   128                              <1>     ;eax has number of four year bunches elapsed since 1980
-   129 0000153C C1E002              <1>     shl eax, 2  ;Multiply by 4 to get # of years to start of four year bunch
-   130 0000153F 01C1                <1>     add ecx, eax    ;Add # of years offset in 4 year bunch
-   131                              <1>     ;ecx now has the number of years since 1980
-   132 00001541 E84E000000          <1>     call setDaysInFeb   ;Return in rax the # of days in feb
-   133                              <1> ;edx has number of days into the year we are in
-   134                              <1> ;eax has number of days in Feb for this year
-   135 00001546 488D3510EBFFFF      <1>     lea rsi, monthsTbl
-   136 0000154D 31C9                <1>     xor ecx, ecx    ;Use as month counter
-   137                              <1> .monthSearch:
-   138 0000154F FFC1                <1>     inc ecx ;Start from 1
-   139 00001551 AA                  <1>     stosb   ;Get value in al and inc rsi
-   140 00001552 0FB6C0              <1>     movzx eax, al   ;Zero extend number of days in month
-   141 00001555 39C2                <1>     cmp edx, eax
-   142 00001557 7204                <1>     jb .monthFound
-   143 00001559 29C2                <1>     sub edx, eax  ;Reduce the number of days by the number of days in the month
-   144 0000155B EBF2                <1>     jmp short .monthSearch
-   145                              <1> .monthFound:
-   146                              <1>     ;cl has the month (01h-0Ch)
-   147                              <1>     ;dl has the day of the month - 1
-   148 0000155D FFC2                <1>     inc edx
-   149 0000155F 880D(E6C30300)      <1>     mov byte [monthOfYear], cl
-   150 00001565 8815(E5C30300)      <1>     mov byte [dayOfMonth], dl
-   151 0000156B E806000000          <1>     call setDayofWeek
-   152                              <1> .exit:
-   153 00001570 5D                  <1>     pop rbp
-   154 00001571 5E                  <1>     pop rsi
-   155 00001572 5A                  <1>     pop rdx
-   156 00001573 59                  <1>     pop rcx
-   157 00001574 5B                  <1>     pop rbx
-   158                              <1>     return  ;Return with ZF is date set, or same day
+    72                              <1> 
+    73                              <1> readDateTimeRecord:
+    74                              <1> ;Will read the clock using the primary request header
+    75                              <1> ;Preserves all regs except eax and flags
+    76 000014CC 53                  <1>     push rbx
+    77 000014CD 51                  <1>     push rcx
+    78 000014CE 52                  <1>     push rdx
+    79 000014CF 56                  <1>     push rsi
+    80 000014D0 55                  <1>     push rbp
+    81                              <1> 
+    82 000014D1 66C705(81D80300)00- <1>     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
+    82 000014D9 00                  <1>
+    83 000014DA 488D1D(6CC50300)    <1>     lea rbx, CLOCKrecrd ;Read into clock record
+    84 000014E1 B906000000          <1>     mov ecx, 6
+    85 000014E6 4831ED              <1>     xor rbp, rbp    ;Tell it we are a chardev
+    86                              <1> ; rbp = DPB ptr | NullPtr if a char dev
+    87                              <1> ; rbx = Data storage buffer ptr
+    88                              <1> ; ecx = Number of sectors to transfer
+    89                              <1> ; rdx = Starting sector to read/write from/to | Undefined if a char dev
+    90 000014E9 E8840E0000          <1>     call primReqReadSetup   ;rbx now points to request header
+    91 000014EE 488B35(3CC00300)    <1>     mov rsi, qword [clockPtr]   ;Get clock driver pointer
+    92 000014F5 E8C50B0000          <1>     call goDriver
+    93 000014FA 0FB705(6CC50300)    <1>     movzx eax, word [CLOCKrecrd + clkStruc.dateWord]
+    94                              <1> ;Here we have:  ax = Days since 1/1/1980
+    95                              <1> ;Updates the internal date fields
+    96                              <1> ;Internal time fields are in the clock record
+    97                              <1> ;So now we check if the number of days since 1980 are the same.
+    98                              <1> ;If so, we can skip updating.
+    99 00001501 663B05(E8C30300)    <1>     cmp ax, word [daysOffset]
+   100 00001508 7466                <1>     je .exit    ;Return if equal
+   101 0000150A 3D36AB0000          <1>     cmp eax, 365*120 + 25 + 5  ;Number of days until max date, 31/12/2099
+   102 0000150F 735F                <1>     jnb .exit  ;If it is equal or above (implying we are past max date), exit
+   103 00001511 668905(E8C30300)    <1>     mov word [daysOffset], ax   ;Save this new offset
+   104                              <1>     ;Now want to update years, month and day fields
+   105                              <1>     ;ax has the number of days since 01/01/1980
+   106                              <1>     ;Get days in a 4 year period
+   107 00001518 BBB5050000          <1>     mov ebx, 365*4 + 1
+   108 0000151D 31D2                <1>     xor edx, edx
+   109 0000151F 89D1                <1>     mov ecx, edx  ;Zero ecx
+   110 00001521 F7F3                <1>     div ebx ;Divide # of days since 01/01/1980 into 4 year bunches
+   111                              <1>     ;eax has # of 4 year bunches elapsed since 01/01/1980
+   112                              <1>     ;edx has offset into current 4 year bunch
+   113 00001523 BB6E010000          <1>     mov ebx, 366    ;Number of days in a leap year
+   114 00001528 39DA                <1>     cmp edx, ebx    ;Are we in the first year of this bunch? (The leap year)
+   115 0000152A 7210                <1>     jb .foundBunch
+   116 0000152C 29DA                <1>     sub edx, ebx    ;Subtract edx to hone in on the year we are in
+   117 0000152E FFC1                <1>     inc ecx
+   118 00001530 FFCB                <1>     dec ebx ;Number of days in a normal year
+   119                              <1> .findBunch:
+   120 00001532 39DA                <1>     cmp edx, ebx
+   121 00001534 7206                <1>     jb .foundBunch
+   122 00001536 29DA                <1>     sub edx, ebx
+   123 00001538 FFC1                <1>     inc ecx
+   124 0000153A EBF6                <1>     jmp short .findBunch
+   125                              <1> .foundBunch:
+   126                              <1>     ;If ecx = 0, february has 29 days!
+   127                              <1>     ;eax has number of four year bunches elapsed since 1980
+   128 0000153C C1E002              <1>     shl eax, 2  ;Multiply by 4 to get # of years to start of four year bunch
+   129 0000153F 01C1                <1>     add ecx, eax    ;Add # of years offset in 4 year bunch
+   130                              <1>     ;ecx now has the number of years since 1980
+   131 00001541 E84E000000          <1>     call setDaysInFeb   ;Return in rax the # of days in feb
+   132                              <1> ;edx has number of days into the year we are in
+   133                              <1> ;eax has number of days in Feb for this year
+   134 00001546 488D3510EBFFFF      <1>     lea rsi, monthsTbl
+   135 0000154D 31C9                <1>     xor ecx, ecx    ;Use as month counter
+   136                              <1> .monthSearch:
+   137 0000154F FFC1                <1>     inc ecx ;Start from 1
+   138 00001551 AA                  <1>     stosb   ;Get value in al and inc rsi
+   139 00001552 0FB6C0              <1>     movzx eax, al   ;Zero extend number of days in month
+   140 00001555 39C2                <1>     cmp edx, eax
+   141 00001557 7204                <1>     jb .monthFound
+   142 00001559 29C2                <1>     sub edx, eax  ;Reduce the number of days by the number of days in the month
+   143 0000155B EBF2                <1>     jmp short .monthSearch
+   144                              <1> .monthFound:
+   145                              <1>     ;cl has the month (01h-0Ch)
+   146                              <1>     ;dl has the day of the month - 1
+   147 0000155D FFC2                <1>     inc edx
+   148 0000155F 880D(E6C30300)      <1>     mov byte [monthOfYear], cl
+   149 00001565 8815(E5C30300)      <1>     mov byte [dayOfMonth], dl
+   150 0000156B E806000000          <1>     call setDayofWeek
+   151                              <1> .exit:
+   152 00001570 5D                  <1>     pop rbp
+   153 00001571 5E                  <1>     pop rsi
+   154 00001572 5A                  <1>     pop rdx
+   155 00001573 59                  <1>     pop rcx
+   156 00001574 5B                  <1>     pop rbx
+   157                              <1>     return  ;Return with ZF is date set, or same day
     18                              <2> %%_ret:
     19 00001575 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   159                              <1> 
-   160                              <1> setDayofWeek:
-   161                              <1> ;Sets in the variable the day of the week. 0 = Sunday, 6 = Saturday
-   162 00001576 0FB705(E8C30300)    <1>     movzx eax, word [daysOffset]   ;Get the offset of days since 1/1/1980
-   163 0000157D 0502000000          <1>     add eax, 2   ;1/1/1980 was on a Tuesday so shift up by two
-   164                              <1> ;Take Modulo 7. 7 is non base 2 number so divide instead of anding
-   165 00001582 31D2                <1>     xor edx, edx
-   166 00001584 B907000000          <1>     mov ecx, 7   
-   167 00001589 F7F1                <1>     div ecx  ;Get remainder in dl
-   168 0000158B 8815(EAC30300)      <1>     mov byte [dayOfWeek], dl
-   169                              <1> ;Set ZF to indicate all ok
-   170 00001591 31C0                <1>     xor eax, eax
-   171                              <1>     return
+   158                              <1> 
+   159                              <1> setDayofWeek:
+   160                              <1> ;Sets in the variable the day of the week. 0 = Sunday, 6 = Saturday
+   161 00001576 0FB705(E8C30300)    <1>     movzx eax, word [daysOffset]   ;Get the offset of days since 1/1/1980
+   162 0000157D 0502000000          <1>     add eax, 2   ;1/1/1980 was on a Tuesday so shift up by two
+   163                              <1> ;Take Modulo 7. 7 is non base 2 number so divide instead of anding
+   164 00001582 31D2                <1>     xor edx, edx
+   165 00001584 B907000000          <1>     mov ecx, 7   
+   166 00001589 F7F1                <1>     div ecx  ;Get remainder in dl
+   167 0000158B 8815(EAC30300)      <1>     mov byte [dayOfWeek], dl
+   168                              <1> ;Set ZF to indicate all ok
+   169 00001591 31C0                <1>     xor eax, eax
+   170                              <1>     return
     18                              <2> %%_ret:
     19 00001593 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   172                              <1> 
-   173                              <1> setDaysInFeb:   ;Int 4Fh AX = 121Bh, Set days in february
-   174                              <1> ;Every fourth year has an extra day in feb (!! 2100 exception!!)
-   175                              <1> ;Input: cl = Year - 1980
-   176                              <1> ;Output: al = Number of days in February
-   177 00001594 880D(E7C30300)      <1>     mov byte [years], cl    ;Save this figure
-   178 0000159A F6C103              <1>     test cl, 3   ;Every fourth year, the year is 0
-   179 0000159D 51                  <1>     push rcx
-   180 0000159E 57                  <1>     push rdi
-   181 0000159F B81C000000          <1>     mov eax, 28  ;Usual days in february
-   182 000015A4 B91D000000          <1>     mov ecx, 29  ;Leap year days in february
-   183 000015A9 0F44C1              <1>     cmovz eax, ecx  ;If this is the case move 29 into eax
-   184 000015AC 488D3DABEAFFFF      <1>     lea rdi, qword [monthsTbl + 1]  ;Get second entry in table (Feb is month 2)
-   185 000015B3 AA                  <1>     stosb   ;Store the word in rdi
-   186 000015B4 5F                  <1>     pop rdi
-   187 000015B5 59                  <1>     pop rcx
-   188                              <1>     return
+   171                              <1> 
+   172                              <1> setDaysInFeb:   ;Int 4Fh AX = 121Bh, Set days in february
+   173                              <1> ;Every fourth year has an extra day in feb (!! 2100 exception!!)
+   174                              <1> ;Input: cl = Year - 1980
+   175                              <1> ;Output: al = Number of days in February
+   176 00001594 880D(E7C30300)      <1>     mov byte [years], cl    ;Save this figure
+   177 0000159A F6C103              <1>     test cl, 3   ;Every fourth year, the year is 0
+   178 0000159D 51                  <1>     push rcx
+   179 0000159E 57                  <1>     push rdi
+   180 0000159F B81C000000          <1>     mov eax, 28  ;Usual days in february
+   181 000015A4 B91D000000          <1>     mov ecx, 29  ;Leap year days in february
+   182 000015A9 0F44C1              <1>     cmovz eax, ecx  ;If this is the case move 29 into eax
+   183 000015AC 488D3DABEAFFFF      <1>     lea rdi, qword [monthsTbl + 1]  ;Get second entry in table (Feb is month 2)
+   184 000015B3 AA                  <1>     stosb   ;Store the word in rdi
+   185 000015B4 5F                  <1>     pop rdi
+   186 000015B5 59                  <1>     pop rcx
+   187                              <1>     return
     18                              <2> %%_ret:
     19 000015B6 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$

@@ -14,18 +14,7 @@ setDate:           ;ah = 2Bh
 ;	CX = year (1980-2099)
 ;   DH = month (1-12)
 ;	DL = day (1-31)
-;Sanity check values first
-    cmp cx, 120
-    jae .exitBad
-    cmp dh, 12
-    ja .exitBad
-    cmp dl, 31
-    ja .exitBad
     call writeDate
-    xor al, al
-    return
-.exitBad:
-    mov al, -1
     return
 getTime:           ;ah = 2Ch
     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
@@ -42,7 +31,17 @@ setTime:           ;ah = 2Dh
 ;   Utility functions   :
 ;------------------------
 writeDate:
+    cmp cx, 120
+    jae .exitBad
+    cmp dh, 12
+    ja .exitBad
+    cmp dl, 31
+    ja .exitBad
     call readDateTimeRecord ;Read current date/time
+    xor al, al
+    return
+.exitBad:
+    mov al, -1
     return
 
 readDateTimeRecord:
