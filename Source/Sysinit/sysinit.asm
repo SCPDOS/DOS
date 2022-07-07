@@ -396,13 +396,74 @@ conInit:    ;Rather than keeping this resident... do it here
     lea rax, qword [rbp + conHdr]
     mov qword fs:[vConPtr], rax
 
-    ;Save ptr to ClkHdr in Sysvars
-    lea rax, qword [rbp + clkHdr]
-    mov qword fs:[clockPtr], rax
-
     ;Fix the ext ESC function handler address
     lea rax, qword [rbp + editKeys]
     mov qword fs:[extKeyFunc], rax
+
+;CLOCK init prock
+;Set the time and date using the RTC (if present)
+clkInit:
+   ;Save ptr to ClkHdr in Sysvars first
+    lea rax, qword [rbp + clkHdr]
+    mov qword fs:[clockPtr], rax
+;CH - Hours, in BCD
+;CL - Minutes, in BCD
+;DH - Seconds, in BCD
+    mov ah, 02  ;Read RTC Time
+    int 3Ah
+    jc .clkEnd  ;if error, just exit
+    ;Now set the driver time. Convert From BCD to Decimal
+    movzx eax, ch   ;Hours
+    call .bcd2Bin
+    mov ch, al
+    movzx eax, cl     ;Mins
+    call .bcd2Bin
+    mov cl, al
+    movzx eax, dh   ;Seconds
+    call .bcd2Bin
+    xchg ah, al ;Move seconds to ah, and 0 to al (hseconds)
+    mov edx, eax
+    mov ah, 2Dh ;DOS Set Time
+    int 41h
+;Now get the date from RTC
+;CL - Year, in BCD
+;DH - Month, in BCD
+;DL - Day, in BCD
+    mov ah, 04  ;Read RTC Date
+    int 3Ah
+    jc .clkEnd
+;Year from RTC is assumed to be after 2000 (coz, you know... its 2022)
+    movzx eax, cl   ;Convert Year to Binary
+    call .bcd2Bin
+    movzx ecx, al   ;Zero extend to ecx (because ch needs to be 0)
+    add ecx, 20  ;Add 20 years to turn it to a year offset from 1980
+    movzx eax, dh   ;Get Months
+    call .bcd2Bin
+    mov dh, al  
+    movzx eax, dl   ;Get day
+    call .bcd2Bin
+    mov dl, al
+    mov ah, 2Bh ;DOS Set Date
+    int 41h
+    jmp short .clkEnd
+.bcd2Bin:
+;Converts a packed BCD value in al (zx to eax) to a decimal value in eax
+    push rcx
+    mov ecx, eax
+    and eax, 0Fh ;Delete the upper nybble from al
+    and ecx, 0F0h    ;Isolate the second digit (high nybble)
+    jecxz .b2bexit ;Exit if this is zero
+    shr ecx, 4   ;Shift it to the low nybble
+.b2blp:
+    add al, 10  ;Otherwise, keep adding 10  
+    dec ecx
+    jnz .b2blp
+.b2bexit:
+    pop rcx
+    ret
+.clkEnd:
+   ; mov ah, 2Ah ;Get date
+   ; int 41h
 ;------------------------------------------------;
 ;         Link DOS to temporary Buffer           ;
 ;------------------------------------------------;

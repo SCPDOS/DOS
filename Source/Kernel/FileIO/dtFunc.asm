@@ -69,20 +69,23 @@ writeDate:
     mov byte [years], cl    ;Save the years count
     call setDaysInFeb   ;Set days in february this year
     mov ch, cl ;Get years count in ch
-    and cl, 4   ;Get the number of years to the current 4 year bunch
+    shr cl, 2   ;Get the number of years to the current 4 year bunch
     and ch, 3   ;Get the offset into the current 4 year bunch
     movzx eax, cl ;Zero extend to eax
     mov ebx, 366+3*365  ;Move number of days in 4 year bunch to ebx
     mul ebx ;Multiply number of years in 4 year bunch with days in 4 year bunch
     ;eax has the number of days from 01/01/1980 to 01/01/start of 4 year bunch
     movzx ecx, ch ;Zero extend ch to ecx
+    jecxz .addDay    ;Skip adding years
+    add eax, 366    ;First add for a leap year
 .addYears:
-    jecxz .addLeap
-    add eax, 365    ;Add the days in the normal years
     dec ecx
+    jecxz .addDay    ;Jump if in year after leap year
+    add eax, 365    ;Add the days in the normal years
     jmp short .addYears
 .addLeap:
     add eax, 366    ;Add the days in the leap year
+.addDay:
     mov edx, eax    ;Save this number in edx
     ;Now to add day offset
     movzx ecx, byte [monthOfYear]
