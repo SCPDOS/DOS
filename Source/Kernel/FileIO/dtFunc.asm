@@ -190,7 +190,7 @@ readDateTimeRecord:
     xor ecx, ecx    ;Use as month counter
 .monthSearch:
     inc ecx ;Start from 1
-    stosb   ;Get value in al and inc rsi
+    lodsb   ;Get value in al and inc rsi
     movzx eax, al   ;Zero extend number of days in month
     cmp edx, eax
     jb .monthFound

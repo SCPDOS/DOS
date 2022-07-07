@@ -462,8 +462,6 @@ clkInit:
     pop rcx
     ret
 .clkEnd:
-   ; mov ah, 2Ah ;Get date
-   ; int 41h
 ;------------------------------------------------;
 ;         Link DOS to temporary Buffer           ;
 ;------------------------------------------------;
