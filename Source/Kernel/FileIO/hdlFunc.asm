@@ -40,10 +40,11 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     ;Error code and exit
     ;al (eax) has error code for bad file handle
     mov word [errorExCde], ax
-.exitBad:
+.exitReqBad:
     mov byte [errorLocus], eLocUnk  ;Unknown Locus
     mov byte [errorAction], eActUsr ;Reinput data
     mov byte [errorClass], eClsNotFnd
+.exitBad:
     call getUserRegs    ;Get user regs in rsi
     or byte [rsi + callerFrame.flags], 1    ;Set CF
     return 
@@ -52,7 +53,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     jb .validFunction
     ;Error code and exit
     mov ax, errInvFnc
-    jmp short .exitBad
+    jmp short .exitReqBad
 .validFunction:
     cmp al, 1
     ja .seekend
@@ -64,6 +65,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     mov dword [rdi + sft.dCurntOff], edx ;Store the new offset
     call getUserRegs    ;Get user regs in rsi
     mov dword [rsi + callerFrame.rdx], edx
+.seekExit:
     xor al, al  ;Return OK!
     return 
 .seekend:
@@ -86,8 +88,12 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
 .netSeek:
     mov eax, 1121h  ;Make net seek from end request
     int 4fh
-    ;TEMPORARY RETURN!!!
-    return
+    jnc .seekExit ;If the request returns with CF clear, there was no error
+    mov word [errorExCde], ax   ;Error code in ax if CF=CY
+    mov byte [errorLocus], eLocNet  ;Unknown Locus
+    mov byte [errorAction], eActUsr ;Reinput data
+    mov byte [errorClass], eClsBadFmt
+    jmp short .exitBad
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 ioctrl:            ;ah = 44h, handle function
 duplicateHandle:   ;ah = 45h, handle function
