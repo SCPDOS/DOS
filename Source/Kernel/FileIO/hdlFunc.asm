@@ -11,22 +11,16 @@ closeFileHdl:      ;ah = 3Eh, handle function
 readFileHdl:       ;ah = 3Fh, handle function
     lea rsi, readBytes
 .common:
-    call getSFTPtr ;Get SFT ptr in rdi (if file is r/w-able from machine)
-    jb .error
+    call getSFTPtr  ;Get SFT ptr in rdi (if file is r/w-able from machine)
+    jc extErrExit   ;Error code in al and exit
     call setCurrentSFT  ;Set the current SFT (from rdi)
     push qword [currentDTA] ;Save the current Disk Transfer Area
     call rsi    ;Get back in ecx the bytes transferred!
     pop qword [currentDTA]
-    jb .errorFromDataTransfer
+    jc extErrExit   ;Error code in al and exit
     call getUserRegs
     mov dword [rsi + callerFrame.rax], ecx  ;Put actual number of bytes tfrd
     and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
-    return 
-;Temporary Error handler, simply return with CF set
-.error:
-.errorFromDataTransfer:
-    call getUserRegs
-    or byte [rsi + callerFrame.flags], 1    ;Set CF
     return 
 writeFileHdl:      ;ah = 40h, handle function
     lea rsi, writeBytes
@@ -101,13 +95,16 @@ readBytes:
 ;Input: ecx = Number of bytes to read
 ;Output: ecx = Number of bytes read
 ;Number of bytes read 
+;If CF=CY, return with error code in ax
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
     and al, 0Fh ;Eliminate except access mode
     cmp al, WriteAccess
     jne .readable
     mov eax, errAccDen
-    jmp extErrExit
+    xor ecx, ecx    ;Zero chars tfrred
+    stc
+    return
 .readable:
     call setupVarsForTransfer
     jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
@@ -166,7 +163,7 @@ readCharDev:
     test edi, drvErrStatus  ;Did an error occur?
     jz .binNoError
     ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
-    mov ah, 86h ;Char device, data error signature
+    mov ah, critCharDev | critData ;Char device, data error signature
     call charDevErr   ;ah = has part of the error 
     ;al now has the response
     ;Cannot return Abort as Abort returns to command interpreter through DOS
@@ -249,7 +246,9 @@ writeBytes:
     cmp al, ReadAccess
     jne .writeable
     mov eax, errAccDen
-    jmp extErrExit
+    xor ecx, ecx
+    stc
+    ret
 .writeable:
     call setupVarsForTransfer
 
