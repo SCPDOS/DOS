@@ -34,13 +34,25 @@ errNoPap    equ 28  ;Printer out of paper
 errWF       equ 29  ;Write fault
 errRF       equ 30  ;Read fault
 errGF       equ 31  ;General fault
-;Number 32-33 reserved
+;----------------------------------------------
+;The following two go inbetween the Disk errors
+errShrVio   equ 32  ;Sharing violations
+errLokVio   equ 33  ;File Lock violation
+;----------------------------------------------
 errIDC      equ 34  ;Driver code, Invalid Disk Change
 errNoFCB    equ 35  ;FCB unavailable
-;Numbers 36-82 reserved
+errShrFul   equ 36  ;Sharing buffer full
+
 errNoNet    equ 50  ;Network request not supported, generic net fail
+
+errFilExist equ 80  ;File already exists
+errDirExist equ 82  ;Directory already exists
 errFI44     equ 83  ;Fail on INT 44h
-;Numbers 84-88 reserved
+errRedir    equ 84  ;Too many levels of redirection
+errDupRedir equ 85  ;Trying to redirect a redirection
+errBadPass  equ 86  ;Bad password
+errBadParam equ 87  ;Bad parameter passed to request
+errNetWrite equ 88  ;Network Write Fault
 ;-----------------------------------------------------------------------------
 ;Error Loci
 eLocUnk     equ 1   ;Unknown locus, nonspecific or not appropriate
@@ -51,7 +63,7 @@ eLocMem     equ 5   ;Related to RAM
 ;-----------------------------------------------------------------------------
 ;Error Actions
 eActRet     equ 1   ;Retry
-eActDRet    equ 2   ;Delay then retry
+eActDRet    equ 2   ;Delay then retry (Try again later)
 eActUsr     equ 3   ;Ask user to re-input data, i.e. bad filename or something
 eActAbt     equ 4   ;Abort with cleanup
 eActKil     equ 5   ;Abort without cleanup
@@ -66,7 +78,7 @@ eClsInt     equ 4   ;Internal DOS error or bug
 eClsHrdFlt  equ 5   ;Hardware Failure
 eClsSysFlt  equ 6   ;System Failure, i.e. missing or bad cfg files
 eClsAppFlt  equ 7   ;Application Program error, inconsistent requests etc...
-eClsNotFnd  equ 8   ;Resource not found
+eClsNotFnd  equ 8   ;Resource not found (such as free SFT entry etc...)
 eClsBadFmt  equ 9   ;Bad format for resource
 eClsLocked  equ 10  ;Resource Locked
 eClsMedia   equ 11  ;Error is on medium, i.e. wrong or damaged remdev

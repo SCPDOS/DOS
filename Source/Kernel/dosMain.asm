@@ -170,29 +170,128 @@ dosPushRegs:
     push rax
     jmp qword [dosReturn]
 dosCrit1Enter:
-    ret     ;Needs to be patched with 50h (PUSH RAX)
+    return     ;Needs to be patched with 50h (PUSH RAX)
     mov eax, 8001h
     int 4ah
     pop rax
-    ret
+    return
 dosCrit1Exit:
-    ret
+    return
     mov eax, 8101h
     int 4ah
     pop rax
-    ret
+    return
 dosCrit2Enter:
-    ret
+    return
     mov eax, 8002h
     int 4ah
     pop rax
-    ret
+    return
 dosCrit2Exit:
-    ret
+    return
     mov eax, 8102h
     int 4ah
     pop rax
-    ret
+    return
+extErrExit:
+;The extended error exit from DOS
+;Jumped to with AL=Extended error code
+    movzx eax, al   ;0 rax except for al with error code
+    call xLatError
+    call checkFail
+    call getUserRegs
+    mov word [rsi + callerFrame.rax], ax
+    or byte [rsi + callerFrame.flags], 1    ;Set error flag
+    stc ;Set carry flag for if this function is called deep inside DOS
+    return
+xLatError:
+;Translates the error code given in ax and sets error code in the var
+; Input: ax = Extended Error Code
+; Output: ax = Potentially translated Error Code
+;         [errorExCde] = Original Error Code
+;Preserves all registers except ax
+;AH is always returned as 0
+    push rbx
+    push rcx
+    push rsi
+    mov word [errorExCde], ax
+    mov ebx, eax    ;Save error code to ebx
+    lea rsi, errXlatTbl ;Get translation table pointer in rsi
+.readEntry:
+    lodsw   ;Get the first word of the first table entry and rsi += 2
+    cmp al, -1
+    je .skipXlat
+    cmp al, byte [oldRAX + 1]   ;Cmp to DOS function number (that is in ah)
+    je .found
+    ;Here, entry not found, goto next entry
+    movzx eax, ah   ;Zero extend ah to rax to get number of bytes to skip
+    add rsi, rax    ;Goto next entry
+    jmp short .readEntry
+.found:
+    ;Here the table entry is found, now we search for if the error needs xlatng
+    movzx ecx, ah   ;Get the number of bytes to check left into ecx
+.mainSearch:
+    lodsb   ;Get one byte into al
+    cmp bl, al  ;Check against the error code
+    je .skipXlat    ;If the error code is found, we can skip xlat
+    dec ecx
+    jnz .mainSearch ;Whilst ecx is not zero, keep searching
+    ;Here only if ecx is zero, i.e present error code needs translating
+    movzx ebx, al ;Move the xLat error code into ebx
+.skipXlat:
+    mov eax, ebx    ;Return the error code back to eax
+    pop rsi
+    pop rcx
+    pop rbx
+    return
+setErrorVars:
+;Looks up the error code in the variable and sets the other error vars
+;Called with the lookup table in rsi
+;All regs preserved
+    push rax
+    push rbx
+    push rcx
+    push rsi
+    movzx ebx, word [errorExCde]
+    mov ecx, 8  ;Use to shift eax efficiently
+.readEntry:
+    lodsd   ;Read the dword table entry into eax
+    cmp eax, -1  ;If the dword is -1, simply exit
+    je .exit    
+    cmp al, bl  ;Compare the error codes
+    jne .readEntry ;Keep reading entries until we find the one we need
+    shr eax, cl
+    cmp al, -1
+    je .skipClass
+    mov byte [errorClass], al
+.skipClass:
+    shr eax, cl
+    cmp al, -1
+    je .skipAct
+    mov byte [errorAction], al
+.skipAct:
+    shr eax, cl
+    cmp al, -1
+    je .exit
+    mov byte [errorLocus], al
+.exit:
+    pop rsi
+    pop rcx
+    pop rbx
+    pop rax
+    return
+checkFail:
+;Checks if the error was dealt with by the user with a Fail on a Int 44h
+; and swaps the var error code if so
+    cmp byte [Int44Fail], 1
+    jne .skipFail
+    mov word [errorExCde], errFI44  ;Set error to "Fail on Int 44h"
+.skipFail:
+    push rsi
+    lea rsi, extErrTbl
+    call setErrorVars
+    pop rsi
+    return
 ;========================================:
 ;      Reentrant Kernel Functions        :
 ;========================================:
