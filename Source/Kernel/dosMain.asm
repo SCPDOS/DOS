@@ -196,6 +196,9 @@ dosCrit2Exit:
 extErrExit:
 ;The extended error exit from DOS
 ;Jumped to with AL=Extended error code
+;If relevant (i.e. when called or jumped to from deep in DOS)
+;   Returns with: eax = xLat Error
+;                 rsi = callerFrame
     movzx eax, al   ;0 rax except for al with error code
     call xLatError
     call checkFail
@@ -234,7 +237,7 @@ xLatError:
     lodsb   ;Get one byte into al
     cmp bl, al  ;Check against the error code
     je .skipXlat    ;If the error code is found, we can skip xlat
-    dec ecx
+    dec ecx ;Avoid loop for the zoomies
     jnz .mainSearch ;Whilst ecx is not zero, keep searching
     ;Here only if ecx is zero, i.e present error code needs translating
     movzx ebx, al ;Move the xLat error code into ebx
@@ -389,11 +392,7 @@ FATinfoDevice:     ;ah = 1Ch
     call getUserRegs
     or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
     mov eax, errBadDrv          ;Invalid drive error
-    mov word [errorExCde], errBadDrv     
-    mov byte [errorLocus], eLocUnk    ;Not appropriate
-    mov byte [errorClass], eClsNotFnd    ;Drive not found
-    mov byte [errorAction], eActRetUsr   ;Retry after user intervention
-    ret
+    jmp extErrExit  ;Exit error
 .fidDPBFound:
     mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
@@ -502,13 +501,9 @@ getDiskFreeSpace:  ;ah = 36h
     jnc .gdfsDPBFound
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
-    mov word [errorExCde], errBadDrv     ;Invalid drive error
-    mov byte [errorLocus], eLocDsk    ;Not appropriate
-    mov byte [errorClass], eClsNotFnd    ;Drive not found
-    mov byte [errorAction], eActRetUsr   ;Retry after user intervention
-    call getUserRegs
+    mov eax, errBadDrv
+    call extErrExit ;Call, don't jump, to allow us to set ax to -1
     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
-    or qword [rsi + callerFrame.flags], 1   ;Set CF=CY
     ret
 .gdfsDPBFound:
     mov al, byte [rsi + dpb.bMaxSectorInCluster]

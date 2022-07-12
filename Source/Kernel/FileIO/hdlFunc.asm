@@ -37,23 +37,13 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
 ;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
     call getSFTPtr
     jnc .sftValid
-    ;Error code and exit
     ;al (eax) has error code for bad file handle
-    mov word [errorExCde], ax
-.exitReqBad:
-    mov byte [errorLocus], eLocUnk  ;Unknown Locus
-    mov byte [errorAction], eActUsr ;Reinput data
-    mov byte [errorClass], eClsNotFnd
-.exitBad:
-    call getUserRegs    ;Get user regs in rsi
-    or byte [rsi + callerFrame.flags], 1    ;Set CF
-    return 
+    jmp extErrExit ;Error code and exit
 .sftValid:
     cmp al, 3
     jb .validFunction
-    ;Error code and exit
-    mov ax, errInvFnc
-    jmp short .exitReqBad
+    mov eax, errInvFnc       ;Error code and exit
+    jmp extErrExit
 .validFunction:
     cmp al, 1
     ja .seekend
@@ -89,11 +79,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     mov eax, 1121h  ;Make net seek from end request
     int 4fh
     jnc .seekExit ;If the request returns with CF clear, there was no error
-    mov word [errorExCde], ax   ;Error code in ax if CF=CY
-    mov byte [errorLocus], eLocNet  ;Unknown Locus
-    mov byte [errorAction], eActUsr ;Reinput data
-    mov byte [errorClass], eClsBadFmt
-    jmp short .exitBad
+    jmp extErrExit
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 ioctrl:            ;ah = 44h, handle function
 duplicateHandle:   ;ah = 45h, handle function
@@ -121,9 +107,7 @@ readBytes:
     cmp al, WriteAccess
     jne .readable
     mov eax, errAccDen
-    mov word [errorExCde], ax
-    stc
-    return ;Exit with error code 
+    jmp extErrExit
 .readable:
     call setupVarsForTransfer
     jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
@@ -265,9 +249,7 @@ writeBytes:
     cmp al, ReadAccess
     jne .writeable
     mov eax, errAccDen
-    mov word [errorExCde], ax
-    stc
-    return ;Exit with error code 
+    jmp extErrExit
 .writeable:
     call setupVarsForTransfer
 
