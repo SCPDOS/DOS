@@ -44,7 +44,7 @@ setupPhysicalDiskRequest:
     jmp short .error
 .diskError:
     mov word [errorExCde], errBadDrv
-.error:
+.error: ;This error setting needs to remain as is to allow for Int 45/46
     mov byte [errorLocus], eLocDsk
     mov byte [errorAction], eActRetUsr
     mov byte [errorClass], eClsBadFmt
@@ -261,7 +261,6 @@ ensureDiskValid:
     je .medChk
     cmp al, critIgnore
     je .medChkIgnore
-    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
     return ;And exit from function with CF set
 
@@ -274,13 +273,12 @@ ensureDiskValid:
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov ah, critRead | critDOS | critFailOK | critRetryOK ;Set bits
     mov byte [Int44bitfld], ah  ;Save the permissions in var
-    call criticalDOSError
+    call criticalDOSError   ;This function increments the fail flag if fail
     mov rdi, qword [xInt44RDI]
     mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
     je .repeatEP
     ;Else we fail (Ignore=Fail here)
-    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
     return ;And exit from function with CF set
 ;+++++++++++++++++++++++++++++++++++++++++++++++++

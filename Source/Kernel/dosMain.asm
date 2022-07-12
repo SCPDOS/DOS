@@ -286,8 +286,8 @@ setErrorVars:
 checkFail:
 ;Checks if the error was dealt with by the user with a Fail on a Int 44h
 ; and swaps the var error code if so
-    cmp byte [Int44Fail], 1
-    jne .skipFail
+    cmp byte [Int44Fail], 0
+    jnz .skipFail
     mov word [errorExCde], errFI44  ;Set error to "Fail on Int 44h"
 .skipFail:
     push rsi
