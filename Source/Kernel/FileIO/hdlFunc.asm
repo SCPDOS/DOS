@@ -143,7 +143,6 @@ readCharDev:
     xor eax, eax    ;Set ZF so the next read causes EOF!
     jmp rwExitOk    ;Goto exit
 .notNul:
-    xchg bx, bx
     test bl, charDevBinary
     jnz .binary
     ;Here if the device is in ASCII mode
