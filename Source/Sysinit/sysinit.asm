@@ -868,12 +868,10 @@ l1:
     mov ah, 09h
     lea rdx, .str
     int 41h
+    mov ecx, 80h
     lea rdx, tmpBuffer
-    mov ah, 0Ah  ;Buffered input
-    ;mov ecx, 80h
-    ;lea rdx, tmpBuffer
-    ;xor ebx, ebx
-    ;mov ah, 3fh
+    xor ebx, ebx
+    mov ah, 3fh
     int 41h
     jmp short l1
 .str: db "C:\>$"
