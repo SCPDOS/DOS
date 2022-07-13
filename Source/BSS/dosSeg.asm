@@ -52,7 +52,7 @@ sysVarsPtr:
 vConBuf:    ;Proper buffer symbol
     vConCurCnt  resb 1     ;Current count of chars in vConBuffer
     vConBuffer  resb 128   ;General Buffer for vCon 256 bytes. 
-    ;Only 128 if also taking input and outputting simultaneously
+    ;Only 128 bytes at a time if doing CON IO via handle
     vConInBuf   resb 128   ;vConsole buffer for reads ONLY
     bufpad      resb 1     ;Used to pad with LF
 

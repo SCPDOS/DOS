@@ -10,6 +10,28 @@ dosKernName db "SCPBDOS .SYS"
 ;-----------------------------------:
 ;        Static Data Tables         :
 ;-----------------------------------:
+ctryTbl:
+;Country Table (defaulting to UK)
+.dtfmt:     dw 1            ;Date time format (2 bytes)
+                            ;0 = month day year hh:mm:ss
+                            ;1 = day month year hh:mm:ss
+                            ;2 = year month day hh:mm:ss
+.curr:      db "£",0,0,0,0  ;ASCIIZ Currency symbol (5 chars)
+.thouSep:   db ",",0        ;ASCIIZ Thousands separator
+.dcmlSep:   db ".",0        ;ASCIIZ Decimal separator
+.dateSep:   db "-",0        ;ASCIIZ Date separator
+.timeSep:   db ":",0        ;ASCIIZ Time separator
+.currFmt:   db 0            ;Currency Format
+                ;0 = Symbol leads, without space
+                ;1 = Symbol follows, without space
+                ;2 = Symbol leads, one space
+                ;3 = Symbol follows, one space
+                ;4 = Symbol replace decimal separator
+.digtdpt:   db 2 ;Number of digits after the decimal point
+.timefmt:   db 0 ;Time format, Bit 0 = 0 => 12 hour clock, = 1 => 24 hour clock
+.mapaddr:   dq 0 ;Case map address (0 is nulptr)
+.dataSep:   db ",",0    ;Data list separator
+.resv:      db 0,0,0,0,0,0,0,0,0,0  ;Reserve 10 bytes
 
 ;IO Char table
 ;This table has Request header length, command code and error flags
