@@ -12,7 +12,7 @@ dosDataArea:
     longMem     resq 1    ;Num bytes in long memory arena
 ;Above is the system stats
 ;Below is the DOS vars
-    vConOutOff  resb 1    ;Offset in output buffer to the next char to output
+    vConHdlOff  resq 1    ;Ptr into buff to the next char to process in hdl req
     ;   A value of 0 means no chars buffered.
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
 sysVarsPtr:

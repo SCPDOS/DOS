@@ -14,7 +14,9 @@ readFileHdl:       ;ah = 3Fh, handle function
     call getSFTPtr  ;Get SFT ptr in rdi (if file is r/w-able from machine)
     jc extErrExit   ;Error code in al and exit
     call setCurrentSFT  ;Set the current SFT (from rdi)
+    or ecx, ecx ;Clear upper bits of RCX if they are NOT clear just in case
     push qword [currentDTA] ;Save the current Disk Transfer Area
+    mov qword [currentDTA], rdx ;Set the user buffer as the currentDTA
     call rsi    ;Get back in ecx the bytes transferred!
     pop qword [currentDTA]
     jc extErrExit   ;Error code in al and exit
@@ -128,6 +130,7 @@ readCharDev:
 ;ecx has the number of bytes to transfer
 ;Vars have been set up and DTA has the transfer address
 ;Returns in ecx, the actual bytes transferred
+;If CF=CY, return with error code in ax
     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
     mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
@@ -148,7 +151,48 @@ readCharDev:
 .consoleInput:
     ;Console input here
     call vConSwapDriver    ;Prepare CON Useage!
-    
+    ;Get current offset into buffer (if one exists)
+    mov rsi, qword [vConHdlOff]
+    test rsi, rsi   ;Any chars in the buffer?
+    jnz .tfrBuf ;If so, we want to keep tfring those chars to user DTA
+    cmp byte [rsi], 80h ;Is this buffer full?
+    je .oldBuf  ;If so, we set up the buffer function to allow editing of buffer
+    ;Else, reset the buffer
+    mov word [rsi], 80FFh   ;Byte 0=>length of buffer, byte 1 => chars in buffer
+.oldBuf:
+;Preserve the dta and number of chars to tfr
+    push rcx
+    push rdi
+    mov rdx, rsi
+    call buffCharInput_BE   ;Get con buffered input
+    pop rdi
+    pop rcx
+    lea rsi, qword [vConInBuf + 2]  ;Get the address of the data area of buffer
+    cmp byte [rsi], EOF
+    jne .tfrBuf ;If not equal, start copying over the buffer to the user DTA
+    mov byte [rdi], EOF ;Store EOF at start of user DTA
+    mov al, LF
+    call charOut_B.in   ;Echo CRLF
+    xor esi, esi    ;Set ZF = ZE
+    jmp short .exit
+.tfrBuf:
+    lodsb   ;Get the char across from rsi to rdi with a copy in al
+    stosb
+    cmp al, CR 
+    jne .noCRLF
+    mov byte [rsi], LF  ;Store an LF in source to go one more time around
+.noCRLF:
+    cmp al, LF  ;Compare if al is LF
+    loopne .tfrBuf  ;Copy the LF over if so and exit and dec ecx one more time
+    jne .exit   ;If the reason for exiting loop was ecx = 0, skip the following
+    ;This only applies if the reason for exiting the loop is al=LF
+    call charOut_B.in   ;Echo CRLF
+    xor esi, esi
+    or al, 1    ;Set ZF = NZ
+.exit:
+    call vConRetDriver
+    mov qword [vConHdlOff], rsi ;Store the offset (or 0 value)
+    jmp rwExitOk    ;Exit ok! ecx has # chars tfred and ZF=ZE if @ EOF
 
 .binary:
     ;Setup registers for transfer
@@ -166,7 +210,6 @@ readCharDev:
     mov ah, critCharDev | critData ;Char device, data error signature
     call charDevErr   ;ah = has part of the error 
     ;al now has the response
-    ;Cannot return Abort as Abort returns to command interpreter through DOS
     cmp al, critIgnore
     je .binNoError ;Simply proceed as normal
     mov rdi, rdx    ;Get back the buffer if it is a retry operation
@@ -174,7 +217,11 @@ readCharDev:
     jne .binary ;If not fail, re-try the operation (ecx isn't touched)
     ;Fallthrough here for fail!
 .failExit:
-    
+    mov rdi, qword [currentSFT]
+    xor ecx, ecx
+    mov eax, errAccDen
+    stc ;Set carry flag to get caught as a error by caller
+    return
 .binNoError:
     ;Get number of bytes transferred into 
     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
@@ -234,7 +281,6 @@ readCharDev:
     ;Fallthrough also if al = CR (i.e ZF=ZE)
     inc al  ;make ZF=NZ
     jmp rwExitOk    ;Called with ecx = Number of bytes LEFT to transfer
-    
 readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
 

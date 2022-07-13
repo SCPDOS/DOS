@@ -531,6 +531,11 @@ vConSwapDriver:
     pop rdi
     return
 
+vConRetDriver:
+;Returns the original driver (sets flag down)
+    mov byte [vConDrvSwp], 0
+    return
+
 ;--------------------------------------------------
 ;      Main Keyboard Buffered Input Function      :
 ;--------------------------------------------------
