@@ -132,17 +132,18 @@ readCharDev:
 ;Returns in ecx, the actual bytes transferred
 ;If CF=CY, return with error code in ax
     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
-    mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
+    mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
     test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
     jz rwExitOk    ;If it does, jump to exit as if EOF has been hit
     test bl, charDevNulDev  ;Is our device the NUL device?
-    jnz .notNul
+    jz .notNul
     ;If it is the NUL device, we can simply return unsucessfully!
     ;NUL never transfers bytes 
     xor eax, eax    ;Set ZF so the next read causes EOF!
     jmp rwExitOk    ;Goto exit
 .notNul:
+    xchg bx, bx
     test bl, charDevBinary
     jnz .binary
     ;Here if the device is in ASCII mode
@@ -155,15 +156,15 @@ readCharDev:
     mov rsi, qword [vConHdlOff]
     test rsi, rsi   ;Any chars in the buffer?
     jnz .tfrBuf ;If so, we want to keep tfring those chars to user DTA
-    cmp byte [rsi], 80h ;Is this buffer full?
+    cmp byte [vConInBuf], 80h ;Is this buffer full?
     je .oldBuf  ;If so, we set up the buffer function to allow editing of buffer
     ;Else, reset the buffer
-    mov word [rsi], 80FFh   ;Byte 0=>length of buffer, byte 1 => chars in buffer
+    mov word [vConInBuf], 0FF80h ;Byte 0=>length of buf, byte 1 => chars in buf
 .oldBuf:
 ;Preserve the dta and number of chars to tfr
     push rcx
     push rdi
-    mov rdx, rsi
+    lea rdx, vConInBuf
     call buffCharInput_BE   ;Get con buffered input
     pop rdi
     pop rcx

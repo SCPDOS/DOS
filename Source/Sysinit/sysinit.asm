@@ -678,7 +678,7 @@ defaultFileHandles:
     mov word [rbx + sft.wNumHandles], 3 ;Sysinit stdin/out/err
     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-    mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
+    mov byte [rbx + sft.wDeviceInfo], charDevConOut|charDevFastOut|charDevNoEOF|devCharDev
     ;No EOF when reading from the device
     mov rax, qword fs:[vConPtr]  ;Get pointer to CON device
     mov qword [rbx + sft.qPtr], rax
@@ -868,8 +868,12 @@ l1:
     mov ah, 09h
     lea rdx, .str
     int 41h
+    ;lea rdx, tmpBuffer
+    ;mov ah, 0Ah  ;Buffered input
+    mov ecx, 80h
     lea rdx, tmpBuffer
-    mov ah, 0Ah  ;Buffered input
+    xor ebx, ebx
+    mov ah, 3fh
     int 41h
     jmp short l1
 .str: db "C:\>$"
