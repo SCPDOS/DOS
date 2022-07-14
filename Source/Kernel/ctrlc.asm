@@ -1,9 +1,45 @@
-diskErr:
-    or ah, 00h
-    jmp short criticalErrorSetup
+diskDevErr:
+;Called, NOT Jumped to. 
+;Input: rdi = Disk Buffer pointer
+;       eax = Status word (Zero Extended)
+; [Int44hbitfld] = Specific bitflags (r/w AND potential extra ok responses)
+;Output: al = Int 44h response (0-3)
+; All other registers preserved
+    mov qword [xInt44RDI], rdi  ;Save rdi (Disk Buffer pointer)
+    mov edi, eax    ;Store status word in rdi
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov ah, byte [Int44bitfld]  ;Get the permissions in var
+    or ah, critFailOK | critRetryOK ;Set bits
+    ;Test for correct buffer data type
+    push rbx    ;Save rbx temporarily
+    mov bl, byte [rdi + bufferHdr.bufferFlags]  ;Get the buffer data type
+    test bl, dosBuffer
+    jnz .df0
+    or ah, critDOS  ;Add DOS data type bit
+    jmp short .df3
+.df0:
+    test bl, fatBuffer
+    jnz .df1
+    or ah, critFAT  ;Add FAT data type bit
+    jmp short .df3
+.df1:
+    test bl, dirBuffer
+    jnz .df2
+    or ah, critDir  ;Add Directory data type bit
+    jmp short .df3
+.df2:
+    or ah, critData ;Here it must be a data buffer
+.df3:
+    pop rbx
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
+    call criticalErrorSetup ;Save ah and rbp in this function
+    mov rbp, qword [tmpDPBPtr]  ;Get back rbp that was saved by critErrSetup
+    mov rdi, qword [xInt44RDI]  ;Return original rdi value
+    return
+
 charDevErr:
 ;Called with ah with additional bits
-    or ah, 38h  ;Ignore,Retry,Fail OK
+    or ah, critIgnorOK | critRetryOK | critFailOK  ;Ignore,Retry,Fail OK
 criticalErrorSetup:
     mov byte [Int44bitfld], ah  ;Save bitfield
     mov qword [tmpDPBPtr], rbp  ;rbp is the DPB if a disk operation errored

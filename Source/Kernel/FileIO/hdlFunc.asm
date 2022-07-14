@@ -281,8 +281,11 @@ readCharDev:
     ;Fallthrough also if al = CR (i.e ZF=ZE)
     inc al  ;make ZF=NZ
     jmp rwExitOk    ;Called with ecx = Number of bytes LEFT to transfer
+
 readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
+    
+
 
 writeBytes:
 ;Writes the bytes from the user buffer

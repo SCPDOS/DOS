@@ -27,7 +27,7 @@ makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
     mov qword [rdi + bufferHdr.nextBufPtr], rsi ;Set 2nd buf to rsi
     pop rsi
 .exit:
-    ret
+    return
 
 flushAndFreeBuffer:         ;Int 4Fh AX=1209h
     call flushBuffer
@@ -35,7 +35,7 @@ flushAndFreeBuffer:         ;Int 4Fh AX=1209h
     ;Free the buffer if it was flushed successfully (CF=NC)
     mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
 .exit:
-    ret
+    return
 
 markBuffersAsUnreferenced:  ;Int 4Fh AX=120Eh
 ;Marks all buffers as unreferenced (clears the reference bit from all buffers)
@@ -48,7 +48,7 @@ markBuffersAsUnreferenced:  ;Int 4Fh AX=120Eh
     cmp rdi, -1 ;End of chain?
     jne .lp
     pop rdi
-    ret
+    return
 
 makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
 ;Sets the buffer in rdi to the head of the chain and gets the 
@@ -58,7 +58,7 @@ makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
     call makeBufferMostRecentlyUsed
     mov rdi, qword [bufHeadPtr]
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-    ret
+    return
 
 findUnreferencedBuffer: ;Int 4Fh AX=1210h
 ;Finds the first unreferenced buffer starting at the given buffer header.
@@ -71,7 +71,7 @@ findUnreferencedBuffer: ;Int 4Fh AX=1210h
     cmp rdi, -1
     jne findUnreferencedBuffer  ;Check next buffer unless rdi = -1
 .exit:
-    ret
+    return
 
 flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
 ;Flushes the data in a sector buffer to disk!
@@ -121,46 +121,17 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     pop rcx
     pop rbx
     pop rax
-    ret
+    return
 .fbFail:
 ;Enter here only if the request failed
     dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    mov qword [xInt44RDI], rdi  ;Save rdi
-    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov edi, eax    ;Save status word in di
-    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
-    mov ah, critWrite | critFailOK | critRetryOK ;Set bits
-    ;Test for correct buffer data type
-    test ah, dosBuffer
-    jnz .fbFail0
-    or ah, critDOS
-    jmp short .fbFailMain
-.fbFail0:
-    test ah, fatBuffer
-    jnz .fbFail1
-    mov ah, critFAT
-    jmp short .fbFailMain
-.fbFail1:
-    test ah, dirBuffer
-    jnz .fbFail2
-    mov ah, critDir
-    jmp short .fbFailMain
-.fbFail2:
-;Here it must be a data buffer
-    mov ah, critData
-.fbFailMain:
-    mov byte [Int44bitfld], ah  ;Save the permissions in var
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
-    call criticalDOSError   ;Return in al the return code
-    mov rdi, qword [xInt44RDI]
-    mov rbp, qword [tmpDPBPtr]
+    mov byte [Int44bitfld], critWrite ;Set the initial bitfield to write req
+    call diskDevErr ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
     je .fbRequest0
     ;Else we fail (Ignore=Fail here)
-    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
     jmp .fbExitFail
 
@@ -180,7 +151,7 @@ testDirtyBufferForDrive:    ;External linkage
     stc ;Else dirty buffer found, set carry flag
 .tdbfdExit:
     pop rbx
-    ret
+    return
 .tdbfdGotoNextBuffer:
     mov rbx, qword [rbx + bufferHdr.nextBufPtr]
     cmp rbx, -1     ;If rbx points to -1, exit (Also clears CF)
@@ -203,7 +174,7 @@ freeBuffersForDPB:
     jne .i0
 .exit:
     pop rbx
-    ret
+    return
 
 getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;
@@ -240,7 +211,7 @@ getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
     pop rdx
     pop rcx
     mov rbx, qword [currBuff]   ;Get current buffer
-    ret
+    return
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
     cmp byte [diskChange], -1 ;Are we in disk change?
@@ -304,46 +275,17 @@ readSectorBuffer:   ;Internal Linkage
     pop rcx
     pop rbx
     pop rax
-    ret
+    return
 .rsFail:
 ;Enter here only if the request failed
     dec esi
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-    mov qword [xInt44RDI], rdi  ;Save rdi
-    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov edi, eax    ;Save status word in di
-    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
-    mov ah, critRead | critFailOK | critRetryOK ;Set bits
-    ;Test for correct buffer data type
-    test ah, dosBuffer
-    jnz .rsFail0
-    or ah, critDOS
-    jmp short .rsFailMain
-.rsFail0:
-    test ah, fatBuffer
-    jnz .rsFail1
-    mov ah, critFAT
-    jmp short .rsFailMain
-.rsFail1:
-    test ah, dirBuffer
-    jnz .rsFail2
-    mov ah, critDir
-    jmp short .rsFailMain
-.rsFail2:
-;Here it must be a data buffer
-    mov ah, critData
-.rsFailMain:
-    mov byte [Int44bitfld], ah  ;Save the permissions in var
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
-    call criticalDOSError
-    mov rdi, qword [xInt44RDI]
-    mov rbp, qword [tmpDPBPtr]
+    mov byte [Int44bitfld], critRead    ;Set the initial bitfield to read req
+    call diskDevErr
     cmp al, critRetry
     je .rsRequest0
     ;Else we fail (Ignore=Fail here)
-    mov word [errorExCde], errFI44  ;Replace with Fail on Int 44h
     stc ;Set error flag to indicate fail
     jmp .rsExitFail
     
@@ -374,7 +316,7 @@ findLRUBuffer: ;Internal Linkage
 .flbExit:
     pop rdx
     mov qword [currBuff], rdi   ;Save in variable too
-    ret
+    return
 .flbFreeLink:
     push rcx
     mov rcx, qword [rdi + bufferHdr.nextBufPtr]
@@ -395,7 +337,7 @@ findSectorInBuffer:     ;Internal linkage
     cmp qword [rdi + bufferHdr.bufferLBA], rax
     jne .fsiGotoNextBuffer
 .fsiExit:
-    ret
+    return
 .fsiGotoNextBuffer:
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
     cmp rdi, -1     ;If rdi points to -1, exit

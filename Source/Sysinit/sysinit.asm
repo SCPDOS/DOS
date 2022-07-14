@@ -868,6 +868,8 @@ l1:
     mov ah, 09h
     lea rdx, .str
     int 41h
+    ;lea rdx, tmpBuffer
+    ;mov ah, 0Ah  ;Buffered input
     mov ecx, 80h
     lea rdx, tmpBuffer
     xor ebx, ebx
