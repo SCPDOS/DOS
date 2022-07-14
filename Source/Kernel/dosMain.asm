@@ -50,6 +50,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
 .fsb1:
     pop rax     ;Get old rax back
     push rax    ;and push it back onto the stack
+.abortEP:
 .charFun0CEP:
     lea rsp, critStakTop
     sti         ;Reenable interrupts
@@ -320,7 +321,6 @@ ctrlBreakCheck:    ;ah = 33h
     mov al, -1
     iretq
 
-
 setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
     mov qword [currentPSP], rbx ;Set the pointer
     iretq
@@ -341,6 +341,7 @@ setDriverLookahead:;ah = 64h, reserved
 ;========================================:
 diskReset:         ;ah = 0Dh
 ;Flush all dirty buffers to disk
+    call dosCrit1Enter
     mov rdi, qword [bufHeadPtr]
 .drCheckBuffer:
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer
@@ -353,7 +354,10 @@ diskReset:         ;ah = 0Dh
     cmp rdi, -1     ;If rdi points to -1, exit
     jne .drCheckBuffer
 .drExit:
-    ret
+    call dosCrit1Exit
+    mov eax, 1120h  ;Redirector flush all 
+    int 4fh
+    return
 
 selectDisk:        ;ah = 0Eh
 ;Called with dl = drive number, 0 = A, 1 = B etc...

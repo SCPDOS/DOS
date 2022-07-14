@@ -251,8 +251,8 @@ clearbuffDoFunc:   ;ah = 0Ch
 .callFunction:
     cli ;Prepare to swap stack pointer
     ;The below address avoids "properly" reentering DOS
-    ;We simply reuse the function dispatch aspect and 
-    ; return the stack pointer to the top.
+    ;We simply reuse the function dispatch aspect. 
+    ;this means we dont trash the caller's register frame 
     jmp functionDispatch.charFun0CEP    ;Go to the entry point
 ;------------------------
 ;  Primitive functions  :

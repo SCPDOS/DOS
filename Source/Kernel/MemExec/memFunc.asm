@@ -258,9 +258,9 @@ freeMemory:        ;ah = 49h
 .blockError:
     mov byte [errorDrv], -1 ;No drive
     mov byte [errorLocus], eLocMem  ;Memory locus
-    mov word [errorExCde], errMemAddr   ;Invalid mem addr
-    mov byte [errorAction], eActUsr ;Retry with different value
     mov eax, errMemAddr
+    mov word [errorExCde], ax   ;Invalid mem addr
+    mov byte [errorAction], eActUsr ;Retry with different value
     mov rbx, qword [oldRSP]
     mov word [rbx + callerFrame.rax], ax    ;Save this word on stack
     or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on

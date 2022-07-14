@@ -101,6 +101,8 @@ errXlatTbl:
 ; Bytes n - 3 : Acceptable Error codes
 ; Byte n - 1  : Acceptable Error code and default value to translate to
 ;The table is terminated with a single -1 byte
+;Note, all of these functions use the disk stack so it is important to save rax
+; only on entry to a disk function
     db 38h, 02h, errInvFnc, errFnf                      ;getsetCountryInfo
     db 39h, 03h, errPnf, errFnf, errAccDen              ;MKDIR
     db 3Ah, 04h, errBadEnv, errPnf, errFnf, errAccDen   ;RMDIR

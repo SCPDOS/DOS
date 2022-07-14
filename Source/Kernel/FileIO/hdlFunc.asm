@@ -284,7 +284,10 @@ readCharDev:
 
 readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
-    
+    ;We have the following vars setup:
+    ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
+    ;currClustF
+    ;Now convert currSectC to disk sector by using currClustF
 
 
 writeBytes:

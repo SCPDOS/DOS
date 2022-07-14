@@ -125,7 +125,7 @@ struc sft
     .wNumHandles resw 1    ;Number of handles pointing to this file
     .wOpenMode   resw 1    ;File access permissions and behvaiours
     .bFileAttrib resb 1    ;Regular File Attributes
-    .wDeviceInfo resw 1    ;Includes Device number
+    .wDeviceInfo resw 1    ;Includes unit number if a block device
     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
     .dStartClust resd 1    ;Start cluster of file pointed to by SFT entry
     .wTime       resw 1    ;File Time
@@ -316,7 +316,7 @@ struc psp
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
     .xtraHdlSz  resw 1  ;Additional File Handle array size, 0 by default
     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
-    .prevPSP    resq 1  ;Pointer to the previous PSP in chain
+    .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
     .xtraHdlNum resb 1  ;Lookup number of extra handle array, -1 = unused
 ;Extra handle arrays are grouped into a linked list
 ;The below are in the same place as in DOS

@@ -79,14 +79,14 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     cmp byte [critErrFlag], 1
     jb .noIntError  ;If not 0, enter
     mov al, critFail    ;Else, return Fail always
-    jmp short .checkResponse
+    jmp short .exit     ;Don't translate fail to abort
 .noIntError:
     cli ;Disable Interrupts
     inc byte [critErrFlag]  ;Set flag for critical error
     dec byte [inDOS]    ;Exiting DOS
     mov qword [xInt44hRSP], rsp
     mov rsp, qword [oldRSP] ;Get the old RSP value
-    xor ebp, ebp
+    xor ebp, ebp    ;Always zeroed
     int 44h ;Call critical error handler, sets interrupts on again
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
     mov byte [critErrFlag], 0   ;Clear critical error flag
@@ -99,26 +99,46 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     je .checkRetry
     cmp al, critFail
     jne .abort   ;Must be abort
-;Here is for fail
+.setFail:   ;Here is for fail
+    mov al, critFail    ;Reset al to contain fail (even if Int44 responded Fail)
+    inc byte [Int44Fail]        ;Inc the fail counter!
     test byte [Int44bitfld], critFailOK
-    jnz .abort
+    jnz .abort  ;If fail not permitted, abort
 .exit:
     mov byte [errorDrv], -1 ;Unknown drive (to be set)
     return
 .checkIgnore:
     test byte [Int44bitfld], critIgnorOK
     jnz .exit
-    jmp short .setFail
+    jmp short .setFail  ;If ignore not permitted, return Fail
 .checkRetry:
     test byte [Int44bitfld], critRetryOK
-    jnz .exit
-.setFail:
-    mov al, critFail
-    inc byte [Int44Fail]        ;Inc the fail counter!
-    jmp short .checkResponse    ;Double check if I can return Fail
+    jnz .exit   
+    jmp short .setFail  ;If retry not permitted, return Fail
 .abort:
 ;Prepare to abort. We abort from within!
-;Currently fall into ^C
+    ;First check if the application is it's own parent.
+    ;If it is, we exit fail and return to the application
+    mov rax, qword [currentPSP] ;Get the current psp
+    push rbx
+    mov rbx, qword [rax + psp.parentPtr]
+    cmp rbx, rax    ;Check if the application is it's own parent
+    pop rbx
+    je .setFail
+    mov byte [errorLevel], 1    ;We are returning Abort!
+    call getUserRegs    ;Get ptr to caller regs in rsi
+    mov eax, 4C01h      ;01 => Error level 1
+    mov dword [rsi + callerFrame.rax], eax
+    cli
+    mov rsp, rsi    ;Set stack pointer to point to regs as if on entry to DOS
+    ;This is absolutely necessary as we enter DOS to a point where it assumes
+    ; rsp points to a stack frame. We set this frame to be the child process
+    ; request that triggered the harderror.
+    ; Furthermore, abortEP must avoid overwriting currentPSP.
+    sti
+    jmp functionDispatch.abortEP
+
+
 ctrlBreakHdlr:
     mov al, 03h ;Always guarantee a ^C will be printed
     call printCaretASCII
