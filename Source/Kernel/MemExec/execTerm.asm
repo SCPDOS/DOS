@@ -30,7 +30,7 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;7) Call Network Termination hook.
 ;8) Set old old rsp as old rsp
 ;9) Set Int 42h to be the RIP value on the now oldRSP stack
-;10) Return!
+;10) Flush all buffers and Return!
 ;
 ; Step 0
 ;For now, just adjust error level in var
@@ -46,6 +46,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     call vConRetDriver  ;Always reset the driver flag
 ; Step 2
     mov rdi, qword [currentPSP] ;Get the current psp
+    mov rdx, rdi    ;Save in rdx
     mov rbx, qword [rdi + psp.parentPtr]
     cmp rbx, rdi    ;Check if the application is it's own parent
     rete            ;If it is, simply return (al has errorLevel)
@@ -58,10 +59,15 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp al, -1  ;End of open JFT entries?
     je .step4
     movzx ebx, al   ;Move the file handle number into ebx
+    ;Replace with a call to close the handle eventually
     push rdi
     call derefSFTPtr    ;Ret in rdi the SFT pointer
     jc .badHdl  ;If a bad handle, skip the decrementing of the handle count
     dec word [rdi + sft.wNumHandles]    ;Decrement the count
+    cmp qword [rdi + sft.qPSPOwner], rdx
+    jne .badHdl
+    ;Skip zeroing
+    mov word [rdi + sft.wNumHandles], 0 ;Free SFT (Temp until we can close)
 .badHdl:
     pop rdi
     mov al, -1
@@ -121,4 +127,5 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
 ;Step 10
     xor al, al    ;Set al to 0
+    call diskReset  ;Flush all buffers
     return
