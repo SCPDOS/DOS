@@ -7,25 +7,48 @@ terminateProcess:   ;Int 40h
     xor eax, eax    ;Prepare for AH=00h call
     jmp functionDispatch    ;Dispatch 41h/AH=00h (which jumps to 41h/AX=4C00h)
 terminateRes:       ;Int 47h
-    iretq
+;Input: edx = offset of last byte in program to remain resident plus 1
+    add edx, 0Fh    ;Round up number of bytes to next paragraph
+    shr edx, 4      ;Divide by 16 to get number of paragraphs
+    mov eax, 3100h  ;Setup a call to TSR 41h/AH=31h
+    jmp functionDispatch    ;Dispatch 41h/AH=31h Terminate and Stay Resident
 ;========================
 ;    Int 21h functions
 ;========================
-terminateStayRes:  ;ah = 31h
-    ret
 loadExecChild:     ;ah = 4Bh, EXEC
     ret
 
+terminateStayRes:  ;ah = 31h
+;Input: al  = Error code
+;       edx = Number of paragraphs to keep resident
+    mov byte [exitType], 3  ;TSR exit signature!
+    ;Minimum number of paragraphs to shrink to is 6 (As per DOS 3.3 - c.f. RBIL)
+    cmp edx, 6
+    jae .aboveMinimum
+    mov edx, 6  ;Min number of paragraphs
+.aboveMinimum:
+;Now we setup a call to Realloc 
+;Setup regs with: 
+;   r8 = address of the block to be realloc'ed
+;   ebx = How many paras this block should contain after realloc.
+    mov r8, qword [currentPSP]  ;Get current PSP, one para before should be MCB
+    mov ebx, edx
+    call reallocMemory
+    ;If the call succeeded, the MCB for this process will reflect the new size
+    ;Now we terminate as normal
+    ;al has the error code (errorlevel), exitType is set to 3
+    jmp short terminateClean.skipCtrlC    ;Terminate as normal
 
 simpleTerminate:   ;ah = 00h
     xor eax, eax
     mov byte [exitType], al ;Normal Exit Type
-    jmp short terminateClean.skipCtrlC  ;Jump here
+    jmp short terminateClean.skipCtrlC  ;Jump here with errorlevel = 0
 terminateClean:    ;ah = 4Ch, EXIT
 ;Here we must:
 ;0) Build errorlevel and adjust variables accordingly
 ;1) Swap the console back to the original driver if it is swapped.
 ;2) Check if the program is it's own parent. If so, return.
+;2.5) If we are exiting due to TSR, jump to 5
 ;3) Free all file handles associated to the current process.
 ;       Note this means, reducing the open counts and setting PSP entries to -1
 ;4) Free all memory blocks that have the signature of current PSP
@@ -42,8 +65,9 @@ terminateClean:    ;ah = 4Ch, EXIT
     xchg ah, byte [exitType]    ;Reset exitType byte and get it in ah
     test byte [ctrlCExit], -1   ;Is ^C flag set?
     jz .skipCtrlC   ;Jump if we are here due to normal exit or Abort
-    mov ah, 1   ;Set the return type to 1 => Ctrl-C exit
+    mov byte [exitType], 1   ;Set the return type to 1 => Ctrl-C exit
 .skipCtrlC:
+    mov ah, byte [exitType] ;Get the exitType
     mov word [errorLevel], ax   ;Store word
 ; Step 1
 .step1:
@@ -54,7 +78,10 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rbx, qword [rdi + psp.parentPtr]
     cmp rbx, rdi    ;Check if the application is it's own parent
     rete            ;If it is, simply return (al has errorLevel)
-;Step 3
+; Step 2.5
+    cmp byte [exitType], 3  ;TSR exit?
+    je .step5   ;Skip resource freeing if so
+; Step 3
     add rdi, psp.jobFileTbl ;Move rdi to point to the start of the JFT
     mov rsi, rdi    ;Point rsi to jft too
     movzx ecx, word [maxHndls] ;Number of entries in JFT
