@@ -125,8 +125,8 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     cmp rbx, rax    ;Check if the application is it's own parent
     pop rbx
     je .setFail
-    mov byte [errorLevel + 1], 1    ;We are returning Abort, set upper byte!
-    jmp terminateClean.abortEP
+    mov byte [exitType], 2    ;We are returning from Abort, ret type 2!
+    jmp terminateClean
 
 ctrlBreakHdlr:
     mov al, 03h ;Always guarantee a ^C will be printed

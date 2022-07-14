@@ -4,7 +4,7 @@
 ;   Interrupt handlers
 ;========================
 terminateProcess:   ;Int 40h
-    xor eax, eax
+    xor eax, eax    ;Prepare for AH=00h call
     jmp functionDispatch    ;Dispatch 41h/AH=00h (which jumps to 41h/AX=4C00h)
 terminateRes:       ;Int 47h
     iretq
@@ -15,8 +15,12 @@ terminateStayRes:  ;ah = 31h
     ret
 loadExecChild:     ;ah = 4Bh, EXEC
     ret
+
+
 simpleTerminate:   ;ah = 00h
-    mov eax, 4C00h  ;Fall thru
+    xor eax, eax
+    mov byte [exitType], al ;Normal Exit Type
+    jmp short terminateClean.skipCtrlC  ;Jump here
 terminateClean:    ;ah = 4Ch, EXIT
 ;Here we must:
 ;0) Build errorlevel and adjust variables accordingly
@@ -34,13 +38,13 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;
 ; Step 0
 ;For now, just adjust error level in var
-    mov byte [errorLevel + 1], 0
-.abortEP:
-    mov byte [errorLevel], al   ;Store in lower byte
-    mov al, 2
-    test byte [ctrlCExit], al
-    jz .step1   ;If ctrlCExit is zero, leave upper byte
-    mov byte [errorLevel + 1], al   ;Else change to CtrlC exit type
+    xor ah, ah
+    xchg ah, byte [exitType]    ;Reset exitType byte and get it in ah
+    test byte [ctrlCExit], -1   ;Is ^C flag set?
+    jz .skipCtrlC   ;Jump if we are here due to normal exit or Abort
+    mov ah, 1   ;Set the return type to 1 => Ctrl-C exit
+.skipCtrlC:
+    mov word [errorLevel], ax   ;Store word
 ; Step 1
 .step1:
     call vConRetDriver  ;Always reset the driver flag
