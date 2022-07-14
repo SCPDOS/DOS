@@ -756,6 +756,7 @@ defaultFileHandles:
     mov ah, 48h ;Allocate
     int 41h
 
+    mov byte [rax - 10h], 0 ;Trash chain
     mov r8, rax ;Move the pointer to r8
     mov ebx, 20 ;Increase allocation to 20 paragraphs
     mov ah, 4Ah
@@ -877,78 +878,6 @@ l1:
     int 41h
     jmp short l1
 .str: db "C:\>$"
-;l2:
-;    mov ah, 07h
-;    int 41h
-;    cmp al, 42h
-;    jne l1
-;l3:
-;    mov word fs:[CLOCKrecrd + clkStruc.dateWord], 0
-;    lea rbx, qword [rbp + secdReqHdr] ;Get the address of this request block
-;    lea rax, qword [rbp + CLOCKrecrd]
-;    mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-;    mov byte [rbx + ioReqPkt.cmdcde], 04h   ;Read the time
-;    mov word [rbx + ioReqPkt.status], 0 ;Zero status word
-;    mov qword [rbx + ioReqPkt.bufptr], rax
-;    mov dword [rbx + ioReqPkt.tfrlen], 06
-;    call qword [rbp + clkHdr + drvHdr.strPtr]
-;    call qword [rbp + clkHdr + drvHdr.intPtr] 
-
-;    mov ah, 03h
-;    xor bh, bh
-;    int 30h
-;    xor dl, dl  ;0 column
-;    mov ah, 02h
-;    int 30h
-
-;    lea rbx, qword [rbp + CLOCKrecrd]
-;    movzx eax, byte [rbx + clkStruc.hours]
-;    call .clkHexToBCD
-;    mov ah, 0Eh
-;    mov al, ":"
-;    int 30h
-;    movzx eax, byte [rbx + clkStruc.minutes]
-;    call .clkHexToBCD
-;    mov ah, 0Eh
-;    mov al, ":"
-;    int 30h
-;    movzx eax, byte [rbx + clkStruc.seconds]
-;    call .clkHexToBCD
-;    mov ah, 0Eh
-;    mov al, "."
-;    int 30h
-;    movzx eax, byte [rbx + clkStruc.hseconds]
-;    call .clkHexToBCD
-;    jmp l1
-;.clkHexToBCD:
-;Converts a Hex byte into two BCD digits
-;Takes input in each nybble of al
-;    push rbx
-;    mov rbx, 0Ah  ;Divide by 10
-;    xor edx, edx
-;    div rbx
-;    add dl, '0'
-;    cmp dl, '9'
-;    jbe .chtb0
-;    add dl, 'A'-'0'-10
-;.chtb0:
-;    mov cl, dl    ;Save remainder byte
-;    xor edx, edx
-;    div rbx
-;    add dl, '0'
-;    cmp dl, '9'
-;    jbe .chtb1
-;    add dl, 'A'-'0'-10
-;.chtb1:
-;    mov ch, dl    ;Save remainder byte
-;    mov al, ch    ;Get most sig digit into al
-;    mov ah, 0Eh
-;    int 30h
-;    mov al, cl    ;Get least sig digit into al
-;    mov ah, 0Eh
-;    int 30h
-;    pop rbx
-;    ret
 ;--------------------------------
 ;       PROCS FOR SYSINIT       :
 ;--------------------------------
@@ -1160,4 +1089,4 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
-tmpBuffer db 80h, 00h, (80h-2) dup (00)
+tmpBuffer db 80h    ;Just overwrite the next bytes as they get copied high

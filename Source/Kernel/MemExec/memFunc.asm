@@ -413,7 +413,7 @@ verifyIntegrityOfMCBChain:
     cmp byte [rbx + mcb.marker], mcbMarkCtn
     je .ok1
     cmp byte [rbx + mcb.marker], mcbMarkEnd    ;End of the chain?
-    jne badMCBChain    ;It was not M or Z, fail violently
+    jne .bmcbPrep    ;It was not M or Z, fail violently
 .exit:
     pop rbx
     pop rax
@@ -425,6 +425,9 @@ verifyIntegrityOfMCBChain:
     add rbx, mcb.program    ;The block starts at the program
     add rbx, rax
     jmp short .ok
+.bmcbPrep:
+    pop rbx ;Pop off the stack first!
+    pop rax
 badMCBChain:
     mov al, errMCBbad   ;Yikes!
 mcbErrHdlr:
@@ -433,5 +436,4 @@ mcbErrHdlr:
     call extErrExit ;Error thru the unified error handler
     cmp al, errMCBbad
     rete
-    call verifyIntegrityOfMCBChain  ;Check MCB chain ok if error !=errMCBbad
-    return
+    jmp short verifyIntegrityOfMCBChain  ;Check chain ok if error != errMCBbad
