@@ -125,19 +125,8 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     cmp rbx, rax    ;Check if the application is it's own parent
     pop rbx
     je .setFail
-    mov byte [errorLevel], 1    ;We are returning Abort!
-    call getUserRegs    ;Get ptr to caller regs in rsi
-    mov eax, 4C01h      ;01 => Error level 1
-    mov dword [rsi + callerFrame.rax], eax
-    cli
-    mov rsp, rsi    ;Set stack pointer to point to regs as if on entry to DOS
-    ;This is absolutely necessary as we enter DOS to a point where it assumes
-    ; rsp points to a stack frame. We set this frame to be the child process
-    ; request that triggered the harderror.
-    ; Furthermore, abortEP must avoid overwriting currentPSP.
-    sti
-    jmp functionDispatch.abortEP
-
+    mov byte [errorLevel + 1], 1    ;We are returning Abort, set upper byte!
+    jmp terminateClean.abortEP
 
 ctrlBreakHdlr:
     mov al, 03h ;Always guarantee a ^C will be printed

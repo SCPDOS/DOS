@@ -85,6 +85,8 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 
     xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
     errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
+    ;Upper byte: 0=Normal, 1=Abort Occured, 2=CtrlC, 3=TSR 41h/31h
+    ;Lower byte: User Specified
     currentDrv  resb 1  ;Default drive x
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
 ;SDA, needs to be replaced between processes

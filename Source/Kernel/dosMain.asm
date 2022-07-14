@@ -197,6 +197,8 @@ dosCrit2Exit:
 extErrExit:
 ;The extended error exit from DOS
 ;Jumped to with AL=Extended error code
+;Can be called too.
+;Input: al = Extended error code
 ;If relevant (i.e. when called or jumped to from deep in DOS)
 ;   Returns with: eax = xLat Error
 ;                 rsi = callerFrame
@@ -526,7 +528,8 @@ getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     xchg ax, word [errorLevel]
     call getUserRegs
     mov word [rsi + callerFrame.rax], ax
-    ret
+    and byte [rsi + callerFrame.flags], ~1  
+    return
 
 getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr

@@ -19,7 +19,7 @@ simpleTerminate:   ;ah = 00h
     mov eax, 4C00h  ;Fall thru
 terminateClean:    ;ah = 4Ch, EXIT
 ;Here we must:
-;0) Set errorlevel and adjust variables accordingly
+;0) Build errorlevel and adjust variables accordingly
 ;1) Swap the console back to the original driver if it is swapped.
 ;2) Check if the program is it's own parent. If so, return.
 ;3) Free all file handles associated to the current process.
@@ -30,12 +30,19 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;7) Call Network Termination hook.
 ;8) Set old old rsp as old rsp
 ;9) Set Int 42h to be the RIP value on the now oldRSP stack
-;10) Move error level to al and return as normal
+;10) Return!
 ;
 ; Step 0
-;For now, just save error level in var and return it at the end
-    mov byte [errorLevel], al   ;Set errorLevel
+;For now, just adjust error level in var
+    mov byte [errorLevel + 1], 0
+.abortEP:
+    mov byte [errorLevel], al   ;Store in lower byte
+    mov al, 2
+    test byte [ctrlCExit], al
+    jz .step1   ;If ctrlCExit is zero, leave upper byte
+    mov byte [errorLevel + 1], al   ;Else change to CtrlC exit type
 ; Step 1
+.step1:
     call vConRetDriver  ;Always reset the driver flag
 ; Step 2
     mov rdi, qword [currentPSP] ;Get the current psp
@@ -73,13 +80,13 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp cl, mcbMarkCtn
     je .checkToFree
     cmp cl, mcbMarkEnd
-    jne memSysHalt  ;Halt the system if the MCB chain integrity is compromised
+    jne .step5  ;Something wrong so stop freeing
 .checkToFree:
     cmp qword [rsi + mcb.owner], rbx ;Is this valid block owned by current PSP?
     jne .noFree
     mov r8, rsi ;Move pointer to r8
     call freeMemory ;Free this memory block
-    jc memSysHalt   ;Throw error if this call returns fail
+    ;If an error occured, the internal vars will be set.
 .noFree:
     cmp cl, mcbMarkEnd  ;Are we at the end of the MCB chain?
     je .step5   ;Skip if we are
@@ -113,5 +120,5 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rbp, qword [oldRSP] ;Get pointer to parent stack register frame in rbp
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
 ;Step 10
-    mov al, byte [errorLevel]   ;Finally get the return code
+    xor al, al    ;Set al to 0
     return

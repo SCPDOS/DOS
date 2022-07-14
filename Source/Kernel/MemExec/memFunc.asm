@@ -20,7 +20,7 @@ allocateMemory:    ;ah = 48h
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .walk1
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    jne memSysHalt
+    jne badMCBChain
 .walk1:
     ;Here if valid but not the last block
     cmp qword [rsi + mcb.owner], mcbOwnerFree
@@ -39,7 +39,7 @@ allocateMemory:    ;ah = 48h
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .cons1
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    jne memSysHalt 
+    jne badMCBChain 
 .cons1:
     cmp qword [rsi + mcb.owner], mcbOwnerFree
     jne .det0   ;No more free blocks, now determine if rdi useful
@@ -150,7 +150,7 @@ allocateMemory:    ;ah = 48h
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .af1
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    jne memSysHalt
+    jne badMCBChain
 .af1:
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]    ;Get blocksize
@@ -168,10 +168,8 @@ allocateMemory:    ;ah = 48h
 .afExit:
     mov eax, errNoMem
     mov rdx, qword [oldRSP]
-    mov byte [rdx + callerFrame.rax], al
-    mov dword [rdx + callerFrame.rbx], ebx
-    or byte [rdx + callerFrame.flags], 1
-    ret
+    mov dword [rdx + callerFrame.rbx], ebx  ;Save block size
+    jmp mcbErrHdlr
 freeMemory:        ;ah = 49h
 ;Input: r8 = address of the block to be returned (MCB + 1 para)
 ;Output: CF=CY => al = error code, CH=NC, nothing
@@ -189,13 +187,13 @@ freeMemory:        ;ah = 49h
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .valid
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    jne memSysHalt
+    jne badMCBChain
 .valid:
     cmp r8, rsi
     je .blockFound
     ;Not valid, check if last block in chain
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    je .blockNotFound
+    je .blockError
     mov ecx, dword [rsi + mcb.blockSize]
     shl rcx, 4  ;Turn to bytes
     add rcx, mcb.program    ;Go past the arena mcb
@@ -205,7 +203,7 @@ freeMemory:        ;ah = 49h
     ;If hole, error.
     ;Else, set free, check if previous block is free, then check if next is free
     cmp qword [rsi + mcb.owner], mcbOwnerHole
-    je .blockHole
+    je .blockError
     mov qword [rsi + mcb.owner], mcbOwnerFree
     cmp qword [rdi + mcb.owner], mcbOwnerFree   ;Is the previous block free?
     jne .blockFoundCheckFollowing   ;No, check if block following is free
@@ -247,24 +245,12 @@ freeMemory:        ;ah = 49h
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
     mov rbx, qword [oldRSP]
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
-    ret
-.blockNotFound:
-    ;Set CF and error code
-    mov byte [errorClass], eClsNotFnd   ;Block not found 
-    jmp short .blockError
-.blockHole:
-;Cannot free a hole! Fail!
-    mov byte [errorClass], eClsLocked   ;Cant free a hole
+    return
 .blockError:
     mov byte [errorDrv], -1 ;No drive
-    mov byte [errorLocus], eLocMem  ;Memory locus
     mov eax, errMemAddr
-    mov word [errorExCde], ax   ;Invalid mem addr
-    mov byte [errorAction], eActUsr ;Retry with different value
-    mov rbx, qword [oldRSP]
-    mov word [rbx + callerFrame.rax], ax    ;Save this word on stack
-    or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on
-    call verifyIntegrityOfMCBChain
+    call extErrExit ;Error thru the unified error handler
+    call verifyIntegrityOfMCBChain  ;Check MCB chain ok
     ret
 reallocMemory:     ;ah = 4Ah
 ;Input: r8 = address of the block to be realloc'ed
@@ -282,7 +268,7 @@ reallocMemory:     ;ah = 4Ah
     ;Provided block is valid and not a hole
     ;Check if Growth or Shrink
     cmp qword [rsi + mcb.owner], mcbOwnerHole
-    je freeMemory.blockHole
+    je freeMemory.blockError
     mov rdi, rsi    ;Point rdi to same block MCB
     xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
@@ -312,7 +298,7 @@ reallocMemory:     ;ah = 4Ah
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .shrinkAbsorb
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    jne memSysHalt
+    jne badMCBChain
 .shrinkAbsorb:
     cmp qword [rsi + mcb.owner], mcbOwnerFree  ;Is this free?
     jne .exit
@@ -339,7 +325,7 @@ reallocMemory:     ;ah = 4Ah
     cmp byte [rsi + mcb.marker], mcbMarkCtn
     je .growthOK
     cmp byte [rsi + mcb.marker], mcbMarkEnd
-    jne memSysHalt
+    jne badMCBChain
 .growthOK:
     ;rdi points to block we are growing
     cmp qword [rsi + mcb.owner], mcbOwnerFree
@@ -389,19 +375,10 @@ reallocMemory:     ;ah = 4Ah
     mov eax, errNoMem   ;Not enough memory
     mov rdx, qword [oldRSP]
     mov dword [rdx + callerFrame.rbx], ebx  ;Save max realloc size for block
-    jmp short .bad
+    jmp mcbErrHdlr
 .badAddrGiven:
-    mov rdx, qword [oldRSP]
     mov eax, errMemAddr   ;Bad address given
-.bad:
-    mov byte [errorDrv], -1 ;No drive
-    mov byte [errorLocus], eLocMem  ;Memory locus
-    mov word [errorExCde], ax   ;Error code
-    mov byte [errorAction], eActUsr ;Retry with different value
-    mov word [rdx + callerFrame.rax], ax    ;Save this word on stack
-    or byte [rdx + callerFrame.flags], 1    ;Set Carry flag on
-    call verifyIntegrityOfMCBChain
-    ret
+    jmp mcbErrHdlr
 getsetMallocStrat: ;ah = 58h
     test al, al
     jz .get
@@ -413,7 +390,7 @@ getsetMallocStrat: ;ah = 58h
     mov byte [allocStrat], al   ;Only save low word
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
     call verifyIntegrityOfMCBChain
-    ret
+    return
 .get:
     mov rbx, qword [oldRSP]
     xor eax, eax
@@ -421,18 +398,10 @@ getsetMallocStrat: ;ah = 58h
     mov word [rbx + callerFrame.rax], ax    ;Store word
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
     call verifyIntegrityOfMCBChain
-    ret
+    return
 .bad:
-    mov byte [errorDrv], -1 ;No drive
-    mov byte [errorLocus], eLocMem  ;Memory locus
-    mov word [errorExCde], errInvFnc   ;Invalid function number addr
-    mov byte [errorAction], eActUsr ;Retry with different value
     mov eax, errInvFnc
-    mov rbx, qword [oldRSP]
-    mov word [rbx + callerFrame.rax], ax    ;Save this word on stack
-    or byte [rbx + callerFrame.flags], 1    ;Set Carry flag on
-    call verifyIntegrityOfMCBChain
-    ret
+    jmp short mcbErrHdlr
 ;-----------------------------------:
 ;      Memory related routines      :
 ;-----------------------------------:
@@ -444,11 +413,11 @@ verifyIntegrityOfMCBChain:
     cmp byte [rbx + mcb.marker], mcbMarkCtn
     je .ok1
     cmp byte [rbx + mcb.marker], mcbMarkEnd    ;End of the chain?
-    jne memSysHalt    ;It was not M or Z, fail violently
+    jne badMCBChain    ;It was not M or Z, fail violently
 .exit:
     pop rbx
     pop rax
-    ret ;We have reached the end of the chain, return all good!
+    return ;We have reached the end of the chain, return all good!
 .ok1:
     xor eax, eax
     mov eax, dword [rbx + mcb.blockSize]    ;Add the block size
@@ -456,24 +425,13 @@ verifyIntegrityOfMCBChain:
     add rbx, mcb.program    ;The block starts at the program
     add rbx, rax
     jmp short .ok
-memSysHalt:
-;Only arrive here if the integrity of the system is not verified
-;Lock the system
+badMCBChain:
+    mov al, errMCBbad   ;Yikes!
+mcbErrHdlr:
+    ;Jumped to with eax = error code
     mov byte [errorDrv], -1 ;No drive
-    mov byte [errorLocus], eLocMem  ;Memory locus
-    mov word [errorExCde], errMCBbad   ;Destroyed MCB chain
-    mov byte [errorAction], eActKil ;Abort the system
-    lea rdx, .sysHltString
-    mov ah, 09h
-    int 41h
-    ;Only halt IRQ's in production!
-    %if !DEBUG
-    cli ;Halt interrupts
-    mov al, 0FFh    ;Mask IRQ lines 
-    out 0A1h, al
-    out 021h, al
-    %endif
-    hlt             ;Halt the system
-    jmp short $ - 1 ;Go back far enough to capture the hlt
-.sysHltString db "Memory allocation error",0Dh,0Ah,
-              db "Cannot load COMMAND, system halted$"
+    call extErrExit ;Error thru the unified error handler
+    cmp al, errMCBbad
+    rete
+    call verifyIntegrityOfMCBChain  ;Check MCB chain ok if error !=errMCBbad
+    return
