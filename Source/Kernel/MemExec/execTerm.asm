@@ -15,10 +15,41 @@ terminateRes:       ;Int 47h
 ;========================
 ;    Int 21h functions
 ;========================
-createNewPSP:      ;ah = 26h
-    return
 createPSP:         ;ah = 55h, creates a PSP for a program
+;Input:
+;rdx = Pointer to new PSP in memory.
+;   Will be rounded up to next paragraph if not paragraph aligned.
+;   Officially document that this MUST be paragraph aligned.
+;rsi = alloc size for new psp block
+    mov byte [pspCopyFlg], -1   ;We are making a child process
+    mov r8, qword [currentPSP]
+    or esi, esi ;Zero upper dword of rsi
+    push rsi    ;esi is passed to us for PSP allocsize
+    jmp short copyPSP.pspCommon
+copyPSP:      ;ah = 26h
+;Input:
+;rdx = Pointer to new PSP in memory.
+;   Will be rounded up to next paragraph if not paragraph aligned.
+;   Officially document that this MUST be paragraph aligned.
+    mov r8, qword [currentPSP]
+    mov ebx, dword [r8 + psp.allocSize]    ;Get alloc size (zero upper dword)
+    push rbx    ;Save this value for PSP allocsize
+.pspCommon:
+    add rdx, 0Fh    ;If we need to round up, this will do it
+    shr rdx, 4  ;Now eliminate the bottom nybble
+    shl rdx, 4  ;And pull out a fresh zero with inc nybble 1 IF nybble 0 != 0
+;r8 is current PSP, now copy psp
+    mov rsi, r8
+    mov rdi, rdx
+    mov ecx, psp_size/8 ;psp must be 100h
+    rep movsq   ;Copy the psp over zoom zoom qword boom
+    test byte [pspCopyFlg], -1
+    jz .copy
+    ;Here we now proceed to copy all inheritable hdls and nullify other hdls
+.copy:
+    mov byte [pspCopyFlg], 0    ;Reset flag
     return
+
 loadExecChild:     ;ah = 4Bh, EXEC
     return
 

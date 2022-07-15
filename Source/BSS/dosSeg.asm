@@ -132,7 +132,7 @@ sdaMainSwap:
     secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
     primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
     critReqHdr  resb ioReqPkt_size  ;Used for ^C detection!
-
+    pspCopyFlg  resb 1  ;Set to -1 for child process PSP, 0 for simple PSP copy
 ;Swappable Buffers
     buffer1     resb 128  ;Space for one path and file name
     buffer2     resb 128  ;Space for a second path and file name

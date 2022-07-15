@@ -39,7 +39,7 @@ kDispTbl:
     dw getFileSizeFCB - kDispTbl      ;AH = 23H, FILE OPERATION       FCB
     dw setRelRecordFCB - kDispTbl     ;AH = 24H, RECORD OPERATION     FCB
     dw setIntVector - kDispTbl        ;AH = 25H, MISC. SYS. FUNCTION
-    dw createNewPSP - kDispTbl        ;AH = 26H, PROCESS MANAGEMENT
+    dw copyPSP - kDispTbl             ;AH = 26H, PROCESS MANAGEMENT
     dw randBlockReadFCB - kDispTbl    ;AH = 27H, RECORD OPERATION     FCB
     dw randBlockWriteFCB - kDispTbl   ;AH = 28H, RECORD OPERATION     FCB
     dw parseFilenameFCB - kDispTbl    ;AH = 29H, FILE OPERATION       FCB
