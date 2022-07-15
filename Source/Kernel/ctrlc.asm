@@ -2,6 +2,7 @@ diskDevErr:
 ;Called, NOT Jumped to. 
 ;Input: rdi = Disk Buffer pointer
 ;       eax = Status word (Zero Extended)
+;       rbp = Disk DPB pointer
 ; [Int44hbitfld] = Specific bitflags (r/w AND potential extra ok responses)
 ;Output: al = Int 44h response (0-3)
 ; All other registers preserved

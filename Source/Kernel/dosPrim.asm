@@ -267,15 +267,8 @@ ensureDiskValid:
 .diskDrvCritErrBPB:
     ;eax has status word, rbp has dpb ptr
     ;rdi has buffer header pointer, rsi points to the driver
-    mov qword [xInt44RDI], rdi  ;Save rdi
-    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov edi, eax    ;Transfer the status word over
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
-    mov ah, critRead | critDOS | critFailOK | critRetryOK ;Set bits
-    mov byte [Int44bitfld], ah  ;Save the permissions in var
-    call criticalDOSError   ;This function increments the fail flag if fail
-    mov rdi, qword [xInt44RDI]
-    mov rbp, qword [tmpDPBPtr]
+    mov byte [Int44bitfld], critRead | critDOS | critFailOK | critRetryOK
+    call diskDevErr
     cmp al, critRetry
     je .repeatEP
     ;Else we fail (Ignore=Fail here)
