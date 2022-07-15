@@ -92,15 +92,13 @@ terminateStayRes:  ;ah = 31h
     call reallocMemory
     pop rbx
     pop rax
-    jc terminateClean.skipCtrlC ;If an error, return w/o editing psp seg. size
+    jc terminateClean.altEP ;If an error, return w/o editing psp seg. size
     mov dword [r8 + psp.allocSize], ebx   ;Store the new number of paragraphs
     ;al has the error code (errorlevel), exitType is set to 3
-    jmp short terminateClean.skipCtrlC    ;Terminate as normal
+    jmp short terminateClean.altEP    ;Terminate as normal
 
 simpleTerminate:   ;ah = 00h
-    xor eax, eax
-    mov byte [exitType], al ;Normal Exit Type
-    jmp short terminateClean.skipCtrlC  ;Jump here with errorlevel = 0
+    xor eax, eax    ;Just fall through as normal
 terminateClean:    ;ah = 4Ch, EXIT
 ;Here we must:
 ;0) Build errorlevel and adjust variables accordingly
@@ -119,11 +117,14 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;
 ; Step 0
 ;For now, just adjust error level in var
+    xor ah, ah  ;Eliminate the 4Ch
+    xchg ah, byte [exitType]    ;Set type to zero
     test byte [ctrlCExit], -1   ;Is ^C flag set?
-    jz .skipCtrlC   ;Jump if we are here due to normal exit or Abort
+    jz .storeELvl   ;Jump if we are here due to normal exit
     mov byte [exitType], 1   ;Set the return type to 1 => Ctrl-C exit
-.skipCtrlC:
+.altEP: ;EP for Abort and TSR. exitType must be set beforehand
     mov ah, byte [exitType] ;Get the exitType
+.storeELvl:
     mov word [errorLevel], ax   ;Store word
 ; Step 1
 .step1:
@@ -138,6 +139,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp byte [exitType], 3  ;TSR exit?
     je .step5   ;Skip resource freeing if so as TSR exit resizes memory alloc.
 ; Step 3
+    call diskReset  ;Flush all buffers before closing any handles
     cmp byte [exitType], 2  ;Abort type exit?
     jne .skipAbortNetClose  ;Skip the following
     mov eax, 111Dh  ; Close all remote files for process on Abort!
@@ -219,8 +221,6 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
 ;Step 10
     xor al, al    ;Set al to 0
-    mov byte [exitType], al ;Reset exit type for next exit
-    call diskReset  ;Flush all buffers
     return
 
 loadExecChild:     ;ah = 4Bh, EXEC
