@@ -398,7 +398,7 @@ FATinfoDevice:     ;ah = 1Ch
     call getUserRegs
     or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
     mov eax, errBadDrv          ;Invalid drive error
-    jmp extErrExit  ;Exit error
+    return  ;Exit error
 .fidDPBFound:
     mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
@@ -415,6 +415,11 @@ setIntVector:      ;ah = 25h
 ;Called with:
 ;   rdx = Pointer to interrupt handler
 ;   al = Interrupt number
+    push rax    ;Preserve all registers in call
+    push rcx
+    push rdx
+    push rsi
+    push rbp
     mov ebp, eax ;al has interrupt number which we need to save
     and ebp, 0FFh   ;Zero everything but the bottom byte
 ;First call to get default BIOS segement selector and attribute word
@@ -428,9 +433,13 @@ setIntVector:      ;ah = 25h
 ;dx preserves the attribute word
     mov eax, 0F008h ;Set descriptor
     int 35h
-    call getUserRegs
-    mov al, byte [rsi + callerFrame.rax]    ;Preserve low byte of rax
+    pop rbp
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rax
     return
+
 setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     mov byte [verifyFlag], al
     and byte [verifyFlag], 1       ;Only save the bottom bit
@@ -480,20 +489,20 @@ getInDOSflagPtr:   ;ah = 34h
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
     return
+
 getIntVector:      ;ah = 35h
 ;Called with:
 ;   al = Interrupt Number
 ;Returns:
 ;   rbx = Pointer to interrupt handler
-    mov bl, al  ;Get the interrupt vector number into bl
-    mov eax, 0F007h
-    int 35h
+    call muxGetIntVector    ;Get int vector in rbx, all other regs preserved
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
     mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
     return
 
 getDiskFreeSpace:  ;ah = 36h
+;Input: Drive number in dl (0 = Current)
     test dl, dl
     jnz .gdfsSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
@@ -501,26 +510,47 @@ getDiskFreeSpace:  ;ah = 36h
 .gdfsSkipdefault:
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
     mov al, dl
-    call walkDPBchain ;Get in rsi the dpb pointer for drive al
-    jnc .gdfsDPBFound
+    call getCDS ;Get CDS pointer in workingCDS var for given drive
+    jnc .gdfsDPBFound   ;Exit if unable to find/make a CDS for drive
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
     mov eax, errBadDrv
     call extErrExit ;Call, don't jump, to allow us to set ax to -1
+    ;extErrExit sets rsi to caller regs
     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
     return
 .gdfsDPBFound:
+    call testCDSNet ;Test if its a netCDS and get CDS ptr in rdi
+    jnc .physical
+    ;Beep a redir request out
+    mov eax, 110Ch  ;
+    int 4Fh
+    jc .bad
+    xchg rbx, rdx ;These are returned swapped by Net request
+    jmp short .setData
+.physical:
+;Now we must lock the structures
+    mov byte [errorLocus], eLocDsk
+    call dosCrit1Enter  ;Enter class 1 critical section
+    call getDiskDPB ;Get disk dpb pointer in rbp
+    jc .bad
     mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
     mov edx, dword [rsi + dpb.dClusterCount]
     movzx ecx, word [rsi + dpb.wBytesPerSector] ;Save the value in ecx
     mov ebx, dword [rsi + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
+.setData:
+    call dosCrit1Exit
     call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx
     mov qword [rsi + callerFrame.rbx], rbx
     return
-
+.bad:
+    mov al, errBadDrv
+    call extErrExit
+    mov ax, -1
+    jmp short .setData  ;Exit critical section and return
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     xor eax, eax
     xchg ax, word [errorLevel]

@@ -38,7 +38,8 @@ copyPSP:      ;ah = 26h
     add rdx, 0Fh    ;If we need to round up, this will do it
     shr rdx, 4  ;Now eliminate the bottom nybble
     shl rdx, 4  ;And pull out a fresh zero with inc nybble 1 IF nybble 0 != 0
-;r8 is current PSP, now copy psp
+;r8 is current PSP, now copy psp to rdx
+;Preserve rdx and r8 until the end
     mov rsi, r8
     mov rdi, rdx
     mov ecx, psp_size/8 ;psp must be 100h
@@ -48,6 +49,27 @@ copyPSP:      ;ah = 26h
     ;Here we now proceed to copy all inheritable hdls and nullify other hdls
 .copy:
     mov byte [pspCopyFlg], 0    ;Reset flag
+    pop rax ;Pop the allocsize back into rax
+    mov dword [rdx + psp.allocSize], eax    ;Store allocsize
+    ;Now we copy the Interrupt addresses from the IDT to the PSP
+    lea rdi, qword [rdx + psp.oldInt42h]
+    mov al, 42h
+    call muxGetIntVector    ;Get vector in rbx
+    mov rax, rbx    ;Move vector number to rax
+    stosq   ;Move rdi to next entry and store
+    mov al, 43h
+    call muxGetIntVector    ;Get vector in rbx
+    mov rax, rbx    ;Move vector number to rax
+    stosq   ;Move rdi to next entry and store
+    mov al, 44h
+    call muxGetIntVector    ;Get vector in rbx
+    mov rax, rbx    ;Move vector number to rax
+    stosq   ;Move rdi to next entry and store
+    ;Now we add the additional useful bits... just in case they are damaged
+    mov word [rdx + psp.return], 0CD40h  ;Int 40h
+    mov dword [rbx + psp.unixEntry], 0CD40CB00h  ;Overlay next byte for prevPSP
+    mov qword [rbx + psp.prevPSP], -1  
+    mov qword [rbx + psp.parentPtr], r8 ;The Current PSP is parent
     return
 
 loadExecChild:     ;ah = 4Bh, EXEC
@@ -121,6 +143,11 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp byte [exitType], 3  ;TSR exit?
     je .step5   ;Skip resource freeing if so as TSR exit resizes memory alloc.
 ; Step 3
+    cmp byte [exitType], 2  ;Abort type exit?
+    jne .skipAbortNetClose  ;Skip the following
+    mov eax, 111Dh  ; Close all remote files for process on Abort!
+    int 4Fh
+.skipAbortNetClose:
     add rdi, psp.jobFileTbl ;Move rdi to point to the start of the JFT
     mov rsi, rdi    ;Point rsi to jft too
     movzx ecx, word [maxHndls] ;Number of entries in JFT

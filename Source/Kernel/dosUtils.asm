@@ -10,6 +10,33 @@ setWorkingDPB:
     mov qword [workingDPB], rbp
     return
 
+testCDSNet:
+;Checks if the workingCDS is a redirector drive
+;Return: rdi = workingCDS
+;        CF=NC => Net
+;        CF=CY => Not net or invalid CDS
+    mov rdi, qword [workingCDS]
+    cmp rdi, -1
+    je .notNet
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    jnz .notNet ;Carry flag will always be clear
+    return
+.notNet:
+    stc
+    return
+
+muxGetIntVector:    ;Int 4Fh AX=1202h
+;Input: al = Interrupt number
+;Output: rbx = Interrupt Vector
+    push rax    ;Preserve rax, segment selector returned by call
+    push rdx    ;Preserve rdx, Attribute Word returned by call
+    mov bl, al  ;Get the interrupt vector number into bl
+    mov eax, 0F007h
+    int 35h
+    pop rdx
+    pop rax
+    return
+
 getUserRegs:   ;Int 4Fh AX=1218h
 ;Returns ptr to user regs in rsi
     mov rsi, qword [oldRSP]
