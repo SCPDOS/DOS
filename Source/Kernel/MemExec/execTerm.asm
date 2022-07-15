@@ -15,8 +15,12 @@ terminateRes:       ;Int 47h
 ;========================
 ;    Int 21h functions
 ;========================
+createNewPSP:      ;ah = 26h
+    return
+createPSP:         ;ah = 55h, creates a PSP for a program
+    return
 loadExecChild:     ;ah = 4Bh, EXEC
-    ret
+    return
 
 terminateStayRes:  ;ah = 31h
 ;Input: al  = Error code

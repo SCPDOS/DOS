@@ -370,11 +370,11 @@ selectDisk:        ;ah = 0Eh
     mov byte [currentDrv], al   ;Set drive as current
 .skipSettingCurrent:
     movzx eax, byte [lastdrvNum]   ;Return lastdrive as "errorcode"
-    ret
+    return
 
 getCurrentDisk:    ;ah = 19h, get current default drive
     mov al, byte [currentDrv]
-    ret
+    return
 
 FATinfoDefault:    ;ah = 1Bh
     xor dl, dl
@@ -409,7 +409,7 @@ FATinfoDevice:     ;ah = 1Ch
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx
     mov qword [rsi + callerFrame.rbx], rbx
-    ret
+    return
 
 setIntVector:      ;ah = 25h
 ;Called with:
@@ -430,20 +430,18 @@ setIntVector:      ;ah = 25h
     int 35h
     call getUserRegs
     mov al, byte [rsi + callerFrame.rax]    ;Preserve low byte of rax
-    ret
-createNewPSP:      ;ah = 26h
-    ret
+    return
 setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
     mov byte [verifyFlag], al
     and byte [verifyFlag], 1       ;Only save the bottom bit
-    ret
+    return
 getDOSversion:     ;ah = 30h
     call getUserRegs
     xor ah, ah ;Continue the mainline PC-DOS identification line
     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
     mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
     mov word [rsi + callerFrame.rax], ax    ;Save ax
-    ret
+    return
 
 ;AH = 1Fh/32h - GET (current) DISK DPB
 getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
@@ -472,16 +470,16 @@ getDeviceDPBptr:   ;ah = 32h
     call getUserRegs
     mov [rsi + callerFrame.rbx], rbp    ;RBP has DPB pointer
     xor al, al
-    ret
+    return
 .bad:
     mov al, -1
-    ret
+    return
 
 getInDOSflagPtr:   ;ah = 34h
     lea rdx, inDOS
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
-    ret
+    return
 getIntVector:      ;ah = 35h
 ;Called with:
 ;   al = Interrupt Number
@@ -493,7 +491,7 @@ getIntVector:      ;ah = 35h
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
     mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
-    ret
+    return
 
 getDiskFreeSpace:  ;ah = 36h
     test dl, dl
@@ -510,7 +508,7 @@ getDiskFreeSpace:  ;ah = 36h
     mov eax, errBadDrv
     call extErrExit ;Call, don't jump, to allow us to set ax to -1
     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
-    ret
+    return
 .gdfsDPBFound:
     mov al, byte [rsi + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
@@ -521,7 +519,7 @@ getDiskFreeSpace:  ;ah = 36h
     mov qword [rsi + callerFrame.rdx], rdx
     mov word [rsi + callerFrame.rcx], cx
     mov qword [rsi + callerFrame.rbx], rbx
-    ret
+    return
 
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     xor eax, eax
@@ -535,7 +533,7 @@ getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rdx
-    ret
+    return
 
 
 ;AH = 53h - CREATE DPB
@@ -655,13 +653,12 @@ createDPB:         ;generates a DPB from a given BPB
 .l0001:
     debugExitM
     %endif
-    ret
+    return
 
 getVerifySetting:  ;ah = 54h
     mov al, byte [verifyFlag]   ;al is the return value in this case
-    ret
-createPSP:         ;ah = 55h, creates a PSP for a program
-    ret
+    return
+
 getExtendedError:  ;ah = 59h
     call getUserRegs
     mov ax, word [errorExCde]
@@ -671,11 +668,11 @@ getExtendedError:  ;ah = 59h
     mov word [rsi + callerFrame.rax], ax
     mov word [rsi + callerFrame.rbx], bx
     mov byte [rsi + callerFrame.rcx + 1], ch
-    ret
+    return
 getCritErrorInfo:  ;ah = 5Dh
 networkServices:   ;ah = 5Eh, do nothing
 networkRedirection:;ah = 5Fh, do nothing
-    ret
+    return
 getsetDiskSerial:  ;ah = 69h, get/set disk serial number
 noOp:
-    ret
+    return
