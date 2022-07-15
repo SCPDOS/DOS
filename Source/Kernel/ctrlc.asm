@@ -139,7 +139,6 @@ ctrlBreakHdlr:
     call printCRLF
     ;Reset the console back to 0
     mov byte [vConDrvSwp],  0   ;Set to 0
-.avoidCON:
 ;Handles a control break, juggles stacks and enters int 41h 
 	cli
 	mov rsp, qword [oldRSP]	;Get registers frame
