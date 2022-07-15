@@ -119,8 +119,6 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;
 ; Step 0
 ;For now, just adjust error level in var
-    xor ah, ah
-    xchg ah, byte [exitType]    ;Reset exitType byte and get it in ah
     test byte [ctrlCExit], -1   ;Is ^C flag set?
     jz .skipCtrlC   ;Jump if we are here due to normal exit or Abort
     mov byte [exitType], 1   ;Set the return type to 1 => Ctrl-C exit
@@ -221,6 +219,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
 ;Step 10
     xor al, al    ;Set al to 0
+    mov byte [exitType], al ;Reset exit type for next exit
     call diskReset  ;Flush all buffers
     return
 
