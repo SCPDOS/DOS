@@ -379,10 +379,12 @@ getCurrentDisk:    ;ah = 19h, get current default drive
 FATinfoDefault:    ;ah = 1Bh
     xor dl, dl
 FATinfoDevice:     ;ah = 1Ch
-;Return in:
-;   al = Number of sectors per cluster
-;   edx = Number of clusters
-;   cx =  Size of a clsuter
+;Input: dl = 1 based drive number
+;Output:
+;al = sectors per cluster (allocation unit), or FFh if invalid drive
+;cx = bytes per sector
+;edx = total number of clusters
+;rbx = Ptr to media ID byte
     test dl, dl
     jnz .fidSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
@@ -391,25 +393,34 @@ FATinfoDevice:     ;ah = 1Ch
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
 ;Walk the dpb chain manually
     mov al, dl  ;Move drive number into al
-    call walkDPBchain    ;Get in rsi the dpb pointer for drive in al
-    jnc .fidDPBFound
-;Else, we at an error.
-;Simply return with CY set and error code in al with extended error info
-    call getUserRegs
-    or qword [rsi + callerFrame.flags], 1   ;Set the CY flag
+    call getCDS    ;Get in workingCDS the cds pointer for drive in al
+    jnc .fidCDSFound
     mov eax, errBadDrv          ;Invalid drive error
-    return  ;Exit error
-.fidDPBFound:
-    mov al, byte [rsi + dpb.bMaxSectorInCluster]
-    inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
-    mov edx, dword [rsi + dpb.dClusterCount]
-    movzx ecx, word [rsi + dpb.wBytesPerSector] ; Save the value in ecx
-    lea rbx, qword [rsi + dpb.bMediaDescriptor]
+    jmp short .error 
+.fidCDSFound:
+    call getDiskData
+    jc .error
+;Now we have that:
+;al = sectors per cluster
+;ah = media ID byte
+;ebx = total clusters
+;cx = bytes per sector
+;edx = number of available clusters
     call getUserRegs
-    mov qword [rsi + callerFrame.rdx], rdx
-    mov word [rsi + callerFrame.rcx], cx
-    mov qword [rsi + callerFrame.rbx], rbx
+    mov byte [mediaByte], ah    ;Store media ID byte
+    xor ah, ah
+    mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
+    mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
+    lea rbx, mediaByte
+    mov qword [rsi + callerFrame.rbx], rbx  ;Store pointer to mediaByte
+    and byte [rsi + callerFrame.flags], ~1  ;Clear CF
+.badExit:
+    mov word [rsi + callerFrame.rax], ax    ;Store sectors per cluster
     return
+.error:
+    call extErrExit ;Set rsi to point to callerFrame
+    mov ax, -1
+    jmp short .badExit
 
 setIntVector:      ;ah = 25h
 ;Called with:
@@ -503,6 +514,10 @@ getIntVector:      ;ah = 35h
 
 getDiskFreeSpace:  ;ah = 36h
 ;Input: Drive number in dl (0 = Current)
+;Output:    ax = sectors per cluster
+;           ebx = number of free clusters
+;           cx = bytes per sector
+;           edx = total clusters on drive
     test dl, dl
     jnz .gdfsSkipdefault
     mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
@@ -511,7 +526,7 @@ getDiskFreeSpace:  ;ah = 36h
     dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
     mov al, dl
     call getCDS ;Get CDS pointer in workingCDS var for given drive
-    jnc .gdfsDPBFound   ;Exit if unable to find/make a CDS for drive
+    jnc .gdfsCDSFound   ;Exit if unable to find/make a CDS for drive
 ;Else, we at an error.
 ;Simply return with CY set and error code in al with extended error info
     mov eax, errBadDrv
@@ -519,38 +534,30 @@ getDiskFreeSpace:  ;ah = 36h
     ;extErrExit sets rsi to caller regs
     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
     return
-.gdfsDPBFound:
-    call testCDSNet ;Test if its a netCDS and get CDS ptr in rdi
-    jnc .physical
-    ;Beep a redir request out
-    mov eax, 110Ch  ;
-    int 4Fh
-    jc .bad
-    xchg rbx, rdx ;These are returned swapped by Net request
-    jmp short .setData
-.physical:
-;Now we must lock the structures
-    mov byte [errorLocus], eLocDsk
-    call dosCrit1Enter  ;Enter class 1 critical section
-    call getDiskDPB ;Get disk dpb pointer in rbp
-    jc .bad
-    mov al, byte [rsi + dpb.bMaxSectorInCluster]
-    inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
-    mov edx, dword [rsi + dpb.dClusterCount]
-    movzx ecx, word [rsi + dpb.wBytesPerSector] ;Save the value in ecx
-    mov ebx, dword [rsi + dpb.dNumberOfFreeClusters]    ;Ger # free clusters
-.setData:
-    call dosCrit1Exit
+.gdfsCDSFound:
+    call getDiskData
+    jc .error
+;Now we have that:
+;al = sectors per cluster
+;ah = media ID byte
+;ebx = total clusters
+;cx = bytes per sector
+;edx = number of available clusters
     call getUserRegs
-    mov qword [rsi + callerFrame.rdx], rdx
-    mov word [rsi + callerFrame.rcx], cx
-    mov qword [rsi + callerFrame.rbx], rbx
+    xor ah, ah  ;Don't need media byte, zero extend
+    mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
+    mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
+    mov dword [rsi + callerFrame.rbx], edx  ;Store # of Free clusters
+    and byte [rsi + callerFrame.flags], ~1  ;Clear CF
+.badExit:
+    mov word [rsi + callerFrame.rax], ax    ;Store sectors per cluster
     return
-.bad:
-    mov al, errBadDrv
-    call extErrExit
+.error:
+    call extErrExit ;Sets rsi to point to callerFrame
     mov ax, -1
-    jmp short .setData  ;Exit critical section and return
+    jmp short .badExit
+
+
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     xor eax, eax
     xchg ax, word [errorLevel]

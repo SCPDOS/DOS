@@ -6,7 +6,7 @@
 ; that gets set up)
 
 setWorkingDPB:
-;Gets dpb in rbp and saves to curDrvDPB (working dpb)
+;Gets dpb in rbp and saves to workingDPB
     mov qword [workingDPB], rbp
     return
 
@@ -23,6 +23,41 @@ testCDSNet:
     return
 .notNet:
     stc
+    return
+
+getDiskData:
+;This function returns:
+;al = sectors per cluster
+;ah = media ID byte
+;ebx = total clusters
+;cx = bytes per sector
+;edx = number of available clusters
+;
+;If CF=CY on exit, al contains the error code
+    call testCDSNet ;Test if its a netCDS and puts CDS ptr in rdi
+    jnc .physical
+    ;Beep a redir request out
+    mov eax, 110Ch 
+    int 4Fh
+    return
+.physical:
+;Now we must lock the structures
+    mov byte [errorLocus], eLocDsk
+    call dosCrit1Enter  ;Enter class 1 critical section
+    call getDiskDPB ;Get disk dpb pointer in rbp for CDS in rdi
+    jc .exit
+    call setWorkingDPB  ;Set rbp to be the working dpb
+    call findFreeClusterData    ;Get Free Cluster data in DPB
+    jc .exit
+    mov al, byte [rbp + dpb.bMaxSectorInCluster]
+    inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
+    mov ah, byte [rbp + dpb.bMediaDescriptor]
+    mov ebx, dword [rbp + dpb.dClusterCount]
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Save the value in ecx
+    mov edx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Get # free clusters
+    call dosCrit1Exit
+    clc
+.exit:
     return
 
 muxGetIntVector:    ;Int 4Fh AX=1202h

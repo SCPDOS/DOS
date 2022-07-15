@@ -7,7 +7,7 @@ setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
 getCurrentDIR:     ;ah = 47h
 getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name
-    ret
+    return
 
 
 ;-----------------------------------:
@@ -28,7 +28,7 @@ getFATtype:
     mov ecx, 2  ;Must be FAT 32 otherwise
 .exit:
     pop rbx
-    ret
+    return
 
 clust2FATEntry:
 ;Converts a cluster number to a offset in the FAT
@@ -68,7 +68,7 @@ clust2FATEntry:
     pop rcx ;Pop the FAT type back into rcx
     pop rbp
     pop rbx
-    ret
+    return
 
 getStartSectorOfCluster:
 ;Input: eax = Cluster Number
@@ -86,11 +86,12 @@ getStartSectorOfCluster:
     add rax, rcx
     ;rax now has the first sector of the current cluster
     pop rcx
-    ret
+    return
 
-findFreeCluster:
+findFreeClusterData:
 ;Walks the FAT to find a free cluster and returns the 
 ;   zero extended cluster number in eax (-1 means no free cluster)
+;Also finds NumberOfFreeCLusters. Both fields get filled in the workingDPB
 ;Works on the workingDPB
 ;If returns with CF=CY => Fail set, return immediately to caller
     push rbx
@@ -101,7 +102,12 @@ findFreeCluster:
     mov rbp, qword [workingDPB]
     movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
     mov qword [tempSect], rax   ;Save the sector number temporarily
-;Use ebp as sector counter
+    ;Mark dFirstFreeCluster as -1 and dNumberOfFreeClusters as 0
+    xor edx, edx
+    mov dword [rbp + dpb.dNumberOfFreeClusters], edx ;Zero this field
+    dec edx
+    mov dword [rbp + dpb.dFirstFreeCluster], edx ;Set to -1, unknown (i.e. none)
+    ;Use edx as sector counter
     mov edx, dword [rbp + dpb.dFATlength]
 ;Get Sector Size in bytes in ebx
     movzx ebx, word [rbp + dpb.wBytesPerSector]
@@ -121,27 +127,23 @@ findFreeCluster:
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
     movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
+.fat32Continue:
     repne scasd ;Look for the zero dword 
     je .fat32Found  ;If found, report cluster number (offset into FAT)
     dec edx ;Dec number of sectors left to search
-    jz .noFreeClusters
+    jz .exit    ;Once we have none left, we exit
     inc qword [tempSect]    ;Go to the next FAT sector
     jmp short .fat32Search
 .fat32Found:
+    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
+    cmp qword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
+    jne .fat32Continue  ;If so, keep searching sectors for more free clusters
     sub edi, 4  ;edi is one dword past the entry
-.computeEntry:
-    movzx rcx, word [rbp + dpb.wFAToffset] ;Get start sector number of FAT 
-    mov rax, qword [tempSect]   ;Get disk sector number of FAT into rax
-    sub rax, rcx   ;Get Offset into FAT in rax
-    movzx ecx, word [entries] ;Get number of entries in a FAT sector
-    push rdx
-    mul rcx ;Multiply rax with rcx (technically eax with ecx)
-    pop rdx
-;rbx points to current buffer header
-    lea rdx, qword [rbx + bufferHdr.dataarea]
-    sub rdi, rdx
-    add rax, rdi    ;Add the offset into the sector to rax to get cluster number
+    call .computeEntry  ;Add field to dpb
+    add edi, 4  ;Put rdi now back onto the next FAT entry
+    jmp short .fat32Continue
 .exit:
+    mov eax, dword [rbp + dpb.dFirstFreeCluster]  ;Get first free cluster in eax
     clc
 .exitFail:      ;Keep carry flag
     pop rbp
@@ -149,10 +151,7 @@ findFreeCluster:
     pop rdx
     pop rcx
     pop rbx
-    ret
-.noFreeClusters:
-    mov eax, -1 ;No free cluster marker
-    jmp short .exit
+    return
 .fat16:
     shr ebx, 1  ;Divide by 2 to get number of FAT entries in a sector buffer
     mov word [entries], bx
@@ -164,15 +163,21 @@ findFreeCluster:
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
     movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
+.fat16Continue:
     repne scasw ;Look for the zero word 
     je .fat16Found  ;If found, report cluster number (offset into FAT)
     dec edx ;Dec number of sectors left to search
-    jz .noFreeClusters
+    jz .exit    ;Once we have none left, exit
     inc qword [tempSect]    ;Go to the next FAT sector
     jmp short .fat16Search
 .fat16Found:
+    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
+    cmp qword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
+    jne .fat16Continue
     sub edi, 2  ;edi is one word past the entry
-    jmp short .computeEntry
+    call .computeEntry
+    add edi, 2  ;Put rdi back to the next entry
+    jmp short .fat16Continue
 .fat12:
     mov eax, ebx    ;Get sectorsize in ax
     shl eax, 1  ;Multiply by 2
@@ -194,12 +199,16 @@ findFreeCluster:
 .fat12Search:
     movzx eax, word [rdi]   ;Get first word (EVEN ENTRY)
     and eax, 0FFFh   ;Clear upper nybble
-    jz .fat12EntryFound
+    jnz .getOddEntry    ;Skip denoting entry if not 0
+    call .fat12EntryFound
+.getOddEntry:
     inc rdi ;Goto next byte
     dec ecx ;Dec the number of entries to search in sector
     movzx eax, word [rdi]  ;Get second word (ODD ENTRY)
     shr eax, 4  ;Shift down by 4
-    jz .fat12EntryFound
+    jnz .getNextSector
+    call .fat12EntryFound
+.getNextSector:
     inc rdi ;Goto next entry
     dec ecx ;Dec the number of entries to search in sector
     jnz .fat12Search
@@ -213,14 +222,44 @@ findFreeCluster:
     lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
     mov ah, byte [rcx]  ;Get first byte in new sector
     shr eax, 4  ;Clear out bottom nybble
-    jz .fat12EntryFound ;Found a sector!
+    jnz .noXcluster
+    call .fat12EntryFound   ;Found a free cluster!
+.noXcluster:
     ;Empty cluster not found in sector
     dec edx ;Decrement sector count
-    jz .noFreeClusters
+    jz .exit    ;Once all sectors have been processed, exit
     mov rdi, rcx    ;Set rdi to point at start of next sector
     jmp short .fat12SearchNewSector ;Reload the number of entries and search
 .fat12EntryFound:
-    jmp .computeEntry   ;Unnecessary redirection
+    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
+    cmp qword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
+    retne
+    call .computeEntry  ;Compute the first cluster if this is -1
+    return
+.computeEntry:
+;We only call this to compute the first entry cluster number
+;We preserve ALL registers when doing so
+    push rax
+    push rcx
+    push rdx
+    push rdi
+    movzx rcx, word [rbp + dpb.wFAToffset] ;Get start sector number of FAT 
+    mov rax, qword [tempSect]   ;Get disk sector number of FAT into rax
+    sub rax, rcx   ;Get Offset into FAT in rax
+    movzx ecx, word [entries] ;Get number of entries in a FAT sector
+    push rdx
+    mul rcx ;Multiply rax with rcx (technically eax with ecx)
+    pop rdx
+;rbx points to current buffer header
+    lea rdx, qword [rbx + bufferHdr.dataarea]
+    sub rdi, rdx
+    add rax, rdi    ;Add the offset into the sector to rax to get cluster number
+    mov dword [rbp + dpb.dFirstFreeCluster], eax    ;Store this zx value in dpb
+    pop rdi
+    pop rdx
+    pop rcx
+    pop rax
+    return
 
 getDataSector:
 ;This function will request the sector of data in [currSectD].
@@ -241,7 +280,7 @@ getDataSector:
     pop rcx
     pop rbx
     pop rax
-    ret
+    return
 
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
@@ -266,7 +305,7 @@ getNextSectorOfFile:
 .exitOK:
     clc
 .exitFail:
-    ret
+    return
 .gotoNextCluster:
     mov eax, dword [currClustD] ;Get absolute cluster number
     call walkFAT
@@ -329,7 +368,7 @@ walkFAT:
     pop rdx
     pop rcx
     pop rbx
-    ret
+    return
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors
 ;eax has the sector of the FAT, offset into the sector is in edx

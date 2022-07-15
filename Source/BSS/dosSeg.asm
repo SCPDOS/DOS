@@ -195,7 +195,7 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     dirEntry    resb 1  ;32 byte offset in dir sect for file being searched for
 ;Error DPB 
     tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
-    
+    mediaByte   resb 1  ;Calls 1Bh and 1Ch return ptr to here
 ;Stacks and scratch SFT
     critStack   resq 165
     critStakTop resq 1
