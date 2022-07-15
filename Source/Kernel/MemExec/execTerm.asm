@@ -72,9 +72,6 @@ copyPSP:      ;ah = 26h
     mov qword [rbx + psp.parentPtr], r8 ;The Current PSP is parent
     return
 
-loadExecChild:     ;ah = 4Bh, EXEC
-    return
-
 terminateStayRes:  ;ah = 31h
 ;Input: al  = Error code
 ;       edx = Number of paragraphs to keep resident
@@ -225,4 +222,7 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;Step 10
     xor al, al    ;Set al to 0
     call diskReset  ;Flush all buffers
+    return
+
+loadExecChild:     ;ah = 4Bh, EXEC
     return

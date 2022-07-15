@@ -129,6 +129,7 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     mov byte [Int44Trans], -1   ;We are translating a Abort to Fail. Mark it
     jmp short .setFail
 .kill:
+    mov word [errorExCde], di ;Save the error code if Abort
     mov byte [exitType], 2    ;We are returning from Abort, ret type 2!
     jmp terminateClean
 
