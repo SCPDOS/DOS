@@ -611,7 +611,7 @@ tempCDS:
     pop rbx
     mov word [rbx + psp.return], 0CD40h ;DOS return function
     mov dword [rbx + psp.unixEntry], 0CD40CB00h  ;Last byte overlaied
-    mov qword [rbx + psp.startSeg], rbx ;Save start segment of app
+    mov qword [rbx + psp.allocSize], 0    ;Size of allocation (dummy value)
     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
     mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
     lea rdi, qword [rbx + psp.jobFileTbl]

@@ -33,9 +33,13 @@ terminateStayRes:  ;ah = 31h
 ;   ebx = How many paras this block should contain after realloc.
     mov r8, qword [currentPSP]  ;Get current PSP, one para before should be MCB
     mov ebx, edx
+    push rax    ;Preserve errorlevel across call
+    push rbx    ;Preserve new number of paragraphs across call
     call reallocMemory
-    ;If the call succeeded, the MCB for this process will reflect the new size
-    ;Now we terminate as normal
+    pop rbx
+    pop rax
+    jc terminateClean.skipCtrlC ;If an error, return w/o editing psp seg. size
+    mov dword [r8 + psp.allocSize], ebx   ;Store the new number of paragraphs
     ;al has the error code (errorlevel), exitType is set to 3
     jmp short terminateClean.skipCtrlC    ;Terminate as normal
 
@@ -46,8 +50,8 @@ simpleTerminate:   ;ah = 00h
 terminateClean:    ;ah = 4Ch, EXIT
 ;Here we must:
 ;0) Build errorlevel and adjust variables accordingly
-;1) Swap the console back to the original driver if it is swapped.
-;2) Check if the program is it's own parent. If so, return.
+;1) Check if the program is it's own parent. If so, return.
+;2) Swap the console back to the original driver if it is swapped.
 ;2.5) If we are exiting due to TSR, jump to 5
 ;3) Free all file handles associated to the current process.
 ;       Note this means, reducing the open counts and setting PSP entries to -1
@@ -71,13 +75,13 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov word [errorLevel], ax   ;Store word
 ; Step 1
 .step1:
-    call vConRetDriver  ;Always reset the driver flag
-; Step 2
     mov rdi, qword [currentPSP] ;Get the current psp
     mov rdx, rdi    ;Save in rdx
     mov rbx, qword [rdi + psp.parentPtr]
     cmp rbx, rdi    ;Check if the application is it's own parent
     rete            ;If it is, simply return (al has errorLevel)
+; Step 2
+    call vConRetDriver  ;Always reset the driver flag
 ; Step 2.5
     cmp byte [exitType], 3  ;TSR exit?
     je .step5   ;Skip resource freeing if so

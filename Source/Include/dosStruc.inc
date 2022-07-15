@@ -306,7 +306,8 @@ endstruc
 
 struc psp
     .return     resb 2  ;Should always be CDh 40h, same place as DOS
-    .startSeg   resq 1  ;Pointer to the start of the PSP
+    .allocSize  resd 1  ;Number of paras in init alloc or when exiting as TSR.
+                resd 1  ;Reserved 4 bytes (for now, may recycle later)
     .oldInt42h  resq 1  ;Int 42h pointer on overlay load
     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
     .oldInt44h  resq 1  ;Int 44h pointer on overlay load
