@@ -111,7 +111,7 @@ allocateMemory:    ;ah = 48h
     mov qword [rdx + callerFrame.rax], rax  ;Save pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
-    ret
+    return
 .bfCommon:
     mov rsi, qword [firstMCB]
     cmp byte [allocStrat], 1    ;Check if best fit
@@ -141,7 +141,7 @@ allocateMemory:    ;ah = 48h
     mov qword [rdx + callerFrame.rax], rax  ;Save new block pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
-    ret
+    return
 .allocFail:
     ;Walk the MCB chain to determine the biggest block size
     mov rsi, [mcbChainPtr]
@@ -251,7 +251,7 @@ freeMemory:        ;ah = 49h
     mov eax, errMemAddr
     call extErrExit ;Error thru the unified error handler
     call verifyIntegrityOfMCBChain  ;Check MCB chain ok
-    ret
+    return
 reallocMemory:     ;ah = 4Ah
 ;Input: r8 = address of the block to be realloc'ed
 ;       ebx = How many paras this block should contain after realloc. 
@@ -365,7 +365,7 @@ reallocMemory:     ;ah = 4Ah
     call verifyIntegrityOfMCBChain
     mov rbx, qword [oldRSP]
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
-    ret
+    return
 .notEnuffMem2:
     dec ebx ;Max allocation must be 1 less than what it currently is
     jmp short .notEnuffMem1

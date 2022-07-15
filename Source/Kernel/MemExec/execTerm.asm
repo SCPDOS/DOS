@@ -84,7 +84,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     call vConRetDriver  ;Always reset the driver flag
 ; Step 2.5
     cmp byte [exitType], 3  ;TSR exit?
-    je .step5   ;Skip resource freeing if so
+    je .step5   ;Skip resource freeing if so as TSR exit resizes memory alloc.
 ; Step 3
     add rdi, psp.jobFileTbl ;Move rdi to point to the start of the JFT
     mov rsi, rdi    ;Point rsi to jft too
