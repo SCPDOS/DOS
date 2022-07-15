@@ -117,14 +117,17 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     jmp short .setFail  ;If retry not permitted, return Fail
 .abort:
 ;Prepare to abort. We abort from within!
-    ;First check if the application is it's own parent.
-    ;If it is, we exit fail and return to the application
+    ;First check if the process is it's own parent.
+    ;If it is, we exit fail and return to the process
     mov rax, qword [currentPSP] ;Get the current psp
     push rbx
     mov rbx, qword [rax + psp.parentPtr]
-    cmp rbx, rax    ;Check if the application is it's own parent
+    cmp rbx, rax    ;Check if the process is it's own parent
     pop rbx
-    je .setFail
+    jne .kill   ;If the process is not it's own parent, we kill the process
+    mov byte [Int44Trans], -1   ;We are translating a Abort to Fail. Mark it
+    jmp short .setFail
+.kill:
     mov byte [exitType], 2    ;We are returning from Abort, ret type 2!
     jmp terminateClean
 
