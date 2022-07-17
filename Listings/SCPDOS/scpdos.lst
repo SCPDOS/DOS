@@ -1039,1227 +1039,1278 @@
     15                              <1> ; rbx =  LBA of first Logical Block after SCP/BIOS
     16                              <1> ; dx  = Int 33h boot device number
     17                              <1> ; fs  = userbase pointer (pointer to first usable block of RAM)
-    18                              <1> tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
+    18                              <1> 
     19 00000000 55AA                <1>     dw 0AA55h           ;Initial signature
-    20 00000002 909090909090909090- <1>     db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
-    20 0000000B 909090909090909090- <1>
-    20 00000014 909090909090909090- <1>
-    20 0000001D 909090909090909090- <1>
-    20 00000026 909090909090909090- <1>
-    20 0000002F 909090909090909090- <1>
-    20 00000038 909090909090909090- <1>
-    20 00000041 909090909090909090- <1>
-    20 0000004A 909090909090909090- <1>
-    20 00000053 909090909090909090- <1>
-    20 0000005C 909090909090909090- <1>
-    20 00000065 909090909090909090- <1>
-    20 0000006E 909090909090909090- <1>
-    20 00000077 909090909090909090- <1>
-    20 00000080 909090909090909090- <1>
-    20 00000089 909090909090909090- <1>
-    20 00000092 909090909090909090- <1>
-    20 0000009B 909090909090909090- <1>
-    20 000000A4 909090909090909090- <1>
-    20 000000AD 909090909090909090- <1>
-    20 000000B6 909090909090909090- <1>
-    20 000000BF 909090909090909090- <1>
-    20 000000C8 909090909090909090- <1>
-    20 000000D1 909090909090909090- <1>
-    20 000000DA 909090909090909090- <1>
-    20 000000E3 909090909090909090- <1>
-    20 000000EC 909090909090909090- <1>
-    20 000000F5 909090909090909090- <1>
-    20 000000FE 9090                <1>
-    21                              <1> ;First move the alignment of the DOSSEG to 4Kb
-    22 00000100 FC                  <1>     cld ;Ensure all writes are done the right way firstly!
-    23 00000101 52                  <1>     push rdx    ;Save dl on stack briefly
-    24 00000102 B9000100C0          <1>     mov ecx, 0C0000100h ;Read FS MSR
-    25 00000107 0F32                <1>     rdmsr
-    26 00000109 89D7                <1>     mov edi, edx        ;Get the hi dword, and clear the upper bytes
-    27 0000010B 48C1E720            <1>     shl rdi, 20h        ;Shift high
-    28 0000010F 89C7                <1>     mov edi, eax        ;Get the low dword in
-    29 00000111 4889FE              <1>     mov rsi, rdi        ;Save userbase in rsi temporarily
-    30 00000114 4881E700F0FFFF      <1>     and rdi, ~0FFFh
-    31 0000011B 4881C700100000      <1>     add rdi, 1000h      ;Make this pointer 4Kb aligned!
-    32 00000122 89F8                <1>     mov eax, edi
-    33 00000124 4889FA              <1>     mov rdx, rdi
-    34 00000127 48C1EA20            <1>     shr rdx, 20h
-    35 0000012B 0F30                <1>     wrmsr   ;Write the new value to FS MSR
-    36 0000012D 5A                  <1>     pop rdx
-    37                              <1> ;------------------------------------------------;
-    38                              <1> ;              Connect Debugger                  ;
-    39                              <1> ;------------------------------------------------;
-    40                              <1> %if DEBUG
-    41                              <1> ;Only connect if in debug mode
-    42                              <1>     mov eax, 0C501h ;Connect debugger
-    43                              <1>     int 35h
-    44                              <1> %endif
-    45                              <1> ;------------------------------------------------;
-    46                              <1> ;           Sanitise the data area               ;
-    47                              <1> ;------------------------------------------------;
-    48                              <1> ; This call initialises ALL fields in the DOS    ;
-    49                              <1> ; data area with 0's. Thus any fields, which     ;
-    50                              <1> ; need to be initialised with a 0 value, are     ;
-    51                              <1> ; initialised for free.                          ;
-    52                              <1> ;------------------------------------------------;
-    53 0000012E B9[8DD80300]        <1>     mov ecx, dSegLen
-    54 00000133 30C0                <1>     xor al, al
-    55 00000135 57                  <1>     push rdi    ;Temp save rdi on the stack
-    56 00000136 F3AA                <1>     rep stosb
-    57 00000138 5F                  <1>     pop rdi
-    58                              <1> ;------------------------------------------------;
-    59                              <1> ;          Start saving Basic DOS data           ;
-    60                              <1> ;------------------------------------------------;
-    61 00000139 64881425[10C00300]  <1>     mov byte fs:[bootDrive], dl ;Save the boot drive in memory
-    62                              <1> ;Copy DOS to its final resting place
-    63 00000141 6448893C25-         <1>     mov qword fs:[dosSegPtr], rdi 
-    63 00000146 [00C00300]          <1>
-    64 0000014A 6448893425-         <1>     mov qword fs:[biosUBase], rsi
-    64 0000014F [08C00300]          <1>
-    65 00000153 4889FD              <1>     mov rbp, rdi    ;Save the start of dosSeg in rbp
-    66 00000156 4881C7[8DD80300]    <1>     add rdi, dSegLen ;Move destination past end of data area
-    67 0000015D 488D35(00000000)    <1>     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
-    68 00000164 B900100000          <1>     mov ecx, 1000h
-    69 00000169 F348A5              <1>     rep movsq
-    70                              <1> 
-    71 0000016C CD31                <1>     int 31h ;Get number of Int 33h devices in r8b
-    72 0000016E 49C1E808            <1>     shr r8, 8   ;Isolate bytes 1 and 2 of r8
-    73 00000172 664489C0            <1>     mov ax, r8w
-    74 00000176 64882425[11C00300]  <1>     mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
-    75 0000017E 64880425[12C00300]  <1>     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
-    76 00000186 64C60425[70C00300]- <1>     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
-    76 0000018E 05                  <1>
-    77                              <1>     ;mov byte fs:[numPhysVol], 0    ;Number of logical drives
-    78 0000018F 6466C70425-         <1>     mov word fs:[numFiles], 5      ;Default 8 files, at start 5
-    78 00000194 [96C00300]0500      <1>
-    79 0000019A 6466C70425-         <1>     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
-    79 0000019F [98C00300]1400      <1>
-    80 000001A5 64C60425[71C00300]- <1>     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
-    80 000001AD 01                  <1>
-    81                              <1>     ;If no detected Int 33h devices, halt 
-    82 000001AE 49C1E810            <1>     shr r8, 2*8
-    83 000001B2 4584C0              <1>     test r8b, r8b
-    84 000001B5 0F84970A0000        <1>     jz errorInit
-    85                              <1> ;------------------------------------------------;
-    86                              <1> ;          Add additional page tables            ;
-    87                              <1> ;------------------------------------------------;
-    88                              <1> ;This will allow for up to 64Gb of addressible space
-    89 000001BB 4889EF              <1>     mov rdi, rbp
-    90                              <1>     ;Each entry is a 2Mb (200000h) multiple from 4Gb (100000000h)
-    91 000001BE B900780000          <1>     mov ecx, dosAPTsize/8   ;This many entries as qwords
-    92 000001C3 57                  <1>     push rdi
-    93 000001C4 48B883000000010000- <1>     mov rax, 100000000h | 83h ;Make each pde 2Mb, present and r/w
-    93 000001CD 00                  <1>
-    94                              <1> pdtLoop:
-    95 000001CE 48AB                <1>     stosq
-    96 000001D0 480500002000        <1>     add rax, 200000h
-    97 000001D6 FFC9                <1>     dec ecx
-    98 000001D8 75F4                <1>     jnz pdtLoop
-    99 000001DA 58                  <1>     pop rax ;Get the pointer back to the top of the memory area in rax
-   100                              <1> ;Now we add every 4kb page to the page directory pointer table
-   101                              <1> ;15 4kb pages to consider
-   102 000001DB 0F20DF              <1>     mov rdi, cr3    ;Get Page level 4 table pointer
-   103 000001DE 488B3F              <1>     mov rdi, qword [rdi] ;Go to next level
-   104 000001E1 4881E700FFFFFF      <1>     and rdi, ~0FFh  ;Strip bottom two nybbles
-   105 000001E8 4881C720000000      <1>     add rdi, 4*8    ;Go to 4th entry
-   106 000001EF B93C000000          <1>     mov ecx, 60
-   107 000001F4 480D03000000        <1>     or rax, 3h      ;present and r/w
-   108                              <1> pdptLoop:
-   109 000001FA 48AB                <1>     stosq
-   110 000001FC 480500100000        <1>     add rax, 1000h  ;Goto next 4kb page
-   111 00000202 FFC9                <1>     dec ecx
-   112 00000204 75F4                <1>     jnz pdptLoop
-   113 00000206 0F20DF              <1>     mov rdi, cr3
-   114 00000209 0F22DF              <1>     mov cr3, rdi
-   115                              <1> 
-   116                              <1> ;------------------------------------------------;
-   117                              <1> ;                   MCB inits                    ;
-   118                              <1> ;------------------------------------------------;
-   119                              <1> mcbInit:
-   120 0000020C B820E80000          <1>     mov eax, 0E820h
-   121 00000211 CD35                <1>     int 35h
-   122                              <1>     ;rax has pointer to USERBASE, rsi has pointer to memory map
-   123 00000213 E804010000          <1>     call .mcbFindAddress
-   124 00000218 7349                <1>     jnc .mcbi1  ;If found, proceed
-   125                              <1>     ;Here, we try use E801h
-   126 0000021A B801E80000          <1>     mov eax, 0E801h
-   127 0000021F CD35                <1>     int 35h
-   128 00000221 0FB7C0              <1>     movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
-   129 00000224 0FB7DB              <1>     movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
-   130 00000227 85C0                <1>     test eax, eax
-   131 00000229 741B                <1>     jz .worst
-   132 0000022B C1E009              <1>     shl eax, 9      ;Multiply by 9 to get number of bytes
-   133 0000022E C1E310              <1>     shl ebx, 16     ;Multiply by 16 to get number of bytes
-   134 00000231 64890425[13C00300]  <1>     mov dword fs:[loProtMem], eax
-   135 00000239 64891C25[17C00300]  <1>     mov dword fs:[hiProtMem], ebx
-   136 00000241 E909010000          <1>     jmp mcbBuild
-   137                              <1> .worst:
-   138                              <1>     ;Get USERBASE pointer and subtract it from 2Mb
-   139 00000246 B800002000          <1>     mov eax, 200000h
-   140 0000024B 64488B1C25-         <1>     mov rbx, qword fs:[biosUBase]   ;Get userbase
-   140 00000250 [08C00300]          <1>
-   141 00000254 29D8                <1>     sub eax, ebx
-   142 00000256 64890425[13C00300]  <1>     mov dword fs:[loProtMem], eax  ;The leftover goes here
-   143 0000025E E9EC000000          <1>     jmp mcbBuild 
-   144                              <1> .mcbi1:
-   145 00000263 488B10              <1>     mov rdx, qword [rax]    ;Save the userbase in rdx
-   146 00000266 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
-   146 0000026F 00                  <1>
-   147 00000270 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
-   148 00000274 0F85C2000000        <1>     jne .mcbFail
-   149 0000027A 488B4008            <1>     mov rax, qword [rax + 8]    ;Get arena size in rax
-   150                              <1>     ;PCI hole always exists so this value will always be a dword
-   151 0000027E 64890425[13C00300]  <1>     mov dword fs:[loProtMem], eax
-   152 00000286 4889D3              <1>     mov rbx, rdx    ;Get userbase into rbx
-   153 00000289 4801C3              <1>     add rbx, rax    ;Check if it goes above 16Mb?
-   154 0000028C 4881FB00000001      <1>     cmp rbx, 1000000h  
-   155 00000293 773C                <1>     ja .skipISA
-   156                              <1> ;Here we deal with ISA hole issues
-   157 00000295 B820E80000          <1>     mov eax, 0E820h
-   158 0000029A CD35                <1>     int 35h
-   159 0000029C 48B800000001000000- <1>     mov rax, 1000000h
-   159 000002A5 00                  <1>
-   160 000002A6 E871000000          <1>     call .mcbFindAddress
-   161 000002AB 0F829E000000        <1>     jc mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
-   162 000002B1 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
-   162 000002BA 00                  <1>
-   163 000002BB 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-   164 000002BF 0F858A000000        <1>     jne mcbBuild  
-   165 000002C5 488B5808            <1>     mov rbx, qword [rax + 8]
-   166 000002C9 64891C25[17C00300]  <1>     mov dword fs:[hiProtMem], ebx   ;Save data 
-   167                              <1> .skipISA:
-   168 000002D1 B820E80000          <1>     mov eax, 0E820h
-   169 000002D6 CD35                <1>     int 35h
-   170 000002D8 48B800000000010000- <1>     mov rax, 100000000h ;4Gb boundary
-   170 000002E1 00                  <1>
-   171 000002E2 E835000000          <1>     call .mcbFindAddress
-   172 000002E7 7266                <1>     jc mcbBuild    ;If no memory above 4Gb, proceed as normal
-   173 000002E9 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
-   173 000002F2 00                  <1>
-   174 000002F3 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-   175 000002F7 7556                <1>     jne mcbBuild   
-   176 000002F9 488B5808            <1>     mov rbx, qword [rax + 8]
-   177                              <1>     ;If this size is above 60Gb, store 60Gb as this is max long arena size!
-   178 000002FD 48B9000000000F0000- <1>     mov rcx, 0F00000000h    ;60Gb value
-   178 00000306 00                  <1>
-   179 00000307 4839CB              <1>     cmp rbx, rcx
-   180 0000030A 480F47D9            <1>     cmova rbx, rcx  ;Move the value of rcx into rbx IF it is above
-   181 0000030E 6448891C25-         <1>     mov qword fs:[longMem], rbx   ;Save data 
-   181 00000313 [1BC00300]          <1>
-   182 00000317 E933000000          <1>     jmp mcbBuild
-   183                              <1> .mcbFindAddress:
-   184                              <1> ;Takes an address in rax and tries to find the 24 byte entry in the memory map
-   185                              <1> ;Entry: rax = Address of arena to search for
-   186                              <1> ;       rsi = Pointer to memory map
-   187                              <1> ;       ecx = Number of 24 byte entries
-   188                              <1> ;Exit:  CF=NC : rax = Pointer to 24 byte entry 
-   189                              <1> ;       CF=CY : value in rax not found
-   190 0000031C 56                  <1>     push rsi
-   191 0000031D 51                  <1>     push rcx
-   192 0000031E 50                  <1>     push rax
-   193                              <1> .mfa0:
-   194 0000031F 483B06              <1>     cmp rax, qword [rsi]
-   195 00000322 7410                <1>     je .mcbAddressFound
-   196 00000324 4881C618000000      <1>     add rsi, 24 ;Goto next entry
-   197 0000032B FFC9                <1>     dec ecx
-   198 0000032D 79F0                <1>     jns .mfa0
-   199                              <1> .mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
-   200 0000032F 58                  <1>     pop rax
-   201 00000330 59                  <1>     pop rcx
-   202 00000331 5E                  <1>     pop rsi
-   203 00000332 F9                  <1>     stc
-   204 00000333 C3                  <1>     ret
-   205                              <1> .mcbAddressFound:
-   206 00000334 4889F0              <1>     mov rax, rsi    ;Save pointer to entry in rax
-   207 00000337 59                  <1>     pop rcx ;Pop old rax value off
-   208 00000338 59                  <1>     pop rcx
-   209 00000339 5E                  <1>     pop rsi
-   210 0000033A F8                  <1>     clc
-   211 0000033B C3                  <1>     ret
-   212                              <1> .mcbFail:
-   213 0000033C 488D2D36090000      <1>     lea rbp, mcbFailmsg
-   214 00000343 B804130000          <1>     mov eax, 1304h
-   215 00000348 CD30                <1>     int 30h
-   216 0000034A E903090000          <1>     jmp errorInit
-   217                              <1> 
-   218                              <1> mcbBuild:
-   219                              <1> ;Actually build the MCB chain here
-   220                              <1> ;Start by computing the difference between userbase and DOS area
-   221                              <1> ;This value needs to be subtracted from loProtMem to get free memory
-   222 0000034F 64488B1C25-         <1>     mov rbx, qword fs:[biosUBase]
-   222 00000354 [08C00300]          <1>
-   223 00000358 488DB5[00000000]    <1>     lea rsi, qword [rbp + dosMCB]  ;Get the fs relative address of this ptr
-   224 0000035F 56                  <1>     push rsi    ;Save ptr
-   225 00000360 4881C610000000      <1>     add rsi, mcb.program    ;Point to free space
-   226 00000367 4829DE              <1>     sub rsi, rbx    ;Get difference from userbase and first byte after DOS
-   227 0000036A 64293425[13C00300]  <1>     sub dword fs:[loProtMem], esi  ;Hide DOS data and code segs
-   228 00000372 5B                  <1>     pop rbx
-   229 00000373 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd  ;Mark as end of chain
-   230 00000376 48C7430108000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerDOS
-   231 0000037E 648B3425[13C00300]  <1>     mov esi, dword fs:[loProtMem]
-   232 00000386 C1EE04              <1>     shr esi, 4  ;Shift down by a nybble to get paragraphs
-   233 00000389 897309              <1>     mov dword [rbx + mcb.blockSize], esi
-   234 0000038C 6448891C25-         <1>     mov qword fs:[mcbChainPtr], rbx ;Save pointer
-   234 00000391 [2BC00300]          <1>
-   235                              <1> 
-   236                              <1>     ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
-   237 00000395 64813C25[17C00300]- <1>     cmp dword fs:[hiProtMem], 0
-   237 0000039D 00000000            <1>
-   238 000003A1 746E                <1>     jz .skipISA
-   239                              <1>     ;Here if an ISA hole exists, place a MCB around it
-   240 000003A3 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)    
-   241                              <1>     ;Remove one MCB worth of space from alloc
-   242 000003AA 31C9                <1>     xor ecx, ecx
-   243 000003AC 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
-   244 000003AF 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
-   245 000003B5 C1E104              <1>     shl ecx, 4  ;Convert from paragraphs
-   246 000003B8 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn  ;Change marker in anchor
-   247 000003BB 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
-   248 000003BE C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
-   249 000003C1 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
-   250 000003C9 48B900000001000000- <1>     mov rcx, 1000000h   ;Move 16Mb in rcx
-   250 000003D2 00                  <1>
-   251 000003D3 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
-   252 000003D6 480510000000        <1>     add rax, mcb_size
-   253 000003DC 4829C1              <1>     sub rcx, rax    ;Take their difference
-   254 000003DF C1E904              <1>     shr ecx, 4
-   255 000003E2 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
-   256 000003E5 C1E104              <1>     shl ecx, 4  ;Get bytes again
-   257 000003E8 4881C310000000      <1>     add rbx, mcb_size
-   258 000003EF 4801CB              <1>     add rbx, rcx
-   259                              <1>     ;RBX should now be at 16Mb
-   260 000003F2 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
-   261 000003F5 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
-   262 000003FD 648B0C25[17C00300]  <1>     mov ecx, dword fs:[hiProtMem]
-   263 00000405 C1E904              <1>     shr ecx, 4  ;Get paragraphs
-   264 00000408 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
-   265 0000040E 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
-   266                              <1> .skipISA:
-   267                              <1>     ;Now check the longMem count. If it is 0, skip PCI hole computations.
-   268                              <1>     ;rbx points to a block with "Z" marker
-   269 00000411 64813C25[1BC00300]- <1>     cmp dword fs:[longMem], 0
-   269 00000419 00000000            <1>
-   270 0000041D 7470                <1>     jz .exit
-   271                              <1>     ;Add PCI hole MCB
-   272 0000041F 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)
+    20 00000002 4C0FB6FA            <1>     movzx r15, dl       ;Save the drive letter in r15
+    21 00000006 4989DE              <1>     mov r14, rbx        ;Save next sector number
+    22 00000009 488D3514000000      <1>     lea rsi, sysInitldr
+    23 00000010 BF00060000          <1>     mov edi, 600h   ;Hardcoded address, 600h
+    24 00000015 B940000000          <1>     mov ecx, 512/8      ;TMP: DOS boot device MUST HAVE 512 byte sectors.
+    25 0000001A F348A5              <1>     rep movsq   ;Copy over
+    26 0000001D B800060000          <1>     mov eax, 600h   ;Push the new address to go to
+    27 00000022 50                  <1>     push rax
+    28 00000023 C3                  <1>     ret ;Jump to this value (600h + whatever the size here is)
+    29                              <1> sysInitldr:
+    30                              <1> ;Now the tough part, load DOS to 800
+    31 00000024 BE10000000          <1>     mov esi, 10h    ;Use as a loop counter
+    32                              <1> .read:
+    33 00000029 4488FA              <1>     mov dl, r15b    ;Get Drive number
+    34 0000002C 48BB00080000000000- <1>     mov rbx, 800h   ;Load at next 512 byte marker
+    34 00000035 00                  <1>
+    35 00000036 4489F1              <1>     mov ecx, r14d   ;Get this sector LBA (first sector after BIOS)
+    36 00000039 FFC1                <1>     inc ecx         ;and want the next sector (DOS AND BIOS MUST BE CONTIGUOUS)
+    37 0000003B B065                <1>     mov al, 65h     ;Load a large number of sectors (about 51.7k)
+    38 0000003D B482                <1>     mov ah, 82h     ;Read LBA
+    39 0000003F CD33                <1>     int 33h
+    40 00000041 0F83B9010000        <1>     jnc initBegin   ;No error? Yay, DOS loaded.
+    41 00000047 FFCE                <1>     dec esi
+    42 00000049 75DE                <1>     jnz .read
+    43 0000004B 488D2D09000000      <1>     lea rbp, .msg   ;Print error message
+    44 00000052 B804130000          <1>     mov eax, 1304h
+    45 00000057 CD30                <1>     int 30h
+    46 00000059 CD38                <1>     int 38h ;If an error, fall into SYSDEBUG
+    47 0000005B 5343502F444F53204C- <1> .msg db "SCP/DOS Load Error",0Ah,0Dh,0
+    47 00000064 6F6164204572726F72- <1>
+    47 0000006D 0A0D00              <1>
+    48 00000070 000000000000000000- <1>     db 100h-($-$$) dup 00h ;Fill with nulls  
+    48 00000079 000000000000000000- <1>
+    48 00000082 000000000000000000- <1>
+    48 0000008B 000000000000000000- <1>
+    48 00000094 000000000000000000- <1>
+    48 0000009D 000000000000000000- <1>
+    48 000000A6 000000000000000000- <1>
+    48 000000AF 000000000000000000- <1>
+    48 000000B8 000000000000000000- <1>
+    48 000000C1 000000000000000000- <1>
+    48 000000CA 000000000000000000- <1>
+    48 000000D3 000000000000000000- <1>
+    48 000000DC 000000000000000000- <1>
+    48 000000E5 000000000000000000- <1>
+    48 000000EE 000000000000000000- <1>
+    48 000000F7 000000000000000000  <1>
+    49                              <1> tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
+    50                              <1>     ;Store space for a static PSP
+    51 00000100 000000000000000000- <1>     db 100h dup 00h
+    51 00000109 000000000000000000- <1>
+    51 00000112 000000000000000000- <1>
+    51 0000011B 000000000000000000- <1>
+    51 00000124 000000000000000000- <1>
+    51 0000012D 000000000000000000- <1>
+    51 00000136 000000000000000000- <1>
+    51 0000013F 000000000000000000- <1>
+    51 00000148 000000000000000000- <1>
+    51 00000151 000000000000000000- <1>
+    51 0000015A 000000000000000000- <1>
+    51 00000163 000000000000000000- <1>
+    51 0000016C 000000000000000000- <1>
+    51 00000175 000000000000000000- <1>
+    51 0000017E 000000000000000000- <1>
+    51 00000187 000000000000000000- <1>
+    51 00000190 000000000000000000- <1>
+    51 00000199 000000000000000000- <1>
+    51 000001A2 000000000000000000- <1>
+    51 000001AB 000000000000000000- <1>
+    51 000001B4 000000000000000000- <1>
+    51 000001BD 000000000000000000- <1>
+    51 000001C6 000000000000000000- <1>
+    51 000001CF 000000000000000000- <1>
+    51 000001D8 000000000000000000- <1>
+    51 000001E1 000000000000000000- <1>
+    51 000001EA 000000000000000000- <1>
+    51 000001F3 000000000000000000- <1>
+    51 000001FC 00000000            <1>
+    52                              <1> ;END OF FIRST SECTOR!!
+    53                              <1> ;DOS SYSINIT BEGINS HERE
+    54                              <1> ;First move the alignment of the DOSSEG to 4Kb
+    55                              <1> initBegin:
+    56 00000200 FC                  <1>     cld ;Ensure all writes are done the right way firstly!
+    57 00000201 B9000100C0          <1>     mov ecx, 0C0000100h ;Read FS MSR
+    58 00000206 0F32                <1>     rdmsr
+    59 00000208 89D7                <1>     mov edi, edx        ;Get the hi dword, and clear the upper bytes
+    60 0000020A 48C1E720            <1>     shl rdi, 20h        ;Shift high
+    61 0000020E 89C7                <1>     mov edi, eax        ;Get the low dword in
+    62 00000210 4889FE              <1>     mov rsi, rdi        ;Save userbase in rsi temporarily
+    63 00000213 4881E700F0FFFF      <1>     and rdi, ~0FFFh
+    64 0000021A 4881C700100000      <1>     add rdi, 1000h      ;Make this pointer 4Kb aligned!
+    65 00000221 89F8                <1>     mov eax, edi
+    66 00000223 4889FA              <1>     mov rdx, rdi
+    67 00000226 48C1EA20            <1>     shr rdx, 20h
+    68 0000022A 0F30                <1>     wrmsr   ;Write the new value to FS MSR
+    69                              <1> ;------------------------------------------------;
+    70                              <1> ;              Connect Debugger                  ;
+    71                              <1> ;------------------------------------------------;
+    72                              <1> %if DEBUG
+    73                              <1> ;Only connect if in debug mode
+    74                              <1>     mov eax, 0C501h ;Connect debugger
+    75                              <1>     int 35h
+    76                              <1> %endif
+    77                              <1> ;------------------------------------------------;
+    78                              <1> ;           Sanitise the data area               ;
+    79                              <1> ;------------------------------------------------;
+    80                              <1> ; This call initialises ALL fields in the DOS    ;
+    81                              <1> ; data area with 0's. Thus any fields, which     ;
+    82                              <1> ; need to be initialised with a 0 value, are     ;
+    83                              <1> ; initialised for free.                          ;
+    84                              <1> ;------------------------------------------------;
+    85 0000022C B9[8DD80300]        <1>     mov ecx, dSegLen
+    86 00000231 30C0                <1>     xor al, al
+    87 00000233 57                  <1>     push rdi    ;Temp save rdi on the stack
+    88 00000234 F3AA                <1>     rep stosb
+    89 00000236 5F                  <1>     pop rdi
+    90                              <1> ;------------------------------------------------;
+    91                              <1> ;          Start saving Basic DOS data           ;
+    92                              <1> ;------------------------------------------------;
+    93 00000237 6444883C25-         <1>     mov byte fs:[bootDrive], r15b ;Save the boot drive in memory
+    93 0000023C [10C00300]          <1>
+    94                              <1> ;Copy DOS to its final resting place
+    95 00000240 6448893C25-         <1>     mov qword fs:[dosSegPtr], rdi 
+    95 00000245 [00C00300]          <1>
+    96 00000249 6448893425-         <1>     mov qword fs:[biosUBase], rsi
+    96 0000024E [08C00300]          <1>
+    97 00000252 4889FD              <1>     mov rbp, rdi    ;Save the start of dosSeg in rbp
+    98 00000255 4881C7[8DD80300]    <1>     add rdi, dSegLen ;Move destination past end of data area
+    99 0000025C 488D35(00000000)    <1>     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
+   100 00000263 B900100000          <1>     mov ecx, 1000h
+   101 00000268 F348A5              <1>     rep movsq
+   102                              <1> 
+   103 0000026B CD31                <1>     int 31h ;Get number of Int 33h devices in r8b
+   104 0000026D 49C1E808            <1>     shr r8, 8   ;Isolate bytes 1 and 2 of r8
+   105 00000271 664489C0            <1>     mov ax, r8w
+   106 00000275 64882425[11C00300]  <1>     mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
+   107 0000027D 64880425[12C00300]  <1>     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
+   108 00000285 64C60425[70C00300]- <1>     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
+   108 0000028D 05                  <1>
+   109                              <1>     ;mov byte fs:[numPhysVol], 0    ;Number of logical drives
+   110 0000028E 6466C70425-         <1>     mov word fs:[numFiles], 5      ;Default 8 files, at start 5
+   110 00000293 [96C00300]0500      <1>
+   111 00000299 6466C70425-         <1>     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
+   111 0000029E [98C00300]1400      <1>
+   112 000002A4 64C60425[71C00300]- <1>     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
+   112 000002AC 01                  <1>
+   113                              <1>     ;If no detected Int 33h devices, halt 
+   114 000002AD 49C1E810            <1>     shr r8, 2*8
+   115 000002B1 4584C0              <1>     test r8b, r8b
+   116 000002B4 0F84970A0000        <1>     jz errorInit
+   117                              <1> ;------------------------------------------------;
+   118                              <1> ;          Add additional page tables            ;
+   119                              <1> ;------------------------------------------------;
+   120                              <1> ;This will allow for up to 64Gb of addressible space
+   121 000002BA 4889EF              <1>     mov rdi, rbp
+   122                              <1>     ;Each entry is a 2Mb (200000h) multiple from 4Gb (100000000h)
+   123 000002BD B900780000          <1>     mov ecx, dosAPTsize/8   ;This many entries as qwords
+   124 000002C2 57                  <1>     push rdi
+   125 000002C3 48B883000000010000- <1>     mov rax, 100000000h | 83h ;Make each pde 2Mb, present and r/w
+   125 000002CC 00                  <1>
+   126                              <1> pdtLoop:
+   127 000002CD 48AB                <1>     stosq
+   128 000002CF 480500002000        <1>     add rax, 200000h
+   129 000002D5 FFC9                <1>     dec ecx
+   130 000002D7 75F4                <1>     jnz pdtLoop
+   131 000002D9 58                  <1>     pop rax ;Get the pointer back to the top of the memory area in rax
+   132                              <1> ;Now we add every 4kb page to the page directory pointer table
+   133                              <1> ;15 4kb pages to consider
+   134 000002DA 0F20DF              <1>     mov rdi, cr3    ;Get Page level 4 table pointer
+   135 000002DD 488B3F              <1>     mov rdi, qword [rdi] ;Go to next level
+   136 000002E0 4881E700FFFFFF      <1>     and rdi, ~0FFh  ;Strip bottom two nybbles
+   137 000002E7 4881C720000000      <1>     add rdi, 4*8    ;Go to 4th entry
+   138 000002EE B93C000000          <1>     mov ecx, 60
+   139 000002F3 480D03000000        <1>     or rax, 3h      ;present and r/w
+   140                              <1> pdptLoop:
+   141 000002F9 48AB                <1>     stosq
+   142 000002FB 480500100000        <1>     add rax, 1000h  ;Goto next 4kb page
+   143 00000301 FFC9                <1>     dec ecx
+   144 00000303 75F4                <1>     jnz pdptLoop
+   145 00000305 0F20DF              <1>     mov rdi, cr3
+   146 00000308 0F22DF              <1>     mov cr3, rdi
+   147                              <1> 
+   148                              <1> ;------------------------------------------------;
+   149                              <1> ;                   MCB inits                    ;
+   150                              <1> ;------------------------------------------------;
+   151                              <1> mcbInit:
+   152 0000030B B820E80000          <1>     mov eax, 0E820h
+   153 00000310 CD35                <1>     int 35h
+   154                              <1>     ;rax has pointer to USERBASE, rsi has pointer to memory map
+   155 00000312 E804010000          <1>     call .mcbFindAddress
+   156 00000317 7349                <1>     jnc .mcbi1  ;If found, proceed
+   157                              <1>     ;Here, we try use E801h
+   158 00000319 B801E80000          <1>     mov eax, 0E801h
+   159 0000031E CD35                <1>     int 35h
+   160 00000320 0FB7C0              <1>     movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
+   161 00000323 0FB7DB              <1>     movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
+   162 00000326 85C0                <1>     test eax, eax
+   163 00000328 741B                <1>     jz .worst
+   164 0000032A C1E009              <1>     shl eax, 9      ;Multiply by 9 to get number of bytes
+   165 0000032D C1E310              <1>     shl ebx, 16     ;Multiply by 16 to get number of bytes
+   166 00000330 64890425[13C00300]  <1>     mov dword fs:[loProtMem], eax
+   167 00000338 64891C25[17C00300]  <1>     mov dword fs:[hiProtMem], ebx
+   168 00000340 E909010000          <1>     jmp mcbBuild
+   169                              <1> .worst:
+   170                              <1>     ;Get USERBASE pointer and subtract it from 2Mb
+   171 00000345 B800002000          <1>     mov eax, 200000h
+   172 0000034A 64488B1C25-         <1>     mov rbx, qword fs:[biosUBase]   ;Get userbase
+   172 0000034F [08C00300]          <1>
+   173 00000353 29D8                <1>     sub eax, ebx
+   174 00000355 64890425[13C00300]  <1>     mov dword fs:[loProtMem], eax  ;The leftover goes here
+   175 0000035D E9EC000000          <1>     jmp mcbBuild 
+   176                              <1> .mcbi1:
+   177 00000362 488B10              <1>     mov rdx, qword [rax]    ;Save the userbase in rdx
+   178 00000365 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
+   178 0000036E 00                  <1>
+   179 0000036F 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
+   180 00000373 0F85C2000000        <1>     jne .mcbFail
+   181 00000379 488B4008            <1>     mov rax, qword [rax + 8]    ;Get arena size in rax
+   182                              <1>     ;PCI hole always exists so this value will always be a dword
+   183 0000037D 64890425[13C00300]  <1>     mov dword fs:[loProtMem], eax
+   184 00000385 4889D3              <1>     mov rbx, rdx    ;Get userbase into rbx
+   185 00000388 4801C3              <1>     add rbx, rax    ;Check if it goes above 16Mb?
+   186 0000038B 4881FB00000001      <1>     cmp rbx, 1000000h  
+   187 00000392 773C                <1>     ja .skipISA
+   188                              <1> ;Here we deal with ISA hole issues
+   189 00000394 B820E80000          <1>     mov eax, 0E820h
+   190 00000399 CD35                <1>     int 35h
+   191 0000039B 48B800000001000000- <1>     mov rax, 1000000h
+   191 000003A4 00                  <1>
+   192 000003A5 E871000000          <1>     call .mcbFindAddress
+   193 000003AA 0F829E000000        <1>     jc mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
+   194 000003B0 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
+   194 000003B9 00                  <1>
+   195 000003BA 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+   196 000003BE 0F858A000000        <1>     jne mcbBuild  
+   197 000003C4 488B5808            <1>     mov rbx, qword [rax + 8]
+   198 000003C8 64891C25[17C00300]  <1>     mov dword fs:[hiProtMem], ebx   ;Save data 
+   199                              <1> .skipISA:
+   200 000003D0 B820E80000          <1>     mov eax, 0E820h
+   201 000003D5 CD35                <1>     int 35h
+   202 000003D7 48B800000000010000- <1>     mov rax, 100000000h ;4Gb boundary
+   202 000003E0 00                  <1>
+   203 000003E1 E835000000          <1>     call .mcbFindAddress
+   204 000003E6 7266                <1>     jc mcbBuild    ;If no memory above 4Gb, proceed as normal
+   205 000003E8 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
+   205 000003F1 00                  <1>
+   206 000003F2 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+   207 000003F6 7556                <1>     jne mcbBuild   
+   208 000003F8 488B5808            <1>     mov rbx, qword [rax + 8]
+   209                              <1>     ;If this size is above 60Gb, store 60Gb as this is max long arena size!
+   210 000003FC 48B9000000000F0000- <1>     mov rcx, 0F00000000h    ;60Gb value
+   210 00000405 00                  <1>
+   211 00000406 4839CB              <1>     cmp rbx, rcx
+   212 00000409 480F47D9            <1>     cmova rbx, rcx  ;Move the value of rcx into rbx IF it is above
+   213 0000040D 6448891C25-         <1>     mov qword fs:[longMem], rbx   ;Save data 
+   213 00000412 [1BC00300]          <1>
+   214 00000416 E933000000          <1>     jmp mcbBuild
+   215                              <1> .mcbFindAddress:
+   216                              <1> ;Takes an address in rax and tries to find the 24 byte entry in the memory map
+   217                              <1> ;Entry: rax = Address of arena to search for
+   218                              <1> ;       rsi = Pointer to memory map
+   219                              <1> ;       ecx = Number of 24 byte entries
+   220                              <1> ;Exit:  CF=NC : rax = Pointer to 24 byte entry 
+   221                              <1> ;       CF=CY : value in rax not found
+   222 0000041B 56                  <1>     push rsi
+   223 0000041C 51                  <1>     push rcx
+   224 0000041D 50                  <1>     push rax
+   225                              <1> .mfa0:
+   226 0000041E 483B06              <1>     cmp rax, qword [rsi]
+   227 00000421 7410                <1>     je .mcbAddressFound
+   228 00000423 4881C618000000      <1>     add rsi, 24 ;Goto next entry
+   229 0000042A FFC9                <1>     dec ecx
+   230 0000042C 79F0                <1>     jns .mfa0
+   231                              <1> .mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
+   232 0000042E 58                  <1>     pop rax
+   233 0000042F 59                  <1>     pop rcx
+   234 00000430 5E                  <1>     pop rsi
+   235 00000431 F9                  <1>     stc
+   236 00000432 C3                  <1>     ret
+   237                              <1> .mcbAddressFound:
+   238 00000433 4889F0              <1>     mov rax, rsi    ;Save pointer to entry in rax
+   239 00000436 59                  <1>     pop rcx ;Pop old rax value off
+   240 00000437 59                  <1>     pop rcx
+   241 00000438 5E                  <1>     pop rsi
+   242 00000439 F8                  <1>     clc
+   243 0000043A C3                  <1>     ret
+   244                              <1> .mcbFail:
+   245 0000043B 488D2D36090000      <1>     lea rbp, mcbFailmsg
+   246 00000442 B804130000          <1>     mov eax, 1304h
+   247 00000447 CD30                <1>     int 30h
+   248 00000449 E903090000          <1>     jmp errorInit
+   249                              <1> 
+   250                              <1> mcbBuild:
+   251                              <1> ;Actually build the MCB chain here
+   252                              <1> ;Start by computing the difference between userbase and DOS area
+   253                              <1> ;This value needs to be subtracted from loProtMem to get free memory
+   254 0000044E 64488B1C25-         <1>     mov rbx, qword fs:[biosUBase]
+   254 00000453 [08C00300]          <1>
+   255 00000457 488DB5[00000000]    <1>     lea rsi, qword [rbp + dosMCB]  ;Get the fs relative address of this ptr
+   256 0000045E 56                  <1>     push rsi    ;Save ptr
+   257 0000045F 4881C610000000      <1>     add rsi, mcb.program    ;Point to free space
+   258 00000466 4829DE              <1>     sub rsi, rbx    ;Get difference from userbase and first byte after DOS
+   259 00000469 64293425[13C00300]  <1>     sub dword fs:[loProtMem], esi  ;Hide DOS data and code segs
+   260 00000471 5B                  <1>     pop rbx
+   261 00000472 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd  ;Mark as end of chain
+   262 00000475 48C7430108000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerDOS
+   263 0000047D 648B3425[13C00300]  <1>     mov esi, dword fs:[loProtMem]
+   264 00000485 C1EE04              <1>     shr esi, 4  ;Shift down by a nybble to get paragraphs
+   265 00000488 897309              <1>     mov dword [rbx + mcb.blockSize], esi
+   266 0000048B 6448891C25-         <1>     mov qword fs:[mcbChainPtr], rbx ;Save pointer
+   266 00000490 [2BC00300]          <1>
+   267                              <1> 
+   268                              <1>     ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
+   269 00000494 64813C25[17C00300]- <1>     cmp dword fs:[hiProtMem], 0
+   269 0000049C 00000000            <1>
+   270 000004A0 746E                <1>     jz .skipISA
+   271                              <1>     ;Here if an ISA hole exists, place a MCB around it
+   272 000004A2 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)    
    273                              <1>     ;Remove one MCB worth of space from alloc
-   274 00000426 31C9                <1>     xor ecx, ecx
-   275 00000428 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
-   276 0000042B 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
-   277 00000431 C1E104              <1>     shl ecx, 4  ;Get bytes
-   278 00000434 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn ;Change marker in prev MCB
-   279 00000437 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
-   280 0000043A C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
-   281 0000043D 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
-   282 00000445 48B900000000010000- <1>     mov rcx, 100000000h   ;Move 4Gb in rcx
-   282 0000044E 00                  <1>
-   283 0000044F 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
-   284 00000452 480510000000        <1>     add rax, mcb_size
-   285 00000458 4829C1              <1>     sub rcx, rax    ;Take their difference
-   286 0000045B C1E904              <1>     shr ecx, 4
-   287 0000045E 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
-   288 00000461 C1E104              <1>     shl ecx, 4  ;Get bytes again
-   289 00000464 4881C310000000      <1>     add rbx, mcb_size
-   290 0000046B 4801CB              <1>     add rbx, rcx
-   291                              <1>     ;RBX should now be at 4Gb
-   292 0000046E C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
-   293 00000471 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
-   294 00000479 64488B0C25-         <1>     mov rcx, qword fs:[longMem]
-   294 0000047E [1BC00300]          <1>
-   295 00000482 48C1E904            <1>     shr rcx, 4
-   296 00000486 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
-   297 0000048C 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
-   298                              <1> .exit:
-   299                              <1>     ;The last arena doesn't need to reserve space for one more MCB
-   300 0000048F 81430901000000      <1>     add dword [rbx + mcb.blockSize], (mcb_size>>4)
-   301                              <1> ;------------------------------------------------;
-   302                              <1> ;          Kernel inits and adjustments          ;
-   303                              <1> ;------------------------------------------------;
-   304                              <1> ;Adjust Interrupt Entries Int 40h-49h
-   305                              <1> adjInts:
-   306 00000496 B340                <1>     mov bl, 40h
-   307 00000498 B807F00000          <1>     mov eax, 0F007h ;Get the descriptor
-   308 0000049D CD35                <1>     int 35h
-   309 0000049F B940000000          <1>     mov ecx, 40h    ;Start from interrupt 40h
-   310 000004A4 488D3D43080000      <1>     lea rdi, intData
-   311 000004AB 89C6                <1>     mov esi, eax    ;Move segment selector info to esi
-   312                              <1> .ai0:
-   313 000004AD B808F00000          <1>     mov eax, 0F008h ;Set the descriptor
-   314 000004B2 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
-   315 000004B5 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
-   316                              <1> .ai1:
-   317 000004B8 CD35                <1>     int 35h
-   318 000004BA 4881C708000000      <1>     add rdi, 8
-   319 000004C1 FFC1                <1>     inc ecx
-   320 000004C3 81F950000000        <1>     cmp ecx, 50h
-   321 000004C9 75E2                <1>     jne .ai0
-   322                              <1> 
-   323                              <1> ;++++++++++++++++++++++++++++++++++++++++++++++++;
-   324                              <1> ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
-   325                              <1> ;++++++++++++++++++++++++++++++++++++++++++++++++;
-   326                              <1>     %if DEBUG
-   327                              <1> debugPopUpMsg:
-   328                              <1>     push rbx
-   329                              <1>     push rbp
-   330                              <1>     push rcx
-   331                              <1>     push rdx
-   332                              <1>     mov ecx, 53 ;A large number of lines
-   333                              <1>     xor edx, edx    ;COM 1
-   334                              <1> .cls:
-   335                              <1>     mov eax, 010Ah ;Transmit Line feed
-   336                              <1>     int 34h
-   337                              <1>     dec ecx
-   338                              <1>     jnz .cls
-   339                              <1>     lea rbx, qword [debPrintNullString + rbp]
-   340                              <1>     lea rbp, .msg
-   341                              <1>     call rbx
-   342                              <1>     jmp short .exit
-   343                              <1> .msg:   db 0Ah,0Dh,"SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
-   344                              <1> .exit:
-   345                              <1>     pop rdx
-   346                              <1>     pop rcx
-   347                              <1>     pop rbp
-   348                              <1>     pop rbx
-   349                              <1>     %endif
-   350                              <1> 
-   351                              <1> ;Now adjust int 42h 43h and 44h correctly using DOS
-   352 000004CB 488D1580070000      <1>     lea rdx, errorInit ;Get segment start address
-   353 000004D2 B842250000          <1>     mov eax, 2542h  ;Int 42, set vector
-   354 000004D7 CD41                <1>     int 41h
-   355 000004D9 488D1572070000      <1>     lea rdx, errorInit ;Get segment start address
-   356 000004E0 B844250000          <1>     mov eax, 2544h
-   357 000004E5 CD41                <1>     int 41h
-   358                              <1> ;------------------------------------------------;
-   359                              <1> ;          Driver Adjustments and inits          ;
-   360                              <1> ;------------------------------------------------;
-   361                              <1> ;Modify the pointers in nData before putting them in the data area
-   362 000004E7 48012D80080000      <1>     add qword [nData + drvHdr.nxtPtr], rbp
-   363 000004EE 48012D83080000      <1>     add qword [nData + drvHdr.strPtr], rbp
-   364 000004F5 48012D84080000      <1>     add qword [nData + drvHdr.intPtr], rbp
-   365                              <1> ;Copy the Null driver to its location in Sysvars
-   366 000004FC B922000000          <1>     mov ecx, drvHdr_size
-   367 00000501 488D3566080000      <1>     lea rsi, qword [nData]
-   368 00000508 488DBD[73C00300]    <1>     lea rdi, qword [rbp + nulDevHdr]
-   369 0000050F F3A4                <1>     rep movsb   
-   370                              <1> 
-   371                              <1> ;Adjust the addresses in the other driver headers 
-   372 00000511 48BE-               <1>     mov rsi, conHdr ;Point to the first non-NUL dev in chain
-   372 00000513 [2832000000000000]  <1>
-   373 0000051B B90C000000          <1>     mov ecx, 12      ;12 drivers in data area
-   374 00000520 488D342E            <1>     lea rsi, qword [rsi + rbp]  ;Get effective addr of driver header
-   375                              <1> adjDrivers:
-   376 00000524 E816070000          <1>     call adjustDrvHdr
-   377 00000529 E2F9                <1>     loop adjDrivers
-   378                              <1> 
-   379                              <1> ;Open NUL
-   380                              <1> ;NUL opened
-   381                              <1> ;Open CON
-   382                              <1> conInit:    ;Rather than keeping this resident... do it here
-   383                              <1> ;Start by hooking int 3Bh and int 49h as part of the CON driver
-   384 0000052B 488D95[0F350000]    <1>     lea rdx, qword [rbp + fastOutput]
-   385 00000532 B849250000          <1>     mov eax, 2549h
-   386 00000537 CD41                <1>     int 41h ;Hook int 49h (fast CON output)
-   387 00000539 488D95[17350000]    <1>     lea rdx, qword [rbp + ctrlBreak]
-   388 00000540 B83B250000          <1>     mov eax, 253Bh
-   389 00000545 CD41                <1>     int 41h ;Hook int 3Bh
-   390                              <1> .ci0:
-   391 00000547 B401                <1>     mov ah, 01      ;Get buffer status
-   392 00000549 CD36                <1>     int 36h
-   393 0000054B 7406                <1>     jz .ci1      ;If zero clear => no more keys to read
-   394 0000054D 30E4                <1>     xor ah, ah
-   395 0000054F CD36                <1>     int 36h ;Read key to flush from buffer
-   396 00000551 EBF4                <1>     jmp short .ci0
-   397                              <1> .ci1:
-   398 00000553 B800050000          <1>     mov eax, 0500h  ;Set page zero as the default page
-   399 00000558 CD30                <1>     int 30h
-   400 0000055A B402                <1>     mov ah, 02h
-   401 0000055C 31D2                <1>     xor edx, edx    ;Set screen cursor to top right corner
-   402 0000055E 88D7                <1>     mov bh, dl      ;Set cursor for page 0
-   403 00000560 CD30                <1>     int 30h
-   404 00000562 B707                <1>     mov bh, 07h     ;Grey/Black attribs
-   405 00000564 B800060000          <1>     mov eax, 0600h  ;Clear whole screen
-   406 00000569 CD30                <1>     int 30h
-   407                              <1> 
-   408                              <1>     ;Save ptr to ConHdr in Sysvars
-   409 0000056B 488D85[28320000]    <1>     lea rax, qword [rbp + conHdr]
-   410 00000572 6448890425-         <1>     mov qword fs:[vConPtr], rax
-   410 00000577 [4BC00300]          <1>
-   411                              <1> 
-   412                              <1>     ;Fix the ext ESC function handler address
-   413 0000057B 488D85[24150000]    <1>     lea rax, qword [rbp + editKeys]
-   414 00000582 6448890425-         <1>     mov qword fs:[extKeyFunc], rax
-   414 00000587 [59000000]          <1>
-   415                              <1> 
-   416                              <1> ;CLOCK init prock
-   417                              <1> ;Set the time and date using the RTC (if present)
-   418                              <1> clkInit:
-   419                              <1>    ;Save ptr to ClkHdr in Sysvars first
-   420 0000058B 488D85[8E320000]    <1>     lea rax, qword [rbp + clkHdr]
-   421 00000592 6448890425-         <1>     mov qword fs:[clockPtr], rax
-   421 00000597 [43C00300]          <1>
-   422                              <1> ;CH - Hours, in BCD
-   423                              <1> ;CL - Minutes, in BCD
-   424                              <1> ;DH - Seconds, in BCD
-   425 0000059B B402                <1>     mov ah, 02  ;Read RTC Time
-   426 0000059D CD3A                <1>     int 3Ah
-   427 0000059F 7271                <1>     jc .clkEnd  ;if error, just exit
-   428                              <1>     ;Now set the driver time. Convert From BCD to Decimal
-   429 000005A1 0FB6C5              <1>     movzx eax, ch   ;Hours
-   430 000005A4 E84D000000          <1>     call .bcd2Bin
-   431 000005A9 88C5                <1>     mov ch, al
-   432 000005AB 0FB6C1              <1>     movzx eax, cl     ;Mins
-   433 000005AE E843000000          <1>     call .bcd2Bin
-   434 000005B3 88C1                <1>     mov cl, al
-   435 000005B5 0FB6C6              <1>     movzx eax, dh   ;Seconds
-   436 000005B8 E839000000          <1>     call .bcd2Bin
-   437 000005BD 86E0                <1>     xchg ah, al ;Move seconds to ah, and 0 to al (hseconds)
-   438 000005BF 89C2                <1>     mov edx, eax
-   439 000005C1 B42D                <1>     mov ah, 2Dh ;DOS Set Time
-   440 000005C3 CD41                <1>     int 41h
-   441                              <1> ;Now get the date from RTC
-   442                              <1> ;CL - Year, in BCD
-   443                              <1> ;DH - Month, in BCD
-   444                              <1> ;DL - Day, in BCD
-   445 000005C5 B404                <1>     mov ah, 04  ;Read RTC Date
-   446 000005C7 CD3A                <1>     int 3Ah
-   447 000005C9 7247                <1>     jc .clkEnd
-   448                              <1> ;Year from RTC is assumed to be after 2000 (coz, you know... its 2022)
-   449 000005CB 0FB6C1              <1>     movzx eax, cl   ;Convert Year to Binary
-   450 000005CE E823000000          <1>     call .bcd2Bin
-   451 000005D3 0FB6C8              <1>     movzx ecx, al   ;Zero extend to ecx (because ch needs to be 0)
-   452 000005D6 81C114000000        <1>     add ecx, 20  ;Add 20 years to turn it to a year offset from 1980
-   453 000005DC 0FB6C6              <1>     movzx eax, dh   ;Get Months
-   454 000005DF E812000000          <1>     call .bcd2Bin
-   455 000005E4 88C6                <1>     mov dh, al  
-   456 000005E6 0FB6C2              <1>     movzx eax, dl   ;Get day
-   457 000005E9 E808000000          <1>     call .bcd2Bin
-   458 000005EE 88C2                <1>     mov dl, al
-   459 000005F0 B42B                <1>     mov ah, 2Bh ;DOS Set Date
-   460 000005F2 CD41                <1>     int 41h
-   461 000005F4 EB1C                <1>     jmp short .clkEnd
-   462                              <1> .bcd2Bin:
-   463                              <1> ;Converts a packed BCD value in al (zx to eax) to a decimal value in eax
-   464 000005F6 51                  <1>     push rcx
-   465 000005F7 89C1                <1>     mov ecx, eax
-   466 000005F9 250F000000          <1>     and eax, 0Fh ;Delete the upper nybble from al
-   467 000005FE 81E1F0000000        <1>     and ecx, 0F0h    ;Isolate the second digit (high nybble)
-   468 00000604 67E309              <1>     jecxz .b2bexit ;Exit if this is zero
-   469 00000607 C1E904              <1>     shr ecx, 4   ;Shift it to the low nybble
-   470                              <1> .b2blp:
-   471 0000060A 040A                <1>     add al, 10  ;Otherwise, keep adding 10  
-   472 0000060C FFC9                <1>     dec ecx
-   473 0000060E 75FA                <1>     jnz .b2blp
-   474                              <1> .b2bexit:
-   475 00000610 59                  <1>     pop rcx
-   476 00000611 C3                  <1>     ret
-   477                              <1> .clkEnd:
-   478                              <1> ;------------------------------------------------;
-   479                              <1> ;         Link DOS to temporary Buffer           ;
-   480                              <1> ;------------------------------------------------;
-   481                              <1> tempBufferInit:
-   482 00000612 488DBD[19010000]    <1>     lea rdi, qword [rbp + tmpBufHdr]
-   483 00000619 6448893C25-         <1>     mov qword fs:[bufHeadPtr], rdi  ;Save pointer to temp buffer "list"
-   483 0000061E [55C00300]          <1>
-   484 00000622 31C0                <1>     xor eax, eax
-   485 00000624 48FFC8              <1>     dec rax
-   486 00000627 48AB                <1>     stosq   ;.nextBufPtr, end of list
-   487 00000629 AA                  <1>     stosb   ;.driveNumber, Free entry
-   488 0000062A 48FFC0              <1>     inc rax
-   489 0000062D AA                  <1>     stosb   ;.bufferFlags, No flags
-   490                              <1> ;------------------------------------------------;
-   491                              <1> ;         Init msd driver, create DPB            ;
-   492                              <1> ;------------------------------------------------;
-   493                              <1> storageInits:
-   494                              <1> ;First save dpb pointer in sysvars
-   495 0000062E 488D9D[10000000]    <1>     lea rbx, qword [rbp + firstDPB]
-   496 00000635 6448891C25-         <1>     mov qword fs:[dpbHeadPtr], rbx
-   496 0000063A [33C00300]          <1>
-   497                              <1> ;Open Mass Storage
-   498                              <1>     ;lea rbx, qword [rbp + diskReqHdr]
-   499                              <1>     ;mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-   500                              <1>     ;mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
-   501                              <1>     ;mov word [rbx + initReqPkt.status], 0       ;Zero status word
-   502                              <1>     ;mov al, byte fs:[numPhysVol]
-   503                              <1>     ;mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
-   504                              <1>     ;call qword [rbp + msdHdr + drvHdr.strPtr]
-   505                              <1>     ;call qword [rbp + msdHdr + drvHdr.intPtr]
-   506                              <1>     ;Check if it returned OK first!
-   507                              <1>     ;test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
-   508                              <1>     ;jnz errorInit   ;If the bit is set, halt execution
-   509                              <1>     ;mov al, byte [rbx + initReqPkt.numunt]
-   510                              <1>     ;mov byte fs:[numPhysVol], al
-   511                              <1>     ;mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
-   512                              <1> 
-   513                              <1>     ;mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
-   514 0000063E E84D070000          <1>     call diskInit
-   515 00000643 4889EF              <1>     mov rdi, rbp ;Save rbp in rdi temporarily
-   516 00000646 648A0425[6FC00300]  <1>     mov al, byte fs:[numPhysVol]
-   517 0000064E 488D95[AA3B0000]    <1>     lea rdx, qword [rbp + msdDriver.msdBPBTbl]
-   518 00000655 30C9                <1>     xor cl, cl  ;Clear counter
-   519 00000657 64488B2C25-         <1>     mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
-   519 0000065C [33C00300]          <1>
-   520                              <1> .si0:   
-   521 00000660 488B32              <1>     mov rsi, qword [rdx]    ;Get pointer to device media bpb
-   522 00000663 B453                <1>     mov ah, 53h ;Fill dpb with translated BPB data
-   523 00000665 CD41                <1>     int 41h
-   524                              <1> ;Add other data to DPB
-   525 00000667 884D00              <1>     mov byte [rbp + dpb.bDriveNumber], cl ;Remember, rbp points to dpb!!
-   526 0000066A 884D01              <1>     mov byte [rbp + dpb.bUnitNumber], cl
-   527 0000066D 50                  <1>     push rax
-   528 0000066E 488D87[B0320000]    <1>     lea rax, qword [rdi + msdHdr]   ;Get ptr to msd driver header
-   529 00000675 4889451B            <1>     mov qword [rbp + dpb.qDriverHeaderPtr], rax
-   530 00000679 58                  <1>     pop rax
-   531 0000067A FEC1                <1>     inc cl
-   532 0000067C 38C1                <1>     cmp cl, al  ;When equal, we are have finished
-   533 0000067E 7416                <1>     je .si1
-   534 00000680 50                  <1>     push rax
-   535 00000681 488D4535            <1>     lea rax, qword [rbp + dpb_size] ;Load address of next dpb to rax
-   536 00000685 48894525            <1>     mov qword [rbp + dpb.qNextDPBPtr], rax  ;Save pointer
-   537 00000689 4889C5              <1>     mov rbp, rax        ;Now move current device pointer over
-   538 0000068C 58                  <1>     pop rax
-   539 0000068D 4881C208000000      <1>     add rdx, 8  ;Goto next pointer in table
-   540 00000694 EBCA                <1>     jmp short .si0
-   541                              <1> .si1:
-   542                              <1> ;Remember to now place a -1 in the qNextDPBPtr field 
-   543 00000696 48C74525FFFFFFFF    <1>     mov qword [rbp + dpb.qNextDPBPtr], -1
-   544 0000069E 4889FD              <1>     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
-   545                              <1> ;------------------------------------------------;
-   546                              <1> ;          Find largest sector size              ;
-   547                              <1> ;------------------------------------------------;
-   548                              <1> sectorSizeSearch:
-   549                              <1> ;Done by reading BPB's for each drive
-   550 000006A1 488D9D[AA3B0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
-   551                              <1>     
-   552                              <1>     ;Go thru each block individually
-   553 000006A8 31C0                <1>     xor eax, eax
-   554 000006AA 488B13              <1>     mov rdx, qword [rbx]    ;Get bpb pointer into rdx
-   555                              <1> .findLargest:
-   556 000006AD 663B420B            <1>     cmp ax, word [rdx + bpb.bytsPerSec]
-   557 000006B1 660F42420B          <1>     cmovb ax, word [rdx + bpb.bytsPerSec] ;Only replace ax if the word is above ax
-   558 000006B6 4881C308000000      <1>     add rbx, 8 ;Goto next entry
-   559 000006BD 488B13              <1>     mov rdx, qword [rbx]    ;Get next bpb pointer into rdx
-   560 000006C0 4885D2              <1>     test rdx, rdx   ;Are we at the end?
-   561 000006C3 75E8                <1>     jnz .findLargest    ;Nope, keep checking!
-   562 000006C5 6466890425-         <1>     mov word fs:[maxBytesSec], ax
-   562 000006CA [53C00300]          <1>
-   563                              <1>     
-   564                              <1> ;------------------------------------------------;
-   565                              <1> ;                 Temp CDS inits                 ;
-   566                              <1> ;------------------------------------------------;
-   567                              <1> tempCDS:
-   568                              <1> ;Build a temporary CDS for Drive A to use it for booting
-   569 000006CE 488DBD[9DC50300]    <1>     lea rdi, qword [rbp + tmpCDS]  ;Use Temp CDS in the SDA
-   570 000006D5 6448893C25-         <1>     mov qword fs:[cdsHeadPtr], rdi
-   570 000006DA [5DC00300]          <1>
-   571                              <1>     ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
-   572 000006DE C707413A5C00        <1>     mov dword [rdi + cds.sCurrentPath], 005C3A41h  
-   573 000006E4 66C747430040        <1>     mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
-   574 000006EA 64488B1C25-         <1>     mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
-   574 000006EF [33C00300]          <1>
-   575 000006F3 48895F45            <1>     mov qword [rdi + cds.qDPBPtr], rbx
-   576 000006F7 66C747590200        <1>     mov word [rdi + cds.wBackslashOffset], 2    ;Skip the A:
-   577                              <1>     ;On FAT12/16, startcluster = 0 => Root Dir Sector
-   578                              <1>     ;On FAT32, startcluster = 0 => Alias for root cluster. 
-   579                              <1>     ;   Read dpb.dFirstUnitOfRootDir for first cluster of root dir
-   580                              <1>     ;cds.dStartCluster is 0 since we zero-ed the data area earlier
-   581                              <1> ;------------------------------------------------;
-   582                              <1> ;     Set up general PSP areas and DOS vars      ;
-   583                              <1> ;------------------------------------------------;
-   584                              <1> ;Additional DOS Vars init
-   585                              <1>     ;xor eax, eax
-   586                              <1>     ;mov byte fs:[currentDrv], al ;Current Drive = Drive A
-   587                              <1>     ;mov byte fs:[breakFlag], al  ;Break off
-   588                              <1>     ;mov byte fs:[verifyFlag], al ;Write only
-   589                              <1>     ;mov byte fs:[singleDrv], al  ;Only used on single drive systems
-   590                              <1>     ;mov byte fs:[critErrFlag], al   ;Not in critical error
-   591                              <1>     ;mov byte fs:[inDOS], al      ;Not in DOS
-   592 000006FD 64C60425[6CC30300]- <1>     mov byte fs:[errorDrv], -1   ;No error drive
-   592 00000705 FF                  <1>
-   593                              <1>     ;mov word fs:[errorLevel], ax   ;Last return code is 0, no error
-   594                              <1>     ;mov byte fs:[allocStrat], al    ;First Fit
-   595 00000706 64C60425[34C30300]- <1>     mov byte fs:[switchChar], "/"  ;Default switch char
-   595 0000070E 2F                  <1>
-   596                              <1>     ;mov byte fs:[vConUnread], al   ;vCon has no unread data!
-   597                              <1> 
-   598                              <1> ;Set network machine name to... nothing!
-   599 0000070F 488DBD[39C30300]    <1>     lea rdi, qword [rbp + machineName]
-   600 00000716 B910000000          <1>     mov ecx, 10h    ;16 chars long
-   601 0000071B B020                <1>     mov al, SPC ;Space char
-   602 0000071D F3AA                <1>     rep stosb   ;Fill with space chars
-   603                              <1>     ;xor al, al
-   604                              <1>     ;mov byte fs:[serverCnt], al ;Set server call count to zero
-   605                              <1>     ;mov word fs:[machineNum], ax   ;Clear machine number
-   606                              <1> 
-   607                              <1> ;Patch Data Table init
-   608 0000071F 488DBD[49C30300]    <1>     lea rdi, qword [rbp + critPtchTbl]
-   609 00000726 488D85[5A2B0000]    <1>     lea rax, qword [rbp + dosCrit1Enter]
-   610 0000072D 48AB                <1>     stosq   ;Store this address and increment rdi by 8 to next tbl entry
-   611 0000072F 488D85[642B0000]    <1>     lea rax, qword [rbp + dosCrit1Exit]
-   612 00000736 48AB                <1>     stosq
-   613 00000738 488D85[6E2B0000]    <1>     lea rax, qword [rbp + dosCrit2Enter]
-   614 0000073F 48AB                <1>     stosq
-   615 00000741 488D85[782B0000]    <1>     lea rax, qword [rbp + dosCrit2Exit]
-   616 00000748 48AB                <1>     stosq
-   617                              <1> 
-   618                              <1> ;Initial PSP Init
-   619 0000074A 488D1DAFF8FFFF      <1>     lea rbx, qword [tempPSP]
-   620 00000751 6448891C25-         <1>     mov qword fs:[currentPSP], rbx    ;Save current PSP
-   620 00000756 [82C30300]          <1>
-   621 0000075A 53                  <1>     push rbx
-   622 0000075B 4881C380000000      <1>     add rbx, psp.dta
-   623 00000762 6448891C25-         <1>     mov qword fs:[currentDTA], rbx    ;Save current DTA
-   623 00000767 [7AC30300]          <1>
-   624 0000076B 5B                  <1>     pop rbx
-   625 0000076C 66C70340CD          <1>     mov word [rbx + psp.return], 0CD40h ;DOS return function
-   626 00000771 C7435000CB40CD      <1>     mov dword [rbx + psp.unixEntry], 0CD40CB00h  ;Last byte overlaied
-   627 00000778 48C7430200000000    <1>     mov qword [rbx + psp.allocSize], 0    ;Size of allocation (dummy value)
-   628 00000780 48895B22            <1>     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
-   629 00000784 48895B53            <1>     mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
-   630 00000788 488D7B2A            <1>     lea rdi, qword [rbx + psp.jobFileTbl]
-   631 0000078C 48B80101010002FFFF- <1>     mov rax, 0FFFFFF0200010101h  ;Store default handles in JFT
-   631 00000795 FF                  <1>
-   632 00000796 48AB                <1>     stosq   ;8 bytes
-   633 00000798 31C0                <1>     xor eax, eax
-   634 0000079A 50                  <1>     push rax    ;Save 0 on the stack
-   635 0000079B 48FFC8              <1>     dec rax ;Turn into all -1 (free entry)
-   636 0000079E 48AB                <1>     stosq   ;16 bytes
-   637 000007A0 AB                  <1>     stosd   ;20 bytes
-   638 000007A1 58                  <1>     pop rax ;Get 0 back
-   639 000007A2 48C7433EFFFFFFFF    <1>     mov qword [rbx + psp.envPtr], -1    ;No environment
-   640 000007AA 6689434E            <1>     mov word [rbx + psp.xtraHdlSz], ax  ;No size
-   641 000007AE C6435BFF            <1>     mov byte [rbx + psp.xtraHdlNum], -1 ;Unused
-   642 000007B2 4889DA              <1>     mov rdx, rbx
-   643 000007B5 B842350000          <1>     mov eax, 3542h  ;Get pointer for Int 42h in rbx
-   644 000007BA CD41                <1>     int 41h
-   645 000007BC 48895A0A            <1>     mov qword [rdx + psp.oldInt42h], rbx
-   646 000007C0 B843350000          <1>     mov eax, 3543h
-   647 000007C5 CD41                <1>     int 41h
-   648 000007C7 48895A12            <1>     mov qword [rdx + psp.oldInt43h], rbx
-   649 000007CB B844350000          <1>     mov eax, 3544h
-   650 000007D0 CD41                <1>     int 41h
-   651 000007D2 48895A1A            <1>     mov qword [rdx + psp.oldInt44h], rbx
-   652                              <1> 
-   653 000007D6 B929000000          <1>     mov ecx, (psp_size - psp.fcb1)/4    ;Clear the dta and fcb space
-   654 000007DB 488D7A5C            <1>     lea rdi, qword [rdx + psp.fcb1] ;Point to fcb1
-   655 000007DF F3AB                <1>     rep stosd   ;Efficiently Clear DTA and FCBs
-   656                              <1> ;------------------------------------------------;
-   657                              <1> ;          Default File Handle Creation          ;
-   658                              <1> ;                                                ;
-   659                              <1> ;   Note: Devices are opened AUX, CON then PRN   ;
-   660                              <1> ;------------------------------------------------;
-   661                              <1> defaultFileHandles:
-   662                              <1> ;Fill in the default file table entries
-   663 000007E1 488D9D[9AC00300]    <1>     lea rbx, qword [rbp + firstSftHeader]
-   664 000007E8 48C703FFFFFFFF      <1>     mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
-   665 000007EF 66C743080500        <1>     mov word [rbx + sfth.wNumFiles], 5      ;5 default files
-   666 000007F5 6448891C25-         <1>     mov qword fs:[sftHeadPtr], rbx  ;Save ptr to this sft header in SysVars
-   666 000007FA [3BC00300]          <1>
-   667 000007FE 48BA20202020202020- <1>     mov rdx, 2020202020202020h  ;Prepare the 8 spaces after the default names
-   667 00000807 20                  <1>
-   668                              <1> ;GOTO FIRST FILE 
-   669 00000808 4881C30A000000      <1>     add rbx, sfth_size  ;Goto first driver
-   670                              <1> ;Write AUX
-   671 0000080F 66C7030100          <1>     mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdaux
-   672 00000814 66C743024220        <1>     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
-   673 0000081A C6430426            <1>     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-   674 0000081E C64305C0            <1>     mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
-   675                              <1>     ;No EOF when reading from the device
-   676 00000822 488B85[4A320000]    <1>     mov rax, qword [rbp + auxHdr]  ;Get pointer to AUX device
-   677 00000829 48894307            <1>     mov qword [rbx + sft.qPtr], rax
-   678                              <1>     ;Ignore disk related fields and Date/Time of open
-   679 0000082D 488D7B30            <1>     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-   680                              <1>     ;11 chars in 8.3 name
-   681 00000831 488D3590040000      <1>     lea rsi, auxName
-   682 00000838 B903000000          <1>     mov ecx, 3
-   683 0000083D F3A4                <1>     rep movsb   ;Move the three bytes
-   684 0000083F 4889D0              <1>     mov rax, rdx
-   685 00000842 48AB                <1>     stosq   ;Eight spaces left to print
-   686 00000844 64488B0425-         <1>     mov rax, qword fs:[currentPSP]  ;Get current PSP
-   686 00000849 [82C30300]          <1>
-   687 0000084D 48894345            <1>     mov qword [rbx + sft.qPSPOwner], rax
-   688                              <1> ;GOTO NEXT ENTRY
-   689 00000851 4881C34F000000      <1>     add rbx, sft_size   ;Goto next SFT
-   690                              <1>     ;Write CON
-   691 00000858 66C7030300          <1>     mov word [rbx + sft.wNumHandles], 3 ;Sysinit stdin/out/err
-   692 0000085D 66C743024220        <1>     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
-   693 00000863 C6430426            <1>     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-   694 00000867 C64305D3            <1>     mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
-   695                              <1>     ;No EOF when reading from the device
-   696 0000086B 64488B0425-         <1>     mov rax, qword fs:[vConPtr]  ;Get pointer to CON device
-   696 00000870 [4BC00300]          <1>
-   697 00000874 48894307            <1>     mov qword [rbx + sft.qPtr], rax
-   698                              <1>     ;Ignore disk related fields and Date/Time of open
-   699 00000878 488D7B30            <1>     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-   700                              <1>     ;11 chars in 8.3 name
-   701 0000087C 488D3541040000      <1>     lea rsi, conName
-   702 00000883 B903000000          <1>     mov ecx, 3
-   703 00000888 F3A4                <1>     rep movsb   ;Move the three bytes
-   704 0000088A 4889D0              <1>     mov rax, rdx
-   705 0000088D 48AB                <1>     stosq   ;Eight spaces left to print
-   706 0000088F 64488B0425-         <1>     mov rax, qword fs:[currentPSP]  ;Get current PSP
-   706 00000894 [82C30300]          <1>
-   707 00000898 48894345            <1>     mov qword [rbx + sft.qPSPOwner], rax
-   708                              <1> ;GOTO NEXT ENTRY
-   709 0000089C 4881C34F000000      <1>     add rbx, sft_size   ;Goto next SFT
-   710                              <1> ;Write PRN
-   711 000008A3 66C7030100          <1>     mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdprn
-   712 000008A8 66C743024220        <1>     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
-   713 000008AE C6430426            <1>     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
-   714 000008B2 C6430580            <1>     mov byte [rbx + sft.wDeviceInfo], devCharDev 
-   715                              <1>     ;Want EOF when reading from to the device
-   716 000008B6 488B85[6C320000]    <1>     mov rax, qword [rbp + prnHdr]  ;Get pointer to PRN device
-   717 000008BD 48894307            <1>     mov qword [rbx + sft.qPtr], rax
-   718                              <1>     ;Ignore disk related fields and Date/Time of open
-   719 000008C1 488D7B30            <1>     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
-   720                              <1>     ;11 chars in 8.3 name
-   721 000008C5 488D3500040000      <1>     lea rsi, prnName
-   722 000008CC B903000000          <1>     mov ecx, 3
-   723 000008D1 F3A4                <1>     rep movsb   ;Move the three bytes
-   724 000008D3 4889D0              <1>     mov rax, rdx
-   725 000008D6 48AB                <1>     stosq   ;Eight spaces left to print
-   726 000008D8 64488B0425-         <1>     mov rax, qword fs:[currentPSP]  ;Get current PSP
-   726 000008DD [82C30300]          <1>
-   727 000008E1 48894345            <1>     mov qword [rbx + sft.qPSPOwner], rax
-   728                              <1> ;Zero word 0 of entry 4 and 5
-   729 000008E5 4881C34F000000      <1>     add rbx, sft_size   ;Goto SFT 4
-   730 000008EC 31C0                <1>     xor eax, eax
-   731                              <1>     ;To save some bytes, clear dword (which encompasses numHandles and openmode
-   732                              <1>     ; which is ok as these are empty entries, ready to be used)
-   733 000008EE 8903                <1>     mov dword [rbx + sft.wNumHandles], eax
-   734 000008F0 4881C34F000000      <1>     add rbx, sft_size   ;Goto SFT 5
-   735 000008F7 8903                <1>     mov dword [rbx + sft.wNumHandles], eax
-   736                              <1> ;------------------------------------------------;
-   737                              <1> ;               Load CONFIG.SYS                  ;
-   738                              <1> ;------------------------------------------------;
-   739                              <1> ;------------------------------------------------;
-   740                              <1> ;              Process CONFIG.SYS                ;
-   741                              <1> ;------------------------------------------------;
-   742                              <1> ;------------------------------------------------;
-   743                              <1> ;       Load User Drivers from CONFIG.SYS        ;
-   744                              <1> ;------------------------------------------------;
-   745                              <1> ;------------------------------------------------;
-   746                              <1> ;   Setup Final Data Areas With Overrides from   ;
-   747                              <1> ;                  CONFIG.SYS                    ;
-   748                              <1> ;------------------------------------------------;
-   749                              <1> ;------------------------------------------------;
-   750                              <1> ;           Load Command interpreter             ;
-   751                              <1> ;------------------------------------------------;
-   752 000008F9 488D1563030000      <1>     lea rdx, qword [strtmsg]   ;Get the absolute address of message
-   753 00000900 B409                <1>     mov ah, 09h
-   754 00000902 CD41                <1>     int 41h
-   755                              <1> ;Resize DOS allocation before loading COMMAND.COM
-   756 00000904 644C8B0425-         <1>     mov r8, qword fs:[mcbChainPtr] ;Get ptr
-   756 00000909 [2BC00300]          <1>
-   757 0000090D 4981C010000000      <1>     add r8, mcb.program
-   758 00000914 BB39110000          <1>     mov ebx, dynamicDataAreaLength
-   759 00000919 C1EB04              <1>     shr ebx, 4  ;Convert to paragraphs
-   760 0000091C FFC3                <1>     inc ebx
-   761 0000091E B44A                <1>     mov ah, 4Ah
-   762 00000920 CD41                <1>     int 41h
-   763                              <1>     
-   764                              <1>     %if DEBUG && ALLOCTEST
-   765                              <1> ;Test Allocation, Growth and Deallocation
-   766                              <1>     mov r15, qword fs:[currentPSP]
-   767                              <1>     mov qword fs:[currentPSP], 5A5Ah ;5A5Ah is a reserved addr
-   768                              <1>     mov ebx, 10 ;Allocate 10 paragraphs pls
-   769                              <1>     mov ah, 48h ;Allocate
-   770                              <1>     int 41h
-   771                              <1> 
-   772                              <1>     mov byte [rax - 10h], 0 ;Trash chain
-   773                              <1>     mov r8, rax ;Move the pointer to r8
-   774                              <1>     mov ebx, 20 ;Increase allocation to 20 paragraphs
-   775                              <1>     mov ah, 4Ah
-   776                              <1>     int 41h
-   777                              <1> 
-   778                              <1>     mov ah, 49h ;Free r8
-   779                              <1>     int 41h
-   780                              <1>     mov qword fs:[currentPSP], r15
-   781                              <1>     %endif
-   782                              <1> 
-   783                              <1>     %if ENDSTATUS
-   784                              <1> debugFinal:
-   785                              <1>     ;Print system state
-   786 00000922 55                  <1>     push rbp    ;Only rbp really matters here
-   787 00000923 4989E8              <1>     mov r8, rbp
-   788                              <1> 
-   789 00000926 488D2DD0020000      <1>     lea rbp, .msg2
-   790 0000092D 4D8D88[49030000]    <1>     lea r9, qword [r8 + debPrintNullString]
-   791 00000934 41FFD1              <1>     call r9
-   792                              <1> 
-   793 00000937 488D1D48010000      <1>     lea rbx, qword [.msg + 15]
-   794 0000093E 64488B0425-         <1>     mov rax, qword fs:[biosUBase]
-   794 00000943 [08C00300]          <1>
-   795                              <1> 
-   796 00000947 4D8D88[84060000]    <1>     lea r9, qword [r8 + overlayQword]
-   797 0000094E 41FFD1              <1>     call r9
-   798                              <1> 
-   799 00000951 4881C31B000000      <1>     add rbx, 19+8
-   800 00000958 64488B0425-         <1>     mov rax, qword fs:[dosSegPtr]
-   800 0000095D [00C00300]          <1>
-   801 00000961 41FFD1              <1>     call r9
-   802                              <1> 
-   803 00000964 4881C31B000000      <1>     add rbx, 19+8
-   804 0000096B 64488B0425-         <1>     mov rax, qword fs:[mcbChainPtr]
-   804 00000970 [2BC00300]          <1>
-   805 00000974 41FFD1              <1>     call r9
-   806                              <1> 
-   807 00000977 4881C31C000000      <1>     add rbx, 20+8
-   808 0000097E 4D8D88[41060000]    <1>     lea r9, qword [r8 + overlayDword]
-   809 00000985 648B0425[13C00300]  <1>     mov eax, dword fs:[loProtMem]
-   810 0000098D 41FFD1              <1>     call r9
-   811                              <1> 
-   812 00000990 4881C312000000      <1>     add rbx, 10+8
-   813 00000997 648B0425[17C00300]  <1>     mov eax, dword fs:[hiProtMem]
-   814 0000099F 41FFD1              <1>     call r9
-   815                              <1> 
-   816 000009A2 4881C312000000      <1>     add rbx, 10+8
-   817 000009A9 64488B0425-         <1>     mov rax, qword fs:[longMem]
-   817 000009AE [1BC00300]          <1>
-   818 000009B2 4D8D88[84060000]    <1>     lea r9, qword [r8 + overlayQword]
-   819 000009B9 41FFD1              <1>     call r9
+   274 000004A9 31C9                <1>     xor ecx, ecx
+   275 000004AB 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
+   276 000004AE 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
+   277 000004B4 C1E104              <1>     shl ecx, 4  ;Convert from paragraphs
+   278 000004B7 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn  ;Change marker in anchor
+   279 000004BA 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
+   280 000004BD C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
+   281 000004C0 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
+   282 000004C8 48B900000001000000- <1>     mov rcx, 1000000h   ;Move 16Mb in rcx
+   282 000004D1 00                  <1>
+   283 000004D2 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
+   284 000004D5 480510000000        <1>     add rax, mcb_size
+   285 000004DB 4829C1              <1>     sub rcx, rax    ;Take their difference
+   286 000004DE C1E904              <1>     shr ecx, 4
+   287 000004E1 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
+   288 000004E4 C1E104              <1>     shl ecx, 4  ;Get bytes again
+   289 000004E7 4881C310000000      <1>     add rbx, mcb_size
+   290 000004EE 4801CB              <1>     add rbx, rcx
+   291                              <1>     ;RBX should now be at 16Mb
+   292 000004F1 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
+   293 000004F4 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
+   294 000004FC 648B0C25[17C00300]  <1>     mov ecx, dword fs:[hiProtMem]
+   295 00000504 C1E904              <1>     shr ecx, 4  ;Get paragraphs
+   296 00000507 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
+   297 0000050D 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
+   298                              <1> .skipISA:
+   299                              <1>     ;Now check the longMem count. If it is 0, skip PCI hole computations.
+   300                              <1>     ;rbx points to a block with "Z" marker
+   301 00000510 64813C25[1BC00300]- <1>     cmp dword fs:[longMem], 0
+   301 00000518 00000000            <1>
+   302 0000051C 7470                <1>     jz .exit
+   303                              <1>     ;Add PCI hole MCB
+   304 0000051E 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)
+   305                              <1>     ;Remove one MCB worth of space from alloc
+   306 00000525 31C9                <1>     xor ecx, ecx
+   307 00000527 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
+   308 0000052A 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
+   309 00000530 C1E104              <1>     shl ecx, 4  ;Get bytes
+   310 00000533 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn ;Change marker in prev MCB
+   311 00000536 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
+   312 00000539 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
+   313 0000053C 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
+   314 00000544 48B900000000010000- <1>     mov rcx, 100000000h   ;Move 4Gb in rcx
+   314 0000054D 00                  <1>
+   315 0000054E 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
+   316 00000551 480510000000        <1>     add rax, mcb_size
+   317 00000557 4829C1              <1>     sub rcx, rax    ;Take their difference
+   318 0000055A C1E904              <1>     shr ecx, 4
+   319 0000055D 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
+   320 00000560 C1E104              <1>     shl ecx, 4  ;Get bytes again
+   321 00000563 4881C310000000      <1>     add rbx, mcb_size
+   322 0000056A 4801CB              <1>     add rbx, rcx
+   323                              <1>     ;RBX should now be at 4Gb
+   324 0000056D C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
+   325 00000570 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
+   326 00000578 64488B0C25-         <1>     mov rcx, qword fs:[longMem]
+   326 0000057D [1BC00300]          <1>
+   327 00000581 48C1E904            <1>     shr rcx, 4
+   328 00000585 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
+   329 0000058B 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
+   330                              <1> .exit:
+   331                              <1>     ;The last arena doesn't need to reserve space for one more MCB
+   332 0000058E 81430901000000      <1>     add dword [rbx + mcb.blockSize], (mcb_size>>4)
+   333                              <1> ;------------------------------------------------;
+   334                              <1> ;          Kernel inits and adjustments          ;
+   335                              <1> ;------------------------------------------------;
+   336                              <1> ;Adjust Interrupt Entries Int 40h-49h
+   337                              <1> adjInts:
+   338 00000595 B340                <1>     mov bl, 40h
+   339 00000597 B807F00000          <1>     mov eax, 0F007h ;Get the descriptor
+   340 0000059C CD35                <1>     int 35h
+   341 0000059E B940000000          <1>     mov ecx, 40h    ;Start from interrupt 40h
+   342 000005A3 488D3D43080000      <1>     lea rdi, intData
+   343 000005AA 89C6                <1>     mov esi, eax    ;Move segment selector info to esi
+   344                              <1> .ai0:
+   345 000005AC B808F00000          <1>     mov eax, 0F008h ;Set the descriptor
+   346 000005B1 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
+   347 000005B4 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
+   348                              <1> .ai1:
+   349 000005B7 CD35                <1>     int 35h
+   350 000005B9 4881C708000000      <1>     add rdi, 8
+   351 000005C0 FFC1                <1>     inc ecx
+   352 000005C2 81F950000000        <1>     cmp ecx, 50h
+   353 000005C8 75E2                <1>     jne .ai0
+   354                              <1> 
+   355                              <1> ;++++++++++++++++++++++++++++++++++++++++++++++++;
+   356                              <1> ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
+   357                              <1> ;++++++++++++++++++++++++++++++++++++++++++++++++;
+   358                              <1>     %if DEBUG
+   359                              <1> debugPopUpMsg:
+   360                              <1>     push rbx
+   361                              <1>     push rbp
+   362                              <1>     push rcx
+   363                              <1>     push rdx
+   364                              <1>     mov ecx, 53 ;A large number of lines
+   365                              <1>     xor edx, edx    ;COM 1
+   366                              <1> .cls:
+   367                              <1>     mov eax, 010Ah ;Transmit Line feed
+   368                              <1>     int 34h
+   369                              <1>     dec ecx
+   370                              <1>     jnz .cls
+   371                              <1>     lea rbx, qword [debPrintNullString + rbp]
+   372                              <1>     lea rbp, .msg
+   373                              <1>     call rbx
+   374                              <1>     jmp short .exit
+   375                              <1> .msg:   db 0Ah,0Dh,"SCP/DOS Kernel Debugger Connected on COM1:2400,n,8,1",0Ah,0Dh,0
+   376                              <1> .exit:
+   377                              <1>     pop rdx
+   378                              <1>     pop rcx
+   379                              <1>     pop rbp
+   380                              <1>     pop rbx
+   381                              <1>     %endif
+   382                              <1> 
+   383                              <1> ;Now adjust int 42h 43h and 44h correctly using DOS
+   384 000005CA 488D1580070000      <1>     lea rdx, errorInit ;Get segment start address
+   385 000005D1 B842250000          <1>     mov eax, 2542h  ;Int 42, set vector
+   386 000005D6 CD41                <1>     int 41h
+   387 000005D8 488D1572070000      <1>     lea rdx, errorInit ;Get segment start address
+   388 000005DF B844250000          <1>     mov eax, 2544h
+   389 000005E4 CD41                <1>     int 41h
+   390                              <1> ;------------------------------------------------;
+   391                              <1> ;          Driver Adjustments and inits          ;
+   392                              <1> ;------------------------------------------------;
+   393                              <1> ;Modify the pointers in nData before putting them in the data area
+   394 000005E6 48012D80080000      <1>     add qword [nData + drvHdr.nxtPtr], rbp
+   395 000005ED 48012D83080000      <1>     add qword [nData + drvHdr.strPtr], rbp
+   396 000005F4 48012D84080000      <1>     add qword [nData + drvHdr.intPtr], rbp
+   397                              <1> ;Copy the Null driver to its location in Sysvars
+   398 000005FB B922000000          <1>     mov ecx, drvHdr_size
+   399 00000600 488D3566080000      <1>     lea rsi, qword [nData]
+   400 00000607 488DBD[73C00300]    <1>     lea rdi, qword [rbp + nulDevHdr]
+   401 0000060E F3A4                <1>     rep movsb   
+   402                              <1> 
+   403                              <1> ;Adjust the addresses in the other driver headers 
+   404 00000610 48BE-               <1>     mov rsi, conHdr ;Point to the first non-NUL dev in chain
+   404 00000612 [2832000000000000]  <1>
+   405 0000061A B90C000000          <1>     mov ecx, 12      ;12 drivers in data area
+   406 0000061F 488D342E            <1>     lea rsi, qword [rsi + rbp]  ;Get effective addr of driver header
+   407                              <1> adjDrivers:
+   408 00000623 E816070000          <1>     call adjustDrvHdr
+   409 00000628 E2F9                <1>     loop adjDrivers
+   410                              <1> 
+   411                              <1> ;Open NUL
+   412                              <1> ;NUL opened
+   413                              <1> ;Open CON
+   414                              <1> conInit:    ;Rather than keeping this resident... do it here
+   415                              <1> ;Start by hooking int 3Bh and int 49h as part of the CON driver
+   416 0000062A 488D95[0F350000]    <1>     lea rdx, qword [rbp + fastOutput]
+   417 00000631 B849250000          <1>     mov eax, 2549h
+   418 00000636 CD41                <1>     int 41h ;Hook int 49h (fast CON output)
+   419 00000638 488D95[17350000]    <1>     lea rdx, qword [rbp + ctrlBreak]
+   420 0000063F B83B250000          <1>     mov eax, 253Bh
+   421 00000644 CD41                <1>     int 41h ;Hook int 3Bh
+   422                              <1> .ci0:
+   423 00000646 B401                <1>     mov ah, 01      ;Get buffer status
+   424 00000648 CD36                <1>     int 36h
+   425 0000064A 7406                <1>     jz .ci1      ;If zero clear => no more keys to read
+   426 0000064C 30E4                <1>     xor ah, ah
+   427 0000064E CD36                <1>     int 36h ;Read key to flush from buffer
+   428 00000650 EBF4                <1>     jmp short .ci0
+   429                              <1> .ci1:
+   430 00000652 B800050000          <1>     mov eax, 0500h  ;Set page zero as the default page
+   431 00000657 CD30                <1>     int 30h
+   432 00000659 B402                <1>     mov ah, 02h
+   433 0000065B 31D2                <1>     xor edx, edx    ;Set screen cursor to top right corner
+   434 0000065D 88D7                <1>     mov bh, dl      ;Set cursor for page 0
+   435 0000065F CD30                <1>     int 30h
+   436 00000661 B707                <1>     mov bh, 07h     ;Grey/Black attribs
+   437 00000663 B800060000          <1>     mov eax, 0600h  ;Clear whole screen
+   438 00000668 CD30                <1>     int 30h
+   439                              <1> 
+   440                              <1>     ;Save ptr to ConHdr in Sysvars
+   441 0000066A 488D85[28320000]    <1>     lea rax, qword [rbp + conHdr]
+   442 00000671 6448890425-         <1>     mov qword fs:[vConPtr], rax
+   442 00000676 [4BC00300]          <1>
+   443                              <1> 
+   444                              <1>     ;Fix the ext ESC function handler address
+   445 0000067A 488D85[24150000]    <1>     lea rax, qword [rbp + editKeys]
+   446 00000681 6448890425-         <1>     mov qword fs:[extKeyFunc], rax
+   446 00000686 [59000000]          <1>
+   447                              <1> 
+   448                              <1> ;CLOCK init prock
+   449                              <1> ;Set the time and date using the RTC (if present)
+   450                              <1> clkInit:
+   451                              <1>    ;Save ptr to ClkHdr in Sysvars first
+   452 0000068A 488D85[8E320000]    <1>     lea rax, qword [rbp + clkHdr]
+   453 00000691 6448890425-         <1>     mov qword fs:[clockPtr], rax
+   453 00000696 [43C00300]          <1>
+   454                              <1> ;CH - Hours, in BCD
+   455                              <1> ;CL - Minutes, in BCD
+   456                              <1> ;DH - Seconds, in BCD
+   457 0000069A B402                <1>     mov ah, 02  ;Read RTC Time
+   458 0000069C CD3A                <1>     int 3Ah
+   459 0000069E 7271                <1>     jc .clkEnd  ;if error, just exit
+   460                              <1>     ;Now set the driver time. Convert From BCD to Decimal
+   461 000006A0 0FB6C5              <1>     movzx eax, ch   ;Hours
+   462 000006A3 E84D000000          <1>     call .bcd2Bin
+   463 000006A8 88C5                <1>     mov ch, al
+   464 000006AA 0FB6C1              <1>     movzx eax, cl     ;Mins
+   465 000006AD E843000000          <1>     call .bcd2Bin
+   466 000006B2 88C1                <1>     mov cl, al
+   467 000006B4 0FB6C6              <1>     movzx eax, dh   ;Seconds
+   468 000006B7 E839000000          <1>     call .bcd2Bin
+   469 000006BC 86E0                <1>     xchg ah, al ;Move seconds to ah, and 0 to al (hseconds)
+   470 000006BE 89C2                <1>     mov edx, eax
+   471 000006C0 B42D                <1>     mov ah, 2Dh ;DOS Set Time
+   472 000006C2 CD41                <1>     int 41h
+   473                              <1> ;Now get the date from RTC
+   474                              <1> ;CL - Year, in BCD
+   475                              <1> ;DH - Month, in BCD
+   476                              <1> ;DL - Day, in BCD
+   477 000006C4 B404                <1>     mov ah, 04  ;Read RTC Date
+   478 000006C6 CD3A                <1>     int 3Ah
+   479 000006C8 7247                <1>     jc .clkEnd
+   480                              <1> ;Year from RTC is assumed to be after 2000 (coz, you know... its 2022)
+   481 000006CA 0FB6C1              <1>     movzx eax, cl   ;Convert Year to Binary
+   482 000006CD E823000000          <1>     call .bcd2Bin
+   483 000006D2 0FB6C8              <1>     movzx ecx, al   ;Zero extend to ecx (because ch needs to be 0)
+   484 000006D5 81C114000000        <1>     add ecx, 20  ;Add 20 years to turn it to a year offset from 1980
+   485 000006DB 0FB6C6              <1>     movzx eax, dh   ;Get Months
+   486 000006DE E812000000          <1>     call .bcd2Bin
+   487 000006E3 88C6                <1>     mov dh, al  
+   488 000006E5 0FB6C2              <1>     movzx eax, dl   ;Get day
+   489 000006E8 E808000000          <1>     call .bcd2Bin
+   490 000006ED 88C2                <1>     mov dl, al
+   491 000006EF B42B                <1>     mov ah, 2Bh ;DOS Set Date
+   492 000006F1 CD41                <1>     int 41h
+   493 000006F3 EB1C                <1>     jmp short .clkEnd
+   494                              <1> .bcd2Bin:
+   495                              <1> ;Converts a packed BCD value in al (zx to eax) to a decimal value in eax
+   496 000006F5 51                  <1>     push rcx
+   497 000006F6 89C1                <1>     mov ecx, eax
+   498 000006F8 250F000000          <1>     and eax, 0Fh ;Delete the upper nybble from al
+   499 000006FD 81E1F0000000        <1>     and ecx, 0F0h    ;Isolate the second digit (high nybble)
+   500 00000703 67E309              <1>     jecxz .b2bexit ;Exit if this is zero
+   501 00000706 C1E904              <1>     shr ecx, 4   ;Shift it to the low nybble
+   502                              <1> .b2blp:
+   503 00000709 040A                <1>     add al, 10  ;Otherwise, keep adding 10  
+   504 0000070B FFC9                <1>     dec ecx
+   505 0000070D 75FA                <1>     jnz .b2blp
+   506                              <1> .b2bexit:
+   507 0000070F 59                  <1>     pop rcx
+   508 00000710 C3                  <1>     ret
+   509                              <1> .clkEnd:
+   510                              <1> ;------------------------------------------------;
+   511                              <1> ;         Link DOS to temporary Buffer           ;
+   512                              <1> ;------------------------------------------------;
+   513                              <1> tempBufferInit:
+   514 00000711 488DBD[19010000]    <1>     lea rdi, qword [rbp + tmpBufHdr]
+   515 00000718 6448893C25-         <1>     mov qword fs:[bufHeadPtr], rdi  ;Save pointer to temp buffer "list"
+   515 0000071D [55C00300]          <1>
+   516 00000721 31C0                <1>     xor eax, eax
+   517 00000723 48FFC8              <1>     dec rax
+   518 00000726 48AB                <1>     stosq   ;.nextBufPtr, end of list
+   519 00000728 AA                  <1>     stosb   ;.driveNumber, Free entry
+   520 00000729 48FFC0              <1>     inc rax
+   521 0000072C AA                  <1>     stosb   ;.bufferFlags, No flags
+   522                              <1> ;------------------------------------------------;
+   523                              <1> ;         Init msd driver, create DPB            ;
+   524                              <1> ;------------------------------------------------;
+   525                              <1> storageInits:
+   526                              <1> ;First save dpb pointer in sysvars
+   527 0000072D 488D9D[10000000]    <1>     lea rbx, qword [rbp + firstDPB]
+   528 00000734 6448891C25-         <1>     mov qword fs:[dpbHeadPtr], rbx
+   528 00000739 [33C00300]          <1>
+   529                              <1> ;Open Mass Storage
+   530                              <1>     ;lea rbx, qword [rbp + diskReqHdr]
+   531                              <1>     ;mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
+   532                              <1>     ;mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
+   533                              <1>     ;mov word [rbx + initReqPkt.status], 0       ;Zero status word
+   534                              <1>     ;mov al, byte fs:[numPhysVol]
+   535                              <1>     ;mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
+   536                              <1>     ;call qword [rbp + msdHdr + drvHdr.strPtr]
+   537                              <1>     ;call qword [rbp + msdHdr + drvHdr.intPtr]
+   538                              <1>     ;Check if it returned OK first!
+   539                              <1>     ;test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
+   540                              <1>     ;jnz errorInit   ;If the bit is set, halt execution
+   541                              <1>     ;mov al, byte [rbx + initReqPkt.numunt]
+   542                              <1>     ;mov byte fs:[numPhysVol], al
+   543                              <1>     ;mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
+   544                              <1> 
+   545                              <1>     ;mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
+   546 0000073D E84D070000          <1>     call diskInit
+   547 00000742 4889EF              <1>     mov rdi, rbp ;Save rbp in rdi temporarily
+   548 00000745 648A0425[6FC00300]  <1>     mov al, byte fs:[numPhysVol]
+   549 0000074D 488D95[AA3B0000]    <1>     lea rdx, qword [rbp + msdDriver.msdBPBTbl]
+   550 00000754 30C9                <1>     xor cl, cl  ;Clear counter
+   551 00000756 64488B2C25-         <1>     mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
+   551 0000075B [33C00300]          <1>
+   552                              <1> .si0:   
+   553 0000075F 488B32              <1>     mov rsi, qword [rdx]    ;Get pointer to device media bpb
+   554 00000762 B453                <1>     mov ah, 53h ;Fill dpb with translated BPB data
+   555 00000764 CD41                <1>     int 41h
+   556                              <1> ;Add other data to DPB
+   557 00000766 884D00              <1>     mov byte [rbp + dpb.bDriveNumber], cl ;Remember, rbp points to dpb!!
+   558 00000769 884D01              <1>     mov byte [rbp + dpb.bUnitNumber], cl
+   559 0000076C 50                  <1>     push rax
+   560 0000076D 488D87[B0320000]    <1>     lea rax, qword [rdi + msdHdr]   ;Get ptr to msd driver header
+   561 00000774 4889451B            <1>     mov qword [rbp + dpb.qDriverHeaderPtr], rax
+   562 00000778 58                  <1>     pop rax
+   563 00000779 FEC1                <1>     inc cl
+   564 0000077B 38C1                <1>     cmp cl, al  ;When equal, we are have finished
+   565 0000077D 7416                <1>     je .si1
+   566 0000077F 50                  <1>     push rax
+   567 00000780 488D4535            <1>     lea rax, qword [rbp + dpb_size] ;Load address of next dpb to rax
+   568 00000784 48894525            <1>     mov qword [rbp + dpb.qNextDPBPtr], rax  ;Save pointer
+   569 00000788 4889C5              <1>     mov rbp, rax        ;Now move current device pointer over
+   570 0000078B 58                  <1>     pop rax
+   571 0000078C 4881C208000000      <1>     add rdx, 8  ;Goto next pointer in table
+   572 00000793 EBCA                <1>     jmp short .si0
+   573                              <1> .si1:
+   574                              <1> ;Remember to now place a -1 in the qNextDPBPtr field 
+   575 00000795 48C74525FFFFFFFF    <1>     mov qword [rbp + dpb.qNextDPBPtr], -1
+   576 0000079D 4889FD              <1>     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
+   577                              <1> ;------------------------------------------------;
+   578                              <1> ;          Find largest sector size              ;
+   579                              <1> ;------------------------------------------------;
+   580                              <1> sectorSizeSearch:
+   581                              <1> ;Done by reading BPB's for each drive
+   582 000007A0 488D9D[AA3B0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
+   583                              <1>     
+   584                              <1>     ;Go thru each block individually
+   585 000007A7 31C0                <1>     xor eax, eax
+   586 000007A9 488B13              <1>     mov rdx, qword [rbx]    ;Get bpb pointer into rdx
+   587                              <1> .findLargest:
+   588 000007AC 663B420B            <1>     cmp ax, word [rdx + bpb.bytsPerSec]
+   589 000007B0 660F42420B          <1>     cmovb ax, word [rdx + bpb.bytsPerSec] ;Only replace ax if the word is above ax
+   590 000007B5 4881C308000000      <1>     add rbx, 8 ;Goto next entry
+   591 000007BC 488B13              <1>     mov rdx, qword [rbx]    ;Get next bpb pointer into rdx
+   592 000007BF 4885D2              <1>     test rdx, rdx   ;Are we at the end?
+   593 000007C2 75E8                <1>     jnz .findLargest    ;Nope, keep checking!
+   594 000007C4 6466890425-         <1>     mov word fs:[maxBytesSec], ax
+   594 000007C9 [53C00300]          <1>
+   595                              <1>     
+   596                              <1> ;------------------------------------------------;
+   597                              <1> ;                 Temp CDS inits                 ;
+   598                              <1> ;------------------------------------------------;
+   599                              <1> tempCDS:
+   600                              <1> ;Build a temporary CDS for Drive A to use it for booting
+   601 000007CD 488DBD[9DC50300]    <1>     lea rdi, qword [rbp + tmpCDS]  ;Use Temp CDS in the SDA
+   602 000007D4 6448893C25-         <1>     mov qword fs:[cdsHeadPtr], rdi
+   602 000007D9 [5DC00300]          <1>
+   603                              <1>     ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
+   604 000007DD C707413A5C00        <1>     mov dword [rdi + cds.sCurrentPath], 005C3A41h  
+   605 000007E3 66C747430040        <1>     mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
+   606 000007E9 64488B1C25-         <1>     mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
+   606 000007EE [33C00300]          <1>
+   607 000007F2 48895F45            <1>     mov qword [rdi + cds.qDPBPtr], rbx
+   608 000007F6 66C747590200        <1>     mov word [rdi + cds.wBackslashOffset], 2    ;Skip the A:
+   609                              <1>     ;On FAT12/16, startcluster = 0 => Root Dir Sector
+   610                              <1>     ;On FAT32, startcluster = 0 => Alias for root cluster. 
+   611                              <1>     ;   Read dpb.dFirstUnitOfRootDir for first cluster of root dir
+   612                              <1>     ;cds.dStartCluster is 0 since we zero-ed the data area earlier
+   613                              <1> ;------------------------------------------------;
+   614                              <1> ;     Set up general PSP areas and DOS vars      ;
+   615                              <1> ;------------------------------------------------;
+   616                              <1> ;Additional DOS Vars init
+   617                              <1>     ;xor eax, eax
+   618                              <1>     ;mov byte fs:[currentDrv], al ;Current Drive = Drive A
+   619                              <1>     ;mov byte fs:[breakFlag], al  ;Break off
+   620                              <1>     ;mov byte fs:[verifyFlag], al ;Write only
+   621                              <1>     ;mov byte fs:[singleDrv], al  ;Only used on single drive systems
+   622                              <1>     ;mov byte fs:[critErrFlag], al   ;Not in critical error
+   623                              <1>     ;mov byte fs:[inDOS], al      ;Not in DOS
+   624 000007FC 64C60425[6CC30300]- <1>     mov byte fs:[errorDrv], -1   ;No error drive
+   624 00000804 FF                  <1>
+   625                              <1>     ;mov word fs:[errorLevel], ax   ;Last return code is 0, no error
+   626                              <1>     ;mov byte fs:[allocStrat], al    ;First Fit
+   627 00000805 64C60425[34C30300]- <1>     mov byte fs:[switchChar], "/"  ;Default switch char
+   627 0000080D 2F                  <1>
+   628                              <1>     ;mov byte fs:[vConUnread], al   ;vCon has no unread data!
+   629                              <1> 
+   630                              <1> ;Set network machine name to... nothing!
+   631 0000080E 488DBD[39C30300]    <1>     lea rdi, qword [rbp + machineName]
+   632 00000815 B910000000          <1>     mov ecx, 10h    ;16 chars long
+   633 0000081A B020                <1>     mov al, SPC ;Space char
+   634 0000081C F3AA                <1>     rep stosb   ;Fill with space chars
+   635                              <1>     ;xor al, al
+   636                              <1>     ;mov byte fs:[serverCnt], al ;Set server call count to zero
+   637                              <1>     ;mov word fs:[machineNum], ax   ;Clear machine number
+   638                              <1> 
+   639                              <1> ;Patch Data Table init
+   640 0000081E 488DBD[49C30300]    <1>     lea rdi, qword [rbp + critPtchTbl]
+   641 00000825 488D85[5A2B0000]    <1>     lea rax, qword [rbp + dosCrit1Enter]
+   642 0000082C 48AB                <1>     stosq   ;Store this address and increment rdi by 8 to next tbl entry
+   643 0000082E 488D85[642B0000]    <1>     lea rax, qword [rbp + dosCrit1Exit]
+   644 00000835 48AB                <1>     stosq
+   645 00000837 488D85[6E2B0000]    <1>     lea rax, qword [rbp + dosCrit2Enter]
+   646 0000083E 48AB                <1>     stosq
+   647 00000840 488D85[782B0000]    <1>     lea rax, qword [rbp + dosCrit2Exit]
+   648 00000847 48AB                <1>     stosq
+   649                              <1> 
+   650                              <1> ;Initial PSP Init
+   651 00000849 488D1DB0F8FFFF      <1>     lea rbx, qword [tempPSP]
+   652 00000850 6448891C25-         <1>     mov qword fs:[currentPSP], rbx    ;Save current PSP
+   652 00000855 [82C30300]          <1>
+   653 00000859 53                  <1>     push rbx
+   654 0000085A 4881C380000000      <1>     add rbx, psp.dta
+   655 00000861 6448891C25-         <1>     mov qword fs:[currentDTA], rbx    ;Save current DTA
+   655 00000866 [7AC30300]          <1>
+   656 0000086A 5B                  <1>     pop rbx
+   657 0000086B 66C70340CD          <1>     mov word [rbx + psp.return], 0CD40h ;DOS return function
+   658 00000870 C7435000CB40CD      <1>     mov dword [rbx + psp.unixEntry], 0CD40CB00h  ;Last byte overlaied
+   659 00000877 48C7430200000000    <1>     mov qword [rbx + psp.allocSize], 0    ;Size of allocation (dummy value)
+   660 0000087F 48895B22            <1>     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process
+   661 00000883 48895B53            <1>     mov qword [rbx + psp.prevPSP], rbx  ;Save self as previous PSP
+   662 00000887 488D7B2A            <1>     lea rdi, qword [rbx + psp.jobFileTbl]
+   663 0000088B 48B80101010002FFFF- <1>     mov rax, 0FFFFFF0200010101h  ;Store default handles in JFT
+   663 00000894 FF                  <1>
+   664 00000895 48AB                <1>     stosq   ;8 bytes
+   665 00000897 31C0                <1>     xor eax, eax
+   666 00000899 50                  <1>     push rax    ;Save 0 on the stack
+   667 0000089A 48FFC8              <1>     dec rax ;Turn into all -1 (free entry)
+   668 0000089D 48AB                <1>     stosq   ;16 bytes
+   669 0000089F AB                  <1>     stosd   ;20 bytes
+   670 000008A0 58                  <1>     pop rax ;Get 0 back
+   671 000008A1 48C7433EFFFFFFFF    <1>     mov qword [rbx + psp.envPtr], -1    ;No environment
+   672 000008A9 6689434E            <1>     mov word [rbx + psp.xtraHdlSz], ax  ;No size
+   673 000008AD C6435BFF            <1>     mov byte [rbx + psp.xtraHdlNum], -1 ;Unused
+   674 000008B1 4889DA              <1>     mov rdx, rbx
+   675 000008B4 B842350000          <1>     mov eax, 3542h  ;Get pointer for Int 42h in rbx
+   676 000008B9 CD41                <1>     int 41h
+   677 000008BB 48895A0A            <1>     mov qword [rdx + psp.oldInt42h], rbx
+   678 000008BF B843350000          <1>     mov eax, 3543h
+   679 000008C4 CD41                <1>     int 41h
+   680 000008C6 48895A12            <1>     mov qword [rdx + psp.oldInt43h], rbx
+   681 000008CA B844350000          <1>     mov eax, 3544h
+   682 000008CF CD41                <1>     int 41h
+   683 000008D1 48895A1A            <1>     mov qword [rdx + psp.oldInt44h], rbx
+   684                              <1> 
+   685 000008D5 B929000000          <1>     mov ecx, (psp_size - psp.fcb1)/4    ;Clear the dta and fcb space
+   686 000008DA 488D7A5C            <1>     lea rdi, qword [rdx + psp.fcb1] ;Point to fcb1
+   687 000008DE F3AB                <1>     rep stosd   ;Efficiently Clear DTA and FCBs
+   688                              <1> ;------------------------------------------------;
+   689                              <1> ;          Default File Handle Creation          ;
+   690                              <1> ;                                                ;
+   691                              <1> ;   Note: Devices are opened AUX, CON then PRN   ;
+   692                              <1> ;------------------------------------------------;
+   693                              <1> defaultFileHandles:
+   694                              <1> ;Fill in the default file table entries
+   695 000008E0 488D9D[9AC00300]    <1>     lea rbx, qword [rbp + firstSftHeader]
+   696 000008E7 48C703FFFFFFFF      <1>     mov qword [rbx + sfth.qNextSFTPtr], -1  ;Last sfth in chain
+   697 000008EE 66C743080500        <1>     mov word [rbx + sfth.wNumFiles], 5      ;5 default files
+   698 000008F4 6448891C25-         <1>     mov qword fs:[sftHeadPtr], rbx  ;Save ptr to this sft header in SysVars
+   698 000008F9 [3BC00300]          <1>
+   699 000008FD 48BA20202020202020- <1>     mov rdx, 2020202020202020h  ;Prepare the 8 spaces after the default names
+   699 00000906 20                  <1>
+   700                              <1> ;GOTO FIRST FILE 
+   701 00000907 4881C30A000000      <1>     add rbx, sfth_size  ;Goto first driver
+   702                              <1> ;Write AUX
+   703 0000090E 66C7030100          <1>     mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdaux
+   704 00000913 66C743024220        <1>     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+   705 00000919 C6430426            <1>     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+   706 0000091D C64305C0            <1>     mov byte [rbx + sft.wDeviceInfo], charDevNoEOF| devCharDev 
+   707                              <1>     ;No EOF when reading from the device
+   708 00000921 488B85[4A320000]    <1>     mov rax, qword [rbp + auxHdr]  ;Get pointer to AUX device
+   709 00000928 48894307            <1>     mov qword [rbx + sft.qPtr], rax
+   710                              <1>     ;Ignore disk related fields and Date/Time of open
+   711 0000092C 488D7B30            <1>     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+   712                              <1>     ;11 chars in 8.3 name
+   713 00000930 488D3590040000      <1>     lea rsi, auxName
+   714 00000937 B903000000          <1>     mov ecx, 3
+   715 0000093C F3A4                <1>     rep movsb   ;Move the three bytes
+   716 0000093E 4889D0              <1>     mov rax, rdx
+   717 00000941 48AB                <1>     stosq   ;Eight spaces left to print
+   718 00000943 64488B0425-         <1>     mov rax, qword fs:[currentPSP]  ;Get current PSP
+   718 00000948 [82C30300]          <1>
+   719 0000094C 48894345            <1>     mov qword [rbx + sft.qPSPOwner], rax
+   720                              <1> ;GOTO NEXT ENTRY
+   721 00000950 4881C34F000000      <1>     add rbx, sft_size   ;Goto next SFT
+   722                              <1>     ;Write CON
+   723 00000957 66C7030300          <1>     mov word [rbx + sft.wNumHandles], 3 ;Sysinit stdin/out/err
+   724 0000095C 66C743024220        <1>     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+   725 00000962 C6430426            <1>     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+   726 00000966 C64305D3            <1>     mov byte [rbx + sft.wDeviceInfo], charDevConIn|charDevConOut|charDevFastOut|charDevNoEOF|devCharDev 
+   727                              <1>     ;No EOF when reading from the device
+   728 0000096A 64488B0425-         <1>     mov rax, qword fs:[vConPtr]  ;Get pointer to CON device
+   728 0000096F [4BC00300]          <1>
+   729 00000973 48894307            <1>     mov qword [rbx + sft.qPtr], rax
+   730                              <1>     ;Ignore disk related fields and Date/Time of open
+   731 00000977 488D7B30            <1>     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+   732                              <1>     ;11 chars in 8.3 name
+   733 0000097B 488D3541040000      <1>     lea rsi, conName
+   734 00000982 B903000000          <1>     mov ecx, 3
+   735 00000987 F3A4                <1>     rep movsb   ;Move the three bytes
+   736 00000989 4889D0              <1>     mov rax, rdx
+   737 0000098C 48AB                <1>     stosq   ;Eight spaces left to print
+   738 0000098E 64488B0425-         <1>     mov rax, qword fs:[currentPSP]  ;Get current PSP
+   738 00000993 [82C30300]          <1>
+   739 00000997 48894345            <1>     mov qword [rbx + sft.qPSPOwner], rax
+   740                              <1> ;GOTO NEXT ENTRY
+   741 0000099B 4881C34F000000      <1>     add rbx, sft_size   ;Goto next SFT
+   742                              <1> ;Write PRN
+   743 000009A2 66C7030100          <1>     mov word [rbx + sft.wNumHandles], 1 ;Sysinit stdprn
+   744 000009A7 66C743024220        <1>     mov word [rbx + sft.wOpenMode], critErrHdl | denyNoneShare | RWAccess
+   745 000009AD C6430426            <1>     mov byte [rbx + sft.bFileAttrib], archiveFile | systemFile | hiddenFile
+   746 000009B1 C6430580            <1>     mov byte [rbx + sft.wDeviceInfo], devCharDev 
+   747                              <1>     ;Want EOF when reading from to the device
+   748 000009B5 488B85[6C320000]    <1>     mov rax, qword [rbp + prnHdr]  ;Get pointer to PRN device
+   749 000009BC 48894307            <1>     mov qword [rbx + sft.qPtr], rax
+   750                              <1>     ;Ignore disk related fields and Date/Time of open
+   751 000009C0 488D7B30            <1>     lea rdi, qword [rbx + sft.sFileName]  ;Get file name space pointer
+   752                              <1>     ;11 chars in 8.3 name
+   753 000009C4 488D3500040000      <1>     lea rsi, prnName
+   754 000009CB B903000000          <1>     mov ecx, 3
+   755 000009D0 F3A4                <1>     rep movsb   ;Move the three bytes
+   756 000009D2 4889D0              <1>     mov rax, rdx
+   757 000009D5 48AB                <1>     stosq   ;Eight spaces left to print
+   758 000009D7 64488B0425-         <1>     mov rax, qword fs:[currentPSP]  ;Get current PSP
+   758 000009DC [82C30300]          <1>
+   759 000009E0 48894345            <1>     mov qword [rbx + sft.qPSPOwner], rax
+   760                              <1> ;Zero word 0 of entry 4 and 5
+   761 000009E4 4881C34F000000      <1>     add rbx, sft_size   ;Goto SFT 4
+   762 000009EB 31C0                <1>     xor eax, eax
+   763                              <1>     ;To save some bytes, clear dword (which encompasses numHandles and openmode
+   764                              <1>     ; which is ok as these are empty entries, ready to be used)
+   765 000009ED 8903                <1>     mov dword [rbx + sft.wNumHandles], eax
+   766 000009EF 4881C34F000000      <1>     add rbx, sft_size   ;Goto SFT 5
+   767 000009F6 8903                <1>     mov dword [rbx + sft.wNumHandles], eax
+   768                              <1> ;------------------------------------------------;
+   769                              <1> ;               Load CONFIG.SYS                  ;
+   770                              <1> ;------------------------------------------------;
+   771                              <1> ;------------------------------------------------;
+   772                              <1> ;              Process CONFIG.SYS                ;
+   773                              <1> ;------------------------------------------------;
+   774                              <1> ;------------------------------------------------;
+   775                              <1> ;       Load User Drivers from CONFIG.SYS        ;
+   776                              <1> ;------------------------------------------------;
+   777                              <1> ;------------------------------------------------;
+   778                              <1> ;   Setup Final Data Areas With Overrides from   ;
+   779                              <1> ;                  CONFIG.SYS                    ;
+   780                              <1> ;------------------------------------------------;
+   781                              <1> ;------------------------------------------------;
+   782                              <1> ;           Load Command interpreter             ;
+   783                              <1> ;------------------------------------------------;
+   784 000009F8 488D1563030000      <1>     lea rdx, qword [strtmsg]   ;Get the absolute address of message
+   785 000009FF B409                <1>     mov ah, 09h
+   786 00000A01 CD41                <1>     int 41h
+   787                              <1> ;Resize DOS allocation before loading COMMAND.COM
+   788 00000A03 644C8B0425-         <1>     mov r8, qword fs:[mcbChainPtr] ;Get ptr
+   788 00000A08 [2BC00300]          <1>
+   789 00000A0C 4981C010000000      <1>     add r8, mcb.program
+   790 00000A13 BB39110000          <1>     mov ebx, dynamicDataAreaLength
+   791 00000A18 C1EB04              <1>     shr ebx, 4  ;Convert to paragraphs
+   792 00000A1B FFC3                <1>     inc ebx
+   793 00000A1D B44A                <1>     mov ah, 4Ah
+   794 00000A1F CD41                <1>     int 41h
+   795                              <1>     
+   796                              <1>     %if DEBUG && ALLOCTEST
+   797                              <1> ;Test Allocation, Growth and Deallocation
+   798                              <1>     mov r15, qword fs:[currentPSP]
+   799                              <1>     mov qword fs:[currentPSP], 5A5Ah ;5A5Ah is a reserved addr
+   800                              <1>     mov ebx, 10 ;Allocate 10 paragraphs pls
+   801                              <1>     mov ah, 48h ;Allocate
+   802                              <1>     int 41h
+   803                              <1> 
+   804                              <1>     mov byte [rax - 10h], 0 ;Trash chain
+   805                              <1>     mov r8, rax ;Move the pointer to r8
+   806                              <1>     mov ebx, 20 ;Increase allocation to 20 paragraphs
+   807                              <1>     mov ah, 4Ah
+   808                              <1>     int 41h
+   809                              <1> 
+   810                              <1>     mov ah, 49h ;Free r8
+   811                              <1>     int 41h
+   812                              <1>     mov qword fs:[currentPSP], r15
+   813                              <1>     %endif
+   814                              <1> 
+   815                              <1>     %if ENDSTATUS
+   816                              <1> debugFinal:
+   817                              <1>     ;Print system state
+   818 00000A21 55                  <1>     push rbp    ;Only rbp really matters here
+   819 00000A22 4989E8              <1>     mov r8, rbp
    820                              <1> 
-   821 000009BC 4881C31B000000      <1>     add rbx, 19+8
-   822 000009C3 64488B0425-         <1>     mov rax, qword fs:[dpbHeadPtr]
-   822 000009C8 [33C00300]          <1>
-   823 000009CC 41FFD1              <1>     call r9
+   821 00000A25 488D2DD0020000      <1>     lea rbp, .msg2
+   822 00000A2C 4D8D88[49030000]    <1>     lea r9, qword [r8 + debPrintNullString]
+   823 00000A33 41FFD1              <1>     call r9
    824                              <1> 
-   825 000009CF 4881C31B000000      <1>     add rbx, 19+8
-   826 000009D6 64488B0425-         <1>     mov rax, qword fs:[sftHeadPtr]
-   826 000009DB [3BC00300]          <1>
-   827 000009DF 41FFD1              <1>     call r9
-   828                              <1> 
-   829 000009E2 4881C31B000000      <1>     add rbx, 19+8
-   830 000009E9 64488B0425-         <1>     mov rax, qword fs:[bufHeadPtr]
-   830 000009EE [55C00300]          <1>
-   831 000009F2 41FFD1              <1>     call r9
-   832                              <1> 
-   833 000009F5 4881C31B000000      <1>     add rbx, 19+8
-   834 000009FC 64488B0425-         <1>     mov rax, qword fs:[cdsHeadPtr]
-   834 00000A01 [5DC00300]          <1>
-   835 00000A05 41FFD1              <1>     call r9
-   836                              <1> 
-   837 00000A08 4D8D88[CF050000]    <1>     lea r9, qword [r8 + overlayByte]
+   825 00000A36 488D1D48010000      <1>     lea rbx, qword [.msg + 15]
+   826 00000A3D 64488B0425-         <1>     mov rax, qword fs:[biosUBase]
+   826 00000A42 [08C00300]          <1>
+   827                              <1> 
+   828 00000A46 4D8D88[84060000]    <1>     lea r9, qword [r8 + overlayQword]
+   829 00000A4D 41FFD1              <1>     call r9
+   830                              <1> 
+   831 00000A50 4881C31B000000      <1>     add rbx, 19+8
+   832 00000A57 64488B0425-         <1>     mov rax, qword fs:[dosSegPtr]
+   832 00000A5C [00C00300]          <1>
+   833 00000A60 41FFD1              <1>     call r9
+   834                              <1> 
+   835 00000A63 4881C31B000000      <1>     add rbx, 19+8
+   836 00000A6A 64488B0425-         <1>     mov rax, qword fs:[mcbChainPtr]
+   836 00000A6F [2BC00300]          <1>
+   837 00000A73 41FFD1              <1>     call r9
    838                              <1> 
-   839 00000A0F 4881C32C000000      <1>     add rbx, 25+19
-   840 00000A16 64480FB60425-       <1>     movzx rax, byte fs:[numPhysVol]
-   840 00000A1C [6FC00300]          <1>
-   841 00000A20 41FFD1              <1>     call r9
-   842                              <1> 
-   843 00000A23 4881C31E000000      <1>     add rbx, 30
-   844 00000A2A 64480FB60425-       <1>     movzx rax, byte fs:[numFixDrv]
-   844 00000A30 [12C00300]          <1>
-   845 00000A34 41FFD1              <1>     call r9
-   846                              <1> 
-   847 00000A37 4881C31E000000      <1>     add rbx, 30
-   848 00000A3E 64480FB60425-       <1>     movzx rax, byte fs:[numRemDrv]
-   848 00000A44 [11C00300]          <1>
-   849 00000A48 41FFD1              <1>     call r9
-   850                              <1> 
-   851 00000A4B 4881C310000000      <1>     add rbx, 16
-   852 00000A52 64480FB60425-       <1>     movzx rax, byte fs:[bootDrive]
-   852 00000A58 [10C00300]          <1>
-   853 00000A5C 0441                <1>     add al, "A"
-   854 00000A5E 8803                <1>     mov byte [rbx], al
-   855                              <1> 
-   856 00000A60 488D2D10000000      <1>     lea rbp, .msg
-   857 00000A67 4D8D88[49030000]    <1>     lea r9, qword [r8 + debPrintNullString]
-   858 00000A6E 41FFD1              <1>     call r9
-   859 00000A71 5D                  <1>     pop rbp
-   860 00000A72 E99E010000          <1>     jmp l1
-   861 00000A77 42494F532075736572- <1> .msg:   db "BIOS user base FFFFFFFFFFFFFFFFh",0Ah,0Dh ;15 chars to number
-   861 00000A80 206261736520464646- <1>
-   861 00000A89 464646464646464646- <1>
-   861 00000A92 46464646680A0D      <1>
-   862 00000A99 444F53205365672046- <1>         db "DOS Seg FFFFFFFFFFFFFFFFh",0Ah,0Dh
-   862 00000AA2 464646464646464646- <1>
-   862 00000AAB 464646464646680A0D  <1>
-   863 00000AB4 4D4342707472202046- <1>         db "MCBptr  FFFFFFFFFFFFFFFFh ",0Ah,0Dh
-   863 00000ABD 464646464646464646- <1>
-   863 00000AC6 46464646464668200A- <1>
-   863 00000ACF 0D                  <1>
-   864 00000AD0 4172656E61313A2046- <1>         db "Arena1: FFFFFFFFh ",
-   864 00000AD9 464646464646466820  <1>
-   865 00000AE2 4172656E61323A2046- <1>         db "Arena2: FFFFFFFFh ",
-   865 00000AEB 464646464646466820  <1>
-   866 00000AF4 4172656E61333A2046- <1>         db "Arena3: FFFFFFFFFFFFFFFFh",0Ah,0Dh
-   866 00000AFD 464646464646464646- <1>
-   866 00000B06 464646464646680A0D  <1>
-   867 00000B0F 445042707472202046- <1>         db "DPBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
-   867 00000B18 464646464646464646- <1>
-   867 00000B21 464646464646680A0D  <1>
-   868 00000B2A 534654707472202046- <1>         db "SFTptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
-   868 00000B33 464646464646464646- <1>
-   868 00000B3C 464646464646680A0D  <1>
-   869 00000B45 627566507472202046- <1>         db "bufPtr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
-   869 00000B4E 464646464646464646- <1>
-   869 00000B57 464646464646680A0D  <1>
-   870 00000B60 434453707472202046- <1>         db "CDSptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
-   870 00000B69 464646464646464646- <1>
-   870 00000B72 464646464646680A0D  <1>
-   871 00000B7B 4E756D626572206F66- <1>         db "Number of Logical Drives FFh",0Ah,0Dh
-   871 00000B84 204C6F676963616C20- <1>
-   871 00000B8D 447269766573204646- <1>
-   871 00000B96 680A0D              <1>
-   872 00000B99 4E756D626572206F66- <1>         db "Number of Fixed Drives   FFh",0Ah,0Dh
-   872 00000BA2 204669786564204472- <1>
-   872 00000BAB 697665732020204646- <1>
-   872 00000BB4 680A0D              <1>
-   873 00000BB7 4E756D626572206F66- <1>         db "Number of Removable Drvs FFh",0Ah,0Dh
-   873 00000BC0 2052656D6F7661626C- <1>
-   873 00000BC9 652044727673204646- <1>
-   873 00000BD2 680A0D              <1>
-   874 00000BD5 426F6F742064726976- <1>         db "Boot drive Z:",0Ah,0Dh
-   874 00000BDE 65205A3A0A0D        <1>
-   875 00000BE4 4C6F6164696E672043- <1>         db "Loading COMMAND.COM...",0Ah,0Dh,0
-   875 00000BED 4F4D4D414E442E434F- <1>
-   875 00000BF6 4D2E2E2E0A0D00      <1>
-   876 00000BFD 0A0D456E64206F6620- <1> .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
-   876 00000C06 626F6F742073756D6D- <1>
-   876 00000C0F 6172790A0D00        <1>
-   877                              <1>     %endif
-   878                              <1> l1:
-   879 00000C15 B402                <1>     mov ah, 02h
-   880 00000C17 B20A                <1>     mov dl, 0Ah
-   881 00000C19 CD41                <1>     int 41h
-   882 00000C1B B409                <1>     mov ah, 09h
-   883 00000C1D 488D1516000000      <1>     lea rdx, .str
-   884 00000C24 CD41                <1>     int 41h
-   885                              <1>     ;lea rdx, tmpBuffer
-   886                              <1>     ;mov ah, 0Ah  ;Buffered input
-   887 00000C26 B980000000          <1>     mov ecx, 80h
-   888 00000C2B 488D15E2020000      <1>     lea rdx, tmpBuffer
-   889 00000C32 31DB                <1>     xor ebx, ebx
-   890 00000C34 B43F                <1>     mov ah, 3fh
-   891 00000C36 CD41                <1>     int 41h
-   892 00000C38 EBDB                <1>     jmp short l1
-   893 00000C3A 433A5C3E24          <1> .str: db "C:\>$"
-   894                              <1> ;--------------------------------
-   895                              <1> ;       PROCS FOR SYSINIT       :
-   896                              <1> ;--------------------------------
-   897                              <1> adjustDrvHdr:
-   898                              <1> ;Input: rsi = Effective address of driver in DOS segment
-   899                              <1> ;       rbp = Ptr to the start of the DOS segment
-   900                              <1> ;Output: rsi = EA of next header in DOS segment
-   901 00000C3F 48012E              <1>     add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
-   902 00000C42 48016E0A            <1>     add qword [rsi + drvHdr.strPtr], rbp
-   903 00000C46 48016E12            <1>     add qword [rsi + drvHdr.intPtr], rbp
-   904 00000C4A 4881C622000000      <1>     add rsi, drvHdr_size
-   905 00000C51 C3                  <1>     ret
-   906                              <1> errorInit:
-   907                              <1> ;If a critical error occurs during sysinit, fail through here
-   908                              <1> ;Int 42h, 43h and 44h point here during sysinit
-   909 00000C52 488D2D3A000000      <1>     lea rbp, hltmsg
-   910 00000C59 B804130000          <1>     mov eax, 1304h
-   911 00000C5E CD30                <1>     int 30h
-   912                              <1>     ;cli ;Clear interrupts
-   913                              <1>     ;mov al, -1
-   914                              <1>     ;mov dx, 0A1h    ;PIC2 data
-   915                              <1>     ;out dx, al      ;Mask all lines
-   916                              <1>     ;mov dx, 21h     ;PIC1 data
-   917                              <1>     ;out dx, al      ;Mask all lines
-   918                              <1> .ei0:
-   919 00000C60 F4                  <1>     hlt
-   920 00000C61 EBFD                <1>     jmp short .ei0
-   921                              <1> ;--------------------------------
-   922                              <1> ;       DATA FOR SYSINIT        :
-   923                              <1> ;--------------------------------
-   924 00000C63 5374617274696E6720- <1> strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
-   924 00000C6C 5343502F444F532E2E- <1>
-   924 00000C75 2E0A0D24            <1>
-   925 00000C79 4D656D6F727920416C- <1> mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
-   925 00000C82 6C6F636174696F6E20- <1>
-   925 00000C8B 4572726F720A0D00    <1>
-   926 00000C93 4572726F7220696E69- <1> hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
-   926 00000C9C 7469616C6973696E67- <1>
-   926 00000CA5 20534350444F532E53- <1>
-   926 00000CAE 59532E205379737465- <1>
-   926 00000CB7 6D2068616C74696E67- <1>
-   926 00000CC0 2E2E2E00            <1>
-   927 00000CC4 434F4E00            <1> conName db "CON",0
-   928 00000CC8 41555800            <1> auxName db "AUX",0
-   929 00000CCC 50524E00            <1> prnName db "PRN",0
-   930                              <1> 
-   931 00000CD0 003A5C4155544F4558- <1> aexec   db 0,":\AUTOEXEC.BAT",0 ;ASCIIZ for AUTOEXEC (with space for drvletter)
-   931 00000CD9 45432E42415400      <1>
-   932 00000CE0 003A5C434F4E464947- <1> cfgspec db 0,":\CONFIG.SYS",0 ;ASCIIZ for CONFIG (with space for drive letter)
-   932 00000CE9 2E53595300          <1>
-   933                              <1> 
-   934                              <1> intData:
-   935 00000CEE [4021000000000000]  <1>     dq terminateProcess ;Int 40h
-   936 00000CF6 [D229000000000000]  <1>     dq functionDispatch ;Int 41h
-   937 00000CFE [520C000000000000]  <1>     dq errorInit        ;Int 42h, If sysinit terminates, halt system
-   938 00000D06 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 43h, ignore any CTRL+C during init
-   939 00000D0E [DC24000000000000]  <1>     dq dosDefCritErrHdlr 
-   940 00000D16 [AC25000000000000]  <1>     dq absDiskRead      ;Int 45h
-   941 00000D1E [8D25000000000000]  <1>     dq absDiskWrite     ;Int 46h
-   942 00000D26 [4721000000000000]  <1>     dq terminateRes     ;Int 47h
-   943 00000D2E [2A2B000000000000]  <1>     dq defaultIretq     ;Int 48h
-   944 00000D36 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 49h
-   945 00000D3E [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Ah
-   946 00000D46 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Bh
-   947 00000D4E [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Ch
-   948 00000D56 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Dh
-   949 00000D5E [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Eh
-   950 00000D66 [712F000000000000]  <1>     dq multiplexHdlr    ;Int 4Fh, multiplex default handler
-   951                              <1> nData:
-   952 00000D6E [2832000000000000]  <1>     dq conHdr
-   953 00000D76 0480                <1>     dw 08004h
-   954 00000D78 [D033000000000000]  <1>     dq nulStrat
-   955 00000D80 [D633000000000000]  <1>     dq nulIntr
-   956 00000D88 4E554C2020202020    <1>     db "NUL     " ;Default NUL data
-   957                              <1> 
-   958                              <1> diskInit:
-   959                              <1>     ;We create a function to deal with BPB parsing etc
-   960                              <1>     ;Start with the first primary partition on each hard disk (until max)
-   961                              <1>     ;   They dont have to be bootable
-   962                              <1>     ;Then go back and look for other partitions partitions. 
-   963                              <1>     ;   Add each other primary or logical ptn (until max)
-   964                              <1>     ;Then finish with removable devices. First two devs become A: and B: resp.
-   965                              <1>     ;Use r8 as device counter
-   966 00000D90 488DBD[D23B0000]    <1>     lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
-   967 00000D97 64803C25[12C00300]- <1>     cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
-   967 00000D9F 00                  <1>
-   968 00000DA0 0F84C6000000        <1>     jz .remInit ;No? Go to removables
-   969 00000DA6 49B802000000000000- <1>     mov r8, 2   ;Device number 2 = C:
-   969 00000DAF 00                  <1>
-   970 00000DB0 B280                <1>     mov dl, 80h ;Start with HDD 0
-   971                              <1> .primary:
-   972 00000DB2 64803C25[6FC00300]- <1>     cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
-   972 00000DBA 03                  <1>
-   973 00000DBB 0F84AB000000        <1>     je .remInit
-   974 00000DC1 31C9                <1>     xor ecx, ecx    ;Sector 0
-   975 00000DC3 E83E010000          <1>     call .initReadSector ;Sets rbx to msdtempbuffer
-   976 00000DC8 0F8289000000        <1>     jc .primaryEpilog
-   977                              <1>     ;Here, check MBR or BPB
-   978 00000DCE 6681BBFE01000055AA  <1>     cmp word [rbx + 1FEh], 0AA55h
-   979 00000DD7 757E                <1>     jne .primaryEpilog  ;Not a valid MBR or BPB, skip disk
-   980                              <1>     ;Now check if BPB or MBR
-   981 00000DD9 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-   982 00000DDB 8A6302              <1>     mov ah, byte [rbx + 2]
-   983 00000DDE 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-   984 00000DE2 7473                <1>     je .primaryEpilog ;Will process these during Extended Ptn search
-   985                              <1>     ;Here with a MBR. Search the MBR for the first Primary Partition
-   986                              <1>     ;Look for CHS/LBA types (01h/04h/06h/0Bh/0Ch/0Eh) for primary ptns
-   987 00000DE4 4881C3BE010000      <1>     add rbx, mbr.mbrEntry1 ;Point rbx to mbrEntry1
-   988 00000DEB B104                <1>     mov cl, 4
-   989                              <1> .checkPrimary:
-   990 00000DED 8A4304              <1>     mov al, byte [rbx + mbrEntry.ptnType]
-   991 00000DF0 3C01                <1>     cmp al, 01
-   992 00000DF2 7421                <1>     je .primaryFound
-   993 00000DF4 3C04                <1>     cmp al, 04
-   994 00000DF6 741D                <1>     je .primaryFound
-   995 00000DF8 3C06                <1>     cmp al, 06
-   996 00000DFA 7419                <1>     je .primaryFound
-   997 00000DFC 3C0B                <1>     cmp al, 0Bh
-   998 00000DFE 7415                <1>     je .primaryFound
-   999 00000E00 3C0C                <1>     cmp al, 0Ch
-  1000 00000E02 7411                <1>     je .primaryFound
-  1001 00000E04 3C0E                <1>     cmp al, 0Eh
-  1002 00000E06 740D                <1>     je .primaryFound
-  1003 00000E08 4881C310000000      <1>     add rbx, mbrEntry_size  ;Goto next entry byte
-  1004 00000E0F FEC9                <1>     dec cl
-  1005 00000E11 7444                <1>     jz .primaryEpilog
-  1006 00000E13 EBD8                <1>     jmp short .checkPrimary
-  1007                              <1> .primaryFound:
-  1008                              <1>     ;Copy the first sector of this partition into memory
-  1009 00000E15 8B4B08              <1>     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
-  1010 00000E18 E8E9000000          <1>     call .initReadSector
-  1011 00000E1D 7238                <1>     jc .primaryEpilog
-  1012                              <1>     ;Now verify this is a BPB
-  1013 00000E1F 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-  1014 00000E21 8A6302              <1>     mov ah, byte [rbx + 2]
-  1015 00000E24 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-  1016 00000E28 752D                <1>     jne .primaryEpilog   ;If not, skip
-  1017                              <1>     ;Now copy data to internal tables
-  1018 00000E2A 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
-  1019 00000E2D B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
-  1020 00000E32 57                  <1>     push rdi
-  1021 00000E33 F348A5              <1>     rep movsq   ;Copy the BPB
-  1022 00000E36 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
-  1023                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
-  1024 00000E37 4A8D9C05[A03B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
-  1025                              <1>     ;Add device count to rbx to point to correct entry
-  1026 00000E3F 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
-  1027 00000E41 4A8D9CC5[AA3B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
-  1028 00000E49 488933              <1>     mov qword [rbx], rsi
-  1029 00000E4C 49FFC0              <1>     inc r8  ;Goto next logical drive
-  1030 00000E4F 64FE0425[6FC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
-  1031                              <1> .primaryEpilog:
-  1032 00000E57 FEC2                <1>     inc dl  ;Goto next BIOS drive
-  1033 00000E59 88D6                <1>     mov dh, dl
-  1034 00000E5B 80E67F              <1>     and dh, 7Fh ;Clear bit 7
-  1035 00000E5E 643A3425[12C00300]  <1>     cmp dh, byte fs:[numFixDrv]    ;Have we gone thru all hard drives?
-  1036 00000E66 0F8546FFFFFF        <1>     jne .primary    ;Whilst we have fewer, go back
-  1037                              <1> .extended:
-  1038                              <1> ;We have gone through all the devices once
-  1039                              <1>     ;cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
-  1040                              <1>     ;je .remInit ;If yes, get removable devices
-  1041                              <1>     ;mov dl, 80h ;Go back to hard drive 80h
-  1042                              <1>     ;xor ecx, ecx    ;Get MBR back
-  1043                              <1>     ;call .initReadSector
-  1044                              <1>     ;Now we eventually search MBR for a FAT extended partition
-  1045                              <1> .remInit:
-  1046                              <1> ;Now handle removable devices, at least 2 rem. devs.
-  1047 00000E6C 4D89C1              <1>     mov r9, r8  ;Save number of next device in r9b
-  1048 00000E6F 30D2                <1>     xor dl, dl  ;Start with removable device 0
-  1049 00000E71 4188D0              <1>     mov r8b, dl ;Once r8b becomes 2, go past the disk drives
-  1050                              <1>     ;rdi points to the space for the subsequent bpb's
-  1051                              <1> .removables:
-  1052 00000E74 31C9                <1>     xor ecx, ecx    ;Read sector 0
-  1053 00000E76 E88B000000          <1>     call .initReadSector
-  1054 00000E7B 7238                <1>     jc .removableEpilogue   ;Goto next device
-  1055                              <1>     ;Now verify this is a BPB
-  1056 00000E7D 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-  1057 00000E7F 8A6302              <1>     mov ah, byte [rbx + 2]
-  1058 00000E82 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-  1059 00000E86 752D                <1>     jne .removableEpilogue   ;If not, skip
-  1060                              <1>     ;Now copy data to internal tables
-  1061 00000E88 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
-  1062 00000E8B B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
-  1063 00000E90 57                  <1>     push rdi
-  1064 00000E91 F348A5              <1>     rep movsq   ;Copy the BPB
-  1065 00000E94 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
-  1066                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
-  1067 00000E95 4A8D9C05[A03B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
-  1068                              <1>     ;Add device count to rbx to point to correct entry
-  1069 00000E9D 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
-  1070 00000E9F 4A8D9CC5[AA3B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
-  1071 00000EA7 488933              <1>     mov qword [rbx], rsi
-  1072 00000EAA 49FFC0              <1>     inc r8  ;Goto next logical drive
-  1073 00000EAD 64FE0425[6FC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
-  1074                              <1> .removableEpilogue:
-  1075 00000EB5 FEC2                <1>     inc dl  ;Goto next BIOS device now
-  1076 00000EB7 643A1425[11C00300]  <1>     cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
-  1077 00000EBF 7412                <1>     je .end
-  1078 00000EC1 4981F802000000      <1>     cmp r8, 2 ;Are we back at drive C: ?
-  1079 00000EC8 7403                <1>     je .re0
-  1080 00000ECA 4500C8              <1>     add r8b, r9b    ;Add the number of fixed disk volumes
-  1081                              <1> .re0:
-  1082 00000ECD 4180F805            <1>     cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
-  1083 00000ED1 72A1                <1>     jb .removables
-  1084                              <1> .end:
-  1085 00000ED3 64803C25[11C00300]- <1>     cmp byte fs:[numRemDrv], 1  ;Do we have only 1 removable device?
-  1085 00000EDB 01                  <1>
-  1086 00000EDC 7401                <1>     je .singleRemDev
-  1087 00000EDE C3                  <1>     ret
-  1088                              <1> .singleRemDev:
-  1089                              <1>     ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
-  1090 00000EDF 488D9D[A03B0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap]
-  1091 00000EE6 8A95[A03B0000]      <1>     mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
-  1092 00000EEC 885301              <1>     mov byte [rbx + 1], dl  ;Store in byte for Drive B:
-  1093 00000EEF 488D9D[AA3B0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
-  1094 00000EF6 488B13              <1>     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
-  1095 00000EF9 48895308            <1>     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
-  1096 00000EFD 64FE0425[6FC00300]  <1>     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
-  1097 00000F05 C3                  <1>     ret
-  1098                              <1> .initReadSector:
-  1099                              <1> ;Called with sector number in rcx and BIOS device number in dl
-  1100 00000F06 B482                <1>     mov ah, 82h ;Read
-  1101 00000F08 B001                <1>     mov al, 1   ;One sector
-  1102 00000F0A 488D9D[39010000]    <1>     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
-  1103 00000F11 CD33                <1>     int 33h
-  1104 00000F13 C3                  <1>     ret
-  1105 00000F14 80                  <1> tmpBuffer db 80h    ;Just overwrite the next bytes as they get copied high
+   839 00000A76 4881C31C000000      <1>     add rbx, 20+8
+   840 00000A7D 4D8D88[41060000]    <1>     lea r9, qword [r8 + overlayDword]
+   841 00000A84 648B0425[13C00300]  <1>     mov eax, dword fs:[loProtMem]
+   842 00000A8C 41FFD1              <1>     call r9
+   843                              <1> 
+   844 00000A8F 4881C312000000      <1>     add rbx, 10+8
+   845 00000A96 648B0425[17C00300]  <1>     mov eax, dword fs:[hiProtMem]
+   846 00000A9E 41FFD1              <1>     call r9
+   847                              <1> 
+   848 00000AA1 4881C312000000      <1>     add rbx, 10+8
+   849 00000AA8 64488B0425-         <1>     mov rax, qword fs:[longMem]
+   849 00000AAD [1BC00300]          <1>
+   850 00000AB1 4D8D88[84060000]    <1>     lea r9, qword [r8 + overlayQword]
+   851 00000AB8 41FFD1              <1>     call r9
+   852                              <1> 
+   853 00000ABB 4881C31B000000      <1>     add rbx, 19+8
+   854 00000AC2 64488B0425-         <1>     mov rax, qword fs:[dpbHeadPtr]
+   854 00000AC7 [33C00300]          <1>
+   855 00000ACB 41FFD1              <1>     call r9
+   856                              <1> 
+   857 00000ACE 4881C31B000000      <1>     add rbx, 19+8
+   858 00000AD5 64488B0425-         <1>     mov rax, qword fs:[sftHeadPtr]
+   858 00000ADA [3BC00300]          <1>
+   859 00000ADE 41FFD1              <1>     call r9
+   860                              <1> 
+   861 00000AE1 4881C31B000000      <1>     add rbx, 19+8
+   862 00000AE8 64488B0425-         <1>     mov rax, qword fs:[bufHeadPtr]
+   862 00000AED [55C00300]          <1>
+   863 00000AF1 41FFD1              <1>     call r9
+   864                              <1> 
+   865 00000AF4 4881C31B000000      <1>     add rbx, 19+8
+   866 00000AFB 64488B0425-         <1>     mov rax, qword fs:[cdsHeadPtr]
+   866 00000B00 [5DC00300]          <1>
+   867 00000B04 41FFD1              <1>     call r9
+   868                              <1> 
+   869 00000B07 4D8D88[CF050000]    <1>     lea r9, qword [r8 + overlayByte]
+   870                              <1> 
+   871 00000B0E 4881C32C000000      <1>     add rbx, 25+19
+   872 00000B15 64480FB60425-       <1>     movzx rax, byte fs:[numPhysVol]
+   872 00000B1B [6FC00300]          <1>
+   873 00000B1F 41FFD1              <1>     call r9
+   874                              <1> 
+   875 00000B22 4881C31E000000      <1>     add rbx, 30
+   876 00000B29 64480FB60425-       <1>     movzx rax, byte fs:[numFixDrv]
+   876 00000B2F [12C00300]          <1>
+   877 00000B33 41FFD1              <1>     call r9
+   878                              <1> 
+   879 00000B36 4881C31E000000      <1>     add rbx, 30
+   880 00000B3D 64480FB60425-       <1>     movzx rax, byte fs:[numRemDrv]
+   880 00000B43 [11C00300]          <1>
+   881 00000B47 41FFD1              <1>     call r9
+   882                              <1> 
+   883 00000B4A 4881C310000000      <1>     add rbx, 16
+   884 00000B51 64480FB60425-       <1>     movzx rax, byte fs:[bootDrive]
+   884 00000B57 [10C00300]          <1>
+   885 00000B5B 0441                <1>     add al, "A"
+   886 00000B5D 8803                <1>     mov byte [rbx], al
+   887                              <1> 
+   888 00000B5F 488D2D10000000      <1>     lea rbp, .msg
+   889 00000B66 4D8D88[49030000]    <1>     lea r9, qword [r8 + debPrintNullString]
+   890 00000B6D 41FFD1              <1>     call r9
+   891 00000B70 5D                  <1>     pop rbp
+   892 00000B71 E99E010000          <1>     jmp l1
+   893 00000B76 42494F532075736572- <1> .msg:   db "BIOS user base FFFFFFFFFFFFFFFFh",0Ah,0Dh ;15 chars to number
+   893 00000B7F 206261736520464646- <1>
+   893 00000B88 464646464646464646- <1>
+   893 00000B91 46464646680A0D      <1>
+   894 00000B98 444F53205365672046- <1>         db "DOS Seg FFFFFFFFFFFFFFFFh",0Ah,0Dh
+   894 00000BA1 464646464646464646- <1>
+   894 00000BAA 464646464646680A0D  <1>
+   895 00000BB3 4D4342707472202046- <1>         db "MCBptr  FFFFFFFFFFFFFFFFh ",0Ah,0Dh
+   895 00000BBC 464646464646464646- <1>
+   895 00000BC5 46464646464668200A- <1>
+   895 00000BCE 0D                  <1>
+   896 00000BCF 4172656E61313A2046- <1>         db "Arena1: FFFFFFFFh ",
+   896 00000BD8 464646464646466820  <1>
+   897 00000BE1 4172656E61323A2046- <1>         db "Arena2: FFFFFFFFh ",
+   897 00000BEA 464646464646466820  <1>
+   898 00000BF3 4172656E61333A2046- <1>         db "Arena3: FFFFFFFFFFFFFFFFh",0Ah,0Dh
+   898 00000BFC 464646464646464646- <1>
+   898 00000C05 464646464646680A0D  <1>
+   899 00000C0E 445042707472202046- <1>         db "DPBptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+   899 00000C17 464646464646464646- <1>
+   899 00000C20 464646464646680A0D  <1>
+   900 00000C29 534654707472202046- <1>         db "SFTptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+   900 00000C32 464646464646464646- <1>
+   900 00000C3B 464646464646680A0D  <1>
+   901 00000C44 627566507472202046- <1>         db "bufPtr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+   901 00000C4D 464646464646464646- <1>
+   901 00000C56 464646464646680A0D  <1>
+   902 00000C5F 434453707472202046- <1>         db "CDSptr  FFFFFFFFFFFFFFFFh",0Ah,0Dh
+   902 00000C68 464646464646464646- <1>
+   902 00000C71 464646464646680A0D  <1>
+   903 00000C7A 4E756D626572206F66- <1>         db "Number of Logical Drives FFh",0Ah,0Dh
+   903 00000C83 204C6F676963616C20- <1>
+   903 00000C8C 447269766573204646- <1>
+   903 00000C95 680A0D              <1>
+   904 00000C98 4E756D626572206F66- <1>         db "Number of Fixed Drives   FFh",0Ah,0Dh
+   904 00000CA1 204669786564204472- <1>
+   904 00000CAA 697665732020204646- <1>
+   904 00000CB3 680A0D              <1>
+   905 00000CB6 4E756D626572206F66- <1>         db "Number of Removable Drvs FFh",0Ah,0Dh
+   905 00000CBF 2052656D6F7661626C- <1>
+   905 00000CC8 652044727673204646- <1>
+   905 00000CD1 680A0D              <1>
+   906 00000CD4 426F6F742064726976- <1>         db "Boot drive Z:",0Ah,0Dh
+   906 00000CDD 65205A3A0A0D        <1>
+   907 00000CE3 4C6F6164696E672043- <1>         db "Loading COMMAND.COM...",0Ah,0Dh,0
+   907 00000CEC 4F4D4D414E442E434F- <1>
+   907 00000CF5 4D2E2E2E0A0D00      <1>
+   908 00000CFC 0A0D456E64206F6620- <1> .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
+   908 00000D05 626F6F742073756D6D- <1>
+   908 00000D0E 6172790A0D00        <1>
+   909                              <1>     %endif
+   910                              <1> l1:
+   911 00000D14 B402                <1>     mov ah, 02h
+   912 00000D16 B20A                <1>     mov dl, 0Ah
+   913 00000D18 CD41                <1>     int 41h
+   914 00000D1A B409                <1>     mov ah, 09h
+   915 00000D1C 488D1516000000      <1>     lea rdx, .str
+   916 00000D23 CD41                <1>     int 41h
+   917                              <1>     ;lea rdx, tmpBuffer
+   918                              <1>     ;mov ah, 0Ah  ;Buffered input
+   919 00000D25 B980000000          <1>     mov ecx, 80h
+   920 00000D2A 488D15E2020000      <1>     lea rdx, tmpBuffer
+   921 00000D31 31DB                <1>     xor ebx, ebx
+   922 00000D33 B43F                <1>     mov ah, 3fh
+   923 00000D35 CD41                <1>     int 41h
+   924 00000D37 EBDB                <1>     jmp short l1
+   925 00000D39 433A5C3E24          <1> .str: db "C:\>$"
+   926                              <1> ;--------------------------------
+   927                              <1> ;       PROCS FOR SYSINIT       :
+   928                              <1> ;--------------------------------
+   929                              <1> adjustDrvHdr:
+   930                              <1> ;Input: rsi = Effective address of driver in DOS segment
+   931                              <1> ;       rbp = Ptr to the start of the DOS segment
+   932                              <1> ;Output: rsi = EA of next header in DOS segment
+   933 00000D3E 48012E              <1>     add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
+   934 00000D41 48016E0A            <1>     add qword [rsi + drvHdr.strPtr], rbp
+   935 00000D45 48016E12            <1>     add qword [rsi + drvHdr.intPtr], rbp
+   936 00000D49 4881C622000000      <1>     add rsi, drvHdr_size
+   937 00000D50 C3                  <1>     ret
+   938                              <1> errorInit:
+   939                              <1> ;If a critical error occurs during sysinit, fail through here
+   940                              <1> ;Int 42h, 43h and 44h point here during sysinit
+   941 00000D51 488D2D3A000000      <1>     lea rbp, hltmsg
+   942 00000D58 B804130000          <1>     mov eax, 1304h
+   943 00000D5D CD30                <1>     int 30h
+   944                              <1>     ;cli ;Clear interrupts
+   945                              <1>     ;mov al, -1
+   946                              <1>     ;mov dx, 0A1h    ;PIC2 data
+   947                              <1>     ;out dx, al      ;Mask all lines
+   948                              <1>     ;mov dx, 21h     ;PIC1 data
+   949                              <1>     ;out dx, al      ;Mask all lines
+   950                              <1> .ei0:
+   951 00000D5F F4                  <1>     hlt
+   952 00000D60 EBFD                <1>     jmp short .ei0
+   953                              <1> ;--------------------------------
+   954                              <1> ;       DATA FOR SYSINIT        :
+   955                              <1> ;--------------------------------
+   956 00000D62 5374617274696E6720- <1> strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+   956 00000D6B 5343502F444F532E2E- <1>
+   956 00000D74 2E0A0D24            <1>
+   957 00000D78 4D656D6F727920416C- <1> mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
+   957 00000D81 6C6F636174696F6E20- <1>
+   957 00000D8A 4572726F720A0D00    <1>
+   958 00000D92 4572726F7220696E69- <1> hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
+   958 00000D9B 7469616C6973696E67- <1>
+   958 00000DA4 20534350444F532E53- <1>
+   958 00000DAD 59532E205379737465- <1>
+   958 00000DB6 6D2068616C74696E67- <1>
+   958 00000DBF 2E2E2E00            <1>
+   959 00000DC3 434F4E00            <1> conName db "CON",0
+   960 00000DC7 41555800            <1> auxName db "AUX",0
+   961 00000DCB 50524E00            <1> prnName db "PRN",0
+   962                              <1> 
+   963 00000DCF 003A5C4155544F4558- <1> aexec   db 0,":\AUTOEXEC.BAT",0 ;ASCIIZ for AUTOEXEC (with space for drvletter)
+   963 00000DD8 45432E42415400      <1>
+   964 00000DDF 003A5C434F4E464947- <1> cfgspec db 0,":\CONFIG.SYS",0 ;ASCIIZ for CONFIG (with space for drive letter)
+   964 00000DE8 2E53595300          <1>
+   965                              <1> 
+   966                              <1> intData:
+   967 00000DED [4021000000000000]  <1>     dq terminateProcess ;Int 40h
+   968 00000DF5 [D229000000000000]  <1>     dq functionDispatch ;Int 41h
+   969 00000DFD [510D000000000000]  <1>     dq errorInit        ;Int 42h, If sysinit terminates, halt system
+   970 00000E05 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 43h, ignore any CTRL+C during init
+   971 00000E0D [DC24000000000000]  <1>     dq dosDefCritErrHdlr 
+   972 00000E15 [AC25000000000000]  <1>     dq absDiskRead      ;Int 45h
+   973 00000E1D [8D25000000000000]  <1>     dq absDiskWrite     ;Int 46h
+   974 00000E25 [4721000000000000]  <1>     dq terminateRes     ;Int 47h
+   975 00000E2D [2A2B000000000000]  <1>     dq defaultIretq     ;Int 48h
+   976 00000E35 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 49h
+   977 00000E3D [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Ah
+   978 00000E45 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Bh
+   979 00000E4D [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Ch
+   980 00000E55 [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Dh
+   981 00000E5D [2A2B000000000000]  <1>     dq defaultIretq     ;Int 4Eh
+   982 00000E65 [712F000000000000]  <1>     dq multiplexHdlr    ;Int 4Fh, multiplex default handler
+   983                              <1> nData:
+   984 00000E6D [2832000000000000]  <1>     dq conHdr
+   985 00000E75 0480                <1>     dw 08004h
+   986 00000E77 [D033000000000000]  <1>     dq nulStrat
+   987 00000E7F [D633000000000000]  <1>     dq nulIntr
+   988 00000E87 4E554C2020202020    <1>     db "NUL     " ;Default NUL data
+   989                              <1> 
+   990                              <1> diskInit:
+   991                              <1>     ;We create a function to deal with BPB parsing etc
+   992                              <1>     ;Start with the first primary partition on each hard disk (until max)
+   993                              <1>     ;   They dont have to be bootable
+   994                              <1>     ;Then go back and look for other partitions partitions. 
+   995                              <1>     ;   Add each other primary or logical ptn (until max)
+   996                              <1>     ;Then finish with removable devices. First two devs become A: and B: resp.
+   997                              <1>     ;Use r8 as device counter
+   998 00000E8F 488DBD[D23B0000]    <1>     lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
+   999 00000E96 64803C25[12C00300]- <1>     cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
+   999 00000E9E 00                  <1>
+  1000 00000E9F 0F84C6000000        <1>     jz .remInit ;No? Go to removables
+  1001 00000EA5 49B802000000000000- <1>     mov r8, 2   ;Device number 2 = C:
+  1001 00000EAE 00                  <1>
+  1002 00000EAF B280                <1>     mov dl, 80h ;Start with HDD 0
+  1003                              <1> .primary:
+  1004 00000EB1 64803C25[6FC00300]- <1>     cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
+  1004 00000EB9 03                  <1>
+  1005 00000EBA 0F84AB000000        <1>     je .remInit
+  1006 00000EC0 31C9                <1>     xor ecx, ecx    ;Sector 0
+  1007 00000EC2 E83E010000          <1>     call .initReadSector ;Sets rbx to msdtempbuffer
+  1008 00000EC7 0F8289000000        <1>     jc .primaryEpilog
+  1009                              <1>     ;Here, check MBR or BPB
+  1010 00000ECD 6681BBFE01000055AA  <1>     cmp word [rbx + 1FEh], 0AA55h
+  1011 00000ED6 757E                <1>     jne .primaryEpilog  ;Not a valid MBR or BPB, skip disk
+  1012                              <1>     ;Now check if BPB or MBR
+  1013 00000ED8 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+  1014 00000EDA 8A6302              <1>     mov ah, byte [rbx + 2]
+  1015 00000EDD 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+  1016 00000EE1 7473                <1>     je .primaryEpilog ;Will process these during Extended Ptn search
+  1017                              <1>     ;Here with a MBR. Search the MBR for the first Primary Partition
+  1018                              <1>     ;Look for CHS/LBA types (01h/04h/06h/0Bh/0Ch/0Eh) for primary ptns
+  1019 00000EE3 4881C3BE010000      <1>     add rbx, mbr.mbrEntry1 ;Point rbx to mbrEntry1
+  1020 00000EEA B104                <1>     mov cl, 4
+  1021                              <1> .checkPrimary:
+  1022 00000EEC 8A4304              <1>     mov al, byte [rbx + mbrEntry.ptnType]
+  1023 00000EEF 3C01                <1>     cmp al, 01
+  1024 00000EF1 7421                <1>     je .primaryFound
+  1025 00000EF3 3C04                <1>     cmp al, 04
+  1026 00000EF5 741D                <1>     je .primaryFound
+  1027 00000EF7 3C06                <1>     cmp al, 06
+  1028 00000EF9 7419                <1>     je .primaryFound
+  1029 00000EFB 3C0B                <1>     cmp al, 0Bh
+  1030 00000EFD 7415                <1>     je .primaryFound
+  1031 00000EFF 3C0C                <1>     cmp al, 0Ch
+  1032 00000F01 7411                <1>     je .primaryFound
+  1033 00000F03 3C0E                <1>     cmp al, 0Eh
+  1034 00000F05 740D                <1>     je .primaryFound
+  1035 00000F07 4881C310000000      <1>     add rbx, mbrEntry_size  ;Goto next entry byte
+  1036 00000F0E FEC9                <1>     dec cl
+  1037 00000F10 7444                <1>     jz .primaryEpilog
+  1038 00000F12 EBD8                <1>     jmp short .checkPrimary
+  1039                              <1> .primaryFound:
+  1040                              <1>     ;Copy the first sector of this partition into memory
+  1041 00000F14 8B4B08              <1>     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
+  1042 00000F17 E8E9000000          <1>     call .initReadSector
+  1043 00000F1C 7238                <1>     jc .primaryEpilog
+  1044                              <1>     ;Now verify this is a BPB
+  1045 00000F1E 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+  1046 00000F20 8A6302              <1>     mov ah, byte [rbx + 2]
+  1047 00000F23 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+  1048 00000F27 752D                <1>     jne .primaryEpilog   ;If not, skip
+  1049                              <1>     ;Now copy data to internal tables
+  1050 00000F29 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
+  1051 00000F2C B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
+  1052 00000F31 57                  <1>     push rdi
+  1053 00000F32 F348A5              <1>     rep movsq   ;Copy the BPB
+  1054 00000F35 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
+  1055                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
+  1056 00000F36 4A8D9C05[A03B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+  1057                              <1>     ;Add device count to rbx to point to correct entry
+  1058 00000F3E 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
+  1059 00000F40 4A8D9CC5[AA3B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+  1060 00000F48 488933              <1>     mov qword [rbx], rsi
+  1061 00000F4B 49FFC0              <1>     inc r8  ;Goto next logical drive
+  1062 00000F4E 64FE0425[6FC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
+  1063                              <1> .primaryEpilog:
+  1064 00000F56 FEC2                <1>     inc dl  ;Goto next BIOS drive
+  1065 00000F58 88D6                <1>     mov dh, dl
+  1066 00000F5A 80E67F              <1>     and dh, 7Fh ;Clear bit 7
+  1067 00000F5D 643A3425[12C00300]  <1>     cmp dh, byte fs:[numFixDrv]    ;Have we gone thru all hard drives?
+  1068 00000F65 0F8546FFFFFF        <1>     jne .primary    ;Whilst we have fewer, go back
+  1069                              <1> .extended:
+  1070                              <1> ;We have gone through all the devices once
+  1071                              <1>     ;cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
+  1072                              <1>     ;je .remInit ;If yes, get removable devices
+  1073                              <1>     ;mov dl, 80h ;Go back to hard drive 80h
+  1074                              <1>     ;xor ecx, ecx    ;Get MBR back
+  1075                              <1>     ;call .initReadSector
+  1076                              <1>     ;Now we eventually search MBR for a FAT extended partition
+  1077                              <1> .remInit:
+  1078                              <1> ;Now handle removable devices, at least 2 rem. devs.
+  1079 00000F6B 4D89C1              <1>     mov r9, r8  ;Save number of next device in r9b
+  1080 00000F6E 30D2                <1>     xor dl, dl  ;Start with removable device 0
+  1081 00000F70 4188D0              <1>     mov r8b, dl ;Once r8b becomes 2, go past the disk drives
+  1082                              <1>     ;rdi points to the space for the subsequent bpb's
+  1083                              <1> .removables:
+  1084 00000F73 31C9                <1>     xor ecx, ecx    ;Read sector 0
+  1085 00000F75 E88B000000          <1>     call .initReadSector
+  1086 00000F7A 7238                <1>     jc .removableEpilogue   ;Goto next device
+  1087                              <1>     ;Now verify this is a BPB
+  1088 00000F7C 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+  1089 00000F7E 8A6302              <1>     mov ah, byte [rbx + 2]
+  1090 00000F81 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+  1091 00000F85 752D                <1>     jne .removableEpilogue   ;If not, skip
+  1092                              <1>     ;Now copy data to internal tables
+  1093 00000F87 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
+  1094 00000F8A B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
+  1095 00000F8F 57                  <1>     push rdi
+  1096 00000F90 F348A5              <1>     rep movsq   ;Copy the BPB
+  1097 00000F93 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
+  1098                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
+  1099 00000F94 4A8D9C05[A03B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+  1100                              <1>     ;Add device count to rbx to point to correct entry
+  1101 00000F9C 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
+  1102 00000F9E 4A8D9CC5[AA3B0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+  1103 00000FA6 488933              <1>     mov qword [rbx], rsi
+  1104 00000FA9 49FFC0              <1>     inc r8  ;Goto next logical drive
+  1105 00000FAC 64FE0425[6FC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
+  1106                              <1> .removableEpilogue:
+  1107 00000FB4 FEC2                <1>     inc dl  ;Goto next BIOS device now
+  1108 00000FB6 643A1425[11C00300]  <1>     cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
+  1109 00000FBE 7412                <1>     je .end
+  1110 00000FC0 4981F802000000      <1>     cmp r8, 2 ;Are we back at drive C: ?
+  1111 00000FC7 7403                <1>     je .re0
+  1112 00000FC9 4500C8              <1>     add r8b, r9b    ;Add the number of fixed disk volumes
+  1113                              <1> .re0:
+  1114 00000FCC 4180F805            <1>     cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
+  1115 00000FD0 72A1                <1>     jb .removables
+  1116                              <1> .end:
+  1117 00000FD2 64803C25[11C00300]- <1>     cmp byte fs:[numRemDrv], 1  ;Do we have only 1 removable device?
+  1117 00000FDA 01                  <1>
+  1118 00000FDB 7401                <1>     je .singleRemDev
+  1119 00000FDD C3                  <1>     ret
+  1120                              <1> .singleRemDev:
+  1121                              <1>     ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
+  1122 00000FDE 488D9D[A03B0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap]
+  1123 00000FE5 8A95[A03B0000]      <1>     mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
+  1124 00000FEB 885301              <1>     mov byte [rbx + 1], dl  ;Store in byte for Drive B:
+  1125 00000FEE 488D9D[AA3B0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
+  1126 00000FF5 488B13              <1>     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
+  1127 00000FF8 48895308            <1>     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
+  1128 00000FFC 64FE0425[6FC00300]  <1>     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
+  1129 00001004 C3                  <1>     ret
+  1130                              <1> .initReadSector:
+  1131                              <1> ;Called with sector number in rcx and BIOS device number in dl
+  1132 00001005 B482                <1>     mov ah, 82h ;Read
+  1133 00001007 B001                <1>     mov al, 1   ;One sector
+  1134 00001009 488D9D[39010000]    <1>     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
+  1135 00001010 CD33                <1>     int 33h
+  1136 00001012 C3                  <1>     ret
+  1137 00001013 80                  <1> tmpBuffer db 80h    ;Just overwrite the next bytes as they get copied high
     14                                  Segment dSeg nobits align=1 start=0     ;BSS data segment
     15                                  %include "./Source/BSS/dosSeg.asm"
     16                              <1> ;This file contains the main DOS data segment

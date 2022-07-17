@@ -2,12 +2,45 @@
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
 ; fs  = userbase pointer (pointer to first usable block of RAM)
-tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
+
     dw 0AA55h           ;Initial signature
-    db (100h-2) dup (90h)   ;Duplicate NOPs for the PSP
+    movzx r15, dl       ;Save the drive letter in r15
+    mov r14, rbx        ;Save next sector number
+    lea rsi, sysInitldr
+    mov edi, 600h   ;Hardcoded address, 600h
+    mov ecx, 512/8      ;TMP: DOS boot device MUST HAVE 512 byte sectors.
+    rep movsq   ;Copy over
+    mov eax, 600h   ;Push the new address to go to
+    push rax
+    ret ;Jump to this value (600h + whatever the size here is)
+sysInitldr:
+;Now the tough part, load DOS to 800
+    mov esi, 10h    ;Use as a loop counter
+.read:
+    mov dl, r15b    ;Get Drive number
+    mov rbx, 800h   ;Load at next 512 byte marker
+    mov ecx, r14d   ;Get this sector LBA (first sector after BIOS)
+    inc ecx         ;and want the next sector (DOS AND BIOS MUST BE CONTIGUOUS)
+    mov al, 65h     ;Load a large number of sectors (about 51.7k)
+    mov ah, 82h     ;Read LBA
+    int 33h
+    jnc initBegin   ;No error? Yay, DOS loaded.
+    dec esi
+    jnz .read
+    lea rbp, .msg   ;Print error message
+    mov eax, 1304h
+    int 30h
+    int 38h ;If an error, fall into SYSDEBUG
+.msg db "SCP/DOS Load Error",0Ah,0Dh,0
+    db 100h-($-$$) dup 00h ;Fill with nulls  
+tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
+    ;Store space for a static PSP
+    db 100h dup 00h
+;END OF FIRST SECTOR!!
+;DOS SYSINIT BEGINS HERE
 ;First move the alignment of the DOSSEG to 4Kb
+initBegin:
     cld ;Ensure all writes are done the right way firstly!
-    push rdx    ;Save dl on stack briefly
     mov ecx, 0C0000100h ;Read FS MSR
     rdmsr
     mov edi, edx        ;Get the hi dword, and clear the upper bytes
@@ -20,7 +53,6 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
     mov rdx, rdi
     shr rdx, 20h
     wrmsr   ;Write the new value to FS MSR
-    pop rdx
 ;------------------------------------------------;
 ;              Connect Debugger                  ;
 ;------------------------------------------------;
@@ -45,7 +77,7 @@ tempPSP:    ;Here to allow the loader to use Int 41h once it is loaded high
 ;------------------------------------------------;
 ;          Start saving Basic DOS data           ;
 ;------------------------------------------------;
-    mov byte fs:[bootDrive], dl ;Save the boot drive in memory
+    mov byte fs:[bootDrive], r15b ;Save the boot drive in memory
 ;Copy DOS to its final resting place
     mov qword fs:[dosSegPtr], rdi 
     mov qword fs:[biosUBase], rsi

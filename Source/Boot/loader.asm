@@ -146,7 +146,7 @@ fail:
 .msg: db "Non System Disk or Disk Error.",0Ah,0Dh,0
 SysInitTable:
 .lengthb db 0Ch
-.numSecb db 42
+.numSecb db 1
 .resWord dw 00h
 .FileLBA dq 64h  ;Start at Sector 100
 
