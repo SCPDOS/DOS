@@ -20,7 +20,6 @@ updateDirectoryEntryForFile:
 ;   [currentSFT] = Current SFT pointer
     push rax
     push rbx
-    push rcx
     push rdi
     push rbp
 
@@ -37,15 +36,19 @@ updateDirectoryEntryForFile:
     mov word [rdi + sft.wTime], ax
     shr eax, 16 ;Eject the time, get the date in eax
     mov word [rdi + sft.wDate], ax
+    or word [rdi + sft.wDeviceInfo], blokFileToFlush  ;We update DT, so flush
 .skipDT:
-    mov cl, dirBuffer   ;Mark dir buffer signature
+;Before we read the dir sector in, if we never wrote to the disk
+; we skip all of this
+    test word [rdi + sft.wDeviceInfo], blokFileToFlush
+    jz .exit ;If the file was never written to, don't bother updating DIR data
     mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
     call getBufForDir  ;Returns buffer pointer in rbx
     jc .exit    ;If an error is to be returned from, we skip the rest of this
     ;Now we write the changes to the sector
     mov rbp, rbx    ;Move disk buffer header into rbp
     ;Mark sector as referenced and dirty! Ready to be flushed!
-    or byte [rbp + bufferHdr.bufferFlags], refBuffer|dirtyBuffer 
+    or byte [rbp + bufferHdr.bufferFlags], dirtyBuffer 
     lea rbp, qword [rbp + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
@@ -65,7 +68,6 @@ updateDirectoryEntryForFile:
 .exit:
     pop rbp
     pop rdi
-    pop rcx
     pop rbx
     pop rax
     return

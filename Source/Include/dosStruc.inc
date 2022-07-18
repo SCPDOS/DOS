@@ -179,7 +179,7 @@ charDevClockDev equ 8h  ;If set, device is CLOCK device
 charDevFastOut  equ 10h ;If set, device supports INT 49h
 charDevBinary   equ 20h ;If set, r/w char device in Binary mode!!!
 charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
-blokFileToFlush equ 40h ;If set, file not written to disk yet!!!
+blokFileToFlush equ 40h ;Set if ANY writes are made to this handle!
 devCharDev      equ 80h ;If set, it is a char device!
 charDevNetSpool equ 800h    ;If set, device is a network spooler
 devNoInherit    equ 1000h   ;If set, handle not inherited by child processes

@@ -145,6 +145,8 @@ closeMain: ;Int 4Fh AX=1201h
     pop rbp
     ;If CF is set, Fail was requested and ax has an error code
     jc .exit
+    ;Now we flush all the buffers for this drive letter
+    
     movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
 .charClose:
