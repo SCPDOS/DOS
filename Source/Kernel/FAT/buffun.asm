@@ -193,7 +193,7 @@ getBuffer: ;Internal Linkage ONLY
 ; buffer, again then returning a pointer to the sector buffer in rbx.
 ;Entry: rax = Sector to read
 ;        cl = Data type being read (DOS, FAT, DIR, Data)
-;       qword [workingDPB] = DPB to use for transaction
+;       rsi = DPB to use for transaction
 ;Exit:  CF=NC => 
 ;           Ptr to buffer header with valid data in buffer in rbx and [currBuf]
 ;       CF=CY => Critical Error returned Fail, rbx undefined
@@ -201,7 +201,6 @@ getBuffer: ;Internal Linkage ONLY
     push rdx
     push rsi
     push rdi
-    mov rsi, qword [workingDPB]  ;Get DPB of transacting device
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
     cmp rdi, -1
@@ -351,7 +350,9 @@ findSectorInBuffer:     ;Internal linkage
     jmp short .fsiCheckBuffer
 ;-----------------------------------------------------------------------------
 ;SPECIAL BUFFER FUNCTIONS
-;Buffer functions for sectors associated to file handles
+;Buffer functions for sectors associated to file handles and specific purposes
+; DOS and FAT sectors need to setup [workingDPB] to make the transfer
+; DIR and DATA sectors need to setup [currentSFT] to make the transfer
 ;FCB requests use FCBS (or SDA SFT if FCBS=0)
 ;Since they are just SFT entries on a separate list, this logic still holds
 ;The only difference is if an FCBS may need to be recycled; Then all buffers 
@@ -360,6 +361,26 @@ findSectorInBuffer:     ;Internal linkage
 ; or they don't belong to a file (i.e. FAT or DOS sectors)
 ;OwningFile is only referenced for handle/FCB sectors (DIR and Data sectors)
 ;-----------------------------------------------------------------------------
+getBufForFat:
+;Returns a buffer to use for fat data in rbx
+;Input: [workingDPB] = DPB to transact on
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, fatBuffer
+    jmp short getBufCommon2
+getBufForDOS:
+;Returns a buffer to use for DOS sector(s) in rbx
+;Input: [workingDPB] = DPB to transact on
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dosBuffer
+getBufCommon2:
+    push rsi
+    push rdi    ;Push rdi to preserve it
+    mov rsi, qword [workingDPB] ;Get working DPB 
+    jmp short getBufCommon.makeReq
 getBufForDir:
 ;Returns a buffer to use for disk directory data in rbx
 ;Input: [currentSFT] = File to manipulate
@@ -367,22 +388,6 @@ getBufForDir:
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
     mov cl, dirBuffer
-    jmp short getBufCommon
-getBufForFat:
-;Returns a buffer to use for fat data in rbx
-;Input: [currentSFT] = File to manipulate
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, fatBuffer
-    jmp short getBufCommon
-getBufForDOS:
-;Returns a buffer to use for DOS sector(s) in rbx
-;Input: [currentSFT] = File to manipulate
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, dosBuffer
     jmp short getBufCommon
 getBufForData:
 ;Returns a buffer to use for disk data in rbx
@@ -393,10 +398,11 @@ getBufForData:
     push rcx
     mov cl, dataBuffer
 getBufCommon:
+    push rsi
     push rdi
-    push rbp
     mov rdi, qword [currentSFT]
-    mov rbp, qword [rdi + sft.qPtr] ;Get DPB
+    mov rsi, qword [rdi + sft.qPtr] ;Get DPB
+.makeReq:
     call getBuffer  ;Gives the buffer ptr in rbx
     jc .exit    ;Don't change SFT field if the request FAILED.
     ;That would be very bad as it would potentially cause faulty data to be 
@@ -408,8 +414,8 @@ getBufCommon:
     jnz .exit
     mov qword [rbx + bufferHdr.owningFile], rdi ;Set owner for the data
 .exit:
-    pop rbp
     pop rdi
+    pop rsi
     pop rcx
     return
 
