@@ -242,9 +242,6 @@ getBuffer: ;Internal Linkage ONLY
     mov qword [rdi + bufferHdr.driveDPBPtr], rsi
     mov byte [rdi + bufferHdr.reserved], 0
     call readSectorBuffer ;Carry the flag from the request
-    jnc .rbExitNoFlag
-    ;Invalidate the buffer if CF=CY, freeing it
-    mov byte [rdi + bufferHdr.driveNumber], -1  ;Free buffer
     jmp short .rbExitNoFlag
 
 readSectorBuffer:   ;Internal Linkage
@@ -289,11 +286,16 @@ readSectorBuffer:   ;Internal Linkage
     dec esi
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
+;First free the buffer if we failed to read data into it 
+    movzx ecx, word [rdi + bufferHdr.driveNumber]   ;Save drv num for retry
+    mov word [rdi + bufferHdr.driveNumber], 00FFh ;Free buffer and clear flags
     mov byte [Int44bitfld], critRead    ;Set the initial bitfield to read req
     call diskDevErr
     cmp al, critRetry
-    je .rsRequest0
-    ;Else we fail (Ignore=Fail here)
+    jne .fail   ;Else we fail (Ignore=Fail here)
+    mov word [rdi + bufferHdr.driveNumber], cx ;Put drvNm + flgs if trying again
+    jmp short .rsRequest0
+.fail:
     stc ;Set error flag to indicate fail
     jmp .rsExitFail
     
