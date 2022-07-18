@@ -30,6 +30,7 @@ makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
     return
 
 flushAndFreeBuffer:         ;Int 4Fh AX=1209h
+;Input: rdi = Buffer header to flush and free
     call flushBuffer
     jnc .exit
     ;Free the buffer if it was flushed successfully (CF=NC)
@@ -55,9 +56,11 @@ makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
 ; second buffer in the chain in rdi
 ;Input: rdi = Buffer header to move to the head of the chain
 ;Output: rdi = Second buffer in the chain
-    call makeBufferMostRecentlyUsed
-    mov rdi, qword [bufHeadPtr]
-    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    push rdx
+    mov rdx, qword [rdi + bufferHdr.nextBufPtr] ;Save next ptr in rdx
+    call makeBufferMostRecentlyUsed ;Make the buffer most recently used
+    mov rdi, rdx    ;Continue searching from where we left off
+    pop rdx
     return
 
 findUnreferencedBuffer: ;Int 4Fh AX=1210h
@@ -176,10 +179,16 @@ freeBuffersForDPB:
     pop rbx
     return
 ;Buffer functions for sectors with file handles
-;FCB requests use the SFT in the SDA 
+;FCB requests use FCBS (or SDA SFT if FCBS=0)
+;Since they are just SFT entries on a separate list, this logic still holds
+;The only difference is if an FCBS may need to be recycled; Then all buffers 
+; belonging to that FCBS get flushed before freeing the FCBS.
+;Buffer owningFile pointers get set to -1 if they are successfully freed
+; or they don't belong to a file (i.e. FAT or DOS sectors)
+;OwningFile is only referenced for handle/FCB sectors (DIR and Data sectors)
 getBufForDir:
 ;Returns a buffer to use for disk directory data in rbx
-;Input: [currentSFT] = File handle to manipulate
+;Input: [currentSFT] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -187,7 +196,7 @@ getBufForDir:
     jmp short getBufCommon
 getBufForFat:
 ;Returns a buffer to use for fat data in rbx
-;Input: [currentSFT] = File handle to manipulate
+;Input: [currentSFT] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -195,7 +204,7 @@ getBufForFat:
     jmp short getBufCommon
 getBufForDOS:
 ;Returns a buffer to use for DOS sector(s) in rbx
-;Input: [currentSFT] = File handle to manipulate
+;Input: [currentSFT] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -204,7 +213,7 @@ getBufForDOS:
 getBufForData:
 ;Returns a buffer to use for disk data in rbx
 ;Requires a File Handle.
-;Input: [currentSFT] = File handle to manipulate
+;Input: [currentSFT] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -214,7 +223,15 @@ getBufCommon:
     push rbp
     mov rdi, qword [currentSFT]
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB
-    call getBuffer
+    call getBuffer  ;Gives the buffer ptr in rbx
+    jc .exit    ;Don't change SFT field if the request FAILED.
+    ;That would be very bad as it would potentially cause faulty data to be 
+    ; flushed to the file!
+    ;Only set the SFT field if Data or DIR sectors
+    test cl, dosBuffer | fatBuffer
+    jnz .exit
+    mov qword [rbx + bufferHdr.owningFile], rdi ;Set owner for the data
+.exit:
     pop rbp
     pop rdi
     pop rcx
@@ -261,14 +278,17 @@ getBuffer: ;Internal Linkage ONLY
     cmp byte [diskChange], -1 ;Are we in disk change?
     jne .flush  ;We are not, flush buffer
     cmp rsi, qword [rdi + bufferHdr.driveDPBPtr]    ;If yes...
-    je .skipFlush   ;Avoid flushing if same DPB being used
+    je .skipFlush   ;Avoid flushing if same DPB being used. Lose the sector
 .flush:
     call flushAndFreeBuffer
     jc .rbExitNoFlag    ;Preserve the set carry flag
 .skipFlush:
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
+    ;If the sector is to be lost or has been successfully flushed, then it
+    ; is no longer owned by that File so we mark the owner as none
+    mov qword [rdi + bufferHdr.owningFile], -1
     mov byte [rdi + bufferHdr.driveNumber], dl
-    mov byte [rdi + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA
+    mov byte [rdi + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA and NOT dirty
     mov qword [rdi + bufferHdr.bufferLBA], rax
     cmp cl, fatBuffer
     mov dl, 1   ;Default values if not fat buffer
@@ -387,3 +407,44 @@ findSectorInBuffer:     ;Internal linkage
     cmp rdi, -1     ;If rdi points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
+
+flushFile:
+;We search the chain for buffers with the currentSFT = owning file and ALL
+; FAT/DOS buffers to flush
+; We flush and free, and set to head of chain before continuing to search
+;Input: rdi = is the file we wish to flush
+;Output: CF=NC => All ok
+;        CF=CY => A sector failed, exit. 
+    push rdi
+    push rsi
+    ;First check if the file has been written to?
+    test word [rdi + sft.wDeviceInfo], blokFileToFlush
+    jz .exitNoFlush ;Exit without flushing
+    mov rsi, rdi    ;Move the currentSFT to rsi
+    mov rdi, qword [bufHeadPtr]
+.ffLoop:
+    cmp rdi, -1
+    je .exit
+    test byte [rdi + bufferHdr.bufferFlags], fatBuffer | dosBuffer
+    jnz .found  ;Flush if either bit is set
+    cmp qword [rdi + bufferHdr.owningFile], rsi
+    je .found
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    jmp short .ffLoop
+.exit:
+    ;Here we undo the disk file to be flushed bit in the SFT
+    and word [rsi + sft.wDeviceInfo], ~blokFileToFlush  ;Clear that bit!
+.exitNoFlush:
+    pop rsi
+    pop rdi
+    return
+.found:
+;Here we take the old next buffer, then flush and free the current buffer
+; then return the old next buffer into rdi and go back to ffLoop
+    call flushAndFreeBuffer ;Flush and free buffer
+    jc .exitNoFlush    ;Exit preserving CF
+    ;If the sector has been successfully flushed, then it
+    ; is no longer owned by that File so we mark the owner as none
+    mov qword [rdi + bufferHdr.owningFile], -1
+    call makeBufferMostRecentlyUsedGetNext  ;Return in rdi the next buffer
+    jmp short .ffLoop

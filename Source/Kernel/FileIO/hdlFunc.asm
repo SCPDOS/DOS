@@ -53,10 +53,7 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 lseekHdl:          ;ah = 42h, handle function, LSEEK
 ;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
     call getSFTPtr
-    jnc .sftValid
-    ;al (eax) has error code for bad file handle
-    jmp extErrExit ;Error code and exit
-.sftValid:
+    jc extErrExit ;al (eax) has error code for bad file handle
     cmp al, 3
     jb .validFunction
     mov eax, errInvFnc       ;Error code and exit
@@ -145,8 +142,8 @@ closeMain: ;Int 4Fh AX=1201h
     pop rbp
     ;If CF is set, Fail was requested and ax has an error code
     jc .exit
-    ;Now we flush all the buffers for this drive letter
-    
+    call flushFile
+    jc .exit    ;If something went wrong, exit
     movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
 .charClose:
