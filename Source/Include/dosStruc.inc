@@ -128,8 +128,8 @@ struc sft
     .wDeviceInfo resw 1    ;Includes unit number if a block device
     .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
     .dStartClust resd 1    ;Start cluster of file pointed to by SFT entry
-    .wTime       resw 1    ;File Time
-    .wDate       resw 1    ;File Date
+    .wTime       resw 1    ;File Time, updated on open and writes
+    .wDate       resw 1    ;File Date, updated on open and writes
     .dFileSize   resd 1    ;File Size, in bytes
     .dCurntOff   resd 1    ;Current Offset pointed to by SFT entry, in bytes
     .dRelClust   resd 1    ;Rel cluster pointed to by SFT entry
@@ -157,8 +157,8 @@ denyReadShare   equ 30h
 denyNoneShare   equ 40h
 ;Bit 7 reserved 0
 ;Bits 8-12 reserved 0
-;Critical Error handling
-critErrHdl      equ 2000h   ;If set, return error code. If clear, INT 44h
+
+diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 44h on disk full.
 ;Buffering on writes
 noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
 ;FCB opened file?
@@ -179,12 +179,12 @@ charDevClockDev equ 8h  ;If set, device is CLOCK device
 charDevFastOut  equ 10h ;If set, device supports INT 49h
 charDevBinary   equ 20h ;If set, r/w char device in Binary mode!!!
 charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
-blokDevNotFlush equ 40h ;If set, file not written to disk yet!!!
+blokFileToFlush equ 40h ;If set, file not written to disk yet!!!
 devCharDev      equ 80h ;If set, it is a char device!
 charDevNetSpool equ 800h    ;If set, device is a network spooler
 devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
 charDevNamePipe equ 2000h   ;If set, device is a named pipe
-blokDevDTSet    equ 4000h   ;If set, date and time updated for all i/o
+blokNoDTonClose equ 4000h   ;If set, dont update date and time when closing
 devRedirDev     equ 8000h   ;If set, dev/file is redirected!
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 

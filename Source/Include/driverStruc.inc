@@ -65,7 +65,7 @@ endstruc
     devDrvFastOut  equ 10h ;If set, device supports INT 49h
     devDrvExtFun   equ 40h ;If set, functions 13, 17, 18 supported (must be)
     devDrvIOCTL2   equ 80h ;If set, IOCTL function 19 supported
-    devDrvHdlCTL   equ 800h ;If set, Open, Close and Rem media supported (must)
+    devDrvHdlCTL   equ 800h ;If set, Open, Close and Rem media supported
     devDrvIOCTL    equ 4000h ;If set, Generic IOCTL supported
     devDrvChar     equ 8000h ;If set, Char device
 ;Bit 0 1=console input

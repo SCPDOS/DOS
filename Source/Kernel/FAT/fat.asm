@@ -1,15 +1,3 @@
-;---------------------------------------------------:
-;                   KERNEL FUNCTIONS                :
-;---------------------------------------------------:
-makeDIR:           ;ah = 39h
-removeDIR:         ;ah = 3Ah
-setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
-getCurrentDIR:     ;ah = 47h
-getSetFileDateTime:;ah = 57h
-trueName:          ;ah = 60h, get fully qualified name
-    return
-
-
 ;-----------------------------------:
 ;       File System routines        :
 ;-----------------------------------:

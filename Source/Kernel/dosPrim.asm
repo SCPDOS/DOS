@@ -347,6 +347,21 @@ primReqGetBPBSetup:
     mov word [primReqHdr + bpbBuildReqPkt.status], 0
     jmp short primReqCommonExit
 
+primReqOpenSetup:
+;al = unit number if a disk device. Undefined otherwise
+    push rax
+    mov ah, drvOPEN
+primReqCloseSetup:
+;al = unit number if a disk device. Undefined otherwise
+    push rax
+    mov ah, drvCLOSE
+primReqOCcommon:
+    mov byte [primReqHdr + openReqPkt.hdrlen], openReqPkt_size
+    cwde   ;Sign extend (but top bit is zero so zero extend)
+    mov dword [primReqHdr + openReqPkt.unitnm], eax
+    ;Cover unit number (if disk drive, cmdcde and status)
+    jmp primReqCommonExit   ;Now simply exit
+
 secdReqCharIOReq:
 ;Sets up the request packet to transfer 1 byte to/from the singleIOByt buffer.
 ;Input:

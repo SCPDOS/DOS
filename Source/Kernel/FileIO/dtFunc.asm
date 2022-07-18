@@ -240,3 +240,37 @@ setDaysInFeb:   ;Int 4Fh AX = 121Bh, Set days in february
     pop rdi
     pop rcx
     return
+
+getDirDTwords:
+;Returns the Directory format DT words in eax from the data in the SDA.
+; High word of eax = Date
+; Low word of eax = Time
+; Thus: eax[0:4] = Seconds/2, a value in [0,...,29]
+;       eax[5:10] = Minutes, a value in [0,...,59] 
+;       eax[11:15] = Hours, a value in [0,...,23]
+
+;       eax[16:20] = Day of the month, a value in [0,...,31]
+;       eax[21:24] = Month of the year, a value in [0,...,12]
+;       eax[25:31] = Number of years since 1980, a value in [0,...,127]
+;Preserves all registers except eax
+    push rbx
+    movzx ebx, byte [CLOCKrecrd + clkStruc.seconds]
+    shr ebx, 1  ;Divide the number by 2
+    mov eax, ebx
+    movzx ebx, byte [CLOCKrecrd + clkStruc.minutes] 
+    shl ebx, 5
+    or eax, ebx
+    movzx ebx, byte [CLOCKrecrd + clkStruc.hours]
+    shl ebx, 11
+    or eax, ebx
+    movzx ebx, byte [dayOfMonth]
+    shl ebx, 16
+    or eax, ebx
+    movzx ebx, byte [monthOfYear]
+    shl ebx, 21
+    or eax, ebx
+    movzx ebx, byte [years]
+    shl ebx, 25
+    or eax, ebx
+    pop rbx
+    return

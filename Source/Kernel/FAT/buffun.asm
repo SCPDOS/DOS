@@ -175,6 +175,50 @@ freeBuffersForDPB:
 .exit:
     pop rbx
     return
+;Buffer functions for sectors with file handles
+;FCB requests use the SFT in the SDA 
+getBufForDir:
+;Returns a buffer to use for disk directory data in rbx
+;Input: [currentSFT] = File handle to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dirBuffer
+    jmp short getBufCommon
+getBufForFat:
+;Returns a buffer to use for fat data in rbx
+;Input: [currentSFT] = File handle to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, fatBuffer
+    jmp short getBufCommon
+getBufForDOS:
+;Returns a buffer to use for DOS sector(s) in rbx
+;Input: [currentSFT] = File handle to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dosBuffer
+    jmp short getBufCommon
+getBufForData:
+;Returns a buffer to use for disk data in rbx
+;Requires a File Handle.
+;Input: [currentSFT] = File handle to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dataBuffer
+getBufCommon:
+    push rdi
+    push rbp
+    mov rdi, qword [currentSFT]
+    mov rbp, qword [rdi + sft.qPtr] ;Get DPB
+    call getBuffer
+    pop rbp
+    pop rdi
+    pop rcx
+    return
 
 getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
 ;

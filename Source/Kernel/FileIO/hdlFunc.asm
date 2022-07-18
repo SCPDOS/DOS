@@ -7,7 +7,28 @@ createFileHdl:     ;ah = 3Ch, handle function
 openFileHdl:       ;ah = 3Dh, handle function
     return 
 closeFileHdl:      ;ah = 3Eh, handle function
-    return 
+;Input: bx = file handle to close
+    call getSFTPtr  ;Get a pointer to the SFT in rdi
+    jc extErrExit   ;If CF is set, al has error code, exit!
+    call setCurrentSFT  ;Set this as the current SFT
+    ;Check count to see if we need to check share mode
+    cmp word [rdi], 1   ;Opened once only, not shared
+    je .skipShare
+    ;Now check sharing mode
+    mov ax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
+    and al, 0F0h    ;And wipe out the other bits
+    cmp al, denyRWShare | denyWriteShare | denyReadShare | denyNoneShare
+    jz .dontClose   ;Only 0 if the file has all Deny bits set
+.skipShare:
+    call getJFTPtr  ;Get the pointer to the JFT entry in rdi
+    mov byte [rdi], -1  ;Free JFT entry
+.dontClose:
+    call closeMain  ;Call close main!
+    jc extErrExit   ;If an error, exit through error exit
+    call getUserRegs
+    and byte [rsi + callerFrame.flags], ~1  ;Clear CF
+    xor al, al
+    return
 readFileHdl:       ;ah = 3Fh, handle function
     lea rsi, readBytes
 .common:
@@ -92,6 +113,79 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
+closeMain: ;Int 4Fh AX=1201h
+;Gets the directory entry for a file
+;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
+;If CF=CY on return: Error, return error with al = error code
+;Preserve all regs except eax and rdi
+; If CF=NC on return: eax = Unknown
+;                     rdi = current SFT ptr
+    mov rdi, qword [currentSFT] ;Get the sft pointer
+    test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
+    jnz .physical
+    ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
+    mov eax, 1106h  ;Make request
+    int 4fh ;Beep!
+    return  ;Returns with CF set or clear as appropriate
+.physical:  
+; We make a request to the dev dir to close the device
+; If the device is disk, we then update the directory entry for the disk file
+    call dosCrit1Enter  ;Enter critical section 1
+    push rbx
+    push rsi
+    mov rsi, qword [rdi + sft.qPtr] ;Get driver or DPB ptr in rsi
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    jnz .charClose   ;Char devs aren't affected by directory work
+    ;rsi has DPB pointer here
+    ;rdi has the SFT pointer
+    push rbp
+    mov rbp, rsi ;Move the dpb pointer into rbp
+    call setWorkingDPB  ;Set the working dpb to rbp
+    call updateDirectoryEntryForFile
+    pop rbp
+    ;If CF is set, Fail was requested and ax has an error code
+    jc .exit
+    movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
+    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
+.charClose:
+    ;Now rsi = Device Driver Header and rdi = Current SFT header
+    ;We now decrement handle count in SFT structure
+    call decrementOpenCount ;rdi = current SFT, returns ax = old handle count
+    dec ax  ;If this is zero, then we need to set wNumHandles to zero
+    jnz .driverClose
+    inc word [rdi + sft.wNumHandles]    ;Now make it zero again as it is -1
+.driverClose:
+    xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
+    ;and if the device is a disk device, cl will have the unit number
+    ;We first check if the driver supports oper/close requests
+    test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
+    jnz .exit  ;If not, immediately jump to exit, all is well
+    ;rsi has device driver ptr for device, make request
+    call primReqCloseSetup  ;rbx gets header ptr, rsi has driver ptr
+    call goDriver   ;Make request
+    ;Don't check the status here, as we are simply informing the driver 
+    ; of an operation. Nothing should be able to go wrong. 
+    ;Functionally, an ignore if anything does go wrong.
+.exit:
+    pop rsi
+    pop rbx
+    call dosCrit1Exit
+    return
+
+decrementOpenCount: ;Int 4Fh AX = 1208h
+;Input: rdi = SFT pointer
+;Output: ax = Original wNumHandles count
+    pushfq
+    movzx eax, word [rdi + sft.wNumHandles]
+    dec eax     ;Decrement count
+    jnz .exit                           ;If the count is not zero, exit
+    dec eax    ;If it is zero, now we make it -1
+.exit:
+    popfq
+    xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
+    return
+
+
 readBytes:
 ;Reads the bytes into the user buffer for the setup SFT (currentSFT)
 ;Input: ecx = Number of bytes to read
@@ -311,7 +405,7 @@ rwExitOk:
     jnz .skipbitClear
     call getCurrentSFT  ;Get currentSFT in rdi
     ;The disk transfer must've flushed by now. 
-    and byte [rdi + sft.wDeviceInfo], ~(blokDevNotFlush|charDevNoEOF) ;OR
+    and byte [rdi + sft.wDeviceInfo], ~(blokFileToFlush|charDevNoEOF) ;OR
     ;Next char dev read should give EOF.
 .skipbitClear:  ;Or skip that entirely
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
