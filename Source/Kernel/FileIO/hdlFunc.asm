@@ -13,18 +13,20 @@ closeFileHdl:      ;ah = 3Eh, handle function
     call setCurrentSFT  ;Set this as the current SFT
     ;Check count to see if we need to check share mode
     cmp word [rdi], 1   ;Opened once only, not shared
-    je .skipShare
+    je .skipNetCheck
     ;Now check sharing mode
     mov ax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
     and al, 0F0h    ;And wipe out the other bits
     cmp al, denyRWShare | denyWriteShare | denyReadShare | denyNoneShare
-    jz .dontClose   ;Only 0 if the file has all Deny bits set
-.skipShare:
-    call getJFTPtr  ;Get the pointer to the JFT entry in rdi
-    mov byte [rdi], -1  ;Free JFT entry
-.dontClose:
+    pushfq  ;Save the result of this for after closing the file
+.skipNetCheck:
     call closeMain  ;Call close main!
     jc extErrExit   ;If an error, exit through error exit
+    popfq
+    je .exitOk  ;If sharing mode was net FCB, it had no JFT entry, skip nulling
+    call getJFTPtr  ;Get the pointer to the JFT entry in rdi
+    mov byte [rdi], -1  ;Free JFT entry
+.exitOk:
     call getUserRegs
     and byte [rsi + callerFrame.flags], ~1  ;Clear CF
     xor al, al
@@ -97,7 +99,51 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 ioctrl:            ;ah = 44h, handle function
 duplicateHandle:   ;ah = 45h, handle function
+;Input: bx = Handle to duplicate
+;Output: If ok then ax = New handle
+    call findFreeJFT    ;First find a free space in the JFT
+    jc extErrExit   ;Exit if no space
+    ;rsi points to the free space
+.duplicateCommon:
+    call getJFTPtr  ;Get a pointer to the JFT entry in rdi for bx
+    xchg rsi, rdi
+    lodsb   ;Move over the SFT ndx from the old to the new position
+    stosb
+    dec rsi
+    dec rdi
+    ;rdi now points to new position
+    ;rsi points to old position
+    ;al has SFT ndx
+    mov rsi, rdi    ;Move rsi to point to the new position jft position
+    movzx ebx, al   ;Move SFTndx into ebx
+    call getSFTPtrfromSFTNdx    ;Get the pointer to the SFT in rdi
+    inc word [rdi + sft.wNumHandles]    ;Increase the number of handles in SFT
+    ;Now we must return in ax the entry in the JFT 
+    mov rdi, qword [currentPSP]
+    lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to head of table
+    sub rsi, rdi    ;Get the difference of the two in si
+    mov eax, esi
+    call getUserRegs
+    mov word [rsi + callerFrame.rax], ax
+    and byte [rsi + callerFrame.flags], ~1  ;Clear CF
+    return
 forceDuplicateHdl: ;ah = 46h, handle function
+;Input: bx = Handle to duplicate
+;       cx = Handle to close and replace with a duplicate of bx
+    ;First we close cx
+    xchg ebx, ecx ;Swap cx and bx
+    push rbx
+    push rcx
+    call closeFileHdl   ;Close handle 
+    pop rcx
+    pop rbx
+    retc    ;The error code is set by errExtExit and CF is set on callerFrame
+    ;Else, close was ok, lets duplicate now
+    call getJFTPtr  ;Get a pointer to bx in rdi, destination for copy
+    jc extErrExit   ;Return bad with error code in al
+    xchg ebx, ecx   ;Now get source to duplicate in ebx
+    mov rsi, rdi    ;Put the free space ptr in rsi
+    jmp short duplicateHandle.duplicateCommon
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h
@@ -595,4 +641,24 @@ readWriteBytesBinary:
     pop rcx
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
+    return
+
+findFreeJFT:
+;Input: [currentPSP] = Task whose PSP we will look through
+;If there are no free spaces, then we return with al = errNhl and CF=CY
+;Else, a pointer to the free space in rsi and al = -1
+    push rcx
+    mov rsi, qword [currentPSP]
+    movzx ecx, word [maxHndls]
+    lea rsi, qword [rsi + psp.jobFileTbl]   ;Point to start of table
+.search:
+    lodsb
+    cmp al, -1
+    je .exit
+    dec ecx
+    jnz .search
+    mov al, errNhl  ;No free handles buddy, sorry
+    stc ;Set error bit
+.exit:
+    pop rcx
     return
