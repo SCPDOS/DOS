@@ -223,9 +223,8 @@ ensureDiskValid:
     mov byte [diskChange], -1   ;In disk Change!
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
     ;Get a buffer to read BPB into in rdi
-    mov cl, dosBuffer
     xor eax, eax   ;Dummy read sector 0 in
-    call getBuffer ;Get a disk buffer
+    call getBufForDOS ;Get a disk buffer for DOS
     jc .exit    ;Immediately exit with the carry flag set
     mov rdi, rbx
 .repeatEP:

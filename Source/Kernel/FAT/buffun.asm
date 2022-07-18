@@ -220,7 +220,7 @@ getBufCommon:
     pop rcx
     return
 
-getBuffer: ;External Linkage (dosPrim.asm, fat.asm)
+getBuffer: ;Internal Linkage ONLY
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
 ;TO CALL! WORKS ON THE WORKING DPB!

@@ -108,9 +108,8 @@ findFreeClusterData:
     shr ebx, 2  ;Divide by 4 to get number of FAT entries in a sector buffer
     mov word [entries], bx
 .fat32Search:
-    mov cl, fatBuffer
     mov rax, qword [tempSect]
-    call getBuffer ;Buffer Header in ebx
+    call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
@@ -144,9 +143,8 @@ findFreeClusterData:
     shr ebx, 1  ;Divide by 2 to get number of FAT entries in a sector buffer
     mov word [entries], bx
 .fat16Search:
-    mov cl, fatBuffer
     mov rax, qword [tempSect]
-    call getBuffer ;Buffer Header in ebx
+    call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
     xor eax, eax
@@ -177,9 +175,8 @@ findFreeClusterData:
     mov word [entries], ax ;Get quotient (number of whole entries in sector) 
     ;The value is rounded down so we can read the next sector for the 
     ;last entry manually (thus buffering it if it not already buffered)
-    mov cl, fatBuffer
     mov rax, qword [tempSect]
-    call getBuffer ;Buffer Header in ebx
+    call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .fat12SearchNewSector:
@@ -203,8 +200,7 @@ findFreeClusterData:
 ;We arrive here when we are at the last entry in the sector
     inc qword [tempSect]    ;Get next Sector
     mov rax, qword [tempSect]   ;Get this sector in rax
-    mov cl, fatBuffer
-    call getBuffer ;Buffer Header in ebx
+    call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
     lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
@@ -259,12 +255,12 @@ getDataSector:
     push rbx
     push rcx
     mov rax, qword [currSectD]  ;Get the disk sector number to read
-    mov ebx, dosBuffer
-    mov ecx, dataBuffer 
+    lea rcx, getBufForDOS
+    lea rbx, getBufForData
     test rax, rax
-    cmovz ecx, ebx  ;If sector 0, change to DOS buffer
+    cmovz rbx, rcx  ;If sector 0, change to DOS buffer
 .getSectorRead:
-    call getBuffer  ;Get ptr to buffer header in [currBuff] (and rbx but ignore)
+    call rbx  ;Get ptr to buffer header in [currBuff] (and rbx but ignore)
     pop rcx
     pop rbx
     pop rax
@@ -327,10 +323,7 @@ walkFAT:
     ;and FAT type in ecx
     movzx ebx, word [rbp + dpb.wFAToffset]
     add eax, ebx    ;Add the FAT offset to the sector
-    push rcx    ;Move FAT signature onto stack
-    mov cl, fatBuffer
-    call getBuffer ;Buffer Header in ebx
-    pop rcx
+    call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     ;Check if FAT 12, 16, 32
     test ecx, ecx
@@ -364,8 +357,7 @@ walkFAT:
     push rdi    ;Save the cluster number on the stack
     mov rdi, rbx    ;Save previous buffer header in rdi
     inc eax ;Get next sector
-    mov cl, fatBuffer
-    call getBuffer ;Buffer Header in ebx
+    call getBufForFat ;Buffer Header in ebx
     pop rcx ;Return the cluster number in rcx
     jc .exitFail
     ;rdi has first buffer header, rbx has second buffer header
