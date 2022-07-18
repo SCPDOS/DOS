@@ -178,64 +178,6 @@ freeBuffersForDPB:
 .exit:
     pop rbx
     return
-;Buffer functions for sectors with file handles
-;FCB requests use FCBS (or SDA SFT if FCBS=0)
-;Since they are just SFT entries on a separate list, this logic still holds
-;The only difference is if an FCBS may need to be recycled; Then all buffers 
-; belonging to that FCBS get flushed before freeing the FCBS.
-;Buffer owningFile pointers get set to -1 if they are successfully freed
-; or they don't belong to a file (i.e. FAT or DOS sectors)
-;OwningFile is only referenced for handle/FCB sectors (DIR and Data sectors)
-getBufForDir:
-;Returns a buffer to use for disk directory data in rbx
-;Input: [currentSFT] = File to manipulate
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, dirBuffer
-    jmp short getBufCommon
-getBufForFat:
-;Returns a buffer to use for fat data in rbx
-;Input: [currentSFT] = File to manipulate
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, fatBuffer
-    jmp short getBufCommon
-getBufForDOS:
-;Returns a buffer to use for DOS sector(s) in rbx
-;Input: [currentSFT] = File to manipulate
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, dosBuffer
-    jmp short getBufCommon
-getBufForData:
-;Returns a buffer to use for disk data in rbx
-;Requires a File Handle.
-;Input: [currentSFT] = File to manipulate
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, dataBuffer
-getBufCommon:
-    push rdi
-    push rbp
-    mov rdi, qword [currentSFT]
-    mov rbp, qword [rdi + sft.qPtr] ;Get DPB
-    call getBuffer  ;Gives the buffer ptr in rbx
-    jc .exit    ;Don't change SFT field if the request FAILED.
-    ;That would be very bad as it would potentially cause faulty data to be 
-    ; flushed to the file!
-    ;Only set the SFT field if Data or DIR sectors
-    test cl, dosBuffer | fatBuffer
-    jnz .exit
-    mov qword [rbx + bufferHdr.owningFile], rdi ;Set owner for the data
-.exit:
-    pop rbp
-    pop rdi
-    pop rcx
-    return
 
 getBuffer: ;Internal Linkage ONLY
 ;
@@ -407,6 +349,69 @@ findSectorInBuffer:     ;Internal linkage
     cmp rdi, -1     ;If rdi points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
+;-----------------------------------------------------------------------------
+;SPECIAL BUFFER FUNCTIONS
+;Buffer functions for sectors associated to file handles
+;FCB requests use FCBS (or SDA SFT if FCBS=0)
+;Since they are just SFT entries on a separate list, this logic still holds
+;The only difference is if an FCBS may need to be recycled; Then all buffers 
+; belonging to that FCBS get flushed before freeing the FCBS.
+;Buffer owningFile pointers get set to -1 if they are successfully freed
+; or they don't belong to a file (i.e. FAT or DOS sectors)
+;OwningFile is only referenced for handle/FCB sectors (DIR and Data sectors)
+;-----------------------------------------------------------------------------
+getBufForDir:
+;Returns a buffer to use for disk directory data in rbx
+;Input: [currentSFT] = File to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dirBuffer
+    jmp short getBufCommon
+getBufForFat:
+;Returns a buffer to use for fat data in rbx
+;Input: [currentSFT] = File to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, fatBuffer
+    jmp short getBufCommon
+getBufForDOS:
+;Returns a buffer to use for DOS sector(s) in rbx
+;Input: [currentSFT] = File to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dosBuffer
+    jmp short getBufCommon
+getBufForData:
+;Returns a buffer to use for disk data in rbx
+;Requires a File Handle.
+;Input: [currentSFT] = File to manipulate
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dataBuffer
+getBufCommon:
+    push rdi
+    push rbp
+    mov rdi, qword [currentSFT]
+    mov rbp, qword [rdi + sft.qPtr] ;Get DPB
+    call getBuffer  ;Gives the buffer ptr in rbx
+    jc .exit    ;Don't change SFT field if the request FAILED.
+    ;That would be very bad as it would potentially cause faulty data to be 
+    ; flushed to the file!
+    ;Only set the SFT field if Data or DIR sectors, as getBuffer
+    ; will always set the owningFile field to -1 if the data was successfully
+    ; flushed or deemed ok to lose (thus completing setup for dos/fat buffers).
+    test cl, dosBuffer | fatBuffer
+    jnz .exit
+    mov qword [rbx + bufferHdr.owningFile], rdi ;Set owner for the data
+.exit:
+    pop rbp
+    pop rdi
+    pop rcx
+    return
 
 flushFile:
 ;We search the chain for buffers with the currentSFT = owning file and ALL
