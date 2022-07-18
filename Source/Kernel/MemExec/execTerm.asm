@@ -157,11 +157,11 @@ terminateClean:    ;ah = 4Ch, EXIT
     push rdi
     call derefSFTPtr    ;Ret in rdi the SFT pointer
     jc .badHdl  ;If a bad handle, skip the decrementing of the handle count
-    dec word [rdi + sft.wNumHandles]    ;Decrement the count
-    cmp qword [rdi + sft.qPSPOwner], rdx
-    jne .badHdl
-    ;Skip zeroing
-    mov word [rdi + sft.wNumHandles], 0 ;Free SFT (Temp until we can close)
+    push qword [currentSFT]
+    call setCurrentSFT  ;Set rdi to currentSFT
+    call closeMain  ;Close all files opened by this program. Decrement ref ONLY
+    ;Ignore errors, simply keep closing files
+    pop qword [currentSFT]
 .badHdl:
     pop rdi
     mov al, -1
