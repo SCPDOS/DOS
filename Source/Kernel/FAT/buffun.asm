@@ -96,7 +96,7 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     mov al, byte [rdi + bufferHdr.driveNumber]
     mov ecx, 1  ;One sector to copy
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
-    mov rbx, qword [rdi + bufferHdr.dataarea]
+    lea rbx, qword [rdi + bufferHdr.dataarea]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
     call primReqWriteSetup  ;Setup request (preserves setup registers)
     call absDiskDriverCall    ;Make Driver Request
@@ -305,7 +305,7 @@ readSectorBuffer:   ;Internal Linkage
     mov al, byte [rdi + bufferHdr.driveNumber]
     mov ecx, 1  ;One sector to copy
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
-    mov rbx, qword [rdi + bufferHdr.dataarea]
+    lea rbx, qword [rdi + bufferHdr.dataarea]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
     call primReqReadSetup  ;Setup request (preserves setup registers)
     call absDiskDriverCall    ;Make Driver Request
