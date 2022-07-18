@@ -242,6 +242,9 @@ getBuffer: ;Internal Linkage ONLY
     mov qword [rdi + bufferHdr.driveDPBPtr], rsi
     mov byte [rdi + bufferHdr.reserved], 0
     call readSectorBuffer ;Carry the flag from the request
+    jnc .rbExitNoFlag
+    ;Invalidate the buffer if CF=CY, freeing it
+    mov byte [rdi + bufferHdr.driveNumber], -1  ;Free buffer
     jmp short .rbExitNoFlag
 
 readSectorBuffer:   ;Internal Linkage
