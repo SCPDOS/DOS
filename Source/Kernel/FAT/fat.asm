@@ -274,7 +274,7 @@ getNextSectorOfFile:
 ;Input: rbp = dpb pointer
 ;Output:
 ;       CF=NC => rax = Next sector to read into a memory buffer
-; If rax = -1 => [currClustF] = Last Cluster of File
+; If rax = -1 => [currClustF] = Last Cluster of File. Also ZF=ZE in this case
 ;       CF=CY => Critical error occurred and was FAILed
 ;Read next sector. If at last sector in cluster, walk map, get
 ; next cluster and read first sector 
@@ -284,7 +284,7 @@ getNextSectorOfFile:
     je .gotoNextCluster
     ;Goto next sector in same cluster
     inc byte [currSectC]    ;Goto next sector in cluster
-    inc qword [currSectD]  ;Goto next sector on Disk
+    inc qword [currSectD]  ;Goto next sector on Disk, clears ZF
     mov rax, qword [currSectD]
 .exitOK:
     clc
@@ -300,7 +300,7 @@ getNextSectorOfFile:
 ;Update the new cluster and sector information
     mov dword [currClustD], eax ;Update disk location of next cluster
     inc dword [currClustF]   ;Goto next file cluster
-    call getStartSectorOfCluster    ;Get start sector of Cluster
+    call getStartSectorOfCluster    ;Get start sector of Cluster, clears ZF
     mov qword [currSectD], rax  ;Save it
     mov byte [currSectC], 0      ;We are at sector 0 rel Clust
     jmp short .exitOK

@@ -490,18 +490,18 @@ readDiskFile:
     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
 ;Main
 .mainRead:
-    call getBufForData  ;Get buffer header ptr in rbx and currBuf var
+    call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
     jc .badExit
     mov rsi, rbx    ;Move the buffer pointer into rsi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rsi, rbx    ;Shift rsi by that amount into the sector
-    ;Now we read the smallest of:
+    ;Now we read the smallest of the following from the sector buffer:
     ; 1) Sector size, 2) Bytes left in File, 3) Bytes left to read from Request
     mov ecx, dword [rdi + sft.dFileSize]
-    sub ecx, dword [rdi + sft.dCurntOff]    ;Get bytes left to read in ecx
+    sub ecx, dword [rdi + sft.dCurntOff] ;Get bytes left to read in file in ecx
     mov ebx, dword [tfrCntr]
-    cmp ecx, ebx    ;Is bytes left to read in file > bytes user wants?
-    cmova ecx, ebx  ;Move into ecx if so
+    cmp ecx, ebx    ;Is bytes left to read in file > bytes user has left?
+    cmova ecx, ebx  ;Move ebx into ecx if so
     movzx ebx, word [rbp + dpb.wBytesPerSector]  ;Compare to sector size
     cmp ecx, ebx  ;ecx > sector size?
     cmova ecx, ebx  ;Move it into ecx if so
@@ -513,13 +513,11 @@ readDiskFile:
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
     jz rwExitOk ;Exit if so!
-    xor eax, eax    ;Make sure to zero rax
-    call getNextSectorOfFile    ;Get the next sector
+    call getNextSectorOfFile    ;Get the next sector of the file
     jc .badExit
-    cmp rax, -1 ;If there is no next sector, we exit
-    je rwExitOk ;ecx has the number of bytes left to transfer
+    jz rwExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
     ;Else repeat
-    ;currSectD has been updated, we set currByteS = 0
+    ;currSectD has been updated, we now set currByteS = 0
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
     jmp short .mainRead
@@ -527,6 +525,7 @@ readDiskFile:
     ;When a disk error occurs within the bit where vars have changed,
     ; we need to update the SFT before returning
     mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
+    xor al, al  ;Set ZF flag
     call rwExitOk   ;We call this
     stc ;All calls which end up here return Fail!
     ret
