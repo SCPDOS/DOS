@@ -338,7 +338,7 @@ walkFAT:
     jmp short .exit
 .goToNextClusterFat32:
     mov eax, dword [rbx + bufferHdr.dataarea + rdx]
-    cmp eax, 0FFFFFFF6h ;First reserved value. Any Reserved number = EOC
+    cmp eax, 0FFFFFF6h ;First reserved value. Any Reserved number = EOC
     jb .validCluster32   
     mov eax, -1 ;Always translate it to -1 and skip zeroing upper nybble
     jmp short .exit
