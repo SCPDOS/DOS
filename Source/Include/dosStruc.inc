@@ -67,7 +67,7 @@ struc cds       ;Current Directory structure
 endstruc
 ;CDS equates
 cdsRedirDrive   equ 8000h   ;All drives which use the Redirector interface
-cdsPhysDrive    equ 4000h   ;CDS initialised 
+cdsValidDrive   equ 4000h   ;CDS valid
 cdsJoinDrive    equ 2000h   ;CDS for joined drives
 cdsSubstDrive   equ 1000h   ;Drives formed by Subst
 cdsRdirLocDrive equ 0080h   ;Redirector but Local

@@ -589,7 +589,7 @@ tempCDS:
     mov qword fs:[cdsHeadPtr], rdi
     ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
     mov dword [rdi + cds.sCurrentPath], 005C3A41h  
-    mov word [rdi + cds.wFlags], cdsPhysDrive   ;Must be a physical drive
+    mov word [rdi + cds.wFlags], cdsValidDrive   ;Set the drive to be valid!
     mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
     mov qword [rdi + cds.qDPBPtr], rbx
     mov word [rdi + cds.wBackslashOffset], 2    ;Skip the A:

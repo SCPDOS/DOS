@@ -130,7 +130,7 @@ buildNewCDS:   ;Int 4Fh AX=121Fh
     or eax, 005C3A00h   ;Add path componants to eax, 5Ch=\, 3Ah=:
     mov dword [rdi + cds.sCurrentPath], eax  ;Since al has valid drive letter
     pop rax
-    or word [rdi + cds.wFlags], cdsPhysDrive    ;Config bit set
+    or word [rdi + cds.wFlags], cdsValidDrive    ;Config bit set
     mov dword [rdi + cds.dStartCluster], 0  ;Root dir
     mov qword [rdi + cds.qReserved], 0   ;Optional redir signature field
     mov word [rdi + cds.wBackslashOffset], 2    ;Skip letter and :
@@ -172,7 +172,7 @@ getCDS:     ;Int 4Fh AX=1219h
     mov qword [workingCDS], rdi ;Make it current
     add al, "A" ;Convert to a drive letter
     call buildNewCDS    ;Build a new CDS
-    test word [rdi + cds.wFlags], cdsPhysDrive  ;Is the CDS valid?
+    test word [rdi + cds.wFlags], cdsValidDrive  ;Is the CDS valid?
     pop rdi
     pop rax
     jz .exitBad    ;If the valid flag not set, fail!
@@ -180,7 +180,7 @@ getCDS:     ;Int 4Fh AX=1219h
 .physDrive:
     call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
     jc .exitBad
-    test word [rsi + cds.wFlags], cdsPhysDrive
+    test word [rsi + cds.wFlags], cdsValidDrive
     jnz .exitOk ;Exit with flag cleared
     ;Else Return to unknown error locus
 .exitBad:
