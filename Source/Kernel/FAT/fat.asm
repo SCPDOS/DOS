@@ -332,14 +332,17 @@ walkFAT:
     jz .goToNextClusterFat32
     ;Here we handle FAT16
     movzx eax, word [rbx + bufferHdr.dataarea + rdx]
-    cmp ax, -1
-    jne .exit
-    movsx eax, al
+    cmp eax, 0FFF6h  ;Valid cluster number?
+    jb .exit
+    mov eax, -1 ;If not, set to -1
     jmp short .exit
 .goToNextClusterFat32:
     mov eax, dword [rbx + bufferHdr.dataarea + rdx]
-    cmp eax, -1
-    je .exit   ;If EOC, skip zeroing nybble
+    cmp eax, 0FFFFFFF6h ;First reserved value. Any Reserved number = EOC
+    jb .validCluster32   
+    mov eax, -1 ;Always translate it to -1 and skip zeroing upper nybble
+    jmp short .exit
+.validCluster32:
     and eax, 0FFFFFFFh  ;Zero upper nybble
 .exit:
     clc
@@ -384,7 +387,7 @@ walkFAT:
     movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
     and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
 .checkIfLastFAT12Cluster:
-    cmp ax, 0FFFh
-    jne .exit
-    mov eax, -1
+    cmp eax, 0FF6h   ;Is it below the first invalid cluster number?
+    jb .exit         ;If so, exit with it in eax
+    mov eax, -1 ;Else, replace with -1, EOC
     jmp .exit
