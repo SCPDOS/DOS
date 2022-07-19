@@ -36,7 +36,7 @@ sysVarsPtr:
 ;Additional internal variables
 ;Only used on single remdrive systems, marks if drive A or B was last accessed
     singleDrv   resb 1    ;Set if last drive accessed was drive B x
-    numFiles    resw 1    ;FILES=5 default
+    numFiles    resb 1    ;FILES=5 default, max 255
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size

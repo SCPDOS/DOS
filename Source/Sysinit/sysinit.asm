@@ -94,7 +94,7 @@ initBegin:
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     ;mov byte fs:[numPhysVol], 0    ;Number of logical drives
-    mov word fs:[numFiles], 5      ;Default 8 files, at start 5
+    mov byte fs:[numFiles], 5      ;Default 8 files, at start 5
     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
     ;If no detected Int 33h devices, halt 
