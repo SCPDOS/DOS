@@ -476,20 +476,23 @@ readDiskFile:
     ;currClustF
     ;Now convert currSectC to disk sector by using currClustF
     ;Using currClustF as a counter, we walk the fat from startingCluster
-    mov edx, dword [currClustF] ;Use edx as teh counter reg
+    mov edx, dword [currClustF] ;Use edx as the counter reg
     mov eax, dword [rsi + sft.dStartClust]  ;Get starting cluster
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
+    test edx, edx   ;Is the relative sector zero? (I.E start of file?)
+    jz .skipWalk
 .goToCurrentCluster:
-    mov ebx, eax    ;Save current cluster
+    cmp eax, -1 ;Are we gonna go past the end of the file?
+    je rwExitOk ;Exit with no bytes transferred
+    mov ebx, eax    ;Save eax as current cluster
     call walkFAT    ;Get in eax the next cluster
     jc .badExit   ;This can only return Fail
-    cmp eax, -1 ;Are we past the end of the file?
-    je rwExitOk ;Exit with no bytes transferred (and dont wanna flush anything)
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
 ;Now we fall out with ebx = Current cluster
     mov eax, ebx    ;Get the current cluster in eax
+.skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
     ;Now we add the offset to this
     movzx ebx, byte [currSectC] ;Get the sector offset into the cluster
