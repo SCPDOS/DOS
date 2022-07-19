@@ -145,14 +145,52 @@ forceDuplicateHdl: ;ah = 46h, handle function
     mov rsi, rdi    ;Put the free space ptr in rsi
     jmp short duplicateHandle.duplicateCommon
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
+    
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
+
 lockUnlockFile:    ;ah = 5Ch
+    jmp extErrExit
 setHandleCount:    ;ah = 67h
+    jmp extErrExit
 commitFile:        ;ah = 68h, flushes buffers for handle to disk 
-    return 
+    ;Input: bx = File to flush
+    call getSFTPtr  ;Get sft pointer in rdi
+    jc extErrExit
+    call setCurrentSFT
+    ;Now we check if the device is a char, disk or net file
+    movzx eax, word [rdi + sft.wDeviceInfo]
+    test ax, devRedirDev
+    jnz .notNet
+    ;Commit file net redir call and exit
+    mov eax, 1107h
+    int 4fh
+    jc extErrExit
+    jmp .exitOk
+.notNet:
+    test ax, devCharDev
+    jz .blokDev
+    ;Here we simply update date/time fields in the SFT structure before exiting
+    call readDateTimeRecord ;Update DOS internal Time/Date variables
+    jc extErrExit  ;If we fail to get time/date, fail the request
+    ;Build date and time words
+    call getDirDTwords  ;Get date time words packed in eax
+    mov dword [rdi + sft.wTime], eax    ;Store them at the same time
+    jmp .exitOk
+.blokDev:
+    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer in rbp
+    call setWorkingDPB
+    call updateDirectoryEntryForFile    ;Update the directory entry
+    jc extErrExit
+    call flushFile  ;Now the file gets flushed
+    jc extErrExit
+.exitOk:
+    xor al, al
+    call getUserRegs
+    and byte [rsi + callerFrame], ~1    ;Clear CF
+    return
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
@@ -543,7 +581,7 @@ setupVarsForDiskTransfer:
 
 getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
 ;Return a pointer to the SFT entry in rdi
-;Input: rbx = Valid SFT ndx number (word)
+;Input: rbx = Valid SFT ndx number (byte, zero extended)
 ;Output: rdi = SFT pointer
     mov rdi, qword [sftHeadPtr] ;Get head of SFT pointer
 .walk:

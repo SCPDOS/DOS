@@ -428,7 +428,7 @@ flushFile:
 ;We search the chain for buffers with the currentSFT = owning file and ALL
 ; FAT/DOS buffers to flush
 ; We flush and free, and set to head of chain before continuing to search
-;Input: rdi = is the file we wish to flush
+;Input: rdi = is the file (sft) we wish to flush
 ;Output: CF=NC => All ok
 ;        CF=CY => A sector failed, exit. 
     push rdi
