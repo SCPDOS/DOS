@@ -469,7 +469,7 @@ readDiskFile:
     ;currClustF
     ;Now convert currSectC to disk sector by using currClustF
     ;Using currClustF as a counter, we walk the fat from startingCluster
-    mov edx, currClustF ;Use edx as teh counter reg
+    mov edx, qword [currClustF] ;Use edx as teh counter reg
     mov eax, dword [rsi + sft.dStartClust]  ;Get starting cluster
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
