@@ -269,7 +269,7 @@ getDataSector:
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
-; the file handle of the file being read/written to the new cluster
+; the vars appropriately
 ;
 ;Input: rbp = dpb pointer
 ;Output:
@@ -310,7 +310,7 @@ walkFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain
 ; or -1 to indicate end of cluster chain on the device with workingDPB
 ;Input: eax = Cluster number (zero extended to 32 bits)
-;       rbp = DPB number
+;       rbp = DPB
 ;Output: eax = Next Cluster number (-1 indicates end of chain)
 ;If carry set, getBuffer failed!
     push rbx

@@ -299,7 +299,7 @@ readBytes:
     test word [rdi + sft.wDeviceInfo], devCharDev
     jnz readCharDev
     call dosCrit1Enter
-    call readDiskFile
+    call readDiskFile   ;Called with rbp = Working DPB and rdi = CurrentSFT
     call dosCrit1Exit
     return 
 readCharDev:
@@ -460,13 +460,76 @@ readCharDev:
     jmp rwExitOk    ;Called with ecx = Number of bytes LEFT to transfer
 
 readDiskFile:
+;rdi = Current SFT
+;rbp = WorkingDPB
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
+    mov byte [rwFlag], 0    ;Read operation
     ;We have the following vars setup:
     ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
     ;currClustF
     ;Now convert currSectC to disk sector by using currClustF
-
-
+    ;Using currClustF as a counter, we walk the fat from startingCluster
+    mov edx, currClustF ;Use edx as teh counter reg
+    mov eax, dword [rsi + sft.dStartClust]  ;Get starting cluster
+    xor ebx, ebx    ;Use ebx to contain the old cluster number
+    mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
+.goToCurrentCluster:
+    mov ebx, eax    ;Save current cluster
+    call walkFAT    ;Get in eax the next cluster
+    jc .badExit   ;This can only return Fail
+    cmp eax, -1 ;Are we past the end of the file?
+    je rwExitOk ;Exit with no bytes transferred (and dont wanna flush anything)
+    dec edx ;Decrement counter
+    jnz .goToCurrentCluster
+;Now we fall out with ebx = Current cluster
+    mov eax, ebx    ;Get the current cluster in eax
+    call getStartSectorOfCluster    ;Get the start sector on the disk in rax
+    ;Now we add the offset to this
+    movzx ebx, byte [currSectC] ;Get the sector offset into the cluster
+    add rax, rbx    ;And finally get the absolute cluster on the disk
+    mov qword [currSectD], rax  ;Save the current Sector on Disk in var
+;Main
+.mainRead:
+    call getBufForData  ;Get buffer header ptr in rbx and currBuf var
+    jc .badExit
+    mov rsi, rbx    ;Move the buffer pointer into rsi
+    movzx ebx, word [currByteS] ;Get the byte offset into the current sector
+    add rsi, rbx    ;Shift rsi by that amount into the sector
+    ;Now we read the smallest of:
+    ; 1) Sector size, 2) Bytes left in File, 3) Bytes left to read from Request
+    mov ecx, dword [rdi + sft.dFileSize]
+    sub ecx, dword [rdi + sft.dCurntOff]    ;Get bytes left to read in ecx
+    mov ebx, dword [tfrCntr]
+    cmp ecx, ebx    ;Is bytes left to read in file > bytes user wants?
+    cmova ecx, ebx  ;Move into ecx if so
+    movzx ebx, word [rbp + dpb.wBytesPerSector]  ;Compare to sector size
+    cmp ecx, ebx  ;ecx > sector size?
+    cmova ecx, ebx  ;Move it into ecx if so
+    push rdi
+    mov rdi, qword [currentDTA]
+    call readWriteBytesBinary
+    mov qword [currentDTA], rdi ;rdi has been shifted by ecx on entry amount
+    pop rdi
+    mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
+    test ecx, ecx  ;Are we at the end yet?
+    jz rwExitOk ;Exit if so!
+    xor eax, eax    ;Make sure to zero rax
+    call getNextSectorOfFile    ;Get the next sector
+    jc .badExit
+    cmp rax, -1 ;If there is no next sector, we exit
+    je rwExitOk ;ecx has the number of bytes left to transfer
+    ;Else repeat
+    ;currSectD has been updated, we set currByteS = 0
+    mov word [currByteS], 0 ;We start reading now from the start of the sector
+    mov rax, qword [currSectD]  ;Get the next sector to read from
+    jmp short .mainRead
+.badExit:
+    ;When a disk error occurs within the bit where vars have changed,
+    ; we need to update the SFT before returning
+    mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
+    call rwExitOk   ;We call this
+    stc ;All calls which end up here return Fail!
+    ret
 writeBytes:
 ;Writes the bytes from the user buffer
     call getCurrentSFT  ;Get current SFT in rdi
@@ -493,7 +556,6 @@ rwExitOk:
 .skipbitClear:  ;Or skip that entirely
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
     return 
-rwExitBad:
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
@@ -557,7 +619,8 @@ setupVarsForDiskTransfer:
 ;Input: ecx = User desired Bytes to transfer
 ;       rdi = SFT pointer for the file
 ;Output: ecx = Actual Bytes that will be transferred 
-    mov rbp, qword [workingDPB] ;Get the workingDPB (the same as qPtr)
+    mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
+    mov qword [workingDPB], rbp
     mov bl, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], bl   ;Set working drive number
     mov eax, dword [currByteF]  ;Get current byte in file
