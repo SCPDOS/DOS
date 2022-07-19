@@ -134,13 +134,15 @@ sdaMainSwap:
     critReqHdr  resb ioReqPkt_size  ;Used for ^C detection!
     pspCopyFlg  resb 1  ;Set to -1 for child process PSP, 0 for simple PSP copy
 ;Swappable Buffers
-    buffer1     resb 128  ;Space for one path and file name
-    buffer2     resb 128  ;Space for a second path and file name
     CLOCKrecrd  resb 6  ;Clock driver record
     ;We add an additional byte to save ah too
     singleIObyt resw 1  ;For single IO byte buffers
+    buffer1     resb 128  ;Space for one path and file name
+    buffer2     resb 128  ;Space for a second path and file name
+
 ;Misc bookkeeping flags and vars
-    ;secClusConv resb 1  ;For networking, do we convert sector to cluster?
+    dosffblock  resb ffBlock_size   ;Internal searching block
+    searchAttr  resw 1  ;Search attributes
     rwFlag      resb 1  ;00h=Read, 01h=Write
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)

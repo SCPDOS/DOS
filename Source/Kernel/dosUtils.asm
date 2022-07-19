@@ -241,3 +241,7 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     sub al, "a" - "A"   ;Convert the char
 .exit:
     return
+
+checkPathOK:
+;rdx -> points to a path to verify if it is ok.
+;A path can start with either \\ or X: whichever

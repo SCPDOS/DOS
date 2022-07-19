@@ -145,7 +145,14 @@ forceDuplicateHdl: ;ah = 46h, handle function
     mov rsi, rdi    ;Put the free space ptr in rsi
     jmp short duplicateHandle.duplicateCommon
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
-    
+;Input: cx = Search Attributes
+;       rdx = Ptr to path to file to look for
+;       al = Document as needing to be 0 for now
+    mov word [searchAttr], cx
+    mov rsi, rdx    ;Get the source path ptr in rsi
+    lea rdi, buffer1
+
+
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
@@ -469,7 +476,7 @@ readDiskFile:
     ;currClustF
     ;Now convert currSectC to disk sector by using currClustF
     ;Using currClustF as a counter, we walk the fat from startingCluster
-    mov edx, qword [currClustF] ;Use edx as teh counter reg
+    mov edx, dword [currClustF] ;Use edx as teh counter reg
     mov eax, dword [rsi + sft.dStartClust]  ;Get starting cluster
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
