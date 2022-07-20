@@ -246,8 +246,10 @@ checkPathspecOK:
 ;Input:
 ;rdx -> points to a path to verify if it is ok.
 ;Output:
-;CF=CY => the path is malformed. CF=NC => The path may contain path separators.
-; If ZF=ZE then the path contains path separators.
+;CF=NC => The path is totally clean and ok to use.
+;CF=CY => the path is malformed and may be used ONLY if ZF=ZE. 
+; If ZF=ZE then the only malformed chars are path separators and may be used.
+;Path separators are \, / and : for drive separation (not counted in ZF setting)
 
 ;Full paths may start with \\<15-char machine name>\...
 ; or <Drive Letter>:\...
@@ -261,20 +263,26 @@ checkPathspecOK:
     push rsi
     push rdi
     pushfq
+    mov rsi, rdx
     ;First we verify that the first two chars are ok (either X: or \\ or chars)
     mov ax, word [rdx]  ;Get the first two chars
-    cmp ax, "\\"
-    je .okToScan
-    cmp ax, "//"    ;Also acceptable
-    je .okToScan
-    cmp ah, ":" ;Is this a disk path?
-    je .diskPath
-    ;Is this a CWD relative path, i.e. starts with an ascii char
-    call .checkCharValid
-    jnz .okToScan
+    cmp ax, "\\"    ;UNC network start
+    je .okToScanNet
+    cmp ax, "//"    ;Also acceptable UNC network start
+    je .okToScanNet
+    cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
+    je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
+    ;Is this a current drive CWD relative or current drive root relative path?
+    ;If so the pathspec is not different to normal, goto scanLoop
+    jmp short .scanLoop
+.okToScanNet:
+    call .pathSepSet    ;Sets the ZF and CF flags
+    jmp short .okToScan
 .badExit:
     popfq
-    stc
+    stc ;Set CF
+    xor al, al
+    inc al  ;Clear ZF if ZF was set
     jmp short .exitBad
 .diskPath:
 ;Disk Letter must be A-Z (or a-z)
@@ -287,7 +295,6 @@ checkPathspecOK:
     cmp al, "Z"
     ja .badExit
 .okToScan:
-    mov rsi, rdx
     add rsi, 2  ;Skip first two chars now
 .scanLoop:
     stosb   ;Get char, inc rsi
@@ -302,9 +309,7 @@ checkPathspecOK:
     je .pathSepFnd
     jmp short .badExit
 .pathSepFnd:
-    popfq
-    xor al, al  ;Clear al to set ZF and well, we are done with al
-    pushfq
+    call .pathSepSet    ;Sets the ZF and CF flags
     jmp short .scanLoop
 .exit:
     popfq
@@ -321,4 +326,10 @@ checkPathspecOK:
     lea rdi, badDirNameChar ;Point to bad char table
     repne scasb ;Scan. Stop when equal
     pop rcx
+    return
+.pathSepSet:
+    popfq
+    xor al, al  ;Clear al to set ZF and well, we are done with al
+    stc ;And set STC to indicate "technically" a bad char
+    pushfq
     return

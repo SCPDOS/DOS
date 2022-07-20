@@ -149,11 +149,16 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;       rdx = Ptr to path to file to look for
 ;       al = Document as needing to be 0 for now
     mov word [searchAttr], cx
+    call checkPathspecOK
+    jnc .pathspecOk ;If CF=NC this path is totally ok
+    jz .pathspecOk  ;If CF=CY but ZF=ZE then this is a path with path separators
+    mov eax, errPnf
+    jmp extErrExit
+.pathspecOk:
     mov rsi, rdx    ;Get the source path ptr in rsi
     lea rdi, buffer1
     xor ecx, ecx    ;Get strlen
-    push rdi
-    ;Transfer the filespec over
+    ;Transfer the filespec over converting chars as necessary
 .copyBufferOver:
     lodsb
     call swapPathSeparator  ;Convert all / to \
@@ -163,7 +168,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     jnz .copyBufferOver
     pop rdi ;Return to the head of the buffer
 
-
+    return
 
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
