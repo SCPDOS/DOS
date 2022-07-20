@@ -151,6 +151,19 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov word [searchAttr], cx
     mov rsi, rdx    ;Get the source path ptr in rsi
     lea rdi, buffer1
+    xor ecx, ecx    ;Get strlen
+    push rdi
+    ;Transfer the filespec over
+.copyBufferOver:
+    lodsb
+    call swapPathSeparator  ;Convert all / to \
+    call uppercaseChar  ;Convert all valid chars to Uppercase
+    stosb
+    test al, al
+    jnz .copyBufferOver
+    pop rdi ;Return to the head of the buffer
+
+
 
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File

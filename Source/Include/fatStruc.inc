@@ -106,7 +106,7 @@ endstruc
 
 struc fatDirEntry
 
-    .name       resb 11 ;8.3 File Name
+    .name       resb 11 ;8.3 File Name w/o fullstop
     .attribute  resb 1  ;Usual attributes
     .ntRes      resb 1  ;Reserved 0
     .crtTimeT   resb 1  ;Count of tenths of a second of file creation time <=199

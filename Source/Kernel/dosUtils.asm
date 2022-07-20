@@ -242,9 +242,83 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
 .exit:
     return
 
-checkPathOK:
+checkPathspecOK:
+;Input:
 ;rdx -> points to a path to verify if it is ok.
+;Output:
+;CF=CY => the path is malformed. CF=NC => The path may contain path separators.
+; If ZF=ZE then the path contains path separators.
+
 ;Full paths may start with \\<15-char machine name>\...
 ; or <Drive Letter>:\...
-;Relative paths may start with a valid char only
+;CWD relative paths start with <Drive Letter>:...
 ;Current Drive Root Relative paths may start with \...
+;Current Drive CWD relative paths start with any other char
+;FOR NOW, we allow redir but no servers. Too much hassle for now
+
+;We accept lc and uc characters in this check function.
+    push rax
+    push rsi
+    push rdi
+    pushfq
+    ;First we verify that the first two chars are ok (either X: or \\ or chars)
+    mov ax, word [rdx]  ;Get the first two chars
+    cmp ax, "\\"
+    je .okToScan
+    cmp ax, "//"    ;Also acceptable
+    je .okToScan
+    cmp ah, ":" ;Is this a disk path?
+    je .diskPath
+    ;Is this a CWD relative path, i.e. starts with an ascii char
+    call .checkCharValid
+    jnz .okToScan
+.badExit:
+    popfq
+    stc
+    jmp short .exitBad
+.diskPath:
+;Disk Letter must be A-Z (or a-z)
+    cmp al, "A"
+    jb .badExit
+    cmp al, "z"
+    ja .badExit
+    cmp al, "a"
+    jae .okToScan
+    cmp al, "Z"
+    ja .badExit
+.okToScan:
+    mov rsi, rdx
+    add rsi, 2  ;Skip first two chars now
+.scanLoop:
+    stosb   ;Get char, inc rsi
+    test al, al  ;Is al=0, i.e string terminator?
+    je .exit
+    call .checkCharValid
+    ;If ZF=ZE, check if it is a path separator
+    jnz .scanLoop   ;Char was ok if ZF=NZ, loop around
+    cmp al, "\"
+    je .pathSepFnd
+    cmp al, "/"
+    je .pathSepFnd
+    jmp short .badExit
+.pathSepFnd:
+    popfq
+    xor al, al  ;Clear al to set ZF and well, we are done with al
+    pushfq
+    jmp short .scanLoop
+.exit:
+    popfq
+.exitBad:
+    pop rdi
+    pop rsi
+    pop rax
+    return
+.checkCharValid:
+;If ZF=ZE => Invalid Char
+;If ZF=NZ => Valid Char
+    push rcx
+    mov ecx, badDirNameCharL    ;Get table length
+    lea rdi, badDirNameChar ;Point to bad char table
+    repne scasb ;Scan. Stop when equal
+    pop rcx
+    return
