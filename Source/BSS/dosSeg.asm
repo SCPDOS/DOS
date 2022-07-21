@@ -142,15 +142,21 @@ sdaMainSwap:
 
 ;Misc bookkeeping flags and vars
     dosffblock  resb ffBlock_size   ;Internal searching block
-    searchAttr  resw 1  ;Search attributes
-    rwFlag      resb 1  ;00h=Read, 01h=Write
-    fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
+    curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed
+    fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0
+    wcdFcbName  resb 11+1   ;Used to expand any wildcards in fcbName
+    fileDirSect resq 1  ;File/Directory starting sector, for each level
+    tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
+    searchAttr  resw 1  ;Directory Search attributes
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
-    typePSPcopy resb 1  ;00=Simple copy, -1=Make Child process
+    fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
+    badNameRen  resb 1  ;Device name or File not found for rename
+    rwFlag      resb 1  ;00h=Read, 01h=Write
     spliceFlag  resb 1  ;01 = file name and directory name together
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
     vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)
+    filspcExist resb 1  ;-1 if Filename of existing file/dir for create
     exitType    resb 1  ;Forms the upper byte of the errorlelv
     workingDrv  resb 1  ;Working drive number
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
@@ -160,7 +166,6 @@ workingDD:  ;Create a symbol for the working device driver too
 ;Below is the symbol for saving the oldSFTptr during a char func
 vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr being used
-    tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
     currentHdl  resw 1  ;The current file handle is saved here

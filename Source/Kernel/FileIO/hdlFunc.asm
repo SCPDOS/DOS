@@ -152,22 +152,17 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     call checkPathspecOK
     jnc .pathspecOk ;If CF=NC this path is totally ok
     jz .pathspecOk  ;If CF=CY but ZF=ZE then this is a path with path separators
+.badPath:
     mov eax, errPnf
     jmp extErrExit
 .pathspecOk:
-    mov rsi, rdx    ;Get the source path ptr in rsi
-    lea rdi, buffer1
-    xor ecx, ecx    ;Get strlen
-    ;Transfer the filespec over converting chars as necessary
-.copyBufferOver:
-    lodsb
-    call swapPathSeparator  ;Convert all / to \
-    call uppercaseChar  ;Convert all valid chars to Uppercase
-    stosb
-    test al, al
-    jnz .copyBufferOver
-    pop rdi ;Return to the head of the buffer
-
+    mov rsi, rdx    ;Get src path in rsi
+    call getPathType
+    jc .badPath
+    cmp ah, 1
+    jne .notNet
+;Make net req here
+.notNet:
     return
 
 
