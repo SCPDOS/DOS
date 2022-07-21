@@ -297,7 +297,7 @@ checkPathspecOK:
 .okToScan:
     add rsi, 2  ;Skip first two chars now
 .scanLoop:
-    stosb   ;Get char, inc rsi
+    lodsb   ;Get char, inc rsi
     test al, al  ;Is al=0, i.e string terminator?
     je .exit
     call .checkCharValid
