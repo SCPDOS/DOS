@@ -97,9 +97,10 @@ sdaMainSwap:
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
-
+    dirEntryNum resw 1  ;Offset into directory of entry we are looking for
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
+    fileDirFlag resb 1  ;File/Directory flag. 0 = File, 1 = Dir
     Int44Fail   resb 1  ;Set if Int 44h returned fail
 
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
@@ -139,7 +140,9 @@ sdaMainSwap:
     singleIObyt resw 1  ;For single IO byte buffers
     buffer1     resb 128  ;Space for one path and file name
     buffer2     resb 128  ;Space for a second path and file name
-
+    fname1Ptr   resq 1  ;Ptr to first filename argument
+    fname2Ptr   resq 1  ;Ptr to second filename argument
+    lastPartOff resw 1  ;Offset of last component in pathname or FFFFh 
 ;Misc bookkeeping flags and vars
     dosffblock  resb ffBlock_size   ;Internal searching block
     curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed

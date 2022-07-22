@@ -213,3 +213,28 @@ badDirNameChar: ;This table needs to be replaced in other Codepages (i.e. Kanji)
     db 10h,11h,12h,13h,14h,15h,16h,17h,18h,19h,1Ah,1Bh,1Ch,1Dh,1Eh,1Fh
     db '"', "*", "+",",",".","/",":",";","<","=",">","?","[","\","]","|"
 badDirNameCharL equ $ - badDirNameChar
+
+extAsciiTbl:    ;This table needs to be replaced in other Codepages
+    db 80h, 9Ah, 45h, 41h, 8Eh, 41h, 8Fh, 80h, 45h, 45h, 45h, 49h, 49h, 49h
+    db 8Eh, 8Fh, 90h, 92h, 92h, 4Fh, 99h, 4Fh, 55h, 55h, 59h, 99h, 9Ah, 9Bh
+    db 9Ch, 9Dh, 9Eh, 9Fh, 41h, 49h, 4Fh, 55h, 0A5h, 0A5h, 0A6h, 0A7h, 0A8h
+    db 0A9h, 0AAh, 0ABh, 0ACh, 0ADh, 0AEh, 0AFh, 0B0h, 0B1h, 0B2h, 0B3h, 0B4h
+    db 0B5h, 0B6h, 0B7h, 0B8h, 0B9h, 0BAh, 0BBh, 0BCh, 0BDh, 0BEh, 0BFh, 0C0h 
+    db 0C1h, 0C2h, 0C3h, 0C4h, 0C5h, 0C6h, 0C7h, 0C8h, 0C9h, 0CAh, 0CBh, 0CCh
+    db 0CDh, 0CEh, 0CFh, 0D0h, 0D1h, 0D2h, 0D3h, 0D4h, 0D5h, 0D6h, 0D7h, 0D8h 
+    db 0D9h, 0DAh, 0DBh, 0DCh, 0DDh, 0DEh, 0DFh, 0E0h, 0E1h, 0E2h, 0E3h, 0E4h
+    db 0E5h, 0E6h, 0E7h, 0E8h, 0E9h, 0EAh, 0EBh, 0ECh, 0EDh, 0EEh, 0EFh, 0F0h
+    db 0F1h, 0F2h, 0F3h, 0F4h, 0F5h, 0F6h, 0F7h, 0F8h, 0F9h, 0FAh, 0FBh, 0FCh
+    db 0FDh, 0FEh, 0FFh
+extAsciiSig:   ;This table needs to replaces in other Codepages
+    db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F0h, 0F6h, 0F6h 
+    db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h
+    db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F8h, 0FFh, 0F6h, 0FFh 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0F4h, 0FFh, 0FEh, 0F6h 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0F4h 
+    db 0F4h, 0F4h, 0F4h, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0F6h, 0F6h, 0F6h, 0FFh, 0FFh 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
+    db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   
