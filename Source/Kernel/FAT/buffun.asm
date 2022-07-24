@@ -88,6 +88,9 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     push rdx
     push rsi
     push rbp
+;If the buffer is freed, skip flushing to avoid issues
+    cmp byte [rdi + bufferHdr.driveNumber], -1  ;-1 means free buffer
+    je .fbFreeExit  ;If it is freem exit
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
     jz .fbFreeExit  ;Skip write to disk if data not modified
 .fbRequest0:
