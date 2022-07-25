@@ -157,13 +157,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     jmp extErrExit
 .pathspecOk:
     mov rsi, rdx    ;Get src path in rsi
-    call getPathType
-    jc .badPath
-    cmp ah, 1
-    jne .notNet
-;Make net req here
-.notNet:
-    return
+
 
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File

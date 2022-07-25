@@ -100,7 +100,7 @@ sdaMainSwap:
     dirEntryNum resw 1  ;Offset into directory of entry we are looking for
     xInt44hRSP  resq 1  ;RSP across an Int 44h call
     Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
-    fileDirFlag resb 1  ;File/Directory flag. 0 = File, 1 = Dir
+    fileDirFlag resb 1  ;File/Directory flag. 0 = Dir, ¬0 = File
     Int44Fail   resb 1  ;Set if Int 44h returned fail
 
     oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
@@ -110,7 +110,7 @@ sdaMainSwap:
     dirFlag     resb 1  ;Directory Flag. 0 => Search for Dir, 1 => for File
 ;The below flag tells DOS to print ^C in the termination function
     ctrlCExit   resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
-
+    fcbSpaceOk  resb 1  ;If set, we allow embedded spaces in the filenames
 ;Time stuff
 ;Read the below two as a word
     dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
@@ -155,7 +155,7 @@ sdaMainSwap:
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
     badNameRen  resb 1  ;Device name or File not found for rename
     rwFlag      resb 1  ;00h=Read, 01h=Write
-    spliceFlag  resb 1  ;01 = file name and directory name together
+    spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
     vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)

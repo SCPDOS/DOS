@@ -94,9 +94,9 @@ kDispTbl:
     dw createUniqueFile - kDispTbl    ;AH = 5AH, FILE OPERATION       HANDLE
     dw createNewFile - kDispTbl       ;AH = 5BH, FILE OPERATION       HANDLE
     dw lockUnlockFile - kDispTbl      ;AH = 5CH, RECORD OPERATION     HANDLE
-    dw getCritErrorInfo - kDispTbl    ;AH = 5DH, RESERVED INTERNAL, GET CRIT. ERROR DATA
-    dw networkServices - kDispTbl     ;AH = 5EH, RESERVED NETWORK FUNCTION
-    dw networkRedirection - kDispTbl  ;AH = 5FH, RESERVED NETWORK FUNCTION
+    dw dosServer - kDispTbl    ;AH = 5DH, RESERVED INTERNAL, GET CRIT. ERROR DATA
+    dw netServices - kDispTbl     ;AH = 5EH, RESERVED NETWORK FUNCTION
+    dw netRedir - kDispTbl  ;AH = 5FH, RESERVED NETWORK FUNCTION
     dw trueName - kDispTbl            ;AH = 60H, RESERVED INTERNAL, GET TRUE NAME
     dw noOp - kDispTbl                ;AH = 61H, RESERVED
     dw getPSPaddr - kDispTbl          ;AH = 62H, PROCESS MANAGEMENT
