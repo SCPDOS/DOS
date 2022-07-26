@@ -5,6 +5,45 @@ genericFindFirst:
 genericFindNext:
     return
 
+extendSearchAttr:
+;Converts the search attributes as chosen by the caller
+; to our internal requirements. This is ONLY called for 
+; file searches, not intermediate directory searches. 
+; Intemediate dir searches are conducted with dir bit only set
+;Input: eax = User selected search mask
+;Output: eax = Modified search mask
+    test eax, dirVolumeID   ;Is the volume id bit set?
+    jnz .esaVolume  ;If yes, replace the attributes with volume id only
+    test eax, dirInclusive  ;Do we have an inclusive bit set?
+    retz   ;If not, we return with al unchanged
+    or eax, dirInclusive    ;Else set all the inclusive bits
+    return  ;And exit
+.esaVolume:
+    mov eax, dirVolumeID    ;Make this a volume ID exclusive search
+    return
+
+
+
+setupFFBlock:
+;Sets up the find first block for the search
+;Uses currentDrv and fcbName
+;Input: al = Search attributes
+    mov byte [dosffblock + ffBlock.attrib], al 
+    push rax
+    push rsi
+    push rdi
+    movzx eax, byte [currentDrv]  ;Get the 0 based current drive number
+    mov byte [dosffblock + ffBlock.driveNum], al
+    lea rsi, fcbName
+    lea rdi, qword [dosffblock + ffBlock.template]
+    movsq   ;Move 8 chars
+    movsw   ;Move 2 chars
+    movsb   ;Move the final char
+    pop rdi
+    pop rsi
+    pop rax
+    return
+
 getDrvLetterFromPath:
 ;Gets the drive letter for the path in al
 ;Input: rsi = Buffer to process
@@ -206,6 +245,7 @@ getPath:
     push rcx
     push rsi
     add rsi, 2  ;Goto the backslash for the dir
+    mov ecx, 2  ;Instantiate ecx to copy X:
 .prepDirJoin1:
     lodsb   ;Get the char
     test al, al ;Null char?
@@ -223,7 +263,9 @@ getPath:
 .prepDirCopy1:
     rep movsb   ;Copy the string over
     pop rcx
-    jmp short .prepMain
+    test byte [spliceFlag], -1
+    jnz .prepDirExit    ;If not relative, exit as we put the "root dir" marker
+    jmp short .prepLoop ;Else, need to copy CDS now too as part of path
 .copyPathspec:
 ;1) Copies a path portion from the source buffer to the destination
 ;2) Advances rsi to the next null, \ or /
@@ -324,7 +366,27 @@ getPath:
     ;If al = 0, we have a file name
     ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF \
     push rsi    ;Save the current position of the pointer in the user buffer
-
+;Evaluate whether we are searching for a file for a directory
+    test al, al
+    jz .cpsPNfile
+    ;Fall if subdir
+    push rdi
+    lea rdi, fcbName
+    mov al, "?" ;Search for wildcard
+    mov ecx, 12
+    repne scasb
+    pop rdi
+    je .cpsPnf  ;Path not found if a ? found in the name
+    mov al, dirDirectory    ;We want a directory only search.
+    jmp short .cpsPNMain
+.cpsPNfile:
+    ;Here if we are searching for a file
+    movzx eax, word [searchAttr]    ;Get the search attributes
+    call extendSearchAttr   ;Edit the search attributes as needed
+.cpsPNMain:
+    call setupFFBlock   ;Sets up the internal ff block, attribs in al
+    ;Now the internal ff block is setup, conduct search.
+    
     pop rsi
     pop rdi ;rdi points to where it's ok to place pathspec
     ;Copy filename over
