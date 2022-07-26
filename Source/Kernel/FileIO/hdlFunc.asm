@@ -157,7 +157,11 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     jmp extErrExit
 .pathspecOk:
     mov rsi, rdx    ;Get src path in rsi
-
+    lea rdi, buffer1    ;Build the full path here
+    push rdi
+    call getFilePath
+    pop rsi ;Pop this buffer as the source
+    jc extErrExit
 
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File

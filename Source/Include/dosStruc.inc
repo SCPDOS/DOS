@@ -292,6 +292,12 @@ struc fcb
     ;Used for random read and write operations to find the right record
 endstruc
 
+struc filename
+;8.3 File name struct
+    .fName  resb 8
+    .fExt   resb 3
+endstruc
+
 struc ffBlock   ;The structure of the Find First structure at the DTA
     .driveNum   resb 1  ;Drive we are searching on
     .template   resb 11 ;Search template (? meaning anything)

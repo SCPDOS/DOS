@@ -25,12 +25,12 @@ getDrvLetterFromPath:
     retnz ;If the number is non-zero, then a potentially valid drive number
     mov al, -1  ;Else not a valid drive number
     return
-qualifyDirPath:
+getDirPath:
     xor al, al   ;Set to Directory
-    jmp short qualifyPath
-qualifyFilePath:
+    jmp short getPath
+getFilePath:
     mov al, -1  ;Set to File
-qualifyPath:
+getPath:
 ;Determines whether the path is spliced or not and transfers the chars
 ; from the user buffer into an internal buffer, normalising them.
 ; Single and double dot entries are left as is, but the wildcard * is converted
@@ -63,7 +63,7 @@ qualifyPath:
     ;Thus we can immediately assume the existance of a drive letter in the path 
     call getDrvLetterFromPath
     call getCDS ;Get the cds for the drive letter on the path
-
+    ;Do nothing for now
     mov rdi, qword [workingCDS]
     call dosCrit1Enter
     call ensureDiskValid
@@ -147,7 +147,6 @@ qualifyPath:
     push rdi
     cmp byte [rdi - 2], ":" ;If the char before the current \ is :, we at root
     je .inRoot
-    cmp byte [rdi - 2], "\" ;If the char before the current \ is :, net root
     sub rdi, 2  ;Skip the free space and the "\"
 .findParent:
     cmp byte [rdi], "\"
@@ -165,18 +164,14 @@ qualifyPath:
     test al, al
     retz    ;Return if al is the null char
     ;Else, now we go to the next part
-.gotoNextPathspec:
-    inc rbx ;Advance the parent pointer
-    cmp byte [rbx], "\"
-    je .mainlp
-    jmp short .gotoNextPathspec
+    jmp short .mainlp
 
 .prepareDir:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst/join drive. Else only if 
 ; relative
 ;Input: al = 1-based drive letter
-;Output: rdi = Pointing at where to append additional chars from source string
+;Output: rdi = Pointing at where to place chars from source string
     push rsi
     call setDrive   ;Set internal variables, working CDS etc etc
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
@@ -241,17 +236,25 @@ qualifyPath:
 ;
 ;INPUT:     rsi = First char of pathspec to qualify
 ;           rdi = Points to where to store it
-;           rbx = First char of the parent directory name in destination buffer
 ;
 ;RETURN:    rsi = First char of next pathspec or past terminating null
 ;           rdi = First char of next space to store next pathspec
 ;           al = Last char stored (either \ or NULL)
 ;           CF=NC = OK path
-;           CF=CY = BAD WILDCARD PATH
-    mov ecx, 12 ;12 chars per portion (8+1+3 for the dot)
-    lodsb   ;Get first char in al
+;           CF=CY = PATH OR FILE NOT FOUND
+;               IF A WILDCARD FOUND IN A SUBDIR NAME, RETURN PNF.
+    push rdi    ;Save the pointer into the user buffer
+    mov byte [fcbSpaceOk], -1    ;Set to be ok to have space in the name
+    lea rdi, fcbName
+    push rdi
+    mov ecx, 3
+    mov eax, "    " ;Four spaces
+    rep stosd   ;Store 12 spaces
+    pop rdi ;Point rdi back to fcb name head
+
+    lodsb   ;Get first char from user path in al
     dec rsi ;And move rsi to point back to it
-    cmp al, "."   ;Handle dot separately
+    cmp al, "."   ;Handle starting dot separately
     je .cpsDots
 ;First char is not a dot, so now check if starts with E5h? 
 ;If so, store 05h in its place
@@ -260,95 +263,79 @@ qualifyPath:
     inc rsi ;Push rsi to point to next char
     mov al, 05h
     stosb   ;Store the char, rsi is pointing at next char
-    dec ecx ;One char already stored, now proceed as normal.
+    mov ecx, 8 ;8 chars to move over, when ecx = 0, the char must be . or term
+    mov ch, 1   ;Set that we are in name field
 .cpsMainLoop:
-    lodsb   ;Get the first char in al and advance rsi
+    lodsb   ;Get the char in al and advance rsi
     test al, al ;Is it the null char?
-    jz .cpsPadBlank  ;If so, terminate
+    jz .cpsProcessName  ;If so, terminate
     call uppercaseChar  ;Else uppercase it...
     call swapPathSeparator  ;And if it is a pathsep, convert it before exiting
-    jz .cpsPadBlank
+    jz .cpsProcessName
+    cmp al, "." ;Filename extension separator
+    je .cpsExtension
+    cmp ecx, 0100h  ;If ch = 1 and cl = 0, then look for either . or terminator
+    je .cpsMainLoop
+    jecxz .cpsCharSkip ;If ch = 0 and cl = 0, scan for next terminator
+    ;If we have space in the filename, we check to see if the next char is *
     cmp al, "*" ;Wildcard?
     je .cpsWildcard
-    jecxz .cpsOflow ;If ecx = 0 here, scan for the next terminating char to use
-    stosb   ;Store the converted char in al and inc rdi
-    dec ecx ;One fewer char left in spec
-    cmp ecx, 4  ;Are we at the dot?
-    jne .cpsMainLoop
-    lodsb   ;Get the char at rsi and inc rsi (this should be a dot so set dot)
-.cpsStoreDot:
-    mov al, "."
-    stosb   ;Store the dot. Inc rdi
-    dec ecx ;Now set ecx to 3
+    stosb   ;Else store the converted char in al and inc rdi
+    dec cl  ;One less char left to tfr
     jmp short .cpsMainLoop
-.cpsPadBlank:
-;Skip expanding spaces
-    ;jecxz .cpsEndSpec   ;If all chars used up, skip padding
-    ;mov al, " " ;Space char
-    ;rep stosb   ;Store that many spaces
-.cpsEndSpec:
-    stosb   ;Store terminating null or "\"
-    clc
-    return
-.cpsOflow:
-;Now we scan to find the next terminating char to terminate spec with.
-;ecx is zero here
-    lodsb
-    test al, al
-    jz .cpsEndSpec
-    call swapPathSeparator
-    jz .cpsEndSpec  
-    jmp short .cpsOflow
+.cpsExtension:
+;rsi has been incremented past the extension field. Discard the . in al
+    mov ecx, 3  ;Set to 3 chars left, in extension (ch = 0)
+    lea rdi, qword [fcbName + filename.fExt]    ;Goto the extension field
+    jmp short .cpsMainLoop
 .cpsDots:
-;No file name can start with a period so any following chars 
-; are ignored, up to the pathsep or the null
-;If we have a period, we simply ignore this entry for the destination string and
-; rdi remains where it is.
-;If we have two periods, since we pass a pointer to the parent directory in
-; rbx, we move rdi to it.
-;In both cases, we then advance rsi to the next /, \ or null
-    lodsw
-    sub rsi, 2  ;Go back to start of string
-    cmp ax, ".."    ;Is this a parent ptr request?
-    je .cpsDotDot
-    xor ecx, ecx    ;Ensure no padding occurs
-    jmp short .cpsOflow ;Now look for next terminator
-.cpsDotDot:
-    cmp byte [rbx - 1], ":" ;If the char before the parent \ is :, fail
-    je .cpsBadExit
-    cmp byte [rbx - 1], "\" ;If the char before the parent \ is \, net fail
-    je .cpsBadExit
-    mov rdi, rbx    ;Reposition the destination ptr 
-    xor ecx, ecx    ;Ensure no padding occurs
-    jmp short .cpsOflow ;Now look for next terminator
+    stosb   ;Store the first dot
+    lodsb   ;Check now if we have a second dot
+    cmp al, "."
+    jne .cpsCharSkip
+    stosb   ;Store the second dot
+.cpsCharSkip:
+    call .cpsPtrSkip    ;Now we are skipping any chars that arent terminators
+    jmp short .cpsProcessName
 .cpsWildcard:
-;We expand * to ecx - 4 ?'s if ecx > 4. If ecx < 4, then ecx ?'s
-    cmp ecx, 4
-    jb .cpsWCext
-    push rcx
-    sub ecx, 4
+    ;cl has the number of chars of ? to store 
     mov al, "?"
-    rep stosb
-    pop rcx
-    lodsb   ;Move char after first * into al, and move rsi to first char past .
-    test al, al
-    jz .cpsEndSpec
-    call swapPathSeparator
-    jz .cpsBadExit ;Wildcards cannot be used if the next char is pathsep
-    cmp al, "." ;Filename separator?
-    jne .cpsBadExit
-    mov ecx, 4
-    jmp short .cpsStoreDot
-.cpsWCext:
     push rcx
-    mov al, "?" ;Store ecx many ?'s now
-    rep stosb
+    movzx ecx, cl   ;Temporarily extend cl to ecx
+    rep stosb   ;Store that many ? in buffer and return cl to 0
     pop rcx
-    lodsb   ;Get next char in al. Must be terminator. If pathsep, fail
-    test al, al
-    jz .cpsEndSpec
-;Else fall through as bad
-.cpsBadExit:
-    stc
-    mov al, errPnf  ;Set path not found error in al if CF=CY
+    test ch, 1  ;Is this bit set? If so, we jump to .cpsExtension
+    jnz .cpsExtension   ;Now fill the extension field
+    ;Else, we process filename
+    jmp short .cpsCharSkip
+.cpsPtrSkip:
+;Now advance rsi past the next pathsep or null char
+;Output: al = Terminator char (either \ or null)
+;        rsi -> First char of next pathspec (if al = \)
+    lodsb
+    test al, al ;Is this null?
+    retz
+    call swapPathSeparator
+    retz
+    jmp short .cpsPtrSkip
+.cpsProcessName:
+    ;Now search the current directory for this filename
+    ;Find first using SDA ffBlock
+    ;If al = 0, we have a file name
+    ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF \
+    push rsi    ;Save the current position of the pointer in the user buffer
+
+    pop rsi
+    pop rdi ;rdi points to where it's ok to place pathspec
+    ;Copy filename over
+    return
+.cpsPnf:
+    mov eax, errPnf
+    jmp short .cpsErrExit
+.cpsFnf:
+    mov eax, errFnf
+.cpsErrExit:
+    pop rsi
+    pop rdi
+    stc ;Set carry
     return
