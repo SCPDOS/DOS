@@ -27,10 +27,9 @@ closeFileHdl:      ;ah = 3Eh, handle function
     call getJFTPtr  ;Get the pointer to the JFT entry in rdi
     mov byte [rdi], -1  ;Free JFT entry
 .exitOk:
-    call getUserRegs
-    and byte [rsi + callerFrame.flags], ~1  ;Clear CF
-    xor al, al
-    return
+    xor eax, eax    ;Return value
+    jmp extGoodExit
+
 readFileHdl:       ;ah = 3Fh, handle function
     lea rsi, readBytes
 .common:
@@ -43,10 +42,9 @@ readFileHdl:       ;ah = 3Fh, handle function
     call rsi    ;Get back in ecx the bytes transferred!
     pop qword [currentDTA]
     jc extErrExit   ;Error code in al and exit
-    call getUserRegs
-    mov dword [rsi + callerFrame.rax], ecx  ;Put actual number of bytes tfrd
-    and byte [rsi + callerFrame.flags], 0FEh    ;Clear CF
-    return 
+    mov eax, ecx    ;Get actual number of bytes tfrd in eax 
+    jmp extGoodExit2    ;and exit!
+
 writeFileHdl:      ;ah = 40h, handle function
     lea rsi, writeBytes
     jmp readFileHdl.common
@@ -122,11 +120,8 @@ duplicateHandle:   ;ah = 45h, handle function
     mov rdi, qword [currentPSP]
     lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to head of table
     sub rsi, rdi    ;Get the difference of the two in si
-    mov eax, esi
-    call getUserRegs
-    mov word [rsi + callerFrame.rax], ax
-    and byte [rsi + callerFrame.flags], ~1  ;Clear CF
-    return
+    mov eax, esi    ;Get the difference as the return code
+    jmp extGoodExit
 forceDuplicateHdl: ;ah = 46h, handle function
 ;Input: bx = Handle to duplicate
 ;       cx = Handle to close and replace with a duplicate of bx
@@ -145,10 +140,10 @@ forceDuplicateHdl: ;ah = 46h, handle function
     mov rsi, rdi    ;Put the free space ptr in rsi
     jmp short duplicateHandle.duplicateCommon
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
-;Input: cx = Search Attributes
+;Input: cx = Search Attributes, cl only used
 ;       rdx = Ptr to path to file to look for
 ;       al = Document as needing to be 0 for now
-    mov word [searchAttr], cx
+    mov byte [searchAttr], cl
     mov rsi, rdx    ;Get src path in rsi
     call checkPathspecOK    ;This preserves rsi
     jnc .pathspecOk ;If CF=NC this path is totally ok
@@ -168,7 +163,8 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov ecx, ffBlock_size
     rep movsb   ;Copy the whole block. 
 ;Ensure ffblock's non-reserved fields are filled from dir entry before returning
-    
+    xor eax, eax    ;Return value
+    jmp extGoodExit ;Exit well
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h

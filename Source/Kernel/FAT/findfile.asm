@@ -22,7 +22,85 @@ adjustSearchAttr:
     mov eax, dirVolumeID    ;Make this a volume ID exclusive search
     return
 
+asciizToFCB:
+;Converts a filename in the form FILENAME.EXT,0 to FILENAMEEXT
+;Will uppercase any lowercase chars as this could be used with user buffers.
+;Names such as SYS.COM get converted to "SYS     COM"
+;Name is space padded.
+;Input: rsi = ASCIIZ string buffer
+;       rdi = FCB name buffer
+    push rbx    
+    push rdi
+    mov ecx, 11
+    mov al, " "
+    rep stosb   ;Fill the buffer with spaces (so we don't need to fill later)
+    pop rdi
+    mov rbx, rdi    ;Use rbx as the base pointer of this buffer
+.processName:
+    lodsb   ;Get the char in al
+    call uppercaseChar  ;Just in ANY case, we will uppercase the cahar
+    test al, al
+    jz .exit
+    cmp al, " " ;If space or a period, go to extension field. If null, exit
+    je .extSpace
+    cmp al, "."
+    je .ext
+    stosb   ;Store the char
+    jmp short .processName
+.extSpace:
+;Now we scan for a period in the name
+    lodsb   ;Get a char and increase rsi
+    test al, al
+    jz .exit
+    cmp al, "."     ;If al is not a period...
+    jne .extSpace   ; keep searching
+.ext:
+    lea rdi, qword [rbx + filename.fExt]    ;Put destination at the extension
+.processExt:
+    lodsb
+    test al, al
+    jz .exit
+    cmp al, " "
+    je .exit
+    stosb
+    jmp short .processExt
+.exit:
+    pop rbx
+    return
 
+FCBToAsciiz:
+;Converts a filename in the form FILENAMEEXT to FILENAME.EXT,0
+;Name is space padded too
+;Input: rsi = FCB name buffer
+;       rdi = ASCIIZ string buffer
+    mov ecx, 8
+    rep movsb   ;Move the name over
+.scanNameSpace:
+    cmp byte [rdi - 1], " " ;Is the previous char a space?
+    jne .ext
+    dec rdi
+    inc ecx
+    cmp ecx, 8
+    jb .scanNameSpace
+.ext:
+    cmp word [rsi], "  "    ;Are the first two chars a space?
+    jne .validExt
+    cmp word [rsi + 2], " " ;Is the final char a space?
+    je .exit
+.validExt:
+    mov al, "." ;We have a valid extension, store a period
+    stosb
+    mov ecx, 3
+    rep movsb   ;Move the three extension chars over
+.scanExtSpace:
+    cmp byte [rdi - 1], " " ;Is the previous char a space
+    jne .exit
+    dec rdi
+    jmp short .scanExtSpace
+.exit:
+    xor eax, eax
+    stosb   ;Store a null at the end
+    return
 
 setupFFBlock:
 ;Sets up the find first block for the search
@@ -386,7 +464,7 @@ getPath:
     jmp short .cpsPNMain
 .cpsPNfile:
     ;Here if we are searching for a file
-    movzx eax, word [searchAttr]    ;Get the search attributes
+    movzx eax, byte [searchAttr]    ;Get the search attributes
     call adjustSearchAttr   ;Edit the search attributes as needed
 .cpsPNMain:
     call setupFFBlock   ;Sets up the internal ff block, attribs in al

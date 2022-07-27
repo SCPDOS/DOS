@@ -194,6 +194,22 @@ dosCrit2Exit:
     int 4ah
     pop rax
     return
+
+;All good exits destroy AT LEAST ax 
+extGoodExit2:
+;Good exit with an extended return code in eax
+    call getUserRegs
+    mov dword [rsi + callerFrame.rax], eax    ;Store eax
+    jmp short extGoodExit.extGoodCommon
+extGoodExit:
+;Good exit
+;Return code in ax
+    call getUserRegs
+    mov word [rsi + callerFrame.rax], ax    ;Store ax
+.extGoodCommon:
+    and byte [rsi + callerFrame.flags], ~1    ;Clear error flag
+    clc
+    return
 extErrExit:
 ;The extended error exit from DOS
 ;Jumped to with AL=Extended error code
@@ -561,10 +577,7 @@ getDiskFreeSpace:  ;ah = 36h
 getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
     xor eax, eax
     xchg ax, word [errorLevel]
-    call getUserRegs
-    mov word [rsi + callerFrame.rax], ax
-    and byte [rsi + callerFrame.flags], ~1  
-    return
+    jmp extGoodExit
 
 getSysVarsPtr:     ;ah = 52h
     lea rdx, sysVarsPtr
