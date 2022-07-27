@@ -1,11 +1,58 @@
 ;Generic Find First and Find Next functions here
 
-genericFindNext:
-    return
+searchMoreDir:
+;Called in a level 1 critical section. 
+;The three directory variables are set up from the ffblock. 
+; WorkingDPB is setup also (hence, level 1 critical section)
+;Current DTA is also used to contain the ff block address
+;All registers can be trashed
+    mov rbp, qword [workingDPB]
+    ;First setup dirClustA and dirSect vars
+    mov rdi, qword [currentDTA]
+    mov eax, dword [rdi + ffBlock.parDirClus]   ;Get the directory cluster
+    mov dword [dirClustA], eax  ;... into dir var
+    ;Get number of 32 byte entries in a sector
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    shr ecx, 5  ;Divide number of bytes per sector by 32
+    xor edx, edx
+    mov eax, dword [rdi + ffBlock.dirOffset]
+    div ecx ;Divide 32 byte Cluster offset by # of 32 byte entries in a sector
+    ;eax has sector rel cluster value, edx has 32 byte entry rel sector value
+    mov word [dirSect], ax
+    mov byte [dirEntry], dl
+    mov eax, dword [dirClustA]
+    test eax, eax
+    jnz .clusters
+;Old FAT 12/16 root dirs fall thru here only
+    lea rax, searchDir.oldNextEP
+    push rax    ;Push return address onto the stack
+    movzx eax, word [dirSect]   ;Get the root directory sector offset
+    jmp short .common
+.clusters:
+    lea rax, searchDir.nextEp
+    push rax    ;Push the return address onto stack
+    mov eax, dword [dirClustA]
+    call getStartSectorOfCluster    ;Get Start Sector of cluster
+    movzx ebx, word [dirSect]   ;Get sector offset into the cluster
+    add rax, rbx    ;Add the sector offset into the cluster
+.common:
+    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    jc searchDir.hardError
+    call searchDir.setupBuffer  ;rbx has the buffer ptr for this dir sector
+    movzx eax, byte [dirEntry]
+    sub ecx, eax    ;Subtract the offset to get the number of entries left
+    shl eax, 5  ;Multiply by 32 to turn into bytes to add to rsi
+    add rsi, rax    ;rsi points to current entry in the sector.
+    ;We continue AS IF this entry was bad
+    ;Now setup al and rdi as upon normal entry 
+    mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
+    mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
+    jmp findInBuffer.nextEntry  ;Proceed from within findInBuffer
+    ;The return address on the stack will return to the ep's pushed
 
 searchDir:
 ;Called in a level 1 critical section. 
-;The four directory variables are set and the ffblock is setup
+;The three directory variables are set and the ffblock is setup
 ; with template, drive number and attribute fields. 
 ; WorkingDPB is setup also (hence, level 1 critical section)
 ;Current DTA is also used to contain the ff block address
@@ -19,12 +66,9 @@ searchDir:
 .sectorLoop:
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc .hardError
-    ;Else rbx has the buffer pointer for this directory sector
-    mov byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
-    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
-    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-    shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
+    call .setupBuffer       ;rbx has the buffer pointer for this dir sector
     call findInBuffer
+.nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
     ;Else, we now have to get the next sector of the cluster or next cluster
     ;IF however, the next cluster is -1, then we return fail
@@ -55,32 +99,32 @@ searchDir:
 .oldRoot:
 ;Different search for FAT 12/16 root directories. We assume we have 
 ; one large contiguous cluster.
-;Here edx = Keeps track of the current Disk sector we are at
-;and ecx = Number of entries per sector
+;   ecx = Number of entries per sector
     mov eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
-    mov edx, eax    ;Save this value in edx
 .oldSectorLp:
-    mov eax, edx    ;Move the sector number into eax
+    movzx eax, word [dirSect]    ;Move the sector number into eax
     call getBufForDOS
     jc .hardError
-    ;Else rbx has the buffer pointer for this directory sector
-    mov byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
-    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
-    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-    shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
+    call .setupBuffer       ;rbx has the buffer pointer for this dir sector
     call findInBuffer
+.oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     inc word [dirSect]  ;Goto next sector in directory
-    inc edx ;Goto next disk sector
     mov eax, dword [rbp + dpb.wNumberRootDirSectors]
     cmp word [dirSect], ax
     jb .oldSectorLp    ;If equal, no more sectors to search. Game over!
 .fnfError:
-    mov al, errFnf
+    mov al, errNoFil
     stc
     return
 .hardError:
     mov al, -1
+    return
+.setupBuffer:
+    mov byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
+    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
     return
 
 findInBuffer:
@@ -92,7 +136,7 @@ findInBuffer:
     mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
 .searchMainLp:
     test al, byte [rsi + fatDirEntry.attribute] 
-    jz .badEntry
+    jz .nextEntry
     ;At least one attribute bit matches, now compare filename
     ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
     ;rdi points to the ffBlock to use
@@ -103,7 +147,7 @@ findInBuffer:
     pop rdi
     pop rsi
     je .searchEntryFound
-.badEntry:
+.nextEntry:
 ;Go to next entry
     add rsi, fatDirEntry    ;Goto next entry
     inc byte [dirEntry] ;And denote that in variable
@@ -123,7 +167,7 @@ findInBuffer:
     mov al, byte [dirEntry]
     mov byte [rdi + ffBlock.dirOffset], al
     mov eax, dword [dirClustA]
-    mov dword [rdi + ffBlock.parCluster], eax
+    mov dword [rdi + ffBlock.parDirClus], eax
     mov al, byte [curDirCopy + fatDirEntry.attribute]
     mov byte [rdi + ffBlock.attribFnd], al
     mov eax, dword [curDirCopy + fatDirEntry.wrtTime] ;Get time/date together

@@ -302,8 +302,8 @@ struc ffBlock   ;The structure of the Find First structure at the DTA
     .driveNum   resb 1  ;Drive we are searching on
     .template   resb 11 ;Search template (? meaning anything)
     .attrib     resb 1  ;Search attribute
-    .dirOffset  resd 1  ;Entry within dir (made a dword but will never be so)
-    .parCluster resd 1  ;Parent cluster number
+    .dirOffset  resd 1  ;32 byte entry within dir cluster
+    .parDirClus resd 1  ;Parent Directory Cluster number
     .attribFnd  resb 1  ;Attrib of file found
     .fileTime   resw 1  ;File time
     .fileDate   resw 1  ;File date
