@@ -113,7 +113,7 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;7) Call Network Termination hook.
 ;8) Set old old rsp as old rsp
 ;9) Set Int 42h to be the RIP value on the now oldRSP stack
-;10) Flush all buffers and Return!
+;10) Exit all critical sections.
 ;
 ; Step 0
 ;For now, just adjust error level in var
@@ -139,7 +139,6 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp byte [exitType], 3  ;TSR exit?
     je .step5   ;Skip resource freeing if so as TSR exit resizes memory alloc.
 ; Step 3
-    call diskReset  ;Flush all buffers before closing any handles
     cmp byte [exitType], 2  ;Abort type exit?
     jne .skipAbortNetClose  ;Skip the following
     mov eax, 111Dh  ; Close all remote files for process on Abort!
@@ -160,6 +159,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     push qword [currentSFT]
     call setCurrentSFT  ;Set rdi to currentSFT
     call closeMain  ;Close all files opened by this program. Decrement ref ONLY
+    ;closeMain also flushes all sectors associated to the file
     ;Ignore errors, simply keep closing files
     pop qword [currentSFT]
 .badHdl:
@@ -220,7 +220,8 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rbp, qword [oldRSP] ;Get pointer to parent stack register frame in rbp
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
 ;Step 10
-    xor al, al    ;Set al to 0
+    mov ah, 82h
+    int 4ah
     return
 
 loadExecChild:     ;ah = 4Bh, EXEC
