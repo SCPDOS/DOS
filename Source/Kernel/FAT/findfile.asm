@@ -1,8 +1,161 @@
 ;Generic Find First and Find Next functions here
 
-searchDir:
-    return
 genericFindNext:
+    return
+
+searchDir:
+;Called in a level 1 critical section. 
+;The four directory variables are set and the ffblock is setup
+; with template, drive number and attribute fields. 
+; WorkingDPB is setup also (hence, level 1 critical section)
+;Current DTA is also used to contain the ff block address
+;All registers can be trashed
+;Return with CF=CY if no entry found in directory with al = errNoFil
+    mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
+    mov eax, dword [dirClustA]  ;Get the cluster number to start searching at
+    test eax, eax
+    jz .oldRoot
+    call getStartSectorOfCluster    ;Else, get the start sector in rax
+.sectorLoop:
+    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    jc .hardError
+    ;Else rbx has the buffer pointer for this directory sector
+    mov byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
+    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
+    call findInBuffer
+    retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
+    ;Else, we now have to get the next sector of the cluster or next cluster
+    ;IF however, the next cluster is -1, then we return fail
+    push qword [currClustF] ;Push currClustF and D together
+    push qword [currSectC]
+    push qword [currSectD]
+    mov eax, dword [dirClustA]  ;Get disk relative cluster
+    mov dword [currClustD], eax
+    mov ax, word [dirSect]
+    mov byte [currSectC], al    ;Cluster Relative sector
+    mov rax, qword [rbx + bufferHdr.bufferLBA]
+    mov qword [currSectD], rax  
+    mov dword [currClustF], 0 ;Use as flag to tell us if cluster has changed
+    call getNextSectorOfFile
+    pop qword [currSectD]
+    pop qword [currSectC]
+    pop qword [currClustF] ;Push currClustF and D together
+    jc .hardError
+    cmp rax, -1
+    je .fnfError    ;We are at the end of the directory and didnt find the file
+    inc word [dirSect]  ;Goto next sector
+    mov eax, dword [dirClustA]  ;Get disk relative cluster
+    cmp eax, dword [currClustD] ;Did it change?
+    je .sectorLoop  ;If not, we advanced sectors only
+    mov word [dirSect], 0   ;If we did, reset this counter
+    jmp .sectorLoop 
+
+.oldRoot:
+;Different search for FAT 12/16 root directories. We assume we have 
+; one large contiguous cluster.
+;Here edx = Keeps track of the current Disk sector we are at
+;and ecx = Number of entries per sector
+    mov eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
+    mov edx, eax    ;Save this value in edx
+.oldSectorLp:
+    mov eax, edx    ;Move the sector number into eax
+    call getBufForDOS
+    jc .hardError
+    ;Else rbx has the buffer pointer for this directory sector
+    mov byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
+    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
+    call findInBuffer
+    retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
+    inc word [dirSect]  ;Goto next sector in directory
+    inc edx ;Goto next disk sector
+    mov eax, dword [rbp + dpb.wNumberRootDirSectors]
+    cmp word [dirSect], ax
+    jb .oldSectorLp    ;If equal, no more sectors to search. Game over!
+.fnfError:
+    mov al, errFnf
+    stc
+    return
+.hardError:
+    mov al, -1
+    return
+
+findInBuffer:
+;Input: ecx = Number of entries in sector buffer to look for
+;       rsi = Sector buffer data area
+;Output: CF=CY => No entries found
+;        CF=NC => Entry found, directory data copied to SDA
+    mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
+    mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
+.searchMainLp:
+    test al, byte [rsi + fatDirEntry.attribute] 
+    jz .badEntry
+    ;At least one attribute bit matches, now compare filename
+    ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
+    ;rdi points to the ffBlock to use
+    push rsi
+    push rdi
+    lea rdi, qword [rdi + ffBlock.template] ;Goto name to search for
+    call .nameCompare
+    pop rdi
+    pop rsi
+    je .searchEntryFound
+.badEntry:
+;Go to next entry
+    add rsi, fatDirEntry    ;Goto next entry
+    inc byte [dirEntry] ;And denote that in variable
+    dec ecx
+    jnz .searchMainLp
+    stc
+    return
+.searchEntryFound:
+;Here a good entry was found!
+    push rcx
+    push rsi
+    push rdi
+    lea rdi, curDirCopy
+    mov ecx, 32/8
+    rep movsq   ;Copy the directory to SDA
+    ;Now fill in ffBlock. rdi points to ffblock start
+    mov al, byte [dirEntry]
+    mov byte [rdi + ffBlock.dirOffset], al
+    mov eax, dword [dirClustA]
+    mov dword [rdi + ffBlock.parCluster], eax
+    mov al, byte [curDirCopy + fatDirEntry.attribute]
+    mov byte [rdi + ffBlock.attribFnd], al
+    mov eax, dword [curDirCopy + fatDirEntry.wrtTime] ;Get time/date together
+    mov dword [rdi + ffBlock.fileTime], eax
+    mov eax, dword [curDirCopy + fatDirEntry.fileSize]
+    mov dword [rdi + ffBlock.fileSize], eax
+    lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
+    call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
+    pop rdi
+    pop rsi
+    pop rcx
+    clc
+    return
+.nameCompare:
+;Input: rsi = source string
+;       rdi = string to compare against
+;Output: ZF=ZE => Strings are ok
+;        ZF=NZ => Strings not ok
+;Accepts wildcards. Trashes al
+    push rcx
+    xor ecx, ecx    ;11 chars to compare
+.ncLp:
+    cmp ecx, 11
+    je .ncExit
+    inc ecx
+    lodsb   ;Get char
+    scasb
+    je .ncLp    ;If equal, keep going
+    cmp al, "?" ;Wildcard?
+    je .ncLp
+.ncExit:
+    pop rcx
     return
 
 adjustSearchAttr:
@@ -106,19 +259,22 @@ setupFFBlock:
 ;Sets up the find first block for the search
 ;Uses currentDrv and fcbName
 ;Input: al = Search attributes
-    mov byte [dosffblock + ffBlock.attrib], al 
     push rax
+    push rbx
     push rsi
     push rdi
+    mov rbx, qword [currentDTA]
+    mov byte [rbx + ffBlock.attrib], al 
     movzx eax, byte [currentDrv]  ;Get the 0 based current drive number
-    mov byte [dosffblock + ffBlock.driveNum], al
+    mov byte [rbx + ffBlock.driveNum], al
     lea rsi, fcbName
-    lea rdi, qword [dosffblock + ffBlock.template]
+    lea rdi, qword [rbx + ffBlock.template]
     movsq   ;Move 8 chars
     movsw   ;Move 2 chars
     movsb   ;Move the final char
     pop rdi
     pop rsi
+    pop rbx
     pop rax
     return
 
@@ -259,31 +415,18 @@ getPath:
     mov byte [spliceFlag], 0    ;Set Splice flag to indicate Relative to CDS
 .commonDir:
 ;rsi points to the start of the string we will be appending
-    call .prepareDir    ;Prepare the dir if the drive is subst/join drive
-    ;Search now for parent \, if in root, point to self
-    push rdi
-    cmp byte [rdi - 2], ":" ;If the char before the current \ is :, we at root
-    je .inRoot
-    sub rdi, 2  ;Skip the free space and the "\"
-.findParent:
-    cmp byte [rdi], "\"
-    je .parentFound
-    dec rdi ;Go back a further char
-    jmp short .findParent
-.parentFound:
-    inc rdi ;Goto first free char space after the "\"
-.inRoot:
-    mov rbx, rdi    ;Store this as the parent pointer
-    pop rdi
+    call dosCrit1Enter
+    call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
 .mainlp:    ;Now we transfer each directory portion
-    call .copyPathspec  ;Now we copy the pathspec, no spaces
-    retc    ;Return if the carry flag is set, error code in al
+    call copyPathspecCrit  ;Now we search disk and copy the pathspec if found
+    jc .driveExit    ;Return if the carry flag is set, error code in al
     test al, al
-    retz    ;Return if al is the null char
-    ;Else, now we go to the next part
-    jmp short .mainlp
+    jnz .mainlp    ;Return if al is the null char
+.driveExit:
+    call dosCrit1Exit
+    return
 
-.prepareDir:
+prepareDirCrit:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst/join drive. Else only if 
 ; relative
@@ -291,12 +434,10 @@ getPath:
 ;Output: rdi = Pointing at where to place chars from source string
     push rsi
     call setDrive   ;Set internal variables, working CDS etc etc
-    mov rdi, qword [workingCDS] ;CDS pointer in rdi
-    push rdi
-    call dosCrit1Enter
-    call getDiskDPB  ;Update the working DPB ptr for this request
-    call dosCrit1Exit
-    pop rsi          ;Move CDS pointer in rsi
+    mov rdi, qword [workingCDS] 
+    push rdi    ;Push CDS pointer on stack...
+    call getDiskDPB  ;Update the working DPB ptr before searching, dpbptr in rbp
+    pop rsi     ; ...and get CDS pointer in rsi
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
     ;If this CDS is a join drive, copy the first 3 chars and up to the next 
@@ -313,7 +454,10 @@ getPath:
     jz .prepLoop ;If this flag is zero, we loop
     ;Else we copy the first two chars only (X:)
     movsw  
-    jmp short .prepDirExit
+    mov al, "\"
+    stosb   ;Store the path separator and increment rdi
+    xor eax, eax    ;Get cluster 0
+    jmp short .prepDirExitSkip
 .prepLoop:
     lodsb
     stosb
@@ -322,6 +466,10 @@ getPath:
 .prepDirExit:
     mov al, "\"
     stosb   ;Store the path separator and increment rdi
+    mov rsi, qword [workingCDS] ;Get the CDS ptr ONLY IF CDS Relative
+    mov eax, dword [rsi + cds.dStartCluster]    ;... and start at given cluster
+.prepDirExitSkip:
+    call .prepSetupDirSearchVars
     pop rsi
     return
 .prepDirJoin:
@@ -349,7 +497,26 @@ getPath:
     test byte [spliceFlag], -1
     jnz .prepDirExit    ;If not relative, exit as we put the "root dir" marker
     jmp short .prepLoop ;Else, need to copy CDS now too as part of path
-.copyPathspec:
+.prepSetupDirSearchVars:
+;Input: eax = Starting Cluster of search on disk (0=Root dir)
+;       rbp = DPB pointer for the device which will do transaction
+    push rcx
+    xor ecx, ecx
+    mov word [dirSect], cx  ;Always start searching at sector 0 of dir cluster
+    mov byte [dirEntry], cl ;Always start at entry 0 of the sector in cluster
+    call getFATtype ;Get type of fat
+    cmp ecx, 2  ;2 = FAT32
+    jne .psdsvExit      ;FAT 12/16 jump and store 0 if at root
+    ;FAT 32 here
+    test eax, eax   ;Are we looking for root dir of FAT32 drive?
+    jnz .psdsvExit  ;If not, store the cluster number unchanged
+    mov eax, dword [rbp + dpb.dFirstUnitOfRootDir]  ;Else get cluster number
+.psdsvExit:
+    mov dword [dirClustA], eax  ;Store directory cluster (or 0 if \ on FAT12/16)
+    pop rcx
+    return 
+
+copyPathspecCrit:
 ;1) Copies a path portion from the source buffer to the destination
 ;2) Advances rsi to the next null, \ or /
 ;3) Expands all * to ?'s
@@ -377,6 +544,8 @@ getPath:
     rep stosd   ;Store 12 spaces
     pop rdi ;Point rdi back to fcb name head
 
+    mov ecx, 8 ;8 chars to move over, when ecx = 0, the char must be . or term
+    mov ch, 1   ;Set that we are in name field
     lodsb   ;Get first char from user path in al
     dec rsi ;And move rsi to point back to it
     cmp al, "."   ;Handle starting dot separately
@@ -388,13 +557,11 @@ getPath:
     inc rsi ;Push rsi to point to next char
     mov al, 05h
     stosb   ;Store the char, rsi is pointing at next char
-    mov ecx, 8 ;8 chars to move over, when ecx = 0, the char must be . or term
-    mov ch, 1   ;Set that we are in name field
+    dec cl  ;One less char to tfr
 .cpsMainLoop:
     lodsb   ;Get the char in al and advance rsi
     test al, al ;Is it the null char?
     jz .cpsProcessName  ;If so, terminate
-    call uppercaseChar  ;Else uppercase it...
     call swapPathSeparator  ;And if it is a pathsep, convert it before exiting
     jz .cpsProcessName
     cmp al, "." ;Filename extension separator
@@ -405,7 +572,8 @@ getPath:
     ;If we have space in the filename, we check to see if the next char is *
     cmp al, "*" ;Wildcard?
     je .cpsWildcard
-    stosb   ;Else store the converted char in al and inc rdi
+    call uppercaseChar  ;Uppercase the char if it needs to be...
+    stosb   ;And store the converted char in al and inc rdi
     dec cl  ;One less char left to tfr
     jmp short .cpsMainLoop
 .cpsExtension:
@@ -453,12 +621,10 @@ getPath:
     test al, al
     jz .cpsPNfile
     ;Fall if subdir
-    push rdi
     lea rdi, fcbName
     mov al, "?" ;Search for wildcard
     mov ecx, 12
     repne scasb
-    pop rdi
     je .cpsPnf  ;Path not found if a ? found in the name
     mov al, dirDirectory    ;We want a directory only search.
     jmp short .cpsPNMain
@@ -469,13 +635,50 @@ getPath:
 .cpsPNMain:
     call setupFFBlock   ;Sets up the internal ff block, attribs in al
     ;Now the internal ff block is setup, conduct search.
-
-    call searchDir
-
+    call searchDir  ;Prevent any changes to the DPB before search complete
+    jc .cpsSearchError
+    cmp byte [fcbName], "."   ;Handle destination pointer for  
+    je .cpsPNDots
     pop rsi
     pop rdi ;rdi points to where it's ok to place pathspec
     ;Copy filename over
+    push rsi    ;Save source pointer position
+    push rbx
+    mov rbx, qword [currentDTA]
+    lea rsi, qword [rbx + ffBlock.asciizName]    ;Get asciiz name ptr
+    pop rbx
+.cpsPNtfrName:
+    lodsb
+    test al, al
+    jnz .cpsPNlastchar   ;Keep copying until null found, DONT PRINT IT
+    stosb
+    jmp short .cpsPNtfrName ;Keep looping
+.cpsPNlastchar:
+    pop rsi ;Get back src ptr which points to first char in next pathspec
+    mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
+    test al, al ;If null, return it
+    jz short .cpsPNexit
+    mov al, "\" ;Else, return path
+.cpsPNexit:
+    stosb   ;Store this final char (either \ or NULL) and return
     return
+.cpsPNDots:
+;For one dot, we leave rdi where it is
+;For two dots, we search backwards for the previous \
+    pop rsi
+    pop rdi
+    cmp byte [fcbName + 1], "." ;Was the second char also a dot?
+    retne   ;Return with rdi untouched and rsi advanced.
+    ;Here we have two dots
+    ;Walk rdi backwards until a \ is found
+    dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
+.cpsPNDotsLp:
+    dec rdi
+    cmp byte [rdi], "\"
+    jne .cpsPNDots  ;Keep looping around until it is a \
+    inc rdi ;Go past that pathsep
+    return
+.cpsSearchError:
 .cpsPnf:
     mov eax, errPnf
     jmp short .cpsErrExit

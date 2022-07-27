@@ -184,8 +184,6 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     currClustF  resd 1  ;Relative cluster in file being r/w to/from
     currClustD  resd 1  ;Current Disk Cluster being r/w to/from
 
-    clustFact   resb 1  ;NUMBER of sectors per cluster
-
     currSectF   resd 1  ;Current Sector in File being r/w to/from
     currSectC   resb 1  ;Current Sector in Cluster being r/w to/from
     currSectD   resq 1  ;Current absolute Sector number on Disk
@@ -199,9 +197,8 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     tfrLen      resd 1  ;Number of bytes to transfer
     tfrCntr     resd 1  ;Number of bytes left to transfer
 ;Directory stuff
-    dirClust    resd 1  ;Cluster number of current directory
     dirClustA   resd 1  ;Absolute cluster number of current directory
-    dirSect     resb 1  ;Sector of current directory
+    dirSect     resw 1  ;Sector of current directory cluster
     dirEntry    resb 1  ;32 byte offset in dir sect for file being searched for
 ;Error DPB 
     tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
