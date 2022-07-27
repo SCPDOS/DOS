@@ -149,20 +149,26 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;       rdx = Ptr to path to file to look for
 ;       al = Document as needing to be 0 for now
     mov word [searchAttr], cx
-    call checkPathspecOK
+    mov rsi, rdx    ;Get src path in rsi
+    call checkPathspecOK    ;This preserves rsi
     jnc .pathspecOk ;If CF=NC this path is totally ok
-    jz .pathspecOk  ;If CF=CY but ZF=ZE then this is a path with path separators
 .badPath:
     mov eax, errPnf
     jmp extErrExit
 .pathspecOk:
-    mov rsi, rdx    ;Get src path in rsi
+    push qword [currentDTA]
+    lea rdi, dosffblock ;Use the dosFFblock as the DTA
+    mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here
-    push rdi
     call getFilePath
-    pop rsi ;Pop this buffer as the source
+    pop qword [currentDTA]
     jc extErrExit
-
+    lea rsi, dosffblock ;Copy the block to the user's DTA
+    mov rdi, qword [currentDTA]
+    mov ecx, ffBlock_size
+    rep movsb   ;Copy the whole block. 
+;Ensure ffblock's non-reserved fields are filled from dir entry before returning
+    
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h

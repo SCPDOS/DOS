@@ -45,8 +45,8 @@ getDiskData:
     mov byte [errorLocus], eLocDsk
     call dosCrit1Enter  ;Enter class 1 critical section
     call getDiskDPB ;Get disk dpb pointer in rbp for CDS in rdi
+    call dosCrit1Exit
     jc .exit
-    call setWorkingDPB  ;Set rbp to be the working dpb
     call findFreeClusterData    ;Get Free Cluster data in DPB
     jc .exit
     mov al, byte [rbp + dpb.bMaxSectorInCluster]
@@ -55,7 +55,6 @@ getDiskData:
     mov ebx, dword [rbp + dpb.dClusterCount]
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Save the value in ecx
     mov edx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Get # free clusters
-    call dosCrit1Exit
     clc
 .exit:
     return
@@ -305,7 +304,6 @@ checkPathspecOK:
     push rsi
     push rdi
     pushfq
-    mov rsi, rdx
     ;First we verify that the first two chars are ok (either X: or \\ or chars)
     mov ax, word [rdx]  ;Get the first two chars
     cmp ax, "\\"    ;UNC network start

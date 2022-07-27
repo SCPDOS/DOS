@@ -162,7 +162,7 @@ getDiskDPB:
 ;Gets the disk DPB if the Disk is physical
 ;Otherwise will return a pointer to the drive DPB
 ;Called with rdi pointing to the CDS
-;CF=NC => RBP=DPBptr, CF=CY => Error exit
+;CF=NC => RBP=WorkingDPB=DPBptr, CF=CY => Error exit
     mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov [workingDrv], al    ;Save working drive number in working drive variable
@@ -174,7 +174,7 @@ getDiskDPB:
     jnz .exit
     ;Here re-init all CDS's that refer to the dpb if the disk was switched
     mov cl, byte [lastdrvNum]
-    xor rax, rax
+    xor eax, eax
     dec rax ; -1 means start of root dir and never accessed (i.e. reset path)!
     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array

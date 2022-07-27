@@ -1,11 +1,11 @@
 ;Generic Find First and Find Next functions here
 
-genericFindFirst:
+searchDir:
     return
 genericFindNext:
     return
 
-extendSearchAttr:
+adjustSearchAttr:
 ;Converts the search attributes as chosen by the caller
 ; to our internal requirements. This is ONLY called for 
 ; file searches, not intermediate directory searches. 
@@ -213,8 +213,13 @@ getPath:
 ;Output: rdi = Pointing at where to place chars from source string
     push rsi
     call setDrive   ;Set internal variables, working CDS etc etc
+    mov rdi, qword [workingCDS] ;CDS pointer in rdi
+    push rdi
+    call dosCrit1Enter
+    call getDiskDPB  ;Update the working DPB ptr for this request
+    call dosCrit1Exit
+    pop rsi          ;Move CDS pointer in rsi
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
-    mov rsi, qword [workingCDS] ;CDS pointer in rsi
     ;If this CDS is a subst drive, copy the current path to backslashOffset
     ;If this CDS is a join drive, copy the first 3 chars and up to the next 
     ;   terminating char (\, / or Null)
@@ -382,11 +387,13 @@ getPath:
 .cpsPNfile:
     ;Here if we are searching for a file
     movzx eax, word [searchAttr]    ;Get the search attributes
-    call extendSearchAttr   ;Edit the search attributes as needed
+    call adjustSearchAttr   ;Edit the search attributes as needed
 .cpsPNMain:
     call setupFFBlock   ;Sets up the internal ff block, attribs in al
     ;Now the internal ff block is setup, conduct search.
-    
+
+    call searchDir
+
     pop rsi
     pop rdi ;rdi points to where it's ok to place pathspec
     ;Copy filename over
