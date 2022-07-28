@@ -900,7 +900,7 @@ l1:
     int 41h ;Set tempDTA to current DTA
     mov ah, 4Eh
     lea rdx, tmpName
-    mov cx, dirVolumeID ;Search for volume ID
+    mov cx, byte [tmpAttr] ;Get the search attribute
     int 41h
 
 l11:
@@ -956,8 +956,8 @@ conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
 
-aexec   db 0,":\AUTOEXEC.BAT",0 ;ASCIIZ for AUTOEXEC (with space for drvletter)
-cfgspec db 0,":\CONFIG.SYS",0 ;ASCIIZ for CONFIG (with space for drive letter)
+aexec   db "AUTOEXEC.BAT",0 ;ASCIIZ for AUTOEXEC
+cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
 
 intData:
     dq terminateProcess ;Int 40h
@@ -1130,6 +1130,7 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
-tmpName   db "A:*.*",0
-tmpDTA    db 80h dup 00h
-tmpBuffer db 80h dup 00h 
+tmpAttr     db dirInclusive ;Search for all files
+tmpName     db "A:scpbios.sys",0
+tmpDTA      db 80h dup 00h
+tmpBuffer   db 80, 0, 126 dup 00h 

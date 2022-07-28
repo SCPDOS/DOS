@@ -136,11 +136,15 @@ findInBuffer:
     mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
     mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
 .searchMainLp:
-    test al, byte [rsi + fatDirEntry.attribute] 
-    jz .nextEntry
-    ;At least one attribute bit matches, now compare filename
+    mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
+    and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
+    cmp al, dirVolumeID
+    je .volFile
+    cmp ah, al  ;If file attr <= user selected attribs, scan name for match
+    ja .nextEntry
     ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
     ;rdi points to the ffBlock to use
+.scanName:
     push rsi
     push rdi
     lea rdi, qword [rdi + ffBlock.template] ;Goto name to search for
@@ -156,6 +160,11 @@ findInBuffer:
     jnz .searchMainLp
     stc
     return
+.volFile:
+    cmp ah, al  ;Is the file indeed a Volume ID?
+    je .scanName       ;If so, scan the name agrees
+    jmp short .nextEntry    ;Else, goto next entry
+
 .searchEntryFound:
 ;Here a good entry was found!
     push rdi
@@ -200,20 +209,12 @@ findInBuffer:
     return
 
 adjustSearchAttr:
-;Converts the search attributes as chosen by the caller
-; to our internal requirements. This is ONLY called for 
-; file searches, not intermediate directory searches. 
-; Intemediate dir searches are conducted with dir bit only set
+;Converts the byte to a system only if the bit is set
 ;Input: eax = User selected search mask
 ;Output: eax = Modified search mask
     test eax, dirVolumeID   ;Is the volume id bit set?
-    jnz .esaVolume  ;If yes, replace the attributes with volume id only
-    test eax, dirInclusive  ;Do we have an inclusive bit set?
-    retz   ;If not, we return with al unchanged
-    or eax, dirInclusive    ;Else set all the inclusive bits
-    return  ;And exit
-.esaVolume:
-    mov eax, dirVolumeID    ;Make this a volume ID exclusive search
+    retz
+    mov eax, dirVolumeID
     return
 
 asciizToFCB:
@@ -525,6 +526,7 @@ prepareDirCrit:
     mov eax, dword [rsi + cds.dStartCluster]    ;... and start at given cluster
 .prepDirExitSkip:
     call .prepSetupDirSearchVars
+    clc ;Clear carry before exiting
 .badDriveExit:
     pop rsi
     return
@@ -706,8 +708,8 @@ searchForPathspecCrit:
 .sfpPNfile:
     ;Here if we are searching for a file
     movzx eax, byte [searchAttr]    ;Get the search attributes
-    call adjustSearchAttr   ;Edit the search attributes as needed
 .sfpPNMain:
+    call adjustSearchAttr   ;Edit the search attributes as needed
     call setupFFBlock   ;Sets up the internal ff block, attribs in al
     ;Now the internal ff block is setup, conduct search.
     call searchDir
