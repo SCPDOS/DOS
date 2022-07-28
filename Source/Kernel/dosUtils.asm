@@ -205,8 +205,8 @@ getCDSforDrive:     ;Int 4Fh AX=1217h
     movzx eax, al
     mov rsi, cds_size
     xor edx, edx
-    mul esi ;Get the multiples of CDS's to skip
-    lea rax, qword [cdsHeadPtr] ;Get the first CDS
+    mul esi ;Get the multiples of CDS's to skip in rax
+    mov rsi, qword [cdsHeadPtr] ;Get the first CDS ptr
     add rsi, rax    ;Add the CDS array to the offset into it
     mov qword [workingCDS], rsi  ;Save in data area
     pop rdx

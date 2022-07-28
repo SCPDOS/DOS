@@ -210,7 +210,7 @@ ensureDiskValid:
     mov al, byte [workingDrv]   ;Get the drive number for test
     xor ah, ah
     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
-    test byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
+    or byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!

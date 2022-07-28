@@ -101,6 +101,7 @@ findFreeClusterData:
     movzx ebx, word [rbp + dpb.wBytesPerSector]
 ;Get FAT type
     call getFATtype ;Gets FAT type (for number of elements in sector)
+    test cl, cl
     jz .fat12
     test cl, 1
     jnz .fat16
@@ -123,7 +124,7 @@ findFreeClusterData:
     jmp short .fat32Search
 .fat32Found:
     inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
-    cmp qword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
+    cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
     jne .fat32Continue  ;If so, keep searching sectors for more free clusters
     sub edi, 4  ;edi is one dword past the entry
     call .computeEntry  ;Add field to dpb
@@ -158,7 +159,7 @@ findFreeClusterData:
     jmp short .fat16Search
 .fat16Found:
     inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
-    cmp qword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
+    cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
     jne .fat16Continue
     sub edi, 2  ;edi is one word past the entry
     call .computeEntry
@@ -180,23 +181,29 @@ findFreeClusterData:
     jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .fat12SearchNewSector:
-    movzx ecx, word [entries]   ;This is total entries in Sector rounded down
+    movzx ecx, word [rbp + dpb.wBytesPerSector]   ;This is bytes per sector 
+    ;When this value is one, we have the cross sector issue
 .fat12Search:
-    movzx eax, word [rdi]   ;Get first word (EVEN ENTRY)
-    and eax, 0FFFh   ;Clear upper nybble
+    call .fat12GetEvenCluster
     jnz .getOddEntry    ;Skip denoting entry if not 0
     call .fat12EntryFound
 .getOddEntry:
     inc rdi ;Goto next byte
-    dec ecx ;Dec the number of entries to search in sector
-    movzx eax, word [rdi]  ;Get second word (ODD ENTRY)
-    shr eax, 4  ;Shift down by 4
+    dec ecx ;Dec the byte offset counter
+    jz .noXcluster  ;If ecx is now zero, exit
+    cmp ecx, 1
+    je .lastFat12entry
+    call .fat12GetOddCluster
     jnz .getNextSector
     call .fat12EntryFound
 .getNextSector:
     inc rdi ;Goto next entry
-    dec ecx ;Dec the number of entries to search in sector
-    jnz .fat12Search
+    inc rdi
+    dec ecx ;Dec the byte offset counter twice
+    dec ecx
+    jz .noXcluster  ;If ecx is now zero, exit
+    jmp short .fat12Search
+.lastFat12entry:
 ;We arrive here when we are at the last entry in the sector
     inc qword [tempSect]    ;Get next Sector
     mov rax, qword [tempSect]   ;Get this sector in rax
@@ -216,9 +223,17 @@ findFreeClusterData:
     jmp short .fat12SearchNewSector ;Reload the number of entries and search
 .fat12EntryFound:
     inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
-    cmp qword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
+    cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
     retne
     call .computeEntry  ;Compute the first cluster if this is -1
+    return
+.fat12GetEvenCluster:
+    movzx eax, word [rdi]   ;Get first word (EVEN ENTRY)
+    and eax, 0FFFh   ;Clear upper nybble
+    return
+.fat12GetOddCluster:
+    movzx eax, word [rdi]  ;Get second word (ODD ENTRY)
+    shr eax, 4  ;Shift down by 4
     return
 .computeEntry:
 ;We only call this to compute the first entry cluster number
