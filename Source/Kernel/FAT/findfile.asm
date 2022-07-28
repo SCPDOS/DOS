@@ -781,3 +781,53 @@ checkDevPath:
 checkDeviceName:
 ;Compares the first 8 chars of the FCB field to each device name in the
 ; device driver chain. Creates a dummy FFblock for them.
+;Input: Nothing
+;Output: ZF=ZE => fcbname a Character Device
+;        ZF=NZ => fcbname NOT a device name
+;If returns with CF=CY, fail request as date/time driver failed.
+    push rax
+    push rdi
+    mov rax, qword [fcbName]    ;Get the 8 char name (space padded)
+    lea rdi, nulDevHdr    ;Get a ptr to the start driver header
+.checkName:
+    test qword [rdi + drvHdr.attrib], devDrvChar  ;Is the driver for disk drive?
+    jz .walkList ;Jump to skip ANY and ALL Disk Drives
+    cmp rax, qword [rdi + drvHdr.drvNam]
+    je .deviceFound
+.walkList:
+    mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto the next device
+    cmp rdi, -1 ;Is rdi at End of Chain?
+    jne .checkName  ;If no, rdi points to char device
+    dec rdi ;Clear ZF before returning
+.exit:
+    pop rdi
+    pop rax
+    return
+.deviceFound:
+;Now build a dummy directory entry for the char device
+    lea rdi, curDirCopy
+    ;Zero the directory copy (32 bytes)
+    push rax
+    push rcx
+    push rdi
+    xor eax, eax    ;Zero rax
+    mov ecx, 4
+    rep movsq   ;Store 4 qwords of 0 to fill directory entry with zeros
+    pop rdi
+    pop rcx
+    pop rax
+
+    mov qword [rdi + fatDirEntry.name], rax  ;Store filename
+    mov ax, "  "    ;Two spaces
+    mov byte [rdi + fatDirEntry.name + filename.fExt], al
+    mov word [rdi + fatDirEntry.name + filename.fExt + 1], ax
+    mov byte [rdi + fatDirEntry.attribute], 40h ;Mimic DOS, set to 40h
+    ;Get date and time and set the write time in the directory entry
+    call readDateTimeRecord ;Update DOS internal Time/Date variables
+    jc .exit  ;If we fail to get time/date, fail the request with CF=CY
+    ;Build date and time words
+    call getDirDTwords  ;Get date time words packed in eax
+    mov word [rdi + fatDirEntry.wrtTime], ax
+    shr eax, 16 ;Eject the time, get the date in eax
+    mov word [rdi + fatDirEntry.wrtDate], ax
+    jmp short .exit

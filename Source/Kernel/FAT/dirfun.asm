@@ -59,6 +59,7 @@ updateDirectoryEntryForFile:
     mov word [rbp + fatDirEntry.wrtTime], ax    ;And update field
     movzx eax, word [rdi + sft.wDate]   ;Get the last write time
     mov word [rbp + fatDirEntry.wrtDate], ax    ;And update field
+    mov word [rbp + fatDirEntry.lastAccDat], ax    ;And update final field
     ;Directory sector updated and marked to be flushed to disk!
     ;Now mark that the file has sectors not yet flushed to disk
 
