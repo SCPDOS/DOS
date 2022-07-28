@@ -818,10 +818,9 @@ checkDeviceName:
     pop rax
 
     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
-    mov ax, "  "    ;Two spaces
-    mov byte [rdi + fatDirEntry.name + filename.fExt], al
-    mov word [rdi + fatDirEntry.name + filename.fExt + 1], ax
-    mov byte [rdi + fatDirEntry.attribute], 40h ;Mimic DOS, set to 40h
+    mov ax, "    "    ;Four spaces, overwrite the attribute field
+    mov dword [rdi + fatDirEntry.name + filename.fExt], eax
+    mov byte [rdi + fatDirEntry.attribute], 40h ;Mimic DOS, set attr to 40h
     ;Get date and time and set the write time in the directory entry
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     jc .exit  ;If we fail to get time/date, fail the request with CF=CY
