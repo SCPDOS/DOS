@@ -106,7 +106,6 @@ searchDir:
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
     call getBufForDOS
     jc .hardError
-    xchg bx, bx
     call .setupBuffer       ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .oldNextEP:
@@ -459,7 +458,6 @@ getPath:
 .commonDir:
 ;rsi points to the start of the string we will be appending
     call dosCrit1Enter
-    ;xchg bx, bx
     call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
 .mainlp:    ;Now we transfer each directory portion
     call copyPathspecCrit  ;Now setup the filename in the FCB name field
