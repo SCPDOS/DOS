@@ -106,6 +106,7 @@ searchDir:
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
     call getBufForDOS
     jc .hardError
+    xchg bx, bx
     call .setupBuffer       ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .oldNextEP:
@@ -133,7 +134,7 @@ findInBuffer:
 ;       rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
 ;        CF=NC => Entry found, directory data copied to SDA
-    xchg bx, bx
+    ;xchg bx, bx
     mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
     mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
 .searchMainLp:
@@ -159,9 +160,6 @@ findInBuffer:
     return
 .searchEntryFound:
 ;Here a good entry was found!
-    push rcx
-    push rsi
-    push rdi
     push rdi
     lea rdi, curDirCopy
     mov ecx, 32/8
@@ -179,33 +177,28 @@ findInBuffer:
     mov eax, dword [curDirCopy + fatDirEntry.fileSize]
     mov dword [rdi + ffBlock.fileSize], eax
     lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
+    lea rsi, curDirCopy
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
-    pop rdi
-    pop rsi
-    pop rcx
     clc
     return
 .nameCompare:
 ;Input: rsi = source string
-;       rdi = string to compare against
+;       rdi = string template to compare against
 ;Output: ZF=ZE => Strings are ok
 ;        ZF=NZ => Strings not ok
 ;Accepts wildcards. Trashes al
     push rcx
     xor ecx, ecx    ;11 chars to compare
-    xchg rsi, rdi
 .ncLp:
     cmp ecx, 11
     je .ncExit
     inc ecx
-    lodsb   ;Get char
-    scasb
+    cmpsb   ;Compare the chars in the two strings and advance ptrs
     je .ncLp    ;If equal, keep going
-    cmp al, "?" ;Wildcard?
+    cmp byte [rdi - 1], "?" ;Was the char in the template a wildcard?
     je .ncLp
 .ncExit:
     pop rcx
-    xchg rsi, rdi
     return
 
 adjustSearchAttr:
@@ -466,10 +459,11 @@ getPath:
 .commonDir:
 ;rsi points to the start of the string we will be appending
     call dosCrit1Enter
-    xchg bx, bx
+    ;xchg bx, bx
     call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
 .mainlp:    ;Now we transfer each directory portion
-    call copyPathspecCrit  ;Now we search disk and copy the pathspec if found
+    call copyPathspecCrit  ;Now setup the filename in the FCB name field
+    call searchForPathspecCrit  ;and search the directory
     jc .driveExit    ;Return if the carry flag is set, error code in al
     test al, al
     jnz .mainlp    ;Return if al is the null char
@@ -667,81 +661,80 @@ copyPathspecCrit:
     retz
     jmp short .cpsPtrSkip
 .cpsProcessName:
+    pop rdi
+    return
+
+searchForPathspecCrit:
     ;Now search the current directory for this filename
     ;Find first using SDA ffBlock
     ;If al = 0, we have a file name
-    ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF \
+    ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF PATHSEP
     push rsi    ;Save the current position of the pointer in the user buffer
+    push rdi    ;Save current position to store filename in internal buffer
 ;Evaluate whether we are searching for a file for a directory
     test al, al
-    jz .cpsPNfile
+    jz .sfpPNfile
     ;Fall if subdir
     lea rdi, fcbName
     mov al, "?" ;Search for wildcard
     mov ecx, 12
     repne scasb
-    je .cpsPnf  ;Path not found if a ? found in the name
+    je .sfpPnf  ;Path not found if a ? found in the name
     mov al, dirDirectory    ;We want a directory only search.
-    jmp short .cpsPNMain
-.cpsPNfile:
+    jmp short .sfpPNMain
+.sfpPNfile:
     ;Here if we are searching for a file
     movzx eax, byte [searchAttr]    ;Get the search attributes
     call adjustSearchAttr   ;Edit the search attributes as needed
-.cpsPNMain:
+.sfpPNMain:
     call setupFFBlock   ;Sets up the internal ff block, attribs in al
     ;Now the internal ff block is setup, conduct search.
-    call searchDir  ;Prevent any changes to the DPB before search complete
-    jc .cpsSearchError
-    cmp byte [fcbName], "."   ;Handle destination pointer for  
-    je .cpsPNDots
+    call searchDir
+    pop rdi ;rdi points to free space in internal filename buffer
     pop rsi
-    pop rdi ;rdi points to where it's ok to place pathspec
-    ;Copy filename over
+    jc .sfpSearchError
+;Here if a file was found. First check the FCB pattern to see if it was . or ..
+    cmp byte [fcbName], "."   ;Handle destination pointer for  
+    je .sfpPNDots
+    ;Copy filename over to internal buffer
     push rsi    ;Save source pointer position
-    push rbx
-    mov rbx, qword [currentDTA]
-    lea rsi, qword [rbx + ffBlock.asciizName]    ;Get asciiz name ptr
-    pop rbx
-    xchg bx, bx
-.cpsPNtfrName:
+    mov rsi, qword [currentDTA]
+    lea rsi, qword [rsi + ffBlock.asciizName]    ;Get asciiz name ptr
+.sfpPNtfrName:
     lodsb
     test al, al
-    jz .cpsPNlastchar   ;Keep copying until null found, DONT PRINT IT
+    jz .sfpPNlastchar   ;Keep copying until null found, DONT PRINT IT
     stosb
-    jmp short .cpsPNtfrName ;Keep looping
-.cpsPNlastchar:
+    jmp short .sfpPNtfrName ;Keep looping
+.sfpPNlastchar:
     pop rsi ;Get back src ptr which points to first char in next pathspec
     mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
     test al, al ;If null, return it
-    jz short .cpsPNexit
+    jz short .sfpPNexit
     mov al, "\" ;Else, return path
-.cpsPNexit:
+.sfpPNexit:
     stosb   ;Store this final char (either \ or NULL) and return
     return
-.cpsPNDots:
+.sfpPNDots:
 ;For one dot, we leave rdi where it is
-;For two dots, we search backwards for the previous \
-    pop rsi
-    pop rdi
+;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
     retne   ;Return with rdi untouched and rsi advanced.
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
-.cpsPNDotsLp:
+.sfpPNDotsLp:
     dec rdi
     cmp byte [rdi], "\"
-    jne .cpsPNDots  ;Keep looping around until it is a \
+    jne .sfpPNDots  ;Keep looping around until it is a "\"
     inc rdi ;Go past that pathsep
     return
-.cpsSearchError:
-.cpsPnf:
+.sfpSearchError:
+.sfpPnf:
     mov eax, errPnf
-    jmp short .cpsErrExit
-.cpsFnf:
+    jmp short .sfpErrExit
+.sfpFnf:
     mov eax, errFnf
-.cpsErrExit:
-    pop rsi
-    pop rdi
+.sfpErrExit:
     stc ;Set carry
     return
