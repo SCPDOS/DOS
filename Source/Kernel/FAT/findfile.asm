@@ -764,6 +764,8 @@ searchForPathspecCrit:
     inc rdi ;Go past that pathsep
     return
 .sfpSearchError:
+    mov eax, errNoFil
+    jmp short .sfpErrExit
 .sfpPnf:
     mov eax, errPnf
     jmp short .sfpErrExit
@@ -775,7 +777,7 @@ searchForPathspecCrit:
 
 checkDevPath:
 ;Checks if the current fcbname field is "DEV        \" (for the DEV folder)
-; If it is, it looksahead to see if the next portion (if one exists)
+; If it is, it looks ahead to see if the next portion (if one exists)
 ; is a char device name. If it is, it intercepts the find call
 ; and returns with a dummy FFblock for the char device.
 checkDeviceName:
