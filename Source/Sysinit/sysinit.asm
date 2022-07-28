@@ -1130,6 +1130,6 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
-tmpName   db "*.*",0
+tmpName   db "A:*.*",0
 tmpDTA    db 80h dup 00h
 tmpBuffer db 80h dup 00h 

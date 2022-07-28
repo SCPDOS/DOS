@@ -133,7 +133,6 @@ findInBuffer:
 ;       rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
 ;        CF=NC => Entry found, directory data copied to SDA
-    ;xchg bx, bx
     mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
     mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
 .searchMainLp:
@@ -440,14 +439,16 @@ getPath:
     ;al now has 1-based drive number, rsi has been incremented by 2.
     cmp byte [rsi], 0   ;Is this pathspec "X",":",0?
     je .pnfErr  ;Throw error if it is a malformed path
+    push rax    ;Save the drive letter
     lodsb   ;Move rsi to the third char, get char in al
     dec rsi ;Move rsi back to point to the previous char
     call swapPathSeparator  ;ZF=ZE if path separator
     ;If al is a path separator, then this path is absolute.
-    jz .relMain ;If relative, rsi points to first char in path
+    pop rax ;Get back the drive letter
+    jnz .relMain ;If relative, rsi points to first char in path
     ;Here the path is absolute. Now point rsi to first char past "\"
     inc rsi
-    jmp short .mainlp
+    jmp short .commonDir
 .curRelPath:
 ;This is only jumped to if we are relative the current drive
 ;rsi points to first char in path
@@ -459,6 +460,7 @@ getPath:
 ;rsi points to the start of the string we will be appending
     call dosCrit1Enter
     call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
+    jc .badDriveExit
 .mainlp:    ;Now we transfer each directory portion
     call copyPathspecCrit  ;Now setup the filename in the FCB name field
     call searchForPathspecCrit  ;and search the directory
@@ -468,6 +470,10 @@ getPath:
 .driveExit:
     call dosCrit1Exit
     return
+.badDriveExit:
+    mov eax, errNoFil ;No file for that spec found
+    jmp short .driveExit
+
 
 prepareDirCrit:
 ;Used to transfer the current directory if it is necessary.
@@ -475,8 +481,10 @@ prepareDirCrit:
 ; relative
 ;Input: al = 1-based drive letter
 ;Output: rdi = Pointing at where to place chars from source string
+;   If CF=CY => Drive invalid or drive letter too great
     push rsi
     call setDrive   ;Set internal variables, working CDS etc etc
+    jc .badDriveExit    ;If the drive number in al is too great or drive invalid
     mov rdi, qword [workingCDS] 
     push rdi    ;Push CDS pointer on stack...
     call getDiskDPB  ;Update the working DPB ptr before searching, dpbptr in rbp
@@ -517,6 +525,7 @@ prepareDirCrit:
     mov eax, dword [rsi + cds.dStartCluster]    ;... and start at given cluster
 .prepDirExitSkip:
     call .prepSetupDirSearchVars
+.badDriveExit:
     pop rsi
     return
 .prepDirJoin:
@@ -594,9 +603,9 @@ copyPathspecCrit:
     mov ecx, 8 ;8 chars to move over, when ecx = 0, the char must be . or term
     mov ch, 1   ;Set that we are in name field
     lodsb   ;Get first char from user path in al
-    dec rsi ;And move rsi to point back to it
     cmp al, "."   ;Handle starting dot separately
     je .cpsDots
+    dec rsi ;Else move rsi to point back to starting char
 ;First char is not a dot, so now check if starts with E5h? 
 ;If so, store 05h in its place
     cmp al, 0E5h
@@ -620,9 +629,14 @@ copyPathspecCrit:
     cmp al, "*" ;Wildcard?
     je .cpsWildcard
     call uppercaseChar  ;Uppercase the char if it needs to be...
+    call checkCharValid ; and check it is a valid char
+    je .cpsInvalidChar  ;If it is not valid, replace with 0 and exit
     stosb   ;And store the converted char in al and inc rdi
     dec cl  ;One less char left to tfr
     jmp short .cpsMainLoop
+.cpsInvalidChar:
+    xor al, al
+    jmp short .cpsProcessName
 .cpsExtension:
 ;rsi has been incremented past the extension field. Discard the . in al
     mov ecx, 3  ;Set to 3 chars left, in extension (ch = 0)
@@ -650,15 +664,24 @@ copyPathspecCrit:
     jmp short .cpsCharSkip
 .cpsPtrSkip:
 ;Now advance rsi past the next pathsep or null char
+;If an invalid char is detected, it is considered to be a terminator
 ;Output: al = Terminator char (either \ or null)
 ;        rsi -> First char of next pathspec (if al = \)
     lodsb
+    call checkCharOk
+    je .cpsBadChar
     test al, al ;Is this null?
     retz
     call swapPathSeparator
     retz
     jmp short .cpsPtrSkip
+.cpsBadChar:
+    xor al, al  ;Convert the char to a terminator
+    return
 .cpsProcessName:
+;Store the final char in the 12 space in the FCB name field
+    lea rdi, fcbName+11
+    stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
     pop rdi
     return
 
@@ -736,3 +759,12 @@ searchForPathspecCrit:
 .sfpErrExit:
     stc ;Set carry
     return
+
+checkDevPath:
+;Checks if the current fcbname field is "DEV        \" (for the DEV folder)
+; If it is, it looksahead to see if the next portion (if one exists)
+; is a char device name. If it is, it intercepts the find call
+; and returns with a dummy FFblock for the char device.
+checkDeviceName:
+;Compares the first 8 chars of the FCB field to each device name in the
+; device driver chain. Creates a dummy FFblock for them.

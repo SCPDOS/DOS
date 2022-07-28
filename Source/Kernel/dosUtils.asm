@@ -99,7 +99,7 @@ setDrive:
 ;   CF=CY => 0-based drive number invalid OR CDS returned with Net or Join flags
 ;            set.
     call getCDS ;Setup working CDS DOS variable for this drive
-    jc .exit    ;Carry the CF flag if not Physical
+    jc .exit    ;Carry the CF flag if not Physical or if al was too large
     push rsi
     mov rsi, qword [workingCDS] ;Get CDS
     test word [rsi + cds.wFlags], cdsJoinDrive  ;Check if Join
@@ -301,9 +301,12 @@ checkPathspecOK:
 
 ;We accept lc and uc characters in this check function.
     push rax
+    push rcx
     push rsi
     push rdi
     pushfq
+    pop rcx ;Get flags into ecx
+    and ecx, ~41h  ;Clear CF and ZF to begin
     ;First we verify that the first two chars are ok (either X: or \\ or chars)
     mov ax, word [rdx]  ;Get the first two chars
     cmp ax, "\\"    ;UNC network start
@@ -316,14 +319,12 @@ checkPathspecOK:
     ;If so the pathspec is not different to normal, goto scanLoop
     jmp short .scanLoop
 .okToScanNet:
-    call .pathSepSet    ;Sets the ZF and CF flags
+    or ecx, 41h  ;Set ZF and CF to indicate "technically" a bad char
     jmp short .okToScan
 .badExit:
-    popfq
-    stc ;Set CF
-    xor al, al
-    inc al  ;Clear ZF if ZF was set
-    jmp short .exitBad
+    and ecx, ~40h    ;Clear ZF if ZF was set
+    or ecx, 1   ;Set carry flag
+    jmp short .exit
 .diskPath:
 ;Disk Letter must be A-Z (or a-z)
     cmp al, "A"
@@ -340,36 +341,55 @@ checkPathspecOK:
     lodsb   ;Get char, inc rsi
     test al, al  ;Is al=0, i.e string terminator?
     je .exit
-    call .checkCharValid
+    call checkCharValid ;Validity check
     ;If ZF=ZE, check if it is a path separator
     jnz .scanLoop   ;Char was ok if ZF=NZ, loop around
     cmp al, "\"
     je .pathSepFnd
     cmp al, "/"
     je .pathSepFnd
+    call checkCharOk    ;Check if it is ok, i.e. a period or wildcard
+    jne .scanLoop    ;Pretend they are alright!
     jmp short .badExit
 .pathSepFnd:
-    call .pathSepSet    ;Sets the ZF and CF flags
+    or ecx, 41h  ;Set ZF and CF to indicate "technically" a bad char    
     jmp short .scanLoop
 .exit:
-    popfq
-.exitBad:
+    push rcx    ;Push flags back on
+    popfq   ;And pop them into the flags register
     pop rdi
     pop rsi
+    pop rcx
     pop rax
     return
-.checkCharValid:
+
+checkCharValid:
 ;If ZF=ZE => Invalid Char
 ;If ZF=NZ => Valid Char
     push rcx
+    push rdi
     mov ecx, badDirNameCharL    ;Get table length
     lea rdi, badDirNameChar ;Point to bad char table
     repne scasb ;Scan. Stop when equal
+    pop rdi
     pop rcx
     return
-.pathSepSet:
-    popfq
-    xor al, al  ;Clear al to set ZF and well, we are done with al
-    stc ;And set STC to indicate "technically" a bad char
-    pushfq
+checkCharOk:
+;Same as checkCharValid except DOES not return error on * ? \ / .
+    cmp al, "."
+    je .exitOk
+    cmp al, "*"
+    je .exitOk
+    cmp al, "?"
+    je .exitOk
+    cmp al, "\"
+    je .exitOk
+    cmp al, "/"
+    je .exitOk
+.ok:
+    jmp short checkCharValid
+.exitOk:
+    push rax
+    or al, 1    ;Always clears the ZF
+    pop rax
     return

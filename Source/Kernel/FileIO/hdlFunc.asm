@@ -147,6 +147,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov rsi, rdx    ;Get src path in rsi
     call checkPathspecOK    ;This preserves rsi
     jnc .pathspecOk ;If CF=NC this path is totally ok
+    jz .pathspecOk  ;If ZF=ZE AND CF=CY then we have path separators, still ok
 .badPath:
     mov eax, errPnf
     jmp extErrExit
