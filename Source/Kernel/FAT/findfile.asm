@@ -475,13 +475,8 @@ getPath:
     call copyPathspecCrit  ;Now setup the filename in the FCB name field
     call searchForPathspecCrit  ;and search the directory
     jc .driveExit    ;Return if the carry flag is set, error code in al
-    test al, al
-    jz .driveExit   ;Return if al is the null char
-    ;Here check if the file is a directory. 
-    ;If it is not, we need to keep searching for a directory.
-    ;   If no directories are found, exit with errNoFil
-    ;If it is, we jump to mainlp
-    jmp short .mainlp
+    test al, al ;Fallthru if this pathspec was a file
+    jnz .mainlp  ;Else, it was a directory name, keep looping
 .driveExit:
     call dosCrit1Exit
     return
