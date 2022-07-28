@@ -15,7 +15,9 @@ multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
     call rbx
     pop rcx
     pop rbx
+    iretq
 .exit:
+    or byte [rsp + 8h*2], 1
     iretq
 multiplexTest:
     mov al, -1

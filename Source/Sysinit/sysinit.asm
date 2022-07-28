@@ -895,6 +895,15 @@ debugFinal:
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
+    lea rdx, tmpDTA
+    mov ah, 1Ah
+    int 41h ;Set tempDTA to current DTA
+    mov ah, 4Eh
+    lea rdx, tmpName
+    mov cx, dirVolumeID ;Search for volume ID
+    int 41h
+
+l11:
     mov ah, 02h
     mov dl, 0Ah
     int 41h
@@ -908,7 +917,7 @@ l1:
     xor ebx, ebx
     mov ah, 3fh
     int 41h
-    jmp short l1
+    jmp short l11
 .str: db "C:\>$"
 ;--------------------------------
 ;       PROCS FOR SYSINIT       :
@@ -1121,4 +1130,6 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
-tmpBuffer db 80h    ;Just overwrite the next bytes as they get copied high
+tmpName   db "*.*",0
+tmpDTA    db 80h dup 00h
+tmpBuffer db 80h dup 00h 

@@ -27,6 +27,7 @@ searchMoreDir:
     lea rax, searchDir.oldNextEP
     push rax    ;Push return address onto the stack
     movzx eax, word [dirSect]   ;Get the root directory sector offset
+    add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Add sector 0 of root dir
     jmp short .common
 .clusters:
     lea rax, searchDir.nextEp
@@ -100,9 +101,9 @@ searchDir:
 ;Different search for FAT 12/16 root directories. We assume we have 
 ; one large contiguous cluster.
 ;   ecx = Number of entries per sector
-    mov eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
 .oldSectorLp:
     movzx eax, word [dirSect]    ;Move the sector number into eax
+    add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
     call getBufForDOS
     jc .hardError
     call .setupBuffer       ;rbx has the buffer pointer for this dir sector
@@ -132,6 +133,7 @@ findInBuffer:
 ;       rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
 ;        CF=NC => Entry found, directory data copied to SDA
+    xchg bx, bx
     mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
     mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
 .searchMainLp:
@@ -149,7 +151,7 @@ findInBuffer:
     je .searchEntryFound
 .nextEntry:
 ;Go to next entry
-    add rsi, fatDirEntry    ;Goto next entry
+    add rsi, fatDirEntry_size    ;Goto next entry
     inc byte [dirEntry] ;And denote that in variable
     dec ecx
     jnz .searchMainLp
@@ -160,9 +162,11 @@ findInBuffer:
     push rcx
     push rsi
     push rdi
+    push rdi
     lea rdi, curDirCopy
     mov ecx, 32/8
     rep movsq   ;Copy the directory to SDA
+    pop rdi
     ;Now fill in ffBlock. rdi points to ffblock start
     mov al, byte [dirEntry]
     mov byte [rdi + ffBlock.dirOffset], al
@@ -189,6 +193,7 @@ findInBuffer:
 ;Accepts wildcards. Trashes al
     push rcx
     xor ecx, ecx    ;11 chars to compare
+    xchg rsi, rdi
 .ncLp:
     cmp ecx, 11
     je .ncExit
@@ -200,6 +205,7 @@ findInBuffer:
     je .ncLp
 .ncExit:
     pop rcx
+    xchg rsi, rdi
     return
 
 adjustSearchAttr:
@@ -460,6 +466,7 @@ getPath:
 .commonDir:
 ;rsi points to the start of the string we will be appending
     call dosCrit1Enter
+    xchg bx, bx
     call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
 .mainlp:    ;Now we transfer each directory portion
     call copyPathspecCrit  ;Now we search disk and copy the pathspec if found
@@ -504,12 +511,16 @@ prepareDirCrit:
     jmp short .prepDirExitSkip
 .prepLoop:
     lodsb
-    stosb
     test al, al ;If al was null, then we stop
-    jnz .prepLoop
+    jz .prepDirExit
+    stosb
+    jmp short .prepLoop
 .prepDirExit:
+    cmp byte [rdi - 1], "\" ;Was the previous char a pathsep?
+    je .prepDirExitSkipPathsep
     mov al, "\"
     stosb   ;Store the path separator and increment rdi
+.prepDirExitSkipPathsep:
     mov rsi, qword [workingCDS] ;Get the CDS ptr ONLY IF CDS Relative
     mov eax, dword [rsi + cds.dStartCluster]    ;... and start at given cluster
 .prepDirExitSkip:
@@ -691,10 +702,11 @@ copyPathspecCrit:
     mov rbx, qword [currentDTA]
     lea rsi, qword [rbx + ffBlock.asciizName]    ;Get asciiz name ptr
     pop rbx
+    xchg bx, bx
 .cpsPNtfrName:
     lodsb
     test al, al
-    jnz .cpsPNlastchar   ;Keep copying until null found, DONT PRINT IT
+    jz .cpsPNlastchar   ;Keep copying until null found, DONT PRINT IT
     stosb
     jmp short .cpsPNtfrName ;Keep looping
 .cpsPNlastchar:
