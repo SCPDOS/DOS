@@ -798,7 +798,7 @@ checkDeviceName:
     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto the next device
     cmp rdi, -1 ;Is rdi at End of Chain?
     jne .checkName  ;If no, rdi points to char device
-    dec rdi ;Clear ZF before returning
+    dec rdi ;Clear ZF and CF before returning (-1 -> -2)
 .exit:
     pop rdi
     pop rax
@@ -830,4 +830,5 @@ checkDeviceName:
     mov word [rdi + fatDirEntry.wrtTime], ax
     shr eax, 16 ;Eject the time, get the date in eax
     mov word [rdi + fatDirEntry.wrtDate], ax
+    xor eax, eax    ;Clear CF and set ZF
     jmp short .exit
