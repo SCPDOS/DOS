@@ -900,7 +900,7 @@ l1:
     int 41h ;Set tempDTA to current DTA
     mov ah, 4Eh
     lea rdx, tmpName
-    mov cx, byte [tmpAttr] ;Get the search attribute
+    movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
 
 l11:

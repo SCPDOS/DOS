@@ -138,6 +138,8 @@ findInBuffer:
 .searchMainLp:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
+    cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
+    je .exclusiveDir
     cmp al, dirVolumeID
     je .volFile
     cmp ah, al  ;If file attr <= user selected attribs, scan name for match
@@ -160,6 +162,12 @@ findInBuffer:
     jnz .searchMainLp
     stc
     return
+.exclusiveDir:
+;Used when going down a path, dir bit simply need be set
+    test ah, dirDirectory
+    jnz .scanName
+    jmp short .nextEntry
+
 .volFile:
     cmp ah, al  ;Is the file indeed a Volume ID?
     je .scanName       ;If so, scan the name agrees
@@ -212,6 +220,7 @@ adjustSearchAttr:
 ;Converts the byte to a system only if the bit is set
 ;Input: eax = User selected search mask
 ;Output: eax = Modified search mask
+    and eax, 03Fh   ;Clear upper two bits of the search attributes
     test eax, dirVolumeID   ;Is the volume id bit set?
     retz
     mov eax, dirVolumeID
@@ -467,7 +476,12 @@ getPath:
     call searchForPathspecCrit  ;and search the directory
     jc .driveExit    ;Return if the carry flag is set, error code in al
     test al, al
-    jnz .mainlp    ;Return if al is the null char
+    jz .driveExit   ;Return if al is the null char
+    ;Here check if the file is a directory. 
+    ;If it is not, we need to keep searching for a directory.
+    ;   If no directories are found, exit with errNoFil
+    ;If it is, we jump to mainlp
+    jmp short .mainlp
 .driveExit:
     call dosCrit1Exit
     return
@@ -704,9 +718,11 @@ searchForPathspecCrit:
     repne scasb
     je .sfpPnf  ;Path not found if a ? found in the name
     mov al, dirDirectory    ;We want a directory only search.
+    mov byte [fileDirFlag], 0   ;Set to search exclusively for a dir
     jmp short .sfpPNMain
 .sfpPNfile:
     ;Here if we are searching for a file
+    mov byte [fileDirFlag], -1  ;Search for file or dir according to attribs
     movzx eax, byte [searchAttr]    ;Get the search attributes
 .sfpPNMain:
     call adjustSearchAttr   ;Edit the search attributes as needed
