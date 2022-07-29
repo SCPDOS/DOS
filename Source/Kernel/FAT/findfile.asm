@@ -188,7 +188,10 @@ findInBuffer:
     mov ecx, 32/8
     rep movsq   ;Copy the directory to SDA
     pop rdi
-    ;Now fill in ffBlock. rdi points to ffblock start
+    ;Now fill in the rest of the ffBlock IF this is a file.
+    ;rdi points to ffblock start
+    cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
+    je .skipFF  ;If yes, skip filling in the rest of the FF block
     mov eax, dword [dirEntry]
     mov dword [rdi + ffBlock.dirOffset], eax
     mov eax, dword [dirClustPar]
@@ -202,6 +205,7 @@ findInBuffer:
     lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
     lea rsi, curDirCopy
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
+.skipFF:
     clc
     return
 .nameCompare:
@@ -500,8 +504,21 @@ getPath:
     jnc .deviceFound
     call searchForPathspecCrit  ;and search the directory
     jc .checkDev    ;If CF=CY, error exit UNLESS we were searching for \DEV"\"
-    test al, al ;Fallthru if this pathspec was a file
-    jnz .mainlp  ;Else, it was a directory name, keep looping
+    test al, al ;Exit if this pathspec was a file
+    jz .driveExit
+    ;Here I have to take the cluster data from the found directory entry
+    ; and setup the search for the next pathspec portion
+    ;Copy necessary data from the current directory copy
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl eax, 10h    ;Shift it high
+    mov ax, word [curDirCopy + fatDirEntry.fstClusLo]
+    ;eax now has the cluster number of the search
+    mov dword [dirClustA], eax
+    mov dword [dirClustPar], eax
+    xor eax, eax    ;Start searching at the start of this dir
+    mov dword [dirEntry], eax
+    mov word [dirSect], ax
+    jmp short .mainlp  ;Else, it was a found directory name, keep looping
 .driveExit:
     call dosCrit1Exit
     return
