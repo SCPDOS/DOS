@@ -22,7 +22,6 @@ trueName:          ;ah = 60h, get fully qualified name
     lea rdi, buffer1    ;Build the full path here
     call qualifyFileName
     mov byte [rdi], 0   ;Store a terminating zero if necessary
-    xchg bx, bx
     pop rdi
     jc extErrExit
     lea rsi, buffer1
