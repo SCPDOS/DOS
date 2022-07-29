@@ -858,6 +858,9 @@ checkDevPath:
     jne .notOk
     ;So the failed directory was DEV, now we search to see if we are
     ; looking for a device driver
+    ;First append it to rdi 
+    mov eax, "DEV\" 
+    stosd   ;RDI now ready to add a device name to it too
     push rdi
     lea rdi, fcbName
     call asciiToFCB    ;Converts the next section into this field
@@ -868,7 +871,6 @@ checkDevPath:
     jz .notOk   ;Device names cannot be terminated with a \ or /
     xor al, al
     mov byte [fcbName + 11], al ;Store terminator in fcbName field
-.charDevSearch:
     call checkDeviceName
     jnz .notOk
     ;Here the device was determined to be a char device.
@@ -900,8 +902,20 @@ checkDevPath:
     mov qword [rdi + ffBlock.template], rax  ;Replace "DEV        " with devName
 
     lea rsi, curDirCopy
+    push rdi
     lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
+    pop rdi
+    lea rsi, qword [rdi + ffBlock.asciizName]   ;Source the name field
+    pop rdi ;Get rdi pointing back to the internal pathbuffer position
+    push rdi    ;And push it back on the stack
+.copyName:
+    lodsb
+    test al, al
+    jz .nameCopied
+    stosb
+    jmp short .copyName
+.nameCopied:
     pop rdi
     pop rsi
     pop rax
@@ -911,6 +925,15 @@ checkDevPath:
     mov eax, errNoFil
     stc
     return
+.charDevSearch:
+    call checkDeviceName
+    jnz .notOk
+    ;If we entered through here then, we have as a path X:/<devicename>
+    mov rdi, qword [fname1Ptr]
+    add rdi, 2  ;Skip the "X:" portion
+    mov al, "/"
+    stosb   ;Store that and let the ffblock write the filename
+    jmp .buildDeviceFFblock
 checkDeviceName:
 ;Compares the first 8 chars of the FCB field to each device name in the
 ; device driver chain. Creates a dummy FFblock for them.
