@@ -704,9 +704,9 @@ copyPathspecCrit:
 .cpsMainLoop:
     lodsb   ;Get the char in al and advance rsi
     test al, al ;Is it the null char?
-    jz .cpsProcessName  ;If so, terminate
-    call swapPathSeparator  ;And if it is a pathsep, convert it before exiting
-    jz .cpsProcessName
+    jz .cpsProcessName  ;If so, terminate immediately
+    call swapPathSeparator  ;And if it is a pathsep, skip any bunched pathseps
+    jz .cpsCharSkip2 ; and then exit with the final converted pathsep in al
     cmp al, "." ;Filename extension separator
     je .cpsExtension
     cmp ecx, 0100h  ;If ch = 1 and cl = 0, then look for either . or terminator
@@ -741,6 +741,9 @@ copyPathspecCrit:
 .cpsCharSkip:
     call .cpsPtrSkip    ;Now we are skipping any chars that arent terminators
     jmp short .cpsProcessName
+.cpsCharSkip2:
+    call .cpsPtrSkip2
+    jmp short .cpsProcessName
 .cpsWildcard:
     ;cl has the number of chars of ? to store 
     mov al, "?"
@@ -762,9 +765,18 @@ copyPathspecCrit:
     je .cpsBadChar
     test al, al ;Is this null?
     retz
+;If the next char that will be read is a pathsep, inc rsi to it
+;This is to avoid multiple successive pathseps
+.cpsPtrSkip2:
+    cmp byte [rsi], "\"
+    je .cpsPtrSkip 
+    cmp byte [rsi], "/"
+    je .cpsPtrSkip 
+    ;If the current char is the final pathsep, exit
     call swapPathSeparator
     retz
     jmp short .cpsPtrSkip
+
 .cpsBadChar:
     xor al, al  ;Convert the char to a terminator
     return

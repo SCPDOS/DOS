@@ -1137,6 +1137,6 @@ diskInit:
     int 33h
     ret
 tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "/dev/con",0
+tmpName     db "/drv/con",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 
