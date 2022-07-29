@@ -158,6 +158,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     lea rdi, buffer1    ;Build the full path here
     call getFilePath
     pop qword [currentDTA]
+    xchg bx, bx
     jc extErrExit
     lea rsi, dosffblock ;Copy the block to the user's DTA
     mov rdi, qword [currentDTA]

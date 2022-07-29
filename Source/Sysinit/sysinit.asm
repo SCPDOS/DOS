@@ -898,8 +898,11 @@ l1:
     lea rdx, tmpDTA
     mov ah, 1Ah
     int 41h ;Set tempDTA to current DTA
-    mov ah, 4Eh
-    lea rdx, tmpName
+    ;mov ah, 4Eh
+    ;lea rdx, tmpName
+    mov ah, 60h
+    lea rsi, tmpName
+    lea rdi, tmpDTA
     movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
 

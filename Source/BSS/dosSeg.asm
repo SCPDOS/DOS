@@ -142,7 +142,7 @@ sdaMainSwap:
     buffer2     resb 128  ;Space for a second path and file name
     fname1Ptr   resq 1  ;Ptr to first filename argument
     fname2Ptr   resq 1  ;Ptr to second filename argument
-    lastPartOff resw 1  ;Offset of last component in pathname or FFFFh 
+    skipDisk    resb 1  ;Set => Read Disk, Clear => Skip checking on disk
 ;Misc bookkeeping flags and vars
     dosffblock  resb ffBlock_size   ;Internal searching block
     curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed

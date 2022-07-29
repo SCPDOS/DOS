@@ -363,3 +363,11 @@ checkCharOk:
     or al, 1    ;Always clears the ZF
     pop rax
     return
+
+strcpy:
+;Copies a null terminated string from rsi to rdi
+    lodsb
+    stosb
+    test al, al
+    retz
+    jmp short strcpy

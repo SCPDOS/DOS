@@ -141,14 +141,14 @@ findInBuffer:
 ;       rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
 ;        CF=NC => Entry found, directory data copied to SDA
-    mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
-    mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
+    mov al, byte [searchAttr]  ;Get the search attrib
+    call adjustSearchAttr   ;Adjust the search attributes 
 .searchMainLp:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .exclusiveDir
-    cmp al, dirVolumeID
+    cmp ah, dirVolumeID
     je .volFile
     cmp ah, al  ;If file attr <= user selected attribs, scan name for match
     ja .nextEntry
@@ -156,10 +156,8 @@ findInBuffer:
     ;rdi points to the ffBlock to use
 .scanName:
     push rsi
-    push rdi
-    lea rdi, qword [rdi + ffBlock.template] ;Goto name to search for
+    lea rdi, fcbName ;Goto name template to search for
     call .nameCompare
-    pop rdi
     pop rsi
     je .searchEntryFound
 .nextEntry:
@@ -184,6 +182,7 @@ findInBuffer:
 .searchEntryFound:
 ;Here a good entry was found!
     push rdi
+    mov bl, al  ;Save temporarily the search attributes
     lea rdi, curDirCopy
     mov ecx, 32/8
     rep movsq   ;Copy the directory to SDA
@@ -192,6 +191,9 @@ findInBuffer:
     ;rdi points to ffblock start
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .skipFF  ;If yes, skip filling in the rest of the FF block
+    mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
+    mov al, bl  ;Get the search attributes into al
+    call setupFFBlock
     mov eax, dword [dirEntry]
     mov dword [rdi + ffBlock.dirOffset], eax
     mov eax, dword [dirClustPar]
@@ -367,6 +369,17 @@ getDrvLetterFromPath:
     retnz ;If the number is non-zero, then a potentially valid drive number
     mov al, -1  ;Else not a valid drive number
     return
+qualifyFileName:
+;Always trying to build and qualify a full pathname
+;Does getPath without hitting the disk
+    mov al, -1
+    mov byte [fileDirFlag], al  
+    mov byte [spliceFlag], al   ;Set splice for Full path by default
+    mov byte [filspcExist], al  ;We are searching for a file that exists
+    mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
+    inc al  ;make al = 0
+    mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
+    jmp short getPath.epAlt
 getDirPath:
     xor al, al   ;Set to Directory
     jmp short getPath
@@ -396,8 +409,8 @@ getPath:
     mov byte [spliceFlag], al   ;Set splice for Full path by default
     mov byte [filspcExist], al  ;We are searching for a file that exists
     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
-    cbw  ;make ah = -1
-    mov word [lastPartOff], ax  ;Store -1 for the last part of the path
+    mov byte [skipDisk], al  ;Store -1 to NOT skip checking the file on disk
+.epAlt:
     test byte [dosInvoke], -1   ;Was it invoked via server? -1 = Server
     jz .notServer
     ;In this case, the client network program will have correctly
@@ -504,6 +517,8 @@ getPath:
     jnc .deviceFound
     call searchForPathspecCrit  ;and search the directory
     jc .checkDev    ;If CF=CY, error exit UNLESS we were searching for \DEV"\"
+    call addPathspecToBufferCrit
+    jc .driveExit   ;If a bad path (somehow I dont see this happening often)
     test al, al ;Exit if this pathspec was a file
     jz .driveExit
     ;Here I have to take the cluster data from the found directory entry
@@ -530,7 +545,7 @@ getPath:
 ; we are in \DEV dir
     test byte [Int44Fail], -1   ;Make sure we are not returning from a FAIL
     jnz .nodev  ;If any bits set, ignore this check
-    cmp eax, errNoFil   ;Only make this check if the file was not found
+    cmp al, errNoFil   ;Only make this check if the file was not found
     jne .nodev
     ;Here we check to see if DEV"\" was what we were searching for
     push rsi
@@ -700,9 +715,12 @@ copyPathspecCrit:
     ;If we have space in the filename, we check to see if the next char is *
     cmp al, "*" ;Wildcard?
     je .cpsWildcard
+    cmp al, "?" ;Good wildcard?
+    je .store
     call uppercaseChar  ;Uppercase the char if it needs to be...
     call checkCharValid ; and check it is a valid char
     je .cpsInvalidChar  ;If it is not valid, replace with 0 and exit
+.store:
     stosb   ;And store the converted char in al and inc rdi
     dec cl  ;One less char left to tfr
     jmp short .cpsMainLoop
@@ -762,6 +780,9 @@ searchForPathspecCrit:
     ;Find first using SDA ffBlock
     ;If al = 0, we have a file name
     ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF PATHSEP
+    ;Output: CF=CY => Error occured
+    ;        CF=NC => Disk File in fcbName found with selected attributes
+    ;                 FF block somewhat setup
     push rsi    ;Save the current position of the pointer in the user buffer
     push rdi    ;Save current position to store filename in internal buffer
 ;Evaluate whether we are searching for a file for a directory
@@ -781,36 +802,41 @@ searchForPathspecCrit:
     mov byte [fileDirFlag], -1  ;Search for file or dir according to attribs
     movzx eax, byte [searchAttr]    ;Get the search attributes
 .sfpPNMain:
-    call adjustSearchAttr   ;Edit the search attributes as needed
-    call setupFFBlock   ;Sets up the internal ff block, attribs in al
+    cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
+    je .sfpPNNoDisk
     ;Now the internal ff block is setup, conduct search.
     call searchDir
+.sfpPNNoDisk:
     pop rdi ;rdi points to free space in internal filename buffer
     pop rsi
-    jc .sfpSearchError
-;Here if a file was found. First check the FCB pattern to see if it was . or ..
+    return
+.sfpPnf:
+    mov eax, errPnf
+.sfpErrExit:
+    stc ;Set carry
+    jmp short .sfpPNNoDisk
+
+addPathspecToBufferCrit:
+;Input: fcbName = Qualified pathname portion
+;Output: CF=NC -> al = Last char in name (either Null or \) 
+;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
+;rdi is advanced to the NEXT space for the next level of the filename
     cmp byte [fcbName], "."   ;Handle destination pointer for  
-    je .sfpPNDots
+    je .aptbPNDots
     ;Copy filename over to internal buffer
     push rsi    ;Save source pointer position
-    mov rsi, qword [currentDTA]
-    lea rsi, qword [rsi + ffBlock.asciizName]    ;Get asciiz name ptr
-.sfpPNtfrName:
-    lodsb
-    test al, al
-    jz .sfpPNlastchar   ;Keep copying until null found, DONT PRINT IT
-    stosb
-    jmp short .sfpPNtfrName ;Keep looping
-.sfpPNlastchar:
+    lea rsi, fcbName
+    call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
+    dec rdi ;Go back to the copied Null char
     pop rsi ;Get back src ptr which points to first char in next pathspec
     mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
-    test al, al ;If null, return it
-    jz short .sfpPNexit
-    mov al, "\" ;Else, return path
-.sfpPNexit:
+    call swapPathSeparator
+    jz .aptbPNexit
+    xor al, al  ;Set al to 0 else (all other chars are terminators)
+.aptbPNexit:
     stosb   ;Store this final char (either \ or NULL) and return
     return
-.sfpPNDots:
+.aptbPNDots:
 ;For one dot, we leave rdi where it is
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
@@ -818,21 +844,22 @@ searchForPathspecCrit:
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
-.sfpPNDotsLp:
+    cmp byte [rdi], ":" ;IF the char preceeding \ is :, then error out
+    je .aptbPnf
+    cmp byte [rdi], "\" ;Similar net name check
+    je .aptbPnf
+.aptbPNDotsLp:
     dec rdi
     cmp byte [rdi], "\"
-    jne .sfpPNDots  ;Keep looping around until it is a "\"
+    jne .aptbPNDots  ;Keep looping around until it is a "\"
     inc rdi ;Go past that pathsep
     return
-.sfpSearchError:
+.aptbSearchError:
     mov eax, errNoFil
-    jmp short .sfpErrExit
-.sfpPnf:
+    jmp short .aptbErrExit
+.aptbPnf:
     mov eax, errPnf
-    jmp short .sfpErrExit
-.sfpFnf:
-    mov eax, errFnf
-.sfpErrExit:
+.aptbErrExit:
     stc ;Set carry
     return
 
@@ -846,6 +873,8 @@ checkDevPath:
 ;Input: rsi = Pointer to the next path spec
 ;Output: CF=NC => Char device found, directory and ffblocks built
 ;        CF=CY => Char device not found or not searching for dev. Exit.
+    cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
+    rete
     cmp byte [fcbName + 11], 0  ;If the fcbname is a file name, exit
     je .notOk                      
     ;Now check to see if fcbname is the DEV directory (could be real...)
@@ -882,6 +911,7 @@ checkDevPath:
     push rax
     push rsi
     push rdi
+
     mov rdi, qword [currentDTA]
     mov rax, "        "
     mov qword [rdi + ffBlock.template], rax
@@ -901,14 +931,13 @@ checkDevPath:
     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the Device name
     mov qword [rdi + ffBlock.template], rax  ;Replace "DEV        " with devName
 
-    lea rsi, curDirCopy
     push rdi
+    lea rsi, fcbName
     lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
     pop rdi
     lea rsi, qword [rdi + ffBlock.asciizName]   ;Source the name field
     pop rdi ;Get rdi pointing back to the internal pathbuffer position
-    push rdi    ;And push it back on the stack
 .copyName:
     lodsb
     test al, al
@@ -916,7 +945,6 @@ checkDevPath:
     stosb
     jmp short .copyName
 .nameCopied:
-    pop rdi
     pop rsi
     pop rax
     clc
@@ -928,12 +956,18 @@ checkDevPath:
 .charDevSearch:
     call checkDeviceName
     jnz .notOk
-    ;If we entered through here then, we have as a path X:/<devicename>
-    mov rdi, qword [fname1Ptr]
-    add rdi, 2  ;Skip the "X:" portion
-    mov al, "/"
+    cmp byte [fcbName+11], 0    ;If this is NOT null terminated, skip replacing
+    jne .cds2
+    cmp byte [rdi - 2], ":"
+    jne .cds2 ;IF not at root, then skip replacing pathsep
+    dec rdi
+    mov al, "/" ;Replace \ with "/"
     stosb   ;Store that and let the ffblock write the filename
-    jmp .buildDeviceFFblock
+.cds2:
+    cmp byte [skipDisk], 0  ;If NOT in DISK search, we exit now with CF=CY
+    jne .buildDeviceFFblock    ;Now jump if in disk search
+    stc ;Else set CF=CY to pretend not found to write as normal
+    return
 checkDeviceName:
 ;Compares the first 8 chars of the FCB field to each device name in the
 ; device driver chain. Creates a dummy FFblock for them.
@@ -962,6 +996,8 @@ checkDeviceName:
     return
 .deviceFound:
 ;Now build a dummy directory entry for the char device
+    cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
+    je .exit
     mov byte [fcbName+11], 0    ;Override and null terminate the fcbName field
     lea rdi, curDirCopy
     ;Zero the directory copy (32 bytes)

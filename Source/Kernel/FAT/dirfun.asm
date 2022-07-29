@@ -7,6 +7,26 @@ setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
 getCurrentDIR:     ;ah = 47h
 getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name
+    ;Called with a path in rsi and 128 byte buffer in rdi
+    push rdi
+    mov rdx, rsi
+    call checkPathspecOK    ;This preserves rsi
+    pop rdi
+    jnc .pathspecOk ;If CF=NC this path is totally ok
+    jz .pathspecOk  ;If ZF=ZE AND CF=CY then we have path separators, still ok
+.badPath:
+    mov eax, errPnf
+    jmp extErrExit
+.pathspecOk:
+    push rdi    ;Save the destination
+    lea rdi, buffer1    ;Build the full path here
+    call qualifyFileName
+    mov byte [rdi], 0   ;Store a terminating zero if necessary
+    xchg bx, bx
+    pop rdi
+    jc extErrExit
+    lea rsi, buffer1
+    call strcpy
     return
 
 ;-----------------------------------
