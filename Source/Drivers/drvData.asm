@@ -4,7 +4,7 @@
 drivers:
 conHdr:
     dq auxHdr
-    dw 0813h
+    dw 08013h
     dq commonStrat
     dq conDriver
     db "CON     "

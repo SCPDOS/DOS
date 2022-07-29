@@ -926,10 +926,13 @@ adjustDrvHdr:
 ;Input: rsi = Effective address of driver in DOS segment
 ;       rbp = Ptr to the start of the DOS segment
 ;Output: rsi = EA of next header in DOS segment
-    add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
     add qword [rsi + drvHdr.strPtr], rbp
     add qword [rsi + drvHdr.intPtr], rbp
+    cmp qword [rsi + drvHdr.nxtPtr], -1 ;End of chain?
+    je .exit
+    add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
     add rsi, drvHdr_size
+.exit:
     ret
 errorInit:
 ;If a critical error occurs during sysinit, fail through here
@@ -1131,6 +1134,6 @@ diskInit:
     int 33h
     ret
 tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "A:scpbios.sys",0
+tmpName     db "A:scpdos.sys",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 

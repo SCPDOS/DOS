@@ -228,36 +228,6 @@ swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
 .exit:
     return
 
-memCpyCookZ:
-;Copy a null terminated string from one buffer to another whilst processing
-; a char (normalise path separators and capitalise). Store terminating null.
-;Input: rsi = Source buffer
-;       rdi = Destination buffer
-    push rax
-.lp:
-    lodsb
-    call uppercaseChar
-    call swapPathSeparator
-    stosb
-    test al, al
-    jnz .lp
-    pop rax
-    return
-
-memCpyRawZ:
-;Copy a null terminated string from one buffer to another w/o processing. 
-;   Store terminating null.
-;Input: rsi = Source buffer
-;       rdi = Destination buffer
-    push rax
-.lp:
-    lodsb
-    stosb
-    test al, al
-    jnz .lp
-    pop rax
-    return
-
 uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
 ;Convert a lowercase char to uppercase
 ; Leave alone uppercase chars and invalid chars

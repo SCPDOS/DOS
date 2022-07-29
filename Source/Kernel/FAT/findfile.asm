@@ -1,25 +1,39 @@
 ;Generic Find First and Find Next functions here
 
 searchMoreDir:
+;------------------------NOT READY TO BE USED YET------------------------
+;
 ;Called in a level 1 critical section. 
 ;The three directory variables are set up from the ffblock. 
 ; WorkingDPB is setup also (hence, level 1 critical section)
 ;Current DTA is also used to contain the ff block address
 ;All registers can be trashed
+;
+;------------------------------------------------------------------------
     mov rbp, qword [workingDPB]
     ;First setup dirClustA and dirSect vars
     mov rdi, qword [currentDTA]
     mov eax, dword [rdi + ffBlock.parDirClus]   ;Get the directory cluster
-    mov dword [dirClustA], eax  ;... into dir var
+    mov dword [dirClustA], eax  ;... into dir vars
+    mov dword [dirClustPar], eax
     ;Get number of 32 byte entries in a sector
-    movzx ecx, word [rbp + dpb.wBytesPerSector]
-    shr ecx, 5  ;Divide number of bytes per sector by 32
+    mov eax, dword [rdi + ffBlock.dirOffset]    ;Get the 32 byte entry
+    ;Multiply by 32 to get the byte offset into the directory file
+    shl eax, 5  ;eax has byte offset into directory file
+    ;Now get bytes per cluster
+    mov esi, eax    ;Save bytewise file ptr in esi
+    movzx eax, word [rbp + dpb.wBytesPerSector]
+    movzx ecx, byte [rbp + dpb.bSectorsPerClusterShift]
+    shl eax, cl ;Shift to get bytes per cluster in eax
+    mov ecx, eax    ;Move bytes per cluster into ecx
+    mov eax, esi    ;Get bytewise file ptr back in eax
     xor edx, edx
-    mov eax, dword [rdi + ffBlock.dirOffset]
-    div ecx ;Divide 32 byte Cluster offset by # of 32 byte entries in a sector
-    ;eax has sector rel cluster value, edx has 32 byte entry rel sector value
-    mov word [dirSect], ax
-    mov byte [dirEntry], dl
+    div ecx ;file ptr / bytes per cluster 
+    ;eax now has which cluster rel file (need to walk FAT that many times)
+    ;edx has offset into that cluster (needs to be divded by bytesPerSector)
+
+
+    
     mov eax, dword [dirClustA]
     test eax, eax
     jnz .clusters
@@ -40,7 +54,7 @@ searchMoreDir:
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc searchDir.hardError
     call searchDir.setupBuffer  ;rbx has the buffer ptr for this dir sector
-    movzx eax, byte [dirEntry]
+    mov eax, dword [dirEntry]
     sub ecx, eax    ;Subtract the offset to get the number of entries left
     shl eax, 5  ;Multiply by 32 to turn into bytes to add to rsi
     add rsi, rax    ;rsi points to current entry in the sector.
@@ -73,9 +87,6 @@ searchDir:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
     ;Else, we now have to get the next sector of the cluster or next cluster
     ;IF however, the next cluster is -1, then we return fail
-    push qword [currClustF] ;Push currClustF and D together
-    push qword [currSectC]
-    push qword [currSectD]
     mov eax, dword [dirClustA]  ;Get disk relative cluster
     mov dword [currClustD], eax
     mov ax, word [dirSect]
@@ -84,9 +95,6 @@ searchDir:
     mov qword [currSectD], rax  
     mov dword [currClustF], 0 ;Use as flag to tell us if cluster has changed
     call getNextSectorOfFile
-    pop qword [currSectD]
-    pop qword [currSectC]
-    pop qword [currClustF] ;Push currClustF and D together
     jc .hardError
     cmp rax, -1
     je .fnfError    ;We are at the end of the directory and didnt find the file
@@ -95,7 +103,7 @@ searchDir:
     cmp eax, dword [currClustD] ;Did it change?
     je .sectorLoop  ;If not, we advanced sectors only
     mov word [dirSect], 0   ;If we did, reset this counter
-    jmp .sectorLoop 
+    jmp short .sectorLoop 
 
 .oldRoot:
 ;Different search for FAT 12/16 root directories. We assume we have 
@@ -157,7 +165,7 @@ findInBuffer:
 .nextEntry:
 ;Go to next entry
     add rsi, fatDirEntry_size    ;Goto next entry
-    inc byte [dirEntry] ;And denote that in variable
+    inc dword [dirEntry] ;And denote that in variable
     dec ecx
     jnz .searchMainLp
     stc
@@ -181,9 +189,9 @@ findInBuffer:
     rep movsq   ;Copy the directory to SDA
     pop rdi
     ;Now fill in ffBlock. rdi points to ffblock start
-    mov al, byte [dirEntry]
-    mov byte [rdi + ffBlock.dirOffset], al
-    mov eax, dword [dirClustA]
+    mov eax, dword [dirEntry]
+    mov dword [rdi + ffBlock.dirOffset], eax
+    mov eax, dword [dirClustPar]
     mov dword [rdi + ffBlock.parDirClus], eax
     mov al, byte [curDirCopy + fatDirEntry.attribute]
     mov byte [rdi + ffBlock.attribFnd], al
@@ -226,13 +234,14 @@ adjustSearchAttr:
     mov eax, dirVolumeID
     return
 
-asciizToFCB:
+asciiToFCB:
 ;Converts a filename in the form FILENAME.EXT,0 to FILENAMEEXT
 ;Will uppercase any lowercase chars as this could be used with user buffers.
 ;Names such as SYS.COM get converted to "SYS     COM"
 ;Name is space padded.
-;Input: rsi = ASCIIZ string buffer
+;Input: rsi = ASCII string buffer
 ;       rdi = FCB name buffer
+;Output: al = Char that terminated the source string 
     push rbx    
     push rdi
     mov ecx, 11
@@ -245,6 +254,9 @@ asciizToFCB:
     call uppercaseChar  ;Just in ANY case, we will uppercase the cahar
     test al, al
     jz .exit
+    ;Test if the char is valid
+    call checkCharValid ;ZF=ZE => Invalid char
+    jz .exit    ;If the char invalid, consider it a terminator
     cmp al, " " ;If space or a period, go to extension field. If null, exit
     je .extSpace
     cmp al, "."
@@ -268,6 +280,8 @@ asciizToFCB:
     je .exit
     stosb
     jmp short .processExt
+.exitBadChar:
+    xor al, al  ;Return a null terminator
 .exit:
     pop rbx
     return
@@ -289,7 +303,7 @@ FCBToAsciiz:
 .ext:
     cmp word [rsi], "  "    ;Are the first two chars a space?
     jne .validExt
-    cmp word [rsi + 2], " " ;Is the final char a space?
+    cmp byte [rsi + 2], " " ;Is the final char a space?
     je .exit
 .validExt:
     mov al, "." ;We have a valid extension, store a period
@@ -480,8 +494,12 @@ getPath:
     jc .badDriveExit
 .mainlp:    ;Now we transfer each directory portion
     call copyPathspecCrit  ;Now setup the filename in the FCB name field
+    push rax    ;Save the fact that al = 0 or "\"
+    call checkDevPath.charDevSearch ;Catch if FCB name = Char device    
+    pop rax
+    jnc .deviceFound
     call searchForPathspecCrit  ;and search the directory
-    jc .driveExit    ;Return if the carry flag is set, error code in al
+    jc .checkDev    ;If CF=CY, error exit UNLESS we were searching for \DEV"\"
     test al, al ;Fallthru if this pathspec was a file
     jnz .mainlp  ;Else, it was a directory name, keep looping
 .driveExit:
@@ -490,8 +508,26 @@ getPath:
 .badDriveExit:
     mov eax, errNoFil ;No file for that spec found
     jmp short .driveExit
-
-
+.checkDev:
+;If the return code is errNoFil AND Int44Fail = 0, then we check to see if 
+; we are in \DEV dir
+    test byte [Int44Fail], -1   ;Make sure we are not returning from a FAIL
+    jnz .nodev  ;If any bits set, ignore this check
+    cmp eax, errNoFil   ;Only make this check if the file was not found
+    jne .nodev
+    ;Here we check to see if DEV"\" was what we were searching for
+    push rsi
+    push rdi
+    call checkDevPath
+    pop rdi
+    pop rsi
+    jc .driveExit   ;IF CF=CY, exit bad, with error code in eax
+.deviceFound:
+    xor eax, eax    ;Set al to 0 as expected on ok!
+    jmp short .driveExit     ;If CF=CY, exit Char File found
+.nodev:
+    stc
+    jmp short .driveExit
 prepareDirCrit:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst/join drive. Else only if 
@@ -577,7 +613,7 @@ prepareDirCrit:
     push rcx
     xor ecx, ecx
     mov word [dirSect], cx  ;Always start searching at sector 0 of dir cluster
-    mov byte [dirEntry], cl ;Always start at entry 0 of the sector in cluster
+    mov dword [dirEntry], ecx ;Always start at entry 0 of the sector in cluster
     call getFATtype ;Get type of fat
     cmp ecx, 2  ;2 = FAT32
     jne .psdsvExit      ;FAT 12/16 jump and store 0 if at root
@@ -587,6 +623,7 @@ prepareDirCrit:
     mov eax, dword [rbp + dpb.dFirstUnitOfRootDir]  ;Else get cluster number
 .psdsvExit:
     mov dword [dirClustA], eax  ;Store directory cluster (or 0 if \ on FAT12/16)
+    mov dword [dirClustPar], eax    ;Store parent cluster number
     pop rcx
     return 
 
@@ -790,18 +827,73 @@ checkDevPath:
 ; If it is not, proceed with the request fail.
 ;
 ;Input: rsi = Pointer to the next path spec
+;Output: CF=NC => Char device found, directory and ffblocks built
+;        CF=CY => Char device not found or not searching for dev. Exit.
     cmp byte [fcbName + 11], 0  ;If the fcbname is a file name, exit
-    rete                        
+    je .notOk                      
     ;Now check to see if fcbname is the DEV directory (could be real...)
     push rax
     mov rax, "DEV     "
     cmp qword [fcbName], rax    ;x64 cant handle cmp r\m64, imm64
     pop rax
-    jne checkDeviceName
+    jne .notOk
     cmp dword [fcbName + 8], "   \"
-    jne checkDeviceName
+    jne .notOk
     ;So the failed directory was DEV, now we search to see if we are
     ; looking for a device driver
+    push rdi
+    lea rdi, fcbName
+    call asciiToFCB    ;Converts the next section into this field
+    ;Returns in al the terminating char of the source string
+    pop rdi
+    ;If al is a pathsep, fail
+    call swapPathSeparator
+    jz .notOk   ;Device names cannot be terminated with a \ or /
+    xor al, al
+    mov byte [fcbName + 11], al ;Store terminator in fcbName field
+.charDevSearch:
+    call checkDeviceName
+    jnz .notOk
+    ;Here the device was determined to be a char device.
+    ;A dummy directory entry was built for it.
+    ;Now copy the dummy dir into the ffblock and return all OK!
+    ;Note to self, If a FFblock is found with found attributes = 40h then...
+    ; Do not Find Next!
+.buildDeviceFFblock:
+    push rax
+    push rsi
+    push rdi
+    mov rdi, qword [currentDTA]
+    mov rax, "        "
+    mov qword [rdi + ffBlock.template], rax
+    mov dword [rdi + ffBlock.template + filename.fExt], eax
+    xor eax, eax
+    dec eax
+    mov dword [rdi + ffBlock.parDirClus], eax   ;Set parent cluster to -1
+    movzx eax, byte [searchAttr]
+    and eax, 03Fh   ;Clear upper two bits of the search attributes
+    mov byte [rdi + ffBlock.attrib], al    ;Place user attribs here
+    mov al, byte [curDirCopy + fatDirEntry.attribute]
+    mov byte [rdi + ffBlock.attribFnd], al
+    mov eax, dword [curDirCopy + fatDirEntry.wrtTime] ;Get time/date together
+    mov dword [rdi + ffBlock.fileTime], eax
+    mov eax, dword [curDirCopy + fatDirEntry.fileSize]
+    mov dword [rdi + ffBlock.fileSize], eax
+    mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the Device name
+    mov qword [rdi + ffBlock.template], rax  ;Replace "DEV        " with devName
+
+    lea rsi, curDirCopy
+    lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
+    call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
+    pop rdi
+    pop rsi
+    pop rax
+    clc
+    return
+.notOk:
+    mov eax, errNoFil
+    stc
+    return
 checkDeviceName:
 ;Compares the first 8 chars of the FCB field to each device name in the
 ; device driver chain. Creates a dummy FFblock for them.
@@ -830,6 +922,7 @@ checkDeviceName:
     return
 .deviceFound:
 ;Now build a dummy directory entry for the char device
+    mov byte [fcbName+11], 0    ;Override and null terminate the fcbName field
     lea rdi, curDirCopy
     ;Zero the directory copy (32 bytes)
     push rax
@@ -837,11 +930,10 @@ checkDeviceName:
     push rdi
     xor eax, eax    ;Zero rax
     mov ecx, 4
-    rep movsq   ;Store 4 qwords of 0 to fill directory entry with zeros
+    rep stosq   ;Store 4 qwords of 0 to fill directory entry with zeros
     pop rdi
     pop rcx
     pop rax
-
     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
     mov eax, "    "    ;Four spaces, overwrite the attribute field
     mov dword [rdi + fatDirEntry.name + filename.fExt], eax

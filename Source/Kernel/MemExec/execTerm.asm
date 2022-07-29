@@ -220,7 +220,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rbp, qword [oldRSP] ;Get pointer to parent stack register frame in rbp
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
 ;Step 10
-    mov ah, 82h
+    mov ah, 82h ;Cancel all critical sections 0-7
     int 4ah
     return
 

@@ -197,9 +197,10 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     tfrLen      resd 1  ;Number of bytes to transfer
     tfrCntr     resd 1  ;Number of bytes left to transfer
 ;Directory stuff
+    dirClustPar resd 1  ;Absolute disk cluster of the start of the parent dir
     dirClustA   resd 1  ;Absolute cluster number of current directory
     dirSect     resw 1  ;Sector of current directory cluster
-    dirEntry    resb 1  ;32 byte offset in dir sect for file being searched for
+    dirEntry    resd 1  ;32 byte offset in dir for file being searched for
 ;Error DPB 
     tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
     mediaByte   resb 1  ;Calls 1Bh and 1Ch return ptr to here
