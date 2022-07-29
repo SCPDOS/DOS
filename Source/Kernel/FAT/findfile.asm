@@ -445,7 +445,7 @@ getPath:
     return
 .driveOk:
     test al, al
-    jz .curRelPath ;If al = 0, the path is definitely relative (rel curr. drv.)
+    jz .curPath ;If al = 0, the path is definitely relative to curr. drv.
     ;al now has 1-based drive number, rsi has been incremented by 2.
     cmp byte [rsi], 0   ;Is this pathspec "X",":",0?
     je .pnfErr  ;Throw error if it is a malformed path
@@ -456,14 +456,21 @@ getPath:
     ;If al is a path separator, then this path is absolute.
     pop rax ;Get back the drive letter
     jnz .relMain ;If relative, rsi points to first char in path
+.absoPath:
     ;Here the path is absolute. Now point rsi to first char past "\"
     inc rsi
     jmp short .commonDir
-.curRelPath:
+.curPath:
 ;This is only jumped to if we are relative the current drive
 ;rsi points to first char in path
+;If this char is \ or /, then it is an absolute path.
     mov al, byte [currentDrv]   ;Get current drive (0-based number)
     inc al  ;Turn it into a 1 based drive number
+    push rax    ;Save the current drive number
+    mov al, byte [rsi]  ;Get the first char w/o moving rsi ...
+    call swapPathSeparator ;... to ensure rsi points at first char of string
+    pop rax ;Get back the current drive number
+    jz .absoPath    ;If first char was pathsep, it is abs. path for curr. drv
 .relMain:
     mov byte [spliceFlag], 0    ;Set Splice flag to indicate Relative to CDS
 .commonDir:
@@ -776,10 +783,25 @@ searchForPathspecCrit:
     return
 
 checkDevPath:
-;Checks if the current fcbname field is "DEV        \" (for the DEV folder)
-; If it is, it looks ahead to see if the next portion (if one exists)
-; is a char device name. If it is, it intercepts the find call
-; and returns with a dummy FFblock for the char device.
+;Called only if the file/directory was not found on disk.
+;Checks if the current fcbname field is "DEV        \" (for the DEV 
+; pseudo-directory). If it is, then we parse the next filename in to fcbName
+; and check to see if it is a char device. If it is, build an ffblock.
+; If it is not, proceed with the request fail.
+;
+;Input: rsi = Pointer to the next path spec
+    cmp byte [fcbName + 11], 0  ;If the fcbname is a file name, exit
+    rete                        
+    ;Now check to see if fcbname is the DEV directory (could be real...)
+    push rax
+    mov rax, "DEV     "
+    cmp qword [fcbName], rax    ;x64 cant handle cmp r\m64, imm64
+    pop rax
+    jne checkDeviceName
+    cmp dword [fcbName + 8], "   \"
+    jne checkDeviceName
+    ;So the failed directory was DEV, now we search to see if we are
+    ; looking for a device driver
 checkDeviceName:
 ;Compares the first 8 chars of the FCB field to each device name in the
 ; device driver chain. Creates a dummy FFblock for them.
@@ -790,6 +812,7 @@ checkDeviceName:
     push rax
     push rdi
     mov rax, qword [fcbName]    ;Get the 8 char name (space padded)
+.altEp:
     lea rdi, nulDevHdr    ;Get a ptr to the start driver header
 .checkName:
     test qword [rdi + drvHdr.attrib], devDrvChar  ;Is the driver for disk drive?
@@ -820,7 +843,7 @@ checkDeviceName:
     pop rax
 
     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
-    mov ax, "    "    ;Four spaces, overwrite the attribute field
+    mov eax, "    "    ;Four spaces, overwrite the attribute field
     mov dword [rdi + fatDirEntry.name + filename.fExt], eax
     mov byte [rdi + fatDirEntry.attribute], 40h ;Mimic DOS, set attr to 40h
     ;Get date and time and set the write time in the directory entry
