@@ -90,7 +90,7 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     push rbp
 ;If the buffer is freed, skip flushing to avoid issues
     cmp byte [rdi + bufferHdr.driveNumber], -1  ;-1 means free buffer
-    je .fbFreeExit  ;If it is freem exit
+    je .fbFreeExit  ;If it is free exit
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
     jz .fbFreeExit  ;Skip write to disk if data not modified
 .fbRequest0:
@@ -181,19 +181,23 @@ freeBuffersForDPB:
     pop rbx
     return
 
-setBufferReclaimable:
-;Sets the current buffer in the buffer variable as referenced and done
+setBufferReferenced:
+;Sets the current buffer in the buffer variable as referenced.
+; AKA DOS is done with it.
 ;Saves flag state too 
     push rbp
+    pushfq
     mov rbp, qword [currBuff]
     or byte [rbp + bufferHdr.bufferFlags], refBuffer
-    pop rbp
-    return
-clearBufferReclaimable:
-;Clears the reclaimable bit, if the buffer becomes referenced again
+    jmp short clearBufferReferenced.exit
+clearBufferReferenced:
+;Clears the referenced bit, if the buffer becomes referenced again
+; Called if DOS is not quite done with this buffer.
     push rbp
     mov rbp, qword [currBuff]
     and byte [rbp + bufferHdr.bufferFlags], ~refBuffer
+.exit:
+    popfq
     pop rbp
     return
 

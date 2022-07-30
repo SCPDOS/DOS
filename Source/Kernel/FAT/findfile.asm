@@ -103,6 +103,7 @@ searchDir:
     cmp eax, dword [currClustD] ;Did it change?
     je .sectorLoop  ;If not, we advanced sectors only
     mov word [dirSect], 0   ;If we did, reset this counter
+    call setBufferReferenced    ;We are done with the current buffer
     jmp short .sectorLoop 
 
 .oldRoot:
@@ -121,6 +122,7 @@ searchDir:
     inc word [dirSect]  ;Goto next sector in directory
     mov eax, dword [rbp + dpb.wNumberRootDirSectors]
     cmp word [dirSect], ax
+    call setBufferReferenced    ;We are done with this buffer
     jb .oldSectorLp    ;If equal, no more sectors to search. Game over!
 .fnfError:
     mov al, errNoFil

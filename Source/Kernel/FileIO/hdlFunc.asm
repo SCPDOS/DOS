@@ -514,7 +514,10 @@ readDiskFile:
     add rax, rbx    ;And finally get the absolute cluster on the disk
     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
 ;Main
+    jmp short .mainSkipBufferSet
 .mainRead:
+    call setBufferReferenced
+.mainSkipBufferSet:
     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
     jc .badExit
     mov rsi, rbx    ;Move the buffer pointer into rsi

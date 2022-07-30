@@ -108,7 +108,10 @@ findFreeClusterData:
 ;FAT32 proceeds here
     shr ebx, 2  ;Divide by 4 to get number of FAT entries in a sector buffer
     mov word [entries], bx
+    jmp short .fat32SkipBufferClear
 .fat32Search:
+    call setBufferReferenced    ;We are done with this buffer
+.fat32SkipBufferClear:
     mov rax, qword [tempSect]
     call getBufForFat ;Buffer Header in ebx
     jc .exitFail
@@ -143,7 +146,10 @@ findFreeClusterData:
 .fat16:
     shr ebx, 1  ;Divide by 2 to get number of FAT entries in a sector buffer
     mov word [entries], bx
+    jmp short .fat16SkipBufferClear
 .fat16Search:
+    call setBufferReferenced    ;We are done with this buffer
+.fat16SkipBufferClear:
     mov rax, qword [tempSect]
     call getBufForFat ;Buffer Header in ebx
     jc .exitFail
@@ -177,6 +183,7 @@ findFreeClusterData:
     ;The value is rounded down so we can read the next sector for the 
     ;last entry manually (thus buffering it if it not already buffered)
     mov rax, qword [tempSect]
+    ;This is the first buffer being requested in this proc
     call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
@@ -205,11 +212,14 @@ findFreeClusterData:
     jmp short .fat12Search
 .lastFat12entry:
 ;We arrive here when we are at the last entry in the sector
+    movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
+    mov ecx, eax    ;Move this value into ecx to preserve it temporarily
     inc qword [tempSect]    ;Get next Sector
     mov rax, qword [tempSect]   ;Get this sector in rax
+    call setBufferReferenced    ;We are done with the old buffer now
     call getBufForFat ;Buffer Header in ebx
     jc .exitFail
-    movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
+    mov eax, ecx    ;Get the last byte from the previous buffer back into al
     lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
     mov ah, byte [rcx]  ;Get first byte in new sector
     shr eax, 4  ;Clear out bottom nybble
@@ -217,6 +227,7 @@ findFreeClusterData:
     call .fat12EntryFound   ;Found a free cluster!
 .noXcluster:
     ;Empty cluster not found in sector
+    xchg bx, bx
     dec edx ;Decrement sector count
     jz .exit    ;Once all sectors have been processed, exit
     mov rdi, rcx    ;Set rdi to point at start of next sector
@@ -317,7 +328,7 @@ walkFAT:
     ;and FAT type in ecx
     movzx ebx, word [rbp + dpb.wFAToffset]
     add eax, ebx    ;Add the FAT offset to the sector
-    call getBufForFat ;Buffer Header in ebx
+    call getBufForFat ;Buffer Header in ebx, first buffer being requested
     jc .exitFail
     ;Check if FAT 12, 16, 32
     test ecx, ecx
@@ -341,6 +352,7 @@ walkFAT:
 .exit:
     clc
 .exitFail:
+    call setBufferReferenced    ;We are done with the disk buffer
     pop rbp
     pop rdi
     pop rdx
@@ -362,6 +374,7 @@ walkFAT:
     dec ebx ;If edx = BytesPerSector - 1 then it crosses, else no
     jnz .gotoNextClusterFat12NoCross
     ;Boundary cross, build entry properly
+    call setBufferReferenced  ;We are done with the current buffer
     movzx ebx, byte [rdi + bufferHdr.dataarea + rdx] ;Use ebx as it is free
     inc eax ;Get next FAT sector
     push rbx

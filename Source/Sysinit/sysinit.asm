@@ -895,6 +895,9 @@ debugFinal:
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
+    mov ah, 36h
+    mov dl, 0
+    int 41h
     lea rdx, tmpDTA
     mov ah, 1Ah
     int 41h ;Set tempDTA to current DTA

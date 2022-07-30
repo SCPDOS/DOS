@@ -81,7 +81,7 @@ updateDirectoryEntryForFile:
     mov word [rbp + fatDirEntry.lastAccDat], ax    ;And update final field
     ;Directory sector updated and marked to be flushed to disk!
     ;Now mark that the file has sectors not yet flushed to disk
-
+    call setBufferReferenced
     pushfq  ;Save the state for if we come here from a fail
     or word [rdi + sft.wDeviceInfo], blokFileToFlush
     popfq
