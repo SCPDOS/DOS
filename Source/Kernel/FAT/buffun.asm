@@ -141,7 +141,6 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     stc ;Set error flag to indicate fail
     jmp .fbExitFail
 
-
 testDirtyBufferForDrive:    ;External linkage
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
 ;Input: al = Drive number (0 based)
@@ -182,6 +181,23 @@ freeBuffersForDPB:
     pop rbx
     return
 
+setBufferReclaimable:
+;Sets the current buffer in the buffer variable as referenced and done
+;Saves flag state too 
+    push rbp
+    mov rbp, qword [currBuff]
+    or byte [rbp + bufferHdr.bufferFlags], refBuffer
+    pop rbp
+    return
+clearBufferReclaimable:
+;Clears the reclaimable bit, if the buffer becomes referenced again
+    push rbp
+    mov rbp, qword [currBuff]
+    and byte [rbp + bufferHdr.bufferFlags], ~refBuffer
+    pop rbp
+    return
+
+
 getBuffer: ;Internal Linkage ONLY
 ;
 ;WHENEVER A DATA BUFFER IS NEEDED FOR SECTOR DATA, THIS IS THE FUNCTION
@@ -206,8 +222,9 @@ getBuffer: ;Internal Linkage ONLY
     push rdi
     mov dl, byte [rsi + dpb.bDriveNumber]
     call findSectorInBuffer ;rax = sector to read, dl = drive number
-    cmp rdi, -1
+    cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
+    mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
 .rbExit:
     clc
 .rbExitNoFlag:

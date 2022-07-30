@@ -260,27 +260,6 @@ findFreeClusterData:
     pop rax
     return
 
-getDataSector:
-;This function will request the sector of data in [currSectD].
-;This call can only be used for DATA sectors.
-;Preserves all registers
-;On ret: CF=NC => currBuff = Buffer with data
-;        CF=CY => Critical error occurred and was FAILed
-    push rax
-    push rbx
-    push rcx
-    mov rax, qword [currSectD]  ;Get the disk sector number to read
-    lea rcx, getBufForDOS
-    lea rbx, getBufForData
-    test rax, rax
-    cmovz rbx, rcx  ;If sector 0, change to DOS buffer
-.getSectorRead:
-    call rbx  ;Get ptr to buffer header in [currBuff] (and rbx but ignore)
-    pop rcx
-    pop rbx
-    pop rax
-    return
-
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
 ;If the next sector to be read lives in the next cluster, it will update
@@ -371,25 +350,24 @@ walkFAT:
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors
 ;eax has the sector of the FAT, offset into the sector is in edx
-
-    push rdi    ;Save the cluster number on the stack
+    mov ecx, edi    ;Save the current cluster number in ecx
     mov rdi, rbx    ;Save previous buffer header in rdi
-    inc eax ;Get next sector
-    call getBufForFat ;Buffer Header in ebx
-    pop rcx ;Return the cluster number in rcx
-    jc .exitFail
-    ;rdi has first buffer header, rbx has second buffer header
-    ;rdx has offset into first header for entry
+    ;rdi has buffer header
+    ;rdx has offset into buffer for entry
     test ecx, 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
-    movzx eax, word [rbp + dpb.wBytesPerSector]
-    sub eax, edx
-    dec eax ;If edx = BytesPerSector - 1 then it crosses, else no
+    movzx ebx, word [rbp + dpb.wBytesPerSector]
+    sub ebx, edx
+    dec ebx ;If edx = BytesPerSector - 1 then it crosses, else no
     jnz .gotoNextClusterFat12NoCross
     ;Boundary cross, build entry properly
-    xor eax, eax
-    mov al, byte [rdi + bufferHdr.dataarea + rdx]
+    movzx ebx, byte [rdi + bufferHdr.dataarea + rdx] ;Use ebx as it is free
+    inc eax ;Get next FAT sector
+    push rbx
+    call getBufForFat ;Getuffer Header in ebx
+    jc .exitFail
+    pop rax ;Get bl in al, the last entry from the previous buffer
     mov ah, byte [rbx + bufferHdr.dataarea]  ;Read first entry of next sector
     shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
     jmp short .checkIfLastFAT12Cluster

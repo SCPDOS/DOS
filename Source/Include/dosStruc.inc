@@ -217,15 +217,10 @@ dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
 fatBuffer   equ 2h  ;FAT sector in buffer
 dirBuffer   equ 4h  ;Directory sector in buffer
 dataBuffer  equ 8h  ;File Data sector in buffer
-refBuffer   equ 20h ;Data in buffer referenced by an application
+refBuffer   equ 20h ;Data in buffer has been referenced by an application
 dirtyBuffer equ 40h ;Data in buffer modified by an application
-;Note! A buffer is marked as referenced IF it has been accessed via 
-; a Read or Write call. 
-; When a buffer is used temporarily for internal purposes (as when DOS
-; gives a driver a buffer) and then DOS reads data from that buffer (such as
-; a BUILD BPB situation), the data is left as unreferenced as the use for that 
-; buffer goes away before the end of the DOS call, and there is no danger of.
-; of misbehaviour.
+;Note! A buffer is marked as referenced only when the application 
+; is done with that buffer OR if a hard error has occured (both read and write)
 ;------------------------------------------------------------------------;
 ; Memory control block for each memory arena
 ;------------------------------------------------------------------------;
