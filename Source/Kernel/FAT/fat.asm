@@ -172,6 +172,7 @@ findFreeClusterData:
     add edi, 2  ;Put rdi back to the next entry
     jmp short .fat16Continue
 .fat12:
+    xor r8, r8
     mov eax, ebx    ;Get sectorsize in ax
     shl eax, 1  ;Multiply by 2
     mov ecx, 3  ;1.5 bytes per FAT entry *2
@@ -187,6 +188,7 @@ findFreeClusterData:
     call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     lea rdi, qword [rbx + bufferHdr.dataarea]
+    xchg bx, bx
 .fat12SearchNewSector:
     movzx ecx, word [rbp + dpb.wBytesPerSector]   ;This is bytes per sector 
     ;When this value is one, we have the cross sector issue
@@ -212,6 +214,10 @@ findFreeClusterData:
     jmp short .fat12Search
 .lastFat12entry:
 ;We arrive here when we are at the last entry in the sector
+;Skip the last byte if we are in the last FAT sector
+    xchg bx, bx
+    cmp dl, 1
+    je .noXcluster
     movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
     mov ecx, eax    ;Move this value into ecx to preserve it temporarily
     inc qword [tempSect]    ;Get next Sector
@@ -220,20 +226,20 @@ findFreeClusterData:
     call getBufForFat ;Buffer Header in ebx
     jc .exitFail
     mov eax, ecx    ;Get the last byte from the previous buffer back into al
-    lea rcx, qword [rbx + bufferHdr.dataarea]   ;Go to data area (preserve rdi)
-    mov ah, byte [rcx]  ;Get first byte in new sector
+    lea rdi, qword [rbx + bufferHdr.dataarea]   ;Go to data area
+    mov ah, byte [rdi]  ;Get first byte in new sector
     shr eax, 4  ;Clear out bottom nybble
     jnz .noXcluster
     call .fat12EntryFound   ;Found a free cluster!
 .noXcluster:
     ;Empty cluster not found in sector
-    xchg bx, bx
+
     dec edx ;Decrement sector count
     jz .exit    ;Once all sectors have been processed, exit
-    mov rdi, rcx    ;Set rdi to point at start of next sector
     jmp short .fat12SearchNewSector ;Reload the number of entries and search
 .fat12EntryFound:
     inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
+    inc r8
     cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
     retne
     call .computeEntry  ;Compute the first cluster if this is -1

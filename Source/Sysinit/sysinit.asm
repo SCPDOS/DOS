@@ -903,10 +903,11 @@ l1:
     int 41h ;Set tempDTA to current DTA
     ;mov ah, 4Eh
     ;lea rdx, tmpName
+    ;movzx ecx, byte [tmpAttr] ;Get the search attribute
+    ;int 41h
     mov ah, 60h
     lea rsi, tmpName
     lea rdi, tmpDTA
-    movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
 
 l11:
@@ -1140,6 +1141,6 @@ diskInit:
     int 33h
     ret
 tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "/drv/con",0
+tmpName     db "/dev/con",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 

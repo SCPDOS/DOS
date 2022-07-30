@@ -45,7 +45,6 @@ getDiskData:
     mov byte [errorLocus], eLocDsk
     call dosCrit1Enter  ;Enter class 1 critical section
     call getDiskDPB ;Get disk dpb pointer in rbp for CDS in rdi
-    call dosCrit1Exit
     jc .exit
     call findFreeClusterData    ;Get Free Cluster data in DPB
     jc .exit
@@ -53,10 +52,12 @@ getDiskData:
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
     mov ah, byte [rbp + dpb.bMediaDescriptor]
     mov ebx, dword [rbp + dpb.dClusterCount]
+    dec ebx ;This is a count of clusters + 1 so subtract 1
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Save the value in ecx
     mov edx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Get # free clusters
     clc
 .exit:
+    call dosCrit1Exit
     return
 
 muxGetIntVector:    ;Int 4Fh AX=1202h

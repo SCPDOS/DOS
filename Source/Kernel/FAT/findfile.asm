@@ -120,10 +120,10 @@ searchDir:
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     inc word [dirSect]  ;Goto next sector in directory
-    mov eax, dword [rbp + dpb.wNumberRootDirSectors]
-    cmp word [dirSect], ax
+    mov eax, dword [rbp + dpb.wNumberRootDirEntries]
+    cmp word [dirEntry], ax ;Have we reached the last dir entry?
     call setBufferReferenced    ;We are done with this buffer
-    jb .oldSectorLp    ;If equal, no more sectors to search. Game over!
+    jb .oldSectorLp    ;If equal, no more entries to search. Game over!
 .fnfError:
     mov al, errNoFil
     stc

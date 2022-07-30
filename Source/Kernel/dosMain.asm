@@ -624,15 +624,11 @@ createDPB:         ;generates a DPB from a given BPB
 ;bNumberOfFATs
     mov al, byte [rsi + bpb.numFATs]
     mov byte [rbp + dpb.bNumberOfFATs], al
-;wNumberRootDirSectors
+;wNumberRootDirEntries
+;Gets the number of 32 byte entries in the root directory
+;Only valid for FAT 12/16
     movzx eax, word [rsi + bpb.rootEntCnt] ;Must be 0 on FAT 32
-    shl eax, 5  ;Multiply by 32
-    movzx ecx, word [rsi + bpb.bytsPerSec]
-    dec ecx
-    add eax, ecx
-    xor edx, edx    ;Clear for divide
-    div ecx ;Divide 0:eax by ecx, (e)ax has number of clusters
-    mov word [rbp + dpb.wNumberRootDirSectors], ax  ;0 for FAT32
+    mov word [rbp + dpb.wNumberRootDirEntries], ax  ;0 for FAT32
 ;dFATlength, get the FAT length
     movzx eax, word [rsi + bpb.FATsz16]
     mov ebx, dword [rsi + bpb32.FATsz32]
@@ -660,7 +656,16 @@ createDPB:         ;generates a DPB from a given BPB
     mov eax, edx    ;Store product in eax
     movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
     add eax, edx
-    movzx edx, word [rbp + dpb.wNumberRootDirSectors]
+    ;Multiply by 32 and divide by bytes per sector to get number of sectors
+    movzx edx, word [rbp + dpb.wNumberRootDirEntries]
+    shl edx, 5  ;Bytes in the root directory
+    movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    push rax    ;Save the current accumulated number of sectors on stack
+    mov eax, edx
+    xor edx, edx
+    div ecx
+    mov edx, eax
+    pop rax
     add eax, edx    ;This adds nothing if FAT32
     ;eax = BPB_ResvdSecCnt + (BPB_NumFATs * FATSz) + RootDirSectors
     ;aka eax = Start sector of the data area in volume
@@ -680,11 +685,13 @@ createDPB:         ;generates a DPB from a given BPB
     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
     ja .cd5
     ;Else, we need to find the first sector of the root directory
-    ;Get the start sector of data area in volume 
-    ; and sub the number of sectors in the root directory
-    mov eax, dword [rbp + dpb.dClusterHeapOffset]
-    movzx ebx, word [rbp + dpb.wNumberRootDirSectors]
-    sub eax, ebx    ;eax now has start sector of root dir
+    ;Add the number of reserved sectors to the number of FATs*FATsz
+    movzx eax, word [rbp + dpb.wFAToffset]  ;Get reserved count
+    movzx ecx, byte [rbp + dpb.bNumberOfFATs]
+.cd51:
+    add eax, dword [rbp + dpb.dFATlength]
+    dec ecx
+    jnz .cd51
 .cd5:
     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
 ;Exit epilogue

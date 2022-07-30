@@ -21,7 +21,7 @@ struc dpb        ;Drive Parameter Block
     .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent x
     .wFAToffset              resw 1  ;Number of reserved sectors in partition x
     .bNumberOfFATs           resb 1  ;Number of FATs x
-    .wNumberRootDirSectors   resw 1  ;In sectors, this is 0 for FAT32 formats x
+    .wNumberRootDirEntries   resw 1  ;In 32 byte units, this is 0 for FAT32 x
     .dClusterHeapOffset      resd 1  ;Start sector of data area x
     .dClusterCount           resd 1  ;Total number of clusters in data area x
     .dFATlength              resd 1  ;FAT length, in sectors x
