@@ -560,7 +560,6 @@ getDiskFreeSpace:  ;ah = 36h
 ;cx = bytes per sector
 ;edx = number of available clusters
     call getUserRegs
-    xchg bx, bx
     xor ah, ah  ;Don't need media byte, zero extend
     mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
     mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
