@@ -365,7 +365,7 @@ walkFAT:
     movzx ebx, byte [rdi + bufferHdr.dataarea + rdx] ;Use ebx as it is free
     inc eax ;Get next FAT sector
     push rbx
-    call getBufForFat ;Getuffer Header in ebx
+    call getBufForFat ;Get buffer Header in ebx
     jc .exitFail
     pop rax ;Get bl in al, the last entry from the previous buffer
     mov ah, byte [rbx + bufferHdr.dataarea]  ;Read first entry of next sector
