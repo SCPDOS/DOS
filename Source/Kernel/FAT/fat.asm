@@ -83,9 +83,7 @@ findFreeClusterData:
 ;Works on the workingDPB
 ;If returns with CF=CY => Fail set, return immediately to caller
     push rbx
-    push rcx
     push rdx
-    push rdi
     push rbp
     mov rbp, qword [workingDPB]
     movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
@@ -95,187 +93,35 @@ findFreeClusterData:
     mov dword [rbp + dpb.dNumberOfFreeClusters], edx ;Zero this field
     dec edx
     mov dword [rbp + dpb.dFirstFreeCluster], edx ;Set to -1, unknown (i.e. none)
-    ;Use edx as sector counter
-    mov edx, dword [rbp + dpb.dFATlength]
-;Get Sector Size in bytes in ebx
-    movzx ebx, word [rbp + dpb.wBytesPerSector]
-;Get FAT type
-    call getFATtype ;Gets FAT type (for number of elements in sector)
-    test cl, cl
-    jz .fat12
-    test cl, 1
-    jnz .fat16
-;FAT32 proceeds here
-    shr ebx, 2  ;Divide by 4 to get number of FAT entries in a sector buffer
-    mov word [entries], bx
-    jmp short .fat32SkipBufferClear
-.fat32Search:
-    call setBufferReferenced    ;We are done with this buffer
-.fat32SkipBufferClear:
-    mov rax, qword [tempSect]
-    call getBufForFat ;Buffer Header in ebx
-    jc .exitFail
-    lea rdi, qword [rbx + bufferHdr.dataarea]
-    xor eax, eax
-    movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
-.fat32Continue:
-    repne scasd ;Look for the zero dword 
-    je .fat32Found  ;If found, report cluster number (offset into FAT)
-    dec edx ;Dec number of sectors left to search
-    jz .exit    ;Once we have none left, we exit
-    inc qword [tempSect]    ;Go to the next FAT sector
-    jmp short .fat32Search
-.fat32Found:
+    ;Use WALKFAT
+    ;Starting with cluster number 2, goto to the MAX cluster
+    ;If WALKFAT returns 0 then its a free cluster
+    mov eax, 2  ;Start with cluster 2
+    mov edx, dword [rbp + dpb.dClusterCount]
+.fatLoop:
+    mov ebx, eax    ;Save the current cluster number in ebx
+    call walkFAT
+    jc .exitFail   ;If something goes wrong, just return
+    test eax, eax   ;Is this cluster free?
+    jne .fatProceed
     inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
     cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
-    jne .fat32Continue  ;If so, keep searching sectors for more free clusters
-    sub edi, 4  ;edi is one dword past the entry
-    call .computeEntry  ;Add field to dpb
-    add edi, 4  ;Put rdi now back onto the next FAT entry
-    jmp short .fat32Continue
+    je .fatFirst
+.fatProceed:
+    lea eax, dword [ebx + 1]    ;Add one to ebx and save in eax
+    cmp eax, edx
+    jbe .fatLoop
 .exit:
     mov eax, dword [rbp + dpb.dFirstFreeCluster]  ;Get first free cluster in eax
     clc
 .exitFail:      ;Keep carry flag
     pop rbp
-    pop rdi
     pop rdx
-    pop rcx
     pop rbx
     return
-.fat16:
-    shr ebx, 1  ;Divide by 2 to get number of FAT entries in a sector buffer
-    mov word [entries], bx
-    jmp short .fat16SkipBufferClear
-.fat16Search:
-    call setBufferReferenced    ;We are done with this buffer
-.fat16SkipBufferClear:
-    mov rax, qword [tempSect]
-    call getBufForFat ;Buffer Header in ebx
-    jc .exitFail
-    lea rdi, qword [rbx + bufferHdr.dataarea]
-    xor eax, eax
-    movzx ecx, word [entries]   ;Get entries per FAT sector in ecx
-.fat16Continue:
-    repne scasw ;Look for the zero word 
-    je .fat16Found  ;If found, report cluster number (offset into FAT)
-    dec edx ;Dec number of sectors left to search
-    jz .exit    ;Once we have none left, exit
-    inc qword [tempSect]    ;Go to the next FAT sector
-    jmp short .fat16Search
-.fat16Found:
-    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
-    cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
-    jne .fat16Continue
-    sub edi, 2  ;edi is one word past the entry
-    call .computeEntry
-    add edi, 2  ;Put rdi back to the next entry
-    jmp short .fat16Continue
-.fat12:
-    xor r8, r8
-    mov eax, ebx    ;Get sectorsize in ax
-    shl eax, 1  ;Multiply by 2
-    mov ecx, 3  ;1.5 bytes per FAT entry *2
-    push rdx    ;Preserve number of sectors in FAT counter
-    xor edx, edx
-    div ecx
-    pop rdx
-    mov word [entries], ax ;Get quotient (number of whole entries in sector) 
-    ;The value is rounded down so we can read the next sector for the 
-    ;last entry manually (thus buffering it if it not already buffered)
-    mov rax, qword [tempSect]
-    ;This is the first buffer being requested in this proc
-    call getBufForFat ;Buffer Header in ebx
-    jc .exitFail
-    lea rdi, qword [rbx + bufferHdr.dataarea]
-    xchg bx, bx
-.fat12SearchNewSector:
-    movzx ecx, word [rbp + dpb.wBytesPerSector]   ;This is bytes per sector 
-    ;When this value is one, we have the cross sector issue
-.fat12Search:
-    call .fat12GetEvenCluster
-    jnz .getOddEntry    ;Skip denoting entry if not 0
-    call .fat12EntryFound
-.getOddEntry:
-    inc rdi ;Goto next byte
-    dec ecx ;Dec the byte offset counter
-    jz .noXcluster  ;If ecx is now zero, exit
-    cmp ecx, 1
-    je .lastFat12entry
-    call .fat12GetOddCluster
-    jnz .getNextSector
-    call .fat12EntryFound
-.getNextSector:
-    inc rdi ;Goto next entry
-    inc rdi
-    dec ecx ;Dec the byte offset counter twice
-    dec ecx
-    jz .noXcluster  ;If ecx is now zero, exit
-    jmp short .fat12Search
-.lastFat12entry:
-;We arrive here when we are at the last entry in the sector
-;Skip the last byte if we are in the last FAT sector
-    xchg bx, bx
-    cmp dl, 1
-    je .noXcluster
-    movzx eax, byte [rdi]  ;Get last byte in old buffer (rdi still points there)
-    mov ecx, eax    ;Move this value into ecx to preserve it temporarily
-    inc qword [tempSect]    ;Get next Sector
-    mov rax, qword [tempSect]   ;Get this sector in rax
-    call setBufferReferenced    ;We are done with the old buffer now
-    call getBufForFat ;Buffer Header in ebx
-    jc .exitFail
-    mov eax, ecx    ;Get the last byte from the previous buffer back into al
-    lea rdi, qword [rbx + bufferHdr.dataarea]   ;Go to data area
-    mov ah, byte [rdi]  ;Get first byte in new sector
-    shr eax, 4  ;Clear out bottom nybble
-    jnz .noXcluster
-    call .fat12EntryFound   ;Found a free cluster!
-.noXcluster:
-    ;Empty cluster not found in sector
-
-    dec edx ;Decrement sector count
-    jz .exit    ;Once all sectors have been processed, exit
-    jmp short .fat12SearchNewSector ;Reload the number of entries and search
-.fat12EntryFound:
-    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
-    inc r8
-    cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
-    retne
-    call .computeEntry  ;Compute the first cluster if this is -1
-    return
-.fat12GetEvenCluster:
-    movzx eax, word [rdi]   ;Get first word (EVEN ENTRY)
-    and eax, 0FFFh   ;Clear upper nybble
-    return
-.fat12GetOddCluster:
-    movzx eax, word [rdi]  ;Get second word (ODD ENTRY)
-    shr eax, 4  ;Shift down by 4
-    return
-.computeEntry:
-;We only call this to compute the first entry cluster number
-;We preserve ALL registers when doing so
-    push rax
-    push rcx
-    push rdx
-    push rdi
-    movzx rcx, word [rbp + dpb.wFAToffset] ;Get start sector number of FAT 
-    mov rax, qword [tempSect]   ;Get disk sector number of FAT into rax
-    sub rax, rcx   ;Get Offset into FAT in rax
-    movzx ecx, word [entries] ;Get number of entries in a FAT sector
-    push rdx
-    mul rcx ;Multiply rax with rcx (technically eax with ecx)
-    pop rdx
-;rbx points to current buffer header
-    lea rdx, qword [rbx + bufferHdr.dataarea]
-    sub rdi, rdx
-    add rax, rdi    ;Add the offset into the sector to rax to get cluster number
-    mov dword [rbp + dpb.dFirstFreeCluster], eax    ;Store this zx value in dpb
-    pop rdi
-    pop rdx
-    pop rcx
-    pop rax
-    return
+.fatFirst:
+    mov dword [rbp + dpb.dFirstFreeCluster], ebx
+    jmp short .fatProceed
 
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
@@ -332,8 +178,6 @@ walkFAT:
     mov edi, eax    ;Save cluster number in edi
     call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
     ;and FAT type in ecx
-    movzx ebx, word [rbp + dpb.wFAToffset]
-    add eax, ebx    ;Add the FAT offset to the sector
     call getBufForFat ;Buffer Header in ebx, first buffer being requested
     jc .exitFail
     ;Check if FAT 12, 16, 32
@@ -367,21 +211,20 @@ walkFAT:
     return
 .gotoNextClusterFat12:
 ;FAT12 might need two FAT sectors read so we always read two sectors
-;eax has the sector of the FAT, offset into the sector is in edx
-    mov ecx, edi    ;Save the current cluster number in ecx
-    mov rdi, rbx    ;Save previous buffer header in rdi
-    ;rdi has buffer header
-    ;rdx has offset into buffer for entry
-    test ecx, 1  ;Check if cluster is odd
+;eax has the sector number of the FAT
+;edx has byte offset into the sector
+;edi has current cluster number
+;rbx has ptr to buffer header
+    test edi, 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
-    movzx ebx, word [rbp + dpb.wBytesPerSector]
-    sub ebx, edx
-    dec ebx ;If edx = BytesPerSector - 1 then it crosses, else no
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    sub ecx, edx
+    dec ecx ;If edx = BytesPerSector - 1 then it crosses, else no
     jnz .gotoNextClusterFat12NoCross
     ;Boundary cross, build entry properly
     call setBufferReferenced  ;We are done with the current buffer
-    movzx ebx, byte [rdi + bufferHdr.dataarea + rdx] ;Use ebx as it is free
+    movzx ebx, byte [rbx + bufferHdr.dataarea + rdx] ;Use ebx as it is free
     inc eax ;Get next FAT sector
     push rbx
     call getBufForFat ;Get buffer Header in ebx
@@ -391,15 +234,15 @@ walkFAT:
     shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
     jmp short .checkIfLastFAT12Cluster
 .gotoNextClusterFat12NoCross:
-    movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
+    movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
     shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
     jmp short .checkIfLastFAT12Cluster
 .gotoNextClusterFat12Even:
     ;Here the cluster is even and can't cross a sector boundary
-    movzx eax, word [rdi + bufferHdr.dataarea + rdx]    ;Read the entry
+    movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
     and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
 .checkIfLastFAT12Cluster:
-    cmp eax, 0FF6h   ;Is it below the first invalid cluster number?
+    cmp eax, 0FEFh   ;Is it below the first invalid cluster number?
     jb .exit         ;If so, exit with it in eax
     mov eax, -1 ;Else, replace with -1, EOC
     jmp .exit
