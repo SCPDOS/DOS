@@ -8,10 +8,8 @@ getCurrentDIR:     ;ah = 47h
 getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name
     ;Called with a path in rsi and 128 byte buffer in rdi
-    push rdi
     mov rdx, rsi
     call checkPathspecOK    ;This preserves rsi
-    pop rdi
     jnc .pathspecOk ;If CF=NC this path is totally ok
     jz .pathspecOk  ;If ZF=ZE AND CF=CY then we have path separators, still ok
 .badPath:

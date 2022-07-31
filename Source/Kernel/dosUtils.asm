@@ -262,6 +262,7 @@ checkPathspecOK:
 ;CF=CY => the path is malformed and may be used ONLY if ZF=ZE. 
 ; If ZF=ZE then the only malformed chars are path separators and may be used.
 ;Path separators are \, / and : for drive separation (not counted in ZF setting)
+; Additionally ZF=ZE if the only bad char is followed by a ASCII null
 
 ;Full paths may start with \\<15-char machine name>\...
 ; or <Drive Letter>:\...
@@ -293,6 +294,11 @@ checkPathspecOK:
     or ecx, 41h  ;Set ZF and CF to indicate "technically" a bad char
     jmp short .okToScan
 .badExit:
+;Before we bad exit, we check if the next char is ascii null.
+;If it is we still accept the path
+    lodsb
+    test al, al
+    jz .badLastChar
     and ecx, ~40h    ;Clear ZF if ZF was set
     or ecx, 1   ;Set carry flag
     jmp short .exit
@@ -325,6 +331,9 @@ checkPathspecOK:
 .pathSepFnd:
     or ecx, 41h  ;Set ZF and CF to indicate "technically" a bad char    
     jmp short .scanLoop
+.badLastChar:
+;If a bad last char was detected, we set ZF and CF
+    or ecx,
 .exit:
     push rcx    ;Push flags back on
     popfq   ;And pop them into the flags register

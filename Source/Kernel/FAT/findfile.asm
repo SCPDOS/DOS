@@ -510,6 +510,9 @@ getPath:
 ;rsi points to the start of the string we will be appending
     call dosCrit1Enter
     call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
+    mov rbx, rdi    ;Save a pointer to the first char of the string
+    ;If the user requests to .. to a point before rbx, we fail if a disk
+    ; resolution
     jc .badDriveExit
 .mainlp:    ;Now we transfer each directory portion
     call copyPathspecCrit  ;Now setup the filename in the FCB name field
@@ -797,6 +800,8 @@ searchForPathspecCrit:
     ;Output: CF=CY => Error occured
     ;        CF=NC => Disk File in fcbName found with selected attributes
     ;                 FF block somewhat setup
+    ;Preserves rbx, rsi rdi
+    push rbx
     push rsi    ;Save the current position of the pointer in the user buffer
     push rdi    ;Save current position to store filename in internal buffer
 ;Evaluate whether we are searching for a file for a directory
@@ -823,6 +828,7 @@ searchForPathspecCrit:
 .sfpPNNoDisk:
     pop rdi ;rdi points to free space in internal filename buffer
     pop rsi
+    pop rbx
     return
 .sfpPnf:
     mov eax, errPnf
@@ -835,6 +841,7 @@ addPathspecToBufferCrit:
 ;Output: CF=NC -> al = Last char in name (either Null or \) 
 ;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
 ;rdi is advanced to the NEXT space for the next level of the filename
+;rbx points to the "head of the path"
     cmp byte [fcbName], "."   ;Handle destination pointer for  
     je .aptbPNDots
     ;Copy filename over to internal buffer
@@ -867,6 +874,10 @@ addPathspecToBufferCrit:
     cmp byte [rdi], "\"
     jne .aptbPNDots  ;Keep looping around until it is a "\"
     inc rdi ;Go past that pathsep
+    cmp byte [skipDisk], 0  ;Are we in name resolution mode?
+    rete    ;If clear, we are, so just return
+    cmp rbx, rdi    ;Are we before the start of the path? (i.e in subst?)
+    jb .aptbPnf
     return
 .aptbSearchError:
     mov eax, errNoFil
