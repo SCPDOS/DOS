@@ -29,7 +29,8 @@ makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
 .exit:
     return
 
-flushAndFreeBuffer:         ;Int 4Fh AX=1209h
+flushAndFreeBuffer:         ;Int 4Fh AX=1209h 
+;1 External reference
 ;Input: rdi = Buffer header to flush and free
     call flushBuffer
     jnc .exit
@@ -194,6 +195,7 @@ clearBufferReferenced:
 ;Clears the referenced bit, if the buffer becomes referenced again
 ; Called if DOS is not quite done with this buffer.
     push rbp
+    pushfq
     mov rbp, qword [currBuff]
     and byte [rbp + bufferHdr.bufferFlags], ~refBuffer
 .exit:
@@ -229,6 +231,7 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
+    call clearBufferReferenced  ;Set buffer to unref again if it was referenced
 .rbExit:
     clc
 .rbExitNoFlag:

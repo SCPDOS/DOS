@@ -274,3 +274,13 @@ getDirDTwords:
     or eax, ebx
     pop rbx
     return
+getDateAndTimeOld:  ;INT 4Fh AX=12
+;Returns edx = time
+;        eax = date
+; Formally ax and dx but we clear the upper words
+    call readDateTimeRecord
+    call getDirDTwords  ;Get date dword
+    xor edx, edx
+    mov dx, ax  ;Save time
+    shr eax, 10h    ;Get date into rax
+    return

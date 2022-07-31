@@ -914,8 +914,11 @@ checkDevPath:
     jz .notOk   ;Device names cannot be terminated with a \ or /
     xor al, al
     mov byte [fcbName + 11], al ;Store terminator in fcbName field
-    call checkDeviceName
-    jnz .notOk
+    ;call checkDeviceName
+    ;jnz .notOk
+    call checkIfCharDevice
+    jc .notOk
+    call buildCharDir
     ;Here the device was determined to be a char device.
     ;A dummy directory entry was built for it.
     ;Now copy the dummy dir into the ffblock and return all OK!
@@ -968,8 +971,11 @@ checkDevPath:
     stc
     return
 .charDevSearch:
-    call checkDeviceName
-    jnz .notOk
+    ;call checkDeviceName
+    ;jnz .notOk
+    call checkIfCharDevice
+    jc .notOk
+    call buildCharDir
     cmp byte [fcbName+11], 0    ;If this is NOT null terminated, skip replacing
     jne .cds2
     cmp byte [rdi - 2], ":"
@@ -982,36 +988,38 @@ checkDevPath:
     jne .buildDeviceFFblock    ;Now jump if in disk search
     stc ;Else set CF=CY to pretend not found to write as normal
     return
-checkDeviceName:
+
+checkIfCharDevice:  ;Int 4Fh AX=1223h
 ;Compares the first 8 chars of the FCB field to each device name in the
-; device driver chain. Creates a dummy FFblock for them.
-;Input: Nothing
-;Output: ZF=ZE => fcbname a Character Device
-;        ZF=NZ => fcbname NOT a device name
-;If returns with CF=CY, fail request as date/time driver failed.
+; device driver chain. 
+;Output: CF=CY if not found
+;        CF=NC if found
     push rax
     push rdi
     mov rax, qword [fcbName]    ;Get the 8 char name (space padded)
-.altEp:
     lea rdi, nulDevHdr    ;Get a ptr to the start driver header
 .checkName:
     test qword [rdi + drvHdr.attrib], devDrvChar  ;Is the driver for disk drive?
     jz .walkList ;Jump to skip ANY and ALL Disk Drives
     cmp rax, qword [rdi + drvHdr.drvNam]
-    je .deviceFound
+    je .exit    ;If equal, CF=NC is already cleared
 .walkList:
     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto the next device
     cmp rdi, -1 ;Is rdi at End of Chain?
     jne .checkName  ;If no, rdi points to char device
-    dec rdi ;Clear ZF and CF before returning (-1 -> -2)
+    stc
 .exit:
     pop rdi
     pop rax
     return
-.deviceFound:
-;Now build a dummy directory entry for the char device
+
+buildCharDir:
+;Build a dummy directory entry for the char device in FCBName
+; Unless we are in disk skip mode (just evaluating the name)
     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
-    je .exit
+    rete
+    push rax
+    push rdi
     mov byte [fcbName+11], 0    ;Override and null terminate the fcbName field
     lea rdi, curDirCopy
     ;Zero the directory copy (32 bytes)
@@ -1024,17 +1032,16 @@ checkDeviceName:
     pop rdi
     pop rcx
     pop rax
+    mov rax, qword [fcbName]
     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
     mov eax, "    "    ;Four spaces, overwrite the attribute field
     mov dword [rdi + fatDirEntry.name + filename.fExt], eax
     mov byte [rdi + fatDirEntry.attribute], 40h ;Mimic DOS, set attr to 40h
     ;Get date and time and set the write time in the directory entry
     call readDateTimeRecord ;Update DOS internal Time/Date variables
-    jc .exit  ;If we fail to get time/date, fail the request with CF=CY
-    ;Build date and time words
     call getDirDTwords  ;Get date time words packed in eax
-    mov word [rdi + fatDirEntry.wrtTime], ax
-    shr eax, 16 ;Eject the time, get the date in eax
-    mov word [rdi + fatDirEntry.wrtDate], ax
-    xor eax, eax    ;Clear CF and set ZF
-    jmp short .exit
+    mov dword [rdi + fatDirEntry.wrtTime], eax      ;Write as a packed dword
+    xor eax, eax
+    pop rdi
+    pop rax
+    return
