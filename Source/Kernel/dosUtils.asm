@@ -260,9 +260,8 @@ checkPathspecOK:
 ;Output:
 ;CF=NC => The path is totally clean and ok to use.
 ;CF=CY => the path is malformed and may be used ONLY if ZF=ZE. 
-; If ZF=ZE then the only malformed chars are path separators and may be used.
-;Path separators are \, / and : for drive separation (not counted in ZF setting)
-; Additionally ZF=ZE if the only bad char is followed by a ASCII null
+; If ZF=ZE then the only bad char in the path is followed by a ASCII null
+;Here we check for OK chars only. Hence \ / ? * and . are considered acceptable
 
 ;Full paths may start with \\<15-char machine name>\...
 ; or <Drive Letter>:\...
@@ -276,32 +275,18 @@ checkPathspecOK:
     push rcx
     push rsi
     push rdi
-    pushfq
-    pop rcx ;Get flags into ecx
-    and ecx, ~41h  ;Clear CF and ZF to begin
+    mov rsi, rdx    ;Set rsi to path
     ;First we verify that the first two chars are ok (either X: or \\ or chars)
-    mov ax, word [rdx]  ;Get the first two chars
+    mov ax, word [rsi]  ;Get the first two chars
     cmp ax, "\\"    ;UNC network start
-    je .okToScanNet
+    je .okToScan
     cmp ax, "//"    ;Also acceptable UNC network start
-    je .okToScanNet
+    je .okToScan
     cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
     je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
     ;Is this a current drive CWD relative or current drive root relative path?
     ;If so the pathspec is not different to normal, goto scanLoop
     jmp short .scanLoop
-.okToScanNet:
-    or ecx, 41h  ;Set ZF and CF to indicate "technically" a bad char
-    jmp short .okToScan
-.badExit:
-;Before we bad exit, we check if the next char is ascii null.
-;If it is we still accept the path
-    lodsb
-    test al, al
-    jz .badLastChar
-    and ecx, ~40h    ;Clear ZF if ZF was set
-    or ecx, 1   ;Set carry flag
-    jmp short .exit
 .diskPath:
 ;Disk Letter must be A-Z (or a-z)
     cmp al, "A"
@@ -317,32 +302,39 @@ checkPathspecOK:
 .scanLoop:
     lodsb   ;Get char, inc rsi
     test al, al  ;Is al=0, i.e string terminator?
-    je .exit
-    call checkCharValid ;Validity check
-    ;If ZF=ZE, check if it is a path separator
-    jnz .scanLoop   ;Char was ok if ZF=NZ, loop around
-    cmp al, "\"
-    je .pathSepFnd
-    cmp al, "/"
-    je .pathSepFnd
-    call checkCharOk    ;Check if it is ok, i.e. a period or wildcard
-    jne .scanLoop    ;Pretend they are alright!
-    jmp short .badExit
-.pathSepFnd:
-    or ecx, 41h  ;Set ZF and CF to indicate "technically" a bad char    
-    jmp short .scanLoop
-.badLastChar:
-;If a bad last char was detected, we set ZF and CF
-    or ecx, 41h
+    je .exit    ;Clear CF if al = 0
+    call checkCharOk    ;Check if char ok
+    jnz .scanLoop    ;If it is not, fall thru
+.badExit:
+;Before we bad exit, we check if the next char is ascii null.
+;If it is we set ZF
+    lodsb
+    test al, al ;Set ZF if only last char is malformed, else clear ZF
+    stc ;And set CF to indicate bad path
 .exit:
-    push rcx    ;Push flags back on
-    popfq   ;And pop them into the flags register
     pop rdi
     pop rsi
     pop rcx
     pop rax
     return
 
+checkCharOk:
+;Same as checkCharValid except DOES not return error on * ? \ / .
+;If ZF=ZE => Invalid Char
+;If ZF=NZ => Ok Char
+    cmp al, "."
+    je .exitOk
+    cmp al, "*"
+    je .exitOk
+    cmp al, "?"
+    je .exitOk
+    call swapPathSeparator  ;check if al is a path separator
+    jnz checkCharValid
+.exitOk:
+    push rax
+    or al, 1    ;Always clears the ZF
+    pop rax
+    return
 checkCharValid:
 ;If ZF=ZE => Invalid Char
 ;If ZF=NZ => Valid Char
@@ -354,25 +346,7 @@ checkCharValid:
     pop rdi
     pop rcx
     return
-checkCharOk:
-;Same as checkCharValid except DOES not return error on * ? \ / .
-    cmp al, "."
-    je .exitOk
-    cmp al, "*"
-    je .exitOk
-    cmp al, "?"
-    je .exitOk
-    cmp al, "\"
-    je .exitOk
-    cmp al, "/"
-    je .exitOk
-.ok:
-    jmp short checkCharValid
-.exitOk:
-    push rax
-    or al, 1    ;Always clears the ZF
-    pop rax
-    return
+
 
 strcpy:
 ;Copies a null terminated string from rsi to rdi

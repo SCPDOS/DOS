@@ -3,8 +3,18 @@
 ;-----------------------------------:
 
 createFileHdl:     ;ah = 3Ch, handle function
+;Input: cx = File attributes (same as search attributes for find first)
+;       rdx = Ptr to ASCIZ filename to create
+;Output: CF=CY => ax = File handle
+;        CF=NC => al = Error code
+
     return 
 openFileHdl:       ;ah = 3Dh, handle function
+;Input: al = Open mode, to open file with
+;       rdx = Ptr to ASCIZ filename to open if it exists
+;Output: CF=CY => ax = File handle
+;        CF=NC => al = Error code
+
     return 
 closeFileHdl:      ;ah = 3Eh, handle function
 ;Input: bx = file handle to close
@@ -144,8 +154,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;       rdx = Ptr to path to file to look for
 ;       al = Document as needing to be 0 for now
     mov byte [searchAttr], cl
-    mov rsi, rdx    ;Get src path in rsi
-    call checkPathspecOK    ;This preserves rsi
+    call checkPathspecOK    ;This preserves rsi, and uses rdx
     jnc .pathspecOk ;If CF=NC this path is totally ok
     jz .pathspecOk  ;If ZF=ZE AND CF=CY then we have path separators, still ok
 .badPath:
