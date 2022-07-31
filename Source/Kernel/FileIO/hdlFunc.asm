@@ -276,20 +276,6 @@ closeMain: ;Int 4Fh AX=1201h
     call dosCrit1Exit
     return
 
-decrementOpenCount: ;Int 4Fh AX = 1208h
-;Input: rdi = SFT pointer
-;Output: ax = Original wNumHandles count
-    pushfq
-    movzx eax, word [rdi + sft.wNumHandles]
-    dec eax     ;Decrement count
-    jnz .exit                           ;If the count is not zero, exit
-    dec eax    ;If it is zero, now we make it -1
-.exit:
-    popfq
-    xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
-    return
-
-
 readBytes:
 ;Reads the bytes into the user buffer for the setup SFT (currentSFT)
 ;Input: ecx = Number of bytes to read
@@ -788,4 +774,49 @@ findFreeJFT:
     stc ;Set error bit
 .exit:
     pop rcx
+    return
+
+getSFTndxInheritable:
+;Given a SFTndx this function will verify if it is inheritable
+;Input: ebx = SFTndx (word)
+;Output: 
+;   ZF=ZE => Inheritable
+;   ZF=NZ => Not Inheritable or bad ndxNumber
+    push rdi
+    call getSFTPtrfromSFTNdx    ;SFT pointer in rdi
+    jc .badNdx
+    test word [rdi + sft.wDeviceInfo], devNoInherit
+    pop rdi
+    return
+.badNdx:
+    xor edi, edi
+    inc edi ;Clear the ZF flag if it was set
+    clc
+    pop rdi
+    return
+
+incrementOpenCount:
+;Given a SFTndx, this function will increment it's open count
+;Output:
+;   CF=NC => sftndx ok, count incremented
+;   CF=CY => Bad ndx
+    push rdi
+    call getSFTPtrfromSFTNdx
+    jc .exit
+    inc word [rdi + sft.wNumHandles]    ;Add one to open count
+.exit:
+    pop rdi
+    return
+
+decrementOpenCount: ;Int 4Fh AX = 1208h
+;Input: rdi = SFT pointer
+;Output: ax = Original wNumHandles count
+    pushfq
+    movzx eax, word [rdi + sft.wNumHandles]
+    dec eax     ;Decrement count
+    jnz .exit                           ;If the count is not zero, exit
+    dec eax    ;If it is zero, now we make it -1
+.exit:
+    popfq
+    xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
     return

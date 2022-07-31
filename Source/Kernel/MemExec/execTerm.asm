@@ -44,9 +44,33 @@ copyPSP:      ;ah = 26h
     mov rdi, rdx
     mov ecx, psp_size/8 ;psp must be 100h
     rep movsq   ;Copy the psp over zoom zoom qword boom
+    mov qword [rdx + psp.parentPtr], 0 ;Set the current parent to 0 by default
     test byte [pspCopyFlg], -1
     jz .copy
+    ;Now reset the parent psp data
+    mov qword [rdx + psp.prevPSP], -1  ;Share pointer, leave as -1 for now
+    mov qword [rdx + psp.parentPtr], r8 ;Replace the parent with the currnt
+    ;Now reset the copied jobFileTable
+    lea rdi, qword [rdx + psp.jobFileTbl]
+    movzx ecx, word [maxHndls]  ;Get the max handles in JFT
+    mov al, -1
+    rep stosb   ;Store maxHndls many -1's 
     ;Here we now proceed to copy all inheritable hdls and nullify other hdls
+    lea rsi, qword [r8 + psp.jobFileTbl]    ;Source
+    lea rdi, qword [rdx + psp.jobFileTbl]
+    movzx ecx, word [maxHndls]  ;Get the max handles in JFT
+.xfrJFT:
+    jecxz .copy
+    dec ecx
+    lodsb   ;Get the SFTndx in al
+    cmp al, -1
+    je .copy    ;As soon as al=-1, we are done
+    movzx ebx, al
+    call getSFTndxInheritable ; ZF=ZE => Inheritable
+    jnz .xfrJFT ;If not inheritable, just get the next SFTNdx
+    stosb   ;Else store the SFTndx at that position... 
+    call incrementOpenCount ;and increment the open count for the SFT
+    jmp short .xfrJFT
 .copy:
     mov byte [pspCopyFlg], 0    ;Reset flag
     pop rax ;Pop the allocsize back into rax
@@ -67,9 +91,7 @@ copyPSP:      ;ah = 26h
     stosq   ;Move rdi to next entry and store
     ;Now we add the additional useful bits... just in case they are damaged
     mov word [rdx + psp.return], 0CD40h  ;Int 40h
-    mov dword [rbx + psp.unixEntry], 0CD40CB00h  ;Overlay next byte for prevPSP
-    mov qword [rbx + psp.prevPSP], -1  
-    mov qword [rbx + psp.parentPtr], r8 ;The Current PSP is parent
+    mov dword [rdx + psp.unixEntry], 0CD40CB00h  ;Overlay next byte for prevPSP
     return
 
 terminateStayRes:  ;ah = 31h
