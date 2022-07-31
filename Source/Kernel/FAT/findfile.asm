@@ -446,7 +446,9 @@ getPath:
     jne .notNet
     pop rax ;We are in a net situation, so rsi is pointing at "\\"
     popfq
-    movsw   ;Tfr the two chars rsi, rdi + 2
+    lodsw
+    mov ax, "\\"    ;Orient the path correctly
+    stosw   ;Tfr the two chars rsi, rdi + 2
 ;For Net paths, if skipDisk is clear, we proceed to copy and qualify the path
 ;If skipDisk is set for net paths, we return fail (CF=CY)
     cmp byte [skipDisk], 0  ;Check if we are qualifying a path name?

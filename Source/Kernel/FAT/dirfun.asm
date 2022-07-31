@@ -24,7 +24,8 @@ trueName:          ;ah = 60h, get fully qualified name
     jc extErrExit
     lea rsi, buffer1
     call strcpy
-    return
+    xor eax, eax
+    jmp extGoodExit
 
 ;-----------------------------------
 ;    General Directory Routines    :
