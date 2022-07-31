@@ -447,6 +447,12 @@ getPath:
     pop rax ;We are in a net situation, so rsi is pointing at "\\"
     popfq
     movsw   ;Tfr the two chars rsi, rdi + 2
+;For Net paths, if skipDisk is clear, we proceed to copy and qualify the path
+;If skipDisk is set for net paths, we return fail (CF=CY)
+    cmp byte [skipDisk], 0  ;Check if we are qualifying a path name?
+    mov eax, errNoFil   ;Error code if not
+    stc ;And CF=CY for error
+    retne   ;Return if skipDisk = 1
 .moveNetChars:
     lodsb   ;Get the third char into al and inc rsi
     call uppercaseChar  ;Make char in al uppercase
