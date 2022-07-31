@@ -333,7 +333,7 @@ checkPathspecOK:
     jmp short .scanLoop
 .badLastChar:
 ;If a bad last char was detected, we set ZF and CF
-    or ecx,
+    or ecx, 41h
 .exit:
     push rcx    ;Push flags back on
     popfq   ;And pop them into the flags register
