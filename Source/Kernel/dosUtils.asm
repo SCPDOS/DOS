@@ -254,6 +254,7 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     pop rax
     pop rbx
     return
+    
 strlen: ;Int 4Fh, AX=1212h
 ;Gets the length of a ASCIIZ string
 ;Input: rdi = Source buffer
@@ -271,6 +272,7 @@ strlen: ;Int 4Fh, AX=1212h
     pop rdi
     pop rax
     return
+
 normaliseFileName:  ;Int 4Fh, AX=1211h
 ;Converts lowercase to uppercase and / to "\"
 ;Input: rsi = Source buffer
