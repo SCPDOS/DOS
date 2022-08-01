@@ -2,8 +2,37 @@
 ;                   KERNEL FUNCTIONS                :
 ;---------------------------------------------------:
 makeDIR:           ;ah = 39h
+;For make, the path must exist but the final componant must not exist.
+;Input: rdx = Pointer to ASCIIZ string
+    mov rdi, rdx
+.okLength:
+    mov rsi, rdx
+    call checkPathspecOK
+    jnc .pathOk  ;Don't allow any malformed chars
+.badPath:
+    mov al, errPnf
+    jmp extErrExit
+.pathOk:
+    call scanPathWC
+    jc .badPath ;Dont allow wildcards
+    ;Path is ok, now proceed
+    push qword [currentDTA]
+    lea rdi, dosffblock ;Use the dosFFblock as the DTA
+    mov qword [currentDTA], rdi
+    lea rdi, buffer1    ;Build the full path here
+    call getDirPath ;Get a Directory path in buffer1, hitting the disk
+    pop qword [currentDTA]
+    ;If the path exists, exit error
+    jnc extErrExit
+    ;Now check if the reason for the error was that the last pathcomp was 0
+    call checkFailingComp
+    jnz extErrExit
+    ;So all is well, the new subdirectories name is in fcbName
+    ;The parent dir's directory entry is in the curDirCopy
+    
 removeDIR:         ;ah = 3Ah
 setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
+;Input: rdx = Pointer to ASCIIZ string
     mov rdi, rdx
     call strlen
     cmp ecx, 64
@@ -55,6 +84,8 @@ setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
     jmp extGoodExit    ;Exit with a smile on our faces
 
 getCurrentDIR:     ;ah = 47h
+;Input: rsi = Pointer to a 64 byte user memory area
+;       dl = 1-based Drive Number (0 = Default) 
     mov al, dl  ;Move drive number into al
     call getCDS ;Get in rsi the dpb pointer for drive dl
     jc extErrExit

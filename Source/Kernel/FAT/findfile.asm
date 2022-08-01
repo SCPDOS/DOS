@@ -73,6 +73,16 @@ searchDir:
 ;Current DTA is also used to contain the ff block address
 ;All registers can be trashed
 ;Return with CF=CY if no entry found in directory with al = errNoFil
+
+    ;We check the cds here. If it is a network cds we make findfirst req 
+    ; with cds. If cds = -1, we make find first req without cds.
+    mov rdi, qword [workingCDS] ;Get current CDS
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    jz .notNet
+    mov eax, 111Bh  ;Find First with CDS
+    int 4fh
+    return
+.notNet:
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
     mov eax, dword [dirClustA]  ;Get the cluster number to start searching at
     test eax, eax
@@ -449,12 +459,13 @@ getPath:
     lodsw
     mov ax, "\\"    ;Orient the path correctly
     stosw   ;Tfr the two chars rsi, rdi + 2
-;For Net paths, if skipDisk is clear, we proceed to copy and qualify the path
-;If skipDisk is set for net paths, we return fail (CF=CY)
-    cmp byte [skipDisk], 0  ;Check if we are qualifying a path name?
-    mov eax, errNoFil   ;Error code if not
-    stc ;And CF=CY for error
-    retne   ;Return if skipDisk = 1
+;For Net paths, if skipDisk is clear, we only copy and qualify the path
+;If skipDisk is set, proceed as before, except we then pass the path to net
+; redirector Find First Without CDS
+
+    mov bl, byte [skipDisk] ;Save skipDisk state
+    mov byte [skipDisk], 0  ;Set to copy and qualify name first
+    push rbx
 .moveNetChars:
     lodsb   ;Get the third char into al and inc rsi
     call uppercaseChar  ;Make char in al uppercase
@@ -463,9 +474,16 @@ getPath:
     call swapPathSeparator  ;If path sep, swap it
     stosb
     jnz .moveNetChars  ;If not a path separating char in al, keep looking
-    jmp pathWalk.netEp     ;Now expand the pathspec portion
+    call pathWalk.netEp     ;Now expand the pathspec portion
+    jmp short .moveNetChars
 .netEnd:
+    xchg bx, bx
+    pop rbx
     stosb
+    test bl, bl ;If skip disk was zero, exit
+    retz
+    mov eax, 1119h  ;Find First Without CDS
+    int 4Fh
     return
 .notNet:
 ;This is the normal case; paths can be relative, or absolute.
@@ -589,7 +607,7 @@ prepareDir:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst/join drive. Else only if 
 ; relative
-;Input: al = 1-based drive letter or ax = \\
+;Input: al = 1-based drive letter
 ;Output: rdi = Pointing at where to place chars from source string
 ;   If CF=CY => Drive invalid or drive letter too great
     push rsi
@@ -845,7 +863,6 @@ searchForPathspec:
 .sfpPNMain:
     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
     je .sfpPNNoDisk
-    ;Now the internal ff block is setup, conduct search.
     call searchDir
 .sfpPNNoDisk:
     pop rbx
@@ -1085,5 +1102,16 @@ buildCharDir:
     mov dword [rdi + fatDirEntry.wrtTime], eax      ;Write as a packed dword
     xor eax, eax
     pop rdi
+    pop rax
+    return
+
+checkFailingComp:
+;Returns if the failing part of the path was the LAST entry of the path,
+; i.e. the part we may be creating or checking for the existance of.
+;Returns: ZF=ZE => Last path componant
+;         ZF=NZ => Not last path componant
+    push rax
+    mov al, byte [fcbName + 11]
+    test al, al
     pop rax
     return
