@@ -157,7 +157,8 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov rsi, rdx
     call checkPathspecOK    ;This uses rsi and preserves it
     jnc .pathspecOk ;If CF=NC this path is totally ok
-    jz .pathspecOk  ;If ZF=ZE AND CF=CY then we have path separators, still ok
+    ;Dont allow paths which end in a malformed char for ASCIIZ
+    ;ONLY ALLOW TRUENAME TO RESOLVE SUCH PATHS 
 .badPath:
     mov eax, errPnf
     jmp extErrExit
