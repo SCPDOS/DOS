@@ -482,6 +482,11 @@ getPath:
     stosb
     test bl, bl ;If skip disk was zero, exit
     retz
+    push rsi
+    lea rsi, buffer1
+    call scanPathWC ;Net paths may not have any wildcards!
+    pop rsi
+    retc 
     mov eax, 1119h  ;Find First Without CDS
     int 4Fh
     return
