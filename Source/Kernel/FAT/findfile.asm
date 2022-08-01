@@ -486,6 +486,7 @@ getPath:
     lea rsi, buffer1
     call scanPathWC ;Net paths may not have any wildcards!
     pop rsi
+    mov eax, errPnf ;Bad Path
     retc 
     mov eax, 1119h  ;Find First Without CDS
     int 4Fh

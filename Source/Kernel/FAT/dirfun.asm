@@ -15,6 +15,8 @@ makeDIR:           ;ah = 39h
 .pathOk:
     call scanPathWC
     jc .badPath ;Dont allow wildcards
+    call checkPathNet
+    jz .badPath ;or network paths
     ;Path is ok, now proceed
     push qword [currentDTA]
     lea rdi, dosffblock ;Use the dosFFblock as the DTA
@@ -29,9 +31,9 @@ makeDIR:           ;ah = 39h
     jnz extErrExit
     ;So all is well, the new subdirectories name is in fcbName
     ;The parent dir's directory entry is in the curDirCopy
-    
+
 removeDIR:         ;ah = 3Ah
-setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
+setCurrentDIR:     ;ah = 3Bh, CHDIR
 ;Input: rdx = Pointer to ASCIIZ string
     mov rdi, rdx
     call strlen
@@ -46,6 +48,8 @@ setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
     jc .badPath  ;Don't allow any malformed chars
     call scanPathWC
     jc .badPath ;Or wildcards
+    call checkPathNet
+    jz .badPath ;Or Net paths
     ;Path is ok, now proceed
     push qword [currentDTA]
     lea rdi, dosffblock ;Use the dosFFblock as the DTA
@@ -57,6 +61,8 @@ setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
     ;The path must've been ok, so now copy the path into the CDS
     ;The copy of the directory entry has the start cluster of this dir file
     mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
+    test word [rsi + cds.wFlags], cdsRedirDrive
+    jnz .net    ;This is done by the redirector for redirector drives
     lea rdi, tmpCDS
     mov ecx, cds_size
     rep movsb
@@ -82,7 +88,12 @@ setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
     call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit    ;Exit with a smile on our faces
-
+.net:
+;SDA Vars are setup for this request
+    mov eax, 1105h
+    int 4fh
+    jc extErrExit
+    jmp extGoodExit
 getCurrentDIR:     ;ah = 47h
 ;Input: rsi = Pointer to a 64 byte user memory area
 ;       dl = 1-based Drive Number (0 = Default) 

@@ -462,3 +462,16 @@ compareFarPointers: ;Int 4Fh, AX = 1214h
 ;        ZF=NZ if not
     cmp rsi, rdi
     return
+
+checkPathNet:
+;Input: rsi = Start of path to check if it starts with two slashes
+;Output: ZF=ZE => Path is a net path
+;        ZF=NZ => Path is not a net path
+    push rax
+    movzx eax, word [rsi]    ;Get the first two chars of the path
+    call swapPathSeparator
+    jnz .exit
+    call swapPathSeparator  ;ZF=ZE if net path
+.exit:
+    pop rax
+    return

@@ -151,6 +151,12 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov ah, byte [exitType] ;Get the exitType
 .storeELvl:
     mov word [errorLevel], ax   ;Store word
+    
+;Tell network a process is terminating
+    mov eax, 1122h  ;Net redir, Process Termination Hook
+    mov r8, qword [currentPSP]  ;Use r8 instead of DS
+    int 4Fh
+
 ; Step 1
 .step1:
     mov rdi, qword [currentPSP] ;Get the current psp
