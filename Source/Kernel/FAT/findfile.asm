@@ -371,7 +371,7 @@ getDrvLetterFromPath:
     retnz ;If the number is non-zero, then a potentially valid drive number
     mov al, -1  ;Else not a valid drive number
     return
-qualifyFileName:
+canonicaliseFileName:
 ;Always trying to build and qualify a full pathname
 ;Does getPath without hitting the disk
     mov al, -1

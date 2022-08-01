@@ -254,6 +254,79 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     pop rax
     pop rbx
     return
+strlen: ;Int 4Fh, AX=1212h
+;Gets the length of a ASCIIZ string
+;Input: rdi = Source buffer
+;Output: ecx = Length of string
+    push rax
+    push rdi
+    xor al, al
+    xor ecx, ecx
+.scan:
+    scasb   ;Scan the string at rdi
+    je .exit
+    inc ecx
+    jmp short .scan
+.exit:
+    pop rdi
+    pop rax
+    return
+normaliseFileName:  ;Int 4Fh, AX=1211h
+;Converts lowercase to uppercase and / to "\"
+;Input: rsi = Source buffer
+;       rdi = Buffer to place normalised path
+    push rax
+    push rsi
+    push rdi
+.scan:
+    lodsb
+    test al, al
+    jz .exit
+    call swapPathSeparator  ;If it is a pathsep, swap it
+    call uppercaseChar  ;Uppercase the char if it to be uppercased
+    stosb
+    jmp short .scan
+.exit:
+    pop rdi
+    pop rsi
+    pop rax
+    return
+
+compareFileNames:   ;Int 4Fh, AX=121Eh
+;Compares two filenames char by char. Accepts invalid chars too.
+;Input: rsi = One ASCIIZ pathname
+;       rdi = Second ASCIIZ pathname
+;Return:
+    ;ZF=ZE if equal, ZF=NZ if not
+    push rax
+    push rsi
+    push rdi
+.scan:
+    mov al, byte [rsi]
+    test al, al
+    jz .endOfString
+    mov ah, byte [rdi]
+    call swapPathSeparator  ;Convert al to \ if pathsep
+    jz .pathseps
+    or ax, 2020h    ;Convert both chars to lower case
+    cmp al, ah
+    jnz .exit
+.nextChar:
+    inc rsi
+    inc rdi
+    jmp short .scan
+.pathseps:
+    xchg ah, al
+    call swapPathSeparator  ;If ah is not a pathsep, then exit ZF=NZ
+    jnz .exit
+    jmp short .nextChar ;Else get the next chars
+.endOfString:
+    test ah, ah ;If ah is also the end of the path, then ZF=ZE else ZF=NZ
+.exit:
+    pop rdi
+    pop rsi
+    pop rax
+    return
 checkPathspecOK:
 ;Input:
 ;rsi -> points to a path to verify if it is ok.
