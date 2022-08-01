@@ -154,7 +154,8 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;       rdx = Ptr to path to file to look for
 ;       al = Document as needing to be 0 for now
     mov byte [searchAttr], cl
-    call checkPathspecOK    ;This preserves rsi, and uses rdx
+    mov rsi, rdx
+    call checkPathspecOK    ;This uses rsi and preserves it
     jnc .pathspecOk ;If CF=NC this path is totally ok
     jz .pathspecOk  ;If ZF=ZE AND CF=CY then we have path separators, still ok
 .badPath:

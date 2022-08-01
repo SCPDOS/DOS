@@ -256,7 +256,7 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     return
 checkPathspecOK:
 ;Input:
-;rdx -> points to a path to verify if it is ok.
+;rsi -> points to a path to verify if it is ok.
 ;Output:
 ;CF=NC => The path is totally clean and ok to use.
 ;CF=CY => the path is malformed and may be used ONLY if ZF=ZE. 
@@ -275,7 +275,6 @@ checkPathspecOK:
     push rcx
     push rsi
     push rdi
-    mov rsi, rdx    ;Set rsi to path
     ;First we verify that the first two chars are ok (either X: or \\ or chars)
     mov ax, word [rsi]  ;Get the first two chars
     cmp ax, "\\"    ;UNC network start
