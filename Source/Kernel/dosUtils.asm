@@ -401,6 +401,30 @@ checkPathspecOK:
     pop rax
     return
 
+scanPathWC:
+;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
+; even in the final path componant.
+;Input: rsi = Pointer to the ASCIIZ filename
+;Output: CF=NC => No wildcards present
+;        CF=CY => Wildcards found
+    push rax
+    push rsi
+.scan:
+    lodsb
+    test al, al
+    jz .exit
+    cmp al, "?"
+    je .wcFnd
+    cmp al, "*"
+    jne .scan
+.wcFnd:
+    stc
+.exit:
+    pop rsi
+    pop rax
+    return
+
+
 checkCharOk:
 ;Same as checkCharValid except DOES not return error on * ? \ / .
 ;If ZF=ZE => Invalid Char

@@ -953,9 +953,9 @@ checkDevPath:
     jz .notOk   ;Device names cannot be terminated with a \ or /
     xor al, al
     mov byte [fcbName + 11], al ;Store terminator in fcbName field
-    ;call checkDeviceName
-    ;jnz .notOk
+    push rbx
     call checkIfCharDevice
+    pop rbx ;Don't need bh yet
     jc .notOk
     call buildCharDir
     ;Here the device was determined to be a char device.
@@ -1010,9 +1010,9 @@ checkDevPath:
     stc
     return
 .charDevSearch:
-    ;call checkDeviceName
-    ;jnz .notOk
+    push rbx
     call checkIfCharDevice
+    pop rbx ;Dont need bh yet
     jc .notOk
     call buildCharDir
     cmp byte [fcbName+11], 0    ;If this is NOT null terminated, skip replacing
@@ -1033,12 +1033,15 @@ checkIfCharDevice:  ;Int 4Fh AX=1223h
 ; device driver chain. 
 ;Output: CF=CY if not found
 ;        CF=NC if found
+;           BH = Low byte of the device attribute word
     push rax
     push rdi
     mov rax, qword [fcbName]    ;Get the 8 char name (space padded)
     lea rdi, nulDevHdr    ;Get a ptr to the start driver header
 .checkName:
-    test qword [rdi + drvHdr.attrib], devDrvChar  ;Is the driver for disk drive?
+    mov bx, word [rdi + drvHdr.attrib]
+    xchg bh, bl ;Swap lo and hi bytes
+    test bl, 80h  ;Is the driver for disk drive?
     jz .walkList ;Jump to skip ANY and ALL Disk Drives
     cmp rax, qword [rdi + drvHdr.drvNam]
     je .exit    ;If equal, CF=NC is already cleared
