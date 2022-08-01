@@ -254,7 +254,7 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     pop rax
     pop rbx
     return
-    
+
 strlen: ;Int 4Fh, AX=1212h
 ;Gets the length of a ASCIIZ string
 ;Input: rdi = Source buffer
@@ -272,6 +272,15 @@ strlen: ;Int 4Fh, AX=1212h
     pop rdi
     pop rax
     return
+
+strcpy:
+;Copies a null terminated string from rsi to rdi
+    lodsb
+    stosb
+    test al, al
+    retz
+    jmp short strcpy
+
 
 normaliseFileName:  ;Int 4Fh, AX=1211h
 ;Converts lowercase to uppercase and / to "\"
@@ -421,11 +430,11 @@ checkCharValid:
     pop rcx
     return
 
-
-strcpy:
-;Copies a null terminated string from rsi to rdi
-    lodsb
-    stosb
-    test al, al
-    retz
-    jmp short strcpy
+compareFarPointers: ;Int 4Fh, AX = 1214h
+;Compare if two pointers are equal. A layover from the era of far pointers.
+;Input: rsi = One pointer
+;       rdi = Second pointer
+;Output: ZF=ZE if equal
+;        ZF=NZ if not
+    cmp rsi, rdi
+    return
