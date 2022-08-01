@@ -4,7 +4,71 @@
 makeDIR:           ;ah = 39h
 removeDIR:         ;ah = 3Ah
 setCurrentDIR:     ;ah = 3Bh, set dir for current drive (or drive in path)
+    mov rdi, rdx
+    call strlen
+    cmp ecx, 64
+    jbe .okLength
+.badPath:
+    mov al, errPnf
+    jmp extErrExit
+.okLength:
+    mov rsi, rdx
+    call checkPathspecOK
+    jc .badPath  ;Don't allow any malformed chars
+    call scanPathWC
+    jc .badPath ;Or wildcards
+    ;Path is ok, now proceed
+    push qword [currentDTA]
+    lea rdi, dosffblock ;Use the dosFFblock as the DTA
+    mov qword [currentDTA], rdi
+    lea rdi, buffer1    ;Build the full path here
+    call getDirPath ;Get a Directory path in buffer1, hitting the disk
+    pop qword [currentDTA]
+    jc extErrExit   ;Exit with error code in eax
+    ;The path must've been ok, so now copy the path into the CDS
+    ;The copy of the directory entry has the start cluster of this dir file
+    mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
+    lea rdi, tmpCDS
+    mov ecx, cds_size
+    rep movsb
+    ;If the path is longer than 67, call it an invalid path
+    lea rdi, buffer1
+    call strlen ;Get the length of this path
+    cmp ecx, 67
+    ja .badPath
+    mov rsi, rdi    ;Move buffer source to rsi
+    lea rdi, tmpCDS
+    rep movsb   ;Copy the path over
+    ;Now get the start cluster from the directory copy
+    movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl eax, 10h
+    or eax, edx ;Add low bits to eax
+    mov dword [tmpCDS + cds.dStartCluster], eax ;Store this value in cds
+    lea rsi, tmpCDS
+    mov rdi, qword [workingCDS]
+    mov ecx, cds_size
+    call dosCrit1Enter  ;Ensure no task interrupts our copy
+    rep movsb
+    call dosCrit1Exit
+    xor eax, eax
+    jmp extGoodExit    ;Exit with a smile on our faces
+
 getCurrentDIR:     ;ah = 47h
+    mov al, dl  ;Move drive number into al
+    call getCDS ;Get in rsi the dpb pointer for drive dl
+    jc extErrExit
+.okDrive:
+    mov rdi, rsi    ;Save destination in rdi
+    mov rsi, qword [workingCDS]  ;Get pointer to current CDS in rsi
+    movzx eax, word [rsi + cds.wBackslashOffset]
+    inc eax ;Go past the backslash
+    add rsi, rax ;Add this many chars to rsi to point to first char to copy
+    call strcpy
+    xor eax, eax
+    jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
+
+
 getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
     ;Called with a path in rsi and 128 byte buffer in rdi

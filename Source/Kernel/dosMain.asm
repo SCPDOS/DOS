@@ -483,17 +483,10 @@ getDOSversion:     ;ah = 30h
 getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
     xor dl, dl
 getDeviceDPBptr:   ;ah = 32h
-;On entry: dl = Drive number
+;On entry: dl = Drive number 1-based drive number (0=Default)
 ;On exit: rbx = DPB pointer
-    test dl, dl
-    jnz .gddpskipdefault
-    mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    inc dl
-.gddpskipdefault:
-    ;Decrement the drive letter since 0 = Default, 1 = A etc...
-    dec dl
     mov al, dl
-    call getCDS ;Get in rsi the dpb pointer for drive dl
+    call getCDS
     jc .bad
     mov rdi, qword [workingCDS]  ;Get pointer to current CDS in rdi
     test word [rdi + cds.wFlags], cdsRedirDrive ;Is dev a redir drv?
