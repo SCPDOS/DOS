@@ -461,11 +461,9 @@ getPath:
     test al, al
     jz .netEnd
     call swapPathSeparator  ;If path sep, swap it
-    mov rbx, rdi    ;Store current buffer offset in rbx
     stosb
     jnz .moveNetChars  ;If not a path separating char in al, keep looking
-    call .mainlp    ;Now expand the pathspec portion
-    return
+    jmp pathWalk.netEp     ;Now expand the pathspec portion
 .netEnd:
     stosb
     return
@@ -517,23 +515,36 @@ getPath:
 .commonDir:
 ;rsi points to the start of the string we will be appending
     call dosCrit1Enter
-    call prepareDirCrit    ;Prepare the dir if the drive is subst/join drive
-    mov rbx, rdi    ;Save a pointer to the first char of the string
+    call pathWalk
+.driveExit:
+    call dosCrit1Exit
+    return
+.badDriveExit:
+    mov eax, errNoFil ;No file for that spec found
+    jmp short .driveExit
+
+pathWalk:
+;Input: rsi must point to source buffer for path to expand
+;       rdi must point to a destination buffer
+;       al must contain the drive 1 based number
+    call prepareDir    ;Prepare the dir if the drive is subst/join drive
+    jc .badDriveExit
     ;If the user requests to .. to a point before rbx, we fail if a disk
     ; resolution
-    jc .badDriveExit
-.mainlp:    ;Now we transfer each directory portion
-    call copyPathspecCrit  ;Now setup the filename in the FCB name field
+.netEp: ;For net path resolution (resolution ONLY) ptrs must point past "\\"
+    mov rbx, rdi
+.mainlp:
+    call copyPathspec  ;Now setup the filename in the FCB name field
     push rax    ;Save the fact that al = 0 or "\"
     call checkDevPath.charDevSearch ;Catch if FCB name = Char device    
     pop rax
     jnc .deviceFound
-    call searchForPathspecCrit  ;and search the directory
+    call searchForPathspec  ;and search the directory
     jc .checkDev    ;If CF=CY, error exit UNLESS we were searching for \DEV"\"
-    call addPathspecToBufferCrit
-    jc .driveExit   ;If a bad path (somehow I dont see this happening often)
+    call addPathspecToBuffer
+    jc .exit   ;If a bad path (somehow I dont see this happening often)
     test al, al ;Exit if this pathspec was a file
-    jz .driveExit
+    jz .exit
     ;Here I have to take the cluster data from the found directory entry
     ; and setup the search for the next pathspec portion
     ;Copy necessary data from the current directory copy
@@ -549,12 +560,10 @@ getPath:
     mov dword [dirEntry], eax
     mov word [dirSect], ax
     jmp short .mainlp  ;Else, it was a found directory name, keep looping
-.driveExit:
-    call dosCrit1Exit
-    return
 .badDriveExit:
     mov eax, errNoFil ;No file for that spec found
-    jmp short .driveExit
+.exit:
+    return
 .checkDev:
 ;If the return code is errNoFil AND Int44Fail = 0, then we check to see if 
 ; we are in \DEV dir
@@ -568,18 +577,19 @@ getPath:
     call checkDevPath
     pop rdi
     pop rsi
-    jc .driveExit   ;IF CF=CY, exit bad, with error code in eax
+    jc .exit   ;IF CF=CY, exit bad, with error code in eax
 .deviceFound:
     xor eax, eax    ;Set al to 0 as expected on ok!
-    jmp short .driveExit     ;If CF=CY, exit Char File found
+    jmp short .exit     ;If CF=CY, exit Char File found
 .nodev:
     stc
-    jmp short .driveExit
-prepareDirCrit:
+    jmp short .exit
+
+prepareDir:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst/join drive. Else only if 
 ; relative
-;Input: al = 1-based drive letter
+;Input: al = 1-based drive letter or ax = \\
 ;Output: rdi = Pointing at where to place chars from source string
 ;   If CF=CY => Drive invalid or drive letter too great
     push rsi
@@ -674,7 +684,7 @@ prepareDirCrit:
     pop rcx
     return 
 
-copyPathspecCrit:
+copyPathspec:
 ;1) Copies a path portion from the source buffer to the destination
 ;2) Advances rsi to the next null, \ or /
 ;3) Expands all * to ?'s
@@ -752,7 +762,7 @@ copyPathspecCrit:
     mov al, byte [rsi]
     cmp al, "."    ;Check now if we have a second dot
     jne .cpsCharSkip
-    stosb   ;Store the second dot
+    movsb   ;Now advance rsi and rdi by copying the second dot over directly
 .cpsCharSkip:
     call .cpsPtrSkip    ;Now we are skipping any chars that arent terminators
     jmp short .cpsProcessName
@@ -802,7 +812,7 @@ copyPathspecCrit:
     pop rdi
     return
 
-searchForPathspecCrit:
+searchForPathspec:
     ;Now search the current directory for this filename
     ;Find first using SDA ffBlock
     ;If al = 0, we have a file name
@@ -810,7 +820,8 @@ searchForPathspecCrit:
     ;Output: CF=CY => Error occured
     ;        CF=NC => Disk File in fcbName found with selected attributes
     ;                 FF block somewhat setup
-    ;Preserves rbx, rsi rdi
+    ;Preserves rax, rbx, rsi,  rdi
+    push rax
     push rbx
     push rsi    ;Save the current position of the pointer in the user buffer
     push rdi    ;Save current position to store filename in internal buffer
@@ -839,6 +850,7 @@ searchForPathspecCrit:
     pop rdi ;rdi points to free space in internal filename buffer
     pop rsi
     pop rbx
+    pop rax
     return
 .sfpPnf:
     mov eax, errPnf
@@ -846,7 +858,7 @@ searchForPathspecCrit:
     stc ;Set carry
     jmp short .sfpPNNoDisk
 
-addPathspecToBufferCrit:
+addPathspecToBuffer:
 ;Input: fcbName = Qualified pathname portion
 ;Output: CF=NC -> al = Last char in name (either Null or \) 
 ;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
@@ -878,7 +890,7 @@ addPathspecToBufferCrit:
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
-    cmp byte [rdi], ":" ;IF the char preceeding \ is :, then error out
+    cmp word [rdi - 1], ":\" ;IF the char preceeding \ is :, then error out
     je .aptbPnf
     cmp word [rdi - 1], "\\" ;Similar net name check
     je .aptbPnf
@@ -892,7 +904,6 @@ addPathspecToBufferCrit:
     cmp rdi, rbx    ;Are we before the start of the path? (i.e in subst?)
     jb .aptbPnf
     jmp short .aptbOkExit
-
 .aptbSearchError:
     mov eax, errNoFil
     jmp short .aptbErrExit

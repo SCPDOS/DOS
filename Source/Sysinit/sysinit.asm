@@ -902,13 +902,14 @@ l1:
     mov ah, 1Ah
     int 41h ;Set tempDTA to current DTA
     mov ah, 4Eh
-    lea rdx, tmpName2
+    lea rdx, tmpName
     movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
     mov ah, 60h
-    lea rsi, tmpName
+    lea rsi, tmpName2
     lea rdi, tmpDTA
     int 41h
+    xchg bx, bx
 l11:
     mov ah, 02h
     mov dl, 0Ah
@@ -1140,7 +1141,7 @@ diskInit:
     int 33h
     ret
 tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "/dev/con:",0
-tmpName2    db "scpdos.sys",0
+tmpName     db "scpdos.sys",0
+tmpName2    db "/test/test2/../another",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 
