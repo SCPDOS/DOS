@@ -909,7 +909,6 @@ l1:
     lea rsi, tmpName2
     lea rdi, tmpDTA
     int 41h
-    xchg bx, bx
 l11:
     mov ah, 02h
     mov dl, 0Ah
