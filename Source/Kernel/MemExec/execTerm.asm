@@ -63,14 +63,17 @@ copyPSP:      ;ah = 26h
     jecxz .copy
     dec ecx
     lodsb   ;Get the SFTndx in al
-    cmp al, -1
-    je .copy    ;As soon as al=-1, we are done
     movzx ebx, al
+    push rbx
     call getSFTndxInheritable ; ZF=ZE => Inheritable
-    jnz .xfrJFT ;If not inheritable, just get the next SFTNdx
+    pop rax
+    jnz .badJFT
     stosb   ;Else store the SFTndx at that position... 
     call incrementOpenCount ;and increment the open count for the SFT
     jmp short .xfrJFT
+.badJFT:
+    inc rdi ;If not inheritable, skip this position and get the next SFTNdx
+    jmp short .xfrJFT 
 .copy:
     mov byte [pspCopyFlg], 0    ;Reset flag
     pop rax ;Pop the allocsize back into rax
