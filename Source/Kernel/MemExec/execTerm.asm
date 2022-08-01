@@ -243,10 +243,8 @@ terminateClean:    ;ah = 4Ch, EXIT
     call setIntVector
 
 ;Step 8
-    cli
     ;Make the parent register frame the current one
-    mov rsp, qword [rbx + psp.rspPtr] 
-    sti
+    mov rsp, qword [rbx + psp.rspPtr]
 ;Step 9
     mov rbp, rsp ;Get pointer to parent stack register frame in rbp
     mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
