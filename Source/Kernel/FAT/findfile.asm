@@ -537,6 +537,8 @@ getPath:
     ;Here I have to take the cluster data from the found directory entry
     ; and setup the search for the next pathspec portion
     ;Copy necessary data from the current directory copy
+    cmp byte [skipDisk], 0  ;If we are skipping disk activity, skip this too!
+    jz .mainlp
     movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
     shl eax, 10h    ;Shift it high
     mov ax, word [curDirCopy + fatDirEntry.fstClusLo]
@@ -747,8 +749,8 @@ copyPathspecCrit:
     jmp short .cpsMainLoop
 .cpsDots:
     stosb   ;Store the first dot
-    lodsb   ;Check now if we have a second dot
-    cmp al, "."
+    mov al, byte [rsi]
+    cmp al, "."    ;Check now if we have a second dot
     jne .cpsCharSkip
     stosb   ;Store the second dot
 .cpsCharSkip:
@@ -858,6 +860,7 @@ addPathspecToBufferCrit:
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
     dec rdi ;Go back to the copied Null char
     pop rsi ;Get back src ptr which points to first char in next pathspec
+.aptbOkExit:
     mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
     call swapPathSeparator
     jz .aptbPNexit
@@ -869,24 +872,27 @@ addPathspecToBufferCrit:
 ;For one dot, we leave rdi where it is
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
+    clc ;Ensure we clear CF if we return via here
+    mov al, byte [rsi - 1]  ;Get the previous char in al if we return
     retne   ;Return with rdi untouched and rsi advanced.
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
     cmp byte [rdi], ":" ;IF the char preceeding \ is :, then error out
     je .aptbPnf
-    cmp byte [rdi], "\" ;Similar net name check
+    cmp word [rdi - 1], "\\" ;Similar net name check
     je .aptbPnf
 .aptbPNDotsLp:
     dec rdi
     cmp byte [rdi], "\"
-    jne .aptbPNDots  ;Keep looping around until it is a "\"
-    inc rdi ;Go past that pathsep
+    jne .aptbPNDotsLp  ;Keep looping around until it is a "\"
+    ;Don't go past the pathsep, since we may need to replace it with a null
     cmp byte [skipDisk], 0  ;Are we in name resolution mode?
-    rete    ;If clear, we are, so just return
-    cmp rbx, rdi    ;Are we before the start of the path? (i.e in subst?)
+    je .aptbOkExit    ;If clear, we are, so just return
+    cmp rdi, rbx    ;Are we before the start of the path? (i.e in subst?)
     jb .aptbPnf
-    return
+    jmp short .aptbOkExit
+
 .aptbSearchError:
     mov eax, errNoFil
     jmp short .aptbErrExit
