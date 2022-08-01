@@ -815,7 +815,7 @@ copyPathspec:
 searchForPathspec:
     ;Now search the current directory for this filename
     ;Find first using SDA ffBlock
-    ;If al = 0, we have a file name
+    ;If al = 0, we have final file name or directory name
     ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF PATHSEP
     ;Output: CF=CY => Error occured
     ;        CF=NC => Disk File in fcbName found with selected attributes
@@ -825,6 +825,8 @@ searchForPathspec:
     push rbx
     push rsi    ;Save the current position of the pointer in the user buffer
     push rdi    ;Save current position to store filename in internal buffer
+    movzx ebx, byte [fileDirFlag]   ;Save the old flag that was set on entry
+    push rbx    ;and push it onto the stack
 ;Evaluate whether we are searching for a file for a directory
     test al, al
     jz .sfpPNfile
@@ -835,11 +837,10 @@ searchForPathspec:
     repne scasb
     je .sfpPnf  ;Path not found if a ? found in the name
     mov al, dirDirectory    ;We want a directory only search.
-    mov byte [fileDirFlag], 0   ;Set to search exclusively for a dir
+    mov byte [fileDirFlag], 0   ;Override setting to search exclusively for dir
     jmp short .sfpPNMain
 .sfpPNfile:
-    ;Here if we are searching for a file
-    mov byte [fileDirFlag], -1  ;Search for file or dir according to attribs
+    ;Here if we are searching for a file or directory as setup by search init
     movzx eax, byte [searchAttr]    ;Get the search attributes
 .sfpPNMain:
     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
@@ -847,6 +848,8 @@ searchForPathspec:
     ;Now the internal ff block is setup, conduct search.
     call searchDir
 .sfpPNNoDisk:
+    pop rbx
+    mov byte [fileDirFlag], bl  ;Return the original flag
     pop rdi ;rdi points to free space in internal filename buffer
     pop rsi
     pop rbx
