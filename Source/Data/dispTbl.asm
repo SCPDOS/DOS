@@ -112,3 +112,7 @@ kDispTblL  equ $ - kDispTbl
 mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw multiplexTest - mDispTbl ;Installation check, return FFh
 mDispTblL   equ     $ - mDispTbl
+
+serverDispTbl:  ;Server Dispatch functions
+    db 01h  ;Number of entries needs to be 0Bh, but for now, 01h
+    dw serverDispatch - serverDispTbl

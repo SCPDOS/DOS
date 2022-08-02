@@ -240,7 +240,3 @@ extAsciiSig:   ;This table needs to replaces in other Codepages
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   
-
-serverDispTbl:  ;Server Dispatch functions
-    db 01h  ;Number of entries needs to be 0Bh, but for now, 01h
-    dw serverDispatch - serverDispTbl
