@@ -111,6 +111,10 @@ kDispTblL  equ $ - kDispTbl
 
 mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw multiplexTest - mDispTbl ;Installation check, return FFh
+    dw closeMain - mDispTbl     ;AX=1201h, Close File handle
+    dw muxGetIntVector - mDispTbl   ;AX=1202h, Get interrupt Vector
+    dw getDosDataSeg - mDispTbl ;AX=1203h, Get DOS data segment pointer
+    dw swapPathSeparator - mDispTbl ; AX=1204h, Normalise path separator
 mDispTblL   equ     $ - mDispTbl
 
 serverDispTbl:  ;Server Dispatch functions

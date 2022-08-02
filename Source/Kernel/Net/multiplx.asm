@@ -22,3 +22,7 @@ multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
 multiplexTest:
     mov al, -1
     ret
+getDosDataSeg:  ;Int 4Fh, AX=1203h
+;Return: r8 = Dos Data Segment Pointer
+    lea r8, dosDataArea
+    return
