@@ -52,6 +52,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     push rax    ;and push it back onto the stack
 .abortEP:
 .charFun0CEP:
+.serverEP:
     lea rsp, critStakTop
     sti         ;Reenable interrupts
 
@@ -706,10 +707,7 @@ getExtendedError:  ;ah = 59h
     mov word [rsi + callerFrame.rbx], bx
     mov byte [rsi + callerFrame.rcx + 1], ch
     return
-dosServer:  ;ah = 5Dh
-netServices:   ;ah = 5Eh, do nothing
-netRedir:;ah = 5Fh, do nothing
-    return
+
 getsetDiskSerial:  ;ah = 69h, get/set disk serial number
 noOp:
     return
