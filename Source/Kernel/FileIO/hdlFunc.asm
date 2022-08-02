@@ -27,7 +27,7 @@ closeFileHdl:      ;ah = 3Eh, handle function
     ;Now check sharing mode
     mov ax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
     and al, 0F0h    ;And wipe out the other bits
-    cmp al, denyRWShare | denyWriteShare | denyReadShare | denyNoneShare
+    cmp al, netFCBShare
     pushfq  ;Save the result of this for after closing the file
 .skipNetCheck:
     call closeMain  ;Call close main!

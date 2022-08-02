@@ -155,6 +155,7 @@ denyRWShare     equ 10h
 denyWriteShare  equ 20h
 denyReadShare   equ 30h
 denyNoneShare   equ 40h
+netFCBShare     equ 70h
 ;Bit 7 reserved 0
 ;Bits 8-12 reserved 0
 
