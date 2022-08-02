@@ -107,7 +107,7 @@ getCurrentDIR:     ;ah = 47h
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
     call strcpy
-    xor eax, eax
+    mov eax, 0100h  ;RBIL -> MS software may rely on this value
     jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
 
 
