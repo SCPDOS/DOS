@@ -267,6 +267,22 @@ struc callerFrame
     .flags  resq 1
 endstruc
 
+struc dpl
+;DOS parameter list, pointer to this stack is passed to DOS in rdx on
+; server calls
+    .rax    resq 1
+    .rbx    resq 1
+    .rcx    resq 1
+    .rdx    resq 1
+    .rsi    resq 1
+    .rdi    resq 1
+    .r8     resq 1
+    .r9     resq 1
+    .align  resq 1
+    .compID resq 1  ;Computer id, low word used only
+    .procID resq 1  ;Process ID
+endstruc
+
 struc fcb
 ;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
     .driveNum   resb 1

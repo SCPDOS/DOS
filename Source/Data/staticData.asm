@@ -227,6 +227,7 @@ extAsciiTbl:    ;This table needs to be replaced in other Codepages
     db 0E5h, 0E6h, 0E7h, 0E8h, 0E9h, 0EAh, 0EBh, 0ECh, 0EDh, 0EEh, 0EFh, 0F0h
     db 0F1h, 0F2h, 0F3h, 0F4h, 0F5h, 0F6h, 0F7h, 0F8h, 0F9h, 0FAh, 0FBh, 0FCh
     db 0FDh, 0FEh, 0FFh
+
 extAsciiSig:   ;This table needs to replaces in other Codepages
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F0h, 0F6h, 0F6h 
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h
@@ -239,3 +240,7 @@ extAsciiSig:   ;This table needs to replaces in other Codepages
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   
+
+serverDispTbl:  ;Server Dispatch functions
+    db 01h  ;Number of entries needs to be 0Bh, but for now, 01h
+    dw serverDispatch - serverDispTbl

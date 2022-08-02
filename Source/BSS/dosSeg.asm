@@ -92,7 +92,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 ;SDA, needs to be replaced between processes
 sdaMainSwap:
     oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
-    sharePSP    resq 1  ;PSP of the share program
+    serverPSP   resq 1  ;PSP of prog making server request, used by net & share
     machineNum  resw 1  ;for sharing/networking 00h = default number (us)
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request

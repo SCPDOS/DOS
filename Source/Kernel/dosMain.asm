@@ -707,7 +707,6 @@ getExtendedError:  ;ah = 59h
     mov word [rsi + callerFrame.rbx], bx
     mov byte [rsi + callerFrame.rcx + 1], ch
     return
-
 getsetDiskSerial:  ;ah = 69h, get/set disk serial number
 noOp:
     return
