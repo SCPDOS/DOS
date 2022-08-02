@@ -401,13 +401,6 @@ FATinfoDevice:     ;ah = 1Ch
 ;cx = bytes per sector
 ;edx = total number of clusters
 ;rbx = Ptr to media ID byte
-    test dl, dl
-    jnz .fidSkipdefault
-    mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    inc dl
-.fidSkipdefault:
-    dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
-;Walk the dpb chain manually
     mov al, dl  ;Move drive number into al
     call getCDS    ;Get in workingCDS the cds pointer for drive in al
     jnc .fidCDSFound
@@ -527,12 +520,6 @@ getDiskFreeSpace:  ;ah = 36h
 ;           ebx = number of free clusters
 ;           cx = bytes per sector
 ;           edx = total clusters on drive
-    test dl, dl
-    jnz .gdfsSkipdefault
-    mov dl, byte [currentDrv]   ;Get current drive code, 0 = A, 1 = B etc...
-    inc dl
-.gdfsSkipdefault:
-    dec dl ;Decrement the drive letter since 0 = Default, 1 = A etc...
     mov al, dl
     call getCDS ;Get CDS pointer in workingCDS var for given drive
     jnc .gdfsCDSFound   ;Exit if unable to find/make a CDS for drive
