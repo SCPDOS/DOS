@@ -906,8 +906,6 @@ l1:
     movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
     mov ah, 4Fh
-    lea rdx, tmpName
-    movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
     mov ah, 60h
     lea rsi, tmpName2
