@@ -1,15 +1,29 @@
 ;Generic Find First and Find Next functions here
-
+findNextMain:
+    mov rdi, qword [currentDTA] ;Get the current DTA ptr in rdi
+    test byte [rdi + ffBlock.driveNum], 80h ;Bit 7 set for network search
+    jz .notNet
+    mov eax, 0111Ch ;Netowrk find next
+    int 4Fh
+    return  ;Return propagating the error code
+.notNet:
+    mov al, byte [rdi + ffBlock.driveNum]
+    inc al  ;Convert into 1 based number
+    call dosCrit1Enter
+    call setDrive   ;Set CDS and current drive vars
+    retc    ;Return error if this fails
+    mov rdi, qword [workingCDS] 
+    call getDiskDPB  ;Update and set working dpb and drv, get dpbptr in rbp
+    retc    ;Return error if this fails
+    call searchMoreDir
+    call dosCrit1Exit
+    return
 searchMoreDir:
-;------------------------NOT READY TO BE USED YET------------------------
-;
 ;Called in a level 1 critical section. 
 ;The three directory variables are set up from the ffblock. 
 ; WorkingDPB is setup also (hence, level 1 critical section)
 ;Current DTA is also used to contain the ff block address
 ;All registers can be trashed
-;
-;------------------------------------------------------------------------
     mov rbp, qword [workingDPB]
     ;First setup dirClustA and dirSect vars
     mov rdi, qword [currentDTA]
@@ -30,20 +44,32 @@ searchMoreDir:
     xor edx, edx
     div ecx ;file ptr / bytes per cluster 
     ;eax now has which cluster rel file (need to walk FAT that many times)
-    ;edx has offset into that cluster (needs to be divded by bytesPerSector)
-
-
-    
-    mov eax, dword [dirClustA]
-    test eax, eax
-    jnz .clusters
-;Old FAT 12/16 root dirs fall thru here only
-    lea rax, searchDir.oldNextEP
-    push rax    ;Push return address onto the stack
-    movzx eax, word [dirSect]   ;Get the root directory sector offset
-    add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Add sector 0 of root dir
-    jmp short .common
-.clusters:
+    ;edx has byte offset into cluster (or Root dir)
+    mov ebx, eax    ;Save cluster rel directory file in ebx
+    ;Now compute sector offset into cluster
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    mov eax, edx    ;Move offset into cluster
+    xor edx, edx
+    div ecx 
+    ;eax now has sector offset into cluster (or root dir)
+    ;edx has byte offset into sector 
+    mov word [dirSect], ax  ;Store the sector offset into var
+    shr edx, 5 ;Divide edx by 32 to get Dir Entry
+    mov dword [dirEntry], edx
+    mov eax, dword [dirClustA]  ;Get disk cluster number
+    test eax, eax   ;If we at cluster 0, we are in old style root dir
+    jz .oldFat
+    ;Now walk the FAT ebx many times starting from dirClustA in eax
+    mov ecx, ebx
+    jecxz .skipFatWalk  ;IF ecx is 0, skip walking FAT
+.fatlp:
+    call walkFAT
+    cmp eax, -1
+    je .errorExit
+    dec ecx
+    jnz .fatlp
+    mov dword [dirClustA], eax  ;Store this cluster number in variable
+.skipFatWalk:
     lea rax, searchDir.nextEp
     push rax    ;Push the return address onto stack
     mov eax, dword [dirClustA]
@@ -64,7 +90,16 @@ searchMoreDir:
     mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
     jmp findInBuffer.nextEntry  ;Proceed from within findInBuffer
     ;The return address on the stack will return to the ep's pushed
-
+.oldFat:
+;Old FAT 12/16 root dirs fall thru here only
+    lea rax, searchDir.oldNextEP
+    push rax    ;Push return address onto the stack
+    movzx eax, word [dirSect]   ;Get the root directory sector offset
+    add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Add sector 0 of root dir
+    jmp short .common
+.errorExit:
+    stc
+    return
 searchDir:
 ;Called in a level 1 critical section. 
 ;The three directory variables are set and the ffblock is setup
@@ -340,7 +375,7 @@ FCBToAsciiz:
 
 setupFFBlock:
 ;Sets up the find first block for the search
-;Uses currentDrv and fcbName
+;Uses workingDrv and fcbName
 ;Input: al = Search attributes
     push rax
     push rbx
@@ -348,7 +383,7 @@ setupFFBlock:
     push rdi
     mov rbx, qword [currentDTA]
     mov byte [rbx + ffBlock.attrib], al 
-    movzx eax, byte [currentDrv]  ;Get the 0 based current drive number
+    movzx eax, byte [workingDrv]  ;Get the 0 based working drive number
     mov byte [rbx + ffBlock.driveNum], al
     lea rsi, fcbName
     lea rdi, qword [rbx + ffBlock.template]
@@ -621,7 +656,7 @@ prepareDir:
     jc .badDriveExit    ;If the drive number in al is too great or drive invalid
     mov rdi, qword [workingCDS] 
     push rdi    ;Push CDS pointer on stack...
-    call getDiskDPB  ;Update the working DPB ptr before searching, dpbptr in rbp
+    call getDiskDPB  ;Update working DPB and drv before searching, dpbptr in rbp
     pop rsi     ; ...and get CDS pointer in rsi
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset

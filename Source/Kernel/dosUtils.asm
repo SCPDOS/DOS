@@ -164,8 +164,7 @@ getCDS:     ;Int 4Fh AX=1219h
     mov byte [errorLocus], eLocDsk  ;Set the locus
     test byte [dosInvoke], -1   ;If non-zero, invalid
     jz .physDrive
-    ;Invokation via 21/5D00, not yet fully supported
-    ;If returned with CF=CY, consider it an error for now
+    ;Invokation via 21/5D00
     push rax
     push rdi
     lea rdi, tmpCDS ;Get the temporary CDS buffer

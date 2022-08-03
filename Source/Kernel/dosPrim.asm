@@ -159,12 +159,12 @@ absDiskDriverCall:
     return
 
 getDiskDPB:
-;Gets the disk DPB if the Disk is physical
+;Gets the disk DPB if the Disk is valid
 ;Otherwise will return a pointer to the drive DPB
 ;Called with rdi pointing to the CDS
 ;CF=NC => RBP=WorkingDPB=DPBptr, CF=CY => Error exit
     mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get 0 based drive number
     mov [workingDrv], al    ;Save working drive number in working drive variable
     call setWorkingDPB
     push rdi    ;Save the CDS ptr

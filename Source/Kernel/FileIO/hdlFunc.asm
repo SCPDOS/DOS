@@ -153,6 +153,11 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;Input: cx = Search Attributes, cl only used
 ;       rdx = Ptr to path to file to look for
 ;       al = Document as needing to be 0 for now
+;Return:
+;Data in the DTA or error through AX with CF=CY
+;CAVEATS!
+;DTA:attribFnd = 40h => Char dev
+;DTA:driveNum = Bit 7 set => Network redir drive
     mov byte [searchAttr], cl
     mov rsi, rdx
     call checkPathspecOK    ;This uses rsi and preserves it
@@ -168,6 +173,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here
     call getFilePath
+.findfileExit:
     pop qword [currentDTA]
     jc extErrExit
     lea rsi, dosffblock ;Copy the block to the user's DTA
@@ -179,6 +185,16 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     jmp extGoodExit ;Exit well
 
 findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
+;Input: DTA has the find first block from the previous search
+    mov rsi, qword [currentDTA]
+    lea rdi, dosffblock ;Copy the ffblock from the current DTA into my copy
+    mov ecx, ffBlock_size
+    rep movsb
+    push qword [currentDTA] ;Save the current DTA address
+    lea rdi, dosffblock ;Use the dosFFblock as the DTA
+    mov qword [currentDTA], rdi
+    call findNextMain
+    jmp short findFirstFileHdl.findfileExit
 renameFile:        ;ah = 56h
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
