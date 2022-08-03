@@ -905,6 +905,10 @@ l1:
     lea rdx, tmpName
     movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
+    mov ah, 4Fh
+    lea rdx, tmpName
+    movzx ecx, byte [tmpAttr] ;Get the search attribute
+    int 41h
     mov ah, 60h
     lea rsi, tmpName2
     lea rdi, tmpBuf2
@@ -1140,7 +1144,7 @@ diskInit:
     int 33h
     ret
 tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "scpdos.sys",0
+tmpName     db "scp*.sys",0
 tmpName2    db "/test/test2/../another",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 
