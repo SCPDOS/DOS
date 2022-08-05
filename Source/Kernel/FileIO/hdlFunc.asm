@@ -7,15 +7,89 @@ createFileHdl:     ;ah = 3Ch, handle function
 ;       rdx = Ptr to ASCIZ filename to create
 ;Output: CF=CY => ax = File handle
 ;        CF=NC => al = Error code
-
-    return 
+    push rcx    ;Save file attributes on stack
+    lea rcx, createMain
+    mov byte [searchAttr], dirHidden | dirSystem ;Inclusive w/o directory
+    jmp short openFileHdl.openCommon
 openFileHdl:       ;ah = 3Dh, handle function
 ;Input: al = Open mode, to open file with
 ;       rdx = Ptr to ASCIZ filename to open if it exists
+;If called from 5D00h, cl = File attributes too
 ;Output: CF=CY => ax = File handle
 ;        CF=NC => al = Error code
+    mov ebx, dirInclusive
+    test byte [dosInvoke], -1
+    cmovz ecx, ebx  ;If not server, store this value instead
+    mov byte [searchAttr], cl
+    mov rcx, openMain  
+    push rax    ;Save open mode on stack
+.openCommon:
+    call dosCrit1Enter
+    call findFreeSFT    ;Get free SFT in rdi or error exit
+    call dosCrit1Exit
+    jc extErrExit
+    ;Now save variables
+    call setCurrentSFT
+    mov word [currentNdx], bx   ;Save a word, SFTNdx are bytes though
+    call findFreeJFTEntry    ;Get a ptr to a free JFT entry in rdi
+    jc extErrExit
+    mov word [currentHdl], bx   ;Save handle number in var
+    mov qword [curHdlPtr], rdi  ;Save ptr to this entry
+    movzx ebx, word [currentNdx]    ;Get the current ndx 
+    mov byte [rdi], bl  ;And open the file
+    ;If the rest of open/create fails, be prepared to close this entry
+    ;We will be searching on disk so swap to internal find first block
+    mov rsi, rdx    ;Ptr to ASCIIZ path string    
+    push qword [currentDTA]
+    lea rdi, dosffblock ;Use the dosFFblock as the DTA
+    mov qword [currentDTA], rdi
+    lea rdi, buffer1    ;Build the full path here
+    push rcx    ;Save the procedure to call on stack
+    call getFilePath    ;Check path existance
+    pop rbx     ;Get the procedure address back from stack
+    pop qword [currentDTA]
+    lea rax, openMain   ;Get EA for open procedure
+    mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
+    jnc .proceedCall
+;If CF=NC => Full path exists. For Open, Good. For Create, Good.
+;If CF=CY => Path doesnt all exist:
+;      If parDirExists = -1 => For Open, Bad.  For Create, Good. 
+;Now we check if we are creating or opening.
+    cmp rbx, rax
+    je .badPathspec ;Jmp to error if opening file that doesnt exist
+    test byte [parDirExist], -1 ;If creating, check if parent path was found
+    jnz .proceedCall    ;If so, proceed.
+.badPathspec:
+    mov eax, errFnf
+    jmp .exitBad    ;Need to deallocate the SFT before returning
+.proceedCall:
+;If the pathspec exists, recall that for create, we truncate.
+    xor ecx, ecx    ;Use ecx to carry device info word
+    cmp rbx, rax    ;Are we opening or creating? (rax=opening)
+    pop rax         ;Pop off openmode or attribute from the stack
+    jne .callProc   ;Jump if we are creating
+    ;al means openmode here
+    test al, 80h    ;No Inherit bit set?
+    jz .callProc
+    and al, 7Fh     ;Clear this bit
+    mov ecx, devNoInherit
+.callProc:
+    mov word [rsi + sft.wOpenMode], 0   ;Clear open mode bits
+    mov word [rsi + sft.wShareRec], 0   ;Clear Share record pointer details
+    push rcx    ;Save the device word 
+    call rbx
+    pop rcx
+    mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
+    jc .exitBad
+    mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
+    or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
+    movzx eax, word [currentHdl]
+    ;SHARE HOOK, DOS DS:[008Ch]
+    jmp extGoodExit ;Save ax and return OK
+.exitBad:
+    pop rbx ;Pop the word from the stack
+    jmp extErrExit 
 
-    return 
 closeFileHdl:      ;ah = 3Eh, handle function
 ;Input: bx = file handle to close
     call getSFTPtr  ;Get a pointer to the SFT in rdi
@@ -101,7 +175,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     jne .proceedDisk
 .netSeek:
     mov eax, 1121h  ;Make net seek from end request
-    int 4fh
+    int 4Fh
     jnc .seekExit ;If the request returns with CF clear, there was no error
     jmp extErrExit
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
@@ -109,7 +183,7 @@ ioctrl:            ;ah = 44h, handle function
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate
 ;Output: If ok then ax = New handle
-    call findFreeJFT    ;First find a free space in the JFT
+    call findFreeJFTSpace    ;First find a free space in the JFT
     jc extErrExit   ;Exit if no space
     ;rsi points to the free space
 .duplicateCommon:
@@ -214,7 +288,7 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
     jnz .notNet
     ;Commit file net redir call and exit
     mov eax, 1107h
-    int 4fh
+    int 4Fh
     jc extErrExit
     jmp .exitOk
 .notNet:
@@ -242,6 +316,43 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
+createMain:
+;Input: ax (formally al) = File attributes
+    movzx eax, al
+    test al, 80h | 40h   ;Invalid bits?
+    jnz .invalidAttrib
+    test al, dirVolumeID
+    jz .skipVol
+    mov al, dirVolumeID ;Make this exclusively a volume ID
+.skipVol:
+    or al, dirArchive   ;Set archive bit
+    test al, dirDirectory   ;Dir cannot be set either here
+    jz .validAttr
+.invalidAttrib:
+.validAttr:
+    mov rdi, qword [currentSFT]
+    mov rsi, qword [workingCDS]
+    cmp rsi, -1
+    jne .diskFile
+    push rax    ;Save the new attributes
+    mov eax, 1118h  ;Create file w/o CDS
+    int 4Fh
+    pop rbx
+    return
+.diskFile:
+    test word [rsi + cds.wFlags], cdsRedirDrive ;We a redir drv?
+    jz .hardFile
+    push rax    ;Save the new attributes
+    mov eax, 1117h  ;Create file with CDS
+    int 4Fh
+    pop rbx
+    return
+.hardFile:
+    or word [rdi + sft.wOpenMode], RWAccess ;Set R/W access when creating file
+;Get disk DPB, enter critical. We check if the parent dir was found
+    call dosCrit1Enter
+    call dosCrit1Exit
+openMain:
 closeMain: ;Int 4Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
@@ -254,7 +365,7 @@ closeMain: ;Int 4Fh AX=1201h
     jnz .physical
     ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
     mov eax, 1106h  ;Make request
-    int 4fh ;Beep!
+    int 4Fh ;Beep!
     return  ;Returns with CF set or clear as appropriate
 .physical:  
 ; We make a request to the dev dir to close the device
@@ -324,7 +435,7 @@ readBytes:
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
     mov eax, 1108h  ;Call Redir Read Bytes function
-    int 4fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
+    int 4Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
     return 
 .exitOk:
     clc
@@ -680,7 +791,48 @@ setupVarsForDiskTransfer:
     mov ecx, eax    ;Return the bytes to tfr in eax
     clc
     return 
-
+findFreeSFT:
+;Returns a pointer to a free SFT if CF=NC. Else, no free SFTs.
+;Modifies an SFT entry. Must be called in a critical section.
+;Output: CF=NC => rdi = Points to a free SFT entry, bx = SFTndx
+;        CF=CY => eax = errNhl, error exit
+    xor ebx, ebx
+.mainLp:
+    push rbx    ;Save the sft ndx
+    call getSFTPtrfromSFTNdx    ;Get ptr to SFT in rdi
+    pop rbx
+    jnc .sftExists
+    mov eax, errNhl
+    stc
+    return
+.sftExists:
+    cmp word [rdi + sft.wNumHandles], 0
+    je .sftFound
+    cmp word [rdi + sft.wNumHandles], -1    ;Is SFT being alloc'd/free'd?
+    jne .gotoNextNdx
+    ;Here, check that if this sft is owned by the caller and repurpose it.
+    push rbx
+    mov rbx, qword [serverPSP]
+    cmp qword [rdi + sft.qPSPOwner], rbx
+    jne .netGoToNextNdx
+    movzx ebx, word [machineNum]
+    cmp word [rdi + sft.wMachNum], bx
+.netGoToNextNdx:
+    pop rbx
+    je .sftFound
+.gotoNextNdx:
+    inc ebx
+    jmp short .mainLp
+.sftFound:
+    push rbx
+    mov word [rdi + sft.wNumHandles], -1    ;Mark as repurposing!
+    mov rbx, qword [serverPSP]
+    mov qword [rdi + sft.qPSPOwner], rbx
+    movzx ebx, word [machineNum]
+    mov word [rdi + sft.wMachNum], bx
+    pop rbx
+    clc
+    return
 getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
 ;Return a pointer to the SFT entry in rdi
 ;Input: rbx = Valid SFT ndx number (byte, zero extended)
@@ -721,7 +873,22 @@ getJFTPtr:    ;Int 4Fh AX=1220h
     lea rdi, qword [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
     clc
     return
-
+findFreeJFTEntry:
+;Finds a free JFT entry in the currentPSP.
+;Output: CF=NC => rdi => Ptr to JFT entry, bx = File Handle
+;        CF=CY => al=errNhl
+    xor ebx, ebx    ;Start searching from offset 0 in the JFT
+.searchLp:
+    call getJFTPtr
+    jc .badExit
+    cmp byte [rdi], -1
+    rete
+    inc ebx
+    jmp short .searchLp
+.badExit:
+    mov al, errNhl
+    stc
+    return
 getSFTPtr:
 ;This gets the SFT pointer and checks it was opened by this machine
 ;Input: bx = JFT handle
@@ -783,7 +950,7 @@ readWriteBytesBinary:
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     return
 
-findFreeJFT:
+findFreeJFTSpace:
 ;Input: [currentPSP] = Task whose PSP we will look through
 ;If there are no free spaces, then we return with al = errNhl and CF=CY
 ;Else, a pointer to the free space in rsi and al = -1

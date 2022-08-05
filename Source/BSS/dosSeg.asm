@@ -38,6 +38,7 @@ sysVarsPtr:
     singleDrv   resb 1    ;Set if last drive accessed was drive B x
     numFiles    resb 1    ;FILES=5 default, max 255
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
+    ;Share hook functions here
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size
     firstSft    resb sft_size
@@ -159,7 +160,8 @@ sdaMainSwap:
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
     vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)
-    filspcExist resb 1  ;-1 if Filename of existing file/dir for create
+    fileExist   resb 1  ;-1 if file in pathspec exists (create/open)
+    parDirExist resb 1  ;-1 if parent directory for file exists (create/open)
     exitType    resb 1  ;Forms the upper byte of the errorlelv
     workingDrv  resb 1  ;Working drive number
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
@@ -169,8 +171,9 @@ workingDD:  ;Create a symbol for the working device driver too
 ;Below is the symbol for saving the oldSFTptr during a char func
 vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr being used
-    curJFTNum   resq 1  ;Ptr to JFT num in caller PSP of file being accessed
+    curHdlPtr   resq 1  ;Ptr to JFT handle entry in current PSP
     currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
+    currentNdx  resw 1  ;Used to access the current SFTNdx being opened/created
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
 ;Temp vars, used when walking FAT or changing sectors

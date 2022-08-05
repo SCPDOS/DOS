@@ -422,7 +422,6 @@ canonicaliseFileName:
     mov al, -1
     mov byte [fileDirFlag], al  
     mov byte [spliceFlag], al   ;Set splice for Full path by default
-    mov byte [filspcExist], al  ;We are searching for a file that exists
     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
     inc al  ;make al = 0
     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
@@ -454,10 +453,11 @@ getPath:
     mov byte [fileDirFlag], al  
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default
-    mov byte [filspcExist], al  ;We are searching for a file that exists
     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
     mov byte [skipDisk], al  ;Store -1 to NOT skip checking the file on disk
 .epAlt:
+    mov byte [parDirExist], 0  ;If parent dir exists, set to -1
+    mov byte [fileExist], 0 ;If the file exists, set to -1
     test byte [dosInvoke], -1   ;Was it invoked via server? -1 = Server
     jz .notServer
     ;In this case, the client network program will have correctly
@@ -594,6 +594,10 @@ pathWalk:
     mov rbx, rdi
 .mainlp:
     call copyPathspec  ;Now setup the filename in the FCB name field
+    test al, al
+    jnz .notFile
+    mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
+.notFile:
     push rax    ;Save the fact that al = 0 or "\"
     call checkDevPath.charDevSearch ;Catch if FCB name = Char device    
     pop rax
@@ -603,7 +607,7 @@ pathWalk:
     call addPathspecToBuffer
     jc .exit   ;If a bad path (somehow I dont see this happening often)
     test al, al ;Exit if this pathspec was a file
-    jz .exit
+    jz .exitGood
     ;Here I have to take the cluster data from the found directory entry
     ; and setup the search for the next pathspec portion
     ;Copy necessary data from the current directory copy
@@ -621,11 +625,14 @@ pathWalk:
     jmp short .mainlp  ;Else, it was a found directory name, keep looping
 .badDriveExit:
     mov eax, errNoFil ;No file for that spec found
+    return
+.exitGood:
+    mov byte [fileExist], -1 ;If the file exists, set to -1
 .exit:
     return
 .checkDev:
 ;If the return code is errNoFil AND Int44Fail = 0, then we check to see if 
-; we are in \DEV dir
+; we are in \DEV pseudo dir
     test byte [Int44Fail], -1   ;Make sure we are not returning from a FAIL
     jnz .nodev  ;If any bits set, ignore this check
     cmp al, errNoFil   ;Only make this check if the file was not found
@@ -639,7 +646,9 @@ pathWalk:
     jc .exit   ;IF CF=CY, exit bad, with error code in eax
 .deviceFound:
     xor eax, eax    ;Set al to 0 as expected on ok!
-    jmp short .exit     ;If CF=CY, exit Char File found
+    mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
+    mov byte [fileExist], -1 ;If the file exists, set to -1
+    jmp short .exit   
 .nodev:
     stc
     jmp short .exit
