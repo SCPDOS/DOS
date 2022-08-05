@@ -474,3 +474,17 @@ checkPathNet:
 .exit:
     pop rax
     return
+
+getCharDevDriverPtr:
+;Gets a pointer to the char device driver header with the 8 char name in rax
+;Input: rax = Device Driver name (space padded)
+;Output: rdi = Ptr to the header, -1 => Invalid filename and CF=CY
+    lea rdi, nulDevHdr  ;Point to the start of the chain
+.lp:
+    cmp qword [rdi + drvHdr.drvNam], rax
+    rete    ;Exit if equal
+    mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto next header
+    cmp rdi, -1 ;End of chain?
+    jne .lp ;If not loop
+    stc ;Else bad exit
+    return

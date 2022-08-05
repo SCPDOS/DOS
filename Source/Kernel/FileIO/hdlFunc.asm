@@ -45,7 +45,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here
     push rcx    ;Save the procedure to call on stack
-    call getFilePath    ;Check path existance
+    call getFilePath    ;Check path existance, updates DPB
     pop rbx     ;Get the procedure address back from stack
     pop qword [currentDTA]
     lea rax, openMain   ;Get EA for open procedure
@@ -316,8 +316,13 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
+openMain:
+    return
 createMain:
 ;Input: ax (formally al) = File attributes
+;       [currentSFT] = SFT we are building
+;       [workingCDS] = CDS of drive to access
+;       [workingDPB] = DPB of drive to access
     movzx eax, al
     test al, 80h | 40h   ;Invalid bits?
     jnz .invalidAttrib
@@ -349,10 +354,86 @@ createMain:
     return
 .hardFile:
     or word [rdi + sft.wOpenMode], RWAccess ;Set R/W access when creating file
-;Get disk DPB, enter critical. We check if the parent dir was found
+    mov byte [openCreate], -1   ;Creating file, set to FFh
+    mov byte [delChar], 0E5h
     call dosCrit1Enter
+    push rax    ;Save the file attributes on stack
+    mov eax, RWAccess | CompatShare ;Set open mode
+    call buildSFTEntry
+    pop rbx
     call dosCrit1Exit
-openMain:
+    return
+buildSFTEntry:
+;Called in a critical section.
+;Input: al = Open mode
+;       [currentSFT] = SFT we are building
+;       [workingCDS] = CDS of drive to access
+;       [workingDPB] = DPB of drive to access
+;     SDA curDirCopy = Copy of dir for file if found or parent dir if not.
+;
+;Output: If CF=NC: - CurrentSFT filled in except for wNumHandles and bFileAttrib
+;                  - wDeviceInfo is set except for inherit bit
+;        If CF=CY: - Return fail
+;
+;
+;Check if file exists. If it does, build SFT and truncate if not char dev. 
+;   If not, create disk entry.
+;Check if the device was a char device by checking ffBlock.
+;If disk, get dpb. We check if the parent dir was found.
+
+;First set the open mode, time and date, name, ownerPSP and file pointer
+; to start of file fields of the SFT
+    mov rsi, qword [currentSFT]
+;Set the open mode
+    mov word [rsi + sft.wOpenMode], ax
+;Get current time
+    call readDateTimeRecord ;Update DOS internal Time/Date variables
+    call getDirDTwords  ;Get current D/T words packed in eax
+    mov dword [rsi + sft.wTime], eax    ;Store time and date together
+;Now save the name
+    push rsi    ;Save the sft ptr
+    lea rdi, qword [rsi + sft.sFileName]    ;Store in file name field
+    lea rsi, qword [curDirCopy + fatDirEntry.name]  ;Copy from dir 
+    movsq   ;Copy over the space padded name to the sft
+    movsw
+    movsb
+    pop rsi
+;Set current Owner
+    mov rax, qword [currentPSP]
+    mov qword [rsi + sft.qPSPOwner], rax ;Set who opened the file
+;Set file pointer to first byte
+    mov dword [rsi + sft.dCurntOff], 0  
+;Common fields set
+    cmp byte [fileExist], -1    ;Does the file exist?
+    jne .fileNotFound
+    ;Here if the file was found on disk or a char dev
+    test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
+    jz .diskFileFound
+    mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
+    call getCharDevDriverPtr    ;Get in rdi device header ptr
+    jnc .notBadCharDevName
+    mov eax, errAccDen
+    return
+.notBadCharDevName:
+    mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
+    movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
+    and bl, 01Fh    ;Clear bits 5 6 and 7
+    or bl, charDevBinary | charDevNoEOF ;Set binary mode and noEOF on read
+    mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
+    mov dword [rsi + sft.dFileSize], 0  ;No size
+    return
+.diskFileFound:
+    cmp byte [openCreate], -1
+    
+.fileNotFound:
+    ;Here we must build the directory entry and allocate a FAT cluster.
+    cmp byte [openCreate], -1
+    jnz .bad
+
+
+.bad:
+    stc
+    return
 closeMain: ;Int 4Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)

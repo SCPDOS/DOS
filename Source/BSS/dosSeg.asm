@@ -163,6 +163,8 @@ sdaMainSwap:
     fileExist   resb 1  ;-1 if file in pathspec exists (create/open)
     parDirExist resb 1  ;-1 if parent directory for file exists (create/open)
     exitType    resb 1  ;Forms the upper byte of the errorlelv
+    openCreate  resb 1  ;If open, set to 0, if Create set to -1
+    delChar     resb 1  ;Char to replace first byte of deleted file's name
     workingDrv  resb 1  ;Working drive number
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too

@@ -126,7 +126,7 @@ struc sft
     .wOpenMode   resw 1    ;File access permissions and behvaiours
     .bFileAttrib resb 1    ;Regular File Attributes
     .wDeviceInfo resw 1    ;Includes unit number if a block device
-    .qPtr        resq 1    ;IF char, ptr to device driver, ELSE DPBptr
+    .qPtr        resq 1    ;IF char, ptr to device driver header, ELSE DPBptr
     .dStartClust resd 1    ;Start cluster of file pointed to by SFT entry
     .wTime       resw 1    ;File Time, updated on open and writes
     .wDate       resw 1    ;File Date, updated on open and writes
