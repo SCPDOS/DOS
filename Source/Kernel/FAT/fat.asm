@@ -234,7 +234,7 @@ getNextSectorOfFile:
     mov byte [currSectC], 0      ;We are at sector 0 rel Clust
     jmp short .exitOK
 
-unlinkfFAT:
+unlinkFAT:
 ;Given a cluster number, will free the cluster and walk the FAT until the first
 ; cluster number considered EOC is found. The given cluster number MUST be
 ; the start cluster of a chain, or at least the cluster linking to the given
