@@ -234,12 +234,54 @@ getNextSectorOfFile:
     mov byte [currSectC], 0      ;We are at sector 0 rel Clust
     jmp short .exitOK
 
-unlinkFAT:
+unlinkfFAT:
 ;Given a cluster number, will free the cluster and walk the FAT until the first
 ; cluster number considered EOC is found. The given cluster number MUST be
 ; the start cluster of a chain, or at least the cluster linking to the given
-; cluster must be set to EOC before this proc is called
+; cluster must be set to EOC before this proc is called.
+;Stops at first invalid cluster number.
+;
+;Input: eax = Cluster to start unlinking at (zero extended to 32 bits)
+;       rbp = Current DPB to use for disk
+;Output: CF = NC => All ok. CF = CY => Hard Error, exit
 
+    push rax    ;Save the cluster number to start unlinking at
+    call truncateFAT
+    pop rax ;Get back original cluster value
+    push rax
+    push rsi
+    xor esi, esi  ;Free cluster
+    call writeFAT
+    pop rsi
+    pop rax
+    return
+
+truncateFAT:
+;Given a cluster number, will set that cluster to EOC and walk the FAT freeing 
+; each cluster until the firstcluster number considered EOC is found. The given 
+; cluster number MUST be the start cluster of a chain, or at least the cluster 
+; linking to the given cluster must be set to EOC before this proc is called.
+;Stops at first invalid cluster number.
+;
+;Input: eax = Cluster to start unlinking at (zero extended to 32 bits)
+;       rbp = Current DPB to use for disk
+;Output: CF = NC => All ok. CF = CY => Hard Error, exit
+    push rbx
+    mov ebx, eax    ;Store the current cluster we are at in ebx
+.lp:
+    call walkFAT    ;Get the value of the cluster at this location in eax
+    jc .exit    ;Error exit
+    cmp eax, -1 ;End of chain?
+    je .exit
+    xchg eax, ebx  ;Move clust. to write at in eax and save next cluster in ebx
+    xor esi, esi   ;Free cluster at eax (write a 0)
+    call writeFAT
+    jc .exit    ;Error exit
+    mov eax, ebx    ;Move next cluster into eax
+    jmp short .lp
+.exit:
+    pop rbx
+    return
 walkFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain
 ; or -1 to indicate end of cluster chain on the device with workingDPB
