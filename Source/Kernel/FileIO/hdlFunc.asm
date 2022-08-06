@@ -515,7 +515,7 @@ readBytes:
     stc
     return
 .readable:
-    call setupVarsForTransfer
+    call setupVarsForTransfer   ;Setup initial stuff only!
     jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
@@ -694,6 +694,9 @@ readDiskFile:
 ;rbp = WorkingDPB
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
     mov byte [rwFlag], 0    ;Read operation
+    call setupVarsForDiskTransfer   ;Now setup disk vars too
+    test ecx, ecx   ;If the number of chars to tfr are zero, exit ecx = 0
+    retz
     ;We have the following vars setup:
     ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
     ;currClustF
@@ -845,15 +848,20 @@ setupVarsForTransfer:
     mov dword [currByteF], eax  ;Save Current byte in the file
     mov dword [tfrLen], ecx ;Save the number of bytes to transfer
     mov dword [tfrCntr], ecx    ;Save the bytes left to transfer
-    test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev ;If not disk...
-    jz setupVarsForDiskTransfer
     clc
-    return ;Else just exit here
+    return
+
 setupVarsForDiskTransfer:
 ;Extension of the above, but for Disk files only
 ;Input: ecx = User desired Bytes to transfer
 ;       rdi = SFT pointer for the file
 ;Output: ecx = Actual Bytes that will be transferred 
+    mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
+    mov dword [currByteF], eax
+    mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
+    test edx, edx
+    cmovz ecx, edx  ;If the file size is zero, exit
+    jecxz .exit
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
     mov qword [workingDPB], rbp
     mov bl, byte [rbp + dpb.bDriveNumber]
@@ -874,6 +882,7 @@ setupVarsForDiskTransfer:
     shr edx, cl ;Convert file relative sector to file relative cluster
     mov dword [currClustF], edx ;Save in var
     mov ecx, eax    ;Return the bytes to tfr in eax
+.exit:
     clc
     return 
 findFreeSFT:
