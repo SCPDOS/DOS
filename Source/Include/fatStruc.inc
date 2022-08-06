@@ -127,10 +127,12 @@ endstruc
     dirVolumeID     equ 08h
     dirDirectory    equ 10h
     dirArchive      equ 20h
+    dirCharDev      equ 40h ;Never written to disk, used to represent a Char Dev
     dirLongName     equ dirReadOnly | dirHidden | dirSystem | dirVolumeID
     ;If any of the three bits are set, then ALL three bits are set
     ; in addition to whatever the user passed to search for.
     dirInclusive    equ dirHidden | dirSystem | dirDirectory
+    dirIncFiles     equ dirHidden | dirSystem
 
 struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
 

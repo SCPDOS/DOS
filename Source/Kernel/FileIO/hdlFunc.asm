@@ -9,7 +9,7 @@ createFileHdl:     ;ah = 3Ch, handle function
 ;        CF=NC => al = Error code
     push rcx    ;Save file attributes on stack
     lea rcx, createMain
-    mov byte [searchAttr], dirHidden | dirSystem ;Inclusive w/o directory
+    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
     jmp short openFileHdl.openCommon
 openFileHdl:       ;ah = 3Dh, handle function
 ;Input: al = Open mode, to open file with
@@ -127,8 +127,27 @@ readFileHdl:       ;ah = 3Fh, handle function
 writeFileHdl:      ;ah = 40h, handle function
     lea rsi, writeBytes
     jmp readFileHdl.common
+
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
-    return 
+    push rcx
+    mov byte [searchAttr], dirIncFiles    ;Inclusive w/o dirs
+    mov rsi, rdx
+    lea rdi, buffer1
+    call getPath    ;Get the path for the file to delete
+    pop rcx
+    mov eax, errFnf
+    jc extErrExit   ;If the file was not found, bye bye
+;Internal current dir is now populated with dir entry
+; and internal DOS directory variables now point to this entry.
+;Check if the file is a char device or read only.
+    mov eax, errAccDen  
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
+    jnz extErrExit  ;Can't delete a char dev
+    test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
+    jnz extErrExit  ;Can't delete a read only file
+    call deleteMain
+    jc extErrExit
+    jmp extGoodExit
 lseekHdl:          ;ah = 42h, handle function, LSEEK
 ;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
     call getSFTPtr
@@ -315,7 +334,54 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;       Main File IO Routines       :
 ;-----------------------------------:
 deleteMain:
-;Input: 
+;Now unlink FAT chain and then clear directory entry
+;Get the start cluster of this file
+;Input: curDirCopy must be filled with the file directory information
+;       and the file must have the permissions to be deleted.
+;       workingDPB must be disk dpb and dir variables must be set
+;Output: CF=NC => Success
+;        CF=CY => Error
+    push rdx
+    movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl eax, 10h
+    or eax, edx ;Add low bits to eax
+    pop rdx
+    test eax, eax   ;Cluster value of 0 means no allocation
+    jz .skipUnlink  ;If there is no FAT allocation for file, skip "dealloc"
+    mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
+    call unlinkFAT  ;Unlink the FAT entry
+    jc .exit
+.skipUnlink:
+    ;Now replace the first char of the directory to 0E5h
+    ;Get the cluster and sector of the directory entry
+    mov eax, dword [dirClustA]  
+    ;Skip cluster manipulation if the cluster number is 0 because these are 
+    ; root directories of FAT12/16 drives.
+    movzx ebx, word [dirSect]
+    test eax, eax
+    jz .skipCluster
+    call getStartSectorOfCluster    ;Get sector number in rax
+.skipCluster:
+    add rax, rbx    ;Add sector offset to start sector of cluster
+    call getBufForDOS   ;Get buffer for DOS in rbx
+    jc .exit
+    call adjustDosDirBuffer ;Change buffer to Dir buffer
+    ;Above function moves buffer ptr to rsi
+    movzx eax, word [dirSect]   ;Get the sector in which the offset lies
+    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    mul ebx ;Multiply these two words so eax has number of bytes to
+    ; the current sector
+    shr eax, 5  ;Divide by 32 to get the number of dir entries we are skipping
+    mov ebx, dword [dirEntry]
+    sub ebx, eax    ;Now ebx has the dir entry offset in the current sector
+    shl ebx, 5  ;Multiply by 32 to get byte offset
+    add rsi, rbx    ;rsi now points to the entry
+    mov byte [rsi], 0E5h    ;Mark as deleted
+    xor eax, eax
+.exit:
+    return
+
 openMain:
     return
 createMain:

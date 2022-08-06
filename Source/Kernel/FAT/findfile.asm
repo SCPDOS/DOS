@@ -81,7 +81,7 @@ searchMoreDir:
 .common:
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc searchDir.hardError
-    call searchDir.setupBuffer  ;rbx has the buffer ptr for this dir sector
+    call adjustDosDirBuffer  ;rbx has the buffer ptr for this dir sector
     mov eax, dword [dirEntry]
     sub ecx, eax    ;Subtract the offset to get the number of entries left
     shl eax, 5  ;Multiply by 32 to turn into bytes to add to rsi
@@ -127,7 +127,7 @@ searchDir:
 .sectorLoop:
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc .hardError
-    call .setupBuffer       ;rbx has the buffer pointer for this dir sector
+    call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
@@ -161,7 +161,7 @@ searchDir:
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
     call getBufForDOS
     jc .hardError
-    call .setupBuffer       ;rbx has the buffer pointer for this dir sector
+    call adjustDosDirBuffer      ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
@@ -177,8 +177,9 @@ searchDir:
 .hardError:
     mov al, -1
     return
-.setupBuffer:
-    mov byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
+adjustDosDirBuffer:
+    or byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
+    and byte [rbx + bufferHdr.bufferFlags], ~dosBuffer
     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
     shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
@@ -790,7 +791,7 @@ copyPathspec:
     je .cpsDots
     dec rsi ;Else move rsi to point back to starting char
 ;First char is not a dot, so now check if starts with E5h? 
-;If so, store 05h in its place
+;If so, store 05h in its place! KANJI SUPPORT WOOHOO!
     cmp al, 0E5h
     jne .cpsMainLoop
     inc rsi ;Push rsi to point to next char
@@ -1109,7 +1110,7 @@ buildCharDir:
     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
     mov eax, "    "    ;Four spaces, overwrite the attribute field
     mov dword [rdi + fatDirEntry.name + filename.fExt], eax
-    mov byte [rdi + fatDirEntry.attribute], 40h ;Mimic DOS, set attr to 40h
+    mov byte [rdi + fatDirEntry.attribute], dirCharDev ;Mimic DOS, set to 40h
     ;Get date and time and set the write time in the directory entry
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     call getDirDTwords  ;Get date time words packed in eax

@@ -468,7 +468,7 @@ flushFile:
 .ffLoop:
     cmp rdi, -1
     je .exit
-    test byte [rdi + bufferHdr.bufferFlags], fatBuffer | dosBuffer
+    test byte [rdi + bufferHdr.bufferFlags], fatBuffer | dosBuffer | dirBuffer
     jnz .found  ;Flush if either bit is set
     cmp qword [rdi + bufferHdr.owningFile], rsi
     je .found
