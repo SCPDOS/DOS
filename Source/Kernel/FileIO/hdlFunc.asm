@@ -220,7 +220,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     jnc .seekExit ;If the request returns with CF clear, there was no error
     jmp extErrExit
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
-ioctrl:            ;ah = 44h, handle function
+
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate
 ;Output: If ok then ax = New handle

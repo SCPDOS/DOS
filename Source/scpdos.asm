@@ -27,6 +27,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Kernel/FileIO/dtFunc.asm"
 %include "./Source/Kernel/FileIO/fcbFunc.asm"
 %include "./Source/Kernel/FileIO/hdlFunc.asm"
+%include "./Source/Kernel/FileIO/ioctl.asm"
 %include "./Source/Kernel/MemExec/memFunc.asm"
 %include "./Source/Kernel/MemExec/execTerm.asm"
 %include "./Source/Kernel/Local/Local.asm"
