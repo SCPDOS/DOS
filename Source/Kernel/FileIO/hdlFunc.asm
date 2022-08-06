@@ -40,14 +40,10 @@ openFileHdl:       ;ah = 3Dh, handle function
     ;If the rest of open/create fails, be prepared to close this entry
     ;We will be searching on disk so swap to internal find first block
     mov rsi, rdx    ;Ptr to ASCIIZ path string    
-    push qword [currentDTA]
-    lea rdi, dosffblock ;Use the dosFFblock as the DTA
-    mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here
     push rcx    ;Save the procedure to call on stack
     call getFilePath    ;Check path existance, updates DPB
     pop rbx     ;Get the procedure address back from stack
-    pop qword [currentDTA]
     lea rax, openMain   ;Get EA for open procedure
     mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
     jnc .proceedCall
@@ -250,7 +246,10 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 .findfileExit:
     pop qword [currentDTA]
     jc extErrExit
-    lea rsi, dosffblock ;Copy the block to the user's DTA
+    lea rdi, dosffblock
+    push rdi
+    call setupFFBlock
+    pop rsi ;Copy the internal ffblock block to the user's DTA
     mov rdi, qword [currentDTA]
     mov ecx, ffBlock_size
     rep movsb   ;Copy the whole block. 
@@ -316,6 +315,8 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
+deleteMain:
+;Input: 
 openMain:
     return
 createMain:
@@ -378,7 +379,7 @@ buildSFTEntry:
 ;
 ;Check if file exists. If it does, build SFT and truncate if not char dev. 
 ;   If not, create disk entry.
-;Check if the device was a char device by checking ffBlock.
+;Check if the device was a char device by checking curDirCopy.
 ;If disk, get dpb. We check if the parent dir was found.
 
 ;First set the open mode, time and date, name, ownerPSP and file pointer
@@ -865,8 +866,7 @@ setupVarsForDiskTransfer:
     cmovz ecx, edx  ;If the file size is zero, exit
     jecxz .exit
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
-    call ensureDiskValid
-    retc    ;Return with CF=CY
+    ;DPB will get updated by reading the disk, no need to force it here
     mov qword [workingDPB], rbp
     mov bl, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], bl   ;Set working drive number

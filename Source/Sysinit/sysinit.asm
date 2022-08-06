@@ -1142,7 +1142,7 @@ diskInit:
     int 33h
     ret
 tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "scp*.sys",0
+tmpName     db "scp*.*",0
 tmpName2    db "/test/test2/../another",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 

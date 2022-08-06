@@ -27,6 +27,8 @@ searchMoreDir:
     mov rbp, qword [workingDPB]
     ;First setup dirClustA and dirSect vars
     mov rdi, qword [currentDTA]
+    mov al, byte [rdi + ffBlock.attrib] ;Get search attrib...
+    mov byte [searchAttr], al   ;And save it
     mov eax, dword [rdi + ffBlock.parDirClus]   ;Get the directory cluster
     mov dword [dirClustA], eax  ;... into dir vars
     mov dword [dirClustPar], eax
@@ -85,9 +87,8 @@ searchMoreDir:
     shl eax, 5  ;Multiply by 32 to turn into bytes to add to rsi
     add rsi, rax    ;rsi points to current entry in the sector.
     ;We continue AS IF this entry was bad
-    ;Now setup al and rdi as upon normal entry 
-    mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
-    mov al, byte [rdi + ffBlock.attrib]  ;Get the search attrib
+    ;Now setup al as upon normal entry 
+    mov al, byte [searchAttr]  ;Get the search attrib
     jmp findInBuffer.nextEntry  ;Proceed from within findInBuffer
     ;The return address on the stack will return to the ep's pushed
 .oldFat:
@@ -234,29 +235,10 @@ findInBuffer:
     mov ecx, 32/8
     rep movsq   ;Copy the directory to SDA
     pop rdi
-    ;Now fill in the rest of the ffBlock IF this is a file.
-    ;rdi points to ffblock start
-    cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
-    je .skipFF  ;If yes, skip filling in the rest of the FF block
-    mov rdi, qword [currentDTA] ;Get FFBlock buffer to use in rdi
-    mov al, bl  ;Get the search attributes into al
-    call setupFFBlock
-    mov eax, dword [dirEntry]
-    mov dword [rdi + ffBlock.dirOffset], eax
-    mov eax, dword [dirClustPar]
-    mov dword [rdi + ffBlock.parDirClus], eax
-    mov al, byte [curDirCopy + fatDirEntry.attribute]
-    mov byte [rdi + ffBlock.attribFnd], al
-    mov eax, dword [curDirCopy + fatDirEntry.wrtTime] ;Get time/date together
-    mov dword [rdi + ffBlock.fileTime], eax
-    mov eax, dword [curDirCopy + fatDirEntry.fileSize]
-    mov dword [rdi + ffBlock.fileSize], eax
-    lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
-    lea rsi, curDirCopy
-    call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
-.skipFF:
     clc
     return
+
+;DEPRECIATED DEPRECIATED DEPRECIATED DEPRECIATED DEPRECIATED DEPRECIATED 
 .nameCompare:
 ;Input: rsi = source string
 ;       rdi = string template to compare against
@@ -375,21 +357,44 @@ FCBToAsciiz:
 
 setupFFBlock:
 ;Sets up the find first block for the search
-;Uses workingDrv and fcbName
-;Input: al = Search attributes
+;Uses workingDrv, fcbName, curDirCopy and rdi as the source of the FFBlock
     push rax
     push rbx
     push rsi
     push rdi
-    mov rbx, qword [currentDTA]
+    mov rbx, rdi ;Get current DTA address into rbx
+    mov al, byte [searchAttr]
+    and al, 3Fh ;Clear upper two bits
     mov byte [rbx + ffBlock.attrib], al 
     movzx eax, byte [workingDrv]  ;Get the 0 based working drive number
     mov byte [rbx + ffBlock.driveNum], al
+    ;xchg bx, bx
     lea rsi, fcbName
     lea rdi, qword [rbx + ffBlock.template]
+    push rdi
+    mov rax, "        "
+    stosq
+    stosw
+    stosb
+    pop rdi
     movsq   ;Move 8 chars
     movsw   ;Move 2 chars
     movsb   ;Move the final char
+
+    mov eax, dword [dirEntry]
+    mov dword [rbx + ffBlock.dirOffset], eax
+    mov eax, dword [dirClustPar]
+    mov dword [rbx + ffBlock.parDirClus], eax
+    mov al, byte [curDirCopy + fatDirEntry.attribute]
+    mov byte [rbx + ffBlock.attribFnd], al
+    mov eax, dword [curDirCopy + fatDirEntry.wrtTime] ;Get time/date together
+    mov dword [rbx + ffBlock.fileTime], eax
+    mov eax, dword [curDirCopy + fatDirEntry.fileSize]
+    mov dword [rbx + ffBlock.fileSize], eax
+    lea rdi, qword [rbx + ffBlock.asciizName]   ;Goto the name field
+    lea rsi, curDirCopy
+    call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
+
     pop rdi
     pop rsi
     pop rbx
@@ -633,8 +638,6 @@ pathWalk:
 ; we are in \DEV pseudo dir
     test byte [Int44Fail], -1   ;Make sure we are not returning from a FAIL
     jnz .nodev  ;If any bits set, ignore this check
-    cmp al, errNoFil   ;Only make this check if the file was not found
-    jne .nodev
     ;Here we check to see if DEV"\" was what we were searching for
     push rsi
     push rdi
@@ -1029,49 +1032,10 @@ checkDevPath:
     call buildCharDir
     ;Here the device was determined to be a char device.
     ;A dummy directory entry was built for it.
-    ;Now copy the dummy dir into the ffblock and return all OK!
     ;Note to self, If a FFblock is found with found attributes = 40h then...
     ; Do not Find Next!
-.buildDeviceFFblock:
-    push rax
-    push rsi
-    push rdi
-
-    mov rdi, qword [currentDTA]
-    mov rax, "        "
-    mov qword [rdi + ffBlock.template], rax
-    mov dword [rdi + ffBlock.template + filename.fExt], eax
-    xor eax, eax
-    dec eax
-    mov dword [rdi + ffBlock.parDirClus], eax   ;Set parent cluster to -1
-    movzx eax, byte [searchAttr]
-    and eax, 03Fh   ;Clear upper two bits of the search attributes
-    mov byte [rdi + ffBlock.attrib], al    ;Place user attribs here
-    mov al, byte [curDirCopy + fatDirEntry.attribute]
-    mov byte [rdi + ffBlock.attribFnd], al
-    mov eax, dword [curDirCopy + fatDirEntry.wrtTime] ;Get time/date together
-    mov dword [rdi + ffBlock.fileTime], eax
-    mov eax, dword [curDirCopy + fatDirEntry.fileSize]
-    mov dword [rdi + ffBlock.fileSize], eax
-    mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the Device name
-    mov qword [rdi + ffBlock.template], rax  ;Replace "DEV        " with devName
-
-    push rdi
-    lea rsi, fcbName
-    lea rdi, qword [rdi + ffBlock.asciizName]   ;Goto the name field
-    call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
-    pop rdi
-    lea rsi, qword [rdi + ffBlock.asciizName]   ;Source the name field
-    pop rdi ;Get rdi pointing back to the internal pathbuffer position
 .copyName:
-    lodsb
-    test al, al
-    jz .nameCopied
-    stosb
-    jmp short .copyName
-.nameCopied:
-    pop rsi
-    pop rax
+    call FCBToAsciiz    ;Copy the ASCII form of the name over 
     clc
     return
 .notOk:
@@ -1093,7 +1057,7 @@ checkDevPath:
     stosb   ;Store that and let the ffblock write the filename
 .cds2:
     cmp byte [skipDisk], 0  ;If NOT in DISK search, we exit now with CF=CY
-    jne .buildDeviceFFblock    ;Now jump if in disk search
+    jne .copyName    ;Now jump if in disk search
     stc ;Else set CF=CY to pretend not found to write as normal
     return
 

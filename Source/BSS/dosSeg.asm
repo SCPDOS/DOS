@@ -229,6 +229,8 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
     ;for saving the current header when quickly doing a second request
 
+    lastDiskNum resb 1  ;Last drive that operated
+    lastOpTime  resw 1  ;Packed Time of last successful disk operation
     ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle

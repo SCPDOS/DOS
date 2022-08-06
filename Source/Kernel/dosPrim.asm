@@ -193,6 +193,32 @@ getDiskDPB:
 .exitBad:
     return
 
+checkIfMedCheck:
+;Input: rsi = DPB for disk
+    push rax
+    push rbx
+    ;!!!!!!!!!!!!
+    ;For now just if its the same disk, be ok with it.
+    ;!!!!!!!!!!!!
+    ;Read the clock record. Cross Day Bndry will always force a new operation
+    ;Read the time fields directly.
+    call swapPrimaryHeader  ;Save the primary header temporarily
+    call readDateTimeRecord ;Update the time
+    stc ;Set CF, write backup to primary header
+    call swapPrimaryHeader
+
+
+    mov al, byte [rsi + dpb.bDriveNumber] 
+    cmp byte [lastDiskNum], al
+    jnz .exit
+
+.exit:
+    pop rbx
+    pop rax
+    return
+.okTime:
+    xor ebx, ebx
+    jmp short .exit
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
 ;On entry: rbp = DPB (and working DPB = DPB)

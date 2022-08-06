@@ -258,8 +258,8 @@ clearbuffDoFunc:   ;ah = 0Ch
 ;  Primitive functions  :
 ;------------------------
 swapPrimaryHeader:
-;Will swap the primary header to the backup or vice-versa, depending on
-; CF. CF = NC, write to backup, CF=CY, read from backup
+;Will swap the primary header to the backup or vice-versa, depending on CF. 
+; CF = NC, write to backup, CF=CY, read from backup
     push rsi
     push rdi
     push rcx

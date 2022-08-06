@@ -18,12 +18,8 @@ makeDIR:           ;ah = 39h
     call checkPathNet
     jz .badPath ;or network paths
     ;Path is ok, now proceed
-    push qword [currentDTA]
-    lea rdi, dosffblock ;Use the dosFFblock as the DTA
-    mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
-    pop qword [currentDTA]
     ;If the path exists, exit error
     jnc extErrExit
     ;Now check if the reason for the error was that the last pathcomp was 0
@@ -51,12 +47,8 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     call checkPathNet
     jz .badPath ;Or Net paths
     ;Path is ok, now proceed
-    push qword [currentDTA]
-    lea rdi, dosffblock ;Use the dosFFblock as the DTA
-    mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
-    pop qword [currentDTA]
     jc extErrExit   ;Exit with error code in eax
     ;The path must've been ok, so now copy the path into the CDS
     ;The copy of the directory entry has the start cluster of this dir file
@@ -102,14 +94,15 @@ getCurrentDIR:     ;ah = 47h
     jc extErrExit
 .okDrive:
     mov rdi, rsi    ;Save destination in rdi
+    call dosCrit1Enter  ;Ensure no task interrupts our copy
     mov rsi, qword [workingCDS]  ;Get pointer to current CDS in rsi
     movzx eax, word [rsi + cds.wBackslashOffset]
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
     call strcpy
+    call dosCrit1Exit
     mov eax, 0100h  ;RBIL -> MS software may rely on this value
     jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
-
 
 getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
