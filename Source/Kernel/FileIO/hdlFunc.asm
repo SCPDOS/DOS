@@ -695,6 +695,7 @@ readDiskFile:
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
     mov byte [rwFlag], 0    ;Read operation
     call setupVarsForDiskTransfer   ;Now setup disk vars too
+    retc    ;If carry set, exit
     test ecx, ecx   ;If the number of chars to tfr are zero, exit ecx = 0
     retz
     ;We have the following vars setup:
@@ -855,7 +856,8 @@ setupVarsForDiskTransfer:
 ;Extension of the above, but for Disk files only
 ;Input: ecx = User desired Bytes to transfer
 ;       rdi = SFT pointer for the file
-;Output: ecx = Actual Bytes that will be transferred 
+;Output: CF=NC: ecx = Actual Bytes that will be transferred 
+;        CF=CY: Error exit
     mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
     mov dword [currByteF], eax
     mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
@@ -863,6 +865,8 @@ setupVarsForDiskTransfer:
     cmovz ecx, edx  ;If the file size is zero, exit
     jecxz .exit
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
+    call ensureDiskValid
+    retc    ;Return with CF=CY
     mov qword [workingDPB], rbp
     mov bl, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], bl   ;Set working drive number
