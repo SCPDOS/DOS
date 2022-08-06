@@ -129,14 +129,26 @@ writeFileHdl:      ;ah = 40h, handle function
     jmp readFileHdl.common
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
-    push rcx
-    mov byte [searchAttr], dirIncFiles    ;Inclusive w/o dirs
+;Here don't allow malformed chars unless it is a network CDS
+    push rdx
+    mov ebx, dirIncFiles    ;Inclusive w/o dirs
+    test byte [dosInvoke], -1
+    cmovz ecx, ebx  ;If not server invoke, store this value instead
+    mov byte [searchAttr], cl
     mov rsi, rdx
+    call checkPathspecOK
+    jnc .pathOk ;Path ok save for potentially having wildcards
+.badPath:
+    mov eax, errPnf
+    jmp extErrExit
+.pathOk:
     lea rdi, buffer1
-    call getPath    ;Get the path for the file to delete
-    pop rcx
-    mov eax, errFnf
-    jc extErrExit   ;If the file was not found, bye bye
+    call getFilePath    ;Get the path for the file to delete
+    pop rdx
+    jc extErrExit   ;If the file or path was not found or error, bye bye
+    ;In the case of a wildcard, recall this will return the first file
+    cmp byte [fileExist], -1
+    jnz extErrExit
 ;Internal current dir is now populated with dir entry
 ; and internal DOS directory variables now point to this entry.
 ;Check if the file is a char device or read only.
@@ -145,9 +157,24 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jnz extErrExit  ;Can't delete a char dev
     test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
     jnz extErrExit  ;Can't delete a read only file
+    ;Now check if the cds is redir, allow wildcards. Else disallow
+    mov rdi, qword [workingCDS]
+    ;Now we check to see if we have wildcards. We do not generally allow them.
+    ;Network CDS and server invokations allow wildcards
+    test byte [dosInvoke], -1
+    jnz .gotoDelete ;Wildcard always ok if invoked via server interface
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    jnz .gotoDelete
+    ;Now we check to see if we have wildcards. We do not generally allow them.
+    ;Network CDS and server invokations allow wildcards
+    call scanPathWC
+    jc .badPath ;Dont allow wildcards
+.gotoDelete:
     call deleteMain
     jc extErrExit
     jmp extGoodExit
+
+
 lseekHdl:          ;ah = 42h, handle function, LSEEK
 ;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
     call getSFTPtr
@@ -287,6 +314,12 @@ findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
     call findNextMain
     jmp short findFirstFileHdl.findfileExit
 renameFile:        ;ah = 56h
+    mov ebx, dirInclusive
+    test byte [dosInvoke], -1
+    cmovz ecx, ebx  ;If not server, store this value instead
+    mov byte [searchAttr], cl
+
+
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
 
@@ -336,11 +369,20 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 deleteMain:
 ;Now unlink FAT chain and then clear directory entry
 ;Get the start cluster of this file
-;Input: curDirCopy must be filled with the file directory information
-;       and the file must have the permissions to be deleted.
-;       workingDPB must be disk dpb and dir variables must be set
+;Input: rdi = cds for the drive
+; The file must have NOT be read-only.
+; If the CDS is NOT a net cds then the following must hold:
+;     - curDirCopy must be filled with the file directory information
+;     - workingDPB must be disk dpb and dir variables must be set
 ;Output: CF=NC => Success
 ;        CF=CY => Error
+    mov rdi, qword [workingCDS]
+    call testCDSNet ;CF=CY => Not net
+    jc .notNet
+    mov eax, 1113h
+    int 4Fh
+    return
+.notNet:
     push rdx
     movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
     movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
@@ -354,31 +396,12 @@ deleteMain:
     jc .exit
 .skipUnlink:
     ;Now replace the first char of the directory to 0E5h
-    ;Get the cluster and sector of the directory entry
-    mov eax, dword [dirClustA]  
-    ;Skip cluster manipulation if the cluster number is 0 because these are 
-    ; root directories of FAT12/16 drives.
-    movzx ebx, word [dirSect]
-    test eax, eax
-    jz .skipCluster
-    call getStartSectorOfCluster    ;Get sector number in rax
-.skipCluster:
-    add rax, rbx    ;Add sector offset to start sector of cluster
-    call getBufForDOS   ;Get buffer for DOS in rbx
+    ;Get the disk directory in a buffer to manipulate the entry
+    call getDiskDirectory
     jc .exit
-    call adjustDosDirBuffer ;Change buffer to Dir buffer
-    ;Above function moves buffer ptr to rsi
-    movzx eax, word [dirSect]   ;Get the sector in which the offset lies
-    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-    mul ebx ;Multiply these two words so eax has number of bytes to
-    ; the current sector
-    shr eax, 5  ;Divide by 32 to get the number of dir entries we are skipping
-    mov ebx, dword [dirEntry]
-    sub ebx, eax    ;Now ebx has the dir entry offset in the current sector
-    shl ebx, 5  ;Multiply by 32 to get byte offset
-    add rsi, rbx    ;rsi now points to the entry
-    mov byte [rsi], 0E5h    ;Mark as deleted
-    xor eax, eax
+    mov al, byte [delChar]
+    mov byte [rsi], al    ;Mark entry as free
+    xor eax, eax    ;Clear flags
 .exit:
     return
 

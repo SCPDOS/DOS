@@ -129,6 +129,39 @@ trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
 ;    General Directory Routines    :
 ;-----------------------------------
 
+getDiskDirectory:
+;Gets a ptr to a disk directory entry using the directory variables.
+;Input: dword [dirClustA], word [dirSect], dword [dirEntry]
+;Output: CF=NC => rsi = Pointer to the start of the disk directory
+;        CF=CY => Error, exit 
+    push rbx
+    mov eax, dword [dirClustA]  
+    ;Skip cluster manipulation if the cluster number is 0 because these are 
+    ; root directories of FAT12/16 drives.
+    movzx ebx, word [dirSect]
+    test eax, eax
+    jz .skipCluster
+    call getStartSectorOfCluster    ;Get sector number in rax
+.skipCluster:
+    add rax, rbx    ;Add sector offset to start sector of cluster
+    call getBufForDOS   ;Get buffer for DOS in rbx
+    jc .exit
+    call adjustDosDirBuffer ;Change buffer to Dir buffer
+    ;Above function moves buffer ptr to rsi
+    movzx eax, word [dirSect]   ;Get the sector in which the offset lies
+    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    mul ebx ;Multiply these two words so eax has number of bytes to
+    ; the current sector
+    shr eax, 5  ;Divide by 32 to get the number of dir entries we are skipping
+    mov ebx, dword [dirEntry]
+    sub ebx, eax    ;Now ebx has the dir entry offset in the current sector
+    shl ebx, 5  ;Multiply by 32 to get byte offset
+    add rsi, rbx    ;rsi now points to the entry
+.exit:
+    pop rbx
+    return
+
+
 updateDirectoryEntryForFile:    
 ;Updates the directory entry for disk files
 ;Called with:
