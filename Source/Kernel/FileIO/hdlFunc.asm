@@ -38,7 +38,6 @@ openFileHdl:       ;ah = 3Dh, handle function
     movzx ebx, word [currentNdx]    ;Get the current ndx 
     mov byte [rdi], bl  ;And open the file
     ;If the rest of open/create fails, be prepared to close this entry
-    ;We will be searching on disk so swap to internal find first block
     mov rsi, rdx    ;Ptr to ASCIIZ path string    
     lea rdi, buffer1    ;Build the full path here
     push rcx    ;Save the procedure to call on stack
