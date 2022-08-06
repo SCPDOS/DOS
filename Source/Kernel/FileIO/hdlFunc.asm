@@ -228,8 +228,78 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     jmp extErrExit
 .subFuncOk:
     mov rsi, rdx
-    clc
-    return
+    mov ebx, eax    ;Store function code in bl
+    push rbx
+    push rcx
+    call checkPathspecOK
+    jnc .pathOk ;Path ok save for potentially having wildcards
+    jz .pathOk  ;Can be terminated with a silly char
+.badPath:
+    pop rcx
+    pop rbx
+    mov eax, errPnf
+    jmp extErrExit
+.pathOk:
+    call checkPathNet 
+    jz .badPath ;Or Net paths
+    call scanPathWC
+    jc .badPath ;Dont allow wildcards
+    lea rdi, buffer1
+    push rdx
+    mov byte [searchAttr], dirInclusive    ;Inclusive search
+    call getFilePath    ;Get the path for the file to delete
+    pop rdx
+    pop rcx
+    pop rbx
+    jc extErrExit   ;If the file or path was not found or error, bye bye
+    ;In the case of a wildcard, recall this will return the first file
+    cmp byte [fileExist], -1
+    jnz extErrExit
+
+    call testCDSNet
+    jnc .notNet
+    jnz .notNet ;This type of net ok
+    mov eax, errAccDen
+    jmp extErrExit
+.notNet:
+    test bl, bl
+    jnz .setAttribs
+    ;Get attribs here
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    jz .getDiskAttribs
+    mov eax, 110Fh  ;Get attributes and size in edi
+    int 4Fh
+    jc extErrExit
+    jmp extGoodExit
+.getDiskAttribs:
+    movzx eax, byte [curDirCopy + fatDirEntry.attribute]   ;Get disk attributes
+    jmp extGoodExit
+.setAttribs:
+    ;Set attribs here
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    jz .setDiskAttribs
+    movzx ecx, cx
+    push rcx    ;Push attributes on stack in zero extended qword
+    mov eax, 110Eh
+    int 4Fh
+    pop rcx
+    jc extErrExit
+    jmp extGoodExit
+.setDiskAttribs:
+    call getDiskDirectoryEntry  ;Get ptr to entry in rsi
+    jc extErrExit
+    test cl, dirVolumeID | dirDirectory
+    jz .set
+    mov eax, errAccDen
+    jmp extErrExit
+.set:
+    mov ch, byte [rsi + fatDirEntry.attribute]  ;Get attribs
+    and ch, (dirVolumeID | dirDirectory)    ;Keep these two bits
+    or cl, ch
+    mov byte [rsi + fatDirEntry.attribute], cl  ;Set new bits
+    xor eax, eax
+    jmp extGoodExit
+
 
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate

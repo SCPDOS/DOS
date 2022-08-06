@@ -16,6 +16,7 @@ testCDSNet:
 ;         CF=CY => Network redirector
 ;         ZF=ZE => Net without CDS (\\ paths only)
 ;         ZF=NZ => Net with CDS (disk paths ok)
+;         rdi = workingCDS ptr
     mov rdi, qword [workingCDS]
     cmp rdi, -1 ;Net without CDS
     je .net
