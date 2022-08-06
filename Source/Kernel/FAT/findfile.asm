@@ -201,7 +201,6 @@ findInBuffer:
     cmp ah, al  ;If file attr <= user selected attribs, scan name for match
     ja .nextEntry
     ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
-    ;rdi points to the ffBlock to use
 .scanName:
     push rsi
     lea rdi, fcbName ;Goto name template to search for
@@ -238,7 +237,6 @@ findInBuffer:
     clc
     return
 
-;DEPRECIATED DEPRECIATED DEPRECIATED DEPRECIATED DEPRECIATED DEPRECIATED 
 .nameCompare:
 ;Input: rsi = source string
 ;       rdi = string template to compare against
@@ -992,11 +990,11 @@ checkDevPath:
 ;Called only if the file/directory was not found on disk.
 ;Checks if the current fcbname field is "DEV        \" (for the DEV 
 ; pseudo-directory). If it is, then we parse the next filename in to fcbName
-; and check to see if it is a char device. If it is, build an ffblock.
+; and check to see if it is a char device. If it is, build a directory
 ; If it is not, proceed with the request fail.
 ;
 ;Input: rsi = Pointer to the next path spec
-;Output: CF=NC => Char device found, directory and ffblocks built
+;Output: CF=NC => Char device found, directory built
 ;        CF=CY => Char device not found or not searching for dev. Exit.
     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
     rete
@@ -1054,7 +1052,7 @@ checkDevPath:
     jne .cds2 ;IF not at root, then skip replacing pathsep
     dec rdi
     mov al, "/" ;Replace \ with "/"
-    stosb   ;Store that and let the ffblock write the filename
+    stosb   ;Store that and let the dir write the filename
 .cds2:
     cmp byte [skipDisk], 0  ;If NOT in DISK search, we exit now with CF=CY
     jne .copyName    ;Now jump if in disk search

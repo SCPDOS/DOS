@@ -162,7 +162,7 @@ sdaMainSwap:
     vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)
     fileExist   resb 1  ;-1 if file in pathspec exists (create/open)
     parDirExist resb 1  ;-1 if parent directory for file exists (create/open)
-    exitType    resb 1  ;Forms the upper byte of the errorlelv
+    exitType    resb 1  ;Forms the upper byte of the errorlvl
     openCreate  resb 1  ;If open, set to 0, if Create set to -1
     delChar     resb 1  ;Char to replace first byte of deleted file's name
     workingDrv  resb 1  ;Working drive number
