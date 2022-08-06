@@ -404,11 +404,23 @@ buildSFTEntry:
 ;Set file pointer to first byte
     mov dword [rsi + sft.dCurntOff], 0  
 ;Common fields set
-    cmp byte [fileExist], -1    ;Does the file exist?
-    jne .fileNotFound
-    ;Here if the file was found on disk or a char dev
+    test byte [openCreate], -1  ;Create = -1
+    jz .openProc
+    ;Here if Creating a file.
     test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
-    jz .diskFileFound
+    jnz .charDev
+    test byte [fileExist], -1   ;-1 => File exists
+    jz .createFile
+    ;Here file exists, so delete the file before recreating it.
+.createFile:
+    ;Create a new file entry
+    jmp short .open
+.openProc:
+    ;Here if Opening a file.
+    test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
+    jnz .charDev
+.open:
+.charDev:
     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
     call getCharDevDriverPtr    ;Get in rdi device header ptr
     jnc .notBadCharDevName
@@ -422,14 +434,6 @@ buildSFTEntry:
     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
     mov dword [rsi + sft.dFileSize], 0  ;No size
     return
-.diskFileFound:
-    cmp byte [openCreate], -1
-    
-.fileNotFound:
-    ;Here we must build the directory entry and allocate a FAT cluster.
-    cmp byte [openCreate], -1
-    jnz .bad
-
 
 .bad:
     stc

@@ -11,15 +11,15 @@ findNextMain:
     inc al  ;Convert into 1 based number
     call dosCrit1Enter
     call setDrive   ;Set CDS and current drive vars
-    retc    ;Return error if this fails
+    jc .critError   ;Return error if this fails
     mov rdi, qword [workingCDS] 
     call getDiskDPB  ;Update and set working dpb and drv, get dpbptr in rbp
+.critError:
+    call dosCrit1Exit
     retc    ;Return error if this fails
     call searchMoreDir
-    call dosCrit1Exit
     return
 searchMoreDir:
-;Called in a level 1 critical section. 
 ;The three directory variables are set up from the ffblock. 
 ; WorkingDPB is setup also (hence, level 1 critical section)
 ;Current DTA is also used to contain the ff block address
@@ -573,14 +573,12 @@ getPath:
     mov byte [spliceFlag], 0    ;Set Splice flag to indicate Relative to CDS
 .commonDir:
 ;rsi points to the start of the string we will be appending
-    call dosCrit1Enter
     call pathWalk
-.driveExit:
-    call dosCrit1Exit
+    jc .badDriveExit
     return
 .badDriveExit:
     mov eax, errNoFil ;No file for that spec found
-    jmp short .driveExit
+    return
 
 pathWalk:
 ;Input: rsi must point to source buffer for path to expand
@@ -661,12 +659,16 @@ prepareDir:
 ;Output: rdi = Pointing at where to place chars from source string
 ;   If CF=CY => Drive invalid or drive letter too great
     push rsi
+    call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
     call setDrive   ;Set internal variables, working CDS etc etc
-    jc .badDriveExit    ;If the drive number in al is too great or drive invalid
+    jc .critExit    ;If the drive number in al is too great or drive invalid
     mov rdi, qword [workingCDS] 
     push rdi    ;Push CDS pointer on stack...
     call getDiskDPB  ;Update working DPB and drv before searching, dpbptr in rbp
+.critExit:
+    call dosCrit1Exit
     pop rsi     ; ...and get CDS pointer in rsi
+    jc .badDriveExit 
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
     ;If this CDS is a join drive, copy the first 3 chars and up to the next 
