@@ -12,17 +12,18 @@ setWorkingDPB:
 
 testCDSNet:
 ;Checks if the workingCDS is a redirector drive
-;Return: rdi = workingCDS
-;        CF=NC => Net
-;        CF=CY => Not net or invalid CDS
+;Returns: CF=NC => Not net
+;         CF=CY => Network redirector
+;         ZF=ZE => Net without CDS (\\ paths only)
+;         ZF=NZ => Net with CDS (disk paths ok)
     mov rdi, qword [workingCDS]
-    cmp rdi, -1
-    je .notNet
+    cmp rdi, -1 ;Net without CDS
+    je .net
     test word [rdi + cds.wFlags], cdsRedirDrive
-    jnz .notNet ;Carry flag will always be clear
-    return
-.notNet:
-    stc
+    jnz .net ;Net with CDS
+    return  ;CF=NC => Not net
+.net:
+    stc ;Set Net bit
     return
 
 getDiskData:

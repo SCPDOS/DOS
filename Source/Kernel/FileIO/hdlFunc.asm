@@ -130,7 +130,6 @@ writeFileHdl:      ;ah = 40h, handle function
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 ;Here don't allow malformed chars unless it is a network CDS
-    push rdx
     mov ebx, dirIncFiles    ;Inclusive w/o dirs
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server invoke, store this value instead
@@ -143,6 +142,7 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jmp extErrExit
 .pathOk:
     lea rdi, buffer1
+    push rdx
     call getFilePath    ;Get the path for the file to delete
     pop rdx
     jc extErrExit   ;If the file or path was not found or error, bye bye
@@ -219,7 +219,17 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     int 4Fh
     jnc .seekExit ;If the request returns with CF clear, there was no error
     jmp extErrExit
+
+
 changeFileModeHdl: ;ah = 43h, handle function, CHMOD
+    cmp al, 1
+    jbe .subFuncOk
+    mov eax, errInvFnc
+    jmp extErrExit
+.subFuncOk:
+    mov rsi, rdx
+    clc
+    return
 
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate
@@ -397,7 +407,7 @@ deleteMain:
 .skipUnlink:
     ;Now replace the first char of the directory to 0E5h
     ;Get the disk directory in a buffer to manipulate the entry
-    call getDiskDirectory
+    call getDiskDirectoryEntry
     jc .exit
     mov al, byte [delChar]
     mov byte [rsi], al    ;Mark entry as free

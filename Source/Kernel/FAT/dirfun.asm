@@ -129,7 +129,7 @@ trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
 ;    General Directory Routines    :
 ;-----------------------------------
 
-getDiskDirectory:
+getDiskDirectoryEntry:
 ;Gets a ptr to a disk directory entry using the directory variables.
 ;Input: dword [dirClustA], word [dirSect], dword [dirEntry]
 ;Output: CF=NC => rsi = Pointer to the start of the disk directory
