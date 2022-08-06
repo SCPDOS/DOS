@@ -246,11 +246,9 @@ unlinkFAT:
 ;Output: CF = NC => All ok. CF = CY => Hard Error, exit
 
     push rax    ;Save the cluster number to start unlinking at
-    call truncateFAT
-    pop rax ;Get back original cluster value
-    push rax
     push rsi
-    xor esi, esi  ;Free cluster
+    call truncateFAT    ;Preserved eax
+    xor esi, esi  ;Free first cluster too
     call writeFAT
     pop rsi
     pop rax
@@ -266,7 +264,9 @@ truncateFAT:
 ;Input: eax = Cluster to start unlinking at (zero extended to 32 bits)
 ;       rbp = Current DPB to use for disk
 ;Output: CF = NC => All ok. CF = CY => Hard Error, exit
+    push rax
     push rbx
+    push rsi
     mov ebx, eax    ;Store the current cluster we are at in ebx
 .lp:
     call walkFAT    ;Get the value of the cluster at this location in eax
@@ -280,7 +280,9 @@ truncateFAT:
     mov eax, ebx    ;Move next cluster into eax
     jmp short .lp
 .exit:
+    pop rsi
     pop rbx
+    pop rax
     return
 walkFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain
