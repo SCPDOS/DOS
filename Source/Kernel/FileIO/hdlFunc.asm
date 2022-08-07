@@ -158,13 +158,8 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
     jnz extErrExit  ;Can't delete a read only file
     ;Now check if the cds is redir, allow wildcards. Else disallow
-    mov rdi, qword [workingCDS]
-    ;Now we check to see if we have wildcards. We do not generally allow them.
-    ;Network CDS and server invokations allow wildcards
-    test byte [dosInvoke], -1
-    jnz .gotoDelete ;Wildcard always ok if invoked via server interface
-    test word [rdi + cds.wFlags], cdsRedirDrive
-    jnz .gotoDelete
+    call testCDSNet ;Gets working CDS in rdi
+    jc .gotoDelete
     ;Now we check to see if we have wildcards. We do not generally allow them.
     ;Network CDS and server invokations allow wildcards
     call scanPathWC
@@ -172,6 +167,22 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 .gotoDelete:
     call deleteMain
     jc extErrExit
+    cmp byte [dosInvoke], -1    ;Server invoke?
+    jne extGoodExit
+    ;Here is server invoke, pass through call again
+    ;We build a dummy ffblock and find next and delete until no more files match
+    push qword [currentDTA] ;Save the current DTA address
+    lea rdi, dosffblock
+    push rdi    ;Push this address onto the stack
+    call setupFFBlock   ;Setup FFblock internally
+    pop qword [currentDTA] ;And use the dosFFblock as the DTA
+    call findNextMain   ;rdi gets reloaded with DTA in this call
+    pop qword [currentDTA]
+    jnc .gotoDelete     ;Whilst it keeps finding files that match, keep deleting
+;Stop as soon as an error occurs
+    cmp al, errNoFil    ;Check if no more files (not considered error here)
+    jne extErrExit
+    xor eax, eax
     jmp extGoodExit
 
 
@@ -327,6 +338,7 @@ duplicateHandle:   ;ah = 45h, handle function
     sub rsi, rdi    ;Get the difference of the two in si
     mov eax, esi    ;Get the difference as the return code
     jmp extGoodExit
+
 forceDuplicateHdl: ;ah = 46h, handle function
 ;Input: bx = Handle to duplicate
 ;       cx = Handle to close and replace with a duplicate of bx
@@ -344,6 +356,7 @@ forceDuplicateHdl: ;ah = 46h, handle function
     xchg ebx, ecx   ;Now get source to duplicate in ebx
     mov rsi, rdi    ;Put the free space ptr in rsi
     jmp short duplicateHandle.duplicateCommon
+
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;Input: cx = Search Attributes, cl only used
 ;       rdx = Ptr to path to file to look for
@@ -393,6 +406,7 @@ findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
     mov qword [currentDTA], rdi
     call findNextMain
     jmp short findFirstFileHdl.findfileExit
+
 renameFile:        ;ah = 56h
     mov ebx, dirInclusive
     test byte [dosInvoke], -1
@@ -459,7 +473,7 @@ deleteMain:
     mov rdi, qword [workingCDS]
     call testCDSNet ;CF=CY => Not net
     jc .notNet
-    mov eax, 1113h
+    mov eax, 1113h  ;Allows wildcards, and will delete all which match
     int 4Fh
     return
 .notNet:

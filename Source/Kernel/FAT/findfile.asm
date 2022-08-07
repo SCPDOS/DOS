@@ -470,6 +470,10 @@ getPath:
     call getDrvLetterFromPath
     call getCDS ;Get the cds for the drive letter on the path
     ;Do nothing for now
+    ;REMEMBER, FOR ALL THE LOGIC TO WORK, HERE WE MUST ENSURE THE PATH
+    ; IS FULLY QUALIFIED. THAT IS, NO WILDCARDS, NO . or .., ONLY ONE 
+    ; MULTIPLE SLASH (optional at the start of the path) AND NULL TERMINATED.
+    ;IF ANY OF THESE CRITERIA ARE NOT MET, ERROR EXIT
     mov rdi, qword [workingCDS]
     call dosCrit1Enter
     call ensureDiskValid
