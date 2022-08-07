@@ -171,8 +171,10 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jc extErrExit
     cmp byte [dosInvoke], -1    ;Server invoke?
     jne extGoodExit
-    ;Here is server invoke, pass through call again
-    ;We build a dummy ffblock and find next and delete until no more files match
+    ;Here is server invoke, pass through call again.
+    ;We found first, so build a ffblock from the curDir data and find next
+    ;If there are more, delete until no more files match wildcard pattern
+.serverWCloop:
     push qword [currentDTA] ;Save the current DTA address
     lea rdi, dosffblock
     push rdi    ;Push this address onto the stack
@@ -180,7 +182,8 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     pop qword [currentDTA] ;And use the dosFFblock as the DTA
     call findNextMain   ;rdi gets reloaded with DTA in this call
     pop qword [currentDTA]
-    jnc .gotoDelete     ;Whilst it keeps finding files that match, keep deleting
+    call deleteMain ;Whilst it keeps finding files that match, keep deleting
+    jnc .serverWCloop     
 ;Stop as soon as an error occurs
     cmp al, errNoFil    ;Check if no more files (not considered error here)
     jne extErrExit
