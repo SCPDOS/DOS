@@ -157,9 +157,11 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jnz extErrExit  ;Can't delete a char dev
     test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
     jnz extErrExit  ;Can't delete a read only file
-    ;Now check if the cds is redir, allow wildcards. Else disallow
+    ;Now check if the cds is redir, or we entered via server to allow wildcards.
     call testCDSNet ;Gets working CDS in rdi
     jc .gotoDelete
+    cmp byte [dosInvoke], -1    ;Server invoke?
+    je .gotoDelete
     ;Now we check to see if we have wildcards. We do not generally allow them.
     ;Network CDS and server invokations allow wildcards
     call scanPathWC
