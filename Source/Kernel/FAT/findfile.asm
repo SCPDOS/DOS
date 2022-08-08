@@ -467,17 +467,22 @@ getPath:
     ;In this case, the client network program will have correctly
     ; substituted the drive letter for the path before making the request.
     ;Thus we can immediately assume the existance of a drive letter in the path 
-    call getDrvLetterFromPath
+    call getDrvLetterFromPath   ;rsi will point to the \ in X:\
     call getCDS ;Get the cds for the drive letter on the path
-    ;Do nothing for now
     ;REMEMBER, FOR ALL THE LOGIC TO WORK, HERE WE MUST ENSURE THE PATH
-    ; IS FULLY QUALIFIED. THAT IS, NO WILDCARDS, NO . or .., ONLY ONE 
-    ; MULTIPLE SLASH (optional at the start of the path) AND NULL TERMINATED.
-    ;IF ANY OF THESE CRITERIA ARE NOT MET, ERROR EXIT
+    ; CONTAINS NO . or .., NO INVALID CHARS OR MULTIPLE \\ AND IS 0 TERMINATED.
+    ;We do not scan for this criteria but the client program must adhere to 
+    ; these requirements.
+    ;When a server request is made, the request can ONLY be for a file on
+    ; a CDS drive.
+    inc al  ;Turn back into a 1 based drive number
     mov rdi, qword [workingCDS]
+    push rax
     call dosCrit1Enter
-    call ensureDiskValid
+    call getDiskDPB ;Force an initial update of the disk dpb. Get ptr in rbp
     call dosCrit1Exit
+    pop rax
+    jnc .driveOk
 .serverExit:
     mov al, errPnf  ;If CF=CY, use this error code
     return
@@ -520,17 +525,10 @@ getPath:
     call pathWalk.netEp     ;Now expand the pathspec portion
     jmp short .moveNetChars
 .netEnd:
-    xchg bx, bx
     pop rbx
     stosb
     test bl, bl ;If skip disk was zero, exit
     retz
-    push rsi
-    lea rsi, buffer1
-    call scanPathWC ;Net paths may not have any wildcards!
-    pop rsi
-    mov eax, errPnf ;Bad Path
-    retc 
     mov eax, 1119h  ;Find First Without CDS
     int 4Fh
     return

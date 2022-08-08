@@ -181,7 +181,11 @@ freeBuffersForDPB:
 .exit:
     pop rbx
     return
-
+setBufferDirty:
+    push rbp
+    pushfq
+    mov rbp, qword [currBuff]
+    or byte [rbp + bufferHdr.bufferFlags], dirtyBuffer
 setBufferReferenced:
 ;Sets the current buffer in the buffer variable as referenced.
 ; AKA DOS is done with it.

@@ -178,9 +178,10 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     currentNdx  resw 1  ;Used to access the current SFTNdx being opened/created
     currentHdl  resw 1  ;The current file handle is saved here
     currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
-;Temp vars, used when walking FAT or changing sectors
+;Temp vars, used when walking FAT or changing sectors, or reporting sector num
+; and 32 byte offset into the sector for directory
     tempSect    resq 1  ;A scratch sector number
-    entries     resw 1  ;FAT entries per FAT sector
+    entry       resw 1  ;32 byte offset into a sector or #fats sectors/fat
 ;***************************************************|
 ; Needs to be set up before any file access         |
 ; These vars keep track of file access properties   |

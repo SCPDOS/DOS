@@ -168,6 +168,7 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jc .badPath ;Dont allow wildcards
 .gotoDelete:
     call deleteMain
+    call setBufferReferenced
     jc extErrExit
     cmp byte [dosInvoke], -1    ;Server invoke?
     jne extGoodExit
@@ -183,6 +184,7 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     call findNextMain   ;rdi gets reloaded with DTA in this call
     pop qword [currentDTA]
     call deleteMain ;Whilst it keeps finding files that match, keep deleting
+    call setBufferReferenced
     jnc .serverWCloop     
 ;Stop as soon as an error occurs
     cmp al, errNoFil    ;Check if no more files (not considered error here)
@@ -473,8 +475,12 @@ deleteMain:
 ; If the CDS is NOT a net cds then the following must hold:
 ;     - curDirCopy must be filled with the file directory information
 ;     - workingDPB must be disk dpb and dir variables must be set
-;Output: CF=NC => Success
+;Output: CF=NC => Success, 
+; If not net CDS:
+;   rsi keeps pointing to directory entry.
+;   al = First char of the file that was deleted.
 ;        CF=CY => Error
+;The dir buffer must be marked as referenced once we are done with it
     mov rdi, qword [workingCDS]
     call testCDSNet ;CF=CY => Not net
     jc .notNet
@@ -499,8 +505,8 @@ deleteMain:
     call getDiskDirectoryEntry
     jc .exit
     mov al, byte [delChar]
-    mov byte [rsi], al    ;Mark entry as free
-    xor eax, eax    ;Clear flags
+    xchg byte [rsi], al    ;Mark entry as free, get char in al
+    ;CF must be clear
 .exit:
     return
 
@@ -515,13 +521,14 @@ createMain:
     test al, 80h | 40h   ;Invalid bits?
     jnz .invalidAttrib
     test al, dirVolumeID
-    jz .skipVol
-    mov al, dirVolumeID ;Make this exclusively a volume ID
-.skipVol:
+    jnz .invalidAttrib  ;Creating volume label with this function is forbidden
     or al, dirArchive   ;Set archive bit
-    test al, dirDirectory   ;Dir cannot be set either here
-    jz .validAttr
+    test al, dirDirectory   
+    jz .validAttr   ;Creating directory with this function is forbidden also
 .invalidAttrib:
+    mov eax, errAccDen
+    stc
+    return
 .validAttr:
     mov rdi, qword [currentSFT]
     mov rsi, qword [workingCDS]
@@ -544,16 +551,17 @@ createMain:
     or word [rdi + sft.wOpenMode], RWAccess ;Set R/W access when creating file
     mov byte [openCreate], -1   ;Creating file, set to FFh
     mov byte [delChar], 0E5h
-    call dosCrit1Enter
+    call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
     push rax    ;Save the file attributes on stack
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
-    pop rbx
+    pop rbx ;Pop the word off (though it has been used already!)
     call dosCrit1Exit
     return
 buildSFTEntry:
 ;Called in a critical section.
 ;Input: al = Open mode
+;       STACK: File attributes
 ;       [currentSFT] = SFT we are building
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
@@ -571,6 +579,8 @@ buildSFTEntry:
 
 ;First set the open mode, time and date, name, ownerPSP and file pointer
 ; to start of file fields of the SFT
+    push rbp    ;file attribute is rbp + 10h
+    mov rbp, rsp
     mov rsi, qword [currentSFT]
 ;Set the open mode
     mov word [rsi + sft.wOpenMode], ax
@@ -599,9 +609,57 @@ buildSFTEntry:
     jnz .charDev
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
-    ;Here file exists, so delete the file before recreating it.
+    ;Here disk file exists, so recreating the file.
+    call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
+    ;al has the char for the filename
+    ;Sets vars for the sector/offset into the sector
+    mov rdi, qword [currentSFT]
+    mov byte [rsi], al  ;Replace the first char of the filename back
+    mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
+    ;al has file attributes.
+    and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
+    mov byte [rsi + fatDirEntry.attribute], al
+    xor eax, eax
+    ;Clear all the fields south of ntRes (20 bytes)
+    mov qword [rsi + fatDirEntry.ntRes], rax
+    mov qword [rsi + fatDirEntry.fstClusHi], rax
+    mov dword [rsi + fatDirEntry.fileSize], eax
+    mov eax, dword [rdi + sft.wTime]    ;Get the SFT time to set as crt and wrt
+    mov dword [rsi + fatDirEntry.crtTime], eax
+    mov dword [rsi + fatDirEntry.wrtTime], eax
+
+    push rdi    ;Save SFT pointer
+    lea rdi, curDirCopy ;Copy this directory entry
+    mov ecx, fatDirEntry_size
+    rep movsb
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    pop rdi
+
+    ;Now populate the remaining SFT fields 
+    lea rsi, curDirCopy
+    mov al, byte [rsi + fatDirEntry.attribute]
+    mov byte [rdi + sft.bFileAttrib], al
+    mov rax, qword [tempSect]   ;Get directory entry sector
+    mov qword [rdi + sft.qDirSect], rax
+    movzx eax, word [entry]     ;Get 32 byte offset into sector for directory
+    mov byte [rdi + sft.bNumDirEnt], al
+    xor eax, eax
+    push rdi
+    lea rdi, qword [rdi + sft.dFileSize]
+    stosq    ;Clear fileSzie and curntOff
+    stosq
+    pop rdi  ;Clear relClust and AbdClusr
+    ;Now set DeviceInfo to zero and get the dpb for this disk file
+    mov word [rdi + sft.wDeviceInfo], ax
+    mov rax, qword [workingDPB]
+    mov qword [rdi + sft.qPtr], rax
+    ;SFT filled, now we can return
+    jmp .exit
 .createFile:
-    ;Create a new file entry
+    ;Create a new file directory entry
+    ;tempSect and entry must be set correctly when finding the directory 
+    ; sector and entry
     jmp short .open
 .openProc:
     ;Here if Opening a file.
@@ -613,7 +671,7 @@ buildSFTEntry:
     call getCharDevDriverPtr    ;Get in rdi device header ptr
     jnc .notBadCharDevName
     mov eax, errAccDen
-    return
+    jmp short .exit ;CF already set
 .notBadCharDevName:
     mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
     movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
@@ -621,11 +679,12 @@ buildSFTEntry:
     or bl, charDevBinary | charDevNoEOF ;Set binary mode and noEOF on read
     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
     mov dword [rsi + sft.dFileSize], 0  ;No size
+.exit:
+    pop rbp
     return
-
 .bad:
     stc
-    return
+    jmp short .exit
 closeMain: ;Int 4Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)

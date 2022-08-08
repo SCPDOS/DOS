@@ -133,6 +133,8 @@ getDiskDirectoryEntry:
 ;Gets a ptr to a disk directory entry using the directory variables.
 ;Input: dword [dirClustA], word [dirSect], dword [dirEntry]
 ;Output: CF=NC => rsi = Pointer to the start of the disk directory
+;        qword [tempSect] = Disk sector number of directory
+;        word [entry] = 32 byte offset into sector
 ;        CF=CY => Error, exit 
     push rbx
     mov eax, dword [dirClustA]  
@@ -144,6 +146,7 @@ getDiskDirectoryEntry:
     call getStartSectorOfCluster    ;Get sector number in rax
 .skipCluster:
     add rax, rbx    ;Add sector offset to start sector of cluster
+    mov qword [tempSect], rax   ;Save this sector number
     call getBufForDOS   ;Get buffer for DOS in rbx
     jc .exit
     call adjustDosDirBuffer ;Change buffer to Dir buffer
@@ -156,11 +159,15 @@ getDiskDirectoryEntry:
     mov ebx, dword [dirEntry]
     sub ebx, eax    ;Now ebx has the dir entry offset in the current sector
     shl ebx, 5  ;Multiply by 32 to get byte offset
+    mov word [entry], bx  ;Save 32 byte offset into sector
     add rsi, rbx    ;rsi now points to the entry
 .exit:
     pop rbx
     return
 
+findFreeDiskDirEntry:
+;Find a space in the directory we are searching for a directory entry
+;Accept first entry starting with a 0E5h or 00h
 
 updateDirectoryEntryForFile:    
 ;Updates the directory entry for disk files
