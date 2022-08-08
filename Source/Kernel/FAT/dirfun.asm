@@ -136,6 +136,7 @@ findFreeDiskDirEntry:
 ; for a empty dir entry and then call searchDir (but recall this must only
 ; be called for CDS's that are NOT net CDS's).
 ;Input: qword [workingDPB] = DPB of transacting device
+;       Directory vars must be set up for the directory we are searching in
 ;Output: CF=CY => Error, eax has error code
 ;        CF=NC => Refer to getDiskDirectoryEntry
     mov al, byte [delChar]
@@ -154,12 +155,18 @@ getDiskDirectoryEntry:
     push rbx
     mov eax, dword [dirClustA]  
     ;Skip cluster manipulation if the cluster number is 0 because these are 
-    ; root directories of FAT12/16 drives.
+    ; root directories of FAT12/16 drives. Instead add manual offset from dpb
     movzx ebx, word [dirSect]
     test eax, eax
     jz .skipCluster
     call getStartSectorOfCluster    ;Get sector number in rax
+    jmp short .skipOldFat
 .skipCluster:
+    push rbp
+    mov rbp, qword [workingDPB]
+    mov ebx, dword [rbp + dpb.dFirstUnitOfRootDir]
+    pop rbp
+.skipOldFat:
     add rax, rbx    ;Add sector offset to start sector of cluster
     mov qword [tempSect], rax   ;Save this sector number
     call getBufForDOS   ;Get buffer for DOS in rbx
@@ -174,7 +181,7 @@ getDiskDirectoryEntry:
     mul ebx ;Multiply these two words so eax has number of bytes to
     ; the current sector
     shr eax, 5  ;Divide by 32 to get the number of dir entries we are skipping
-    mov ebx, dword [dirEntry]
+    mov ebx, dword [dirEntry]   ;Get offset into dir file cluster
     sub ebx, eax    ;Now ebx has the dir entry offset in the current sector
     shl ebx, 5  ;Multiply by 32 to get byte offset
     mov word [entry], bx  ;Save 32 byte offset into sector

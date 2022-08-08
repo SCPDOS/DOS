@@ -910,6 +910,10 @@ l1:
     mov ah, 3Dh
     mov al, RWAccess
     int 41h
+    mov ah, 3ch
+    mov cx, 00  ;Normal attributes
+    lea rdx, tmpName3
+    int 41h
     mov ah, 60h
     lea rsi, tmpName2
     lea rdi, tmpBuf2
@@ -1150,3 +1154,6 @@ tmpName2    db "/test/test2/../another",0
 tmpDTA      db 80h dup 00h
 tmpBuffer   db 80, 0, 126 dup 00h 
 tmpBuf2     db 80h dup 00h
+
+
+tmpName3    db "myfile.tst",0

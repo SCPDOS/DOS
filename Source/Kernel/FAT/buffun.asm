@@ -186,6 +186,7 @@ setBufferDirty:
     pushfq
     mov rbp, qword [currBuff]
     or byte [rbp + bufferHdr.bufferFlags], dirtyBuffer
+    jmp short clearBufferReferenced.exit
 setBufferReferenced:
 ;Sets the current buffer in the buffer variable as referenced.
 ; AKA DOS is done with it.

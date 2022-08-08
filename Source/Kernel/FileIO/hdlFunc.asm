@@ -748,12 +748,17 @@ buildSFTEntry:
     mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
     mov dword [rdi + fatDirEntry.crtTime], eax
     mov dword [rdi + fatDirEntry.wrtTime], eax
+    mov eax, dword [dirClustPar]    ;Get the parent directory information
+    mov dword [dirClustA], eax
+    xor eax, eax    ;Reset the search to the start of the current directory
+    mov word [dirSect], ax
+    mov dword [dirEntry], eax
     push rdi
     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
     pop rdi ;Preserve rdi = curDirCopy
     xchg rdi, rsi
     mov ecx, 4
-    rep stosq   ;Copy over the buffered directory
+    rep movsq   ;Copy over the buffered directory
     call setBufferDirty ;We wrote to this buffer
     call setBufferReferenced    ;We are now done with this buffer, reclaimable
     mov rdi, qword [currentSFT]
