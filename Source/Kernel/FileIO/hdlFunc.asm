@@ -1052,10 +1052,6 @@ readDiskFile:
 ;rbp = WorkingDPB
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
     mov byte [rwFlag], 0    ;Read operation
-    call setupVarsForDiskTransfer   ;Now setup disk vars too
-    retc    ;If carry set, exit
-    test ecx, ecx   ;If the number of chars to tfr are zero, exit ecx = 0
-    retz
     ;We have the following vars setup:
     ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
     ;currClustF
@@ -1134,12 +1130,72 @@ writeBytes:
     and al, 0Fh ;Eliminate except access mode
     cmp al, ReadAccess
     jne .writeable
+.noWrite:
     mov eax, errAccDen
     xor ecx, ecx
     stc
     ret
 .writeable:
-    call setupVarsForTransfer
+    test word [rdi + sft.wOpenMode], FCBopenedFile
+    jz .skipAttribCheck ;FCB files don't check file attributes
+    cmp byte [rdi + sft.bFileAttrib], readOnlyFile
+    je .noWrite ;If the file is read only, RIP
+.skipAttribCheck:
+    call setupVarsForTransfer   ;Returns bytes to transfer in ecx
+    test qword [rdi + sft.wDeviceInfo], devRedirDev
+    jz .notRedir
+    mov eax, 1109h  ;Write to redir
+    int 4Fh
+    return
+.notRedir:
+    test qword [rdi + sft.wDeviceInfo], devCharDev
+    jnz writeCharDev
+    mov byte [errorLocus], eLocDsk 
+    call dosCrit1Enter
+    call writeDiskFile
+    call dosCrit1Exit
+    return
+writeCharDev:
+    mov byte [errorLocus], eLocChr
+    ;We are adding bytes to this file so no EOF when reading from it
+    or word [rdi + sft.wDeviceInfo], charDevNoEOF
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    ;If ecx = 0, we exit
+    xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
+    jecxz writeExit
+    mov rdi, qword [currentDTA] ;Get ptr to storage buffer in rdi
+    xor edx, edx
+    test al, charDevBinary
+    jz .asciiDev
+;Write binary transfer here
+.asciiDev:
+    test al, charDevConOut
+    jnz .conDev
+    test al, charDevNulDev
+    jnz .nulDev
+    ;Here we transfer for a generic character device in ascii mode
+    mov eax, edx
+    cmp byte [rbx], EOF ;Is the string pointer at a EOF character?
+    
+.nulDev:
+.conDev:
+writeDiskFile:
+    ;If ecx = 0, we truncate to current file pointer position, rounding up
+    ; clusterwise!
+
+writeExit:
+;Advances the bytes on the file pointer
+;eax = Number of bytes transferred
+    mov rdi, qword [currentSFT]
+    mov ecx, eax
+    call .advPtr
+    return
+.advPtr:
+    jecxz .exit
+    add dword [rdi + sft.dCurntOff], ecx
+.exit:
+    clc
+    return
 
 rwExitOk:
 ;Input: ecx = Number of bytes left to transfer!
@@ -1207,9 +1263,10 @@ setupVarsForTransfer:
     mov dword [currByteF], eax  ;Save Current byte in the file
     mov dword [tfrLen], ecx ;Save the number of bytes to transfer
     mov dword [tfrCntr], ecx    ;Save the bytes left to transfer
+    test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
+    jz setupVarsForDiskTransfer
     clc
     return
-
 setupVarsForDiskTransfer:
 ;Extension of the above, but for Disk files only
 ;Input: ecx = User desired Bytes to transfer
