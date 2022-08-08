@@ -21,18 +21,18 @@ openFileHdl:       ;ah = 3Dh, handle function
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server, store this value instead
     mov byte [searchAttr], cl
-    mov rcx, openMain  
+    lea rcx, openMain  
     push rax    ;Save open mode on stack
 .openCommon:
     call dosCrit1Enter
     call findFreeSFT    ;Get free SFT in rdi or error exit
     call dosCrit1Exit
-    jc extErrExit
+    jc .exitBad
     ;Now save variables
     call setCurrentSFT
     mov word [currentNdx], bx   ;Save a word, SFTNdx are bytes though
     call findFreeJFTEntry    ;Get a ptr to a free JFT entry in rdi
-    jc extErrExit
+    jc .exitBad
     mov word [currentHdl], bx   ;Save handle number in var
     mov qword [curHdlPtr], rdi  ;Save ptr to this entry
     movzx ebx, word [currentNdx]    ;Get the current ndx 
@@ -72,18 +72,28 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov word [rsi + sft.wOpenMode], 0   ;Clear open mode bits
     mov word [rsi + sft.wShareRec], 0   ;Clear Share record pointer details
     push rcx    ;Save the device word 
-    call rbx
+    call rbx    ;Enter with open mode in 
     pop rcx
     mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
-    jc .exitBad
+    jc .exitBad2
     mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
     movzx eax, word [currentHdl]
     ;SHARE HOOK, DOS DS:[008Ch]
     jmp extGoodExit ;Save ax and return OK
 .exitBad:
+    sti ;To prevent new net open/create reqs from crapping out a failed request
     pop rbx ;Pop the word from the stack
-    jmp extErrExit 
+    mov word [currentNdx], -1
+    jmp extErrExit ;Propagate the error code that is in ax
+.exitBad2:
+    ;Now we deallocate the SFT entry in the JFT and SFT block
+    mov rsi, qword [curHdlPtr]
+    mov byte [rsi], -1  ;Re-free the entry in the JFT
+    mov rsi, qword [currentSFT]
+    mov word [rsi], 0   ;Re-free the SFT 
+    mov word [currentNdx], -1
+    jmp extErrExit ;Propagate the error code that is in ax
 
 closeFileHdl:      ;ah = 3Eh, handle function
 ;Input: bx = file handle to close
@@ -470,7 +480,7 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 deleteMain:
 ;Now unlink FAT chain and then clear directory entry
 ;Get the start cluster of this file
-;Input: rdi = cds for the drive
+;Input:
 ; The file must have NOT be read-only.
 ; If the CDS is NOT a net cds then the following must hold:
 ;     - curDirCopy must be filled with the file directory information
@@ -511,6 +521,60 @@ deleteMain:
     return
 
 openMain:
+;Input: ax (formally al) = Open mode
+;       [currentSFT] = SFT we are building
+;       [workingCDS] = CDS of drive to access
+;       [workingDPB] = DPB of drive to access
+;Ouput: CF=CY => Error, eax has error code
+    call .setOpenMode
+    retc    ;Error Exit 
+    mov rdi, qword [currentSFT]
+    mov rsi, qword [workingCDS]
+    xor ah, ah  ;al has the access mode
+    mov word [rdi + sft.wOpenMode], ax  ;Set the SFT access mode
+    cmp rsi, -1
+    jne .notNet
+.redirOpen:
+    push rax    ;Push open mode onto stack
+    mov eax, 1116h  ;Open remote file on \\ pathspec drives
+    int 4Fh
+    pop rax
+    return
+.notNet:
+    test word [rsi + cds.wFlags], cdsRedirDrive
+    jnz .redirOpen  ;If redir drive, go via the redir interface
+    call dosCrit1Enter
+    mov byte [openCreate], 0   ;Opening file, set to 0
+    mov byte [delChar], 0E5h
+    call buildSFTEntry  ;ax must have the open mode
+    ;Here we put Share mode stuff
+    call dosCrit1Exit
+    return
+.setOpenMode:
+;Input: al = Open mode for the file open
+    mov byte [fileOpenMd], al
+    push rbx
+    mov bl, al
+    and bl, 0F0h    ;Isolate upper nybble. Test share mode.
+    cmp byte [dosInvoke], -1    
+    jnz .s1 ;Skip this check if not server invoke
+    cmp bl, netFCBShare ;Test share mode for netFCB
+    je .s2
+.s1:
+    cmp bl, denyNoneShare
+    ja .somBad
+.s2:
+    mov bl, al  ;Isolate lower nybble. Access mode.
+    and bl, 0Fh
+    cmp bl, RWAccess
+    ja .somBad
+    pop rbx
+    clc
+    return
+.somBad:
+    pop rbx
+    mov eax, errAccCde
+    stc
     return
 createMain:
 ;Input: ax (formally al) = File attributes
@@ -556,12 +620,13 @@ createMain:
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
     pop rbx ;Pop the word off (though it has been used already!)
+    ;Here we put Share mode stuff
     call dosCrit1Exit
     return
 buildSFTEntry:
 ;Called in a critical section.
 ;Input: al = Open mode
-;       STACK: File attributes
+;       STACK: File attributes if creating a file
 ;       [currentSFT] = SFT we are building
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
@@ -577,7 +642,7 @@ buildSFTEntry:
 ;Check if the device was a char device by checking curDirCopy.
 ;If disk, get dpb. We check if the parent dir was found.
 
-;First set the open mode, time and date, name, ownerPSP and file pointer
+;First set the open mode, time and date, ownerPSP and file pointer
 ; to start of file fields of the SFT
     push rbp    ;file attribute is rbp + 10h
     mov rbp, rsp
@@ -588,14 +653,6 @@ buildSFTEntry:
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     call getDirDTwords  ;Get current D/T words packed in eax
     mov dword [rsi + sft.wTime], eax    ;Store time and date together
-;Now save the name
-    push rsi    ;Save the sft ptr
-    lea rdi, qword [rsi + sft.sFileName]    ;Store in file name field
-    lea rsi, qword [curDirCopy + fatDirEntry.name]  ;Copy from dir 
-    movsq   ;Copy over the space padded name to the sft
-    movsw
-    movsb
-    pop rsi
 ;Set current Owner
     mov rax, qword [currentPSP]
     mov qword [rsi + sft.qPSPOwner], rax ;Set who opened the file
@@ -629,13 +686,13 @@ buildSFTEntry:
     mov dword [rsi + fatDirEntry.wrtTime], eax
 
     push rdi    ;Save SFT pointer
-    lea rdi, curDirCopy ;Copy this directory entry
+    lea rdi, curDirCopy ;Copy this directory entry internally
     mov ecx, fatDirEntry_size
     rep movsb
     call setBufferDirty ;We wrote to this buffer
     call setBufferReferenced    ;We are now done with this buffer, reclaimable
     pop rdi
-
+.createCommon:  ;rdi must point to the current SFT 
     ;Now populate the remaining SFT fields 
     lea rsi, curDirCopy
     mov al, byte [rsi + fatDirEntry.attribute]
@@ -650,22 +707,71 @@ buildSFTEntry:
     stosq    ;Clear fileSzie and curntOff
     stosq
     pop rdi  ;Clear relClust and AbdClusr
-    ;Now set DeviceInfo to zero and get the dpb for this disk file
-    mov word [rdi + sft.wDeviceInfo], ax
+    ;Now set DeviceInfo to drive number and get the dpb for this disk file
+    mov al, byte [workingDrv]
+    mov word [rdi + sft.wDeviceInfo], ax    ;AH already 0
     mov rax, qword [workingDPB]
     mov qword [rdi + sft.qPtr], rax
+    ;Last thing, copy the filename over
+    ;Now save the name
+    ;Copy from curDirCopy as we have a copy of the dir now
+    lea rdi, qword [rdi + sft.sFileName]
+    lea rsi, curDirCopy
+    movsq   ;Copy over the space padded name to the sft
+    movsw
+    movsb
     ;SFT filled, now we can return
     jmp .exit
 .createFile:
-    ;Create a new file directory entry
-    ;tempSect and entry must be set correctly when finding the directory 
-    ; sector and entry
-    jmp short .open
+    ;Create a dummy dir entry in the SDA to swap into the disk buffer
+    ;rsi points to current sda entry
+    lea rdi, curDirCopy
+    ;Clear out the dir entry
+    push rdi
+    mov ecx, 4
+    xor eax, eax
+    rep stosq   ;Store 32 bytes of 0
+    pop rdi
+    ;Copy the FCB name over    
+    push rsi
+    push rdi
+    mov ecx, 11
+    lea rsi, fcbName
+    rep movsb   ;Move over the FCB name
+    pop rdi
+    pop rsi
+
+    mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
+    ;al has file attributes.
+    and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
+    mov byte [rdi + fatDirEntry.attribute], al
+    mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
+    mov dword [rdi + fatDirEntry.crtTime], eax
+    mov dword [rdi + fatDirEntry.wrtTime], eax
+    push rdi
+    call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
+    pop rdi ;Preserve rdi = curDirCopy
+    xchg rdi, rsi
+    mov ecx, 4
+    rep stosq   ;Copy over the buffered directory
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    mov rdi, qword [currentSFT]
+    jmp .createCommon
+.open:
+;curdircopy has a copy of the disk file directory
+;Disk vars are set, compute sector and 32 byte entry numbers
+    mov rdi, qword [currentSFT]
+    mov rbp, qword [workingDPB] ;Need it for the following proc
+    ;Now we can jump to common. qword [tempSect] and byte [entry] setup
+    call getDiskDirectoryEntry  ;And setup vars! rsi points to disk buffer
+    call setBufferReferenced    ;Mark this buffer as done with!
+    jmp .createCommon
+
 .openProc:
     ;Here if Opening a file.
     test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
-    jnz .charDev
-.open:
+    jz .open
 .charDev:
     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
     call getCharDevDriverPtr    ;Get in rdi device header ptr

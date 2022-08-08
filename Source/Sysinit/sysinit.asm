@@ -907,6 +907,9 @@ l1:
     int 41h
     mov ah, 4Fh
     int 41h
+    mov ah, 3Dh
+    mov al, RWAccess
+    int 41h
     mov ah, 60h
     lea rsi, tmpName2
     lea rdi, tmpBuf2

@@ -129,6 +129,21 @@ trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
 ;    General Directory Routines    :
 ;-----------------------------------
 
+findFreeDiskDirEntry:
+;Find a space in the directory we are searching for a directory entry
+;Accept first entry starting with a 0E5h or 00h
+;We place delchar in the first byte of fcbName to indicate we are searching 
+; for a empty dir entry and then call searchDir (but recall this must only
+; be called for CDS's that are NOT net CDS's).
+;Input: qword [workingDPB] = DPB of transacting device
+;Output: CF=CY => Error, eax has error code
+;        CF=NC => Refer to getDiskDirectoryEntry
+    mov al, byte [delChar]
+    mov byte [fcbName], al
+    call searchDir  ;Return in rsi a pointer to the directory entry
+    retc
+;Free entry found, dir variables are set for the free entry. 
+;Fall into the below to get a pointer to a disk buffer for this dir entry
 getDiskDirectoryEntry:
 ;Gets a ptr to a disk directory entry using the directory variables.
 ;Input: dword [dirClustA], word [dirSect], dword [dirEntry]
@@ -148,9 +163,12 @@ getDiskDirectoryEntry:
     add rax, rbx    ;Add sector offset to start sector of cluster
     mov qword [tempSect], rax   ;Save this sector number
     call getBufForDOS   ;Get buffer for DOS in rbx
-    jc .exit
+    pop rbx
+    retc
     call adjustDosDirBuffer ;Change buffer to Dir buffer
     ;Above function moves buffer ptr to rsi
+.dirFindCommon:
+    push rbx
     movzx eax, word [dirSect]   ;Get the sector in which the offset lies
     movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
     mul ebx ;Multiply these two words so eax has number of bytes to
@@ -161,13 +179,9 @@ getDiskDirectoryEntry:
     shl ebx, 5  ;Multiply by 32 to get byte offset
     mov word [entry], bx  ;Save 32 byte offset into sector
     add rsi, rbx    ;rsi now points to the entry
-.exit:
     pop rbx
     return
 
-findFreeDiskDirEntry:
-;Find a space in the directory we are searching for a directory entry
-;Accept first entry starting with a 0E5h or 00h
 
 updateDirectoryEntryForFile:    
 ;Updates the directory entry for disk files

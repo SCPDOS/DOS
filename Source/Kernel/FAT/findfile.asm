@@ -89,7 +89,7 @@ searchMoreDir:
     ;We continue AS IF this entry was bad
     ;Now setup al as upon normal entry 
     mov al, byte [searchAttr]  ;Get the search attrib
-    jmp findInBuffer.nextEntry  ;Proceed from within findInBuffer
+    jmp findInBuffer.nextEntry  ;Proceed from within function
     ;The return address on the stack will return to the ep's pushed
 .oldFat:
 ;Old FAT 12/16 root dirs fall thru here only
@@ -103,12 +103,11 @@ searchMoreDir:
     return
 searchDir:
 ;Called in a level 1 critical section. 
-;The three directory variables are set and the ffblock is setup
-; with template, drive number and attribute fields. 
+;The directory variables are set and fcbName has the pattern to match
 ; WorkingDPB is setup also (hence, level 1 critical section)
-;Current DTA is also used to contain the ff block address
 ;All registers can be trashed
 ;Return with CF=CY if no entry found in directory with al = errNoFil
+;If CF=NC, then rsi also points to the directory entry in disk buffer.
 
     ;We check the cds here. If it is a network cds we make findfirst req 
     ; with cds. If cds = -1, we make find first req without cds.
@@ -129,6 +128,7 @@ searchDir:
     jc .hardError
     call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
     call findInBuffer
+    call setBufferReferenced    ;We are done with the current buffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
     ;Else, we now have to get the next sector of the cluster or next cluster
@@ -149,7 +149,6 @@ searchDir:
     cmp eax, dword [currClustD] ;Did it change?
     je .sectorLoop  ;If not, we advanced sectors only
     mov word [dirSect], 0   ;If we did, reset this counter
-    call setBufferReferenced    ;We are done with the current buffer
     jmp short .sectorLoop 
 
 .oldRoot:
@@ -163,12 +162,12 @@ searchDir:
     jc .hardError
     call adjustDosDirBuffer      ;rbx has the buffer pointer for this dir sector
     call findInBuffer
+    call setBufferReferenced    ;We are done with this buffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     inc word [dirSect]  ;Goto next sector in directory
     mov eax, dword [rbp + dpb.wNumberRootDirEntries]
     cmp word [dirEntry], ax ;Have we reached the last dir entry?
-    call setBufferReferenced    ;We are done with this buffer
     jb .oldSectorLp    ;If equal, no more entries to search. Game over!
 .fnfError:
     mov al, errNoFil
@@ -190,9 +189,26 @@ findInBuffer:
 ;       rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
 ;        CF=NC => Entry found, directory data copied to SDA
+;        rsi = Points to start of the disk buffer directory entry
     mov al, byte [searchAttr]  ;Get the search attrib
     call adjustSearchAttr   ;Adjust the search attributes 
 .searchMainLp:
+;First check if rsi is pointing to a 00h or 0E5h
+    mov ah, byte [delChar]
+    cmp byte [rsi], 00h
+    je .emptySlot   ;If so, check if we are looking for a free dir ptr
+    cmp byte [rsi], ah  ;Is the first char the del char?
+    jne .notLookingForEmpty
+.emptySlot:
+;Here we check if we are looking for an empty directory entry or
+; we have reached the end of the file (if the first byte is 00h)
+;If the first byte of the FCB name = delchar => searching for free dir entry
+    cmp ah, byte [fcbName] 
+    rete    ;Return if equal (CF=NC too)
+    ;If we are not looking for an empty dir but rsi points to 00, exit bad
+    cmp byte [rsi], 00h ;Minor optimisation for dir searches
+    je .badExit
+.notLookingForEmpty:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
@@ -214,6 +230,7 @@ findInBuffer:
     inc dword [dirEntry] ;And denote that in variable
     dec ecx
     jnz .searchMainLp
+.badExit:
     stc
     return
 .exclusiveDir:
@@ -229,12 +246,14 @@ findInBuffer:
 
 .searchEntryFound:
 ;Here a good entry was found!
+    push rsi
     push rdi
     mov bl, al  ;Save temporarily the search attributes
     lea rdi, curDirCopy
     mov ecx, 32/8
     rep movsq   ;Copy the directory to SDA
     pop rdi
+    pop rsi ;Point rsi to the directory entry in the buffer
     clc
     return
 
