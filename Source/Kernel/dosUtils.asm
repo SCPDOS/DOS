@@ -362,6 +362,8 @@ checkPathspecOK:
     push rdi
     ;First we verify that the first two chars are ok (either X: or \\ or chars)
     mov ax, word [rsi]  ;Get the first two chars
+    test byte [dosInvoke], -1
+    jnz .serverCallCheck
     cmp ax, "\\"    ;UNC network start
     je .okToScan
     cmp ax, "//"    ;Also acceptable UNC network start
@@ -373,13 +375,10 @@ checkPathspecOK:
     jmp short .scanLoop
 .diskPath:
 ;Disk Letter must be A-Z (or a-z)
-    cmp al, "A"
+    or al, 20h  ;Force an UC char to LC
+    cmp al, "a"
     jb .badExit
     cmp al, "z"
-    ja .badExit
-    cmp al, "a"
-    jae .okToScan
-    cmp al, "Z"
     ja .badExit
 .okToScan:
     add rsi, 2  ;Skip first two chars now
@@ -394,6 +393,7 @@ checkPathspecOK:
 ;If it is we set ZF
     lodsb
     test al, al ;Set ZF if only last char is malformed, else clear ZF
+.servBadExit:   ;Server paths must be null terminated
     stc ;And set CF to indicate bad path
 .exit:
     pop rdi
@@ -401,7 +401,35 @@ checkPathspecOK:
     pop rcx
     pop rax
     return
-
+.serverCallCheck:
+;Server calls are a bit stricter, . and .. are forbidden but dir and filenames
+; may contain an extension separated by a .
+    cmp ah, ":"
+    jne .servBadExit
+    or al, 20h  ;Force an UC char to LC
+    cmp al, "a"
+    jb .servBadExit
+    cmp al, "z"
+    ja .servBadExit
+    ;If a dot is found, must check if the . is within 4 chars of a pathsep or 0
+.servScanLoop:
+    lodsb
+    test al, al
+    je .exit
+    cmp al, "." ;Handle dots separately
+    je .secondDotCheck
+    call checkCharOk
+    jnz .servScanLoop
+    jmp short .servScanLoop
+.secondDotCheck:
+    lodsb
+    test al, al ;cannot be a dot followed by a null
+    jz .servBadExit
+    cmp al, "." ;Was this a .. entry?
+    je .servBadExit
+    call swapPathSeparator  ;Was second char a pathsep? Not allowed.
+    jz .servBadExit ;... else check if the char was valid
+    jmp short .servScanLoop ;Else keep searching.
 scanPathWC:
 ;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
 ; even in the final path componant.
