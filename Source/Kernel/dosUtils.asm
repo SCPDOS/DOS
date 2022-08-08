@@ -353,7 +353,8 @@ checkPathspecOK:
 ;CWD relative paths start with <Drive Letter>:...
 ;Current Drive Root Relative paths may start with \...
 ;Current Drive CWD relative paths start with any other char
-;FOR NOW, we allow redir but no servers. Too much hassle for now
+;Server calls are checked separately. 
+;Must be X:\ and cannot have . or .. entries or any "G L O B A L" chars
 
 ;We accept lc and uc characters in this check function.
     push rax

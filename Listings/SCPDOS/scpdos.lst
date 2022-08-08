@@ -11485,184 +11485,185 @@
    389                              <1> ;CWD relative paths start with <Drive Letter>:...
    390                              <1> ;Current Drive Root Relative paths may start with \...
    391                              <1> ;Current Drive CWD relative paths start with any other char
-   392                              <1> ;FOR NOW, we allow redir but no servers. Too much hassle for now
-   393                              <1> 
-   394                              <1> ;We accept lc and uc characters in this check function.
-   395 00004125 50                  <1>     push rax
-   396 00004126 51                  <1>     push rcx
-   397 00004127 56                  <1>     push rsi
-   398 00004128 57                  <1>     push rdi
-   399                              <1>     ;First we verify that the first two chars are ok (either X: or \\ or chars)
-   400 00004129 668B06              <1>     mov ax, word [rsi]  ;Get the first two chars
-   401 0000412C F605(5CC60300)FF    <1>     test byte [dosInvoke], -1
-   402 00004133 7539                <1>     jnz .serverCallCheck
-   403 00004135 663D5C5C            <1>     cmp ax, "\\"    ;UNC network start
-   404 00004139 7417                <1>     je .okToScan
-   405 0000413B 663D2F2F            <1>     cmp ax, "//"    ;Also acceptable UNC network start
-   406 0000413F 7411                <1>     je .okToScan
-   407 00004141 80FC3A              <1>     cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
-   408 00004144 7402                <1>     je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
-   409                              <1>     ;Is this a current drive CWD relative or current drive root relative path?
-   410                              <1>     ;If so the pathspec is not different to normal, goto scanLoop
-   411 00004146 EB11                <1>     jmp short .scanLoop
-   412                              <1> .diskPath:
-   413                              <1> ;Disk Letter must be A-Z (or a-z)
-   414 00004148 0C20                <1>     or al, 20h  ;Force an UC char to LC
-   415 0000414A 3C61                <1>     cmp al, "a"
-   416 0000414C 7217                <1>     jb .badExit
-   417 0000414E 3C7A                <1>     cmp al, "z"
-   418 00004150 7713                <1>     ja .badExit
-   419                              <1> .okToScan:
-   420 00004152 4881C602000000      <1>     add rsi, 2  ;Skip first two chars now
-   421                              <1> .scanLoop:
-   422 00004159 AC                  <1>     lodsb   ;Get char, inc rsi
-   423 0000415A 84C0                <1>     test al, al  ;Is al=0, i.e string terminator?
-   424 0000415C 740B                <1>     je .exit    ;Clear CF if al = 0
-   425 0000415E E851000000          <1>     call checkCharOk    ;Check if char ok
-   426 00004163 75F4                <1>     jnz .scanLoop    ;If it is not, fall thru
-   427                              <1> .badExit:
-   428                              <1> ;Before we bad exit, we check if the next char is ascii null.
-   429                              <1> ;If it is we set ZF
-   430 00004165 AC                  <1>     lodsb
-   431 00004166 84C0                <1>     test al, al ;Set ZF if only last char is malformed, else clear ZF
-   432                              <1> .servBadExit:   ;Server paths must be null terminated
-   433 00004168 F9                  <1>     stc ;And set CF to indicate bad path
-   434                              <1> .exit:
-   435 00004169 5F                  <1>     pop rdi
-   436 0000416A 5E                  <1>     pop rsi
-   437 0000416B 59                  <1>     pop rcx
-   438 0000416C 58                  <1>     pop rax
-   439                              <1>     return
+   392                              <1> ;Server calls are checked separately. 
+   393                              <1> ;Must be X:\ and cannot have . or .. entries or any "G L O B A L" chars
+   394                              <1> 
+   395                              <1> ;We accept lc and uc characters in this check function.
+   396 00004125 50                  <1>     push rax
+   397 00004126 51                  <1>     push rcx
+   398 00004127 56                  <1>     push rsi
+   399 00004128 57                  <1>     push rdi
+   400                              <1>     ;First we verify that the first two chars are ok (either X: or \\ or chars)
+   401 00004129 668B06              <1>     mov ax, word [rsi]  ;Get the first two chars
+   402 0000412C F605(5CC60300)FF    <1>     test byte [dosInvoke], -1
+   403 00004133 7539                <1>     jnz .serverCallCheck
+   404 00004135 663D5C5C            <1>     cmp ax, "\\"    ;UNC network start
+   405 00004139 7417                <1>     je .okToScan
+   406 0000413B 663D2F2F            <1>     cmp ax, "//"    ;Also acceptable UNC network start
+   407 0000413F 7411                <1>     je .okToScan
+   408 00004141 80FC3A              <1>     cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
+   409 00004144 7402                <1>     je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
+   410                              <1>     ;Is this a current drive CWD relative or current drive root relative path?
+   411                              <1>     ;If so the pathspec is not different to normal, goto scanLoop
+   412 00004146 EB11                <1>     jmp short .scanLoop
+   413                              <1> .diskPath:
+   414                              <1> ;Disk Letter must be A-Z (or a-z)
+   415 00004148 0C20                <1>     or al, 20h  ;Force an UC char to LC
+   416 0000414A 3C61                <1>     cmp al, "a"
+   417 0000414C 7217                <1>     jb .badExit
+   418 0000414E 3C7A                <1>     cmp al, "z"
+   419 00004150 7713                <1>     ja .badExit
+   420                              <1> .okToScan:
+   421 00004152 4881C602000000      <1>     add rsi, 2  ;Skip first two chars now
+   422                              <1> .scanLoop:
+   423 00004159 AC                  <1>     lodsb   ;Get char, inc rsi
+   424 0000415A 84C0                <1>     test al, al  ;Is al=0, i.e string terminator?
+   425 0000415C 740B                <1>     je .exit    ;Clear CF if al = 0
+   426 0000415E E851000000          <1>     call checkCharOk    ;Check if char ok
+   427 00004163 75F4                <1>     jnz .scanLoop    ;If it is not, fall thru
+   428                              <1> .badExit:
+   429                              <1> ;Before we bad exit, we check if the next char is ascii null.
+   430                              <1> ;If it is we set ZF
+   431 00004165 AC                  <1>     lodsb
+   432 00004166 84C0                <1>     test al, al ;Set ZF if only last char is malformed, else clear ZF
+   433                              <1> .servBadExit:   ;Server paths must be null terminated
+   434 00004168 F9                  <1>     stc ;And set CF to indicate bad path
+   435                              <1> .exit:
+   436 00004169 5F                  <1>     pop rdi
+   437 0000416A 5E                  <1>     pop rsi
+   438 0000416B 59                  <1>     pop rcx
+   439 0000416C 58                  <1>     pop rax
+   440                              <1>     return
     18                              <2> %%_ret:
     19 0000416D C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   440                              <1> .serverCallCheck:
-   441                              <1> ;Server calls are a bit stricter, . and .. are forbidden but dir and filenames
-   442                              <1> ; may contain an extension separated by a .
-   443 0000416E 80FC3A              <1>     cmp ah, ":"
-   444 00004171 75F5                <1>     jne .servBadExit
-   445 00004173 0C20                <1>     or al, 20h  ;Force an UC char to LC
-   446 00004175 3C61                <1>     cmp al, "a"
-   447 00004177 72EF                <1>     jb .servBadExit
-   448 00004179 3C7A                <1>     cmp al, "z"
-   449 0000417B 77EB                <1>     ja .servBadExit
-   450                              <1>     ;If a dot is found, must check if the . is within 4 chars of a pathsep or 0
-   451                              <1> .servScanLoop:
-   452 0000417D AC                  <1>     lodsb
-   453 0000417E 84C0                <1>     test al, al
-   454 00004180 74E7                <1>     je .exit
-   455 00004182 3C2E                <1>     cmp al, "." ;Handle dots separately
-   456 00004184 7409                <1>     je .secondDotCheck
-   457 00004186 E829000000          <1>     call checkCharOk
-   458 0000418B 75F0                <1>     jnz .servScanLoop
-   459 0000418D EBEE                <1>     jmp short .servScanLoop
-   460                              <1> .secondDotCheck:
-   461 0000418F AC                  <1>     lodsb
-   462 00004190 84C0                <1>     test al, al ;cannot be a dot followed by a null
-   463 00004192 74D4                <1>     jz .servBadExit
-   464 00004194 3C2E                <1>     cmp al, "." ;Was this a .. entry?
-   465 00004196 74D0                <1>     je .servBadExit
-   466 00004198 E8F2FEFFFF          <1>     call swapPathSeparator  ;Was second char a pathsep? Not allowed.
-   467 0000419D 74C9                <1>     jz .servBadExit ;... else check if the char was valid
-   468 0000419F EBDC                <1>     jmp short .servScanLoop ;Else keep searching.
-   469                              <1> scanPathWC:
-   470                              <1> ;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
-   471                              <1> ; even in the final path componant.
-   472                              <1> ;Input: rsi = Pointer to the ASCIIZ filename
-   473                              <1> ;Output: CF=NC => No wildcards present
-   474                              <1> ;        CF=CY => Wildcards found
-   475 000041A1 50                  <1>     push rax
-   476 000041A2 56                  <1>     push rsi
-   477                              <1> .scan:
-   478 000041A3 AC                  <1>     lodsb
-   479 000041A4 84C0                <1>     test al, al
-   480 000041A6 7409                <1>     jz .exit
-   481 000041A8 3C3F                <1>     cmp al, "?"
-   482 000041AA 7404                <1>     je .wcFnd
-   483 000041AC 3C2A                <1>     cmp al, "*"
-   484 000041AE 75F3                <1>     jne .scan
-   485                              <1> .wcFnd:
-   486 000041B0 F9                  <1>     stc
-   487                              <1> .exit:
-   488 000041B1 5E                  <1>     pop rsi
-   489 000041B2 58                  <1>     pop rax
-   490                              <1>     return
+   441                              <1> .serverCallCheck:
+   442                              <1> ;Server calls are a bit stricter, . and .. are forbidden but dir and filenames
+   443                              <1> ; may contain an extension separated by a .
+   444 0000416E 80FC3A              <1>     cmp ah, ":"
+   445 00004171 75F5                <1>     jne .servBadExit
+   446 00004173 0C20                <1>     or al, 20h  ;Force an UC char to LC
+   447 00004175 3C61                <1>     cmp al, "a"
+   448 00004177 72EF                <1>     jb .servBadExit
+   449 00004179 3C7A                <1>     cmp al, "z"
+   450 0000417B 77EB                <1>     ja .servBadExit
+   451                              <1>     ;If a dot is found, must check if the . is within 4 chars of a pathsep or 0
+   452                              <1> .servScanLoop:
+   453 0000417D AC                  <1>     lodsb
+   454 0000417E 84C0                <1>     test al, al
+   455 00004180 74E7                <1>     je .exit
+   456 00004182 3C2E                <1>     cmp al, "." ;Handle dots separately
+   457 00004184 7409                <1>     je .secondDotCheck
+   458 00004186 E829000000          <1>     call checkCharOk
+   459 0000418B 75F0                <1>     jnz .servScanLoop
+   460 0000418D EBEE                <1>     jmp short .servScanLoop
+   461                              <1> .secondDotCheck:
+   462 0000418F AC                  <1>     lodsb
+   463 00004190 84C0                <1>     test al, al ;cannot be a dot followed by a null
+   464 00004192 74D4                <1>     jz .servBadExit
+   465 00004194 3C2E                <1>     cmp al, "." ;Was this a .. entry?
+   466 00004196 74D0                <1>     je .servBadExit
+   467 00004198 E8F2FEFFFF          <1>     call swapPathSeparator  ;Was second char a pathsep? Not allowed.
+   468 0000419D 74C9                <1>     jz .servBadExit ;... else check if the char was valid
+   469 0000419F EBDC                <1>     jmp short .servScanLoop ;Else keep searching.
+   470                              <1> scanPathWC:
+   471                              <1> ;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
+   472                              <1> ; even in the final path componant.
+   473                              <1> ;Input: rsi = Pointer to the ASCIIZ filename
+   474                              <1> ;Output: CF=NC => No wildcards present
+   475                              <1> ;        CF=CY => Wildcards found
+   476 000041A1 50                  <1>     push rax
+   477 000041A2 56                  <1>     push rsi
+   478                              <1> .scan:
+   479 000041A3 AC                  <1>     lodsb
+   480 000041A4 84C0                <1>     test al, al
+   481 000041A6 7409                <1>     jz .exit
+   482 000041A8 3C3F                <1>     cmp al, "?"
+   483 000041AA 7404                <1>     je .wcFnd
+   484 000041AC 3C2A                <1>     cmp al, "*"
+   485 000041AE 75F3                <1>     jne .scan
+   486                              <1> .wcFnd:
+   487 000041B0 F9                  <1>     stc
+   488                              <1> .exit:
+   489 000041B1 5E                  <1>     pop rsi
+   490 000041B2 58                  <1>     pop rax
+   491                              <1>     return
     18                              <2> %%_ret:
     19 000041B3 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   491                              <1> 
    492                              <1> 
-   493                              <1> checkCharOk:
-   494                              <1> ;Same as checkCharValid except DOES not return error on * ? \ / .
-   495                              <1> ;If ZF=ZE => Invalid Char
-   496                              <1> ;If ZF=NZ => Ok Char
-   497 000041B4 3C2E                <1>     cmp al, "."
-   498 000041B6 740F                <1>     je .exitOk
-   499 000041B8 3C2A                <1>     cmp al, "*"
-   500 000041BA 740B                <1>     je .exitOk
-   501 000041BC 3C3F                <1>     cmp al, "?"
-   502 000041BE 7407                <1>     je .exitOk
-   503 000041C0 E8CAFEFFFF          <1>     call swapPathSeparator  ;check if al is a path separator
-   504 000041C5 7505                <1>     jnz checkCharValid
-   505                              <1> .exitOk:
-   506 000041C7 50                  <1>     push rax
-   507 000041C8 0C01                <1>     or al, 1    ;Always clears the ZF
-   508 000041CA 58                  <1>     pop rax
-   509                              <1>     return
+   493                              <1> 
+   494                              <1> checkCharOk:
+   495                              <1> ;Same as checkCharValid except DOES not return error on * ? \ / .
+   496                              <1> ;If ZF=ZE => Invalid Char
+   497                              <1> ;If ZF=NZ => Ok Char
+   498 000041B4 3C2E                <1>     cmp al, "."
+   499 000041B6 740F                <1>     je .exitOk
+   500 000041B8 3C2A                <1>     cmp al, "*"
+   501 000041BA 740B                <1>     je .exitOk
+   502 000041BC 3C3F                <1>     cmp al, "?"
+   503 000041BE 7407                <1>     je .exitOk
+   504 000041C0 E8CAFEFFFF          <1>     call swapPathSeparator  ;check if al is a path separator
+   505 000041C5 7505                <1>     jnz checkCharValid
+   506                              <1> .exitOk:
+   507 000041C7 50                  <1>     push rax
+   508 000041C8 0C01                <1>     or al, 1    ;Always clears the ZF
+   509 000041CA 58                  <1>     pop rax
+   510                              <1>     return
     18                              <2> %%_ret:
     19 000041CB C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   510                              <1> checkCharValid:
-   511                              <1> ;If ZF=ZE => Invalid Char
-   512                              <1> ;If ZF=NZ => Valid Char
-   513 000041CC 51                  <1>     push rcx
-   514 000041CD 57                  <1>     push rdi
-   515 000041CE B930000000          <1>     mov ecx, badDirNameCharL    ;Get table length
-   516 000041D3 488D3DC6BFFFFF      <1>     lea rdi, badDirNameChar ;Point to bad char table
-   517 000041DA F2AE                <1>     repne scasb ;Scan. Stop when equal
-   518 000041DC 5F                  <1>     pop rdi
-   519 000041DD 59                  <1>     pop rcx
-   520                              <1>     return
+   511                              <1> checkCharValid:
+   512                              <1> ;If ZF=ZE => Invalid Char
+   513                              <1> ;If ZF=NZ => Valid Char
+   514 000041CC 51                  <1>     push rcx
+   515 000041CD 57                  <1>     push rdi
+   516 000041CE B930000000          <1>     mov ecx, badDirNameCharL    ;Get table length
+   517 000041D3 488D3DC6BFFFFF      <1>     lea rdi, badDirNameChar ;Point to bad char table
+   518 000041DA F2AE                <1>     repne scasb ;Scan. Stop when equal
+   519 000041DC 5F                  <1>     pop rdi
+   520 000041DD 59                  <1>     pop rcx
+   521                              <1>     return
     18                              <2> %%_ret:
     19 000041DE C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   521                              <1> 
-   522                              <1> compareFarPointers: ;Int 4Fh, AX = 1214h
-   523                              <1> ;Compare if two pointers are equal. A layover from the era of far pointers.
-   524                              <1> ;Input: rsi = One pointer
-   525                              <1> ;       rdi = Second pointer
-   526                              <1> ;Output: ZF=ZE if equal
-   527                              <1> ;        ZF=NZ if not
-   528 000041DF 4839FE              <1>     cmp rsi, rdi
-   529                              <1>     return
+   522                              <1> 
+   523                              <1> compareFarPointers: ;Int 4Fh, AX = 1214h
+   524                              <1> ;Compare if two pointers are equal. A layover from the era of far pointers.
+   525                              <1> ;Input: rsi = One pointer
+   526                              <1> ;       rdi = Second pointer
+   527                              <1> ;Output: ZF=ZE if equal
+   528                              <1> ;        ZF=NZ if not
+   529 000041DF 4839FE              <1>     cmp rsi, rdi
+   530                              <1>     return
     18                              <2> %%_ret:
     19 000041E2 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   530                              <1> 
-   531                              <1> checkPathNet:
-   532                              <1> ;Input: rsi = Start of path to check if it starts with two slashes
-   533                              <1> ;Output: ZF=ZE => Path is a net path
-   534                              <1> ;        ZF=NZ => Path is not a net path
-   535 000041E3 50                  <1>     push rax
-   536 000041E4 0FB706              <1>     movzx eax, word [rsi]    ;Get the first two chars of the path
-   537 000041E7 E8A3FEFFFF          <1>     call swapPathSeparator
-   538 000041EC 7505                <1>     jnz .exit
-   539 000041EE E89CFEFFFF          <1>     call swapPathSeparator  ;ZF=ZE if net path
-   540                              <1> .exit:
-   541 000041F3 58                  <1>     pop rax
-   542                              <1>     return
+   531                              <1> 
+   532                              <1> checkPathNet:
+   533                              <1> ;Input: rsi = Start of path to check if it starts with two slashes
+   534                              <1> ;Output: ZF=ZE => Path is a net path
+   535                              <1> ;        ZF=NZ => Path is not a net path
+   536 000041E3 50                  <1>     push rax
+   537 000041E4 0FB706              <1>     movzx eax, word [rsi]    ;Get the first two chars of the path
+   538 000041E7 E8A3FEFFFF          <1>     call swapPathSeparator
+   539 000041EC 7505                <1>     jnz .exit
+   540 000041EE E89CFEFFFF          <1>     call swapPathSeparator  ;ZF=ZE if net path
+   541                              <1> .exit:
+   542 000041F3 58                  <1>     pop rax
+   543                              <1>     return
     18                              <2> %%_ret:
     19 000041F4 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   543                              <1> 
-   544                              <1> getCharDevDriverPtr:
-   545                              <1> ;Gets a pointer to the char device driver header with the 8 char name in rax
-   546                              <1> ;Input: rax = Device Driver name (space padded)
-   547                              <1> ;Output: rdi = Ptr to the header, -1 => Invalid filename and CF=CY
-   548 000041F5 488D3D(73C00300)    <1>     lea rdi, nulDevHdr  ;Point to the start of the chain
-   549                              <1> .lp:
-   550 000041FC 4839471A            <1>     cmp qword [rdi + drvHdr.drvNam], rax
-   551                              <1>     rete    ;Exit if equal
+   544                              <1> 
+   545                              <1> getCharDevDriverPtr:
+   546                              <1> ;Gets a pointer to the char device driver header with the 8 char name in rax
+   547                              <1> ;Input: rax = Device Driver name (space padded)
+   548                              <1> ;Output: rdi = Ptr to the header, -1 => Invalid filename and CF=CY
+   549 000041F5 488D3D(73C00300)    <1>     lea rdi, nulDevHdr  ;Point to the start of the chain
+   550                              <1> .lp:
+   551 000041FC 4839471A            <1>     cmp qword [rdi + drvHdr.drvNam], rax
+   552                              <1>     rete    ;Exit if equal
     54                              <2> cret e
     24                              <3> %%_base:
     25                              <3> %assign baseVar %%_base-$$
@@ -11683,11 +11684,11 @@
     40                              <3>  return
     41                              <3> %%a:
     42                              <3>  %endif
-   552 00004202 488B3F              <1>     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto next header
-   553 00004205 4881FFFFFFFFFF      <1>     cmp rdi, -1 ;End of chain?
-   554 0000420C 75EE                <1>     jne .lp ;If not loop
-   555 0000420E F9                  <1>     stc ;Else bad exit
-   556                              <1>     return
+   553 00004202 488B3F              <1>     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto next header
+   554 00004205 4881FFFFFFFFFF      <1>     cmp rdi, -1 ;End of chain?
+   555 0000420C 75EE                <1>     jne .lp ;If not loop
+   556 0000420E F9                  <1>     stc ;Else bad exit
+   557                              <1>     return
     18                              <2> %%_ret:
     19 0000420F C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
