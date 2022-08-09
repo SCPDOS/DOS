@@ -76,6 +76,67 @@ getStartSectorOfCluster:
     pop rcx
     return
 
+getLastClusterInChain:
+;Given a cluster value in eax, returns in eax the last cluster in the chain
+;Input: eax = Cluster to start searching at
+;Output: eax = Last cluster in chain
+;If input eax = 0, output eax = 0
+    test eax, eax   ;If eax = 0, then just exit
+    retz
+    push rbx
+.lp:
+    mov ebx, eax
+    call walkFAT
+    jc .exit
+    cmp eax, -1 ;Once this is EOC, we add a new cluster.
+    jne .lp
+    mov eax, ebx    ;Get the last cluster value in ebx
+.exit: 
+    pop rbx
+    return
+
+getNumberOfClustersInChain:
+;Given a cluster value in eax, returns in eax the number of clusters in chain
+;Input: eax = Cluster to start searching at
+;Output: eax = Number of clusters in the chain
+;If input eax = 0, output eax = 0
+    test eax, eax   ;If eax = 0, then just exit
+    retz
+    push rcx
+.lp:
+    inc ecx
+    call walkFAT
+    jc .exit
+    cmp eax, -1 ;Once this is EOC, we add a new cluster.
+    jne .lp
+    mov eax, ecx    ;Get the count
+.exit: 
+    pop rcx
+    return
+
+getClusterInChain:
+;Given a starting cluster, walk forwards by a number of clusters.
+;If an EOC is encountered, then ecx will not be 
+;Input: eax = Start Cluster to start searching from
+;       ecx = Number of clusters to go forwards by;
+;Ouput: eax = Value of the cluster ecx number of clusters forwards
+;       ecx = # of clusters left to walk forwards by (0 EOC was not encountered)
+;Also usual CF babble.
+    test eax, eax   ;If eax = 0, then just exit
+    retz
+    push rbx
+    jecxz .exit
+.lp:
+    mov ebx, eax
+    call walkFAT
+    jc .exit
+    dec ecx
+    jnz .lp
+    mov eax, ebx    ;Get the value of the cluster in eax
+.exit:
+    pop rbx
+    return
+
 allocateClusters:
 ;Working dpb must be set. 
 ;Input: ecx = Number of clusters to allocate in a chain
@@ -90,7 +151,7 @@ allocateClusters:
     push rcx    ;Save tfr count on stack
     jecxz .exit ;Allocating nothing? Exit
 .allocateLoop:
-    call findFreeClusterData
+    call findFreeCluster
     jc .exit
     cmp eax, -1 ;No more free clusters?
     je .exit    ;If the cluster number is -1, return immediately

@@ -261,24 +261,16 @@ growDirectory:
     push rbx
     push rcx
     mov eax, dword [dirClustPar]    ;Get first cluster for directory
-    test eax, eax   ;If eax = 0, then error out
-    stc ;Set Carry if eax = 0
+    test eax, eax
     jz .exit
-.lp2:
-    mov ebx, eax
-    call walkFAT
-    jc .exit
-    cmp eax, -1 ;Once this is EOC, we add a new cluster.
-    jne .lp2
+    call getLastClusterInChain  ;Get last cluster in chain in eax
+    mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
     jc .exit
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     call walkFAT
     jc .exit
-    cmp eax, -1 ;If this cluster is -1, fail (disk full)
-    stc ;Set carry if it is fail
-    je .exit
     clc
 .exit:
     pop rcx

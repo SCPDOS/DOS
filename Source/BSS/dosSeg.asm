@@ -199,7 +199,7 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
 ;***************************************************|
     lastClust   resd 1  ;Number of the last (rel) cluster of the file
     lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
-    bytesAdded  resd 1  ;Number of bytes added to file (max 2Gb filesize!)
+    bytesAppend resd 1  ;Number of bytes added to file (max 2Gb filesize!)
     tfrLen      resd 1  ;Number of bytes to transfer
     tfrCntr     resd 1  ;Number of bytes left to transfer
 ;Directory stuff

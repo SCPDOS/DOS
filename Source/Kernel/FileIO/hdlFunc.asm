@@ -1061,6 +1061,7 @@ readCharDev:
 readDiskFile:
 ;rdi = Current SFT
 ;rbp = WorkingDPB
+;ecx = Bytes to transfer
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
     mov byte [rwFlag], 0    ;Read operation
     ;We have the following vars setup:
@@ -1068,6 +1069,9 @@ readDiskFile:
     ;currClustF
     ;Now convert currSectC to disk sector by using currClustF
     ;Using currClustF as a counter, we walk the fat from startingCluster
+    mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
+    test edx, edx
+    jz rwExitOk  ;Return with zero bytes transferred
     mov edx, dword [currClustF] ;Use edx as the counter reg
     mov eax, dword [rsi + sft.dStartClust]  ;Get starting cluster
     xor ebx, ebx    ;Use ebx to contain the old cluster number
@@ -1173,7 +1177,8 @@ writeCharDev:
     movzx ebx, word [rdi + sft.wDeviceInfo]
     ;If ecx = 0, we exit
     xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
-    jecxz writeExit
+    test ecx, ecx
+    jz writeExit
     mov rdi, qword [currentDTA] ;Get ptr to storage buffer in rdi
     xor edx, edx
     test al, charDevBinary
@@ -1191,9 +1196,76 @@ writeCharDev:
 .nulDev:
 .conDev:
 writeDiskFile:
-    ;If ecx = 0, we truncate to current file pointer position, rounding up
+    ;rdi has SFT ptr
+    mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
+    call getLastClusterInChain  ;to get the current last cluster in the file
+    mov dword [lastClustA], eax
+    call getNumberOfClustersInChain ;Gets number of clusters
+    dec eax ;Turn into an offset of clusters in file
+    mov dword [lastClust], eax
+    xor ebx, ebx
+    mov dword [bytesAppend], ebx ;Reset the appending counter
+    ;Get the disk cluster of the file (currClustD)
+    mov ecx, dword [currClustF]
+    mov eax, dword [rdi + sft.dStartClust]
+    call getClusterInChain  ;Returns in eax the disk cluster value
+    jc .badExit
+    ;ecx has the number of clusters we need to extend the allocation by.
+    jecxz .skipExtension
+    call findFreeClusterData    ;This updates the dpb to have free cluster data
+    jc .badExit
+    cmp eax, -1 ;No more free clusters
+    je .noByteExit
+    cmp dword [rbp + dpb.dNumberOfFreeClusters], ecx
+    jb .noByteExit    ;If dNumberOfFreeClusters < ecx, exit
+    ;Enough to extend by ecx amount
+    mov ebx, dword [lastClustA] ;Get the last disk cluster of the file
+    call allocateClusters   ;Extend by ecx clusters
+    jc .badExit
+    add dword [lastClust], ecx  
+    mov eax, dword [rdi + sft.dStartClust]
+    mov ecx, dword [lastClust]
+    call getClusterInChain
+    jc .badExit
+    ;eax has the last cluster on disk
+    mov dword [lastClustA], eax
+    ;Now we must extend the filesize in the SFT
+    mov eax, dword [rdi + sft.dCurntOff]
+    mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
+    xor eax, eax
+    test dword [tfrLen], eax
+    jz writeExit    ;If we were extending the file, we are done
+    mov eax, dword [lastClustA] ;Get the absolute last cluster
+.skipExtension:
+    mov dword [currClustD], eax ;Now eax has the currClustD value
+    ;Get the disk sector too
+    call getStartSectorOfCluster
+    movzx ebx, byte [currSectC] ;Add the in cluster sector offset
+    add eax, ebx    ;Add the offset to eax
+    mov dword [currSectD], eax 
+    ;If tfrLen = 0, we truncate to current file pointer position, rounding up
     ; clusterwise!
+    mov ecx, dword [tfrLen] ;Get the number of bytes to transfer in ecx
+    test ecx, ecx
+    jz .truncate
+    ;Here we write proper data to the disk file
+    
 
+
+.truncate:
+;We must free the chain from currClustD
+    mov eax, dword [currClustD]
+    call truncateFAT    ;Truncate from the current cluster
+    mov eax, dword [rdi + sft.dCurntOff]
+    mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
+    jmp .noByteExit ;Exit ok!
+
+.badExit:
+;Might need to do some weird stuff later. Leave for now
+    stc
+    return
+.noByteExit:
+    xor eax, eax
 writeExit:
 ;Advances the bytes on the file pointer
 ;eax = Number of bytes transferred
@@ -1282,14 +1354,10 @@ setupVarsForDiskTransfer:
 ;Extension of the above, but for Disk files only
 ;Input: ecx = User desired Bytes to transfer
 ;       rdi = SFT pointer for the file
-;Output: CF=NC: ecx = Actual Bytes that will be transferred 
+;Output: CF=NC: ecx = Actual Bytes that will be transferred, if it is possible
 ;        CF=CY: Error exit
     mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
     mov dword [currByteF], eax
-    mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
-    test edx, edx
-    cmovz ecx, edx  ;If the file size is zero, exit
-    jecxz .exit
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
     ;DPB will get updated by reading the disk, no need to force it here
     mov qword [workingDPB], rbp
@@ -1310,7 +1378,7 @@ setupVarsForDiskTransfer:
     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
     shr edx, cl ;Convert file relative sector to file relative cluster
     mov dword [currClustF], edx ;Save in var
-    mov ecx, eax    ;Return the bytes to tfr in eax
+    mov ecx, eax    ;Return the bytes to tfr in ecx
 .exit:
     clc
     return 
