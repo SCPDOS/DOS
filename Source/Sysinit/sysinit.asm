@@ -930,13 +930,13 @@ l1:
     mov al, RWAccess
     lea rdx, tmpName3
     int 41h
-    breakpoint
+    ;breakpoint
     mov ecx, testStringL
     lea rdx, tmpDTA
     mov bx, ax  ;Get the handle in bx
     mov ah, 3fh
     int 41h
-    breakpoint
+    ;breakpoint
 
     mov ah, 60h
     lea rsi, tmpName2
