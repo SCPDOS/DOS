@@ -915,14 +915,16 @@ l1:
     mov cx, 00  ;Normal attributes
     lea rdx, tmpName3
     int 41h
-    breakpoint
+    ;breakpoint
     mov ecx, testStringL
     lea rdx, testString
     mov bx, ax  ;Get the handle in bx
     mov ah, 40h
     int 41h
-
-
+    ;breakpoint
+    mov ah, 3eh
+    int 41h
+    ;breakpoint
     mov ah, 60h
     lea rsi, tmpName2
     lea rdi, tmpBuf2

@@ -101,17 +101,19 @@ closeFileHdl:      ;ah = 3Eh, handle function
     jc extErrExit   ;If CF is set, al has error code, exit!
     call setCurrentSFT  ;Set this as the current SFT
     ;Check count to see if we need to check share mode
-    cmp word [rdi], 1   ;Opened once only, not shared
-    je .skipNetCheck
+    xor eax, eax    ;Preset ax to 0
+    cmp word [rdi], 1   ;Opened once only, not shared, no need for share check
+    je .skipShareCheck
     ;Now check sharing mode
-    mov ax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
+    movzx eax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
     and al, 0F0h    ;And wipe out the other bits
-    cmp al, netFCBShare
-    pushfq  ;Save the result of this for after closing the file
-.skipNetCheck:
+.skipShareCheck:
+    push rax    ;Save the share mode on stack
     call closeMain  ;Call close main!
+    pop rax 
+    breakpoint    
     jc extErrExit   ;If an error, exit through error exit
-    popfq
+    cmp al, netFCBShare ;Do NetFCB check (only if file opened more than once)
     je .exitOk  ;If sharing mode was net FCB, it had no JFT entry, skip nulling
     call getJFTPtr  ;Get the pointer to the JFT entry in rdi
     mov byte [rdi], -1  ;Free JFT entry
@@ -700,6 +702,7 @@ buildSFTEntry:
     mov rax, qword [tempSect]   ;Get directory entry sector
     mov qword [rdi + sft.qDirSect], rax
     movzx eax, word [entry]     ;Get 32 byte offset into sector for directory
+    shr al, 5   ;Divide by 5 to get directory entry number
     mov byte [rdi + sft.bNumDirEnt], al
     xor eax, eax
     push rdi
@@ -816,7 +819,7 @@ closeMain: ;Int 4Fh AX=1201h
 ;                     rdi = current SFT ptr
     mov rdi, qword [currentSFT] ;Get the sft pointer
     test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
-    jnz .physical
+    jz .physical
     ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
     mov eax, 1106h  ;Make request
     int 4Fh ;Beep!
@@ -1196,7 +1199,6 @@ writeCharDev:
 .conDev:
 writeDiskFile:
     ;rdi has SFT ptr
-    breakpoint
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], -1    ;Write operation
     xor ebx, ebx
@@ -1212,6 +1214,7 @@ writeDiskFile:
     je .exitPrep
     ;Now eax has the first cluster of chain
     mov dword [rdi + sft.dStartClust], eax  ;Store the start cluster in the sft
+    mov byte [fileGrowing], -1  ;Set to true as this only occurs for new files!
 .notStart:
     call getLastClusterInChain  ;to get the current last cluster in the file
     mov dword [lastClustA], eax

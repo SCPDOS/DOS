@@ -223,10 +223,9 @@ updateDirectoryEntryForFile:
     call getBufForDir  ;Returns buffer pointer in rbx
     jc .exit    ;If an error is to be returned from, we skip the rest of this
     ;Now we write the changes to the sector
-    mov rbp, rbx    ;Move disk buffer header into rbp
     ;Mark sector as referenced and dirty! Ready to be flushed!
-    or byte [rbp + bufferHdr.bufferFlags], dirtyBuffer 
-    lea rbp, qword [rbp + bufferHdr.dataarea]   ;Goto data area
+    call setBufferDirty
+    lea rbp, qword [rbx + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
     add rbp, rbx    ;Move rbp to point to the directory entry
@@ -237,6 +236,10 @@ updateDirectoryEntryForFile:
     movzx eax, word [rdi + sft.wDate]   ;Get the last write time
     mov word [rbp + fatDirEntry.wrtDate], ax    ;And update field
     mov word [rbp + fatDirEntry.lastAccDat], ax    ;And update final field
+    mov eax, dword [rdi + sft.dStartClust]  ;Always update the start cluster
+    mov word [rbp + fatDirEntry + fatDirEntry.fstClusLo], ax
+    shr eax, 10h
+    mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
     ;Directory sector updated and marked to be flushed to disk!
     ;Now mark that the file has sectors not yet flushed to disk
     call setBufferReferenced
