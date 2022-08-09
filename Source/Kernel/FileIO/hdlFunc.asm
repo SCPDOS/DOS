@@ -111,7 +111,6 @@ closeFileHdl:      ;ah = 3Eh, handle function
     push rax    ;Save the share mode on stack
     call closeMain  ;Call close main!
     pop rax 
-    breakpoint    
     jc extErrExit   ;If an error, exit through error exit
     cmp al, netFCBShare ;Do NetFCB check (only if file opened more than once)
     je .exitOk  ;If sharing mode was net FCB, it had no JFT entry, skip nulling
@@ -705,11 +704,6 @@ buildSFTEntry:
     shr al, 5   ;Divide by 5 to get directory entry number
     mov byte [rdi + sft.bNumDirEnt], al
     xor eax, eax
-    push rdi
-    lea rdi, qword [rdi + sft.dFileSize]
-    stosq    ;Clear fileSzie and curntOff
-    stosq
-    pop rdi  ;Clear relClust and AbdClusr
     ;Now set DeviceInfo to drive number and get the dpb for this disk file
     mov al, byte [workingDrv]
     mov word [rdi + sft.wDeviceInfo], ax    ;AH already 0
@@ -1076,7 +1070,9 @@ readDiskFile:
     test edx, edx
     jz rwExitOk  ;Return with zero bytes transferred
     mov edx, dword [currClustF] ;Use edx as the counter reg
-    mov eax, dword [rsi + sft.dStartClust]  ;Get starting cluster
+    mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
+    test eax, eax   ;If starting cluster is zero, exit no bytes read
+    jz rwExitOk
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
@@ -1104,7 +1100,7 @@ readDiskFile:
 .mainSkipBufferSet:
     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
     jc .badExit
-    mov rsi, rbx    ;Move the buffer pointer into rsi
+    lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rsi, rbx    ;Shift rsi by that amount into the sector
     ;Now we read the smallest of the following from the sector buffer:
@@ -1203,7 +1199,6 @@ writeDiskFile:
     mov byte [rwFlag], -1    ;Write operation
     xor ebx, ebx
     mov dword [bytesAppend], ebx ;Reset the appending counter
-
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
     ;If the start cluster is 0, we create a new cluster chain
     test eax, eax

@@ -925,6 +925,19 @@ l1:
     mov ah, 3eh
     int 41h
     ;breakpoint
+
+    mov ah, 3dh
+    mov al, RWAccess
+    lea rdx, tmpName3
+    int 41h
+    breakpoint
+    mov ecx, testStringL
+    lea rdx, tmpDTA
+    mov bx, ax  ;Get the handle in bx
+    mov ah, 3fh
+    int 41h
+    breakpoint
+
     mov ah, 60h
     lea rsi, tmpName2
     lea rdi, tmpBuf2
