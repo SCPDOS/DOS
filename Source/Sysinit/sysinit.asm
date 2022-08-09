@@ -995,6 +995,7 @@ errorInit:
 strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
 mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
+badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
 conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
