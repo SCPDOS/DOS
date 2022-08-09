@@ -1290,7 +1290,7 @@ writeDiskFile:
     test eax, eax
     jnz .notStart
     call startNewChain  ;Allocate a first cluster! 
-    jc .exitPrep
+    jc .exitPrepHardErr
     cmp eax, -1
     je .exitPrep
     ;Now eax has the first cluster of chain
@@ -1366,11 +1366,12 @@ writeDiskFile:
     mov ecx, 1  ;Request 1 cluster
     mov ebx, eax    ;Save the last cluster number in eax
     call allocateClusters
-    jc .exitPrep
+    jc .exitPrepHardErr
     cmp eax, -1 ;If eax = -1 then disk full condition
     jc .exitPrep
     mov eax, ebx    ;ebx is preserved
     call walkFAT    ;Goto next cluster now, return in eax next cluster
+    jc .exitPrepHardErr
     inc dword [lastClust]
     mov dword [lastClustA], eax ;Now eax is the new last cluster
     mov eax, dword [currClustD] ;Get the old last cluster
@@ -1378,7 +1379,7 @@ writeDiskFile:
 .nextCluster:
     ;eax has old disk cluster information
     call walkFAT    ;Get the next disk cluster in eax
-    jc .exitPrep
+    jc .exitPrepHardErr
     mov dword [currClustD], eax
     inc dword [currClustF]
     call getStartSectorOfCluster
@@ -1390,7 +1391,7 @@ writeDiskFile:
 .stayInCluster:
     mov rax, qword [currSectD]  ;Get disk sector
     call getBufForData
-    jc .exitPrep
+    jc .exitPrepHardErr
     ;rbx points to disk buffer header
     movzx eax, word [currByteS] 
     lea rbx, qword [rbx + bufferHdr.dataarea + rax] ;In sector offset
@@ -1419,12 +1420,6 @@ writeDiskFile:
     inc byte [currSectC]    ;Increment sector in cluster now
     jmp .writeLoop
 
-.exitPrep:
-    mov ecx, dword [bytesAppend]
-    add dword [rdi + sft.dFileSize], ecx    ;Add these bytes to the filesize
-    mov ecx, dword [tfrCntr]    ;Get bytes left to transfer
-    jmp rwExitOk
-
 .truncate:
 ;We must free the chain from currClustD
     mov eax, dword [currClustD]
@@ -1432,12 +1427,24 @@ writeDiskFile:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
-
+.exitPrepHardErr:
+    push rax    ;Save error code
+    call .exitPrep
+    pop rax
+.badExitHard:    ;AL has error code already
+    stc
+    return
 .badExit:
 ;Might need to do some weird stuff later. Leave for now
     mov eax, errAccDen
-    stc
-    return
+    jmp short .badExitHard
+
+.exitPrep:
+    mov ecx, dword [bytesAppend]
+    add dword [rdi + sft.dFileSize], ecx    ;Add these bytes to the filesize
+    mov ecx, dword [tfrCntr]    ;Get bytes left to transfer
+    jmp writeExit
+
 .noByteExit:
     xor eax, eax
 writeExit:
