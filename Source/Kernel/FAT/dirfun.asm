@@ -249,3 +249,38 @@ updateDirectoryEntryForFile:
     pop rbx
     pop rax
     return
+
+growDirectory:
+;Input: dword [dirClustPar] must have the first cluster number of the directory
+;Output: CF=NC => All ok, directory grew by 1 sector
+;                 eax = New Cluster number
+;               TWO NON CF ERROR CASES.
+;               If eax = -1 => disk full!
+;               If eax = 0 => Trying to grow FAT12/16 root dir. Bad.
+;        CF=CY => Something went wrong. Rip. 
+    push rbx
+    push rcx
+    mov eax, dword [dirClustPar]    ;Get first cluster for directory
+    test eax, eax   ;If eax = 0, then error out
+    stc ;Set Carry if eax = 0
+    jz .exit
+.lp2:
+    mov ebx, eax
+    call walkFAT
+    jc .exit
+    cmp eax, -1 ;Once this is EOC, we add a new cluster.
+    jne .lp2
+    mov ecx, 1  ;Allocate one more cluster
+    call allocateClusters   ;ebx has last cluster value
+    jc .exit
+    mov eax, ebx    ;Walk this next cluster value to get new cluster value
+    call walkFAT
+    jc .exit
+    cmp eax, -1 ;If this cluster is -1, fail (disk full)
+    stc ;Set carry if it is fail
+    je .exit
+    clc
+.exit:
+    pop rcx
+    pop rbx
+    return   

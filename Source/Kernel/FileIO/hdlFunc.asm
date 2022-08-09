@@ -749,6 +749,7 @@ buildSFTEntry:
     mov dword [rdi + fatDirEntry.crtTime], eax
     mov dword [rdi + fatDirEntry.wrtTime], eax
     mov eax, dword [dirClustPar]    ;Get the parent directory information
+.searchForDirSpace:
     mov dword [dirClustA], eax
     xor eax, eax    ;Reset the search to the start of the current directory
     mov word [dirSect], ax
@@ -756,6 +757,16 @@ buildSFTEntry:
     push rdi
     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
     pop rdi ;Preserve rdi = curDirCopy
+    jnc .dirEntryFnd
+    cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
+    je .bad ;Set CF and exit
+    call growDirectory  ;Increase directory size by 1 cluster
+    jc .exit
+    cmp eax, -1 ;Disk Full?
+    je .bad
+    ;Else eax = Newly allocated cluster
+    jmp short .searchForDirSpace
+.dirEntryFnd:
     xchg rdi, rsi
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
