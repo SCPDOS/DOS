@@ -1139,6 +1139,7 @@ readDiskFile:
     ret
 writeBytes:
 ;Writes the bytes from the user buffer
+;Returns number of bytes written in ecx
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
     and al, 0Fh ;Eliminate except access mode
@@ -1197,6 +1198,8 @@ writeDiskFile:
     ;rdi has SFT ptr
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], -1    ;Write operation
+    test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
+    jnz .badExitAccDen
     xor ebx, ebx
     mov dword [bytesAppend], ebx ;Reset the appending counter
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
@@ -1346,7 +1349,8 @@ writeDiskFile:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
-
+.badExitAccDen:
+    mov eax, errAccDen
 .badExit:
 ;Might need to do some weird stuff later. Leave for now
     stc
