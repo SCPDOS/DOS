@@ -1198,14 +1198,24 @@ writeDiskFile:
     ;rdi has SFT ptr
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], -1    ;Write operation
+    xor ebx, ebx
+    mov dword [bytesAppend], ebx ;Reset the appending counter
+
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
+    ;If the start cluster is 0, we create a new cluster chain
+    test eax, eax
+    jnz .notStart
+    call startNewChain  ;Allocate a first cluster! 
+    jc .exitPrep
+    cmp eax, -1
+    je .exitPrep
+    ;Now eax has the first cluster of chain
+.notStart:
     call getLastClusterInChain  ;to get the current last cluster in the file
     mov dword [lastClustA], eax
     call getNumberOfClustersInChain ;Gets number of clusters
     dec eax ;Turn into an offset of clusters in file
     mov dword [lastClust], eax
-    xor ebx, ebx
-    mov dword [bytesAppend], ebx ;Reset the appending counter
     ;Get the disk cluster of the file (currClustD)
     mov ecx, dword [currClustF]
     mov eax, dword [rdi + sft.dStartClust]
@@ -1265,6 +1275,8 @@ writeDiskFile:
     mov eax, dword [currClustD] ;Get disk cluster
     cmp eax, dword [lastClustA] ;Is this the last sector?
     jne .nextCluster
+    ;Growing the file
+    mov byte [fileGrowing], -1  ;Set to true
     mov ecx, 1  ;Request 1 cluster
     mov ebx, eax    ;Save the last cluster number in eax
     call allocateClusters
@@ -1309,6 +1321,10 @@ writeDiskFile:
     call setBufferReferenced
     call setBufferDirty
     movzx ecx, word [sectTfr]
+    test byte [fileGrowing], -1
+    jz .notGrowing
+    add dword [bytesAppend], ecx
+.notGrowing:
     sub dword [tfrCntr], ecx
     jz .exitPrep
     xor eax, eax
@@ -1316,7 +1332,10 @@ writeDiskFile:
     add dword [currByteF], ecx  ;Goto the next sector in the file
     inc byte [currSectC]    ;Increment sector in cluster now
     jmp .writeLoop
+
 .exitPrep:
+    mov ecx, dword [bytesAppend]
+    add dword [rdi + sft.dFileSize], ecx    ;Add these bytes to the filesize
     mov ecx, dword [tfrCntr]    ;Get bytes left to transfer
     jmp rwExitOk
 

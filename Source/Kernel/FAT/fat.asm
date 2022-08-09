@@ -137,6 +137,23 @@ getClusterInChain:
     pop rbx
     return
 
+startNewChain:
+;Working dpb must be set
+;Returns: eax = First cluster new chain or -1=> Disk full
+;If CF=CY, hard error
+    push rbx
+    push rsi
+    call findFreeCluster    ;Get a free cluster in eax
+    jc .exit    ;Disk read error?
+    cmp eax, -1 ;Disk full?
+    je .exit
+    mov esi, -1 ;Value to write at eax is EOF
+    call writeFAT   ;Propagate the CF 
+.exit:
+    pop rsi
+    pop rbx
+    return
+
 allocateClusters:
 ;Working dpb must be set. 
 ;Input: ecx = Number of clusters to allocate in a chain
