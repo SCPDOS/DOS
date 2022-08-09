@@ -1282,7 +1282,7 @@ writeDiskFile:
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], -1    ;Write operation
     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
-    jnz .badExitAccDen
+    jnz .badExit
     xor ebx, ebx
     mov dword [bytesAppend], ebx ;Reset the appending counter
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
@@ -1432,10 +1432,10 @@ writeDiskFile:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
-.badExitAccDen:
-    mov eax, errAccDen
+
 .badExit:
 ;Might need to do some weird stuff later. Leave for now
+    mov eax, errAccDen
     stc
     return
 .noByteExit:
