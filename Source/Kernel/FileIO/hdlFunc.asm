@@ -908,13 +908,13 @@ readCharDev:
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
     mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
     test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
-    jz rwExitOk    ;If it does, jump to exit as if EOF has been hit
+    jz readExitOk    ;If it does, jump to exit as if EOF has been hit
     test bl, charDevNulDev  ;Is our device the NUL device?
     jz .notNul
     ;If it is the NUL device, we can simply return unsucessfully!
     ;NUL never transfers bytes 
     xor eax, eax    ;Set ZF so the next read causes EOF!
-    jmp rwExitOk    ;Goto exit
+    jmp readExitOk    ;Goto exit
 .notNul:
     test bl, charDevBinary
     jnz .binary
@@ -965,7 +965,7 @@ readCharDev:
 .exit:
     call vConRetDriver
     mov qword [vConHdlOff], rsi ;Store the offset (or 0 value)
-    jmp rwExitOk    ;Exit ok! ecx has # chars tfred and ZF=ZE if @ EOF
+    jmp readExitOk    ;Exit ok! ecx has # chars tfred and ZF=ZE if @ EOF
 
 .binary:
     ;Setup registers for transfer
@@ -1005,7 +1005,7 @@ readCharDev:
     xor eax, eax ;Set ZF
     inc eax ;Clear ZF
     pop rax ;Get back the original value
-    jmp rwExitOk    ;GoExit with ecx=Bytes left to read
+    jmp readExitOk    ;GoExit with ecx=Bytes left to read
 .generalASCII:
     ;ecx has bytes to transfer here
     ;Setup registers for transfer
@@ -1042,18 +1042,18 @@ readCharDev:
 ;Check EXACTLY 1 char was transferred. Any other value => exit from request
     mov rdi, rdx    ;Get the buffer position back into rdi
     cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
-    jne rwExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
+    jne readExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
     mov al, byte [rdi]  ;Get byte just input from driver in al
 .asciiIgnoreEP:
     inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
     inc rdi ;Also advance register pointer
     cmp al, EOF ;Was this char EOF?
-    je rwExitOk
+    je readExitOk
     cmp al, CR  ;Was this char CR?
     loopne .asciiReadChar   ;dec rcx, jnz .asciiReadChar
     ;Fallthrough also if al = CR (i.e ZF=ZE)
     inc al  ;make ZF=NZ
-    jmp rwExitOk    ;Called with ecx = Number of bytes LEFT to transfer
+    jmp readExitOk    ;Called with ecx = Number of bytes LEFT to transfer
 
 readDiskFile:
 ;rdi = Current SFT
@@ -1068,18 +1068,18 @@ readDiskFile:
     ;Using currClustF as a counter, we walk the fat from startingCluster
     mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
     test edx, edx
-    jz rwExitOk  ;Return with zero bytes transferred
+    jz readExitOk  ;Return with zero bytes transferred
     mov edx, dword [currClustF] ;Use edx as the counter reg
     mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
     test eax, eax   ;If starting cluster is zero, exit no bytes read
-    jz rwExitOk
+    jz readExitOk
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
     jz .skipWalk
 .goToCurrentCluster:
     cmp eax, -1 ;Are we gonna go past the end of the file?
-    je rwExitOk ;Exit with no bytes transferred
+    je readExitOk ;Exit with no bytes transferred
     mov ebx, eax    ;Save eax as current cluster
     call walkFAT    ;Get in eax the next cluster
     jc .badExit   ;This can only return Fail
@@ -1120,10 +1120,10 @@ readDiskFile:
     pop rdi
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
-    jz rwExitOk ;Exit if so!
+    jz readExitOk ;Exit if so!
     call getNextSectorOfFile    ;Get the next sector of the file
     jc .badExit
-    jz rwExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
+    jz readExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
     ;Else repeat
     ;currSectD has been updated, we now set currByteS = 0
     mov word [currByteS], 0 ;We start reading now from the start of the sector
@@ -1134,9 +1134,23 @@ readDiskFile:
     ; we need to update the SFT before returning
     mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
     xor al, al  ;Set ZF flag
-    call rwExitOk   ;We call this
+    call readExitOk   ;We call this
     stc ;All calls which end up here return Fail!
     ret
+
+readExitOk:
+;Input: ecx = Number of bytes left to transfer!
+;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
+    mov dword [tfrCntr], ecx    ;Update bytes left to transfer
+    jnz .skipbitClear
+    call getCurrentSFT  ;Get currentSFT in rdi
+    ;The disk transfer must've flushed by now. 
+    and byte [rdi + sft.wDeviceInfo], ~(blokFileToFlush|charDevNoEOF) ;OR
+    ;Next char dev read should give EOF.
+.skipbitClear:  ;Or skip that entirely
+    call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
+    return 
+
 writeBytes:
 ;Writes the bytes from the user buffer
 ;Input: ecx = Bytes to xfr
@@ -1442,7 +1456,8 @@ writeDiskFile:
 .exitPrep:
     mov ecx, dword [bytesAppend]
     add dword [rdi + sft.dFileSize], ecx    ;Add these bytes to the filesize
-    mov ecx, dword [tfrCntr]    ;Get bytes left to transfer
+    mov eax, dword [tfrLen]
+    sub eax, dword [tfrCntr]    ;Subtract by bytes left to tfr
     jmp writeExit
 
 .noByteExit:
@@ -1461,18 +1476,6 @@ writeExit:
     clc
     return
 
-rwExitOk:
-;Input: ecx = Number of bytes left to transfer!
-;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
-    mov dword [tfrCntr], ecx    ;Update bytes left to transfer
-    jnz .skipbitClear
-    call getCurrentSFT  ;Get currentSFT in rdi
-    ;The disk transfer must've flushed by now. 
-    and byte [rdi + sft.wDeviceInfo], ~(blokFileToFlush|charDevNoEOF) ;OR
-    ;Next char dev read should give EOF.
-.skipbitClear:  ;Or skip that entirely
-    call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
-    return 
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
