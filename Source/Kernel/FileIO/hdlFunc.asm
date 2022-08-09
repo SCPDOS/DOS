@@ -1139,6 +1139,7 @@ readDiskFile:
     ret
 writeBytes:
 ;Writes the bytes from the user buffer
+;Input: ecx = Bytes to xfr
 ;Returns number of bytes written in ecx
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
@@ -1178,22 +1179,104 @@ writeCharDev:
     xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
     test ecx, ecx
     jz writeExit
-    mov rdi, qword [currentDTA] ;Get ptr to storage buffer in rdi
-    xor edx, edx
+    mov rbx, qword [currentDTA] ;Get ptr to storage buffer in rbx
+    mov rdi, rbx
+    xor edx, edx    ;Set edx to keep track of how many bytes have been xfrd
     test al, charDevBinary
     jz .asciiDev
 ;Write binary transfer here
+.binaryLp:
+    xor eax, eax
+    xor rbp, rbp    ;Indicate a char device
+    call primReqWriteSetup   ;Setup request, rbx points to buffer
+    mov rsi, qword [currentSFT]
+    call goDriverChar
+    mov rdx, rdi    ;Save buffer ptr in rdx
+    mov ah, critCharDev | critData | critWrite
+    movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+    test edi, drvErrStatus
+    jz .binXfrOk
+    call charDevErr ;Invoke Int 44h
+    mov rbx, rdx    ;Return the buffer ptr in rbx
+    cmp al, critIgnore
+    je .binXfrOk
+    cmp al, critRetry
+    je .binaryLp
+    jmp .exitFail
+.binXfrOk:
+    mov eax, dword [primReqHdr + ioReqPkt.tfrlen]
+    jmp writeExit   ;Exit oki with # bytes xfrd in eax
 .asciiDev:
     test al, charDevConOut
     jnz .conDev
     test al, charDevNulDev
     jnz .nulDev
     ;Here we transfer for a generic character device in ascii mode
-    mov eax, edx
+    mov eax, edx    ;Move bytes transferred into eax
     cmp byte [rbx], EOF ;Is the string pointer at a EOF character?
-    
+    je writeExit
+    push rcx
+    mov ecx, 1  ;xfr 1 byte
+    xor rbp, rbp    ;Indicate a char device
+    call primReqWriteSetup   ;Setup request, rbx points to buffer
+    pop rcx
+    mov rsi, qword [currentSFT]
+    mov rsi, qword [rsi + sft.qPtr] ;Get the dev drv pointer in rsi
+.asciiLp:
+    call checkBreak
+    call goDriver
+    push rdi
+    mov ah, critCharDev | critData | critWrite
+    movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+    test edi, drvErrStatus
+    jz .asciiNoError
+    call charDevErr ;Invoke Int 44h
+    pop rdi
+    mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
+    cmp al, critRetry
+    je .asciiLp
+    cmp al, critIgnore
+    je .ignoreEp
+    jmp .exitFail
+.asciiNoError:
+    pop rdi
+    cmp dword [primReqHdr + ioReqPkt.tfrlen], 0
+    je .bytesXfrdOk
+.ignoreEp:
+    inc edx ;One more char has been xfrd
+    inc dword [primReqHdr + ioReqPkt.bufptr]    ;Increment buffer ptr
+    inc rdi ;And our copy... 
+    cmp byte [rdi], EOF ;... to do this!
+    je .bytesXfrdOk
+    mov word [primReqHdr + ioReqPkt.status], 0
+    dec ecx
+    jnz .asciiLp
+.bytesXfrdOk:
+    mov eax, edx
+    jmp writeExit
 .nulDev:
+    mov eax, ecx    ;Move bytes to transfer into eax (as if it happened)
+    jmp writeExit
 .conDev:
+    call vConSwapDriver
+    mov rsi, rbx    ;Move the buffer ptr into rsi
+    push rcx
+.conDevLp:
+    lodsb
+    cmp al, EOF
+    je .conDevExit
+    call charOut_B.in   ;Use internal ep to tfr byte out to CON
+    dec ecx
+    jnz .conDevLp
+.conDevExit:
+    pop rax ;Get initial ecx back into eax
+    sub eax, ecx
+    call vConRetDriver
+    jmp writeExit   ;Input: eax = bytes xfrd
+.exitFail:
+    mov eax, errAccDen
+    stc
+    return
 writeDiskFile:
     ;rdi has SFT ptr
     mov byte [errorLocus], eLocDsk 
