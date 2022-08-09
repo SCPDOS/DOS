@@ -910,14 +910,24 @@ l1:
     mov ah, 3Dh
     mov al, RWAccess
     int 41h
+
     mov ah, 3ch
     mov cx, 00  ;Normal attributes
     lea rdx, tmpName3
     int 41h
+    breakpoint
+    mov ecx, testStringL
+    lea rdx, testString
+    mov bx, ax  ;Get the handle in bx
+    mov ah, 40h
+    int 41h
+
+
     mov ah, 60h
     lea rsi, tmpName2
     lea rdi, tmpBuf2
     int 41h
+
 l11:
     mov ah, 02h
     mov dl, 0Ah
@@ -1157,3 +1167,6 @@ tmpBuf2     db 80h dup 00h
 
 
 tmpName3    db "myfile.tst",0
+
+testString  db "Test String"
+testStringL equ $ - testString

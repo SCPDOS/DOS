@@ -1157,13 +1157,13 @@ writeBytes:
     je .noWrite ;If the file is read only, RIP
 .skipAttribCheck:
     call setupVarsForTransfer   ;Returns bytes to transfer in ecx
-    test qword [rdi + sft.wDeviceInfo], devRedirDev
+    test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
     mov eax, 1109h  ;Write to redir
     int 4Fh
     return
 .notRedir:
-    test qword [rdi + sft.wDeviceInfo], devCharDev
+    test word [rdi + sft.wDeviceInfo], devCharDev
     jnz writeCharDev
     call dosCrit1Enter
     call writeDiskFile
@@ -1196,6 +1196,7 @@ writeCharDev:
 .conDev:
 writeDiskFile:
     ;rdi has SFT ptr
+    breakpoint
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], -1    ;Write operation
     xor ebx, ebx
@@ -1210,6 +1211,7 @@ writeDiskFile:
     cmp eax, -1
     je .exitPrep
     ;Now eax has the first cluster of chain
+    mov dword [rdi + sft.dStartClust], eax  ;Store the start cluster in the sft
 .notStart:
     call getLastClusterInChain  ;to get the current last cluster in the file
     mov dword [lastClustA], eax

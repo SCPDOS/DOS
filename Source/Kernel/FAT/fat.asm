@@ -103,6 +103,7 @@ getNumberOfClustersInChain:
     test eax, eax   ;If eax = 0, then just exit
     retz
     push rcx
+    xor ecx, ecx
 .lp:
     inc ecx
     call walkFAT
@@ -148,7 +149,9 @@ startNewChain:
     cmp eax, -1 ;Disk full?
     je .exit
     mov esi, -1 ;Value to write at eax is EOF
+    mov ebx, eax
     call writeFAT   ;Propagate the CF 
+    mov eax, ebx
 .exit:
     pop rsi
     pop rbx
@@ -459,7 +462,6 @@ writeFAT:
     push rdi
     push rbp
     mov edi, eax    ;Save cluster number in edi
-    mov esi, ebx    ;Save the cluster value in esi
     call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
     ;and FAT type in ecx
     call getBufForFat ;Buffer Header in ebx, first buffer being requested
