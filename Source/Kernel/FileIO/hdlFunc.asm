@@ -1165,7 +1165,6 @@ writeBytes:
 .notRedir:
     test qword [rdi + sft.wDeviceInfo], devCharDev
     jnz writeCharDev
-    mov byte [errorLocus], eLocDsk 
     call dosCrit1Enter
     call writeDiskFile
     call dosCrit1Exit
@@ -1197,6 +1196,8 @@ writeCharDev:
 .conDev:
 writeDiskFile:
     ;rdi has SFT ptr
+    mov byte [errorLocus], eLocDsk 
+    mov byte [rwFlag], -1    ;Write operation
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
     call getLastClusterInChain  ;to get the current last cluster in the file
     mov dword [lastClustA], eax
@@ -1249,8 +1250,75 @@ writeDiskFile:
     test ecx, ecx
     jz .truncate
     ;Here we write proper data to the disk file
-    
-
+.writeLoop:
+    movzx eax, word [currByteS] ;Get bytewise sector offset
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    sub ecx, eax    ;Get bytes left to fill this sector in ecx
+    mov eax, dword [tfrCntr] ;Get # bytes left to transfer
+    cmp cx, ax  ;Is # of bytes leftto tfr less than bytes left in sector?
+    cmova cx, ax    ;If yes, swap
+    mov word [sectTfr], cx  ;Save this value in the var
+    movzx eax, byte [currSectC] ;Get sector offset in cluster
+    cmp al, byte [rbp + dpb.bMaxSectorInCluster]
+    jbe .stayInCluster
+    ;Get next Cluster information here
+    mov eax, dword [currClustD] ;Get disk cluster
+    cmp eax, dword [lastClustA] ;Is this the last sector?
+    jne .nextCluster
+    mov ecx, 1  ;Request 1 cluster
+    mov ebx, eax    ;Save the last cluster number in eax
+    call allocateClusters
+    jc .exitPrep
+    cmp eax, -1 ;If eax = -1 then disk full condition
+    jc .exitPrep
+    mov eax, ebx    ;ebx is preserved
+    call walkFAT    ;Goto next cluster now, return in eax next cluster
+    inc dword [lastClust]
+    mov dword [lastClustA], eax ;Now eax is the new last cluster
+    mov eax, dword [currClustD] ;Get the old last cluster
+    ;eax now has the old last sector
+.nextCluster:
+    ;eax has old disk cluster information
+    call walkFAT    ;Get the next disk cluster in eax
+    jc .exitPrep
+    mov dword [currClustD], eax
+    inc dword [currClustF]
+    call getStartSectorOfCluster
+    mov qword [currSectD], rax
+    inc dword [currSectF]
+    xor eax, eax
+    mov byte [currSectC], al  ;Sector zero in cluster
+    mov word [currByteS], ax  ;And byte zero of this sector in the cluster
+.stayInCluster:
+    mov rax, qword [currSectD]  ;Get disk sector
+    call getBufForData
+    jc .exitPrep
+    ;rbx points to disk buffer header
+    movzx eax, word [currByteS] 
+    lea rbx, qword [rbx + bufferHdr.dataarea + rax] ;In sector offset
+    ;rbx points to the current byte to write at
+    push rdi
+    push rsi
+    mov rdi, rbx    ;The sector is the destination of the write
+    mov rsi, qword [currentDTA] ;Get the user buffer as the source
+    movzx ecx, word [sectTfr]   ;Get # of bytes to write
+    rep movsb   ;Move over cx number of bytes
+    mov qword [currentDTA], rsi ;Update currentDTA
+    pop rsi
+    pop rdi
+    call setBufferReferenced
+    call setBufferDirty
+    movzx ecx, word [sectTfr]
+    sub dword [tfrCntr], ecx
+    jz .exitPrep
+    xor eax, eax
+    mov word [currByteS], ax    ;Start of the next sector
+    add dword [currByteF], ecx  ;Goto the next sector in the file
+    inc byte [currSectC]    ;Increment sector in cluster now
+    jmp .writeLoop
+.exitPrep:
+    mov ecx, dword [tfrCntr]    ;Get bytes left to transfer
+    jmp rwExitOk
 
 .truncate:
 ;We must free the chain from currClustD
@@ -1524,8 +1592,8 @@ getBytesTransferred:
 
 readWriteBytesBinary:
 ;Input: ecx = number of bytes to read in Binary mode
-;       rdi = Points to where in caller buffer to place bytes
-;       rsi = Points to where in DOS buffer to place pointer
+;       rdi = Points to where in caller buffer to read/write bytes
+;       rsi = Points to where in DOS buffer to write/read pointer
 ;xchg rdi and rsi if rwFlag is set (i.e. a write operation)
 ;Preserve rcx so we know how many bytes transferred
 ;Update the currByteA variable

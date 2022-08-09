@@ -155,7 +155,7 @@ sdaMainSwap:
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
     badNameRen  resb 1  ;Device name or File not found for rename
-    rwFlag      resb 1  ;00h=Read, 01h=Write
+    rwFlag      resb 1  ;00h=Read, -1=Write
     spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
@@ -181,6 +181,7 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
 ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
 ; and 32 byte offset into the sector for directory
     tempSect    resq 1  ;A scratch sector number
+sectTfr:    ;Symbol to use this var to hold a counter on disk read/write ops 
     entry       resw 1  ;32 byte offset into a sector or #fats sectors/fat
 ;***************************************************|
 ; Needs to be set up before any file access         |
