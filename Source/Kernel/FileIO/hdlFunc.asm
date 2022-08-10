@@ -1468,7 +1468,7 @@ writeExit:
     mov rdi, qword [currentSFT]
     mov ecx, eax
     call .advPtr
-    return
+    return  ;Return to caller, ecx = # bytes xfrd
 .advPtr:
     jecxz .exit
     add dword [rdi + sft.dCurntOff], ecx
