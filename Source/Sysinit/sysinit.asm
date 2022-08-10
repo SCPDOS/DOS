@@ -915,10 +915,16 @@ l1:
     mov cx, 00  ;Normal attributes
     lea rdx, tmpName3
     int 41h
+    mov word [hdl], ax
     ;breakpoint
-    mov ecx, testStringL
-    lea rdx, testString
-    mov bx, ax  ;Get the handle in bx
+    mov ecx, testString1L
+    lea rdx, testString1
+    mov bx, word [hdl]  ;Get the handle in bx
+    mov ah, 40h
+    int 41h
+    mov ecx, testString2L
+    lea rdx, testString2
+    mov bx, word [hdl]  ;Get the handle in bx
     mov ah, 40h
     int 41h
     ;breakpoint
@@ -930,10 +936,17 @@ l1:
     mov al, RWAccess
     lea rdx, tmpName3
     int 41h
+    mov word [hdl], ax
     ;breakpoint
-    mov ecx, testStringL
+    mov ecx, testString1L
     lea rdx, tmpDTA
-    mov bx, ax  ;Get the handle in bx
+    mov bx, word [hdl]  ;Get the handle in bx
+    mov ah, 3fh
+    int 41h
+
+    mov ecx, testString2L
+    lea rdx, tmpBuf2
+    mov bx, word [hdl]  ;Get the handle in bx
     mov ah, 3fh
     int 41h
     ;breakpoint
@@ -1183,6 +1196,8 @@ tmpBuf2     db 80h dup 00h
 
 
 tmpName3    db "myfile.tst",0
-
-testString  db "Test String"
-testStringL equ $ - testString
+hdl dw 0
+testString1  db "Test String"
+testString1L equ $ - testString1
+testString2  db " More String, Less Space"
+testString2L equ $ - testString2
