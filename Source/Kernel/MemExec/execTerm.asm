@@ -269,8 +269,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ; If not EXE, we read the filename extension. If it is RFS, we assign maximum 
 ; memory. If it is COM, we assign only 64Kb to the application.
 
-;Start by setting up a stack frame of local vars to preserve registers 
-;   across function calls.
+;Start by setting up a stack frame of local vars to keep track of vars in call
     push rbp
     mov rbp, rsp
     sub rsp, execFrame_size   ;Make the space pointing at rbp
@@ -299,7 +298,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor eax, eax    ;al = 0 => Normal program attributes to search for
     push rbp    ;Preserve local frame ptr
     call openFileHdl
-    pop rbx
+    pop rbp
     jc .badExit ;Exit preserving error code in al
     ;Now ax has the file handle
     mov word [rbp - execFrame.wProgHdl], ax
