@@ -254,4 +254,25 @@ terminateClean:    ;ah = 4Ch, EXIT
     return
 
 loadExecChild:     ;ah = 4Bh, EXEC
+;Input: rdx = Ptr to the ASCIIZ string for the file to load
+;       rbx = Ptr to the parameter block used for loading
+;
+;Set up a dpl stack frame to preserve registers across function calls
+    push rbp
+    mov rbp, rsp
+    sub rsp, dpb_size-3*8   ;Make the space pointing at rbp save network fields
+    cmp al, 3
+    jbe .validSubfunction
+.badSubFunction:
+    mov eax, errInvFnc
+    mov byte [errorLocus], eLocUnk
+    mov rsp, rbp
+    pop rbp
+    jmp extErrExit
+.validSubfunction:
+    cmp al, 2
+    je .badSubFunction
+    ;Save registers for each function call
+    mov qword [rbp - dpl.rbx], rbx
+    pop rbp
     return
