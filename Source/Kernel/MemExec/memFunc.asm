@@ -7,6 +7,7 @@ allocateMemory:    ;ah = 48h
 ;Input: ebx = Number of paragraphs requested
 ;Output:    CF=NC: rax = Ptr to allocated memory block
 ;           CF=CY: ax = Error code, ebx = Largest block available
+    call dosCrit1Enter
     xor edx, edx
     ;Clear the pointers
     mov qword [firstMCB], rdx
@@ -111,6 +112,7 @@ allocateMemory:    ;ah = 48h
     mov qword [rdx + callerFrame.rax], rax  ;Save pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
+    call dosCrit1Exit
     return
 .bfCommon:
     mov rsi, qword [firstMCB]
@@ -141,6 +143,7 @@ allocateMemory:    ;ah = 48h
     mov qword [rdx + callerFrame.rax], rax  ;Save new block pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
+    call dosCrit1Exit
     return
 .allocFail:
     ;Walk the MCB chain to determine the biggest block size
@@ -174,6 +177,7 @@ freeMemory:        ;ah = 49h
 ;Input: r8 = address of the block to be returned (MCB + 1 para)
 ;Output: CF=CY => al = error code, CH=NC, nothing
 ;Always skip the first block as this is the anchor for DOS
+    call dosCrit1Enter
     sub r8, mcb.program ;Point r8 to the MCB for the returned block
     xor ecx, ecx
     mov rsi, qword [mcbChainPtr]    ;Get MCB chain ptr to start walking
@@ -243,6 +247,7 @@ freeMemory:        ;ah = 49h
     mov qword [rsi + 8], rcx
 .blockFoundExit:
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
+    call dosCrit1Exit
     mov rbx, qword [oldRSP]
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
     return
@@ -251,11 +256,13 @@ freeMemory:        ;ah = 49h
     mov eax, errMemAddr
     call extErrExit ;Error thru the unified error handler
     call verifyIntegrityOfMCBChain  ;Check MCB chain ok
+    call dosCrit1Exit
     return
 reallocMemory:     ;ah = 4Ah
 ;Input: r8 = address of the block to be realloc'ed
 ;       ebx = How many paras this block should contain after realloc. 
 ;               If ebx = 0, jump to free memory
+    call dosCrit1Enter
     test ebx, ebx
     jz freeMemory   ;If resize to 0, equivalent to free!
     sub r8, mcb.program ;Return pointer to MCB for arena
@@ -363,6 +370,7 @@ reallocMemory:     ;ah = 4Ah
     mov qword [rsi + mcb.owner], mcbOwnerFree
 .exit:
     call verifyIntegrityOfMCBChain
+    call dosCrit1Exit
     mov rbx, qword [oldRSP]
     and byte [rbx + callerFrame.flags], 0FEh    ;Clear Carry flag
     return
