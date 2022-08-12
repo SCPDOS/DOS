@@ -263,13 +263,10 @@ strlen: ;Int 4Fh, AX=1212h
     push rax
     push rdi
     xor al, al
-    xor ecx, ecx
-.scan:
-    scasb   ;Scan the string at rdi
-    je .exit
-    inc ecx
-    jmp short .scan
-.exit:
+    xor ecx, ecx    ;ONLY USE ECX!!!
+    dec ecx ;rcx = -1
+    repne scasb
+    not ecx
     pop rdi
     pop rax
     return
