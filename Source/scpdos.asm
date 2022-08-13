@@ -8,6 +8,7 @@ BITS 64
 %include "./Source/Include/dosStruc.inc"
 %include "./Source/Debug/debSym.inc"
 %include "./Source/Include/dosError.inc"
+%include "./Source/Include/dosExec.inc"
 Segment .text align=1   ;Init code
 %define currSegVBase 0
 %include "./Source/Sysinit/sysInit.asm"
