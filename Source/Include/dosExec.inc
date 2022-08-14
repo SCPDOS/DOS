@@ -49,6 +49,7 @@ endstruc
 
 struc loadOvly
     .pLoadLoc   resq 1  ;Address in memory to load the overlay
+    .dRelocFct  resd 1  ;Relocation factor for 
 endstruc
 
 ;----------------------------
@@ -56,7 +57,8 @@ endstruc
 ;----------------------------
 
 ;DOS MZ .EXE header. Functionally useless except for e_magic and e_lfanew
-
+dosMagicSignature   equ "MZ"
+dosMagicSignature2  equ "ZM"
 struc imageDosHdr
     .e_magic    resw 1  ;      // Magic number
     .e_cblp     resw 1  ;      // Bytes on last page of file

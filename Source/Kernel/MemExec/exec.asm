@@ -66,12 +66,14 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ;               |  prog space to start writing  |
 ;               |        the overlay at         |
 ;               |-------------------------------|
-;               |  Pointer to the base of the   |
-;               |     program the overlay is    |
-;               |        being swapped to       |
+;               | DWORD offset from the base of |
+;               |  the program to the location  |
+;               |  the overlay is being loaded  |
+;               |              in               |
 ;               |  (Called a Relocation Factor) |
 ;               |     Only FOR EXE Overlays     |
-;               | For COM, Current PSP + 100h   |
+;               |        for CODE fixups        |
+;               |  For COM, Current PSP + 100h  |
 ;               |      assumed to suffice       |
 ;               |-------------------------------|
 ;
@@ -193,9 +195,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp eax, imageDosHdr_size
     jb .loadCom
 
-    cmp word [rdx + imageDosHdr.e_magic], "MZ"
+    cmp word [rdx + imageDosHdr.e_magic], dosMagicSignature
     je .proceedEXE
-    cmp word [rdx + imageDosHdr.e_magic], "ZM"
+    cmp word [rdx + imageDosHdr.e_magic], dosMagicSignature2
     jne .loadCom    ;If not equal to ZM or MZ, must be a COM file
 .proceedEXE:
     ;Now we need to read e_lfanew
@@ -221,7 +223,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     movzx eax, word [rdx + imageFileHeader.wNumberOfSections]
     mov word [rbp - execFrame.wNumSecns], ax
     movzx eax, word [rdx + imageFileHeader.wSizeOfOptionalHdr]
-    mov word [rbp - execFrame.wSzOptHdr], ax    ;Cannot be 0 for executable
+    mov word [rbp - execFrame.wSzOptHdr], ax    ;0 only for object files
+    
 
 .loadCom:
     pop rbp
