@@ -221,11 +221,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     movzx eax, word [rdx + imageFileHeader.wNumberOfSections]
     mov word [rbp - execFrame.wNumSecns], ax
     movzx eax, word [rdx + imageFileHeader.wSizeOfOptionalHdr]
-    mov word [rbp - execFrame.wSzOptHdr], ax
-    test eax, eax
-    jz .handleSections
-    ;Here we study the optional header details
-.handleSections:
+    mov word [rbp - execFrame.wSzOptHdr], ax    ;Cannot be 0 for executable
+
 .loadCom:
     pop rbp
     return
