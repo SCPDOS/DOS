@@ -224,7 +224,9 @@ sectTfr:    ;Symbol to use this var to hold a counter on disk read/write ops
     DiskStakTop resq 1
 
     diskChange  resb 1  ;-1 = disk has been changed!
-    lookahead   resb 1  ;-1 => Lookahead on select Char function calls!  
+    lookahead   resb 1  ;-1 => Lookahead on select Char function calls! 
+;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
+    exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
     sdaLen      equ     $ - sda 
     sdaMSLen    equ     $ - sda
 

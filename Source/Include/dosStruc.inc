@@ -358,25 +358,6 @@ struc clkStruc
     .seconds    resb 1
 endstruc
 
-struc execProg 
-    .pEnv       resq 1  ;Ptr to environment block (or 0 => copy parent env)
-    .pCmdLine   resq 1  ;Ptr to the command line to be placed at PSP + 80h
-    .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
-    .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
-endstruc
-
-struc loadProg
-    execProg    resb execProg_size
-    .initRSP    resq 1
-    .initRIP    resq 1
-endstruc
-
-struc loadOvly
-    .pLoadLoc   resq 1  ;Address in memory to load the overlay
-endstruc
-
-
-
 ;60 4kb pages, giving a total of 264kb of space allocated to paging
 ;for a space of 64Gb
 dosAPTsize  equ 60*4096 ;(APT = Additional Page Tables)
