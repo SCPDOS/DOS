@@ -149,17 +149,15 @@ loadExecChild:     ;ah = 4Bh, EXEC
     scasb   ;Check if we have a second byte of 00 (i.e. end of environment)
     jnz .envVerifyLp
 
-    push rdi     ;Save the ptr to the location for the new string
     sub rdi, rbx ;Get offset into block, gives a result less than 7FFFh
-    push rdi     ;Save the number of chars into the block we are in
+    push rdi     ;Save the length of the environment block
     add edi, 11h    ;Add 11 to round up when converting to paragraphs
     movzx ebx, word [rbp - execFrame.wNameLen]  ;Get name length
     add edi, ebx    ;edi has number of bytes to allocate for environment blk
     mov ebx, edi
     shr ebx, 4  ;Turn bytes needed into paragrapsh
     call allocateMemory
-    pop rcx ;Pop the number of chars into the block in rcx
-    pop rbx ;Pop the location of where to add the new string in rbx
+    pop rcx ;Pop the length of the environment block into rcx
     jnc .copyEnvironment
     ;Fall thru if not enuff memory
 .insufficientMemory:
@@ -171,7 +169,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
 
 .copyEnvironment:
     ;rax has the ptr to allocated memory block
-    ;rbx has the location of where to add the new string
     ;rcx has the number of chars to copy from the source env block
     mov rdi, rax    ;This is the destination of the copy
     mov qword [rbp - execFrame.pEnvBase], rax   ;Save the env block in frame
