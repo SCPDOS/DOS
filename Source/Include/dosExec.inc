@@ -22,10 +22,13 @@ struc execFrame
     .pEnvBase   resq 1  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
     .pPSPBase   resq 1  ;Ptr to new PSP base address
     .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
+    .dProgSize  resd 1  ;Program size is saved here, PSP included.
     .dCOFFhdr   resd 1  ;Offset in file to COFF header. Set to 0 for COM
     .wNumSeg    resw 1  ;Number of segments, consider reusing NameLen
+                resw 1  ;Alignment reservation
+.qRelocVal:  ;Used when computing relocations, Rebasing factor
     .dFilePtr   resd 1  ;Keep of track of where in file we are
-                resb 2  ;Alignment reservation
+                resd 1  ;Alignment reservation, DO NOT USE FOR ANYTHING
 endstruc
 
 ;Possible blocks to be pointed to by rbx
@@ -145,14 +148,11 @@ struc imageDataDirectory
     .size    resd 1
 endstruc
 
-;   >>>> CAVEAT    CAVEAT    CAVEAT    CAVEAT    CAVEAT    CAVEAT <<<<
-;We dont use data directory entries. The section header table begins at the end 
-; of the optional header. Thus we add the size of the optional header to the 
-; ptr to the start of the optional header to get the first section.
-;Note if there is no optional header, then the sectionTable immediately follows
-; COFF header
-;   >>>> CAVEAT    CAVEAT    CAVEAT    CAVEAT    CAVEAT    CAVEAT <<<<
-
+struc baseRelocBlock
+    .pageRVA    resd 1  ;Offset from the load address
+    .size       resd 1  ;Number of bytes in this block
+    ;Each entry is a word. High 4 bits are type of reloc (all must be 0Ah)
+endstruc
 ;Section headers that form the Section Table.
 ;There are wNumberOfSections many entries in this table.
 ;Each entry is one imageSectionHdr
@@ -162,7 +162,7 @@ struc imageSectionHdr       ;size 40 bytes
 	.dVirtualSize           resd 1  ;If this is bigger than RawData, 0 pad
 	.dVirtualAddress        resd 1  ;Offset from ImageBase
 	.dSizeOfRawData         resd 1
-	.dPointerToRawData      resd 1
+	.dPointerToRawData      resd 1  ;File pointer location
 	.dPointerToRelocations  resd 1
 	.dPointerToLinenumbers  resd 1
 	.wNumberOfRelocations   resw 1
