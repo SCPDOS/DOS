@@ -216,14 +216,70 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;So now rdx points to the imageFileHeader
     cmp word [rdx + imageFileHeader.wMachineType], imageFileMachineAMD64
     jne .badFmtErr
-    ;Now we save wNumberOfSections and wSizeOfOptionalHdr
+    cmp word [rdx + imageFileHeader.wSizeOfOptionalHdr], imageFileOptionalHeader_size
+    jb .badFmtErr   ;We need the full optional header (as normal)
+    ;Now save the number of sections in the the file
     movzx eax, word [rdx + imageFileHeader.wNumberOfSections]
-    mov word [rbp - execFrame.wNumSecns], ax
-    movzx eax, word [rdx + imageFileHeader.wSizeOfOptionalHdr]
-    mov word [rbp - execFrame.wSzOptHdr], ax    ;0 only for object files
-    
+    test eax, eax   ;If this is 0, what?
+    jz .badFmtErr
+    mov word [rbp - execFrame.wNumSeg], ax  ;Save this value for later!
 
+    ;Now load Optional header, file ptr points to it so all good!
+    mov ecx, imageFileOptionalHeader_size
+    ;rdx points to exeHdrSpace
+    call .readDataFromHdl
+    test eax, eax   ;Were zero bytes read?
+    jz .badFmtErr
+    cmp eax, imageFileOptionalHeader_size
+    jb .badFmtErr
+    ;Now File Ptr points to data dirs, not an issue
+    ;We load the program in, one section at a time, reading section headers in
+    ; one at a time to the section header internal buffer.
+    cmp byte [rbp - execFrame.bSubFunc], execOverlay
+    je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
+    mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
+    add ebx, 11
+    shr ebx, 4  ;Turn into paragraphs
+    call allocateMemory ;Get in rax, ptr to memory block
+    jc .insufficientMemory  ;Unless not enough, sorry buddy!
+    mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
+    add rax, 100h
+    mov qword [rbp - execFrame.pProgBase], rax  ;First byte of code goes here
+    jmp short .exeProceed1
+.exeOvlySkipAlloc:
+    mov rbx, qword [rbp - execFrame.pParam]
+    mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
+    mov qword [rbp - execFrame.pProgBase], rax
+.exeProceed1:
+    ;So now copy one section at a time, read section header in
+    ;File pointer points to the directory table, so skip that
+    mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+    ;Each directory is 8 bytes, so multiply edx by 8
+    shl edx, 3  ;edx has number of bytes to move file pointer forwards by
+    xor ecx, ecx
+    movzx ebx, word [rbp - execFrame.wProgHdl]
+    mov al, 1   ;Move handle forwards from current position
+    call lseekHdl   ;Move the handle forwards by that many bytes
+    ;eax has pointer location after adjustment
+    ;File now points to start of Section headers. Read first header in.
+    ;USE ECX AS COUNTER FOR HEADERS LEFT TO PROCESS
+    movzx ecx, word [rbp - execFrame.wNumSeg]
+    lea rdx, sectHdr    ;Read section headers here
+    push rcx
+    mov ecx, imageSectionHdr_size
+    call .readDataFromHdl
+    pop rcx
+    test eax, eax
+    jz .badFmtErr
+    cmp eax, imageSectionHdr_size
+    jne .badFmtErr
+    ;Section header read, now we load section into memory
+
+    jmp .buildChildPSP
 .loadCom:
+
+.buildChildPSP:
+    ;Only build a PSP if not in overlay mode. If in overlay mode
     pop rbp
     return
 
@@ -240,6 +296,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rax
     pop rbp
     jmp .badExit
+
+.exeGetFileRelativeOffset:
+;section RVA + Section.PointerToRawData - Section.VirtualAddress = FRO
+
 
 .readDataFromHdl:
 ;Input: bx = File Handle

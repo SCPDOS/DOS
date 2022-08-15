@@ -227,6 +227,7 @@ sectTfr:    ;Symbol to use this var to hold a counter on disk read/write ops
     lookahead   resb 1  ;-1 => Lookahead on select Char function calls! 
 ;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
+    sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
     sdaLen      equ     $ - sda 
     sdaMSLen    equ     $ - sda
 

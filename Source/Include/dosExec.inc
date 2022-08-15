@@ -18,18 +18,14 @@ struc execFrame
     .pParam     resq 1  ;Parameter list pointer
     .rdx:
     .pProgname  resq 1  ;Ptr to ASCIIZ program name
-    .dNewSize   resd 1  ;Size of the allocation for the new program
-                resd 1  ;Reserved 4 bytes
+
     .pEnvBase   resq 1  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
-    .pProgMCB   resq 1  ;Ptr to the program MCB, for convenience
-    .pProgBase  resq 1  ;Ptr to new program base address
-
+    .pPSPBase   resq 1  ;Ptr to new PSP base address
+    .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
     .dCOFFhdr   resd 1  ;Offset in file to COFF header. Set to 0 for COM
-    .dStackSz   resd 1  ;Stack size to allocate in bytes. Set to 0 for COM
-    .dHeapSz    resd 1  ;Heap size in bytes in bytes. Set to 0 for COM 
-    .wNumSecns  resw 1  ;Number of sections in the file, set to 0 for COM
-    .wSzOptHdr  resw 1  ;Size of the optional header, set to 0 for COM
-
+    .wNumSeg    resw 1  ;Number of segments, consider reusing NameLen
+    .dFilePtr   resd 1  ;Keep of track of where in file we are
+                resb 2  ;Alignment reservation
 endstruc
 
 ;Possible blocks to be pointed to by rbx
@@ -113,10 +109,9 @@ struc imageFileOptionalHeader
 	.dSizeOfCode                resd 1
 	.dSizeOfInitializedData     resd 1
 	.dSizeOfUninitializedData   resd 1
-	.dAddressOfEntryPoint       resd 1
+	.dAddressOfEntryPoint       resd 1  ;RVA of the EP for program
 	.dBaseOfCode                resd 1
-.optLen:    ;Use this symbol for the basic data from the header
-    .qImageBase                 resq 1
+    .qImageBase                 resq 1  ;Preferred load address  
 	.dSectionAlignment          resd 1
 	.dFileAlignment             resd 1
 	.wMajOSVer                  resw 1
@@ -126,19 +121,17 @@ struc imageFileOptionalHeader
 	.wMajorSubsystemVersion     resw 1
 	.wMinorSubsystemVersion     resw 1
 	.dWin32VersionValue         resd 1
-	.dSizeOfImage               resd 1
+	.dSizeOfImage               resd 1  ;Size of ctg mem to hold program
 	.dSizeOfHeaders             resd 1
 	.dCheckSum                  resd 1
 	.wSubsystem                 resw 1
 	.wDllCharacteristics        resw 1
-;The stuff between optLen and here are useless
 	.qSizeOfStackReserve        resq 1
-	.qSizeOfStackCommit         resq 1  ;Default allocation is 128Kb
+	.qSizeOfStackCommit         resq 1  ;Default stack allocation is 256Kb
 	.qSizeOfHeapReserve         resq 1
-	.qSizeOfHeapCommit          resq 1  ;Default allocation is 128Kb
-;Last two entries similarly useless
+	.qSizeOfHeapCommit          resq 1
 	.dLoaderFlags               resd 1
-	.dNumberOfRvaAndSizes       resd 1
+	.dNumberOfRvaAndSizes       resd 1  ;Number of data dirs entries in header
 endstruc
 
 romMagicNum     equ 0107h
@@ -166,8 +159,8 @@ endstruc
 
 struc imageSectionHdr       ;size 40 bytes
     .name                   resb 8
-	.dVirtualSize           resd 1
-	.dVirtualAddress        resd 1
+	.dVirtualSize           resd 1  ;If this is bigger than RawData, 0 pad
+	.dVirtualAddress        resd 1  ;Offset from ImageBase
 	.dSizeOfRawData         resd 1
 	.dPointerToRawData      resd 1
 	.dPointerToRelocations  resd 1

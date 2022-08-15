@@ -224,8 +224,8 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     call getUserRegs    ;Get user regs in rsi
     mov dword [rsi + callerFrame.rdx], edx
 .seekExit:
-    xor al, al  ;Return OK!
-    return 
+    mov eax, dword [rdi + sft.dCurntOff]  ;Return current offset if all ok!
+    jmp extGoodExit2    ;Return OK in eax 
 .seekend:
 ;Here we are at seekend, seek from end (signed)
     test word [rdi + sft.wDeviceInfo], devRedirDev
