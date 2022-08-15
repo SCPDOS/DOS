@@ -238,6 +238,12 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp byte [rbp - execFrame.bSubFunc], execOverlay
     je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
+    mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackReserve]
+    test rax, rax
+    jnz .notDefaultStackAlloc
+    mov rax, 40000h ;256Kb stack default
+.notDefaultStackAlloc:
+    add ebx, eax    ;Add stack allocation
     mov dword [rbp - execFrame.dProgSize], ebx  ;Save the program size
     add ebx, 11
     shr ebx, 4  ;Turn into paragraphs
@@ -396,6 +402,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rcx
     dec ecx
     jnz .nextBlock
+    mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
+    add rax, qword [rbp - execFrame.pProgBase]
+    mov qword [rbp - execFrame.pProgEP], rax
     jmp .buildChildPSP
 .loadCom:
     ;File is open here, so just read the file into memory. 
@@ -452,6 +461,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rcx ;Get the filesize in rcx (# of bytes to read)
     mov rdx, qword [rbp - execFrame.pProgBase]  ;Buffer to read into
     call .readDataFromHdl   ;Read from the file handle
+    mov rax, qword [rbp - execFrame.pProgBase]
+    mov qword [rbp - execFrame.pProgEP], rax
 .buildChildPSP:
     ;We can close handle now
     movzx ebx, word [rbp - execFrame.wProgHdl]
@@ -462,12 +473,97 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Only build a PSP if not in overlay mode. If in overlay mode skip
     cmp byte [rbp - execFrame.bSubFunc], execOverlay
     je .overlayExit
-    ;Now build the 
+    ;Now build the PSP
+    mov esi, dword [rbp - execFrame.dProgSize]
+    mov rdx, qword [rbp - execFrame.pPSPBase]
+    push rdx
+    push rbp
+    call createPSP
     pop rbp
-    return
+    pop rdx
+    ;Now set Current PSP to our PSP and set current DTA to command line
+    mov qword [currentPSP], rdx
+    lea rdi, qword [rdx + psp.parmList]
+    mov qword [currentDTA], rdi
+    ;Now We need to copy over the command line and fcbs to the PSP
+    ; and set FS to point to the PSP
+    ;rdx points to PSP segment  
+    ;rdi points to commandline in PSP anyway
+    mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
+    mov ecx, 80h    ;copy all 128 chars in command tail
+    mov rsi, qword [rbx + execProg.pCmdLine]
+    rep movsb   ;Copy the string over
+    lea rdi, qword [rdx + psp.fcb1]
+    mov ecx, fcb_size
+    mov rsi, qword [rbx + execProg.pfcb1]
+    mov al, byte [rsi + fcb.driveNum]   ;Get FCB1's drive number in al
+    rep movsb   ;Copy fcb 1 over
+    lea rdi, qword [rdx + psp.fcb2]
+    mov ecx, fcb_size
+    mov rsi, qword [rbx + execProg.pfcb2]
+    mov ah, byte [rsi + fcb.driveNum]   ;Get FCB2's drive number in ah
+    rep movsb   ;Copy fcb 2 over
+
+    mov ebx, eax  ;Save the fcb drive numbers in bx
+
+    ;Put PSP base value in edx:eax to place in FS
+    mov ecx, 0C0000100h ;Read FS MSR
+    mov rax, qword [rbp - execFrame.pPSPBase]
+    mov rdx, rax
+    shr rdx, 20h    ;Shift high dword in low dword
+    or eax, eax ;Clear upper bits
+    wrmsr   ;Write the new value to FS MSR
+
+    call getUserRegs    ;Need to get Int 42h address from stack
+    mov rdx, qword [rbp - execFrame.pPSPBase]
+    mov qword [rdx + psp.oldInt42h], rdx
+    push rdx    ;Save PSPBase on stack
+    push rbx    ;Save BX drive numbers
+    mov rdx, qword [rax + callerFrame.rip]
+    mov al, 42h
+    call setIntVector   ;Set interrupt vector and write it to PSP manually
+    pop rbx
+    pop rdx
+
+    ;Check FCB drive numbers are valid. Return FFh if not
+    mov al, bl
+    xor bl, bl
+    call setDrive
+    jnc .drive1Ok
+    mov bl, -1
+.drive1Ok:
+    mov al, bh
+    xor bh, bh
+    call setDrive
+    jnc .drive2Ok
+    mov bh, -1
+.drive2Ok:
+    ;bx has validity flags for the two fcb drives, undocumented!!
+
+    mov esi, dword [rbp - execFrame.dProgSize]  ;Get program size
+    lea rsi, qword [rsi + rdx - 8]    ;Get Stack Ptr in rsi
+    cmp byte [rbp - execFrame.bSubFunc], execLoadGo
+    je .xfrProgram
+    mov rax, qword [rbp - execFrame.pProgEP]
+    mov rbx, qword [rbp - execFrame.pParam]
+    mov qword [rbx + loadProg.initRIP], rax
+    mov qword [rbx + loadProg.initRSP], rsi
+    movzx eax, bx   ;Return fcb drive status
 .overlayExit:
-    pop rbp
-    return
+    mov rsp, rbp    ;Reset the stack to its position
+    pop rbp ;Point rsp to the return address
+    jmp extGoodExit ;And return!
+.xfrProgram:
+    cli
+    mov rsp, rsi    ;Set rsp to initRSP value
+    mov byte [inDOS], 0 ;Clear all inDosnessness
+    sti
+    push qword [rbp - execFrame.pProgEP]
+    movzx eax, bx   ;ax must contain validity of the two FCB drives
+    xor ebp, ebp
+    mov esi, ebp
+    mov ebx, ebp
+    return  ;Return to child task
 
 .badFmtErr:
     mov eax, errBadFmt  ;Fall thru with bad resource format error
@@ -482,10 +578,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rax
     pop rbp
     jmp .badExit
-
-.exeGetFileRelativeOffset:
-;section RVA + Section.PointerToRawData - Section.VirtualAddress = FRO
-
 
 .readDataFromHdl:
 ;Input: bx = File Handle

@@ -23,6 +23,7 @@ struc execFrame
     .pPSPBase   resq 1  ;Ptr to new PSP base address
     .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
     .dProgSize  resd 1  ;Program size is saved here, PSP included.
+.pProgEP:   ;Program EP, recycle this qword
     .dCOFFhdr   resd 1  ;Offset in file to COFF header. Set to 0 for COM
     .wNumSeg    resw 1  ;Number of segments, consider reusing NameLen
                 resw 1  ;Alignment reservation
@@ -41,9 +42,12 @@ struc execProg
 endstruc
 
 struc loadProg
-    execProg    resb execProg_size
-    .initRSP    resq 1
-    .initRIP    resq 1
+    .pEnv       resq 1  ;Ptr to environment block (or 0 => copy parent env)
+    .pCmdLine   resq 1  ;Ptr to the command line to be placed at PSP + 80h
+    .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
+    .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
+    .initRSP    resq 1  ;Return the start value for rsp
+    .initRIP    resq 1  ;Return the entry point for the task
 endstruc
 
 struc loadOvly
