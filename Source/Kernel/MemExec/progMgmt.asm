@@ -244,15 +244,23 @@ terminateClean:    ;ah = 4Ch, EXIT
     call setIntVector
     pop rdx
 ;Step 8
-    ;Make the parent register frame the current one
-    mov rsp, qword [rbx + psp.rspPtr] ;RSP points to user stack on entry to exec
-;Step 9
-    mov rbp, rsp ;Get pointer to parent stack register frame in rbp
-    mov qword [rbp + callerFrame.rip], rdx  ;Store return address vector here
-;Step 10
+    push rdx    ;Save the return address on the stack
+    push rbx    ;Save the parent PSP address
     mov ah, 82h ;Cancel all critical sections 0-7
     int 4ah
+    pop rbx
+    pop rdx
 
+    cli
+    ;Make the parent register frame the current one
+    ;Make RSP point to user stack from parent entry to exec
+    mov rsp, qword [rbx + psp.rspPtr]
+
+    mov qword [rsp + callerFrame.rip], rdx  ;Store return address vector here
+    mov qword [rsp + callerFrame.flags], 0F202h ;Mimic DOS's return flags
+
+    mov byte [Int44Trans], 0    ;Clear this flag
     mov byte [inDOS], 0 ;Exiting DOS now
+    mov byte [errorDrv], -1 ;Reset
     call dosPopRegs  ;Pop the stack frame pointed to by rsp
     iretq
