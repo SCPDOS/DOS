@@ -1,5 +1,30 @@
 ;DOS utility functions (Will be made available through Int 4F ah=12xx eventually)
 
+readFSRegister:
+;Output: rax = Value of fs
+    push rcx
+    push rdx
+    mov ecx, 0C0000100h
+    rdmsr   ;Get fs in edx:eax
+    shl rdx, 20h
+    or rax, rdx
+    pop rdx
+    pop rcx
+    return
+
+writeFSRegister:
+;Input: rax = Value to write to fs
+    push rcx
+    push rdx
+    mov rdx, rax    ;Split rax to edx:eax
+    shr rdx, 20h    ;Shift the upper dword low
+    or eax, eax     ;Clear upper dword
+    mov ecx, 0C0000100h
+    wrmsr
+    pop rdx
+    pop rcx
+    return
+
 ;Basic Drive related Utilities
 ;Any function which takes args in rax (or any subpart of it), has that 
 ; argument provided on the stack when called from Int 4Fh interface (when 

@@ -244,13 +244,14 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rax, 40000h ;256Kb stack default
 .notDefaultStackAlloc:
     add ebx, eax    ;Add stack allocation
+    add ebx, psp_size   ;Add space for the PSP to the allocation too
     mov dword [rbp - execFrame.dProgSize], ebx  ;Save the program size
     add ebx, 11
     shr ebx, 4  ;Turn into paragraphs
     call allocateMemory ;Get in rax, ptr to memory block
     jc .insufficientMemory  ;Unless not enough, sorry buddy!
     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
-    add rax, 100h
+    add rax, psp_size
     mov qword [rbp - execFrame.pProgBase], rax  ;First byte of code goes here
     jmp short .exeProceed1
 .exeOvlySkipAlloc:
@@ -419,7 +420,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp al, errNoMem
     jne .cleanAndFail   ;Propagate the proper error if not a lack of memory
     ;rbx should have the amount available
-    ;We check if this value is 100h than filesize
+    ;We check if this value is psp_size more than filesize
     push rbx    ;Save new minimum size
     mov eax, 2    ;Reposition to end of file
     movzx ebx, word [rbp - execFrame.wProgHdl]
@@ -429,7 +430,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rbx ;Get back max alloc size
     mov edx, ebx    ;Save in max alloc in edx temporarily
     sub edx, eax
-    cmp edx, 100h   ;If the difference of filesize and memory space is < 100h
+    cmp edx, psp_size   ;If filesize - memory space is < psp_size...
     jb .insufficientMemory   ;Fail
     mov dword [rbp - execFrame.dProgSize], ebx  ;Store progsize
     call allocateMemory
@@ -444,7 +445,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .comallocOk:
     ;rax should point to the first byte
     mov qword [rbp - execFrame.pPSPBase], rax
-    sub rax, 100h
+    add rax, psp_size
 .comRead:
     mov qword [rbp - execFrame.pProgBase], rax
 
@@ -504,21 +505,20 @@ loadExecChild:     ;ah = 4Bh, EXEC
     rep movsb   ;Copy fcb 2 over
 
     mov ebx, eax  ;Save the fcb drive numbers in bx
+    mov rdi, rdx  ;Point RDI to PSP
 
-    ;Put PSP base value in edx:eax to place in FS
-    mov ecx, 0C0000100h ;Read FS MSR
-    mov rax, qword [rbp - execFrame.pPSPBase]
-    mov rdx, rax
+    ;Put PSP base value in edx:eax to place in FS, dont rely on this in future!
+    mov ecx, 0C0000100h ;R/W FS MSR
+    mov eax, edx    ;Move low dword address into rax
     shr rdx, 20h    ;Shift high dword in low dword
-    or eax, eax ;Clear upper bits
     wrmsr   ;Write the new value to FS MSR
 
     call getUserRegs    ;Need to get Int 42h address from stack
-    mov rdx, qword [rsi + callerFrame.rip]  ;Get parent return address
-    mov qword [rdx + psp.oldInt42h], rdx    ;and save it in PSP
-    mov al, 42h ;And write it to the IDT as a descriptor
+    mov rax, qword [rsi + callerFrame.rip]  ;Get parent return address
+    mov qword [rdi + psp.oldInt42h], rax    ;and save it in PSP
+    mov rdx, rax    ;Move return address to rdx to set up the Interrupt Vector
+    mov al, 42h
     call setIntVector   ;bx preserved by this call
-    mov rdx, qword [rbp - execFrame.pPSPBase]   ;Get psp base back
 
     ;Check FCB drive numbers are valid. Return FFh if not
     mov al, bl
@@ -534,15 +534,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov bh, -1
 .drive2Ok:
     ;bx has validity flags for the two fcb drives, undocumented!!
-
+    ;rdi has pointer to psp
     mov esi, dword [rbp - execFrame.dProgSize]  ;Get program size
-    lea rsi, qword [rsi + rdx - 8]    ;Get Stack Ptr in rsi
+    ;Add psp base (rdi) to prog size to get the last byte of the allocation
+    lea rsi, qword [rsi + rdi - 8]    ;Get new rsp in rsi (last qword of alloc)
     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
     je .xfrProgram
     mov rax, qword [rbp - execFrame.pProgEP]
-    mov rbx, qword [rbp - execFrame.pParam]
-    mov qword [rbx + loadProg.initRIP], rax
-    mov qword [rbx + loadProg.initRSP], rsi
+    mov rdx, qword [rbp - execFrame.pParam]
+    mov qword [rdx + loadProg.initRIP], rax
+    mov qword [rdx + loadProg.initRSP], rsi
     movzx eax, bx   ;Return fcb drive status
 .overlayExit:
     mov rsp, rbp    ;Reset the stack to its position
@@ -554,10 +555,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov byte [inDOS], 0 ;Clear all inDosnessness
     sti
     push qword [rbp - execFrame.pProgEP]
+    mov r8, rdi ;Move psp base into r8 and r9
+    mov r9, rdi
     movzx eax, bx   ;ax must contain validity of the two FCB drives
-    xor ebp, ebp
-    mov esi, ebp
-    mov ebx, ebp
     return  ;Return to child task
 
 .badFmtErr:
