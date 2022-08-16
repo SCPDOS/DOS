@@ -483,16 +483,15 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rdx
     ;Now set Current PSP to our PSP and set current DTA to command line
     mov qword [currentPSP], rdx
-    lea rdi, qword [rdx + psp.parmList]
-    mov qword [currentDTA], rdi
+    lea rdi, qword [rdx + psp.dta] ;Point to default dta...
+    mov qword [currentDTA], rdi ;and set it!
     ;Now We need to copy over the command line and fcbs to the PSP
     ; and set FS to point to the PSP
-    ;rdx points to PSP segment  
-    ;rdi points to commandline in PSP anyway
     mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
-    mov ecx, 80h    ;copy all 128 chars in command tail
     mov rsi, qword [rbx + execProg.pCmdLine]
-    rep movsb   ;Copy the string over
+    mov ecx, 80h
+    rep movsb   ;Copy the command line over (terminated by 0Dh)
+
     lea rdi, qword [rdx + psp.fcb1]
     mov ecx, fcb_size
     mov rsi, qword [rbx + execProg.pfcb1]
@@ -515,15 +514,11 @@ loadExecChild:     ;ah = 4Bh, EXEC
     wrmsr   ;Write the new value to FS MSR
 
     call getUserRegs    ;Need to get Int 42h address from stack
-    mov rdx, qword [rbp - execFrame.pPSPBase]
-    mov qword [rdx + psp.oldInt42h], rdx
-    push rdx    ;Save PSPBase on stack
-    push rbx    ;Save BX drive numbers
-    mov rdx, qword [rax + callerFrame.rip]
-    mov al, 42h
-    call setIntVector   ;Set interrupt vector and write it to PSP manually
-    pop rbx
-    pop rdx
+    mov rdx, qword [rsi + callerFrame.rip]  ;Get parent return address
+    mov qword [rdx + psp.oldInt42h], rdx    ;and save it in PSP
+    mov al, 42h ;And write it to the IDT as a descriptor
+    call setIntVector   ;bx preserved by this call
+    mov rdx, qword [rbp - execFrame.pPSPBase]   ;Get psp base back
 
     ;Check FCB drive numbers are valid. Return FFh if not
     mov al, bl

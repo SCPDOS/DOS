@@ -437,6 +437,7 @@ setIntVector:      ;ah = 25h
 ;   rdx = Pointer to interrupt handler
 ;   al = Interrupt number
     push rax    ;Preserve all registers in call
+    push rbx
     push rcx
     push rdx
     push rsi
@@ -458,6 +459,7 @@ setIntVector:      ;ah = 25h
     pop rsi
     pop rdx
     pop rcx
+    pop rbx
     pop rax
     return
 
