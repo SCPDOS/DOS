@@ -172,10 +172,10 @@ getDiskDirectoryEntry:
     call getBufForDOS   ;Get buffer for DOS in rbx
     pop rbx
     retc
-    call adjustDosDirBuffer ;Change buffer to Dir buffer
-    ;Above function moves buffer ptr to rsi
-.dirFindCommon:
     push rbx
+    mov rbx, qword [currBuff]
+    call adjustDosDirBuffer ;Change buffer to Dir buffer
+    ;Above function gets data buffer ptr in rsi
     movzx eax, word [dirSect]   ;Get the sector in which the offset lies
     movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
     mul ebx ;Multiply these two words so eax has number of bytes to

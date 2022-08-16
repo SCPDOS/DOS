@@ -131,7 +131,6 @@ pdptLoop:
     jnz pdptLoop
     mov rdi, cr3
     mov cr3, rdi
-
 ;------------------------------------------------;
 ;                   MCB inits                    ;
 ;------------------------------------------------;
@@ -338,7 +337,6 @@ adjInts:
     inc ecx
     cmp ecx, 50h
     jne .ai0
-
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
 ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
@@ -394,7 +392,6 @@ debugPopUpMsg:
 adjDrivers:
     call adjustDrvHdr
     loop adjDrivers
-
 ;Open NUL
 ;NUL opened
 ;Open CON
@@ -514,22 +511,6 @@ storageInits:
     lea rbx, qword [rbp + firstDPB]
     mov qword fs:[dpbHeadPtr], rbx
 ;Open Mass Storage
-    ;lea rbx, qword [rbp + diskReqHdr]
-    ;mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-    ;mov byte [rbx + initReqPkt.cmdcde], 00h     ;MSD init
-    ;mov word [rbx + initReqPkt.status], 0       ;Zero status word
-    ;mov al, byte fs:[numPhysVol]
-    ;mov byte [rbx + initReqPkt.drvnum], al      ;First unit is drive A
-    ;call qword [rbp + msdHdr + drvHdr.strPtr]
-    ;call qword [rbp + msdHdr + drvHdr.intPtr]
-    ;Check if it returned OK first!
-    ;test word [rbx + initReqPkt.status], 8000h  ;Test the error bit
-    ;jnz errorInit   ;If the bit is set, halt execution
-    ;mov al, byte [rbx + initReqPkt.numunt]
-    ;mov byte fs:[numPhysVol], al
-    ;mov byte [rbp + msdHdr + drvHdr.drvNam], al ;Save # of units in name field
-
-    ;mov rdx, qword [rbx + initReqPkt.optptr]    ;Get ptr to bpbPtrTbl in rdx
     call diskInit
     mov rdi, rbp ;Save rbp in rdi temporarily
     mov al, byte fs:[numPhysVol]
@@ -579,7 +560,6 @@ sectorSizeSearch:
     test rdx, rdx   ;Are we at the end?
     jnz .findLargest    ;Nope, keep checking!
     mov word fs:[maxBytesSec], ax
-    
 ;------------------------------------------------;
 ;                 Temp CDS inits                 ;
 ;------------------------------------------------;
@@ -601,27 +581,15 @@ tempCDS:
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
 ;Additional DOS Vars init
-    ;xor eax, eax
-    ;mov byte fs:[currentDrv], al ;Current Drive = Drive A
-    ;mov byte fs:[breakFlag], al  ;Break off
-    ;mov byte fs:[verifyFlag], al ;Write only
-    ;mov byte fs:[singleDrv], al  ;Only used on single drive systems
-    ;mov byte fs:[critErrFlag], al   ;Not in critical error
-    ;mov byte fs:[inDOS], al      ;Not in DOS
     mov byte fs:[errorDrv], -1   ;No error drive
-    ;mov word fs:[errorLevel], ax   ;Last return code is 0, no error
-    ;mov byte fs:[allocStrat], al    ;First Fit
     mov byte fs:[switchChar], "/"  ;Default switch char
-    ;mov byte fs:[vConUnread], al   ;vCon has no unread data!
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]
     mov ecx, 10h    ;16 chars long
     mov al, SPC ;Space char
     rep stosb   ;Fill with space chars
-    ;xor al, al
-    ;mov byte fs:[serverCnt], al ;Set server call count to zero
-    ;mov word fs:[machineNum], ax   ;Clear machine number
+
 
 ;Patch Data Table init
     lea rdi, qword [rbp + critPtchTbl]
@@ -944,12 +912,12 @@ l1:
     mov ah, 3fh
     int 41h
 
+    ;breakpoint
     mov ecx, testString2L
     lea rdx, tmpBuf2
     mov bx, word [hdl]  ;Get the handle in bx
     mov ah, 3fh
     int 41h
-    ;breakpoint
 
     mov ah, 60h
     lea rsi, tmpName2
