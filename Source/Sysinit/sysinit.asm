@@ -24,7 +24,10 @@ sysInitldr:
     mov al, 65h     ;Load a large number of sectors (about 51.7k)
     mov ah, 82h     ;Read LBA
     int 33h
-    jnc initBegin   ;No error? Yay, DOS loaded.
+    jc .readFail
+    push qword 800h
+    ret   ;No error? Yay, DOS loaded.
+.readFail:
     dec esi
     jnz .read
     lea rbp, .msg   ;Print error message
