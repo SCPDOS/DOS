@@ -1081,7 +1081,7 @@ readDiskFile:
     cmp eax, -1 ;Are we gonna go past the end of the file?
     je readExitOk ;Exit with no bytes transferred
     mov ebx, eax    ;Save eax as current cluster
-    call walkFAT    ;Get in eax the next cluster
+    call readFAT    ;Get in eax the next cluster
     jc .badExit   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
@@ -1384,7 +1384,7 @@ writeDiskFile:
     cmp eax, -1 ;If eax = -1 then disk full condition
     jc .exitPrep
     mov eax, ebx    ;ebx is preserved
-    call walkFAT    ;Goto next cluster now, return in eax next cluster
+    call readFAT    ;Goto next cluster now, return in eax next cluster
     jc .exitPrepHardErr
     inc dword [lastClust]
     mov dword [lastClustA], eax ;Now eax is the new last cluster
@@ -1392,7 +1392,7 @@ writeDiskFile:
     ;eax now has the old last sector
 .nextCluster:
     ;eax has old disk cluster information
-    call walkFAT    ;Get the next disk cluster in eax
+    call readFAT    ;Get the next disk cluster in eax
     jc .exitPrepHardErr
     mov dword [currClustD], eax
     inc dword [currClustF]

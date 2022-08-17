@@ -162,7 +162,6 @@ removeDIR:         ;ah = 3Ah
     mov al, errPnf
     jmp extErrExit
 .okLength:
-    mov word [pathLen], cx  ;Store the string legnth in this var
     mov rsi, rdx
     call checkPathspecOK
     jc .badPath  ;Don't allow any malformed chars
@@ -185,8 +184,9 @@ removeDIR:         ;ah = 3Ah
     ;Now let use check that our directory is not the CDS currentdir
     mov rsi, qword [workingCDS]
     lea rdi, buffer1
-    movzx ecx, word [pathLen]   ;Get the pathname length back
-    call strcmp
+    call strlen ;Get the length of the full qualified name in ecx
+    mov word [pathLen], cx
+    call strcmp ;Then compare rdi to CDS string
     jnz .notEqual
     mov eax, errDelCD   ;Cant delete whilst in current directory
     call dosCrit1Exit
@@ -201,11 +201,12 @@ removeDIR:         ;ah = 3Ah
     cmp cx, word [pathLen]
     je .accessDenied
     call getDiskDirectoryEntry  ;Setup tempSect and entries (byte offset)
-    ;for the entry of the sector we are hoping to delete
+    ;for the entry in the sector we are hoping to delete
     movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
     shl eax, 10h
     movzx ebx, word [curDirCopy + fatDirEntry.fstClusLo]
     or eax, ebx
+    mov dword [dirClustPar], eax    ;Store the first cluster of subdir here
     call getStartSectorOfCluster  ;Check first sector of cluster is . and ..
     call getBufForDirNoFile
     jc .exitBad
@@ -231,11 +232,14 @@ removeDIR:         ;ah = 3Ah
     xor al, al  ;Store a terminating zero
     stosb
     mov eax, dword [dirClustPar]    ;Get searched directory starting cluster
+    push rax    ;Save on stack temporarily
     mov dword [dirClustA], eax
     xor eax, eax    ;Reset the search to the start of the directory
     mov word [dirSect], ax
     mov dword [dirEntry], 2 ;Start at the second directory entry (past . and ..)
     mov byte [searchAttr], dirInclusive ;Search for anything
+    pop rax
+    call getStartSectorOfCluster
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc .exitBad
     call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
@@ -258,6 +262,7 @@ removeDIR:         ;ah = 3Ah
     movzx edx, word [rsi + fatDirEntry.fstClusHi]
     call setBufferDirty ;We wrote to this buffer
     call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    breakpoint
     shl edx, 10h
     or eax, edx
     ;Now remove the FAT chain
@@ -516,7 +521,7 @@ growDirectory:
     call allocateClusters   ;ebx has last cluster value
     jc .exit
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    call walkFAT
+    call readFAT
     jc .exit
     call sanitiseCluster    ;Preserves all regs, sanitises the cluster for use
     jc .exit

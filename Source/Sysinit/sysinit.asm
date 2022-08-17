@@ -927,7 +927,7 @@ l1:
     mov ah, 39h
     lea rdx, testDir
     int 41h
-    breakpoint
+    ;breakpoint
 
     mov ah, 0Dh
     int 41h
@@ -935,8 +935,9 @@ l1:
     mov ah, 3Ah
     lea rdx, testDir
     int 41h
-    breakpoint
-
+    ;breakpoint
+    mov ah, 0Dh
+    int 41h
 l11:
     mov ah, 02h
     mov dl, 0Ah

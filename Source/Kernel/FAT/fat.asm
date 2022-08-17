@@ -66,6 +66,8 @@ getStartSectorOfCluster:
 ;Start Sector = (ClusterNumber - 2)*SecPerClust + DataAreaStartSector
     push rcx
     or eax, eax ;Zero upper dword
+    jz .rootDir ;If eax is zero, that is an alias for Root Directory
+.fat32Root:
     sub rax, 2
     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
     shl rax, cl
@@ -75,6 +77,15 @@ getStartSectorOfCluster:
     ;rax now has the first sector of the current cluster
     pop rcx
     return
+.rootDir:
+    mov eax, dword [rbp + dpb.dFirstUnitOfRootDir]
+    call getFATtype
+    cmp ecx, 2
+    je .fat32Root   ;If FAT32, eax now has zero extended 1st cluster of Root Dir
+    ;Else rax has the first sector of the Root Dir
+    pop rcx
+    return
+
 
 getLastClusterInChain:
 ;Given a cluster value in eax, returns in eax the last cluster in the chain
@@ -86,7 +97,7 @@ getLastClusterInChain:
     push rbx
 .lp:
     mov ebx, eax
-    call walkFAT
+    call readFAT
     jc .exit
     cmp eax, -1 ;Once this is EOC, we add a new cluster.
     jne .lp
@@ -106,7 +117,7 @@ getNumberOfClustersInChain:
     xor ecx, ecx
 .lp:
     inc ecx
-    call walkFAT
+    call readFAT
     jc .exit
     cmp eax, -1 ;Once this is EOC, we add a new cluster.
     jne .lp
@@ -129,7 +140,7 @@ getClusterInChain:
     jecxz .exit
 .lp:
     mov ebx, eax
-    call walkFAT
+    call readFAT
     jc .exit
     dec ecx
     jnz .lp
@@ -206,20 +217,18 @@ findFreeCluster:
     push rdx
     push rbp
     mov rbp, qword [workingDPB]
-    movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
-    ;Use WALKFAT
+    ;Use readFAT
     ;Starting with cluster number 2, goto to the MAX cluster
-    ;If WALKFAT returns 0 then its a free cluster
+    ;If readFAT returns 0 then its a free cluster
     mov eax, 2  ;Start with cluster 2
-    mov edx, dword [rbp + dpb.dClusterCount]
 .fatLoop:
     mov ebx, eax    ;Save the current cluster number in ebx
-    call walkFAT
+    call readFAT    ;Read the value at eax, if it is 0, then eax is free
     jc .exitFail    ;If something goes wrong, just return
     test eax, eax   ;Is this cluster free?
     jz .exit    ;If yes, exit
     lea eax, dword [ebx + 1]    ;Add one to ebx and save in eax
-    cmp eax, edx
+    cmp eax, dword [rbp + dpb.dClusterCount]
     jbe .fatLoop
 .exit:
     mov eax, ebx
@@ -246,14 +255,14 @@ findFreeClusterData:
     mov dword [rbp + dpb.dNumberOfFreeClusters], edx ;Zero this field
     dec edx
     mov dword [rbp + dpb.dFirstFreeCluster], edx ;Set to -1, unknown (i.e. none)
-    ;Use WALKFAT
+    ;Use readFAT
     ;Starting with cluster number 2, goto to the MAX cluster
-    ;If WALKFAT returns 0 then its a free cluster
+    ;If readFAT returns 0 then its a free cluster
     mov eax, 2  ;Start with cluster 2
     mov edx, dword [rbp + dpb.dClusterCount]
 .fatLoop:
     mov ebx, eax    ;Save the current cluster number in ebx
-    call walkFAT
+    call readFAT
     jc .exitFail   ;If something goes wrong, just return
     test eax, eax   ;Is this cluster free?
     jne .fatProceed
@@ -302,7 +311,7 @@ getNextSectorOfFile:
     return
 .gotoNextCluster:
     mov eax, dword [currClustD] ;Get absolute cluster number
-    call walkFAT
+    call readFAT
     jc .exitFail
     ;eax now has the next cluster number to read (or -1 if EOF)
     cmp eax, -1
@@ -350,7 +359,7 @@ truncateFAT:
     push rsi
     mov ebx, eax    ;Store the current cluster we are at in ebx
 .lp:
-    call walkFAT    ;Get the value of the cluster at this location in eax
+    call readFAT    ;Get the value of the cluster at this location in eax
     jc .exit    ;Error exit
     cmp eax, -1 ;End of chain?
     je .exit
@@ -365,7 +374,7 @@ truncateFAT:
     pop rbx
     pop rax
     return
-walkFAT:
+readFAT:
 ;Given a cluster number, it gives us the next cluster in the cluster chain
 ; or -1 to indicate end of cluster chain on the device with workingDPB
 ;Input: eax = Cluster number (zero extended to 32 bits)

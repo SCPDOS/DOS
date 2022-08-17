@@ -65,7 +65,7 @@ searchMoreDir:
     mov ecx, ebx
     jecxz .skipFatWalk  ;IF ecx is 0, skip walking FAT
 .fatlp:
-    call walkFAT
+    call readFAT
     cmp eax, -1
     je .errorExit
     dec ecx
@@ -132,6 +132,8 @@ searchDir:
     call setBufferReferenced    ;We are done with the current buffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
+    jz .fnfError    ;CF=CY AND ZF=ZE => File not found
+    ;If ZF=ZE then fnfError (i.e. we hit an entry starting with 00)
     ;Else, we now have to get the next sector of the cluster or next cluster
     ;IF however, the next cluster is -1, then we return fail
     mov eax, dword [dirClustA]  ;Get disk relative cluster
@@ -143,7 +145,7 @@ searchDir:
     mov dword [currClustF], 0 ;Use as flag to tell us if cluster has changed
     call getNextSectorOfFile
     jc .hardError
-    cmp rax, -1
+    cmp eax, -1
     je .fnfError    ;We are at the end of the directory and didnt find the file
     inc word [dirSect]  ;Goto next sector
     mov eax, dword [dirClustA]  ;Get disk relative cluster
@@ -166,6 +168,7 @@ searchDir:
     call setBufferReferenced    ;We are done with this buffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
+    jz .fnfError
     inc word [dirSect]  ;Goto next sector in directory
     mov eax, dword [rbp + dpb.wNumberRootDirEntries]
     cmp word [dirEntry], ax ;Have we reached the last dir entry?
@@ -189,6 +192,8 @@ findInBuffer:
 ;Input: ecx = Number of entries in sector buffer to look for
 ;       rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
+;        ZF=NE => Keep searching in subsequent directories
+;        ZF=ZE => End of directory reached early, stop
 ;        CF=NC => Entry found, directory data copied to SDA
 ;        rsi = Points to start of the disk buffer directory entry
     mov al, byte [searchAttr]  ;Get the search attrib
@@ -208,8 +213,9 @@ findInBuffer:
     rete    ;Return if equal (CF=NC too)
     ;If we are not looking for an empty dir but rsi points to 00, exit bad
     cmp byte [rsi], 00h ;Minor optimisation for dir searches
-    je .badExit
-    jmp short .nextEntry  ;Else, skip this entry as it starts with 0E5h (free)
+    jne .nextEntry  ;If not, skip this entry as it starts with 0E5h (free)
+    stc
+    return
 .notLookingForEmpty:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
@@ -233,6 +239,8 @@ findInBuffer:
     dec ecx
     jnz .searchMainLp
 .badExit:
+    xor eax, eax
+    inc eax ;Clear ZF
     stc
     return
 .exclusiveDir:
