@@ -924,6 +924,19 @@ l1:
     lea rdi, tmpBuf2
     int 41h
 
+    mov ah, 39h
+    lea rdx, testDir
+    int 41h
+    breakpoint
+
+    mov ah, 0Dh
+    int 41h
+
+    mov ah, 3Ah
+    lea rdx, testDir
+    int 41h
+    breakpoint
+
 l11:
     mov ah, 02h
     mov dl, 0Ah
@@ -1169,3 +1182,4 @@ testString1  db "Test String"
 testString1L equ $ - testString1
 testString2  db " More String, Less Space"
 testString2L equ $ - testString2
+testDir db "testdir",0

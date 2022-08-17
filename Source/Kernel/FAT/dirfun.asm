@@ -43,26 +43,22 @@ makeDIR:           ;ah = 39h
     mov rbp, qword [workingDPB]
     lea rsi, fcbName    ;Copy the dir name we searched for over
     lea rdi, curDirCopy
-    push rdi
     movsq   ;Copy the name over
     movsd
-    pop rdi
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     call getDirDTwords  ;Get current D/T words packed in eax
-    mov dword [rdi + fatDirEntry.crtTime], eax
-    mov dword [rdi + fatDirEntry.wrtTime], eax
+    mov dword [curDirCopy + fatDirEntry.crtTime], eax
+    mov dword [curDirCopy + fatDirEntry.wrtTime], eax
     xor eax, eax
-    mov dword [rdi + fatDirEntry.fileSize], eax
-    mov byte [rdi + fatDirEntry.attribute], dirDirectory    ;This is a dir entry
+    mov dword [curDirCopy + fatDirEntry.fileSize], eax
+    mov byte [curDirCopy + fatDirEntry.attribute], dirDirectory 
     mov eax, dword [dirClustPar]
 .searchForDirSpace:
     mov dword [dirClustA], eax
     xor eax, eax    ;Reset the search to the start of the current directory
     mov word [dirSect], ax
     mov dword [dirEntry], eax
-    push rdi
     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
-    pop rdi ;Preserve rdi = curDirCopy
     jnc .dirEntryFnd
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
     je .bad ;Set CF and exit
@@ -77,25 +73,26 @@ makeDIR:           ;ah = 39h
 ;rsi now points to offset in the buffer to write the entry to
 ;Convert rsi into a byte offset into the buffer and save the sector number
     mov rbx, qword [currBuff]
+    mov rax, qword [rbx + bufferHdr.bufferLBA]
+    call setBufferReferenced
+    mov qword [tempSect], rax   ;Save in temp sector variable
     add rbx, bufferHdr.dataarea ;Goto data area
     sub rsi, rbx    ;rsi now contains offset into buffer data area
     mov word [entry], si    ;Word is enough to store byte offset into sector
-    mov rax, qword [rbx + bufferHdr.bufferLBA]
-    mov qword [tempSect], rax   ;Save in temp sector variable
 ;Must now request a cluster and sanitise it
     call startNewChain  ;Get cluster number in eax
     jc .badExit
     call sanitiseCluster    ;Sanitise this cluster, preserve eax
     jc .badExit
    ;Save the cluster in the dummy dir pointed to by rdi
-    mov word [rdi + fatDirEntry.fstClusLo], ax
+    mov word [curDirCopy + fatDirEntry.fstClusLo], ax
     shr eax, 10h    ;Get high word low
-    mov word [rdi + fatDirEntry.fstClusHi], ax
+    mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov rax, qword [tempSect]   ;Get the sector back
     call getBufForDirNoFile
     jc .badExit
     movzx eax, word [entry] ;Get byte offset into sector back
-    mov rsi, rdi    ;The dummy dir is the source now
+    lea rsi, curDirCopy    ;The dummy dir is the source now
     lea rdi, qword [rbx + bufferHdr.dataarea + rax] ;Point to dir entry directly
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
@@ -119,6 +116,7 @@ makeDIR:           ;ah = 39h
     lea rdi, qword [rbx + bufferHdr.dataarea]
     mov ecx, 4  ;4 qwords to copy
     rep movsq
+    mov rbx, qword [rbx + bufferHdr.bufferLBA]  ;Save this sector for now
     call setBufferDirty ;We wrote to this buffer
     call setBufferReferenced    ;We are now done with this buffer, reclaimable
     ;Now create .. entry
@@ -134,7 +132,7 @@ makeDIR:           ;ah = 39h
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
     shr eax, 10h
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
-    mov rax, qword [rbx + bufferHdr.bufferLBA]  ;Get this sector back again
+    mov rax, rbx  ;Get this sector back again
     call getBufForDirNoFile
     jc .badExit
     lea rsi, curDirCopy
@@ -143,6 +141,7 @@ makeDIR:           ;ah = 39h
     rep movsq
     call setBufferDirty ;We wrote to this buffer
     call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    ;Now I need to write the entry in the Parent Directory
 .okExit:
     ;AND WE ARE DONE!
     call dosCrit1Exit

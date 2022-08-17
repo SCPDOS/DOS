@@ -478,6 +478,7 @@ writeFAT:
     and edi, 0FFFFFFFh  ;Zero upper nybble
     mov dword [rbx + bufferHdr.dataarea + rdx], edi
 .exit:
+    call setBufferDirty
     clc
 .exitFail:
     call setBufferReferenced    ;We are done with the disk buffer
@@ -511,6 +512,7 @@ writeFAT:
     shr esi, 8  ;Move upper byte to lower byte of esi
     mov byte [rbx + bufferHdr.dataarea + rdx], cl
     call setBufferReferenced  ;We are done with the current buffer
+    call setBufferDirty
     inc eax ;Get next FAT sector
     call getBufForFat ;Get buffer Header in ebx
     jc .exitFail
