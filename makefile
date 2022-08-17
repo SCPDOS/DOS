@@ -9,7 +9,7 @@
 #	cmd.exe /c uasm -Sa -Fl=scpdos.lst -bin scpdos.asm
 assemble:
 	nasm ./Source/scpdos.asm -o ./Binaries/scpdos.sys -f bin -l ./Listings/SCPDOS/scpdos.lst -O0v
-	dd if=./Binaries/scpdos.sys of=./Images/MyDiskDOS.ima bs=512 seek=100 conv=notrunc
+	dd if=./Binaries/scpdos.sys of=./Images/MyDiskDOS.ima bs=512 seek=91 conv=notrunc
 	cp ./Images/MyDiskDOS.ima ./Images/MyDiskDOSMSD.ima
 
 #Add a new boot sector to current image
@@ -28,7 +28,7 @@ fresh:
 	dd if=./Binaries/scpbios.bin of=./Images/MyDiskDOS.ima bs=512 seek=33 conv=notrunc
 
 	nasm ./Source/scpdos.asm -o ./Binaries/scpdos.sys -f bin -l ./Listings/SCPDOS/scpdos.lst -O0v
-	dd if=./Binaries/scpdos.sys of=./Images/MyDiskDOS.ima bs=512 seek=100 conv=notrunc
+	dd if=./Binaries/scpdos.sys of=./Images/MyDiskDOS.ima bs=512 seek=91 conv=notrunc
 	cp ./Images/MyDiskDOS.ima ./Images/MyDiskDOSMSD.ima
 #Replace BIOS
 bios:

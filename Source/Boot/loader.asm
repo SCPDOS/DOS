@@ -148,7 +148,7 @@ SysInitTable:
 .lengthb db 0Ch
 .numSecb db 1
 .resWord dw 00h
-.FileLBA dq 64h  ;Start at Sector 100
+.FileLBA dq 5Bh  ;Start at Sector 91 (first sector of load)
 
 times 510-($-$$) db 0E8h
     db 55h

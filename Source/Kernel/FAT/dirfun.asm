@@ -262,7 +262,6 @@ removeDIR:         ;ah = 3Ah
     movzx edx, word [rsi + fatDirEntry.fstClusHi]
     call setBufferDirty ;We wrote to this buffer
     call setBufferReferenced    ;We are now done with this buffer, reclaimable
-    breakpoint
     shl edx, 10h
     or eax, edx
     ;Now remove the FAT chain
