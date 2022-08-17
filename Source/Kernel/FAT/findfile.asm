@@ -127,6 +127,7 @@ searchDir:
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc .hardError
     call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
+.rmdirEP: ;Entry used by rmdir to jump into this routine
     call findInBuffer
     call setBufferReferenced    ;We are done with the current buffer
 .nextEp:
@@ -208,6 +209,7 @@ findInBuffer:
     ;If we are not looking for an empty dir but rsi points to 00, exit bad
     cmp byte [rsi], 00h ;Minor optimisation for dir searches
     je .badExit
+    jmp short .nextEntry  ;Else, skip this entry as it starts with 0E5h (free)
 .notLookingForEmpty:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search

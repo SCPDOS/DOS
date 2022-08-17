@@ -148,7 +148,7 @@ sdaMainSwap:
     dosffblock  resb ffBlock_size   ;Internal searching block
     curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed
     fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0
-    wcdFcbName  resb 11+1   ;Used to expand any wildcards in fcbName
+    wcdFcbName  resb 11+1   ;Used to expand any wildcards for rename
     fileDirSect resq 1  ;File/Directory starting sector, for each level
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
     searchAttr  resb 1  ;Directory Search attributes
@@ -182,6 +182,7 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
 ; and 32 byte offset into the sector for directory
     tempSect    resq 1  ;A scratch sector number
 sectTfr:    ;Symbol to use this var to hold a counter on disk read/write ops 
+pathLen:    ;Used to store the length of a path string for removal strcmp
     entry       resw 1  ;32 byte offset into a sector or #fats sectors/fat
 ;***************************************************|
 ; Needs to be set up before any file access         |

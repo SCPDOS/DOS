@@ -398,6 +398,36 @@ findSectorInBuffer:     ;Internal linkage
 ; or they don't belong to a file (i.e. FAT or DOS sectors)
 ;OwningFile is only referenced for handle/FCB sectors (DIR and Data sectors)
 ;-----------------------------------------------------------------------------
+getBufForDataNoFile:
+;Returns a buffer to use for disk data in rbx
+;Requires a File Handle.
+;Input: [workingDPB] = DPB to transact on
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dataBuffer
+    push rsi
+    push rdi
+    mov rsi, qword [workingDPB] ;Get working DPB 
+    call getBuffer  ;Gives the buffer ptr in rbx
+    jc getBufCommon.exit
+    mov qword [rbx + bufferHdr.owningFile], -1  ;Set owner to none
+    jmp short getBufCommon.exit
+getBufForDirNoFile:
+;Returns a buffer to use for disk dir data in rbx
+;Requires a File Handle.
+;Input: [workingDPB] = DPB to transact on
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, dirBuffer
+    push rsi
+    push rdi
+    mov rsi, qword [workingDPB] ;Get working DPB 
+    call getBuffer  ;Gives the buffer ptr in rbx
+    jc getBufCommon.exit
+    mov qword [rbx + bufferHdr.owningFile], -1  ;Set owner to none
+    jmp short getBufCommon.exit
 getBufForFat:
 ;Returns a buffer to use for fat data in rbx
 ;Input: [workingDPB] = DPB to transact on
@@ -475,6 +505,8 @@ flushFile:
     je .exit
     test byte [rdi + bufferHdr.bufferFlags], fatBuffer | dosBuffer | dirBuffer
     jnz .found  ;Flush if either bit is set
+    cmp qword [rdi + bufferHdr.owningFile], -1  ;If owning file is -1, flush too
+    je .found
     cmp qword [rdi + bufferHdr.owningFile], rsi
     je .found
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]

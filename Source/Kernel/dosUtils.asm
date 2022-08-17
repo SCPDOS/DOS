@@ -304,6 +304,20 @@ strcpy:
     retz
     jmp short strcpy
 
+strcmp:
+;Compares two ASCIIZ strings for equality.
+;Input: rsi = First string
+;       rdi = Second string
+;       ecx = Number of bytes to compare
+;Output: ZF=ZE => Equal
+;        ZF=NZ => Not equal
+    push rsi
+    push rdi
+    repe cmpsb
+    pop rdi
+    pop rsi
+    return
+
 
 normaliseFileName:  ;Int 4Fh, AX=1211h
 ;Converts lowercase to uppercase and / to "\"

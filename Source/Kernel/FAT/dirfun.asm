@@ -5,18 +5,19 @@ makeDIR:           ;ah = 39h
 ;For make, the path must exist but the final componant must not exist.
 ;Input: rdx = Pointer to ASCIIZ string
     mov rdi, rdx
-.okLength:
-    mov rsi, rdx
-    call checkPathspecOK
-    jnc .pathOk  ;Don't allow any malformed chars
+    call strlen
+    cmp ecx, 64
+    jbe .okLength
 .badPath:
     mov al, errPnf
     jmp extErrExit
+.okLength:
+    mov rsi, rdx
+    call checkPathspecOK
+    jc .badPath  ;Don't allow any malformed chars
 .pathOk:
     call scanPathWC
     jc .badPath ;Dont allow wildcards
-    call checkPathNet
-    jz .badPath ;or network paths
     ;Path is ok, now proceed
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
@@ -27,8 +28,252 @@ makeDIR:           ;ah = 39h
     jnz extErrExit
     ;So all is well, the new subdirectories name is in fcbName
     ;The parent dir's directory entry is in the curDirCopy
+    call testCDSNet ;Check if the working CDS is a NET CDS
+    ;returns in rdi the working cds ptr
+    jnc .notNet
+    mov eax, 1103h
+    int 4fh
+    jc extErrExit
+    jmp extGoodExit
+.notNet:
+    call dosCrit1Enter
+    ;Current dpb ptr is already set
+    ;Setup directory variables to now search for a free space in parent dir.
+    ;First we make a dummy dir in curDirCopy
+    mov rbp, qword [workingDPB]
+    lea rsi, fcbName    ;Copy the dir name we searched for over
+    lea rdi, curDirCopy
+    push rdi
+    movsq   ;Copy the name over
+    movsd
+    pop rdi
+    call readDateTimeRecord ;Update DOS internal Time/Date variables
+    call getDirDTwords  ;Get current D/T words packed in eax
+    mov dword [rdi + fatDirEntry.crtTime], eax
+    mov dword [rdi + fatDirEntry.wrtTime], eax
+    xor eax, eax
+    mov dword [rdi + fatDirEntry.fileSize], eax
+    mov byte [rdi + fatDirEntry.attribute], dirDirectory    ;This is a dir entry
+    mov eax, dword [dirClustPar]
+.searchForDirSpace:
+    mov dword [dirClustA], eax
+    xor eax, eax    ;Reset the search to the start of the current directory
+    mov word [dirSect], ax
+    mov dword [dirEntry], eax
+    push rdi
+    call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
+    pop rdi ;Preserve rdi = curDirCopy
+    jnc .dirEntryFnd
+    cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
+    je .bad ;Set CF and exit
+    call growDirectory  ;Increase directory size by 1 cluster
+    jc .bad
+    cmp eax, -1 ;Disk Full?
+    je .bad
+    ;Else eax = Newly allocated cluster
+    jmp short .searchForDirSpace
+.dirEntryFnd:
+;rdi points to current directory copy
+;rsi now points to offset in the buffer to write the entry to
+;Convert rsi into a byte offset into the buffer and save the sector number
+    mov rbx, qword [currBuff]
+    add rbx, bufferHdr.dataarea ;Goto data area
+    sub rsi, rbx    ;rsi now contains offset into buffer data area
+    mov word [entry], si    ;Word is enough to store byte offset into sector
+    mov rax, qword [rbx + bufferHdr.bufferLBA]
+    mov qword [tempSect], rax   ;Save in temp sector variable
+;Must now request a cluster and sanitise it
+    call startNewChain  ;Get cluster number in eax
+    jc .badExit
+    call sanitiseCluster    ;Sanitise this cluster, preserve eax
+    jc .badExit
+   ;Save the cluster in the dummy dir pointed to by rdi
+    mov word [rdi + fatDirEntry.fstClusLo], ax
+    shr eax, 10h    ;Get high word low
+    mov word [rdi + fatDirEntry.fstClusHi], ax
+    mov rax, qword [tempSect]   ;Get the sector back
+    call getBufForDirNoFile
+    jc .badExit
+    movzx eax, word [entry] ;Get byte offset into sector back
+    mov rsi, rdi    ;The dummy dir is the source now
+    lea rdi, qword [rbx + bufferHdr.dataarea + rax] ;Point to dir entry directly
+    mov ecx, 4
+    rep movsq   ;Copy over the buffered directory
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    ;Now need to read in data sector and make two entries . and ..
+    mov rax, ".       "
+    mov qword [curDirCopy], rax
+    mov eax, "    "
+    mov word [curDirCopy + 8], ax
+    mov byte [curDirCopy + 10], al
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusLo]
+    movzx edx, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl edx, 10h
+    or eax, edx ;Add upper bits to eax cluster number
+    call getStartSectorOfCluster    ;Get start sector in rax
+    call getBufForDirNoFile
+    jc .badExit
+    ;rbx has buffer pointer now
+    lea rsi, curDirCopy
+    lea rdi, qword [rbx + bufferHdr.dataarea]
+    mov ecx, 4  ;4 qwords to copy
+    rep movsq
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    ;Now create .. entry
+    mov byte [curDirCopy + 1], "."  ;Store a second dot
+    mov eax, dword [dirClustPar]    ;Get starting cluster of parent dir
+    call getFATtype
+    cmp ecx, 2
+    jb .notFAT32
+    cmp dword [rbp + dpb.dFirstUnitOfRootDir], eax  ;Is the parent root clust?
+    jne .notFAT32
+    xor eax, eax    ;Store 0 if it is to keep algorithms happy
+.notFAT32:
+    mov word [curDirCopy + fatDirEntry.fstClusLo], ax
+    shr eax, 10h
+    mov word [curDirCopy + fatDirEntry.fstClusHi], ax
+    mov rax, qword [rbx + bufferHdr.bufferLBA]  ;Get this sector back again
+    call getBufForDirNoFile
+    jc .badExit
+    lea rsi, curDirCopy
+    lea rdi, qword [rbx + bufferHdr.dataarea + fatDirEntry_size]    ;Next entry!
+    mov ecx, 4
+    rep movsq
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+.okExit:
+    ;AND WE ARE DONE!
+    call dosCrit1Exit
+    xor eax, eax
+    jmp extGoodExit
+.bad:
+    mov eax, errAccDen
+.badExit:
+    call dosCrit1Exit
+    jmp extErrExit
 
 removeDIR:         ;ah = 3Ah
+    mov rdi, rdx
+    call strlen
+    cmp ecx, 64
+    jbe .okLength
+.badPath:
+    mov al, errPnf
+    jmp extErrExit
+.okLength:
+    mov word [pathLen], cx  ;Store the string legnth in this var
+    mov rsi, rdx
+    call checkPathspecOK
+    jc .badPath  ;Don't allow any malformed chars
+.pathOk:
+    call scanPathWC
+    jc .badPath ;Dont allow wildcards
+    ;Path is ok, now proceed
+    lea rdi, buffer1    ;Build the full path here
+    call getDirPath ;Get a Directory path in buffer1, hitting the disk
+    jc .badPath    ;Path Doesn't exist
+    call testCDSNet ;Check if the working CDS is a NET CDS
+    jnc .notNet
+    mov eax, 1101h  ;RMDIR for net
+    int 4fh
+    jc extErrExit
+    jmp extGoodExit
+.notNet:
+    call dosCrit1Enter
+    mov rbp, qword [workingDPB]
+    ;Now let use check that our directory is not the CDS currentdir
+    mov rsi, qword [workingCDS]
+    lea rdi, buffer1
+    movzx ecx, word [pathLen]   ;Get the pathname length back
+    call strcmp
+    jnz .notEqual
+    mov eax, errDelCD   ;Cant delete whilst in current directory
+    call dosCrit1Exit
+    jmp extErrExit
+.notEqual:
+    mov rdi, rsi    ;rsi points to CDS
+    ;If the given path length is one more than the backslash offset
+    ; due to the terminating null, then the user is trying to delete the 
+    ; root dir. Fail this.
+    movzx ecx, word [rdi + cds.wBackslashOffset]
+    inc ecx
+    cmp cx, word [pathLen]
+    je .accessDenied
+    call getDiskDirectoryEntry  ;Setup tempSect and entries (byte offset)
+    ;for the entry of the sector we are hoping to delete
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl eax, 10h
+    movzx ebx, word [curDirCopy + fatDirEntry.fstClusLo]
+    or eax, ebx
+    call getStartSectorOfCluster  ;Check first sector of cluster is . and ..
+    call getBufForDirNoFile
+    jc .exitBad
+    ;rbx points to buffer
+    lea rsi, qword [rbx + bufferHdr.dataarea]
+    mov rax, ".       "
+    cmp qword [rsi], rax
+    jne .accessDenied
+    mov ah, "." ;Screw the partial stall
+    cmp qword [rsi + fatDirEntry_size], rax  ;Cmp next entry to ..
+    jne .accessDenied
+    add rsi, fatDirEntry_size
+    lea rdi, curDirCopy
+    mov ecx, 4
+    rep movsq   ;Copy the .. entry into the curDirCopy to find parent later
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+;Now we gotta walk every sector of this directory to see if it is empty.
+; If not, we cannot proceed. Do an inclusive search for *.*
+    lea rdi, fcbName
+    mov al, "?"
+    mov ecx, 11
+    rep stosb   ;Store the pattern to search for
+    xor al, al  ;Store a terminating zero
+    stosb
+    mov eax, dword [dirClustPar]    ;Get searched directory starting cluster
+    mov dword [dirClustA], eax
+    xor eax, eax    ;Reset the search to the start of the directory
+    mov word [dirSect], ax
+    mov dword [dirEntry], 2 ;Start at the second directory entry (past . and ..)
+    mov byte [searchAttr], dirInclusive ;Search for anything
+    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    jc .exitBad
+    call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
+    add rsi, fatDirEntry_size*2 ;Start searching from the second entry in dir
+    sub ecx, 2  ;Two fewer entries to search for in this sector
+    call searchDir.rmdirEP
+    jnc .accessDenied   ;If a file is found, access denied, we can't delete this
+    ;Else, this is a empty dir, we can remove it
+    ;tempSect has the sector of the entry and entries points to the offset
+    mov rax, qword [tempSect]
+    call getBufForDOS
+    jc .exitBad
+    call adjustDosDirBuffer
+    movzx eax, word [entry]
+    lea rsi, qword [rbx + bufferHdr.dataarea]
+    add rsi, rax    
+    mov al, byte [delChar]  ;Move the delchar in place
+    mov byte [rsi], al  ;Store delchar there
+    movzx eax, word [rsi + fatDirEntry.fstClusLo]
+    movzx edx, word [rsi + fatDirEntry.fstClusHi]
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    shl edx, 10h
+    or eax, edx
+    ;Now remove the FAT chain
+    call unlinkFAT
+    jc .exitBad
+    call dosCrit1Exit
+    xor eax, eax
+    jmp extGoodExit
+.accessDenied:
+    mov eax, errAccDen
+.exitBad:
+    stc
+    call dosCrit1Exit
+    jmp extErrExit
+
 setCurrentDIR:     ;ah = 3Bh, CHDIR
 ;Input: rdx = Pointer to ASCIIZ string
     mov rdi, rdx
@@ -274,8 +519,52 @@ growDirectory:
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     call walkFAT
     jc .exit
+    call sanitiseCluster    ;Preserves all regs, sanitises the cluster for use
+    jc .exit
     clc
 .exit:
     pop rcx
     pop rbx
     return   
+sanitiseCluster:
+;Sanitises the cluster in eax to all zeros
+;Does not move file pointers
+;Currently, is only called to sanitise subdirectory clusters
+;Input: eax = Cluster number
+;       qword [workingDPB] = DPB of drive whose cluster we are sanitising
+;Output: If CF=NC => eax = Sanitised Cluster number
+;        If CF=CY => Error, exit
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rbp
+    mov rbp, qword [workingDPB]
+    call getStartSectorOfCluster    ;Needs DPB in rbp
+    movzx edx, byte [rbp + dpb.bMaxSectorInCluster] 
+    inc edx ;Make it a count of sectors
+.getSectorInCluster:
+    call getBufForDataNoFile  ;Get a generic data buffer in rbx
+    jc .exitBad
+    lea rdi, qword [rbx + bufferHdr.dataarea]
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    xor eax, eax
+    rep stosb   ;Store one sectorful of zeros
+    call setBufferDirty ;We wrote to this buffer
+    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+    dec edx     ;One less sector in the cluster to sanitise!
+    jz .exit    ;Jump if we done
+    mov rax, qword [rbx + bufferHdr.bufferLBA] ;Get current sector number
+    inc rax ;Goto next sector in cluster
+    jmp short .getSectorInCluster
+.exitBad:
+    stc
+.exit:
+    pop rbp
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    return
