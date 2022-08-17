@@ -29,7 +29,7 @@ ctryTbl:
                 ;4 = Symbol replace decimal separator
 .digtdpt:   db 2 ;Number of digits after the decimal point
 .timefmt:   db 0 ;Time format, Bit 0 = 0 => 12 hour clock, = 1 => 24 hour clock
-.mapaddr:   dq 0 ;Case map address (0 is nulptr)
+.mapaddr:   dq 0 ;Case map address (0 is nulptr), needs fixing up
 .dataSep:   db ",",0    ;Data list separator
 .resv:      db 0,0,0,0,0,0,0,0,0,0  ;Reserve 10 bytes
 

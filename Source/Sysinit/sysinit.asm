@@ -580,9 +580,11 @@ tempCDS:
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
-;Additional DOS Vars init
+;Additional DOS Vars init and fixups
     mov byte fs:[errorDrv], -1   ;No error drive
     mov byte fs:[switchChar], "/"  ;Default switch char
+    lea rdi, qword [rbp + extAsciiTbl]  ;Get the load of dflt extascii tbl
+    mov qword fs:[ctryTbl.mapaddr], rdi ;Store in country table
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]
@@ -983,7 +985,13 @@ errorInit:
     ;out dx, al      ;Mask all lines
 .ei0:
     hlt
+    pause
     jmp short .ei0
+noCmdCom:
+    lea rdx, badCom
+    mov ah, 09h
+    int 41h
+    jmp short errorInit.ei0
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
@@ -995,7 +1003,6 @@ conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
 
-aexec   db "AUTOEXEC.BAT",0 ;ASCIIZ for AUTOEXEC
 cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
 
 intData:

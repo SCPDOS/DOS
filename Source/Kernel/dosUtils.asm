@@ -270,7 +270,7 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     cmp al, 80h ;Extended ASCII first char
     jb .exit
     sub al, 80h ;Turn into table offset
-    lea rbx, extAsciiTbl
+    mov rbx, qword [ctryTbl.mapaddr]    ;Get ptr to extAsciiTable
     xlatb   ;Get converted extended byte into al
 .exit:
     push rax    ;Save al temporarily

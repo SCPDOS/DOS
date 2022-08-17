@@ -244,4 +244,5 @@ inExtASCII:
     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
     ;Every time this overflows, we read the clock and update the DOS internal
     ; copy of the date/time record
+
     dSegLen     equ     $
