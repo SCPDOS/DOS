@@ -74,7 +74,7 @@ makeDIR:           ;ah = 39h
 ;Convert rsi into a byte offset into the buffer and save the sector number
     mov rbx, qword [currBuff]
     mov rax, qword [rbx + bufferHdr.bufferLBA]
-    call setBufferReferenced
+     
     mov qword [tempSect], rax   ;Save in temp sector variable
     add rbx, bufferHdr.dataarea ;Goto data area
     sub rsi, rbx    ;rsi now contains offset into buffer data area
@@ -97,7 +97,6 @@ makeDIR:           ;ah = 39h
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
     ;Now need to read in data sector and make two entries . and ..
     mov rax, ".       "
     mov qword [curDirCopy], rax
@@ -118,7 +117,6 @@ makeDIR:           ;ah = 39h
     rep movsq
     mov rbx, qword [rbx + bufferHdr.bufferLBA]  ;Save this sector for now
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
     ;Now create .. entry
     mov byte [curDirCopy + 1], "."  ;Store a second dot
     mov eax, dword [dirClustPar]    ;Get starting cluster of parent dir
@@ -140,7 +138,6 @@ makeDIR:           ;ah = 39h
     mov ecx, 4
     rep movsq
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
     ;Now I need to write the entry in the Parent Directory
 .okExit:
     ;AND WE ARE DONE!
@@ -222,7 +219,6 @@ removeDIR:         ;ah = 3Ah
     lea rdi, curDirCopy
     mov ecx, 4
     rep movsq   ;Copy the .. entry into the curDirCopy to find parent later
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
 ;Now we gotta walk every sector of this directory to see if it is empty.
 ; If not, we cannot proceed. Do an inclusive search for *.*
     lea rdi, fcbName
@@ -261,7 +257,6 @@ removeDIR:         ;ah = 3Ah
     movzx eax, word [rsi + fatDirEntry.fstClusLo]
     movzx edx, word [rsi + fatDirEntry.fstClusHi]
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
     shl edx, 10h
     or eax, edx
     ;Now remove the FAT chain
@@ -490,7 +485,7 @@ updateDirectoryEntryForFile:
     mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
     ;Directory sector updated and marked to be flushed to disk!
     ;Now mark that the file has sectors not yet flushed to disk
-    call setBufferReferenced
+     
     pushfq  ;Save the state for if we come here from a fail
     or word [rdi + sft.wDeviceInfo], blokFileToFlush
     popfq
@@ -555,7 +550,7 @@ sanitiseCluster:
     xor eax, eax
     rep stosb   ;Store one sectorful of zeros
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
+
     dec edx     ;One less sector in the cluster to sanitise!
     jz .exit    ;Jump if we done
     mov rax, qword [rbx + bufferHdr.bufferLBA] ;Get current sector number

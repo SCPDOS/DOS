@@ -9,6 +9,7 @@ execInvld   equ 2
 execOverlay equ 3
 
 struc execFrame
+    .oldRBP     resq 1  
     .bSubFunc   resb 1  ;Subfunction number
     .wProgHdl   resb 2  ;File handle number for executable file
     .wEnvSize   resb 2  ;Size of the environment block

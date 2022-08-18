@@ -33,7 +33,7 @@ flushAndFreeBuffer:         ;Int 4Fh AX=1209h
 ;1 External reference
 ;Input: rdi = Buffer header to flush and free
     call flushBuffer
-    jnc .exit
+    jc .exit
     ;Free the buffer if it was flushed successfully (CF=NC)
     mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
 .exit:
@@ -181,29 +181,12 @@ freeBuffersForDPB:
 .exit:
     pop rbx
     return
+
 setBufferDirty:
     push rbp
     pushfq
     mov rbp, qword [currBuff]
     or byte [rbp + bufferHdr.bufferFlags], dirtyBuffer
-    jmp short clearBufferReferenced.exit
-setBufferReferenced:
-;Sets the current buffer in the buffer variable as referenced.
-; AKA DOS is done with it.
-;Saves flag state too 
-    push rbp
-    pushfq
-    mov rbp, qword [currBuff]
-    or byte [rbp + bufferHdr.bufferFlags], refBuffer
-    jmp short clearBufferReferenced.exit
-clearBufferReferenced:
-;Clears the referenced bit, if the buffer becomes referenced again
-; Called if DOS is not quite done with this buffer.
-    push rbp
-    pushfq
-    mov rbp, qword [currBuff]
-    and byte [rbp + bufferHdr.bufferFlags], ~refBuffer
-.exit:
     popfq
     pop rbp
     return
@@ -236,8 +219,8 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
-    call clearBufferReferenced  ;Set buffer to unref again if it was referenced
 .rbExit:
+    or byte [rbx + bufferHdr.bufferFlags], refBuffer
     clc
 .rbExitNoFlag:
     pop rdi
@@ -274,6 +257,8 @@ getBuffer: ;Internal Linkage ONLY
     mov qword [rdi + bufferHdr.driveDPBPtr], rsi
     mov byte [rdi + bufferHdr.reserved], 0
     call readSectorBuffer ;Carry the flag from the request
+    jc .rbExitNoFlag
+    or byte [rbx + bufferHdr.bufferFlags], refBuffer
     jmp short .rbExitNoFlag
 
 readSectorBuffer:   ;Internal Linkage

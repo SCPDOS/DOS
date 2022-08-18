@@ -287,6 +287,20 @@ struc dpl
     .procID resq 1  ;Process ID
 endstruc
 
+struc cfgFrame  ;Frame used for config.sys parsing
+    .oldRBP         resq 1  
+    .newBuffers     resb 1  ;New buffers value
+    .newSFTVal      resb 1
+    .newFCBSVal     resb 1
+    .newProtFCBSVal resb 1  ;Number of protected FCBS
+    .newLastdrive   resb 1
+    .newStacks      resb 1  ;Ignored for now
+    .newStackSize   resb 2  ;Ignored for now
+    .newAllocSize   resd 1  ;Used to keep track of reallocation size
+                    resd 1  ;Alignment byte
+    .endPtr         resq 1  ;Pointer to the end of the allocation space
+endstruc
+
 struc fcb
 ;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
     .driveNum   resb 1

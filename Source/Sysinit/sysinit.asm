@@ -569,10 +569,16 @@ sectorSizeSearch:
 ;------------------------------------------------;
     mov ecx, 5    ;Use as a counter, build 5 CDS entries
     lea rdi, qword [rbp + cdsArray] ;Setup array
+    call makeCDSArray
+    jmp short initialCDSWritten ;Go past the function
+makeCDSArray:
+;Input: ecx = Size of array
+;       rdi = Pointer to the start of the CDS array
+;Ouput: rdi = first byte past the end of the table
     mov qword fs:[cdsHeadPtr], rdi
     mov rbx, qword fs:[dpbHeadPtr]
     mov eax, 005C3A41h      ;"A:\"+NULL char
-tempCDS:
+.tempCDS:
     mov dword [rdi + cds.sCurrentPath], eax
     mov qword [rdi + cds.qDPBPtr], rbx
     mov dword [rdi + cds.dStartCluster], 0  ;Root dir for all!
@@ -587,7 +593,9 @@ tempCDS:
     inc eax ;Increment the drive letter
     add rdi, cds_size   ;Goto next array entry
     dec ecx
-    jnz tempCDS
+    jnz .tempCDS
+    ret
+initialCDSWritten:
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
@@ -734,16 +742,35 @@ defaultFileHandles:
     add rbx, sft_size   ;Goto SFT 5
     mov dword [rbx + sft.wNumHandles], eax
 ;------------------------------------------------;
-;               Build FCBS Block                 ;
-;------------------------------------------------;
-;Reserve space for four FCBS
-    lea rdi, qword [rbp + fcbsArray]
-    mov qword [rdi + sfth.qNextSFTPtr], -1  ;No more
-    mov word [rdi + sfth.wNumFiles], 4  ;4 FCBS allowed
-    mov qword fs:[fcbsHeadPtr], rdi
-;------------------------------------------------;
 ;               Load CONFIG.SYS                  ;
 ;------------------------------------------------;
+;Setup stackframe, workout base 
+    lea rdi, qword [rbp + secondDPB]
+    ;Check if this DPB is the last dpb. The first two ALWAYS exist.
+    mov rax, qword [rdi + dpb.qNextDPBPtr]
+    cmp rax, -1 ;Was second DPB the last one?
+    je setupFrame   ;If so, jump
+    mov rdi, rax    ;Move rdi to thirdDPB
+    mov rax, qword [rdi + dpb.qNextDPBPtr]
+    cmp rax, -1 ;Was third DPB the last one?
+    je setupFrame   ;If so, jump
+    mov rdi, rax    ;Move rdi to fourthDPB
+    mov rax, qword [rdi + dpb.qNextDPBPtr]
+    cmp rax, -1 ;Was fourth DPB the last one?
+    je setupFrame   ;If so, jump
+    mov rdi, rax    ;Move rdi to fifthDPB
+setupFrame:
+    add rdi, dpb_size   ;Else, goto end of the dpb rdi points to
+    push rbp
+    mov rbp, rsp
+    sub rsp, cfgFrame_size
+    mov qword [rbp - cfgFrame.endPtr], rdi  ;Store the end pointer here
+    mov byte [rbp - cfgFrame.newBuffers], 30
+    mov byte [rbp - cfgFrame.newSFTVal], 20
+    mov byte [rbp - cfgFrame.newFCBSVal], 4
+    mov byte [rbp - cfgFrame.newProtFCBSVal], 0
+    mov byte [rbp - cfgFrame.newLastdrive], 5
+
     mov al, byte fs:[bootDrive]
     test al, 80h    ;Was boot drive hard disk?
     jz notHDD
@@ -761,26 +788,107 @@ notHDD:
 ;------------------------------------------------;
 ;              Process CONFIG.SYS                ;
 ;------------------------------------------------;
+;Create a stack frame with the following order.
+;Values greater than max are set to max. Values less than min are set to min.
+; New Buffers value.        Default = 30, Min = 1, Max = 99
+; New SFT value.            Default = 20, Min = 5, Max = 254
+; New FCBS value.           Default = 4,  Min = 4, Max = 254
+; New protected FCBS value. Default = 0,  Min = 0, Max = New FCBS value
+; New CDS value.            Default = 5,  Min = 5, Max = 26
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
 ;------------------------------------------------;
-;------------------------------------------------;
-;           Load Command interpreter             ;
-;------------------------------------------------;
+;Add additional buffers. Start from tmpBufHdr
+;Add additional SFT entries. By default, 1 new SFT header, with 15 SFT entries
+;Add additional FCBS.
+;Create a larger CDS if needed.
 noCfg:
-    lea rdx, qword [strtmsg]   ;Get the absolute address of message
-    mov ah, 09h
-    int 41h
+;Start with buffers:
+    movzx ecx, byte [rbp - cfgFrame.newBuffers]    ;Get new buffers size
+    mov byte fs:[numBuffers], cl    ;Store this value in var
+    ;Now do the allocation at rdi. Each buffer = maxSectorSize + bufferHdr_size
+    movzx ebx, word fs:[maxBytesSec]    ;Get buffer sector size
+    add ebx, bufferHdr_size ;rbx has the size to add
+    ;Each buffer has no flags, drive number must be -1
+    mov rdi, qword [rbp - cfgFrame.endPtr]  ;Get current allocation end pointer
+    mov qword fs:[bufHeadPtr], rdi  ;Reset the var here
+    mov rsi, rdi    ;Points rsi to first new buffer space
+    xor eax, eax    ;Use for sanitising buffer headers
+    jecxz .lastBuffer
+.bufferLoop:
+    add rdi, rbx    ;Goto next buffer space
+    mov qword [rsi + bufferHdr.nextBufPtr], rdi ;Point to next buffer
+    mov word [rsi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
+    mov qword [rsi + bufferHdr.bufferLBA], rax
+    mov byte [rsi + bufferHdr.bufFATcopy], al
+    mov dword [rsi + bufferHdr.bufFATsize], eax
+    mov qword [rsi + bufferHdr.driveDPBPtr], rax
+    mov qword [rsi + bufferHdr.owningFile], rax
+    mov rsi, rdi    ;Move rsi to next buffer position
+    dec ecx
+    jnz .bufferLoop
+.lastBuffer:
+    add rdi, rbx    ;Goto past the last buffer
+    mov qword [rsi + bufferHdr.nextBufPtr], -1 ;Point to no buffer
+    mov word [rsi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
+    mov qword [rsi + bufferHdr.bufferLBA], rax
+    mov byte [rsi + bufferHdr.bufFATcopy], al
+    mov dword [rsi + bufferHdr.bufFATsize], eax
+    mov qword [rsi + bufferHdr.driveDPBPtr], rax
+    mov qword [rsi + bufferHdr.owningFile], rax
+    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
+
+;Now build a new SFT header for the number of files specified by user
+    movzx ecx, byte [rbp - cfgFrame.newSFTVal]
+    cmp ecx, 5  ;If we are not adding anything, skip building SFT
+    je .skipSFT
+    mov rsi, qword fs:[sftHeadPtr]  ;Get the current only SFT head pointer
+    mov qword [rsi + sfth.qNextSFTPtr], rdi ;Move rdi as new SFT pointer
+    sub cx, word [rsi + sfth.wNumFiles] ;Remove the number of files we already have
+    mov word [rdi + sfth.wNumFiles], cx ;Move remaining files here
+    mov qword [rdi + sfth.qNextSFTPtr], -1  ;Last table in chain
+    add rdi, sfth_size  ;Goto sft area, now need to compute size
+    mov eax, sft_size
+    mul ecx ;Multiply number of sft with their size to get allocation
+    add rdi, rax    ;Add that many bytes to rdi
+    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
+.skipSFT:
+;FCBS at rdi
+    mov qword fs:[fcbsHeadPtr], rdi ;Setup the fcbs var here
+    mov qword [rdi + sfth.qNextSFTPtr], -1  ;No more FCBS headers for now
+    movzx ecx, byte [rbp - cfgFrame.newFCBSVal]
+    mov word [rsi + sfth.wNumFiles], cx ;Move this value here
+    mov eax, sft_size
+    mul ecx ;Multiply number of sft with their size to get allocation
+    add rdi, rax    ;Add that many bytes to rdi
+    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
+    movzx ecx, byte [rbp - cfgFrame.newProtFCBSVal] ;Get number of safe FCBs
+    mov word fs:[numSafeSFCB], cx   ;And save that there
+;And CDS now
+    movzx ecx, byte [rbp - cfgFrame.newLastdrive]
+    mov byte fs:[lastdrvNum], cl ;Save this value
+    mov qword fs:[cdsHeadPtr], rdi  ;Point cdsHeadPtr here
+    call makeCDSArray
+    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
+
+;Computation of new space is complete, now work out how many bytes this is
+    mov rsp, rbp    ;Return stack pointer to original position
+    pop rbp
+    lea rbx, qword [rbp + dosDynamicArea]
+    sub rdi, rbx    ;Gives difference now
+    lea ebx, dword [edi + 11h]  ;Add 11 to round up a paragraph
+    shr ebx, 4  ;Convert to paragraphs
 ;Resize DOS allocation before loading COMMAND.COM
     mov r8, qword fs:[mcbChainPtr] ;Get ptr
     add r8, mcb.program
-    mov ebx, dynamicDataAreaLength
-    shr ebx, 4  ;Convert to paragraphs
-    inc ebx
     mov ah, 4Ah
     int 41h
     
+;Resizing complete, Print Welcome Message
+    lea rdx, qword [strtmsg]   ;Get the absolute address of message
+    mov ah, 09h
+    int 41h
     %if DEBUG && ALLOCTEST
 ;Test Allocation, Growth and Deallocation
     mov r15, qword fs:[currentPSP]
@@ -896,97 +1004,104 @@ debugFinal:
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
-    mov ah, 36h
+    mov ah, 36h ;Get Disk Parameters
     mov dl, 0
     int 41h
+
     lea rdx, tmpDTA
-    mov ah, 1Ah
+    mov ah, 1Ah ;Set DTA
     int 41h ;Set tempDTA to current DTA
-    mov ah, 4Eh
+    mov ah, 4Eh ;Find First
     lea rdx, tmpName
     movzx ecx, byte [tmpAttr] ;Get the search attribute
     int 41h
-    mov ah, 4Fh
+
+    mov ah, 4Fh ;Find Next
     int 41h
-    mov ah, 3Dh
+
+    mov ah, 3Dh ;Open File
     mov al, RWAccess
     int 41h
 
-    mov ah, 3ch
+    mov ah, 3ch ;Create File
     mov cx, 00  ;Normal attributes
     lea rdx, tmpName3
     int 41h
     mov word [hdl], ax
-    ;breakpoint
+
     mov ecx, testString1L
     lea rdx, testString1
     mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 40h
+    mov ah, 40h ;Write File
     int 41h
+
+
     mov ecx, testString2L
     lea rdx, testString2
     mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 40h
+    mov ah, 40h ;Write File
     int 41h
-    ;breakpoint
-    mov ah, 3eh
-    int 41h
-    ;breakpoint
 
-    mov ah, 3dh
+    mov ah, 3eh ;Close File
+    int 41h
+
+
+    mov ah, 3dh ;Open File
     mov al, RWAccess
     lea rdx, tmpName3
     int 41h
     mov word [hdl], ax
-    ;breakpoint
+
     mov ecx, testString1L
     lea rdx, tmpDTA
     mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 3fh
+    mov ah, 3fh ;Read File
     int 41h
 
-    ;breakpoint
+
     mov ecx, testString2L
     lea rdx, tmpBuf2
     mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 3fh
+    mov ah, 3fh ;Read File
     int 41h
 
-    mov ah, 60h
+    mov ah, 60h ;Truename
     lea rsi, tmpName2
     lea rdi, tmpBuf2
     int 41h
 
-    mov ah, 39h
+    mov ah, 39h ;MKDIR
     lea rdx, testDir
     int 41h
-    ;breakpoint
 
-    mov ah, 0Dh
+    mov ah, 0Dh ;Flush disk
     int 41h
 
-    mov ah, 3Ah
+    breakpoint
+    mov ah, 3Ah ;RMDIR
     lea rdx, testDir
     int 41h
-    ;breakpoint
-    mov ah, 0Dh
+
+    mov ah, 0Dh ;Flush Disk
     int 41h
 l11:
     mov ah, 02h
-    mov dl, 0Ah
+    mov dl, 0Ah ;Print Char
     int 41h
-    mov ah, 09h
+
+    mov ah, 09h ;Print String
     lea rdx, .str
     int 41h
-    ;lea rdx, tmpBuffer
-    ;mov ah, 0Ah  ;Buffered input
-    mov ecx, 80h
+
     lea rdx, tmpBuffer
-    xor ebx, ebx
-    mov ah, 3fh
-    int 41h
+    mov ah, 0Ah  ;Buffered input
+    ;mov ecx, 80h
+    ;lea rdx, tmpBuffer
+    ;xor ebx, ebx
+    ;mov ah, 3fh
+    ;int 41h
     jmp short l11
-.str: db "C:\>$"
+.str: db "A>$"
 ;--------------------------------
 ;       PROCS FOR SYSINIT       :
 ;--------------------------------

@@ -179,7 +179,6 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jc .badPath ;Dont allow wildcards
 .gotoDelete:
     call deleteMain
-    call setBufferReferenced
     jc extErrExit
     cmp byte [dosInvoke], -1    ;Server invoke?
     jne extGoodExit
@@ -195,7 +194,6 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     call findNextMain   ;rdi gets reloaded with DTA in this call
     pop qword [currentDTA]
     call deleteMain ;Whilst it keeps finding files that match, keep deleting
-    call setBufferReferenced
     jnc .serverWCloop     
 ;Stop as soon as an error occurs
     cmp al, errNoFil    ;Check if no more files (not considered error here)
@@ -691,7 +689,6 @@ buildSFTEntry:
     mov ecx, fatDirEntry_size
     rep movsb
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
     pop rdi
 .createCommon:  ;rdi must point to the current SFT 
     ;Now populate the remaining SFT fields 
@@ -768,7 +765,6 @@ buildSFTEntry:
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
     call setBufferDirty ;We wrote to this buffer
-    call setBufferReferenced    ;We are now done with this buffer, reclaimable
     mov rdi, qword [currentSFT]
     jmp .createCommon
 .open:
@@ -778,7 +774,6 @@ buildSFTEntry:
     mov rbp, qword [workingDPB] ;Need it for the following proc
     ;Now we can jump to common. qword [tempSect] and byte [entry] setup
     call getDiskDirectoryEntry  ;And setup vars! rsi points to disk buffer
-    call setBufferReferenced    ;Mark this buffer as done with!
     jmp .createCommon
 
 .openProc:
@@ -1094,10 +1089,7 @@ readDiskFile:
     add rax, rbx    ;And finally get the absolute cluster on the disk
     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
 ;Main
-    jmp short .mainSkipBufferSet
 .mainRead:
-    call setBufferReferenced
-.mainSkipBufferSet:
     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
@@ -1419,7 +1411,6 @@ writeDiskFile:
     mov qword [currentDTA], rsi ;Update currentDTA
     pop rsi
     pop rdi
-    call setBufferReferenced
     call setBufferDirty
     movzx ecx, word [sectTfr]
     test byte [fileGrowing], -1

@@ -413,7 +413,6 @@ readFAT:
 .exit:
     clc
 .exitFail:
-    call setBufferReferenced    ;We are done with the disk buffer
     pop rbp
     pop rdi
     pop rdx
@@ -435,7 +434,6 @@ readFAT:
     jnz .gotoNextClusterFat12NoCross
     ;Boundary cross, build entry properly
     movzx ebx, byte [rbx + bufferHdr.dataarea + rdx] ;Use ebx as it is free
-    call setBufferReferenced  ;We are done with the current buffer
     inc eax ;Get next FAT sector
     push rbx
     call getBufForFat ;Get buffer Header in ebx
@@ -490,7 +488,6 @@ writeFAT:
     call setBufferDirty
     clc
 .exitFail:
-    call setBufferReferenced    ;We are done with the disk buffer
     pop rbp
     pop rdi
     pop rsi
@@ -520,7 +517,6 @@ writeFAT:
     or ecx, esi ;Add low nybble of esi to upper nybble of ecx
     shr esi, 8  ;Move upper byte to lower byte of esi
     mov byte [rbx + bufferHdr.dataarea + rdx], cl
-    call setBufferReferenced  ;We are done with the current buffer
     call setBufferDirty
     inc eax ;Get next FAT sector
     call getBufForFat ;Get buffer Header in ebx

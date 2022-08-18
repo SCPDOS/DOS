@@ -129,7 +129,6 @@ searchDir:
     call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
 .rmdirEP: ;Entry used by rmdir to jump into this routine
     call findInBuffer
-    call setBufferReferenced    ;We are done with the current buffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
     jz .fnfError    ;CF=CY AND ZF=ZE => File not found
@@ -165,7 +164,6 @@ searchDir:
     jc .hardError
     call adjustDosDirBuffer      ;rbx has the buffer pointer for this dir sector
     call findInBuffer
-    call setBufferReferenced    ;We are done with this buffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     jz .fnfError
@@ -936,7 +934,7 @@ searchForPathspec:
     ;Fall if subdir
     lea rdi, fcbName
     mov al, "?" ;Search for wildcard
-    mov ecx, 12
+    mov ecx, 11
     repne scasb
     je .sfpPnf  ;Path not found if a ? found in the name
     mov al, dirDirectory    ;We want a directory only search.
