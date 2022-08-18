@@ -858,7 +858,7 @@ noCfg:
     mov qword fs:[fcbsHeadPtr], rdi ;Setup the fcbs var here
     mov qword [rdi + sfth.qNextSFTPtr], -1  ;No more FCBS headers for now
     movzx ecx, byte [rbp - cfgFrame.newFCBSVal]
-    mov word [rsi + sfth.wNumFiles], cx ;Move this value here
+    mov word [rdi + sfth.wNumFiles], cx ;Move this value here
     mov eax, sft_size
     mul ecx ;Multiply number of sft with their size to get allocation
     add rdi, rax    ;Add that many bytes to rdi
@@ -1077,7 +1077,6 @@ l1:
     mov ah, 0Dh ;Flush disk
     int 41h
 
-    breakpoint
     mov ah, 3Ah ;RMDIR
     lea rdx, testDir
     int 41h
@@ -1093,13 +1092,13 @@ l11:
     lea rdx, .str
     int 41h
 
-    lea rdx, tmpBuffer
-    mov ah, 0Ah  ;Buffered input
-    ;mov ecx, 80h
     ;lea rdx, tmpBuffer
-    ;xor ebx, ebx
-    ;mov ah, 3fh
-    ;int 41h
+    ;mov ah, 0Ah  ;Buffered input
+    mov ecx, 80h
+    lea rdx, tmpBuffer
+    xor ebx, ebx
+    mov ah, 3fh
+    int 41h
     jmp short l11
 .str: db "A>$"
 ;--------------------------------

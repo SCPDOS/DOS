@@ -220,7 +220,7 @@ getBuffer: ;Internal Linkage ONLY
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
 .rbExit:
-    or byte [rbx + bufferHdr.bufferFlags], refBuffer
+    or byte [rdi + bufferHdr.bufferFlags], refBuffer
     clc
 .rbExitNoFlag:
     pop rdi
@@ -258,7 +258,7 @@ getBuffer: ;Internal Linkage ONLY
     mov byte [rdi + bufferHdr.reserved], 0
     call readSectorBuffer ;Carry the flag from the request
     jc .rbExitNoFlag
-    or byte [rbx + bufferHdr.bufferFlags], refBuffer
+    or byte [rdi + bufferHdr.bufferFlags], refBuffer
     jmp short .rbExitNoFlag
 
 readSectorBuffer:   ;Internal Linkage
