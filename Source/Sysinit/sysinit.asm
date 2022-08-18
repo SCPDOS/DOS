@@ -96,8 +96,7 @@ initBegin:
     mov byte fs:[numRemDrv], ah    ;Save num of phys int 33h rem drives
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
-    ;mov byte fs:[numPhysVol], 0    ;Number of logical drives
-    mov byte fs:[numFiles], 5      ;Default 8 files, at start 5
+    mov byte fs:[numFiles], 5      ;Default 20 files, at start 5
     mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
     ;If no detected Int 33h devices, halt 
@@ -517,6 +516,8 @@ storageInits:
     call diskInit
     mov rdi, rbp ;Save rbp in rdi temporarily
     mov al, byte fs:[numPhysVol]
+    test al, al ;If no media with valid filesystems were detected, stop boot
+    jz errorInit
     lea rdx, qword [rbp + msdDriver.msdBPBTbl]
     xor cl, cl  ;Clear counter
     mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
@@ -564,22 +565,29 @@ sectorSizeSearch:
     jnz .findLargest    ;Nope, keep checking!
     mov word fs:[maxBytesSec], ax
 ;------------------------------------------------;
-;                 Temp CDS inits                 ;
+;                CDS array inits                 ;
 ;------------------------------------------------;
-tempCDS:
-;Build a temporary CDS for Drive A to use it for booting
-    lea rdi, qword [rbp + tmpCDS]  ;Use Temp CDS in the SDA
+    mov ecx, 5    ;Use as a counter, build 5 CDS entries
+    lea rdi, qword [rbp + cdsArray] ;Setup array
     mov qword fs:[cdsHeadPtr], rdi
-    ;"A:\"+NULL char (in rev order because LITTLE ENDIAN!!)
-    mov dword [rdi + cds.sCurrentPath], 005C3A41h  
-    mov word [rdi + cds.wFlags], cdsValidDrive   ;Set the drive to be valid!
-    mov rbx, qword fs:[dpbHeadPtr]  ;Get the DPB of first drive in rbx
+    mov rbx, qword fs:[dpbHeadPtr]
+    mov eax, 005C3A41h      ;"A:\"+NULL char
+tempCDS:
+    mov dword [rdi + cds.sCurrentPath], eax
     mov qword [rdi + cds.qDPBPtr], rbx
-    mov word [rdi + cds.wBackslashOffset], 2    ;Skip the A:
-    ;On FAT12/16, startcluster = 0 => Root Dir Sector
-    ;On FAT32, startcluster = 0 => Alias for root cluster. 
-    ;   Read dpb.dFirstUnitOfRootDir for first cluster of root dir
-    ;cds.dStartCluster is 0 since we zero-ed the data area earlier
+    mov dword [rdi + cds.dStartCluster], 0  ;Root dir for all!
+    mov word [rdi + cds.wBackslashOffset], 2    ;Skip the X:
+    xor edx, edx    ;Use edx for flags
+    cmp rbx, -1 ;Is rbx an invalid DPB ptr?
+    je .skipValidCDS
+    mov edx, cdsValidDrive  ;If not, set drive to valid and...
+    mov rbx, qword [rbx + dpb.qNextDPBPtr]  ;... go to next DPB
+.skipValidCDS:
+    mov word [rdi + cds.wFlags], dx ;Store the flags now
+    inc eax ;Increment the drive letter
+    add rdi, cds_size   ;Goto next array entry
+    dec ecx
+    jnz tempCDS
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
@@ -726,13 +734,32 @@ defaultFileHandles:
     add rbx, sft_size   ;Goto SFT 5
     mov dword [rbx + sft.wNumHandles], eax
 ;------------------------------------------------;
+;               Build FCBS Block                 ;
+;------------------------------------------------;
+;Reserve space for four FCBS
+    lea rdi, qword [rbp + fcbsArray]
+    mov qword [rdi + sfth.qNextSFTPtr], -1  ;No more
+    mov word [rdi + sfth.wNumFiles], 4  ;4 FCBS allowed
+    mov qword fs:[fcbsHeadPtr], rdi
+;------------------------------------------------;
 ;               Load CONFIG.SYS                  ;
 ;------------------------------------------------;
+    mov al, byte fs:[bootDrive]
+    test al, 80h    ;Was boot drive hard disk?
+    jz notHDD
+;Set Current Drive to C:
+    mov dl, 2
+    mov ah, 0Eh ;Select C: Drive
+    int 41h
+notHDD:
+    lea rdx, cfgspec    ;CONFIG.SYS, must be on bootdrive for now
+    mov ah, 3Dh ;Open file for reading
+    mov al, ReadAccess
+    int 41h
+    jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
+
 ;------------------------------------------------;
 ;              Process CONFIG.SYS                ;
-;------------------------------------------------;
-;------------------------------------------------;
-;       Load User Drivers from CONFIG.SYS        ;
 ;------------------------------------------------;
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
@@ -741,6 +768,7 @@ defaultFileHandles:
 ;------------------------------------------------;
 ;           Load Command interpreter             ;
 ;------------------------------------------------;
+noCfg:
     lea rdx, qword [strtmsg]   ;Get the absolute address of message
     mov ah, 09h
     int 41h
@@ -1120,11 +1148,24 @@ diskInit:
     ;call .initReadSector
     ;Now we eventually search MBR for a FAT extended partition
 .remInit:
+;Start by linking the default BPB's in the pointers table in the event that
+; for some reason the removable drives stop working or dont exist.
+;This forces the hard drives to start at C:
+    push rbx
+    lea rbx, qword [rbp + msdDriver.msdBPBblks] ;Get default drive A block ptr
+    mov qword [rbp + msdDriver.msdBPBTbl], rbx  ;Store in ptrs table
+    add rbx, bpbEx_size ;Goto next ptr
+    mov qword [rbp + msdDriver.msdBPBTbl + 8], rbx  ;Store next pointer
+    pop rbx
 ;Now handle removable devices, at least 2 rem. devs.
     mov r9, r8  ;Save number of next device in r9b
     xor dl, dl  ;Start with removable device 0
     mov r8b, dl ;Once r8b becomes 2, go past the disk drives
     ;rdi points to the space for the subsequent bpb's
+    cmp byte fs:[numRemDrv], 0  ;Just skip removable init if no rem drives
+    jnz .removables
+    add byte fs:[numPhysVol], 2 ;Pretend we have two more drives (A: and B:)
+    ret ;and return!
 .removables:
     xor ecx, ecx    ;Read sector 0
     call .initReadSector

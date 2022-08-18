@@ -25,7 +25,7 @@ sysVarsPtr:
     maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
     bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain x
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
-    sfcbHeadPtr resq 1    ;Pointer to the head of the System FCB chain
+    fcbsHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
     ;Old numLogicalDrives is now numPhysical volumes
     numPhysVol  resb 1    ;Number of physical volumes in the system x
@@ -38,6 +38,7 @@ sysVarsPtr:
     singleDrv   resb 1    ;Set if last drive accessed was drive B x
     numFiles    resb 1    ;FILES=5 default, max 255
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
+    ;PLEASE DO NOT TOUCH MAXHNDLS!!!
     ;Share hook functions here
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size

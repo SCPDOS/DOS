@@ -169,3 +169,29 @@ struc FSInfo
     .trailSig   resb 4  ;Should be 0AA550000h
 
 endstruc
+
+%macro defaultBPB 0
+    db 0E9h
+    db 00h
+    db 90h
+    db 'SCPDOSv1'
+    dw 0200h                       
+    db 01h                         
+    dw 0001h                           
+    db 02h                              
+    dw 00E0h            
+    dw 0B40h   
+    db 0F0h                   
+    dw 0009h                   
+    dw 0012h                     
+    dw 0002h                  
+    dd 0                 
+    dd 0 
+    db 00h
+    db 00h
+    db 29h
+    dd 0
+    db 'NO NAME    '
+    db 'FAT12   '
+    db 58 dup 0 ;Size padding for a FAT12/16 BPB to make it 120 bytes long
+%endmacro
