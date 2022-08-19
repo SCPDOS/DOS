@@ -258,8 +258,7 @@ getBuffer: ;Internal Linkage ONLY
     mov byte [rdi + bufferHdr.reserved], 0
     call readSectorBuffer ;Carry the flag from the request
     jc .rbExitNoFlag
-    or byte [rdi + bufferHdr.bufferFlags], refBuffer
-    jmp short .rbExitNoFlag
+    jmp short .rbExit
 
 readSectorBuffer:   ;Internal Linkage
 ;Reads a sector into a built sector buffer

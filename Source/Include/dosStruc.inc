@@ -426,3 +426,11 @@ eCursL  equ 4Bh ;Cursor Left second byte
 eCursR  equ 4Dh ;Cursor Right second byte
 eIns    equ 52h ;Insert second byte
 eDel    equ 53h ;DEL second byte (not necessarily delete key)
+
+;Default Configuration for the system
+
+buffersDefault  equ 30
+filesDefault    equ 20
+fcbsDefault     equ 4
+safeFcbsDeflt   equ 0
+lastDriveDeflt  equ 5   

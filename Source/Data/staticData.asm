@@ -228,7 +228,7 @@ extAsciiTbl:    ;This table needs to be replaced in other Codepages
     db 0F1h, 0F2h, 0F3h, 0F4h, 0F5h, 0F6h, 0F7h, 0F8h, 0F9h, 0FAh, 0FBh, 0FCh
     db 0FDh, 0FEh, 0FFh
 
-extAsciiSig:   ;This table needs to replaces in other Codepages
+asciiCharProperties:   ;This table needs to replaces in other Codepages
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F0h, 0F6h, 0F6h 
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F8h, 0FFh, 0F6h, 0FFh 

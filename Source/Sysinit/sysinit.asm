@@ -765,11 +765,11 @@ setupFrame:
     mov rbp, rsp
     sub rsp, cfgFrame_size
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Store the end pointer here
-    mov byte [rbp - cfgFrame.newBuffers], 30
-    mov byte [rbp - cfgFrame.newSFTVal], 20
-    mov byte [rbp - cfgFrame.newFCBSVal], 4
-    mov byte [rbp - cfgFrame.newProtFCBSVal], 0
-    mov byte [rbp - cfgFrame.newLastdrive], 5
+    mov byte [rbp - cfgFrame.newBuffers], buffersDefault
+    mov byte [rbp - cfgFrame.newSFTVal], filesDefault
+    mov byte [rbp - cfgFrame.newFCBSVal], fcbsDefault
+    mov byte [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
+    mov byte [rbp - cfgFrame.newLastdrive], lastDriveDeflt
 
     mov al, byte fs:[bootDrive]
     test al, 80h    ;Was boot drive hard disk?
