@@ -644,7 +644,7 @@ initialCDSWritten:
     stosq   ;16 bytes
     stosd   ;20 bytes
     pop rax ;Get 0 back
-    mov qword [rbx + psp.envPtr], -1    ;No environment
+    mov qword [rbx + psp.envPtr], rax    ;No environment
     mov word [rbx + psp.xtraHdlSz], ax  ;No size
     mov byte [rbx + psp.xtraHdlNum], -1 ;Unused
     mov rdx, rbx
@@ -1004,103 +1004,28 @@ debugFinal:
 .msg2:  db 0Ah,0Dh,"End of boot summary",0Ah,0Dh,0
     %endif
 l1:
-    mov ah, 36h ;Get Disk Parameters
-    mov dl, 0
+    ;Load COMMAND.COM
+    ;Get currentPSP ptr
+    mov ah, 62h ;Get current PSP ptr in rdx
     int 41h
-
-    lea rdx, tmpDTA
-    mov ah, 1Ah ;Set DTA
-    int 41h ;Set tempDTA to current DTA
-    mov ah, 4Eh ;Find First
-    lea rdx, tmpName
-    movzx ecx, byte [tmpAttr] ;Get the search attribute
+    mov ah, 19h ;Get current Drive letter in al
     int 41h
-
-    mov ah, 4Fh ;Find Next
+    add al, "A"
+    mov byte [cmdLine], al  ;Store drive letter at start of command line
+    lea rbx, cmdBlock
+    lea rax, qword [rdx + psp.fcb1]
+    mov qword [rbx + execProg.pfcb1], rax
+    lea rax, qword [rdx + psp.fcb2]
+    mov qword [rbx + execProg.pfcb2], rax
+    lea rdx, cmdLine
+    mov qword [rbx + execProg.pCmdLine], rdx    ;Store command line here
+    mov eax, 4B00h  ;Exec Prog
     int 41h
-
-    mov ah, 3Dh ;Open File
-    mov al, RWAccess
+    lea rdx, badCom
+    mov ah, 09h ;Print message
     int 41h
-
-    mov ah, 3ch ;Create File
-    mov cx, 00  ;Normal attributes
-    lea rdx, tmpName3
-    int 41h
-    mov word [hdl], ax
-
-    mov ecx, testString1L
-    lea rdx, testString1
-    mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 40h ;Write File
-    int 41h
-
-
-    mov ecx, testString2L
-    lea rdx, testString2
-    mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 40h ;Write File
-    int 41h
-
-    mov ah, 3eh ;Close File
-    int 41h
-
-
-    mov ah, 3dh ;Open File
-    mov al, RWAccess
-    lea rdx, tmpName3
-    int 41h
-    mov word [hdl], ax
-
-    mov ecx, testString1L
-    lea rdx, tmpDTA
-    mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 3fh ;Read File
-    int 41h
-
-
-    mov ecx, testString2L
-    lea rdx, tmpBuf2
-    mov bx, word [hdl]  ;Get the handle in bx
-    mov ah, 3fh ;Read File
-    int 41h
-
-    mov ah, 60h ;Truename
-    lea rsi, tmpName2
-    lea rdi, tmpBuf2
-    int 41h
-
-    mov ah, 39h ;MKDIR
-    lea rdx, testDir
-    int 41h
-
-    mov ah, 0Dh ;Flush disk
-    int 41h
-
-    mov ah, 3Ah ;RMDIR
-    lea rdx, testDir
-    int 41h
-
-    mov ah, 0Dh ;Flush Disk
-    int 41h
-l11:
-    mov ah, 02h
-    mov dl, 0Ah ;Print Char
-    int 41h
-
-    mov ah, 09h ;Print String
-    lea rdx, .str
-    int 41h
-
-    ;lea rdx, tmpBuffer
-    ;mov ah, 0Ah  ;Buffered input
-    mov ecx, 80h
-    lea rdx, tmpBuffer
-    xor ebx, ebx
-    mov ah, 3fh
-    int 41h
-    jmp short l11
-.str: db "A>$"
+    jmp errorInit.ei0
+    
 ;--------------------------------
 ;       PROCS FOR SYSINIT       :
 ;--------------------------------
@@ -1149,6 +1074,14 @@ auxName db "AUX",0
 prnName db "PRN",0
 
 cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
+cmdLine db "_:\COMMAND.COM",0
+cmdBlock:
+    istruc execProg
+    at execProg.pEnv,       dq 0    ;Keep at 0 to "copy" DOS's environment ptr
+    at execProg.pCmdLine,   dq 0
+    at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
+    at execProg.pfcb2,      dq 0
+    iend
 
 intData:
     dq terminateProcess ;Int 40h

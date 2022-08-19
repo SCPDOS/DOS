@@ -133,8 +133,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rsi, qword [currentPSP] ;Get current PSP address in rsi
     mov rax, qword [rsi + psp.envPtr]   ;Get the environment ptr
     mov qword [rbp - execFrame.pEnvBase], rax   ;Store the parent ptr
-    test rax, rax   ;Was the parent pointer 0? If so, make a new block
-    jnz .loadProgram
+    test rax, rax   ;Was the parent pointer 0? If so, skip
+    jz .loadProgram
 .copyEnvironmentBlock:
     mov rdi, rax    ;Point rdi to the source of the environment
     ;Get the length of the environment
@@ -415,7 +415,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     je .comOverlay
     mov ebx, 0FFFFh ;64Kb pls
     mov dword [rbp - execFrame.dProgSize], ebx
+    push rbp
     call allocateMemory
+    pop rbp
     jnc .comallocOk
     cmp al, errNoMem
     jne .cleanAndFail   ;Propagate the proper error if not a lack of memory
@@ -489,9 +491,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Now We need to copy over the command line and fcbs to the PSP
     ; and set FS to point to the PSP
     mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
-    mov rsi, qword [rbx + execProg.pCmdLine]
-    mov ecx, 80h
-    rep movsb   ;Copy the command line over (terminated by 0Dh)
 
     lea rdi, qword [rdx + psp.fcb1]
     mov ecx, fcb_size
@@ -503,6 +502,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rsi, qword [rbx + execProg.pfcb2]
     mov ah, byte [rsi + fcb.driveNum]   ;Get FCB2's drive number in ah
     rep movsb   ;Copy fcb 2 over
+    mov rsi, qword [rbx + execProg.pCmdLine]
+    lea rdi, qword [rdx + psp.dta]
+    mov ecx, 80h
+    rep movsb   ;Copy the command line over (terminated by 0Dh)
 
     mov ebx, eax  ;Save the fcb drive numbers in bx
     mov rdi, rdx  ;Point RDI to PSP
@@ -570,8 +573,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     push rax    ;Save error code
     push rbp
     call closeFileHdl
-    pop rax
     pop rbp
+    pop rax
     jmp .badExit
 
 .readDataFromHdl:

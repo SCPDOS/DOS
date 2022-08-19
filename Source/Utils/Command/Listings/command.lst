@@ -1097,393 +1097,287 @@
     94                              <1> eClsMedia   equ 11  ;Error is on medium, i.e. wrong or damaged remdev
     95                              <1> eClsClash   equ 12  ;Resource already exists!
     96                              <1> eClsUnk     equ 13  ;Unknown class
-    11                                  %include "./Source/Include/dosExec.inc"
-    12                              <1> ;This include file contains structures related to the EXE format
-    13                              <1> ; and the exec frame used when setting up the EXE in memory by 41h/4Bh
-    14                              <1> 
-    15                              <1> ;Int 41h/4Bh stack frame, used to store values whilst processing a EXE or COM
-    16                              <1> ; file.
-    17                              <1> execLoadGo  equ 0
-    18                              <1> execLoad    equ 1
-    19                              <1> execInvld   equ 2
-    20                              <1> execOverlay equ 3
-    21                              <1> 
-    22                              <1> struc execFrame
-    23 00000000 ????????????????    <1>     .oldRBP     resq 1  
-    24 00000008 ??                  <1>     .bSubFunc   resb 1  ;Subfunction number
-    25 00000009 ????                <1>     .wProgHdl   resb 2  ;File handle number for executable file
-    26 0000000B ????                <1>     .wEnvSize   resb 2  ;Size of the environment block
-    27 0000000D ????                <1>     .wNameLen   resb 2  ;Needs to be less than 64 but welp
-    28 0000000F ??                  <1>                 resb 1  ;Alignment byte
-    29                              <1>     .rbx:
-    30 00000010 ????????????????    <1>     .pParam     resq 1  ;Parameter list pointer
-    31                              <1>     .rdx:
-    32 00000018 ????????????????    <1>     .pProgname  resq 1  ;Ptr to ASCIIZ program name
-    33                              <1> 
-    34 00000020 ????????????????    <1>     .pEnvBase   resq 1  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
-    35 00000028 ????????????????    <1>     .pPSPBase   resq 1  ;Ptr to new PSP base address
-    36 00000030 ????????????????    <1>     .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
-    37 00000038 ????????            <1>     .dProgSize  resd 1  ;Program size is saved here, PSP included.
-    38                              <1> .pProgEP:   ;Program EP, recycle this qword
-    39 0000003C ????????            <1>     .dCOFFhdr   resd 1  ;Offset in file to COFF header. Set to 0 for COM
-    40 00000040 ????                <1>     .wNumSeg    resw 1  ;Number of segments, consider reusing NameLen
-    41 00000042 ????                <1>                 resw 1  ;Alignment reservation
-    42                              <1> .qRelocVal:  ;Used when computing relocations, Rebasing factor
-    43 00000044 ????????            <1>     .dFilePtr   resd 1  ;Keep of track of where in file we are
-    44 00000048 ????????            <1>                 resd 1  ;Alignment reservation, DO NOT USE FOR ANYTHING
-    45                              <1> endstruc
-    46                              <1> 
-    47                              <1> ;Possible blocks to be pointed to by rbx
+    11                                  Segment .data align=1 
+    12                                  %include "./Source/Utils/COMMAND/Data/cmdData.asm"
+    13                              <1> ;Static Data Area for COMMAND.COM    
+    14                              <1> startLbl:
+    15 00000000 E9(CC020000)        <1>     jmp cmdLdr
+    16 00000005 5F3E24              <1> basicPrompt: db "_>$"
+    17                              <1> 
+    13                                  Segment .bss align=1 follows=.data
+    14                                  %include "./Source/Utils/COMMAND/Data/cmdBSS.asm"
+    15                              <1>     
+    16 00000000 ??                  <1> currentDrv  resb 1  ;Current Drive    
+    17 00000001 <res 80h>           <1> cmdLine     resb 128
+    15                                  Segment .text align=1 follows=.data vfollows=.data
+    16                                  %define currSegVBase section.text.vstart
+    17                                  %include "./Source/Utils/COMMAND/Source/cmdMain.asm"
+    18                              <1> ;Initial Portion, jumped past data asection
+    19                              <1> commandStart:
+    20 00000000 66C705(01000000)80- <1>     mov word [cmdLine], 0080h ;Accept up to 128 bytes
+    20 00000008 00                  <1>
+    21                              <1> .inputMain:
+    22 00000009 E80D000000          <1>     call .printPrompt
+    23 0000000E 488D15(01000000)    <1>     lea rdx, cmdLine
+    24 00000015 B40A                <1>     mov ah, 0Ah  ;Buffered input
+    25 00000017 CD41                <1>     int 41h
+    26 00000019 EBEE                <1>     jmp short .inputMain
+    27                              <1> 
+    28                              <1> .printPrompt:
+    29                              <1>     ;Currently, fixed prompt X>
+    30 0000001B B419                <1>     mov ah, 19h ;Get 0-based current drive number in al
+    31 0000001D CD41                <1>     int 41h
+    32 0000001F 8805(00000000)      <1>     mov byte [currentDrv], al   ;Save drv number
+    33 00000025 0441                <1>     add al, "A"
+    34 00000027 8805(05000000)      <1>     mov byte [basicPrompt], al  ;Save letter in prompt string
+    35 0000002D 488D15(05000000)    <1>     lea rdx, basicPrompt
+    36 00000034 B409                <1>     mov ah, 09h ;Print String
+    37 00000036 CD41                <1>     int 41h
+    38                              <1>     return
+    19                              <2> %%_ret:
+    20 00000038 C3                  <2>  ret
+    21                              <2> %assign retOff %%_ret-$$
+    18                                  %include "./Source/Utils/COMMAND/Source/int44h.asm"
+    19                              <1> critErrorHandler:   ;Int 44h
+    20                              <1> ;User Stack in usage here, must be swapped to before this is called
+    21                              <1> ;Entered with:  
+    22                              <1> ;               AH = Critical Error Bitfield
+    23                              <1> ;               Bit 7 = 0 - Disk Error, Bit 7 = 1 - Char Device Error
+    24                              <1> ;               Bit 6 - Reserved
+    25                              <1> ;               Bit 5 = 0 - IGNORE not allowed, Bit 5 = 1 - IGNORE allowed
+    26                              <1> ;               Bit 4 = 0 - RETRY not allowed, Bit 4 = 1 - RETRY allowed
+    27                              <1> ;               Bit 3 = 0 - FAIL not allowed, Bit 3 = 1 - FAIL allowed
+    28                              <1> ;               Bits [2-1] = Affected Disk Error
+    29                              <1> ;                     0 0   DOS area
+    30                              <1> ;                     0 1   FAT area
+    31                              <1> ;                     1 0   Directory area
+    32                              <1> ;                     1 1   Data area
+    33                              <1> ;               Bit 0 = 0 - Read Operation, Bit 0 = 1 - Write Operation
+    34                              <1> ;               AL  = Failing drive number if AH[7] = 0
+    35                              <1> ;               DIL = Error code for errorMsg
+    36                              <1> ;               RSI = EA of Device Header for which device the error occured
+    37                              <1> ;Return:
+    38                              <1> ;               AL = 0 - Ignore the Error       (Ignore)
+    39                              <1> ;                  = 1 - Retry the Operation    (Retry)
+    40                              <1> ;                  = 2 - Terminate the Program  (Abort)
+    41                              <1> ;                  = 3 - Fail the DOS call      (Fail)
+    42 00000039 53                  <1>     push rbx
+    43 0000003A 51                  <1>     push rcx
+    44 0000003B 52                  <1>     push rdx
+    45 0000003C 57                  <1>     push rdi
+    46 0000003D 56                  <1>     push rsi
+    47 0000003E FC                  <1>     cld         ;Make String ops go forward
     48                              <1> 
-    49                              <1> struc execProg 
-    50 00000000 ????????????????    <1>     .pEnv       resq 1  ;Ptr to environment block (or 0 => copy parent env)
-    51 00000008 ????????????????    <1>     .pCmdLine   resq 1  ;Ptr to the command line to be placed at PSP + 80h
-    52 00000010 ????????????????    <1>     .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
-    53 00000018 ????????????????    <1>     .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
-    54                              <1> endstruc
-    55                              <1> 
-    56                              <1> struc loadProg
-    57 00000000 ????????????????    <1>     .pEnv       resq 1  ;Ptr to environment block (or 0 => copy parent env)
-    58 00000008 ????????????????    <1>     .pCmdLine   resq 1  ;Ptr to the command line to be placed at PSP + 80h
-    59 00000010 ????????????????    <1>     .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
-    60 00000018 ????????????????    <1>     .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
-    61 00000020 ????????????????    <1>     .initRSP    resq 1  ;Return the start value for rsp
-    62 00000028 ????????????????    <1>     .initRIP    resq 1  ;Return the entry point for the task
-    63                              <1> endstruc
-    64                              <1> 
-    65                              <1> struc loadOvly
-    66 00000000 ????????????????    <1>     .pLoadLoc   resq 1  ;Address in memory to load the overlay
-    67 00000008 ????????            <1>     .dRelocFct  resd 1  ;Relocation factor for 
-    68                              <1> endstruc
-    69                              <1> 
-    70                              <1> ;----------------------------
-    71                              <1> ;   EXE header structures   :
-    72                              <1> ;----------------------------
-    73                              <1> 
-    74                              <1> ;DOS MZ .EXE header. Functionally useless except for e_magic and e_lfanew
-    75                              <1> dosMagicSignature   equ "MZ"
-    76                              <1> dosMagicSignature2  equ "ZM"
-    77                              <1> struc imageDosHdr
-    78 00000000 ????                <1>     .e_magic    resw 1  ;      // Magic number
-    79 00000002 ????                <1>     .e_cblp     resw 1  ;      // Bytes on last page of file
-    80 00000004 ????                <1>     .e_cp       resw 1  ;      // Pages in file
-    81 00000006 ????                <1>     .e_crlc     resw 1  ;      // Relocations
-    82 00000008 ????                <1>     .e_cparhdr  resw 1  ;      // Size of header in paragraphs
-    83 0000000A ????                <1>     .e_minalloc resw 1  ;      // Minimum extra paragraphs needed
-    84 0000000C ????                <1>     .e_maxalloc resw 1  ;      // Maximum extra paragraphs needed
-    85 0000000E ????                <1>     .e_ss       resw 1  ;      // Initial (relative) SS value
-    86 00000010 ????                <1>     .e_sp       resw 1  ;      // Initial SP value
-    87 00000012 ????                <1>     .e_csum     resw 1  ;      // Checksum
-    88 00000014 ????                <1>     .e_ip       resw 1  ;      // Initial IP value
-    89 00000016 ????                <1>     .e_cs       resw 1  ;      // Initial (relative) CS value
-    90 00000018 ????                <1>     .e_lfarlc   resw 1  ;      // File address of relocation table
-    91 0000001A ????                <1>     .e_ovno     resw 1  ;      // Overlay number
-    92 0000001C ????????????????    <1>     .e_res      resw 4  ;      // Reserved words
-    93 00000024 ????                <1>     .e_oemid    resw 1  ;      // OEM identifier (for e_oeminfo)
-    94 00000026 ????                <1>     .e_oeminfo  resw 1  ;      // OEM information; e_oemid specific
-    95 00000028 <res 14h>           <1>     .e_res2     resw 10 ;      // Reserved words
-    96 0000003C ????????            <1>     .e_lfanew   resd 1  ;      // File address of new exe header
-    97                              <1> endstruc
-    98                              <1> 
-    99                              <1> ;Pssobile signatures pointed to by e_lfanew
-   100                              <1> imageDosSignature   equ 05A4Dh      ; MZ, REJECT
-   101                              <1> imageOS2Signature   equ 0454Eh      ; NE, REJECT
-   102                              <1> imageOS2SignatureLE equ 0454Ch      ; LE, REJECT
-   103                              <1> imagePESignature    equ 00004550h   ; PE00, ACCEPT
-   104                              <1> 
-   105                              <1> ;COFF File header, immadiately follows the signature so @ [e_lfanew + 4]
-   106                              <1> 
-   107                              <1> struc imageFileHeader
-   108 00000000 ????                <1>     .wMachineType        resw 1  ;Machine Type, must be imageFileMachineAMD64
-   109 00000002 ????                <1>     .wNumberOfSections   resw 1  ;Number of sections in file
-   110 00000004 ????????            <1>     .dTimeDateStamp      resd 1  ;Unix datestamp
-   111 00000008 ????????            <1>     .dPtrToSymbolTbl     resd 1  ;Pointer to the symbol table,      NOT USED
-   112 0000000C ????????            <1>     .dNumberOfSymbols    resd 1  ;Number of symbols in the table,   NOT USED
-   113 00000010 ????                <1>     .wSizeOfOptionalHdr  resw 1  ;Size of the optional header
-   114 00000012 ????                <1>     .wCharacteristics    resw 1  ;Bitfield characteristics
-   115                              <1> endstruc
-   116                              <1> 
-   117                              <1> ;The only valid values in the .machineType field
-   118                              <1> 
-   119                              <1> imageFileMachineUnknown equ 0
-   120                              <1> imageFileMachineAMD64   equ 08664h 
-   121                              <1> 
-   122                              <1> ;Optional header, immediately follows COFF header
-   123                              <1> 
-   124                              <1> struc imageFileOptionalHeader
-   125 00000000 ????                <1> 	.wMagic                     resw 1 ;0x010b - PE32, 0x020b - PE32+ (64 bit)
-   126 00000002 ??                  <1> 	.bMajorLinkerVersion        resb 1
-   127 00000003 ??                  <1> 	.bMinorLinkerVersion        resb 1
-   128 00000004 ????????            <1> 	.dSizeOfCode                resd 1
-   129 00000008 ????????            <1> 	.dSizeOfInitializedData     resd 1
-   130 0000000C ????????            <1> 	.dSizeOfUninitializedData   resd 1
-   131 00000010 ????????            <1> 	.dAddressOfEntryPoint       resd 1  ;RVA of the EP for program
-   132 00000014 ????????            <1> 	.dBaseOfCode                resd 1
-   133 00000018 ????????????????    <1>     .qImageBase                 resq 1  ;Preferred load address  
-   134 00000020 ????????            <1> 	.dSectionAlignment          resd 1
-   135 00000024 ????????            <1> 	.dFileAlignment             resd 1
-   136 00000028 ????                <1> 	.wMajOSVer                  resw 1
-   137 0000002A ????                <1> 	.wMinOSVer                  resw 1
-   138 0000002C ????                <1> 	.wMajorImageVersion         resw 1
-   139 0000002E ????                <1> 	.wMinorImageVersion         resw 1
-   140 00000030 ????                <1> 	.wMajorSubsystemVersion     resw 1
-   141 00000032 ????                <1> 	.wMinorSubsystemVersion     resw 1
-   142 00000034 ????????            <1> 	.dWin32VersionValue         resd 1
-   143 00000038 ????????            <1> 	.dSizeOfImage               resd 1  ;Size of ctg mem to hold program
-   144 0000003C ????????            <1> 	.dSizeOfHeaders             resd 1
-   145 00000040 ????????            <1> 	.dCheckSum                  resd 1
-   146 00000044 ????                <1> 	.wSubsystem                 resw 1
-   147 00000046 ????                <1> 	.wDllCharacteristics        resw 1
-   148 00000048 ????????????????    <1> 	.qSizeOfStackReserve        resq 1
-   149 00000050 ????????????????    <1> 	.qSizeOfStackCommit         resq 1  ;Default stack allocation is 256Kb
-   150 00000058 ????????????????    <1> 	.qSizeOfHeapReserve         resq 1
-   151 00000060 ????????????????    <1> 	.qSizeOfHeapCommit          resq 1
-   152 00000068 ????????            <1> 	.dLoaderFlags               resd 1
-   153 0000006C ????????            <1> 	.dNumberOfRvaAndSizes       resd 1  ;Number of data dirs entries in header
-   154                              <1> endstruc
-   155                              <1> 
-   156                              <1> romMagicNum     equ 0107h
-   157                              <1> pe32MagicNum    equ 010Bh
-   158                              <1> pe64MagicNum    equ 020Bh
-   159                              <1> 
-   160                              <1> ;Data directory header structure
-   161                              <1> 
-   162                              <1> struc imageDataDirectory
-   163 00000000 ????????            <1>     .virtualAddress  resd 1
-   164 00000004 ????????            <1>     .size    resd 1
-   165                              <1> endstruc
-   166                              <1> 
-   167                              <1> struc baseRelocBlock
-   168 00000000 ????????            <1>     .pageRVA    resd 1  ;Offset from the load address
-   169 00000004 ????????            <1>     .size       resd 1  ;Number of bytes in this block
-   170                              <1>     ;Each entry is a word. High 4 bits are type of reloc (all must be 0Ah)
-   171                              <1> endstruc
-   172                              <1> ;Section headers that form the Section Table.
-   173                              <1> ;There are wNumberOfSections many entries in this table.
-   174                              <1> ;Each entry is one imageSectionHdr
-   175                              <1> 
-   176                              <1> struc imageSectionHdr       ;size 40 bytes
-   177 00000000 ????????????????    <1>     .name                   resb 8
-   178 00000008 ????????            <1> 	.dVirtualSize           resd 1  ;If this is bigger than RawData, 0 pad
-   179 0000000C ????????            <1> 	.dVirtualAddress        resd 1  ;Offset from ImageBase
-   180 00000010 ????????            <1> 	.dSizeOfRawData         resd 1
-   181 00000014 ????????            <1> 	.dPointerToRawData      resd 1  ;File pointer location
-   182 00000018 ????????            <1> 	.dPointerToRelocations  resd 1
-   183 0000001C ????????            <1> 	.dPointerToLinenumbers  resd 1
-   184 00000020 ????                <1> 	.wNumberOfRelocations   resw 1
-   185 00000022 ????                <1> 	.wNumberOfLinenumbers   resw 1
-   186 00000024 ????????            <1> 	.dCharacteristics       resd 1
-   187                              <1> endstruc
-   188                              <1> 
-   189                              <1> ;Section Hdr characteristics flags 
-   190                              <1> imgScnCntCode   equ 20h   ;The section contains executable code.
-   191                              <1> imgScnCntData   equ 40h   ;The section contains initialized data.
-   192                              <1> imgScnCntBSS    equ 80h   ;The section contains uninitialized data. 
-    12                                  Segment .text align=1   ;Init code
-    13                                  %define currSegVBase 0
-    14                                  %include "./Source/Utils/COMMAND/Source/cmdMain.asm"
-    15                                  %include "./Source/Utils/COMMAND/Source/int44h.asm"
-    16                              <1> critErrorHandler:   ;Int 44h
-    17                              <1> ;User Stack in usage here, must be swapped to before this is called
-    18                              <1> ;Entered with:  
-    19                              <1> ;               AH = Critical Error Bitfield
-    20                              <1> ;               Bit 7 = 0 - Disk Error, Bit 7 = 1 - Char Device Error
-    21                              <1> ;               Bit 6 - Reserved
-    22                              <1> ;               Bit 5 = 0 - IGNORE not allowed, Bit 5 = 1 - IGNORE allowed
-    23                              <1> ;               Bit 4 = 0 - RETRY not allowed, Bit 4 = 1 - RETRY allowed
-    24                              <1> ;               Bit 3 = 0 - FAIL not allowed, Bit 3 = 1 - FAIL allowed
-    25                              <1> ;               Bits [2-1] = Affected Disk Error
-    26                              <1> ;                     0 0   DOS area
-    27                              <1> ;                     0 1   FAT area
-    28                              <1> ;                     1 0   Directory area
-    29                              <1> ;                     1 1   Data area
-    30                              <1> ;               Bit 0 = 0 - Read Operation, Bit 0 = 1 - Write Operation
-    31                              <1> ;               AL  = Failing drive number if AH[7] = 0
-    32                              <1> ;               DIL = Error code for errorMsg
-    33                              <1> ;               RSI = EA of Device Header for which device the error occured
-    34                              <1> ;Return:
-    35                              <1> ;               AL = 0 - Ignore the Error       (Ignore)
-    36                              <1> ;                  = 1 - Retry the Operation    (Retry)
-    37                              <1> ;                  = 2 - Terminate the Program  (Abort)
-    38                              <1> ;                  = 3 - Fail the DOS call      (Fail)
-    39 00000000 53                  <1>     push rbx
-    40 00000001 51                  <1>     push rcx
-    41 00000002 52                  <1>     push rdx
-    42 00000003 57                  <1>     push rdi
-    43 00000004 56                  <1>     push rsi
-    44 00000005 FC                  <1>     cld         ;Make String ops go forward
-    45                              <1> 
-    46 00000006 6689C3              <1>     mov bx, ax  ;Save ah in bh and al in bl (if needed)
-    47 00000009 488D155E020000      <1>     lea rdx, qword [.crlf]
-    48 00000010 B409                <1>     mov ah, 09h ;Print String
-    49 00000012 CD41                <1>     int 41h     ;Call DOS to print CRLF part of message
-    50                              <1> 
-    51 00000014 81E7FF000000        <1>     and edi, 00FFh   ;Zero the upper bytes of DI just in case
-    52 0000001A B90C000000          <1>     mov ecx, 0Ch
-    53 0000001F 39CF                <1>     cmp edi, ecx  ;Check if the error number is erroniously above Gen Error
-    54 00000021 0F47F9              <1>     cmova edi, ecx  ;If it is, move Gen Error into edi
-    55 00000024 480FB7FF            <1>     movzx rdi, di
-    56 00000028 4889FA              <1>     mov rdx, rdi    ;Copy error code
-    57 0000002B 48C1E704            <1>     shl rdi, 4  ;Multiply by 16
-    58 0000002F 48D1E2              <1>     shl rdx, 1  ;Multiply by 2
-    59 00000032 4801D7              <1>     add rdi, rdx    ;Add the resultant multiplications
-    60 00000035 488D1523010000      <1>     lea rdx, qword [.errorMsgTable]
-    61 0000003C 488D143A            <1>     lea rdx, qword [rdx+rdi]   ;Load EA to rdx
-    62 00000040 B409                <1>     mov ah, 09h ;Print String
-    63 00000042 CD41                <1>     int 41h     ;Call DOS to print first part of message
-    64                              <1> 
-    65 00000044 488D1505020000      <1>     lea rdx, qword [.readmsg]
-    66 0000004B 488D3D0D020000      <1>     lea rdi, qword [.writemsg]
-    67 00000052 F6C701              <1>     test bh, 1  ;Bit 0 is set if write operation
-    68 00000055 480F45D7            <1>     cmovnz rdx, rdi ;Move the correct r/w part of the message to rdx
-    69 00000059 B409                <1>     mov ah, 09h ;Print String
-    70 0000005B CD41                <1>     int 41h     ;Call DOS to print error reading/writing portion
-    71                              <1> 
-    72 0000005D F6C780              <1>     test bh, 80h    ;Test bit 7 for char/Disk assertation
-    73 00000060 0F85DF000000        <1>     jnz .charError
-    74                              <1> ;Disk error continues here
-    75 00000066 488D15DC010000      <1>     lea rdx, qword [.drive] ;Drive message
-    76 0000006D B409                <1>     mov ah, 09h
-    77 0000006F CD41                <1>     int 41h
-    78 00000071 88DA                <1>     mov dl, bl  ;Get zero based drive number into dl
-    79 00000073 80C241              <1>     add dl, "A" ;Add ASCII code
-    80 00000076 B402                <1>     mov ah, 02h ;Print char in dl
-    81 00000078 CD41                <1>     int 41h
-    82                              <1> .userInput:
-    83 0000007A 488D15ED010000      <1>     lea rdx, qword [.crlf]  ;Print new line
-    84 00000081 B409                <1>     mov ah, 09h
-    85 00000083 CD41                <1>     int 41h
-    86                              <1> ;Abort, Retry, Ignore, Fail is word order
-    87                              <1> ;Last message gets a ?, otherwise a comma followed by a 20h (space)
-    88                              <1> .userAbort:
-    89                              <1> ;Abort is always an option
-    90 00000085 488D15E5010000      <1>     lea rdx, qword [.abortmsg]
-    91 0000008C B409                <1>     mov ah, 09h
-    92 0000008E CD41                <1>     int 41h ;Call DOS to prompt user for ABORT option
-    93                              <1> .userRetry:
-    94 00000090 F6C710              <1>     test bh, 10h  ;Bit 4 is retry bit
-    95 00000093 7416                <1>     jz .userIgnore    ;If clear, dont print message
-    96 00000095 488D15ED010000      <1>     lea rdx, qword [.betweenMsg]
-    97 0000009C B409                <1>     mov ah, 09h
-    98 0000009E CD41                <1>     int 41h
-    99 000000A0 488D15D7010000      <1>     lea rdx, qword [.retrymsg]
-   100 000000A7 B409                <1>     mov ah, 09h
-   101 000000A9 CD41                <1>     int 41h
-   102                              <1> .userIgnore:
-   103 000000AB F6C720              <1>     test bh, 20h    ;Bit 5 is ignore bit
-   104 000000AE 7416                <1>     jz .userFail
-   105 000000B0 488D15D2010000      <1>     lea rdx, qword [.betweenMsg]
-   106 000000B7 B409                <1>     mov ah, 09h
-   107 000000B9 CD41                <1>     int 41h
-   108 000000BB 488D15B5010000      <1>     lea rdx, qword [.ignoremsg]
-   109 000000C2 B409                <1>     mov ah, 09h
-   110 000000C4 CD41                <1>     int 41h
-   111                              <1> .userFail:
-   112 000000C6 F6C708              <1>     test bh, 08h    ;Bit 3 is Fail bit
-   113 000000C9 7416                <1>     jz .userMsgEnd
-   114 000000CB 488D15B7010000      <1>     lea rdx, qword [.betweenMsg]
-   115 000000D2 B409                <1>     mov ah, 09h
-   116 000000D4 CD41                <1>     int 41h
-   117 000000D6 488D15A7010000      <1>     lea rdx, qword [.failmsg]
-   118 000000DD B409                <1>     mov ah, 09h
-   119 000000DF CD41                <1>     int 41h
-   120                              <1> .userMsgEnd:
-   121 000000E1 488D15A4010000      <1>     lea rdx, qword [.endMsg]
-   122 000000E8 B409                <1>     mov ah, 09h
-   123 000000EA CD41                <1>     int 41h
-   124                              <1> ;Get user input now 
-   125 000000EC 31C9                <1>     xor ecx, ecx  ;4 Possible Responses
-   126 000000EE 488D3D9A010000      <1>     lea rdi, qword [.responses] ;Go to start of string
-   127 000000F5 B401                <1>     mov ah, 01h ;STDIN without Console Echo
-   128 000000F7 CD41                <1>     int 41h ;Get char in al
-   129 000000F9 3C61                <1>     cmp al, "a" ;Chack if lowercase
-   130 000000FB 7202                <1>     jb .uip1    ;If the value is below, ignore subtraction
-   131 000000FD 2C20                <1>     sub al, "a"-"A"  ;Turn the char into uppercase
-   132                              <1> .uip1:
-   133 000000FF AE                  <1>     scasb   ;Compare char to list, offset gives return code
-   134 00000100 740F                <1>     je .validInput  ;If they are equal, ecx has return code
-   135 00000102 FFC1                <1>     inc ecx
-   136 00000104 81F904000000        <1>     cmp ecx, 4
-   137 0000010A 75F3                <1>     jne .uip1
-   138 0000010C E969FFFFFF          <1>     jmp .userInput ;If valid char not found, keep waiting 
-   139                              <1> .validInput:
-   140 00000111 88C8                <1>     mov al, cl  ;Move the offset into .responses into al
-   141                              <1> ;Now check if the input is permitted
-   142 00000113 3C02                <1>     cmp al, 2   ;Check if abort, abort always permitted
-   143 00000115 7427                <1>     je .cehExit
-   144 00000117 84C0                <1>     test al, al ;Check if 0 => Ignore
-   145 00000119 740F                <1>     je .viIgnore
-   146 0000011B 3C01                <1>     cmp al, 1   ;Check if 1 => Retry
-   147 0000011D 7416                <1>     je .viRetry
-   148                              <1> .viFail:    ;Fallthrough for fail (al = 3)
-   149 0000011F F6C708              <1>     test bh, 8  ;Bit 3 is Fail bit
-   150 00000122 0F8452FFFFFF        <1>     jz .userInput  ;If bit 3 is zero, prompt and get input again
-   151 00000128 EB14                <1>     jmp short .cehExit
-   152                              <1> .viIgnore:
-   153 0000012A F6C720              <1>     test bh, 20h    ;Bit 5 is Ignore bit
-   154 0000012D 0F8447FFFFFF        <1>     jz .userInput
-   155 00000133 EB09                <1>     jmp short .cehExit
-   156                              <1> .viRetry:
-   157 00000135 F6C710              <1>     test bh, 10h    ;Bit 4 is Retry bit
-   158 00000138 0F843CFFFFFF        <1>     jz .userInput
-   159                              <1> .cehExit:
-   160 0000013E 5E                  <1>     pop rsi
-   161 0000013F 5F                  <1>     pop rdi
-   162 00000140 5A                  <1>     pop rdx
-   163 00000141 59                  <1>     pop rcx
-   164 00000142 5B                  <1>     pop rbx
-   165 00000143 48CF                <1>     iretq
-   166                              <1> .charError:
-   167 00000145 B908000000          <1>     mov ecx, 8  ;8 chars in device name
-   168 0000014A 4881C61A000000      <1>     add rsi, drvHdr.drvNam  ;Get the address of the Drive name
-   169                              <1> .ce1:
-   170 00000151 AC                  <1>     lodsb   ;Get a string char into al and inc rsi
-   171 00000152 88C2                <1>     mov dl, al  ;Move char into dl
-   172 00000154 B402                <1>     mov ah, 02h
-   173 00000156 CD41                <1>     int 41h ;Print char
-   174 00000158 E2F7                <1>     loop .ce1   ;Keep looping until all 8 char device chars have been printed
-   175 0000015A E91BFFFFFF          <1>     jmp .userInput
-   176                              <1> 
-   177                              <1> .errorMsgTable: ;Each table entry is 18 chars long
-   178 0000015F 57726974652050726F- <1>             db "Write Protect $   "       ;Error 0
-   178 00000168 746563742024202020  <1>
-   179 00000171 556E6B6E6F776E2055- <1>             db "Unknown Unit $    "       ;Error 1
-   179 0000017A 6E6974202420202020  <1>
-   180 00000183 4E6F74205265616479- <1>             db "Not Ready $       "       ;Error 2
-   180 0000018C 202420202020202020  <1>
-   181 00000195 556E6B6E6F776E2043- <1>             db "Unknown Command $ "       ;Error 3
-   181 0000019E 6F6D6D616E64202420  <1>
-   182 000001A7 446174612024202020- <1>             db "Data $            "       ;Error 4
-   182 000001B0 202020202020202020  <1>
-   183 000001B9 426164205265717565- <1>             db "Bad Request $     "       ;Error 5
-   183 000001C2 737420242020202020  <1>
-   184 000001CB 5365656B2024202020- <1>             db "Seek $            "       ;Error 6
-   184 000001D4 202020202020202020  <1>
-   185 000001DD 556E6B6E6F776E204D- <1>             db "Unknown Media $   "       ;Error 7
-   185 000001E6 656469612024202020  <1>
-   186 000001EF 536563746F72204E6F- <1>             db "Sector Not Found $"       ;Error 8
-   186 000001F8 7420466F756E642024  <1>
-   187 00000201 4F7574204F66205061- <1>             db "Out Of Paper $    "       ;Error 9
-   187 0000020A 706572202420202020  <1>
-   188 00000213 577269746520466175- <1>             db "Write Fault $     "       ;Error A
-   188 0000021C 6C7420242020202020  <1>
-   189 00000225 52656164204661756C- <1>             db "Read Fault $      "       ;Error B
-   189 0000022E 742024202020202020  <1>
-   190 00000237 47656E6572616C2046- <1>             db "General Failure $ "       ;Error C
-   190 00000240 61696C757265202420  <1>
-   191                              <1> 
-   192 00000249 64726976652024      <1> .drive      db "drive $"
-   193 00000250 6572726F7220726561- <1> .readmsg    db "error reading $"
-   193 00000259 64696E672024        <1>
-   194 0000025F 6572726F7220777269- <1> .writemsg   db "error writing $"
-   194 00000268 74696E672024        <1>
-   195 0000026E 0A0D24              <1> .crlf       db 0Ah, 0Dh, "$"
-   196 00000271 41626F727424        <1> .abortmsg   db "Abort$" 
-   197 00000277 49676E6F726524      <1> .ignoremsg  db "Ignore$"
-   198 0000027E 526574727924        <1> .retrymsg   db "Retry$"
-   199 00000284 4661696C24          <1> .failmsg    db "Fail$"
-   200 00000289 2C2024              <1> .betweenMsg db ", $"
-   201 0000028C 3F2024              <1> .endMsg     db "? $"
-   202 0000028F 49524146            <1> .responses  db "IRAF"   ;Abort Retry Ignore Fail
-   202          ------------------  <1>  info: assembly required 1+2+2 passes
+    49 0000003F 6689C3              <1>     mov bx, ax  ;Save ah in bh and al in bl (if needed)
+    50 00000042 488D155E020000      <1>     lea rdx, qword [.crlf]
+    51 00000049 B409                <1>     mov ah, 09h ;Print String
+    52 0000004B CD41                <1>     int 41h     ;Call DOS to print CRLF part of message
+    53                              <1> 
+    54 0000004D 81E7FF000000        <1>     and edi, 00FFh   ;Zero the upper bytes of DI just in case
+    55 00000053 B90C000000          <1>     mov ecx, 0Ch
+    56 00000058 39CF                <1>     cmp edi, ecx  ;Check if the error number is erroniously above Gen Error
+    57 0000005A 0F47F9              <1>     cmova edi, ecx  ;If it is, move Gen Error into edi
+    58 0000005D 480FB7FF            <1>     movzx rdi, di
+    59 00000061 4889FA              <1>     mov rdx, rdi    ;Copy error code
+    60 00000064 48C1E704            <1>     shl rdi, 4  ;Multiply by 16
+    61 00000068 48D1E2              <1>     shl rdx, 1  ;Multiply by 2
+    62 0000006B 4801D7              <1>     add rdi, rdx    ;Add the resultant multiplications
+    63 0000006E 488D1523010000      <1>     lea rdx, qword [.errorMsgTable]
+    64 00000075 488D143A            <1>     lea rdx, qword [rdx+rdi]   ;Load EA to rdx
+    65 00000079 B409                <1>     mov ah, 09h ;Print String
+    66 0000007B CD41                <1>     int 41h     ;Call DOS to print first part of message
+    67                              <1> 
+    68 0000007D 488D1505020000      <1>     lea rdx, qword [.readmsg]
+    69 00000084 488D3D0D020000      <1>     lea rdi, qword [.writemsg]
+    70 0000008B F6C701              <1>     test bh, 1  ;Bit 0 is set if write operation
+    71 0000008E 480F45D7            <1>     cmovnz rdx, rdi ;Move the correct r/w part of the message to rdx
+    72 00000092 B409                <1>     mov ah, 09h ;Print String
+    73 00000094 CD41                <1>     int 41h     ;Call DOS to print error reading/writing portion
+    74                              <1> 
+    75 00000096 F6C780              <1>     test bh, 80h    ;Test bit 7 for char/Disk assertation
+    76 00000099 0F85DF000000        <1>     jnz .charError
+    77                              <1> ;Disk error continues here
+    78 0000009F 488D15DC010000      <1>     lea rdx, qword [.drive] ;Drive message
+    79 000000A6 B409                <1>     mov ah, 09h
+    80 000000A8 CD41                <1>     int 41h
+    81 000000AA 88DA                <1>     mov dl, bl  ;Get zero based drive number into dl
+    82 000000AC 80C241              <1>     add dl, "A" ;Add ASCII code
+    83 000000AF B402                <1>     mov ah, 02h ;Print char in dl
+    84 000000B1 CD41                <1>     int 41h
+    85                              <1> .userInput:
+    86 000000B3 488D15ED010000      <1>     lea rdx, qword [.crlf]  ;Print new line
+    87 000000BA B409                <1>     mov ah, 09h
+    88 000000BC CD41                <1>     int 41h
+    89                              <1> ;Abort, Retry, Ignore, Fail is word order
+    90                              <1> ;Last message gets a ?, otherwise a comma followed by a 20h (space)
+    91                              <1> .userAbort:
+    92                              <1> ;Abort is always an option
+    93 000000BE 488D15E5010000      <1>     lea rdx, qword [.abortmsg]
+    94 000000C5 B409                <1>     mov ah, 09h
+    95 000000C7 CD41                <1>     int 41h ;Call DOS to prompt user for ABORT option
+    96                              <1> .userRetry:
+    97 000000C9 F6C710              <1>     test bh, 10h  ;Bit 4 is retry bit
+    98 000000CC 7416                <1>     jz .userIgnore    ;If clear, dont print message
+    99 000000CE 488D15ED010000      <1>     lea rdx, qword [.betweenMsg]
+   100 000000D5 B409                <1>     mov ah, 09h
+   101 000000D7 CD41                <1>     int 41h
+   102 000000D9 488D15D7010000      <1>     lea rdx, qword [.retrymsg]
+   103 000000E0 B409                <1>     mov ah, 09h
+   104 000000E2 CD41                <1>     int 41h
+   105                              <1> .userIgnore:
+   106 000000E4 F6C720              <1>     test bh, 20h    ;Bit 5 is ignore bit
+   107 000000E7 7416                <1>     jz .userFail
+   108 000000E9 488D15D2010000      <1>     lea rdx, qword [.betweenMsg]
+   109 000000F0 B409                <1>     mov ah, 09h
+   110 000000F2 CD41                <1>     int 41h
+   111 000000F4 488D15B5010000      <1>     lea rdx, qword [.ignoremsg]
+   112 000000FB B409                <1>     mov ah, 09h
+   113 000000FD CD41                <1>     int 41h
+   114                              <1> .userFail:
+   115 000000FF F6C708              <1>     test bh, 08h    ;Bit 3 is Fail bit
+   116 00000102 7416                <1>     jz .userMsgEnd
+   117 00000104 488D15B7010000      <1>     lea rdx, qword [.betweenMsg]
+   118 0000010B B409                <1>     mov ah, 09h
+   119 0000010D CD41                <1>     int 41h
+   120 0000010F 488D15A7010000      <1>     lea rdx, qword [.failmsg]
+   121 00000116 B409                <1>     mov ah, 09h
+   122 00000118 CD41                <1>     int 41h
+   123                              <1> .userMsgEnd:
+   124 0000011A 488D15A4010000      <1>     lea rdx, qword [.endMsg]
+   125 00000121 B409                <1>     mov ah, 09h
+   126 00000123 CD41                <1>     int 41h
+   127                              <1> ;Get user input now 
+   128 00000125 31C9                <1>     xor ecx, ecx  ;4 Possible Responses
+   129 00000127 488D3D9A010000      <1>     lea rdi, qword [.responses] ;Go to start of string
+   130 0000012E B401                <1>     mov ah, 01h ;STDIN without Console Echo
+   131 00000130 CD41                <1>     int 41h ;Get char in al
+   132 00000132 3C61                <1>     cmp al, "a" ;Chack if lowercase
+   133 00000134 7202                <1>     jb .uip1    ;If the value is below, ignore subtraction
+   134 00000136 2C20                <1>     sub al, "a"-"A"  ;Turn the char into uppercase
+   135                              <1> .uip1:
+   136 00000138 AE                  <1>     scasb   ;Compare char to list, offset gives return code
+   137 00000139 740F                <1>     je .validInput  ;If they are equal, ecx has return code
+   138 0000013B FFC1                <1>     inc ecx
+   139 0000013D 81F904000000        <1>     cmp ecx, 4
+   140 00000143 75F3                <1>     jne .uip1
+   141 00000145 E969FFFFFF          <1>     jmp .userInput ;If valid char not found, keep waiting 
+   142                              <1> .validInput:
+   143 0000014A 88C8                <1>     mov al, cl  ;Move the offset into .responses into al
+   144                              <1> ;Now check if the input is permitted
+   145 0000014C 3C02                <1>     cmp al, 2   ;Check if abort, abort always permitted
+   146 0000014E 7427                <1>     je .cehExit
+   147 00000150 84C0                <1>     test al, al ;Check if 0 => Ignore
+   148 00000152 740F                <1>     je .viIgnore
+   149 00000154 3C01                <1>     cmp al, 1   ;Check if 1 => Retry
+   150 00000156 7416                <1>     je .viRetry
+   151                              <1> .viFail:    ;Fallthrough for fail (al = 3)
+   152 00000158 F6C708              <1>     test bh, 8  ;Bit 3 is Fail bit
+   153 0000015B 0F8452FFFFFF        <1>     jz .userInput  ;If bit 3 is zero, prompt and get input again
+   154 00000161 EB14                <1>     jmp short .cehExit
+   155                              <1> .viIgnore:
+   156 00000163 F6C720              <1>     test bh, 20h    ;Bit 5 is Ignore bit
+   157 00000166 0F8447FFFFFF        <1>     jz .userInput
+   158 0000016C EB09                <1>     jmp short .cehExit
+   159                              <1> .viRetry:
+   160 0000016E F6C710              <1>     test bh, 10h    ;Bit 4 is Retry bit
+   161 00000171 0F843CFFFFFF        <1>     jz .userInput
+   162                              <1> .cehExit:
+   163 00000177 5E                  <1>     pop rsi
+   164 00000178 5F                  <1>     pop rdi
+   165 00000179 5A                  <1>     pop rdx
+   166 0000017A 59                  <1>     pop rcx
+   167 0000017B 5B                  <1>     pop rbx
+   168 0000017C 48CF                <1>     iretq
+   169                              <1> .charError:
+   170 0000017E B908000000          <1>     mov ecx, 8  ;8 chars in device name
+   171 00000183 4881C61A000000      <1>     add rsi, drvHdr.drvNam  ;Get the address of the Drive name
+   172                              <1> .ce1:
+   173 0000018A AC                  <1>     lodsb   ;Get a string char into al and inc rsi
+   174 0000018B 88C2                <1>     mov dl, al  ;Move char into dl
+   175 0000018D B402                <1>     mov ah, 02h
+   176 0000018F CD41                <1>     int 41h ;Print char
+   177 00000191 E2F7                <1>     loop .ce1   ;Keep looping until all 8 char device chars have been printed
+   178 00000193 E91BFFFFFF          <1>     jmp .userInput
+   179                              <1> 
+   180                              <1> .errorMsgTable: ;Each table entry is 18 chars long
+   181 00000198 57726974652050726F- <1>             db "Write Protect $   "       ;Error 0
+   181 000001A1 746563742024202020  <1>
+   182 000001AA 556E6B6E6F776E2055- <1>             db "Unknown Unit $    "       ;Error 1
+   182 000001B3 6E6974202420202020  <1>
+   183 000001BC 4E6F74205265616479- <1>             db "Not Ready $       "       ;Error 2
+   183 000001C5 202420202020202020  <1>
+   184 000001CE 556E6B6E6F776E2043- <1>             db "Unknown Command $ "       ;Error 3
+   184 000001D7 6F6D6D616E64202420  <1>
+   185 000001E0 446174612024202020- <1>             db "Data $            "       ;Error 4
+   185 000001E9 202020202020202020  <1>
+   186 000001F2 426164205265717565- <1>             db "Bad Request $     "       ;Error 5
+   186 000001FB 737420242020202020  <1>
+   187 00000204 5365656B2024202020- <1>             db "Seek $            "       ;Error 6
+   187 0000020D 202020202020202020  <1>
+   188 00000216 556E6B6E6F776E204D- <1>             db "Unknown Media $   "       ;Error 7
+   188 0000021F 656469612024202020  <1>
+   189 00000228 536563746F72204E6F- <1>             db "Sector Not Found $"       ;Error 8
+   189 00000231 7420466F756E642024  <1>
+   190 0000023A 4F7574204F66205061- <1>             db "Out Of Paper $    "       ;Error 9
+   190 00000243 706572202420202020  <1>
+   191 0000024C 577269746520466175- <1>             db "Write Fault $     "       ;Error A
+   191 00000255 6C7420242020202020  <1>
+   192 0000025E 52656164204661756C- <1>             db "Read Fault $      "       ;Error B
+   192 00000267 742024202020202020  <1>
+   193 00000270 47656E6572616C2046- <1>             db "General Failure $ "       ;Error C
+   193 00000279 61696C757265202420  <1>
+   194                              <1> 
+   195 00000282 64726976652024      <1> .drive      db "drive $"
+   196 00000289 6572726F7220726561- <1> .readmsg    db "error reading $"
+   196 00000292 64696E672024        <1>
+   197 00000298 6572726F7220777269- <1> .writemsg   db "error writing $"
+   197 000002A1 74696E672024        <1>
+   198 000002A7 0A0D24              <1> .crlf       db 0Ah, 0Dh, "$"
+   199 000002AA 41626F727424        <1> .abortmsg   db "Abort$" 
+   200 000002B0 49676E6F726524      <1> .ignoremsg  db "Ignore$"
+   201 000002B7 526574727924        <1> .retrymsg   db "Retry$"
+   202 000002BD 4661696C24          <1> .failmsg    db "Fail$"
+   203 000002C2 2C2024              <1> .betweenMsg db ", $"
+   204 000002C5 3F2024              <1> .endMsg     db "? $"
+   205 000002C8 49524146            <1> .responses  db "IRAF"   ;Abort Retry Ignore Fail
+    19                                  %include "./Source/Utils/COMMAND/Source/cmdLdr.asm"
+    20                              <1> cmdLdr:
+    21                              <1>     ;Resize Allocation
+    22 000002CC 49F7D8              <1>     neg r8  ;Convert r8 to -r8
+    23 000002CF 498D98[29030000]    <1>     lea rbx, qword [endOfAlloc + r8 + 11h]    ;Get bytes for CMD.COM
+    24 000002D6 C1EB04              <1>     shr ebx, 4  ;Convert to paragraphs
+    25 000002D9 B44A                <1>     mov ah, 4Ah ;Realloc
+    26 000002DB 49F7D8              <1>     neg r8  ;Convert -r8 to r8
+    27 000002DE CD41                <1>     int 41h
+    28                              <1> ;Open and parse AUTOEXEC.BAT. Build Environment here
+    29                              <1> ;Finish by printing INIT string.
+    30 000002E0 488D1531000000      <1>     lea rdx, initString
+    31 000002E7 B409                <1>     mov ah, 09h
+    32 000002E9 CD41                <1>     int 41h ;Print init string
+    33 000002EB E910FDFFFF          <1>     jmp commandStart
+    34                              <1> ;Static Data Here
+    35                              <1> masterEnv:
+    36 000002F0 5F3A434F4D4D414E44- <1>     db "_:COMMAND.COM",0
+    36 000002F9 2E434F4D00          <1>
+    37 000002FE 504154483D00        <1>     db "PATH=",0
+    38 00000304 202020202020202020- <1>     db ($ - masterEnv) dup (" ")    ;Pad the environment with spaces
+    38 0000030D 202020202020202020- <1>
+    38 00000316 2020                <1>
+    39                              <1> endOfAlloc:
+    40                              <1> initString: 
+    41 00000318 0D0A536369656E7469- <1>     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
+    41 00000321 66696320436F6D7075- <1>
+    41 0000032A 746572205265736561- <1>
+    41 00000333 726368285229205343- <1>
+    41 0000033C 502F444F5328522920- <1>
+    41 00000345 56657273696F6E2031- <1>
+    41 0000034E 2E300D0A            <1>
+    42 00000352 202020202020202020- <1>     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
+    42 0000035B 20284329436F707972- <1>
+    42 00000364 696768742053636965- <1>
+    42 0000036D 6E746966696320436F- <1>
+    42 00000376 6D7075746572205265- <1>
+    42 0000037F 736572616368203230- <1>
+    42 00000388 32322E0D0A24        <1>
+    42          ------------------  <1>  info: assembly required 1+2+2 passes
 

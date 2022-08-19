@@ -10,27 +10,25 @@ execOverlay equ 3
 
 struc execFrame
     .oldRBP     resq 1  
-    .bSubFunc   resb 1  ;Subfunction number
-    .wProgHdl   resb 2  ;File handle number for executable file
-    .wEnvSize   resb 2  ;Size of the environment block
-    .wNameLen   resb 2  ;Needs to be less than 64 but welp
-                resb 1  ;Alignment byte
-    .rbx:
+    .bSubFunc   resq 1  ;Subfunction number
+    .wProgHdl   resq 1  ;File handle number for executable file
+    .wEnvSize   resq 1  ;Size of the environment block
+    .wNameLen   resq 1  ;Needs to be less than 64 but welp
+                ;resb 1  ;Alignment byte
     .pParam     resq 1  ;Parameter list pointer
-    .rdx:
     .pProgname  resq 1  ;Ptr to ASCIIZ program name
 
     .pEnvBase   resq 1  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
     .pPSPBase   resq 1  ;Ptr to new PSP base address
     .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
-    .dProgSize  resd 1  ;Program size is saved here, PSP included.
+    .dProgSize  resq 1  ;Program size is saved here, PSP included.
 .pProgEP:   ;Program EP, recycle this qword
-    .dCOFFhdr   resd 1  ;Offset in file to COFF header. Set to 0 for COM
-    .wNumSeg    resw 1  ;Number of segments, consider reusing NameLen
-                resw 1  ;Alignment reservation
+    .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
+    .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
+                ;resw 1  ;Alignment reservation
 .qRelocVal:  ;Used when computing relocations, Rebasing factor
-    .dFilePtr   resd 1  ;Keep of track of where in file we are
-                resd 1  ;Alignment reservation, DO NOT USE FOR ANYTHING
+    .dFilePtr   resq 1  ;Keep of track of where in file we are
+                ;resd 1  ;Alignment reservation, DO NOT USE FOR ANYTHING
 endstruc
 
 ;Possible blocks to be pointed to by rbx

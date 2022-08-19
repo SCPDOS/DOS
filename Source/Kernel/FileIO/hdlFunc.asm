@@ -700,6 +700,14 @@ buildSFTEntry:
     movzx eax, word [entry]     ;Get 32 byte offset into sector for directory
     shr al, 5   ;Divide by 5 to get directory entry number
     mov byte [rdi + sft.bNumDirEnt], al
+    mov eax, dword [rsi + fatDirEntry.fileSize] ;Get the filesize
+    mov dword [rdi + sft.dFileSize], eax
+    movzx eax, word [rsi + fatDirEntry.fstClusLo]   ;Get first cluster
+    movzx edx, word [rsi + fatDirEntry.fstClusHi]
+    shl edx, 10h
+    or eax, edx
+    mov dword [rdi + sft.dStartClust], eax
+
     xor eax, eax
     ;Now set DeviceInfo to drive number and get the dpb for this disk file
     mov al, byte [workingDrv]
@@ -1081,6 +1089,7 @@ readDiskFile:
     jz readExitOk  ;Return with zero bytes transferred
     mov edx, dword [currClustF] ;Use edx as the counter reg
     mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
+    mov dword [currClustD], eax
     test eax, eax   ;If starting cluster is zero, exit no bytes read
     jz readExitOk
     xor ebx, ebx    ;Use ebx to contain the old cluster number
@@ -1130,6 +1139,7 @@ readDiskFile:
     jz readExitOk ;Exit if so!
     call getNextSectorOfFile    ;Get the next sector of the file
     jc .badExit
+    ;If ZF=ZE then CurrClustF has last cluster
     jz readExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
     ;Else repeat
     ;currSectD has been updated, we now set currByteS = 0
