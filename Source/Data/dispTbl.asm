@@ -115,6 +115,28 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw muxGetIntVector - mDispTbl   ;AX=1202h, Get interrupt Vector
     dw getDosDataSeg - mDispTbl ;AX=1203h, Get DOS data segment pointer
     dw swapPathSeparator - mDispTbl ; AX=1204h, Normalise path separator
+    dw charOut_B.in - mDispTbl  ;AX=1205h, Output Char to STDOUT
+    dw criticalDOSError - mDispTbl ;AX=1206h, Invoke Critical Error
+    dw makeBufferMostRecentlyUsed - mDispTbl    ;AX=1207h
+    dw decrementOpenCount - mDispTbl    ;AX=1208h, Decrement SFT open count
+    dw flushAndFreeBuffer - mDispTbl    ;AX=1209h, Flush and Free disk buffer
+    dw noOp - mDispTbl  ;AX=120Ah, Perform Critical error Interrupt...
+    dw noOp - mDispTbl  ;AX=120Bh, Signal Sharing Violation to User
+    dw noOp - mDispTbl  ;AX=120Ch, Open devce and set SFT owner
+    dw getDateAndTimeOld - mDispTbl ;AX=120Dh, Get Date and Time words
+    dw markBuffersAsUnreferenced - mDispTbl ;AX=120Eh
+    dw makeBufferMostRecentlyUsedGetNext - mDispTbl ;AX=120Fh
+    dw findUnreferencedBuffer - mDispTbl ;AX=1210h
+    dw normaliseFileName - mDispTbl ;AX=1211h
+    dw strlen - mDispTbl ;AX=1212h, Get Length of ASCIIZ string
+    dw uppercaseChar - mDispTbl ;AX=1213h
+    dw compareFarPointers - mDispTbl   ;AX=1214h
+    dw flushBuffer - mDispTbl   ;AX=1215h
+    dw getSFTPtrfromSFTNdx - mDispTbl   ;AX=1216h
+    dw getCDSforDrive - mDispTbl    ;AX=1217h
+    dw getUserRegs - mDispTbl   ;AX=1218h
+    dw getCDS - mDispTbl    ;AX=1219h
+    dw getDrvLetterFromPath - mDispTbl ;AX=121Ah
 mDispTblL   equ     $ - mDispTbl
 
 serverDispTbl:  ;Server Dispatch functions

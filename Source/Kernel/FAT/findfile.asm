@@ -427,7 +427,7 @@ setupFFBlock:
     pop rax
     return
 
-getDrvLetterFromPath:
+getDrvLetterFromPath:   ;Int 4Fh, AX=121Ah
 ;Gets the drive letter for the path in al
 ;Input: rsi = Buffer to process
 ;Output: If al = 0, rsi NOT incremented by 2. Else, rsi incremented by 2 

@@ -22,7 +22,7 @@ charIn_BE:     ;ah = 01h
 charOut_B:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     mov al, dl
-.in:  ;Internal function Entry Point, with char in al
+.in:  ;Internal function Entry Point, with char in al, also Int 4Fh, AX=1205h
     cmp al, asciiCaret
     jb .control
     cmp al, DEL ;DEL char?

@@ -1599,7 +1599,7 @@ findFreeSFT:
     pop rbx
     clc
     return
-getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216
+getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
 ;Return a pointer to the SFT entry in rdi
 ;Input: rbx = Valid SFT ndx number (byte, zero extended)
 ;Output: rdi = SFT pointer
