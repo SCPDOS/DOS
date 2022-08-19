@@ -714,8 +714,8 @@ buildSFTEntry:
     movsq   ;Copy over the space padded name to the sft
     movsw
     movsb
-    ;SFT filled, now we can return
-    jmp .exit
+    ;SFT filled, now we open on the driver if it supports it
+    jmp .openDriver
 .createFile:
     ;Create a dummy dir entry in the SDA to swap into the disk buffer
     ;rsi points to current sda entry
@@ -775,7 +775,6 @@ buildSFTEntry:
     ;Now we can jump to common. qword [tempSect] and byte [entry] setup
     call getDiskDirectoryEntry  ;And setup vars! rsi points to disk buffer
     jmp .createCommon
-
 .openProc:
     ;Here if Opening a file.
     test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
@@ -787,12 +786,28 @@ buildSFTEntry:
     mov eax, errAccDen
     jmp short .exit ;CF already set
 .notBadCharDevName:
+    mov rsi, qword [currentSFT]
     mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
     movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
     and bl, 01Fh    ;Clear bits 5 6 and 7
-    or bl, charDevBinary | charDevNoEOF ;Set binary mode and noEOF on read
+    or bl, devCharDev | charDevBinary | charDevNoEOF ;Set binary & noEOF on read
     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
     mov dword [rsi + sft.dFileSize], 0  ;No size
+.openDriver:
+    mov rdi, qword [currentSFT]
+    mov rsi, qword [rdi + sft.qPtr] ;Get the ptr here
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    jnz .charDevOpen
+    movzx eax, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
+    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
+.charDevOpen:
+    test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
+    jnz .exit  ;If not, immediately jump to exit, all is well
+    ;rsi has device driver ptr for device, make request
+    push rbx
+    call primReqOpenSetup  ;rbx gets header ptr, rsi has driver ptr
+    call goDriver   ;Make request
+    pop rbx
 .exit:
     pop rbp
     return
