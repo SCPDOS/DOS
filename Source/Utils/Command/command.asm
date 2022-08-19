@@ -1,5 +1,5 @@
 ;COMMAND.COM main file
-[map all ./Listings/SCPDOS/scpdos.map]
+[map all ./Source/Utils/COMMAND/Listings/command.map]
 [DEFAULT REL]
 BITS 64
 ;Defs, strucs and macros
