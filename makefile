@@ -34,3 +34,7 @@ fresh:
 bios:
 	dd if=./Binaries/scpbios.bin of=./Images/MyDiskDOS.ima bs=512 seek=33 conv=notrunc
 	cp ./Images/MyDiskDOS.ima ./Images/MyDiskDOSMSD.ima
+
+#Build COMMAND.COM
+command:
+	nasm ./Source/Utils/COMMAND/command.asm -o ./Source/Utils/COMMAND/Binaries/command.com -f bin -l ./Source/Utils/COMMAND/Listings/command.lst -O0v
