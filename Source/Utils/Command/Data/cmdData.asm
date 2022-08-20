@@ -1,8 +1,7 @@
 ;Static Data Area for COMMAND.COM    
 startLbl:
-    breakpoint
     jmp cmdLdr
-basicPrompt: db "_>$"
+basicPrompt: db CR,LF,"_>$"
 currentDrv  db 0  ;Current Drive    
 cmdLinePtr  dq -1   ;Set to use the PSP tail as the command line
 functionTable:

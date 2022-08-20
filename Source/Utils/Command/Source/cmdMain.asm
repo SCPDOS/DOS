@@ -21,7 +21,7 @@ commandStart:
     int 41h
     mov byte [currentDrv], al   ;Save drv number
     add al, "A"
-    mov byte [basicPrompt], al  ;Save letter in prompt string
+    mov byte [basicPrompt + 2], al  ;Save letter in prompt string
     lea rdx, basicPrompt
     mov ah, 09h ;Print String
     int 41h
