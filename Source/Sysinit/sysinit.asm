@@ -630,8 +630,8 @@ initialCDSWritten:
     add rbx, psp.dta
     mov qword fs:[currentDTA], rbx    ;Save current DTA
     pop rbx
-    mov word [rbx + psp.return], 0CD40h ;DOS return function
-    mov word [rbx + psp.unixEntry], 0CD41h  ;Int 41h!
+    mov word [rbx + psp.return], 040CDh ;DOS return function
+    mov word [rbx + psp.unixEntry], 041CDh  ;Int 41h!
     mov byte [rbx + psp.unixEntry + 2], 0CBh    ;Return!
     mov qword [rbx + psp.allocSize], 0    ;Size of allocation (dummy value)
     mov qword [rbx + psp.parentPtr], rbx ;Save self as parent Process

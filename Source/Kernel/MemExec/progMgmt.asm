@@ -93,8 +93,8 @@ copyPSP:      ;ah = 26h
     mov rax, rbx    ;Move vector number to rax
     stosq   ;Move rdi to next entry and store
     ;Now we add the additional useful bits... just in case they are damaged
-    mov word [rdx + psp.return], 0CD40h  ;Int 40h
-    mov word [rdx + psp.unixEntry], 0CD41h  
+    mov word [rdx + psp.return], 040CDh  ;Int 40h
+    mov word [rdx + psp.unixEntry], 041CDh  
     mov byte [rdx + psp.unixEntry + 2], 0CBh ;Return
     return
 
