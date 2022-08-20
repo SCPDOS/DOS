@@ -1101,7 +1101,7 @@
     12                                  %include "./Source/Utils/COMMAND/Data/cmdData.asm"
     13                              <1> ;Static Data Area for COMMAND.COM    
     14                              <1> startLbl:
-    15 00000000 E9AD030000          <1>     jmp cmdLdr
+    15 00000000 E9AA030000          <1>     jmp cmdLdr
     16 00000005 0D0A5F3E24          <1> basicPrompt: db CR,LF,"_>$"
     17 0000000A 00                  <1> currentDrv  db 0  ;Current Drive    
     18 0000000B FFFFFFFFFFFFFFFF    <1> cmdLinePtr  dq -1   ;Set to use the PSP tail as the command line
@@ -1450,95 +1450,93 @@
    203                              <1> 
    204                              <1> int43h:
    205 00000381 F9                  <1>     stc ;Set CF to kill the task
-   206                              <1>     breakpoint
-    79 00000382 6687DB              <2> xchg bx, bx
-   207 00000385 C20800              <1>     ret 8   ;Return and pop CS off the stack
+   206 00000382 C20800              <1>     ret 8   ;Return and pop CS off the stack
     16                                  %include "./Source/Utils/COMMAND/Data/cmdEnv.asm"
     17                              <1>     
     18                              <1> masterEnv:  ;Yeet this is this is a child command processor
-    19 00000388 5F3A434F4D4D414E44- <1>     db "_:COMMAND.COM",0
-    19 00000391 2E434F4D00          <1>
-    20 00000396 504154483D0000      <1>     db "PATH=",0,0
-    21 0000039D 202020202020202020- <1>     db ($ - masterEnv) dup (" ")    ;Pad the environment with NOPs
-    21 000003A6 202020202020202020- <1>
-    21 000003AF 202020              <1>
+    19 00000385 5F3A434F4D4D414E44- <1>     db "_:COMMAND.COM",0
+    19 0000038E 2E434F4D00          <1>
+    20 00000393 504154483D0000      <1>     db "PATH=",0,0
+    21 0000039A 202020202020202020- <1>     db ($ - masterEnv) dup (" ")    ;Pad the environment with NOPs
+    21 000003A3 202020202020202020- <1>
+    21 000003AC 202020              <1>
     22                              <1> endOfAlloc: ;Symbol to find the start of where I can yeet 
     17                                  %include "./Source/Utils/COMMAND/Source/cmdLdr.asm"
     18                              <1> cmdLdr:
     19                              <1> ;First store self as parent in the PSP, to prevent accidental closure
-    20 000003B2 498B4022            <1>     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
-    21 000003B6 4D894022            <1>     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
-    22 000003BA 48890552FCFFFF      <1>     mov qword [realParent], rax ;Preserve the real parent address
+    20 000003AF 498B4022            <1>     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
+    21 000003B3 4D894022            <1>     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
+    22 000003B7 48890555FCFFFF      <1>     mov qword [realParent], rax ;Preserve the real parent address
     23                              <1> ;Setup Int 43h and Int 44h
-    24 000003C1 488D1526FDFFFF      <1>     lea rdx, critErrorHandler
-    25 000003C8 4989501A            <1>     mov qword [r8 + psp.oldInt44h], rdx
-    26 000003CC B844250000          <1>     mov eax, 2544h
-    27 000003D1 CD41                <1>     int 41h
-    28 000003D3 488D15A7FFFFFF      <1>     lea rdx, int43h
-    29 000003DA 49895012            <1>     mov qword [r8 + psp.oldInt43h], rdx
-    30 000003DE B843250000          <1>     mov eax, 2543h
-    31 000003E3 CD41                <1>     int 41h
-    32 000003E5 488D15ADFCFFFF      <1>     lea rdx, applicationReturn
-    33 000003EC 4989500A            <1>     mov qword [r8 + psp.oldInt42h], rdx
-    34 000003F0 B842250000          <1>     mov eax, 2542h
-    35 000003F5 CD41                <1>     int 41h
+    24 000003BE 488D1529FDFFFF      <1>     lea rdx, critErrorHandler
+    25 000003C5 4989501A            <1>     mov qword [r8 + psp.oldInt44h], rdx
+    26 000003C9 B844250000          <1>     mov eax, 2544h
+    27 000003CE CD41                <1>     int 41h
+    28 000003D0 488D15AAFFFFFF      <1>     lea rdx, int43h
+    29 000003D7 49895012            <1>     mov qword [r8 + psp.oldInt43h], rdx
+    30 000003DB B843250000          <1>     mov eax, 2543h
+    31 000003E0 CD41                <1>     int 41h
+    32 000003E2 488D15B0FCFFFF      <1>     lea rdx, applicationReturn
+    33 000003E9 4989500A            <1>     mov qword [r8 + psp.oldInt42h], rdx
+    34 000003ED B842250000          <1>     mov eax, 2542h
+    35 000003F2 CD41                <1>     int 41h
     36                              <1> ;Determine if this is the master copy of COMMAND.COM
     37                              <1> ;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.
-    38 000003F7 B84E350000          <1>     mov eax, 354Eh  ;Get int 4Eh address
-    39 000003FC CD41                <1>     int 41h
-    40 000003FE 4889DA              <1>     mov rdx, rbx    ;Save the pointer in rdx
-    41 00000401 B84D350000          <1>     mov eax, 354Dh  ;Get int 4Dh address
-    42 00000406 CD41                <1>     int 41h
-    43 00000408 4839DA              <1>     cmp rdx, rbx    ;If these are equal then this is first boot!
-    44 0000040B 7540                <1>     jne .skipMaster
+    38 000003F4 B84E350000          <1>     mov eax, 354Eh  ;Get int 4Eh address
+    39 000003F9 CD41                <1>     int 41h
+    40 000003FB 4889DA              <1>     mov rdx, rbx    ;Save the pointer in rdx
+    41 000003FE B84D350000          <1>     mov eax, 354Dh  ;Get int 4Dh address
+    42 00000403 CD41                <1>     int 41h
+    43 00000405 4839DA              <1>     cmp rdx, rbx    ;If these are equal then this is first boot!
+    44 00000408 7540                <1>     jne .skipMaster
     45                              <1> ;Ok so we are master command.com
-    46 0000040D 488D1550000000      <1>     lea rdx, strtmsg
-    47 00000414 B409                <1>     mov ah, 09h
-    48 00000416 CD41                <1>     int 41h
+    46 0000040A 488D1550000000      <1>     lea rdx, strtmsg
+    47 00000411 B409                <1>     mov ah, 09h
+    48 00000413 CD41                <1>     int 41h
     49                              <1> ;Now myself as the real parent
-    50 00000418 4C8905F4FBFFFF      <1>     mov qword [realParent], r8
+    50 00000415 4C8905F7FBFFFF      <1>     mov qword [realParent], r8
     51                              <1> ;Set master environment as mine
-    52 0000041F 488D0562FFFFFF      <1>     lea rax, masterEnv
-    53 00000426 4989403E            <1>     mov qword [r8 + psp.envPtr], rax
+    52 0000041C 488D0562FFFFFF      <1>     lea rax, masterEnv
+    53 00000423 4989403E            <1>     mov qword [r8 + psp.envPtr], rax
     54                              <1> ;Set current Drive in COMSPEC
-    55 0000042A B019                <1>     mov al, 19h ;Get current Drive
-    56 0000042C CD41                <1>     int 41h
-    57 0000042E 0441                <1>     add al, "A"
-    58 00000430 880552FFFFFF        <1>     mov byte [masterEnv], al
+    55 00000427 B019                <1>     mov al, 19h ;Get current Drive
+    56 00000429 CD41                <1>     int 41h
+    57 0000042B 0441                <1>     add al, "A"
+    58 0000042D 880552FFFFFF        <1>     mov byte [masterEnv], al
     59                              <1> ;Set Int 4Eh up
-    60 00000436 488D15A6FCFFFF      <1>     lea rdx, parseCommandLine
-    61 0000043D B84E250000          <1>     mov eax, 254Eh ;Set this as Int 4Eh
-    62 00000442 CD41                <1>     int 41h
+    60 00000433 488D15A9FCFFFF      <1>     lea rdx, parseCommandLine
+    61 0000043A B84E250000          <1>     mov eax, 254Eh ;Set this as Int 4Eh
+    62 0000043F CD41                <1>     int 41h
     63                              <1> ;Now, open and parse AUTOEXEC.BAT. Build Master Environment here
     64                              <1>     
-    65 00000444 488D1D67FFFFFF      <1>     lea rbx, endOfAlloc ;Save the Master Environment
-    66 0000044B EB07                <1>     jmp short .printInit
+    65 00000441 488D1D67FFFFFF      <1>     lea rbx, endOfAlloc ;Save the Master Environment
+    66 00000448 EB07                <1>     jmp short .printInit
     67                              <1> .skipMaster:
-    68 0000044D 488D1D34FFFFFF      <1>     lea rbx, masterEnv  ;This is the base address to jettison
+    68 0000044A 488D1D34FFFFFF      <1>     lea rbx, masterEnv  ;This is the base address to jettison
     69                              <1> .printInit:
     70                              <1> ;Finish by printing INIT string.
-    71 00000454 488D151F000000      <1>     lea rdx, initString
-    72 0000045B B409                <1>     mov ah, 09h
-    73 0000045D CD41                <1>     int 41h ;Print init string
-    74 0000045F E925FCFFFF          <1>     jmp commandStart    ;We jump with rbx = base address to jettison
+    71 00000451 488D151F000000      <1>     lea rdx, initString
+    72 00000458 B409                <1>     mov ah, 09h
+    73 0000045A CD41                <1>     int 41h ;Print init string
+    74 0000045C E928FCFFFF          <1>     jmp commandStart    ;We jump with rbx = base address to jettison
     75                              <1> ;Loader Data here
-    76 00000464 5374617274696E6720- <1> strtmsg: db "Starting SCP/DOS...",0Ah,0Dh,"$"
-    76 0000046D 5343502F444F532E2E- <1>
-    76 00000476 2E0A0D24            <1>
+    76 00000461 5374617274696E6720- <1> strtmsg: db "Starting SCP/DOS...",0Ah,0Dh,"$"
+    76 0000046A 5343502F444F532E2E- <1>
+    76 00000473 2E0A0D24            <1>
     77                              <1> initString: 
-    78 0000047A 0D0A536369656E7469- <1>     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
-    78 00000483 66696320436F6D7075- <1>
-    78 0000048C 746572205265736561- <1>
-    78 00000495 726368285229205343- <1>
-    78 0000049E 502F444F5328522920- <1>
-    78 000004A7 56657273696F6E2031- <1>
-    78 000004B0 2E300D0A            <1>
-    79 000004B4 202020202020202020- <1>     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
-    79 000004BD 20284329436F707972- <1>
-    79 000004C6 696768742053636965- <1>
-    79 000004CF 6E746966696320436F- <1>
-    79 000004D8 6D7075746572205265- <1>
-    79 000004E1 736572616368203230- <1>
-    79 000004EA 32322E0D0A24        <1>
+    78 00000477 0D0A536369656E7469- <1>     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
+    78 00000480 66696320436F6D7075- <1>
+    78 00000489 746572205265736561- <1>
+    78 00000492 726368285229205343- <1>
+    78 0000049B 502F444F5328522920- <1>
+    78 000004A4 56657273696F6E2031- <1>
+    78 000004AD 2E300D0A            <1>
+    79 000004B1 202020202020202020- <1>     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
+    79 000004BA 20284329436F707972- <1>
+    79 000004C3 696768742053636965- <1>
+    79 000004CC 6E746966696320436F- <1>
+    79 000004D5 6D7075746572205265- <1>
+    79 000004DE 736572616368203230- <1>
+    79 000004E7 32322E0D0A24        <1>
     79          ------------------  <1>  info: assembly required 1+2+2 passes
 
