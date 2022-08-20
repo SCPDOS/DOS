@@ -3,7 +3,19 @@ cmdLdr:
     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
     mov qword [realParent], rax ;Preserve the real parent address
-
+;Setup Int 43h and Int 44h
+    lea rdx, critErrorHandler
+    mov qword [r8 + psp.oldInt44h], rdx
+    mov eax, 2544h
+    int 41h
+    lea rdx, int43h
+    mov qword [r8 + psp.oldInt43h], rdx
+    mov eax, 2543h
+    int 41h
+    lea rdx, applicationReturn
+    mov qword [r8 + psp.oldInt42h], rdx
+    mov eax, 2542h
+    int 41h
 ;Determine if this is the master copy of COMMAND.COM
 ;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.
     mov eax, 354Eh  ;Get int 4Eh address
@@ -27,7 +39,12 @@ cmdLdr:
     int 41h
     add al, "A"
     mov byte [masterEnv], al
-;Open and parse AUTOEXEC.BAT. Build Master Environment here
+;Set Int 4Eh up
+    lea rdx, parseCommandLine
+    mov eax, 254Eh ;Set this as Int 4Eh
+    int 41h
+;Now, open and parse AUTOEXEC.BAT. Build Master Environment here
+    
     lea rbx, endOfAlloc ;Save the Master Environment
     jmp short .printInit
 .skipMaster:

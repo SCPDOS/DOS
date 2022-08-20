@@ -164,7 +164,8 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rdx, rdi    ;Save in rdx
     mov rbx, qword [rdi + psp.parentPtr]
     cmp rbx, rdi    ;Check if the application is it's own parent
-    rete            ;If it is, simply return (al has errorLevel)
+    ;rete            ;If it is, simply return (al has errorLevel)
+    je .exit
 ; Step 3
     call vConRetDriver  ;Always reset the driver flag
 ; Step 3.5
@@ -245,14 +246,14 @@ terminateClean:    ;ah = 4Ch, EXIT
     call setIntVector
     pop rdx
 ;Step 8
-    push rdx    ;Save the return address on the stack
-    push rbx    ;Save the parent PSP address
+.exit:
     mov ah, 82h ;Cancel all critical sections 0-7
     int 4ah
-    pop rbx
-    pop rdx
 
     cli
+
+    mov rdx, qword [rbx + psp.oldInt42h]
+    mov rbx, qword [currentPSP]
     ;Make the parent register frame the current one
     ;Make RSP point to user stack from parent entry to exec
     mov rsp, qword [rbx + psp.rspPtr]
