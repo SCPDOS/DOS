@@ -886,10 +886,6 @@ noCfg:
     mov ah, 4Ah
     int 41h
     
-;Resizing complete, Print Welcome Message
-    lea rdx, qword [strtmsg]   ;Get the absolute address of message
-    mov ah, 09h
-    int 41h
     %if DEBUG && ALLOCTEST
 ;Test Allocation, Growth and Deallocation
     mov r15, qword fs:[currentPSP]
@@ -1066,7 +1062,6 @@ noCmdCom:
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
-strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
 mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
 badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"

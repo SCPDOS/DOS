@@ -1,0 +1,6 @@
+    
+masterEnv:
+    db "_:COMMAND.COM",0
+    db "PATH=",0,0
+    db ($ - masterEnv) dup (" ")    ;Pad the environment with NOPs
+endOfAlloc: ;Symbol to find the start of where I can yeet 

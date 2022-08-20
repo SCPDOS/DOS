@@ -1,0 +1,11 @@
+dir:
+chdir:
+mkdir:
+rmdir:
+erase:
+date:
+time:
+copy:
+ctty:
+cls:
+break:

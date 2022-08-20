@@ -1,9 +1,16 @@
 ;Initial Portion, jumped past data asection
 commandStart:
-    mov word [cmdLine], 0080h ;Accept up to 128 bytes
+    ;Resize Allocation
+    neg r8  ;Convert r8 to -r8
+    lea rbx, qword [endOfAlloc + r8 + 11h]    ;Get bytes for CMD.COM
+    shr ebx, 4  ;Convert to paragraphs
+    mov ah, 4Ah ;Realloc
+    neg r8  ;Convert -r8 to r8
+    mov rax, qword [cmdLinePtr]
+    mov word [rax], 0080h ;Accept up to 128 bytes
 .inputMain:
     call .printPrompt
-    lea rdx, cmdLine
+    mov rdx, qword [cmdLinePtr]
     mov ah, 0Ah  ;Buffered input
     int 41h
     jmp short .inputMain
