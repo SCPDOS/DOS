@@ -1,12 +1,11 @@
 cmdLdr:
-    mov al, 19h ;Get current Drive
-    int 41h
-    add al, "A"
-    mov byte [masterEnv], al
-    lea rax, qword [r8 + psp.dta]
-    mov qword [cmdLinePtr], rax
-;Check if Int 4Eh has the same address as Int 4Dh. If so, 
-; it is as when DOS initially was run.
+;First store self as parent in the PSP, to prevent accidental closure
+    mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
+    mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
+    mov qword [realParent], rax ;Preserve the real parent address
+
+;Determine if this is the master copy of COMMAND.COM
+;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.
     mov eax, 354Eh  ;Get int 4Eh address
     int 41h
     mov rdx, rbx    ;Save the pointer in rdx
@@ -14,16 +13,31 @@ cmdLdr:
     int 41h
     cmp rdx, rbx    ;If these are equal then this is first boot!
     jne .skipMaster
+;Ok so we are master command.com
     lea rdx, strtmsg
     mov ah, 09h
     int 41h
+;Now myself as the real parent
+    mov qword [realParent], r8
+;Set master environment as mine
+    lea rax, masterEnv
+    mov qword [r8 + psp.envPtr], rax
+;Set current Drive in COMSPEC
+    mov al, 19h ;Get current Drive
+    int 41h
+    add al, "A"
+    mov byte [masterEnv], al
 ;Open and parse AUTOEXEC.BAT. Build Master Environment here
+    lea rbx, endOfAlloc ;Save the Master Environment
+    jmp short .printInit
 .skipMaster:
+    lea rbx, masterEnv  ;This is the base address to jettison
+.printInit:
 ;Finish by printing INIT string.
     lea rdx, initString
     mov ah, 09h
     int 41h ;Print init string
-    jmp commandStart    ;Once we jump, we then jettison the loader too
+    jmp commandStart    ;We jump with rbx = base address to jettison
 ;Loader Data here
 strtmsg: db "Starting SCP/DOS...",0Ah,0Dh,"$"
 initString: 

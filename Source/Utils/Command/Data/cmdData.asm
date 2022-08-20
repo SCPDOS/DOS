@@ -4,6 +4,7 @@ startLbl:
 basicPrompt: db CR,LF,"_>$"
 currentDrv  db 0  ;Current Drive    
 cmdLinePtr  dq -1   ;Set to use the PSP tail as the command line
+realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here
 functionTable:
 ;Use Pascal strings with each row of hte table having three columns:
 ; Col 1, BYTE, Length of command
@@ -53,3 +54,6 @@ functionTable:
 
     db 5, "BREAK"
     dw break - startLbl
+
+    db 7, "RENAME"
+    dw rename - startLbl

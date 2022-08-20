@@ -94,7 +94,8 @@ copyPSP:      ;ah = 26h
     stosq   ;Move rdi to next entry and store
     ;Now we add the additional useful bits... just in case they are damaged
     mov word [rdx + psp.return], 0CD40h  ;Int 40h
-    mov dword [rdx + psp.unixEntry], 0CD40CB00h  ;Overlay next byte for prevPSP
+    mov word [rdx + psp.unixEntry], 0CD41h  
+    mov byte [rdx + psp.unixEntry + 2], 0CBh ;Return
     return
 
 terminateStayRes:  ;ah = 31h

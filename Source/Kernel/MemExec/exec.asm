@@ -486,6 +486,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rdx
     ;Now set Current PSP to our PSP and set current DTA to command line
     mov qword [currentPSP], rdx
+    call dosCrit1Enter
+    call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
+
     lea rdi, qword [rdx + psp.dta] ;Point to default dta...
     mov qword [currentDTA], rdi ;and set it!
     ;Now We need to copy over the command line and fcbs to the PSP
@@ -609,7 +612,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     push rax
     ;Only one of the two below addresses may be non zero at any one time!
     ;This is because they are set up at separate points in the routine!
-    mov rax, qword [rbp - execFrame.pProgBase]
+    mov rax, qword [rbp - execFrame.pPSPBase]
     call .writeArenaHeaderOwner
     mov rax, qword [rbp - execFrame.pEnvBase]
     call .writeArenaHeaderOwner
