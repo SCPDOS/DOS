@@ -187,5 +187,5 @@ critErrorHandler:   ;Int 44h
 .responses  db "IRAF"   ;Abort Retry Ignore Fail
 
 int43h:
-    stc ;Set CF to kill the task
-    ret 8   ;Return and pop CS off the stack
+    stc     ;Set CF to kill the task
+    ret 8   ;Return and pop CS off the stack to indicate we wanna kill task

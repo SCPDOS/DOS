@@ -7,6 +7,7 @@ commandStart:
     shr ebx, 4  ;Convert to paragraphs
     mov ah, 4Ah ;Realloc
     neg r8  ;Convert -r8 to r8
+    int 41h
 applicationReturn:  ;Return point from a task
 commandMain:
 ;Setup Commandline
