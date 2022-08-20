@@ -55,8 +55,9 @@ openFileHdl:       ;ah = 3Dh, handle function
     test byte [parDirExist], -1 ;If creating, check if parent path was found
     jnz .proceedCall    ;If so, proceed.
 .badPathspec:
+    pop rax
     mov eax, errFnf
-    jmp .exitBad    ;Need to deallocate the SFT before returning
+    jmp .exitBad2   ;Need to deallocate the SFT before returning
 .proceedCall:
 ;If the pathspec exists, recall that for create, we truncate.
     xor ecx, ecx    ;Use ecx to carry device info word

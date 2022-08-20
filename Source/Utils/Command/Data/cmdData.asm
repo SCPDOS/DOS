@@ -1,10 +1,14 @@
 ;Static Data Area for COMMAND.COM    
 startLbl:
     jmp cmdLdr
-basicPrompt: db CR,LF,"_>$"
-currentDrv  db 0  ;Current Drive    
+crlf        db CR,LF,"$"
+basicPrompt db "_>$"
+returnCode  dw 0    ;Return Code from a child process
+currentDrv  db 0    ;Current Drive    
 cmdLinePtr  dq -1   ;Set to use the PSP tail as the command line
 realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here
+sysVars     dq 0    ;Ptr to DOS sysvars
+numHdls     dw 20   ;Get number of handles permitted, hardcoded in this version
 functionTable:
 ;Use Pascal strings with each row of hte table having three columns:
 ; Col 1, BYTE, Length of command

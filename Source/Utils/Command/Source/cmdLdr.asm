@@ -1,5 +1,15 @@
 cmdLdr:
-;First store self as parent in the PSP, to prevent accidental closure
+;First check if the version is ok. If not, return.
+    mov ah, 30h
+    int 41h
+    cmp al, 01h ;Version 1
+    jbe .okVersion
+    lea rdx, badVerStr
+    mov ah, 09h
+    int 41h
+    int 40h ;Exit to caller or DOS to print bad command interpreter line
+.okVersion:
+;If ok then store self as parent in the PSP, to prevent accidental closure
     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
     mov qword [realParent], rax ;Preserve the real parent address
@@ -16,7 +26,14 @@ cmdLdr:
     mov qword [r8 + psp.oldInt42h], rdx
     mov eax, 2542h
     int 41h
-;Determine if this is the master copy of COMMAND.COM
+;Get a pointer to DOS Sysvars
+    mov ah, 52h ;Get sysvars
+    int 41h
+    mov qword [sysVars], rbx    ;Save ptr to sysVars
+;Call for internationalisation data ...
+;... but not for now :D 
+
+;Now determine if this is the master copy of COMMAND.COM
 ;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.
     mov eax, 354Eh  ;Get int 4Eh address
     int 41h
@@ -60,3 +77,4 @@ strtmsg: db "Starting SCP/DOS...",0Ah,0Dh,"$"
 initString: 
     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
+badVerStr: db "Incorrect DOS version",CR,LF,"$"
