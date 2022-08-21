@@ -2,17 +2,23 @@
 startLbl:
     jmp cmdLdr
 crlf        db CR,LF,"$"
-basicPrompt db "_>$"
+basicPrompt db 5,"$n$g"   ;Default Prompt String, length 5
 returnCode  dw 0    ;Return Code from a child process
 currentDrv  db 0    ;Current Drive    
 realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here
 sysVars     dq 0    ;Ptr to DOS sysvars
 numHdls     dw 20   ;Get number of handles permitted, hardcoded in this version
+promptPtr   dw -1   ;Offset From Start Label to Pointer String
+pathSep     db "\"  ;Default path sep
+switchChar  db "/"  ;Default switch char
 ;Structs
 cmdLine     db 80h dup (0)
 fcb1        db fcb_size dup (0) ;Reserve space for two FCB's
 fcb2        db fcb_size dup (0) 
-fileName    db 14 dup (0)   ;Reserve 12 bytes for parsing the filename itself
+fileName    db 16 dup (0)   ;Reserve 16 bytes for parsing the filename itself
+promptBuf:  ;Alternate symbol for building the prompt
+strBuf      db 80h dup (0)  ;This is the main buffer to build command strings
+
 
 functionTable:
 ;Use Pascal strings with each row of hte table having three columns:
@@ -66,3 +72,6 @@ functionTable:
 
     db 7, "RENAME"
     dw rename - startLbl
+
+dosName  db "Scientific Computer Research(R) SCP/DOS(R) Version "
+dosNameL equ $ - dosName

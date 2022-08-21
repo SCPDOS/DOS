@@ -30,8 +30,7 @@ cmdLdr:
     mov ah, 52h ;Get sysvars
     int 41h
     mov qword [sysVars], rbx    ;Save ptr to sysVars
-;Call for internationalisation data ...
-;... but not for now :D 
+;Call for simple internationalisation data
 
 ;Now determine if this is the master copy of COMMAND.COM
 ;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.

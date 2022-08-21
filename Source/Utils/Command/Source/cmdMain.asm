@@ -70,6 +70,98 @@ printCRLF:
     int 41h
     return
 
+getDriveLetter:
+    mov ah, 19h ;Get 0-based current drive number in al
+    int 41h
+    inc al  ;Convert to a 1-based number
+    mov byte [currentDrv], al   ;Save drv number
+    return
+
+putDateinPrompt:
+
+putVersionInPrompt:
+    push rcx
+    push rsi
+    lea rsi, dosName
+    mov ecx, dosNameL
+    rep movsb
+    pop rsi
+    pop rcx
+    ;Now we get the version number in ax. Maj = al, Min = ah
+    mov ah, 30h
+    int 41h
+    mov edx, eax
+    return
+putMoneyInPrompt:
+;Input:  rdi points to where to write the | symbol
+;Output: rdi points to the next char to replace
+    mov al, "$"
+    stosb
+    return
+
+putCRLFinPrompt:
+;Input:  rdi points to where to write the CRLF
+;Output: rdi points to the next char to replace
+    mov ah, LF
+    mov al, CR
+    stosw
+    return
+putEquInPrompt:
+;Input:  rdi points to where to write the | symbol
+;Output: rdi points to the next char to replace
+    mov al, "="
+    stosb
+    return
+putPipeInPrompt:
+;Input:  rdi points to where to write the | symbol
+;Output: rdi points to the next char to replace
+    mov al, "|"
+    stosb
+    return
+
+putGTinPrompt:
+;Input:  rdi points to where to write the > symbol
+;Output: rdi points to the next char to replace
+    mov al, ">"
+    stosb
+    return
+
+putLTinPrompt:
+;Input:  rdi points to where to write the < symbol
+;Output: rdi points to the next char to replace
+    mov al, "<"
+    stosb
+    return
+
+putDriveInPrompt:
+;Input:  rdi points to where to write the current drive letter
+;Output: rdi points to the next char to replace
+    mov al, byte [currentDrv]   ;Get 1 based drive number
+    add al, "@"
+    stosb   ;Store drive letter
+    return
+
+putCWDInPrompt:
+;Input:  rdi points to where to write the current working directory
+;Output: rdi points to the next char to replace
+    push rsi
+    mov dl, byte [currentDrv]   ;Get 1 based drive number
+    mov al, dl
+    mov ah, ":"
+    stosw   ;Store X:, rdi+=2
+    mov al, byte [pathSep]
+    stosb   ;Store pathSep, inc rdi
+    mov ah, 47h ;Get Current Working Directory
+    mov rsi, rdi    ;rsi points to buffer to write to
+    int 41h
+    xor al, al  ;Scan for the terminating zero
+    mov ecx, 66    ;Max path length - 1
+    rep scasb   ;Scan for the terminating null
+    dec rdi ;Go back a char to point to last char or ascii null
+    pop rsi
+    return
+
+
 int4Eh:   ;Otherwise known as Int 4Eh
     pop rax ;Pop RIP
     pop rbx ;Pop CS selector
