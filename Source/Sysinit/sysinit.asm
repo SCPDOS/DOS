@@ -743,6 +743,12 @@ defaultFileHandles:
     add rbx, sft_size   ;Goto SFT 5
     mov dword [rbx + sft.wNumHandles], eax
 ;------------------------------------------------;
+;             Print Welcome Message              ;
+;------------------------------------------------;
+    lea rdx, strtmsg
+    mov ah, 09h
+    int 41h    
+;------------------------------------------------;
 ;               Load CONFIG.SYS                  ;
 ;------------------------------------------------;
 ;Setup stackframe, workout base 
@@ -1062,6 +1068,7 @@ noCmdCom:
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
+strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
 mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
 badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"

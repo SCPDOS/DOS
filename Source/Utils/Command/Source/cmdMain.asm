@@ -35,17 +35,21 @@ applicationReturn:  ;Return point from a task
     inc ebx ;Goto next file
     cmp ebx, ecx
     jbe .handleClose    ;Keep looping whilst below or equal
-
 commandMain:
 ;Setup Commandline
-    lea rax, qword [r8 + psp.dta]
-    mov qword [cmdLinePtr], rax
+    lea rax, cmdLine
     mov word [rax], 007Eh ;Setup command line to accept up to 126 bytes
 .inputMain:
+    call printCRLF
     call printPrompt
-    mov rdx, qword [cmdLinePtr]
-    mov eax, 0C0Ah  ;Flush Keyboard and Buffered input
+
+    lea rdx, cmdLine
+    mov eax, 0C0Ah  ;Flush Keyboard and Do Buffered input
     int 41h
+    call printCRLF  ;Note we have accepted input
+
+    lea rsi, qword [cmdLine + 1]    ;Point at count byte
+    call parseCommandLine
     jmp short .inputMain
 
 printPrompt:
@@ -55,11 +59,14 @@ printPrompt:
     mov byte [currentDrv], al   ;Save drv number
     add al, "A"
     mov byte [basicPrompt], al  ;Save letter in prompt string
-    lea rdx, crlf
-    mov ah, 09h ;Print a new line
-    int 41h
     lea rdx, basicPrompt
     mov ah, 09h ;Print prompt
+    int 41h
+    return
+
+printCRLF:
+    lea rdx, crlf
+    mov ah, 09h ;Print a new line
     int 41h
     return
 
@@ -71,7 +78,5 @@ int4Eh:   ;Otherwise known as Int 4Eh
 parseCommandLine:    ;And this is how we enter it normally
 ;rsi must be pointing to the count byte (byte 1) of the 41h/0Ah string
 ; and the string must be CR (0Dh) terminated (not accounted for in the count)
-    movzx ecx, byte [rsi]
-    cmp byte [rsi + rcx + 1], CR
-    retne
+    
     return

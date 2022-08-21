@@ -43,10 +43,7 @@ cmdLdr:
     cmp rdx, rbx    ;If these are equal then this is first boot!
     jne .skipMaster
 ;Ok so we are master command.com
-    lea rdx, strtmsg
-    mov ah, 09h
-    int 41h
-;Now myself as the real parent
+;Now make myself the real parent
     mov qword [realParent], r8
 ;Set master environment as mine
     lea rax, masterEnv
@@ -73,7 +70,6 @@ cmdLdr:
     int 41h ;Print init string
     jmp commandStart    ;We jump with rbx = base address to jettison
 ;Loader Data here
-strtmsg: db "Starting SCP/DOS...",0Ah,0Dh,"$"
 initString: 
     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
