@@ -8,49 +8,61 @@ printCRLF:
     int 41h
     return
 
-putDateinPrompt:
+putDateInPrompt:
+putTimeInPrompt:
+    return
 
 putVersionInPrompt:
+    lea rdx, dosVer
+    mov ah, 09h ;Print String
+    int 41h
+    mov ah, 30h ;Get ver in al=Maj ver, ah = Min ver
+    int 41h
+    push rax    ;Save minor version
+    call hexToBCD   ;Get in al a bcd representation for major version
+    call printPackedBCD ;Print al
+    mov dl, "."
+    mov ah, 02h
+    int 41h
+    pop rax
+    mov al, ah  ;Get the minor version low
+    call hexToBCD
+    call printPackedBCD
+    return
+    
+putEscInPrompt:
+    mov dl, ESC
+    jmp short outChar
 
 putMoneyInPrompt:
     mov dl, "$"
-    mov ah, 02h ;Echo to STDOUT
-    int 41h
-    return
+    jmp short outChar
 
 putEquInPrompt:
     mov dl, "="
-    mov ah, 02h ;Echo to STDOUT
-    int 41h
-    return
+    jmp short outChar
 
 putPipeInPrompt:
     mov dl, "|"
-    mov ah, 02h ;Echo to STDOUT
-    int 41h
-    return
+    jmp short outChar
 
 putGTinPrompt:
     mov dl, ">"
-    mov ah, 02h ;Echo to STDOUT
-    int 41h
-    return
+    jmp short outChar
 
 putLTinPrompt:
     mov dl, "<"
-    mov ah, 02h ;Echo to STDOUT
-    int 41h
-    return
+    jmp short outChar
 
 putDriveInPrompt:
     mov ah, 19h ;Get 0-based current drive number in al
     int 41h
     add al, "A" ;Convert to letter
     mov dl, al
+outChar:
     mov ah, 02h ;Echo to STDOUT
     int 41h
     return
-
 putCWDInPrompt:
     lea rdi, strBuf
     mov ah, 19h ;Get 0-based current drive number in al
@@ -105,6 +117,30 @@ hexToBCD:
     or al, cl   ;Move upper nybble into al upper nybble
     pop rcx
     ret
+printPackedBCD:
+;Gets a packed BCD digit in al and prints al[7:4] if non zero,
+; then prints al[3:0]
+;Preserves all registers
+    push rax
+    push rdx
+    mov ah, al
+    and al, 0Fh     ;Isolate lower nybble
+    and ah, 0F0h    ;Isolate upper nybble
+    jz .skipUpperNybble
+    push rax
+    add ah, "0"  ;Convert to an ASCII digit
+    mov dl, ah
+    mov ah, 02h ;Print DL
+    int 41h
+    pop rax
+.skipUpperNybble:
+    add al, "0"
+    mov dl, al
+    mov ah, 02h ;Print DL
+    int 41h
+    pop rdx
+    pop rax
+    return
 
 strlen:
 ;Gets the length of a ASCIIZ string

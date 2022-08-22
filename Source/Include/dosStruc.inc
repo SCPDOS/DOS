@@ -409,6 +409,7 @@ DC4 equ 14h ;^T         | ASCII Device Control 4
 NAK equ 15h ;^U         | ASCII Negative Acknowledgement
 ETB equ 17h ;^W         | ASCII End of Transmission Block
 EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
+ESC equ 1Bh ;           | ASCII Escape char, used for ANSI.SYS
 SPC equ 20h ;Printable  | ASCII Space
 ;This last one is NEVER printed with a caret as it is a console control char
 DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)

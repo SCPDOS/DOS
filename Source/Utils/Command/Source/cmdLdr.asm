@@ -53,7 +53,7 @@ cmdLdr:
     add al, "A"
     mov byte [masterEnv], al
 ;Set Int 4Eh up
-    lea rdx, parseCommandLine
+    lea rdx, int4Eh
     mov eax, 254Eh ;Set this as Int 4Eh
     int 41h
 ;Now, open and parse AUTOEXEC.BAT. Build Master Environment here
