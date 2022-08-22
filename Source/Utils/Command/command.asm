@@ -12,6 +12,7 @@ Segment .data align=1
 %include "./Source/Utils/COMMAND/Data/cmdData.asm"
 %include "./Source/Utils/COMMAND/Source/cmdMain.asm"
 %include "./Source/Utils/COMMAND/Source/cmdFunc.asm"
+%include "./Source/Utils/COMMAND/Source/cmdUtils.asm"
 %include "./Source/Utils/COMMAND/Source/int44h.asm"
 %include "./Source/Utils/COMMAND/Data/cmdEnv.asm"
 %include "./Source/Utils/COMMAND/Source/cmdLdr.asm"

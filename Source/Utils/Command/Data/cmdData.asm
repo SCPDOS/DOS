@@ -1,14 +1,12 @@
 ;Static Data Area for COMMAND.COM    
 startLbl:
     jmp cmdLdr
-crlf        db CR,LF,"$"
-basicPrompt db 5,"$n$g"   ;Default Prompt String, length 5
+crlf        db CR,LF
 returnCode  dw 0    ;Return Code from a child process
-currentDrv  db 0    ;Current Drive    
 realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here
 sysVars     dq 0    ;Ptr to DOS sysvars
 numHdls     dw 20   ;Get number of handles permitted, hardcoded in this version
-promptPtr   dw -1   ;Offset From Start Label to Pointer String
+promptPtr   dw -1   ;Offset From Environemnt Start to prompt String. -1 => dflt 
 pathSep     db "\"  ;Default path sep
 switchChar  db "/"  ;Default switch char
 ;Structs
