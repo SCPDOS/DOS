@@ -352,7 +352,8 @@ getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
     mov rdx, qword [currentPSP]
     iretq
 
-setDriverLookahead:;ah = 64h, reserved
+setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
+    mov byte [lookahead], al    
     iretq
 
 ;========================================:

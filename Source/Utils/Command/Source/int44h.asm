@@ -29,9 +29,9 @@ critErrorHandler:   ;Int 44h
     cld         ;Make String ops go forward
 
     mov bx, ax  ;Save ah in bh and al in bl (if needed)
-    lea rdx, qword [.crlf]
+    lea rdx, crlf
     mov ah, 09h ;Print String
-    int 41h     ;Call DOS to print CRLF part of message
+    int 41h
 
     and edi, 00FFh   ;Zero the upper bytes of DI just in case
     mov ecx, 0Ch
@@ -65,7 +65,7 @@ critErrorHandler:   ;Int 44h
     mov ah, 02h ;Print char in dl
     int 41h
 .userInput:
-    lea rdx, qword [.crlf]  ;Print new line
+    lea rdx, crlf  ;Print new line
     mov ah, 09h
     int 41h
 ;Abort, Retry, Ignore, Fail is word order
@@ -177,7 +177,6 @@ critErrorHandler:   ;Int 44h
 .drive      db "drive $"
 .readmsg    db "error reading $"
 .writemsg   db "error writing $"
-.crlf       db 0Ah, 0Dh, "$"
 .abortmsg   db "Abort$" 
 .ignoremsg  db "Ignore$"
 .retrymsg   db "Retry$"

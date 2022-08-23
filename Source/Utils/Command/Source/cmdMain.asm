@@ -64,7 +64,13 @@ printPrompt:
 
 
 int4Eh:   ;Interrupt interface for parsing and executing command lines
+    mov ah, 51h ;Get Current PSP in rdx
+    int 41h
+    push rdx
     call doCommandLine
+    pop rbx ;Get Old current PSP in rbx
+    mov ah, 50h ;Set Current PSP
+    int 41h
     iretq
 doCommandLine:    ;And this is how we enter it normally
 ;rsi must be pointing to the count byte (byte 1) of the 41h/0Ah string

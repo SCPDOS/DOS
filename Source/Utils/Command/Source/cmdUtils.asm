@@ -29,7 +29,6 @@ putVersionInPrompt:
     call hexToBCD
     call printPackedBCD
     return
-    
 putEscInPrompt:
     mov dl, ESC
     jmp short outChar
