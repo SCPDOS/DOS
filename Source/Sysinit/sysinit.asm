@@ -603,7 +603,7 @@ initialCDSWritten:
     mov byte fs:[errorDrv], -1   ;No error drive
     mov byte fs:[switchChar], "/"  ;Default switch char
     lea rdi, qword [rbp + extAsciiTbl]  ;Get the load of dflt extascii tbl
-    mov qword fs:[ctryTbl.mapaddr], rdi ;Store in country table
+    mov qword fs:[ctryTbl + countryStruc.mapaddr], rdi ;Store in country table
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]
@@ -1270,18 +1270,3 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
-tmpAttr     db dirInclusive ;Search for all files
-tmpName     db "scp*.*",0
-tmpName2    db "/test/test2/../another",0
-tmpDTA      db 80h dup 00h
-tmpBuffer   db 80, 0, 126 dup 00h 
-tmpBuf2     db 80h dup 00h
-
-
-tmpName3    db "myfile.tst",0
-hdl dw 0
-testString1  db "Test String"
-testString1L equ $ - testString1
-testString2  db " More String, Less Space"
-testString2L equ $ - testString2
-testDir db "testdir",0

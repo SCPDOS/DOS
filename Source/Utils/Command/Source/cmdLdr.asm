@@ -31,7 +31,18 @@ cmdLdr:
     int 41h
     mov qword [sysVars], rbx    ;Save ptr to sysVars
 ;Call for simple internationalisation data
-
+    mov eax, 3700h  ;Get switchchar in dl
+    int 41h
+    cmp al, -1
+    je .skipSwitch
+    mov byte [switchChar], dl   ;Store the switchChar in var
+    cmp dl, "-" ;Is the switchChar Unix?
+    jne .skipSwitch
+    mov byte [pathSep], "/" ;Swap default path separator to UNIX style
+.skipSwitch:
+    mov eax, 3800h  ;Get current country data
+    lea rdx, ctryData
+    int 41h ;Write the data to the internal country table
 ;Now determine if this is the master copy of COMMAND.COM
 ;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.
     mov eax, 354Eh  ;Get int 4Eh address

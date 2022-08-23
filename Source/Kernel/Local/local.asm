@@ -9,8 +9,8 @@ getsetSwitchChar:  ;ah = 37h, allows changing default switch from / to anything
 ;al = 3 => Set the requirement for /DEV/ prefix on char devices
 ;       Input value is ignored
     cmp al, 01
-    je .getSC
-    jb .setSC
+    je .setSC
+    jb .getSC
     cmp al, 03
     jb .getDev
     je .setDev
@@ -32,6 +32,25 @@ getsetSwitchChar:  ;ah = 37h, allows changing default switch from / to anything
 
 
 getsetCountryInfo: ;ah = 38h, localisation info
+;Currently only accept subfunction al = 0, current country
+;AL > 0 => errInvFnc, Subfunction error
+;rdx = Ptr to buffer. If -1 => Set Country information. Also error for now.
+    test al, al
+    jz .currentCountry
+.invalidFunction:
+    mov eax, errInvFnc
+    jmp extErrExit
+.currentCountry:
+    cmp rdx, -1
+    je .invalidFunction
+    lea rsi, ctryTbl
+    mov rdi, rdx
+    mov ecx, countryStruc_size
+    rep movsb
+    xor eax, eax
+    jmp extGoodExit
+
+
 getExtLocalInfo:   ;ah = 65h, Get Extended Country Info
 getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage, reserved
     ret

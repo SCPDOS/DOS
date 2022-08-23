@@ -372,6 +372,29 @@ struc clkStruc
     .seconds    resb 1
 endstruc
 
+struc countryStruc
+    .dtfmt     resw 1   ;Date time format (2 bytes)
+                        ;0 = month day year hh:mm:ss
+                        ;1 = day month year hh:mm:ss
+                        ;2 = year month day hh:mm:ss
+    .curr      resb 5   ;ASCIIZ Currency symbol (5 chars)
+    .thouSep   resb 2   ;ASCIIZ Thousands separator
+    .dcmlSep   resb 2   ;ASCIIZ Decimal separator
+    .dateSep   resb 2   ;ASCIIZ Date separator
+    .timeSep   resb 2   ;ASCIIZ Time separator
+    .currFmt   resb 1   ;Currency Format
+                        ;0 = Symbol leads, without space
+                        ;1 = Symbol follows, without space
+                        ;2 = Symbol leads, one space
+                        ;3 = Symbol follows, one space
+                        ;4 = Symbol replace decimal separator
+    .digtdpt   resb 1   ;Number of digits after the decimal point
+    .timefmt   resb 1   ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
+    .mapaddr   resb 8   ;Case map address (0 is nulptr), needs fixing up
+    .dataSep   resb 2   ;Data list separator
+    .resv      resb 10  ;Reserve 10 bytes
+endstruc
+
 ;60 4kb pages, giving a total of 264kb of space allocated to paging
 ;for a space of 64Gb
 dosAPTsize  equ 60*4096 ;(APT = Additional Page Tables)

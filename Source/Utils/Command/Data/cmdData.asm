@@ -1,22 +1,21 @@
 ;Static Data Area for COMMAND.COM    
 startLbl:
     jmp cmdLdr
-crlf    db CR,LF
 returnCode  dw 0    ;Return Code from a child process
 realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here
-sysVars dq 0    ;Ptr to DOS sysvars
-numHdls dw 20   ;Get number of handles permitted, hardcoded in this version
+sysVars     dq 0    ;Ptr to DOS sysvars
+numHdls     dw 20   ;Get number of handles permitted, hardcoded in this version
 promptPtr   dw -1   ;Offset From Environemnt Start to prompt String. -1 => dflt 
-pathSep db "\"  ;Default path sep
+pathSep     db "\"  ;Default path sep
 switchChar  db "/"  ;Default switch char
 ;Structs
-cmdLine db 80h dup (0)
-fcb1    db fcb_size dup (0) ;Reserve space for two FCB's
-fcb2    db fcb_size dup (0) 
+ctryData    db countryStruc_size dup (0)  ;Length of the country table
+cmdLine     db 80h dup (0)
+fcb1        db fcb_size dup (0) ;Reserve space for two FCB's
+fcb2        db fcb_size dup (0) 
 fileName    db 16 dup (0)   ;Reserve 16 bytes for parsing the filename itself
 promptBuf:  ;Alternate symbol for building the prompt
-strBuf  db 80h dup (0)  ;This is the main buffer to build command strings
-
+strBuf      db 80h dup (0)  ;This is the main buffer to build command strings
 
 functionTable:
 ;Use Pascal strings with each row of hte table having three columns:
@@ -72,7 +71,8 @@ functionTable:
     dw rename - startLbl
 
 
-;COMMAND.COM Messages
+;COMMAND.COM Messages and strings
+crlf    db  CR,LF
 badBat  db  CR,LF,"Batch file missing",CR,LF,"$"    ;Used in BAT
 needBat db  CR,LF,"Insert disk with batch file"     ;Used in BAT
         db  CR,LF,"and press any key when ready",CR,LF,"$"
