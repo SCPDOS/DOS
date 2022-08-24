@@ -30,7 +30,7 @@ ioctrl:            ;ah = 44h, handle function
     mov dx, word [rdi + sft.wDeviceInfo]
     xor al, al
     call getUserRegs
-    mov word [rsi + callerFrame], dx
+    mov word [rsi + callerFrame.rdx], dx
     return
 .setDevWord:
     ;Input: bx = File Handle

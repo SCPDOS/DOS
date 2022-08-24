@@ -66,6 +66,8 @@ putCWDInPrompt:
     lea rdi, strBuf
     mov ah, 19h ;Get 0-based current drive number in al
     int 41h
+    mov dl, al  ;Get drive letter in dl for path
+    inc dl
     add al, "A" ;Convert to letter
     mov ah, ":"
     stosw   ;Store X:, rdi+=2

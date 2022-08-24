@@ -78,6 +78,7 @@ cmdLdr:
     lea rdx, initString
     mov ah, 09h
     int 41h ;Print init string
+    mov qword [stackBottom], rsp    ;Use this to save where to reset rsp to
     jmp commandStart    ;We jump with rbx = base address to jettison
 ;Loader Data here
 initString: 
