@@ -63,7 +63,7 @@ outChar:
     int 41h
     return
 putCWDInPrompt:
-    lea rdi, strBuf
+    lea rdi, currDirStr ;Update the current directory string
     mov ah, 19h ;Get 0-based current drive number in al
     int 41h
     mov dl, al  ;Get drive letter in dl for path
@@ -81,7 +81,7 @@ putCWDInPrompt:
     ;We repurpose the fact that strlen counts the NULL to account for "\"
     mov ah, 40h ;Write to handle
     mov ebx, 1  ;STDOUT
-    lea rdx, strBuf
+    lea rdx, currDirStr
     int 41h
     return
 
@@ -156,4 +156,31 @@ strlen:
     not ecx
     pop rdi
     pop rax
+    return
+
+
+findTerminator:
+;Advances rsi to the next string terminator char
+;Returns with rsi pointing to the terminating char and
+; ZF=NZ if al is not a terminator (Not including CR)
+; ZF=ZY if al is a terminator
+    lodsb
+    call isALterminator
+    jnz findTerminator
+    dec rsi
+    return
+isALterminator:
+;Returns: ZF=NZ if al is not a terminator (Not including CR)
+;         ZF=ZY if al is a terminator
+    cmp al, " "
+    rete
+    cmp al, ";"
+    rete
+    cmp al, "="
+    rete
+    cmp al, ","
+    rete
+    cmp al, TAB
+    rete
+    cmp al, LF
     return

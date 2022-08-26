@@ -9,7 +9,7 @@ commandStart:
     neg r8  ;Convert -r8 to r8
     int 41h
     jmp short commandMain
-applicationReturn:  ;Return point from a task
+applicationReturn:  ;Return point from a task, all regs preserved
     mov eax, 4D00h ;Get Return Code
     int 41h
     mov word [returnCode], ax
@@ -41,16 +41,19 @@ commandMain:
     mov rsp, qword [stackBottom]    ;Reset internal stack pointer pos
     sti
     cld ;Ensure stringops are done the right way
+    mov byte [inBuffer], 80h    ;Reset the buffer length
+    mov byte [r8 + cmdBuffer], 80h  ;Reset the processed buffer length
 .inputMain:
     call printCRLF
     call printPrompt
 
-    lea rdx, cmdLine
+    lea rdx, inBuffer
     mov eax, 0C0Ah  ;Do Buffered input
     int 41h
     call printCRLF  ;Note we have accepted input
 
-    lea rsi, qword [cmdLine + 1]    ;Point at count byte
+    call parseInput
+    jc .inputMain   ;If error in parsing/invalid data in cmd line reset
     call doCommandLine
     jmp short .inputMain
 
@@ -66,23 +69,37 @@ printPrompt:
 
 
 int4Eh:   ;Interrupt interface for parsing and executing command lines
+;Input: rsi points to the count byte of a command line
+    push r8
+    push r9
     mov ah, 51h ;Get Current PSP in rdx
     int 41h
-    push rdx
-    call doCommandLine
+    push rdx    ;Save on the stack
+    lea rbx, qword [startLbl - psp_size]    ;Get a psp ptr for this COMMAND.COM
+    mov ah, 50h ;Set this version of COMMAND.COM as the current PSP
+    int 41h
+    mov r8, rbx ;Set to point to the command.com psp
+    mov r9, rbx
+    lea rdi, qword [r8 + cmdLine]
+    mov ecx, 10h    ;7Fh chars + 1 count byte / 8
+    rep movsq   ;Copy command line over
+    ;call doCommandLine
     pop rbx ;Get Old current PSP in rbx
     mov ah, 50h ;Set Current PSP
     int 41h
+    pop r9
+    pop r8
     iretq
+parseInput:
+;Will parse the input string 
+    return
 doCommandLine:    ;And this is how we enter it normally
-;rsi must be pointing to the count byte (byte 1) of the 41h/0Ah string
-; and the string must be CR (0Dh) terminated (not accounted for in the count)
-    mov qword [stringPtr], rsi  ;Store to recover later
+;r8 must be pointing to COMMAND.COM's internal PSP
+    lea rsi, qword [inBuffer + 1]   ;Point to count byte
     cmp byte [rsi], 0   ;If the string has length 0, empty string
     rete
-    xor ebx, ebx    ;Use bx to count how many arguments are found
     inc rsi ;Goto first char in string
-    lea rdi, fcb1   ;Parse into fcb
+    lea rdi, cmdFcb   ;Parse into fcb
     mov eax, 2901h ;Parse FCB and skip leading spaces
     int 41h
     cmp al, 1   ;Command cannot have wildcards in the name
@@ -132,32 +149,20 @@ doCommandLine:    ;And this is how we enter it normally
 .commandCase:
 ;Here we check if the word was an installed or internal command before 
 ; attempting to launching it as an external command
-    push rbx
+    ;breakpoint
     push rsi    ;Save rsi's current position in the command tail on stack
-    push rdi
-    lea rdi, strBuf
-    mov byte [rdi], 80h ;Length of the buffer
-    mov rsi, qword [stringPtr]  ;Get the string buffer, starting at char 1
-    movzx ecx, byte [rsi]   ;Get number of chars in the string
-    inc ecx ;Include the terminating CR
-    rep movsb   ;Move command line to the internal buffer
-    ;Now move the name from the FCB to the buffer
-    lea rsi, qword [fcb1 + fcb.filename]
+    ;Move the name from the FCB to the buffer
     xor ecx, ecx
-    lea rbx, cmdName    ;Point to the count byte
-.copyNameToBuffer:
-    inc rbx
-    lodsb
-    cmp al ," "
-    je .endOfCopy
-    mov byte [rbx], al
-    inc ecx
-    cmp ecx, 11
-    jb .copyNameToBuffer
-.endOfCopy:
-    lea rbx, cmdName
+    lea rbx, cmdFcb ;Find char count, scan for the first space
+    lea rdi, qword [rbx + 1]    ;Skip byte 0 for scan
+    mov al, " " ;Scan for a space
+    xor ecx, ecx
+    dec ecx ;Make ecx = -1 in three bytes
+    repne scasb
+    not ecx ;Now ecx has the count of chars including the space
+    dec ecx ;so remove the terminating space from the count
     mov byte [rbx], cl  ;Store the byte count here
-    lea rsi, strBuf ;Point to this built buffer
+    lea rsi, inBuffer ;Point to our internal buffer
     mov eax, 0AE00h ;Installable command check
     mov edx, 0FFFFh
     mov ch, -1
@@ -167,36 +172,34 @@ doCommandLine:    ;And this is how we enter it normally
     mov edx, 0FFFFh
     xor ch, ch  ;Second call uses ch = 0
     int 4Fh
-    pop rdi
     pop rsi ;Get back rsi's position in command tail (after command name)
-    pop rbx
     test al, al
     jz .executeInternal
     ;Here we execute externally and return to the prompt
     ; as if it was an internal execution
-    lea rsi, strBuf ;Point to this built buffer
-    lea rbx, cmdName
+    lea rsi, inBuffer ;Point to this built buffer
+    lea rbx, cmdFcb
     mov eax, 0AE01h ;Execute command!
     mov edx, 0FFFFh
     mov ch, -1
     int 4Fh 
     return
 .executeInternal:
-;Now we compare the name in the cmdName field to our commmand list
+;Now we compare the name in the cmdFcb field to our commmand list
 ;rsi points after the command terminator in the command tail
     lea rbx, functionTable
 .nextEntry:
     movzx ecx, byte [rbx]   ;Get name entry length
     cmp cl, -1  ;Are we at the end of the table?
     je .external      ;If so, check externally now
-    cmp byte [cmdName], cl  ;Is command length the same as the tbl entry length?
+    cmp byte [cmdFcb], cl  ;Is command length the same as the tbl entry length?
     jnz .gotoNextEntry  ;If not, goto next entry
     ;Here they have the same length so lets see if the name is the same
     push rsi
     ;ecx has the length to compare
     push rcx
     lea rsi, qword [rbx + 1]
-    lea rdi, qword [cmdName + 1]   ;Go to the name portion
+    lea rdi, qword [cmdFcb + 1]   ;Go to the name portion
     rep cmpsb   ;Check the strings are equal
     pop rcx
     pop rsi
@@ -234,22 +237,39 @@ skipSpaces:
     jmp short skipSpaces
 
 checkExtensionExec:
-;Checks the extension field of fcb1 is .COM, .EXE, .BAT in that order
+;Checks the extension field of cmdFcb is .COM, .EXE, .BAT in that order
 ;Returns: ZF=ZE if executable. ZF=NZ if not executable.
 ;         If ZF=ZE and CF=CY => Batch file
-    cmp byte [fcb1 + fcb.fileext], "C"
+    cmp byte [cmdFcb + fcb.fileext], "C"
     jne .notCOM
-    cmp word [fcb1 + fcb.fileext + 1], "OM"
+    cmp word [cmdFcb + fcb.fileext + 1], "OM"
     return
 .notCOM:
-    cmp byte [fcb1 + fcb.fileext], "E"
+    cmp byte [cmdFcb + fcb.fileext], "E"
     jne .batFile
-    cmp word [fcb1 + fcb.fileext + 1], "XE"
+    cmp word [cmdFcb + fcb.fileext + 1], "XE"
     return
 .batFile:
-    cmp byte [fcb1 + fcb.fileext], "B"
+    cmp byte [cmdFcb + fcb.fileext], "B"
     retne
-    cmp word [fcb1 + fcb.fileext + 1], "AT"
+    cmp word [cmdFcb + fcb.fileext + 1], "AT"
     retne
     stc
     return
+
+resetCommandLineState:
+;Clears the vars that track the state of a command line
+;Called every time we enter command line processor for a NEW command line
+;Not called when returning from a pipe.
+; In that case only clear redir vars when returning from executing command
+    push rax
+    push rcx
+    push rdi
+    lea rdi, cmdLineState
+    mov ecx, cmdLineStateL
+    xor eax, eax
+    rep stosb
+    pop rax
+    return
+
+
