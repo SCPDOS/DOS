@@ -27,10 +27,10 @@ cmdLineStateL equ $ - cmdLineState
 ;Structs and strings
 ctryData    db countryStruc_size dup (0)  ;Length of the country table
 cmdFcb      db 10h dup (0) ;Internal "fcb" for parsing the command name
-;Reuse byte 0 to optionally store the count of chars in the filename too
 cmdFFBlock  db ffBlock_size ;Internal Find First Block to use as default DTA
 
 inBuffer    db cmdBufferL dup (0)  ;Add one to add space for terminating CR
 cmdBuffer   db cmdBufferL dup (0)  ;This is the to copy input to when processing
 currDirStr  db fullDirPathZL dup (0) ;Current Directory String
 cmdPathSpec db fileSpecZL dup (0)    ;Full path to a external command
+cmdName     db cmdNameL dup (0) ;Command name string prefixed by length of word

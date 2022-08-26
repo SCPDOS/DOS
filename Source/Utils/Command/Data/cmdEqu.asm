@@ -9,6 +9,7 @@ fileNameZL  equ filenameL + 1   ;Add a space for a terminating null
 fullDirPathL equ driveSpecL + dirPathL
 fullDirPathZL equ fullDirPathL + 1   ;Add one for terminating null
 fileSpecZL  equ fullDirPathL + fileNameZL ;One full asciiz pathspec
+cmdNameL     equ filenameL + 1   ;1 for the count prefix 
 
 ;Use PSP FCB's for switch buffers
 fcb1        equ psp.fcb1
