@@ -51,8 +51,6 @@ commandMain:
     int 41h
     call printCRLF  ;Note we have accepted input
 
-;Once we are done writing the following two functions, we can remove the 
-; two lines above
 ;First check we had something typed in of length greater than 1
 ;Must be greater than 0 as executable commands must have extension and filename
     cmp byte [inBuffer + 1], 1  ;Check input length valid
@@ -112,6 +110,7 @@ parseInput:
     jc .exit    ;CF=CY only if pipe, which is equivalent to CR when processing
     jz .redirFound  ;If we had a < > or >>, proceed to check if next char CR
     ;Else we process the first two switches and copy any arguments
+    dec rsi ;Move rsi back to the first char
     test byte [arg1Flg], -1
     jnz .arg2
     call skipSpaces
@@ -123,6 +122,7 @@ parseInput:
     mov rax, rsi
     lea rbx, cmdBuffer
     sub rax, rbx
+    dec al
     mov byte [arg1Off], al  ;Store the offset 
     jmp short .argCommon
 .arg2:
@@ -137,6 +137,7 @@ parseInput:
     mov rax, rsi
     lea rbx, cmdBuffer
     sub rax, rbx
+    dec al
     mov byte [arg2Off], al  ;Store the offset 
     jmp short .argCommon
 .argCommon:
@@ -164,6 +165,7 @@ parseInput:
     dec ecx ;rcx = -1
     repne scasb
     not ecx
+    dec cl  ;Dont include terminating CR
     lea rdi, qword [r8 + cmdLineCnt]
     mov byte [rdi], cl
     ;Before returning, we copy the command name to cmdName
@@ -356,6 +358,7 @@ checkAndSetupRedir:
     je .outputRedir
     cmp al, "|"
     je .pipeSetup
+    clc
 .redirExit:
     pop rdi
     return
