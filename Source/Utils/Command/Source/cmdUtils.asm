@@ -161,9 +161,7 @@ strlen:
 
 findTerminator:
 ;Advances rsi to the next string terminator char
-;Returns with rsi pointing to the terminating char and
-; ZF=NZ if al is not a terminator (Not including CR)
-; ZF=ZY if al is a terminator
+;Returns with al = terminator and rsi pointing to the char in the string
     lodsb
     call isALterminator
     jnz findTerminator
@@ -183,4 +181,57 @@ isALterminator:
     cmp al, TAB
     rete
     cmp al, LF
+    return
+
+findEndOfCommand:
+;Moves rsi to the | or CR that terminates this command
+    lodsb
+    call isALEndOfCommand
+    jnz findEndOfCommand
+    dec rsi
+    return
+isALEndOfCommand:
+    cmp al, "|"
+    rete
+    cmp al, CR
+    return
+
+scanForRedir:
+;Returns: AL = 0 => No redirection, terminate with CR
+;         AL = 1 => Redirection, type <
+;         AL = 10 => Redir, type >
+;         AL = 20 => Redir, type >>
+;If multiple redirs found, the last one of that type counts.
+    push rsi
+    push rbp
+    xor ah, ah
+.lp:
+    lodsb
+    cmp al, ">"
+.exit:
+    pop rbp
+    pop rsi
+    return
+
+
+skipSpaces:
+;Also skips tabs
+;Input: rsi must point to the start of the data string
+;Output: rsi points to the first non-space char
+    cmp byte [rsi], " "
+    je .skip    ;If equal to a space, skip it
+    cmp byte [rsi], TAB
+    retne   ;If not equal to a tab or space, return
+.skip:
+    inc rsi
+    jmp short skipSpaces
+
+printPrompt:
+    cmp word [promptPtr], -1
+    jne .validPrompt
+    ;Here we print the default prompt
+    call putCWDInPrompt
+    call putGTinPrompt
+    return
+.validPrompt:
     return

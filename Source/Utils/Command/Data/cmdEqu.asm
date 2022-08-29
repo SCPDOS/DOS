@@ -9,13 +9,14 @@ fileNameZL  equ filenameL + 1   ;Add a space for a terminating null
 fullDirPathL equ driveSpecL + dirPathL
 fullDirPathZL equ fullDirPathL + 1   ;Add one for terminating null
 fileSpecZL  equ fullDirPathL + fileNameZL ;One full asciiz pathspec
-cmdNameL     equ filenameL + 1   ;1 for the count prefix 
+cmdNameL    equ filenameL + 1 + 1   ;1 for the count prefix,1 for end null
 
 ;Use PSP FCB's for switch buffers
 fcb1        equ psp.fcb1
 fcb2        equ psp.fcb2
 ;Use the dta as the built command line buffer.
-cmdLine     equ psp.dta
+cmdLineCnt  equ psp.parmList
+cmdLine     equ psp.progTail
 
 
 ;Struct Declarations

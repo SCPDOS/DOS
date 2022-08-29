@@ -42,7 +42,6 @@ commandMain:
     sti
     cld ;Ensure stringops are done the right way
     mov byte [inBuffer], 80h    ;Reset the buffer length
-    mov byte [r8 + cmdBuffer], 80h  ;Reset the processed buffer length
 .inputMain:
     call printCRLF
     call printPrompt
@@ -52,89 +51,173 @@ commandMain:
     int 41h
     call printCRLF  ;Note we have accepted input
 
+;Once we are done writing the following two functions, we can remove the 
+; two lines above
+;First check we had something typed in of length greater than 1
+;Must be greater than 0 as executable commands must have extension and filename
+    cmp byte [inBuffer + 1], 1  ;Check input length valid
+    jbe .dfltErrExit
+    ;Copy over the input text
+    lea rsi, inBuffer
+    lea rdi, cmdBuffer
+    mov ecx, cmdBufferL   ;Straight up copy the buffer over
+    rep movsb
+    xor eax, eax
+    mov word [cmdStartOff], ax  ;Clear start and end Off positions
     call parseInput
-    jc .inputMain   ;If error in parsing/invalid data in cmd line reset
     call doCommandLine
     jmp short .inputMain
-
-printPrompt:
-    cmp word [promptPtr], -1
-    jne .validPrompt
-    ;Here we print the default prompt
-    call putCWDInPrompt
-    call putGTinPrompt
-    return
-.validPrompt:
-    return
-
-
-int4Eh:   ;Interrupt interface for parsing and executing command lines
-;Input: rsi points to the count byte of a command line
-    push r8
-    push r9
-    mov ah, 51h ;Get Current PSP in rdx
-    int 41h
-    push rdx    ;Save on the stack
-    lea rbx, qword [startLbl - psp_size]    ;Get a psp ptr for this COMMAND.COM
-    mov ah, 50h ;Set this version of COMMAND.COM as the current PSP
-    int 41h
-    mov r8, rbx ;Set to point to the command.com psp
-    mov r9, rbx
-    lea rdi, qword [r8 + cmdLine]
-    mov ecx, 10h    ;7Fh chars + 1 count byte / 8
-    rep movsq   ;Copy command line over
-    ;call doCommandLine
-    pop rbx ;Get Old current PSP in rbx
-    mov ah, 50h ;Set Current PSP
-    int 41h
-    pop r9
-    pop r8
-    iretq
-parseInput:
-;Will parse the input string 
-    return
-doCommandLine:    ;And this is how we enter it normally
-;r8 must be pointing to COMMAND.COM's internal PSP
-    lea rsi, qword [inBuffer + 1]   ;Point to count byte
-    cmp byte [rsi], 0   ;If the string has length 0, empty string
-    rete
-    inc rsi ;Goto first char in string
-    lea rdi, cmdFcb   ;Parse into fcb
-    mov eax, 2901h ;Parse FCB and skip leading spaces
-    int 41h
-    cmp al, 1   ;Command cannot have wildcards in the name
-    je .dfltErrExit
-    cmp byte [rsi], CR  ;Are we at a carriage return, i.e. end of string?
-    je .endOneField     ;After one iteration, if we reached CR, now process
-    ;If the terminator is pathsep, build a pathstring
-    mov al, byte [pathSep]
-    cmp byte [rsi], al
-    jne .commandCase
-    ;Path resolving here
-    ;Go to the end of the path to see if we have a .COM, .EXE or .BAT
-.resolve:
-    inc rsi ;Go past the terminator
-    mov eax, 2901h ;Parse FCB and skip leading spaces
-    int 41h
-    mov al, byte [pathSep]
-    cmp byte [rsi], al  ;Keep going if pathsep
-    je .resolve
-    ;We stop looping if we are at the end of the path.
-    jmp .external
 .dfltErrExit:
     lea rdx, badCmd
     mov ah, 09h
     int 41h
+    jmp short .inputMain
+
+parseInput:
+;EndOff is set up before entering this part
+;Copies a nicely formatted version of the input command line
+; without any redirections to psp.dta
+    lea rsi, qword [cmdBuffer + 2]  ;Goto the command buffer
+    lea rdi, qword [r8 + cmdLine]   ;Go to the command line in the psp
+    movzx ebx, byte [cmdEndOff] ;Get the old end offset
+    add rsi, rbx    ;Move rsi to the start of this new command
+    call skipSpaces ;Skip any preceeding spaces
+    lodsw   ;Get the first two chars into ax
+    mov word [cmdDrvSpec], ax ;Store these chars as if they are the drvspec
+    sub rsi, 2  ;Go back to the start of the command
+    push rsi
+    push rdi
+    lea rdi, cmdPathSpec    ;We copy the command name/path here
+    push rdi
+    call copyCommandTailItem
+    pop rdi
+    pushfq  ;Save the CF state
+    call strlen
+    dec ecx ;Drop the terminating char from the count
+    pop rax ;Get the CF state in al
+    pop rdi
+    pop rsi
+    rep movsb   ;Now we copy the command into the psp command line
+    test al, 1  ;Was CF set?
+    jnz .exit   ;If an embedded CR was found in the filename, exit!
+.cmdLineProcess:
+    mov al, " "
+    stosb   ;Store a space after the command name in the psp tail
+    call skipSpaces ;Go to the next char in the input line
+.redirFound:
+    lodsb   ;Get first non-space char (setupRedir skips spaces before ret)
+    cmp al, CR  ;If this was a CR, we stop processing
+    je .exit
+    call checkAndSetupRedir ;If not, check if we have a redir element
+    jc .exit    ;CF=CY only if pipe, which is equivalent to CR when processing
+    jz .redirFound  ;If we had a < > or >>, proceed to check if next char CR
+    ;Else we process the first two switches and copy any arguments
+    test byte [arg1Flg], -1
+    jnz .arg2
+    call skipSpaces
+    mov al, byte [switchChar]
+    cmp byte [rsi], al  ;Is this a switch
+    jne .arg1NoSwitch
+    mov byte [arg1Swch], -1
+.arg1NoSwitch:
+    mov rax, rsi
+    lea rbx, cmdBuffer
+    sub rax, rbx
+    mov byte [arg1Off], al  ;Store the offset 
+    jmp short .argCommon
+.arg2:
+    test byte [arg2Flg], -1
+    jnz .argCommon
+    call skipSpaces
+    mov al, byte [switchChar]
+    cmp byte [rsi], al  ;Is this a switch
+    jne .arg2NoSwitch
+    mov byte [arg2Swch], -1
+.arg2NoSwitch:
+    mov rax, rsi
+    lea rbx, cmdBuffer
+    sub rax, rbx
+    mov byte [arg2Off], al  ;Store the offset 
+    jmp short .argCommon
+.argCommon:
+    ;More than two arguments, we do nothing more than just copy the command
+    ; over. If we encounter an embedded CR, exit there too
+    call skipSpaces
+    cmp byte [rsi], CR  ;Are we at the end of the commandline?
+    je .exit
+    ;If not, we copy it over
+    call copyCommandTailItem    ;Stores a terminating null we dont want
+    lea rdi, qword [rdi - 1]    ;Point back at the inserted terminating null
+    jnc .cmdLineProcess    ;Loop if no embedded CR was found in the item
+.exit:
+    lea rbx, cmdBuffer
+    dec rsi
+    sub rsi, rbx    ;Get the offset into the command line
+    mov ebx, esi
+    mov byte [cmdEndOff], bl    ;Store the offset to the terminating char
+    mov al, CR
+    stosb   ;Store the terminating CR in the psp command line
+    ;Now compute the command line length 
+    lea rdi, qword [r8 + cmdLine] 
+    mov al, CR
+    xor ecx, ecx    ;ONLY USE ECX!!!
+    dec ecx ;rcx = -1
+    repne scasb
+    not ecx
+    lea rdi, qword [r8 + cmdLineCnt]
+    mov byte [rdi], cl
+    ;Before returning, we copy the command name to cmdName
+    lea rdi, cmdPathSpec
+    mov rbx, rdi    ;Use rbx as the ptr to the first char in the commandspec
+    xor al, al  ;Search for the terminating null
+    mov ecx, fileSpecZL ;Max number of chars the length could be
+    repne scasb
+    dec rdi ;Go to the last char in the command
+    mov rsi, rdi
+    std ;Now we go backwards to where rsi = rbx OR byte [rsi] = pathSep
+.keepSearching:
+    lodsb
+    cmp al, byte [pathSep]
+    je .cmdStartFnd
+    cmp rsi, rbx
+    jne .keepSearching
+    dec rsi ;Go back one to go forwards again
+.cmdStartFnd:
+    inc rsi ;Go past the pathsep
+    cld ;Go the sane way again
+    xor ecx, ecx
+    lea rdi, qword [cmdName + 1]    ;First byte is for the length of the name
+.cmdGetChar:
+    lodsb
+    test al, al ;Did we find the terminating null?
+    jz .nameLenFnd
+    cmp al, "." ;Extension sep also terminates
+    je .nameLenFnd
+    and al, 0DFh    ;Else uppercase the char
+    stosb   ;and store it
+    inc ecx
+    cmp ecx, 8
+    jb .cmdGetChar
+.nameLenFnd:
+    mov byte [cmdName], cl  ;Store the name length now
     return
-.endOneField:
-;rsi points to the CR
-    cmp byte [rdi + fcb.filename], " "  ;Filename cannot begin with space
-    jne .commandCase
-    ;Here we have an empty filename, but a drive letter may have been specified
-    cmp al, -1
+
+doCommandLine:
+    lea rsi, qword [cmdBuffer + 2]  ;Goto the command buffer
+    lea rdi, cmdFcb
+    mov eax, 2901h  ;Skip leading blanks
+    int 41h
+    movzx ebx, word [cmdDrvSpec]    ;Get the drive specifier
+    cmp bh, ":"
+    jne .noDriveSpecified
+    mov dl, bl      ;Move the drive letter in dl
+    and dl, 0DFh    ;Make the drive letter upper case
+    sub dl, "A"     ;And make it a 0 based drive letter
+    cmp al, -1  ;Int 41h returns AL = -1 if bad drive specified
     je .badDrive
-    mov dl, byte [rdi + fcb.driveNum]  ;1 based drive letter
-    dec dl  ;Convert to 0 based drive letter
+    ;If drive specified and cmdName length = 2 => X: type command
+    cmp byte [cmdName], 2
+    jne .noDriveSpecified   ;Drive specified but proceed as normal
     mov ah, 0Eh ;Set drive to dl
     int 41h 
     mov ah, 19h
@@ -145,24 +228,31 @@ doCommandLine:    ;And this is how we enter it normally
     lea rdx, badDrv
     mov ah, 09h
     int 41h
+    stc
     return
-.commandCase:
-;Here we check if the word was an installed or internal command before 
-; attempting to launching it as an external command
-    ;breakpoint
-    push rsi    ;Save rsi's current position in the command tail on stack
-    ;Move the name from the FCB to the buffer
-    xor ecx, ecx
-    lea rbx, cmdFcb ;Find char count, scan for the first space
-    lea rdi, qword [rbx + 1]    ;Skip byte 0 for scan
-    mov al, " " ;Scan for a space
-    xor ecx, ecx
-    dec ecx ;Make ecx = -1 in three bytes
-    repne scasb
-    not ecx ;Now ecx has the count of chars including the space
-    dec ecx ;so remove the terminating space from the count
-    mov byte [rbx], cl  ;Store the byte count here
-    lea rsi, inBuffer ;Point to our internal buffer
+.noDriveSpecified:
+;Now we set the two FCB's in the command line
+    movzx eax, byte [arg1Off]   ;Get the first argument offset
+    test eax, eax
+    jz .fcbArgsDone
+    lea rsi, cmdBuffer
+    add rsi, rax    ;Point to first argument
+    lea rdi, qword [r8 + fcb1]
+    mov eax, 2901h
+    int 41h
+    mov byte [arg1FCBret], al
+    movzx eax, byte [arg2Off]
+    test eax, eax
+    jz .fcbArgsDone
+    lea rsi, cmdBuffer
+    add rsi, rax    ;Point to first argument
+    lea rdi, qword [r8 + fcb2]
+    mov eax, 2901h
+    int 41h
+    mov byte [arg2FCBret], al
+.fcbArgsDone:
+    lea rsi, cmdBuffer
+    lea rbx, cmdName
     mov eax, 0AE00h ;Installable command check
     mov edx, 0FFFFh
     mov ch, -1
@@ -172,8 +262,6 @@ doCommandLine:    ;And this is how we enter it normally
     mov edx, 0FFFFh
     xor ch, ch  ;Second call uses ch = 0
     int 4Fh
-    pop rsi ;Get back rsi's position in command tail (after command name)
-    test al, al
     jz .executeInternal
     ;Here we execute externally and return to the prompt
     ; as if it was an internal execution
@@ -192,14 +280,14 @@ doCommandLine:    ;And this is how we enter it normally
     movzx ecx, byte [rbx]   ;Get name entry length
     cmp cl, -1  ;Are we at the end of the table?
     je .external      ;If so, check externally now
-    cmp byte [cmdFcb], cl  ;Is command length the same as the tbl entry length?
+    cmp byte [cmdName], cl  ;Is command length the same as the tbl entry length?
     jnz .gotoNextEntry  ;If not, goto next entry
     ;Here they have the same length so lets see if the name is the same
     push rsi
     ;ecx has the length to compare
     push rcx
     lea rsi, qword [rbx + 1]
-    lea rdi, qword [cmdFcb + 1]   ;Go to the name portion
+    lea rdi, qword [cmdName + 1]   ;Go to the name portion
     rep cmpsb   ;Check the strings are equal
     pop rcx
     pop rsi
@@ -226,15 +314,11 @@ doCommandLine:    ;And this is how we enter it normally
     ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
     ;So it is a com or exe that we are searching for
     jmp .dfltErrExit
-
-
-skipSpaces:
-;Input: rsi must point to the start of the data string
-;Output: rsi points to the first non-space char
-    cmp byte [rsi], " "
-    retne
-    inc rsi
-    jmp short skipSpaces
+.dfltErrExit:
+    lea rdx, badCmd
+    mov ah, 09h
+    int 41h
+    return
 
 checkExtensionExec:
 ;Checks the extension field of cmdFcb is .COM, .EXE, .BAT in that order
@@ -257,19 +341,96 @@ checkExtensionExec:
     stc
     return
 
-resetCommandLineState:
-;Clears the vars that track the state of a command line
-;Called every time we enter command line processor for a NEW command line
-;Not called when returning from a pipe.
-; In that case only clear redir vars when returning from executing command
-    push rax
-    push rcx
+checkAndSetupRedir:
+;Checks and sets up redir as appropriate
+;Input: al = First char to check, if al < > >> or |, handled appropriately
+;       rsi points to the first char after the char in al in cmdBuffer
+;Output: ZF=NZ => No redir
+;        ZF=ZY => Redir
+;           rsi is moved to the first non-terminating char after redir filespec
+;CF=CY if pipe set or an embedded CR found
     push rdi
-    lea rdi, cmdLineState
-    mov ecx, cmdLineStateL
-    xor eax, eax
-    rep stosb
-    pop rax
+    cmp al, "<"
+    je .inputRedir
+    cmp al, ">"
+    je .outputRedir
+    cmp al, "|"
+    je .pipeSetup
+.redirExit:
+    pop rdi
+    return
+.inputRedir:
+    mov byte [redirIn], -1  ;Set the redir in flag
+    lea rdi, rdrInFilespec
+    call skipSpaces ;Skip spaces between < and the filespec
+    call copyCommandTailItem
+    jc .redirExit
+    call skipSpaces
+    xor al, al
+    jmp short .redirExit
+.outputRedir:
+    mov byte [redirOut], 1
+    cmp byte [rsi], ">" ;Was this a > or a >>
+    jne .notDouble
+    inc byte [redirOut] ;Inc to make it 2
+.notDouble:
+    lea rdi, rdrOutFilespec
+    call skipSpaces
+    call copyCommandTailItem
+    jc .redirExit
+    call skipSpaces
+    xor al, al
+    jmp short .redirExit
+.pipeSetup:
+    mov byte [pipeFlag], -1
+    xor al, al
+    stc
+    pop rdi
+    return
+
+copyCommandTailItem:
+;Copies a sentence from the command tail until a terminator is found.
+;Stores a terminating null in the destination
+;Input: rsi = Start of the item to copy
+;       rdi = Location for copy
+;Output: Sentence copied with a null terminator inserted.
+; If CF=CY, embedded CR encountered
+    lodsb
+    cmp al, CR
+    je .endOfInput
+    call isALterminator
+    jz .exit
+    stosb
+    jmp short copyCommandTailItem
+.endOfInput:
+    call .exit
+    stc 
+    return
+.exit:
+    xor al, al
+    stosb
     return
 
 
+int4Eh:   ;Interrupt interface for parsing and executing command lines
+;Input: rsi points to the count byte of a command line
+    push r8
+    push r9
+    mov ah, 51h ;Get Current PSP in rdx
+    int 41h
+    push rdx    ;Save on the stack
+    lea rbx, qword [startLbl - psp_size]    ;Get a psp ptr for this COMMAND.COM
+    mov ah, 50h ;Set this version of COMMAND.COM as the current PSP
+    int 41h
+    mov r8, rbx ;Set to point to the command.com psp
+    mov r9, rbx
+    lea rdi, qword [r8 + cmdLine]
+    mov ecx, 10h    ;7Fh chars + 1 count byte / 8
+    rep movsq   ;Copy command line over
+    ;call doCommandLine
+    pop rbx ;Get Old current PSP in rbx
+    mov ah, 50h ;Set Current PSP
+    int 41h
+    pop r9
+    pop r8
+    iretq
