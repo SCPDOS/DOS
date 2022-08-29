@@ -235,3 +235,19 @@ printPrompt:
     return
 .validPrompt:
     return
+
+clearCommandState:
+;Clears the command state
+    lea rdi, cmdStatePtr
+    mov ecx, cmdStateL
+    xor eax, eax
+    rep stosb
+    return
+
+clearCommandLineState:
+;Clears the command line state after a 0Dh encountered
+    lea rdi, cmdLineStatePtr
+    mov ecx, cmdLineStateL
+    xor eax, eax
+    rep stosb
+    return

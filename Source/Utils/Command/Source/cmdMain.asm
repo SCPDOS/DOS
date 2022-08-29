@@ -43,6 +43,7 @@ commandMain:
     cld ;Ensure stringops are done the right way
     mov byte [inBuffer], 80h    ;Reset the buffer length
 .inputMain:
+    call clearCommandLineState
     call printCRLF
     call printPrompt
 
@@ -113,8 +114,25 @@ parseInput:
     mov al, " "
     stosb   ;Store a space to make space for the command file parameter
     dec rsi ;Move rsi back to the first char
+    ;Switches replace any existing arguments in order arg1 then arg2
+    mov al, byte [switchChar]
+    cmp byte [rsi], al
+    jne .notSwitch
+    ;Here we are a switch
+    test byte [arg1Flg], -1
+    jz .arg1    ;If arg1 is not yet in use, use that first!
+    test byte [arg2Flg], -1
+    jz .arg2    ;If arg2 is not yet in use, use that first!
+    test byte [arg1Swch], -1  ;If arg1 not set or set but not switch, override
+    jz .arg1
+    test byte [arg2Swch], -1  ;If arg2 not set or set but not switch, override
+    jz .arg2Ok
+    jmp short .argCommon    ;Add explicit jump to avoid additional jumps
+.notSwitch:
     test byte [arg1Flg], -1
     jnz .arg2
+.arg1:
+    mov byte [arg1Flg], -1
     call skipSpaces
     mov al, byte [switchChar]
     cmp byte [rsi], al  ;Is this a switch
@@ -124,12 +142,13 @@ parseInput:
     mov rax, rsi
     lea rbx, cmdBuffer
     sub rax, rbx
-    dec al
     mov byte [arg1Off], al  ;Store the offset 
     jmp short .argCommon
 .arg2:
     test byte [arg2Flg], -1
     jnz .argCommon
+.arg2Ok:
+    mov byte [arg2Flg], -1
     call skipSpaces
     mov al, byte [switchChar]
     cmp byte [rsi], al  ;Is this a switch
@@ -139,7 +158,6 @@ parseInput:
     mov rax, rsi
     lea rbx, cmdBuffer
     sub rax, rbx
-    dec al
     mov byte [arg2Off], al  ;Store the offset 
     jmp short .argCommon
 .argCommon:
@@ -266,20 +284,30 @@ doCommandLine:
     return
 .noDriveSpecified:
 ;Now we set the two FCB's in the command line
-    movzx eax, byte [arg1Off]   ;Get the first argument offset
-    test eax, eax
+    test byte [arg1Flg], -1
     jz .fcbArgsDone
+    movzx eax, byte [arg1Off]   ;Get the first argument offset
     lea rsi, cmdBuffer
     add rsi, rax    ;Point to first argument
+    ;If this is a switch, we must go forwards by one char
+    test byte [arg1Swch], -1
+    jz .a1ns
+    inc rsi ;Go past the switchchar
+.a1ns:
     lea rdi, qword [r8 + fcb1]
     mov eax, 2901h
     int 41h
     mov byte [arg1FCBret], al
-    movzx eax, byte [arg2Off]
-    test eax, eax
+    test byte [arg2Flg], -1
     jz .fcbArgsDone
+    movzx eax, byte [arg2Off]
     lea rsi, cmdBuffer
     add rsi, rax    ;Point to first argument
+    ;If this is a switch, we must go forwards by one char
+    test byte [arg2Swch], -1
+    jz .a2ns
+    inc rsi ;Go past the switchchar
+.a2ns:
     lea rdi, qword [r8 + fcb2]
     mov eax, 2901h
     int 41h
