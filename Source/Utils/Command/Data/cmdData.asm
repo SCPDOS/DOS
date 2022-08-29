@@ -45,6 +45,7 @@ cmdBuffer   db cmdBufferL dup (0)  ;This is the to copy input to when processing
 cmdPathSpec db fileSpecZL dup (0)  ;Space for full path to a external command
 
 cmdDrvSpec  dw 0    ;Read the first word in to see if the pathspec has drivespec
+cmdSpec     db fcbNameL dup (0) ;USed to make a fcb name for the file
 cmdName     db cmdNameL dup (0) ;Command name string prefixed by length of word
 
 rdrInFilespec   db fileSpecZL dup (0)   ;Space for the redir in filespec

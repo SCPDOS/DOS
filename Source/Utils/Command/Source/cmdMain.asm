@@ -98,9 +98,9 @@ parseInput:
     rep movsb   ;Now we copy the command into the psp command line
     test al, 1  ;Was CF set?
     jnz .exit   ;If an embedded CR was found in the filename, exit!
+    ;mov al, " "
+    ;stosb   ;Store a space after the command name in the psp tail
 .cmdLineProcess:
-    mov al, " "
-    stosb   ;Store a space after the command name in the psp tail
     call skipSpaces ;Go to the next char in the input line
 .redirFound:
     lodsb   ;Get first non-space char (setupRedir skips spaces before ret)
@@ -110,6 +110,8 @@ parseInput:
     jc .exit    ;CF=CY only if pipe, which is equivalent to CR when processing
     jz .redirFound  ;If we had a < > or >>, proceed to check if next char CR
     ;Else we process the first two switches and copy any arguments
+    mov al, " "
+    stosb   ;Store a space to make space for the command file parameter
     dec rsi ;Move rsi back to the first char
     test byte [arg1Flg], -1
     jnz .arg2
@@ -149,7 +151,7 @@ parseInput:
     ;If not, we copy it over
     call copyCommandTailItem    ;Stores a terminating null we dont want
     lea rdi, qword [rdi - 1]    ;Point back at the inserted terminating null
-    jnc .cmdLineProcess    ;Loop if no embedded CR was found in the item
+    jnc .cmdLineProcess
 .exit:
     lea rbx, cmdBuffer
     dec rsi
@@ -189,6 +191,7 @@ parseInput:
     cld ;Go the sane way again
     xor ecx, ecx
     lea rdi, qword [cmdName + 1]    ;First byte is for the length of the name
+    push rsi    ;Save the location of the start byte of the command name
 .cmdGetChar:
     lodsb
     test al, al ;Did we find the terminating null?
@@ -202,6 +205,35 @@ parseInput:
     jb .cmdGetChar
 .nameLenFnd:
     mov byte [cmdName], cl  ;Store the name length now
+    ;Now finally, create a FCB filespec
+    lea rdi, cmdSpec
+    push rdi
+    mov ecx, fcbNameL
+    mov al, " " ;Fill with spaces
+    rep stosb
+    pop rdi
+    pop rsi ;Get back the location of the start byte of the command name
+    mov rbx, rsi    ;Use rbx as the base pointer
+    mov ecx, 8  ;At most 8 chars for now
+.copyFname:
+    lodsb 
+    test al, al
+    retz
+    cmp al, "."
+    je .extcpy
+    stosb   ;No need to capitalise
+    dec ecx
+    jnz .copyFname
+.extcpy:
+    mov ecx, 3
+    lea rsi, qword [rbx + filename.fExt]    ;Copy remaining chars in ext
+.copyExt:
+    lodsb
+    test al, al
+    retz
+    stosb
+    dec ecx
+    jnz .copyExt
     return
 
 doCommandLine:
