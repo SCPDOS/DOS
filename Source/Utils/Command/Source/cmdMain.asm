@@ -99,8 +99,6 @@ parseInput:
     rep movsb   ;Now we copy the command into the psp command line
     test al, 1  ;Was CF set?
     jnz .exit   ;If an embedded CR was found in the filename, exit!
-    ;mov al, " "
-    ;stosb   ;Store a space after the command name in the psp tail
 .cmdLineProcess:
     call skipSpaces ;Go to the next char in the input line
 .redirFound:
@@ -177,8 +175,10 @@ parseInput:
     je .cmdStartFnd
     cmp rsi, rbx
     jne .keepSearching
-    dec rsi ;Go back one to go forwards again
+    dec rsi ;Go back two to go forwards again
+    dec rsi
 .cmdStartFnd:
+    inc rsi
     inc rsi ;Go past the pathsep
     cld ;Go the sane way again
     xor ecx, ecx
@@ -193,39 +193,22 @@ parseInput:
     and al, 0DFh    ;Else uppercase the char
     stosb   ;and store it
     inc ecx
-    cmp ecx, 8
+    cmp ecx, 11 ;Max command length is 11
     jb .cmdGetChar
 .nameLenFnd:
     mov byte [cmdName], cl  ;Store the name length now
     ;Now finally, create a FCB filespec
-    lea rdi, cmdSpec
+    lea rdi, fcbCmdSpec
     push rdi
     mov ecx, fcbNameL
     mov al, " " ;Fill with spaces
     rep stosb
     pop rdi
     pop rsi ;Get back the location of the start byte of the command name
-    mov rbx, rsi    ;Use rbx as the base pointer
-    mov ecx, 8  ;At most 8 chars for now
-.copyFname:
-    lodsb 
-    test al, al
-    retz
-    cmp al, "."
-    je .extcpy
-    stosb   ;No need to capitalise
-    dec ecx
-    jnz .copyFname
-.extcpy:
-    mov ecx, 3
-    lea rsi, qword [rbx + filename.fExt]    ;Copy remaining chars in ext
-.copyExt:
-    lodsb
-    test al, al
-    retz
-    stosb
-    dec ecx
-    jnz .copyExt
+    call asciiToFCB
+    lea rsi, fcbCmdSpec
+    lea rdi, cmdSpec
+    call FCBToAsciiz
     return
 
 doCommandLine:
@@ -333,6 +316,12 @@ doCommandLine:
 .external:
 ;Here we must search the CWD or all path componants before failing
 ;Also this command must be a .COM, .EXE or .BAT so check that first
+    jmp .dfltErrExit    ;Catch all for now
+    mov eax, dword [cmdFcb + fcb.fileext]   ;Get a dword, with dummy byte 3
+    and eax, 00FFFFFFh  ;Clear byte three
+    or eax,  20000000h  ;Add a space so it is like "COM "
+    cmp eax, "    " ;Only if we have four spaces do we proceed here
+    je .noExt
     call checkExtensionExec ;ZF=ZE => Executable
     jnz .dfltErrExit
     ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
@@ -346,24 +335,28 @@ doCommandLine:
     mov ah, 09h
     int 41h
     return
+.noExt:
+    ;Here we must search for the first file with a valid extension.
+    ;Use bl as flags. bl[0] => COM found, bl[1] => EXE found, bl[2] => BAT found
+    xor ebx, ebx
+    ;If relative path, search CWD. If absolute path, search absolute path.
+    ;If nothing, only then loop through each dir in the path for provided
+    ; pathspec (relative case), or filename (absolute case)
+
+
 
 checkExtensionExec:
 ;Checks the extension field of cmdFcb is .COM, .EXE, .BAT in that order
 ;Returns: ZF=ZE if executable. ZF=NZ if not executable.
 ;         If ZF=ZE and CF=CY => Batch file
-    cmp byte [cmdFcb + fcb.fileext], "C"
-    jne .notCOM
-    cmp word [cmdFcb + fcb.fileext + 1], "OM"
-    return
-.notCOM:
-    cmp byte [cmdFcb + fcb.fileext], "E"
-    jne .batFile
-    cmp word [cmdFcb + fcb.fileext + 1], "XE"
-    return
-.batFile:
-    cmp byte [cmdFcb + fcb.fileext], "B"
-    retne
-    cmp word [cmdFcb + fcb.fileext + 1], "AT"
+    mov eax, dword [cmdFcb + fcb.fileext]   ;Get a dword, with dummy byte 3
+    and eax, 00FFFFFFh  ;Clear byte three
+    or eax,  20000000h  ;Add a space so it is like "COM "
+    cmp eax, "COM "
+    rete
+    cmp eax, "EXE "
+    rete
+    cmp eax, "BAT "
     retne
     stc
     return

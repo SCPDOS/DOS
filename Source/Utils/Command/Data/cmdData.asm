@@ -23,7 +23,7 @@ pipeName    db 11 dup (" ") ;Name of the pipe file we created
 
 cmdStatePtr:   ;Symbol to use for clearing command state variables
 ;These variables are valid for a SINGLE command in a command line
-searchDrv   db 0    ;Search drive for the operation
+cmdDrvSpec  dw 0    ;Read the first word in to see if the pathspec has drivespec
 redirIn     db 0    ;If set, we are redirecting input from a file
 redirOut    db 0    ;If 1, we are redirecting output to a file, destructively
 ;                    If 2, we are redirecting output to a file, by appending
@@ -35,6 +35,7 @@ arg1FCBret  db 0    ;AL on return from parse filename for argument 1
 arg2Flg     db 0    ;Set if there was a second argument
 arg2Off     db 0    ;Offset into cmdBuffer to the argument
 arg2FCBret  db 0    ;AL on return from parse filename for argument 2
+
 cmdStateL equ $ - cmdStatePtr
 cmdLineStateL equ $ - cmdLineStatePtr
 
@@ -47,9 +48,11 @@ inBuffer    db cmdBufferL dup (0)  ;Add one to add space for terminating CR
 cmdBuffer   db cmdBufferL dup (0)  ;This is the to copy input to when processing
 cmdPathSpec db fileSpecZL dup (0)  ;Space for full path to a external command
 
-cmdDrvSpec  dw 0    ;Read the first word in to see if the pathspec has drivespec
-cmdSpec     db fcbNameL dup (0) ;USed to make a fcb name for the file
+fcbCmdSpec  db fcbNameL dup (0) ;Used to make a FCB style name for the file
+cmdSpec     db fileNameZL dup (0)   ;ASCIIZ command spec for the command name
 cmdName     db cmdNameL dup (0) ;Command name string prefixed by length of word
 
 rdrInFilespec   db fileSpecZL dup (0)   ;Space for the redir in filespec
 rdrOutFilespec  db fileSpecZL dup (0)   ;Space for the redir out filespec
+
+searchSpec  db fileSpecZL dup (0)   ;Contains the pathspec for the search file

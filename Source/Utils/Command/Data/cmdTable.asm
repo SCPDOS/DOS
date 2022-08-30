@@ -49,7 +49,10 @@ functionTable:
     db 5, "BREAK"
     dw break - startLbl
 
-    db 7, "RENAME"
+    db 6, "RENAME"
     dw rename - startLbl
+
+    db 8, "TRUENAME"
+    dw truename - startLbl
 
     db -1   ;End of table

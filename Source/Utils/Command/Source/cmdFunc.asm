@@ -71,5 +71,6 @@ cls:
 
 break:
 rename:
+truename:
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
