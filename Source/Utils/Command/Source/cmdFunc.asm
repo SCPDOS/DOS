@@ -7,7 +7,6 @@ dir:
 .searchCWD:
     return
 chdir:
-    breakpoint
     test byte [arg1Flg], -1
     jnz .changeDir
     ;Print CWD
@@ -17,8 +16,7 @@ chdir:
     return
 .printDiskCWD:
 ;Print CWD for a specified drive
-    mov dl, byte [r8 + fcb1 + fcb.driveNum] ;Get 0 based drive number in dl
-    inc dl  ;Convert to 1 based
+    mov dl, byte [r8 + fcb1 + fcb.driveNum] ;Get 1 based drive number in dl
     mov al, dl
     add al, "@" ;Get the UC letter
     mov ah, ":"
