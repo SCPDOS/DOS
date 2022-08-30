@@ -108,7 +108,6 @@ parseInput:
     call checkAndSetupRedir ;If not, check if we have a redir element
     jc .exit    ;CF=CY only if pipe, which is equivalent to CR when processing
     jz .redirFound  ;If we had a < > or >>, proceed to check if next char CR
-    ;Else we process the first two switches and copy any arguments
     mov al, " "
     stosb   ;Store a space to make space for the command file parameter
     dec rsi ;Move rsi back to the first char
@@ -133,7 +132,7 @@ parseInput:
     mov byte [arg2Off], al  ;Store the offset 
     jmp short .argCommon
 .argCommon:
-    ;More than two arguments, we do nothing more than just copy the command
+    ;More than two arguments? Do nothing more than just copy it
     ; over. If we encounter an embedded CR, exit there too
     call skipSpaces
     cmp byte [rsi], CR  ;Are we at the end of the commandline?

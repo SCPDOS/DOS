@@ -58,3 +58,9 @@ rdrOutFilespec  db fileSpecZL dup (0)   ;Space for the redir out filespec
 searchSpec  db cmdBufferL dup (0)   ;Contains the pathspec for the search file
 ;The above is larger than is needed/supported by DOS to allow for 
 ; users overtyping
+
+;Internal Function vars
+dirPrnType  db 0    ;Print type.    Bit[0] set => /W or /w specified
+;                                   Bit[1] set => /P or /p specified
+dirLineCtr  db 0    ;Counter to keep track of which line we printed (0-23)
+dirPathOff  db 0

@@ -1,10 +1,62 @@
 dir:
-    ;If a particular path is given, we search for it.
-    ;Else, if rsi is pointing at CR, . or " " we search in CWD for *.*
-    cmp byte [rsi], CR
-    je .searchCWD
-
-.searchCWD:
+    mov byte [dirPrnType], 0    ;Clear DIR flags
+    mov byte [dirLineCtr], 0
+    mov byte [dirPathOff], 0    
+    ;Start by scanning for the switches
+    lea rdi, cmdBuffer + 1  ;Goto command line input chars count
+    movzx ecx, byte [rdi]   ;Get number of chars typed
+    inc rdi ;Goto first char typed in
+    mov rsi, rdi    ;Use rsi as start of buffer counter
+    mov al, byte [switchChar]   ;Scan for switchchars
+.switchScan:
+    repne scasb ;Scan for a switchchar
+    jecxz .switchScanDone
+    mov al, byte [rdi]  ;Get the byte pointed to by rdi
+    and al, 0DFh    ;UC it
+    cmp al, "W" ;Wide print mode?
+    jne .notWideSw
+    or byte [dirPrnType], 1 ;Set the correct bit
+    jmp short .switchScan
+.notWideSw:
+    cmp al, "P" ;Pause mode?
+    jne .badParam   ;If a switch other than /P or /W, fail
+    or byte [dirPrnType], 2 ;Set correct bit
+    jmp short .switchScan
+.switchScanDone:
+;If no args, only switches, we search CWD
+;If one arg, search that 
+;If more than one, fail
+    lea rdi, cmdBuffer + 2
+    mov rsi, rdi
+    call skipSpaces ;Skip leading spaces
+    call findTerminator ;Go to end of command
+    jc .eocReached
+    inc rsi
+.pathSearch:
+    call skipSpaces ;Now skip intermediate spaces to next non-space
+    mov al, byte [switchChar]   ;Is this a switch?
+    cmp byte [rsi], al
+    je .pathSearchSwitch    ;If a switch, skip it, find switch terminator
+    cmp byte [dirPathOff], 0    ;Did we previously get an argument?
+    jne .badParam ;If so, error
+    mov rax, rsi    ;Else, compute the offset in the cmdBuffer
+    sub rax, rdi    ;Offset from the cmdBuffer + 2
+    add al, 2       ;Make it an offset from cmdBuffer
+    mov byte [dirPathOff], al   ;And save it!
+.pathSearchSwitch:
+    call findTerminator
+    jc .eocReached
+    inc rsi ;Go to next char
+    jmp short .pathSearch
+.eocReached:
+    cmp byte [dirPathOff], 0
+    je .dirCWD
+.dirCWD:
+    
+.badParam:
+    lea rdx, badParm
+    mov ah, 09h
+    int 41h
     return
 chdir:
     test byte [arg1Flg], -1
