@@ -55,4 +55,6 @@ cmdName     db cmdNameL dup (0) ;Command name string prefixed by length of word
 rdrInFilespec   db fileSpecZL dup (0)   ;Space for the redir in filespec
 rdrOutFilespec  db fileSpecZL dup (0)   ;Space for the redir out filespec
 
-searchSpec  db fileSpecZL dup (0)   ;Contains the pathspec for the search file
+searchSpec  db cmdBufferL dup (0)   ;Contains the pathspec for the search file
+;The above is larger than is needed/supported by DOS to allow for 
+; users overtyping

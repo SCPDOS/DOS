@@ -7,7 +7,102 @@ dir:
 .searchCWD:
     return
 chdir:
+    test byte [arg1Flg], -1
+    jnz .changeDir
+    ;Print CWD
+.printCWD:
+    call putCWDInPrompt ;Exactly the same procedure
+    call printCRLF
+    return
+.printDiskCWD:
+;Print CWD for a specified drive
+    mov dl, byte [r8 + fcb1 + fcb.driveNum] ;Get 0 based drive number in dl
+    inc dl  ;Convert to 1 based
+    mov al, dl
+    add al, "@" ;Get the UC letter
+    mov ah, ":"
+    lea rdi, searchSpec
+    stosw   ;Store X:, rdi+=2
+    mov al, byte [pathSep]
+    stosb   ;Store pathSep, inc rdi
+    mov ah, 47h ;Get Current Working Directory
+    mov rsi, rdi    ;rsi points to buffer to write to
+    int 41h
+    call strlen
+    add ecx, 2 ;Add two for the X:
+    mov ah, 40h ;Write to handle
+    mov ebx, 1  ;STDOUT
+    lea rdx, searchSpec
+    int 41h
+    call printCRLF
+    return
+.changeDir:
+    mov al, byte [arg1FCBret]
+    cmp al, -1 
+    je .badDrv  ;IF the drive is good, but the FCB space is blank, must be X:
+    cmp byte [r8 + fcb1 + fcb.filename], " "
+    jne .getFQPath
+    ;Now we double check that on the command line we have . or ..
+    movzx eax, byte [arg1Off]
+    lea rsi, cmdBuffer
+    add rsi, rax
+    cmp byte [rsi], "."
+    jne .printDiskCWD
+    ;If the path is . or .., its acceptable, else fail
+.getFQPath:
+    call buildCommandPath   ;Else build a fully qualified pathname
+    jc .badDir  ;If this returns CF=CY, its a badDir
+    lea rdx, searchSpec
+    mov ah, 3Bh ;CHDIR
+    int 41h
+    jc .badDir
+    return
+.badDrv:
+    lea rdx, badDrv
+    mov eax, 0900h
+    int 41h
+    return
+.badDir:
+    lea rdx, badDir
+    mov eax, 0900h
+    int 41h
+    return
+
+
 mkdir:
+    test byte [arg1Flg], -1
+    jz .badParams
+    test byte [arg2Flg], -1
+    jnz .badParams
+    ;We have exactly one argument
+    mov al, byte [arg1FCBret]
+    cmp al, -1 
+    je .badDrv  ;If a drive was specified and was bad, jump
+    call buildCommandPath
+    jc .badMake
+    lea rdx, searchSpec
+    mov eax, 3900h  ;MKDIR
+    int 41h
+    jc .badMake   ;Return if not carry
+    mov ah, 0Dh
+    int 41h ;Flush to disk
+    return
+.badMake:   ;Else, bad make
+    lea rdx, badMD
+    mov eax, 0900h
+    int 41h
+    return
+.badDrv:
+    lea rdx, badDrv
+    mov eax, 0900h
+    int 41h
+    return
+.badParams:
+    lea rdx, badArgs
+    mov eax, 0900h
+    int 41h
+    return
+
 rmdir:
 erase:
 date:
@@ -120,7 +215,28 @@ break:
     return
 
 rename:
+    return
 truename:
+    test byte [arg1Flg], -1
+    jnz .argumentProvided
+    lea rdx, badArgs
+    mov ah, 09h
+    int 41h
+    return
+.argumentProvided:
+    call buildCommandPath
+    ;Explicitly call Truename if we remove truename from this function
+    lea rdi, searchSpec
+    call strlen
+    dec ecx ;Don't print terminating null
+    lea rdx, searchSpec
+    mov ebx, 01
+    mov ah, 40h
+    int 41h
+    call printCRLF
+    return
+
+
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
     return

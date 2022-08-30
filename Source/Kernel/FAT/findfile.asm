@@ -623,6 +623,14 @@ pathWalk:
     ; resolution
 .netEp: ;For net path resolution (resolution ONLY) ptrs must point past "\\"
     mov rbx, rdi
+    ;If rsi at the end of the string, exit for ROOT dir
+    cmp byte [rsi], 0
+    jnz .mainlp
+    ;Setup dummy dir data
+    xor eax, eax
+    mov word [curDirCopy + fatDirEntry.fstClusHi], ax
+    mov word [curDirCopy + fatDirEntry.fstClusLo], ax
+    jmp short .exitGood
 .mainlp:
     call copyPathspec  ;Now setup the filename in the FCB name field
     test al, al
@@ -790,7 +798,7 @@ copyPathspec:
 ;2) Advances rsi to the next null, \ or /
 ;3) Expands all * to ?'s
 ;4) Understands \. means "this directory" and can be ignored with rsi moving to
-;    next path separator
+;    next path separator and rdi pointing to the previous pathsep
 ;5) Understands \.. means "parent directory" and rdi should be changed to rbx
 ;    with rsi moving to path separator
 ;6) Each name in destination is at most 12 chars long, to account for the dot
@@ -862,7 +870,7 @@ copyPathspec:
     stosb   ;Store the first dot
     mov al, byte [rsi]
     cmp al, "."    ;Check now if we have a second dot
-    jne .cpsCharSkip
+    jne .oneDotResolve
     movsb   ;Now advance rsi and rdi by copying the second dot over directly
 .cpsCharSkip:
     call .cpsPtrSkip    ;Now we are skipping any chars that arent terminators
@@ -911,6 +919,13 @@ copyPathspec:
     lea rdi, fcbName+11
     stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
     pop rdi
+    return
+.oneDotResolve:
+    lea rdi, fcbName+11
+    stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
+    pop rdi ;rdi points to fresh space
+    dec rdi ;Point to the previous path separator
+    stosb   ;Store this separator as if it is what we had before
     return
 
 searchForPathspec:

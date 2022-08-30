@@ -98,13 +98,19 @@ makeDIR:           ;ah = 39h
     rep movsq   ;Copy over the buffered directory
     call setBufferDirty ;We wrote to this buffer
     ;Now need to read in data sector and make two entries . and ..
-    mov rax, ".       "
-    mov qword [curDirCopy], rax
-    mov eax, "    "
-    mov word [curDirCopy + 8], ax
-    mov byte [curDirCopy + 10], al
+    push rdi
+    push rcx
+    mov ecx, 11
+    lea rdi, curDirCopy
+    mov al, " "
+    rep stosb
+    pop rcx
+    pop rdi
+    mov rax, "."
+    mov byte [curDirCopy], al
     movzx eax, word [curDirCopy + fatDirEntry.fstClusLo]
     movzx edx, word [curDirCopy + fatDirEntry.fstClusHi]
+    mov byte [curDirCopy + fatDirEntry.attribute], dirDirectory 
     shl edx, 10h
     or eax, edx ;Add upper bits to eax cluster number
     call getStartSectorOfCluster    ;Get start sector in rax
@@ -115,8 +121,6 @@ makeDIR:           ;ah = 39h
     lea rdi, qword [rbx + bufferHdr.dataarea]
     mov ecx, 4  ;4 qwords to copy
     rep movsq
-    mov rbx, qword [rbx + bufferHdr.bufferLBA]  ;Save this sector for now
-    call setBufferDirty ;We wrote to this buffer
     ;Now create .. entry
     mov byte [curDirCopy + 1], "."  ;Store a second dot
     mov eax, dword [dirClustPar]    ;Get starting cluster of parent dir
@@ -130,15 +134,10 @@ makeDIR:           ;ah = 39h
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
     shr eax, 10h
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
-    mov rax, rbx  ;Get this sector back again
-    call getBufForDirNoFile
-    jc .badExit
     lea rsi, curDirCopy
-    lea rdi, qword [rbx + bufferHdr.dataarea + fatDirEntry_size]    ;Next entry!
     mov ecx, 4
     rep movsq
     call setBufferDirty ;We wrote to this buffer
-    ;Now I need to write the entry in the Parent Directory
 .okExit:
     ;AND WE ARE DONE!
     call dosCrit1Exit

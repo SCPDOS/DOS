@@ -143,6 +143,12 @@ printPackedBCD:
     pop rax
     return
 
+getCurrentDrive:
+;Returns the current drive in al
+    mov ah, 19h
+    int 41h
+    return
+
 strlen:
 ;Gets the length of a ASCIIZ string
 ;Input: rdi = Source buffer
@@ -333,4 +339,73 @@ FCBToAsciiz:
 .exit:
     xor eax, eax
     stosb   ;Store a null at the end
+    return
+
+buildCommandPath:
+;Based on the first argument on the command line
+; will build a full ASCIIZ path in searchSpec to the file/dir specified
+    ;If this is a relative path, must handle correctly
+    movzx eax, byte [arg1Off]
+    lea rsi, cmdBuffer
+    add rsi, rax    ;Go to the start of the command
+    mov bh, byte [pathSep]
+    mov bl, ":"
+    cmp word [rsi + 1], bx    ;This checks if absolute or relative
+    je .absolutePath
+    cmp byte [rsi + 1], bl  ;Check if a drive separator
+    je .relativeGiven
+;No drive letter given, must get Current Drive
+    call getCurrentDrive    ;Get current drive number (0 based) in al
+    add al, "A"
+    jmp short .relativeCommon
+.relativeGiven:
+;Drive letter pointed to by AL
+    mov al, byte [rsi]  ;Get drive letter in al
+    and al, 0DFh    ;Convert to UC
+    add rsi, 2  ;Skip the given drive letter and the colon
+.relativeCommon:
+    ;al has drive letter
+    mov dl, al  ;Save drive letter in dl
+    sub dl, "@" ;Get 1 based drive number in dl
+    mov ah, ":" ;Get the colon in too
+    lea rdi, searchSpec ;Start building our search path here
+    stosw   ;Store X:
+    mov al, byte [pathSep]
+    stosb   ;Store pathSep
+    push rsi    ;Save user input string
+    mov rsi, rdi    ;Put the current directory here for this drive
+    mov ah, 47h ;Get Current Working Directory, dl has drive number
+    int 41h ;Won't fail as drive letter in dl confirmed ok
+    pop rsi
+    ;Now want to find terminating null
+    xor al, al
+    xor ecx, ecx
+    dec ecx
+    repne scasb ;Search for the terminating null
+    dec rdi ;Go back one once found
+    mov al, byte [pathSep]
+    cmp byte [rdi - 1], al
+    je .buildPath ;If the previous char is a pathsep, skip storing another
+    stosb   ;Store the pathsep
+    jmp short .buildPath  ;Now we copy the user string over and good to go
+.absolutePath:
+    lea rdi, searchSpec
+.buildPath:
+    call copyCommandTailItem    ;Terminates with a 0 for free
+    lea rsi, searchSpec
+    lea rdi, searchSpec
+    mov ah, 60h ;Truename it to avoid issues
+    int 41h
+    retc    ;Return if an error with CF=CY
+    ;Here we do one final check to ensure we dont end up with a A: but A:"\"
+    xor al, al
+    xor ecx, ecx
+    dec ecx
+    repne scasb
+    dec rdi ;Go back to the final non-null char
+    cmp byte [rdi - 1], ":" ;Is the final non-null char a colon?
+    retne   ;Return if not
+    xor eax, eax
+    mov al, byte [pathSep]  ;IF it is, insert a pathsep
+    stosw   ;Store the terminating 0 after the pathsep
     return
