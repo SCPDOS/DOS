@@ -7,6 +7,7 @@ dir:
 .searchCWD:
     return
 chdir:
+    breakpoint
     test byte [arg1Flg], -1
     jnz .changeDir
     ;Print CWD
@@ -39,13 +40,16 @@ chdir:
 .changeDir:
     mov al, byte [arg1FCBret]
     cmp al, -1 
-    je .badDrv  ;IF the drive is good, but the FCB space is blank, must be X:
+    je .badDrv  ;IF the drive is good, but FCB name blank, either X: or \ 
     cmp byte [r8 + fcb1 + fcb.filename], " "
     jne .getFQPath
     ;Now we double check that on the command line we have . or ..
     movzx eax, byte [arg1Off]
     lea rsi, cmdBuffer
     add rsi, rax
+    mov al, byte [pathSep]
+    cmp byte [rsi], al  ;Is the first char a pathsep?
+    je .getFQPath
     cmp byte [rsi], "."
     jne .printDiskCWD
     ;If the path is . or .., its acceptable, else fail
@@ -57,6 +61,7 @@ chdir:
     int 41h
     jc .badDir
     return
+
 .badDrv:
     lea rdx, badDrv
     mov eax, 0900h

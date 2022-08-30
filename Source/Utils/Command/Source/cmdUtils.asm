@@ -350,6 +350,8 @@ buildCommandPath:
     add rsi, rax    ;Go to the start of the command
     mov bh, byte [pathSep]
     mov bl, ":"
+    cmp byte [rsi], bh  ;Is the first char relative to root?
+    je .absoluteCurrent
     cmp word [rsi + 1], bx    ;This checks if absolute or relative
     je .absolutePath
     cmp byte [rsi + 1], bl  ;Check if a drive separator
@@ -388,6 +390,15 @@ buildCommandPath:
     je .buildPath ;If the previous char is a pathsep, skip storing another
     stosb   ;Store the pathsep
     jmp short .buildPath  ;Now we copy the user string over and good to go
+.absoluteCurrent:
+    call getCurrentDrive    ;Get current drive number (0 based) in al
+    add al, "A"
+    mov ah, ":" ;ax has X: now to store 
+    lea rdi, searchSpec
+    stosw
+    mov al, byte [pathSep]
+    stosb
+    jmp short .buildPath
 .absolutePath:
     lea rdi, searchSpec
 .buildPath:

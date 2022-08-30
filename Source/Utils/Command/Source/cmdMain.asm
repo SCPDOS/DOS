@@ -426,6 +426,10 @@ copyCommandTailItem:
     je .endOfInput
     call isALterminator
     jz .exit
+    cmp al, byte [pathSep]
+    je .exit
+    cmp al, byte [switchChar]
+    je .exit
     stosb
     jmp short copyCommandTailItem
 .endOfInput:
