@@ -29,12 +29,10 @@ redirOut    db 0    ;If 1, we are redirecting output to a file, destructively
 ;                    If 2, we are redirecting output to a file, by appending
 ;FLG and SWCH are read as a word when checking if argX is a switch
 arg1Flg     db 0    ;Set if there was a first argument
-arg1Swch    db 0    ;Set if the first argument started with a switchchar
 arg1Off     db 0    ;Offset into cmdBuffer to the argument
 arg1FCBret  db 0    ;AL on return from parse filename for argument 1
 
 arg2Flg     db 0    ;Set if there was a second argument
-arg2Swch    db 0    ;Set if the second argument started with a switchchar
 arg2Off     db 0    ;Offset into cmdBuffer to the argument
 arg2FCBret  db 0    ;AL on return from parse filename for argument 2
 cmdStateL equ $ - cmdStatePtr
