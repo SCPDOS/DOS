@@ -181,8 +181,13 @@ parseInput:
     inc rsi
     inc rsi ;Go past the pathsep
     cld ;Go the sane way again
-    xor ecx, ecx
     lea rdi, qword [cmdName + 1]    ;First byte is for the length of the name
+    push rdi    ;Cleanse the field before usage (not strictly necessary)
+    mov ecx, cmdNameL
+    xor al, al
+    rep stosb
+    pop rdi
+    xor ecx, ecx
     push rsi    ;Save the location of the start byte of the command name
 .cmdGetChar:
     lodsb

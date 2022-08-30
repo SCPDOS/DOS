@@ -270,6 +270,8 @@ asciiToFCB:
     mov rbx, rdi    ;Use rbx as the base pointer of this buffer
 .processName:
     lodsb   ;Get the char in al
+    test al, al ;If the char is a null, must be at the end of the name
+    jz .exit
     cmp al, " " ;If space or a period, go to extension field. If null, exit
     je .extSpace
     cmp al, "."
