@@ -118,6 +118,7 @@ hexToBCD:
     or al, cl   ;Move upper nybble into al upper nybble
     pop rcx
     ret
+
 printPackedBCD:
 ;Gets a packed BCD digit in al and prints al[7:4] if non zero,
 ; then prints al[3:0]
@@ -296,6 +297,31 @@ asciiToFCB:
     rep stosb   ;Fill the buffer with spaces (so we don't need to fill later)
     pop rdi
     mov rbx, rdi    ;Use rbx as the base pointer of this buffer
+    jmp short asciiFilenameToFCB.processName
+asciiFilenameToFCB:
+;Converts a filename in the form FILENAME.EXT,0 to FILENAMEEXT
+;Don't uppercase any lowercase chars as this could be used with user buffers.
+;Also doesn't check if chars are valid
+;Names such as SYS.COM get converted to "SYS     COM"
+;Name is space padded.
+;Input: rsi = ASCII string buffer
+;       rdi = FCB name buffer
+;Output: al = Char that terminated the source string 
+    push rbx    
+    push rdi
+    mov ecx, 11
+    mov al, " "
+    rep stosb   ;Fill the buffer with spaces (so we don't need to fill later)
+    pop rdi
+    mov rbx, rdi    ;Use rbx as the base pointer of this buffer
+    ;Preprocess for Dir Searches
+    cmp byte [rsi], "."
+    jne .processName
+    movsb   ;Store the first dot
+    cmp byte [rsi], "."
+    jne .exitBadChar
+    movsb
+    jmp short .exitBadChar
 .processName:
     lodsb   ;Get the char in al
     test al, al ;If the char is a null, must be at the end of the name

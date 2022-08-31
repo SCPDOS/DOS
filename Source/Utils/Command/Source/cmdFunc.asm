@@ -116,7 +116,26 @@ dir:
     lea rdx, crlf
     mov ah, 09h
     int 41h
+    lea rdx, crlf   ;Add an extra free line
+    mov ah, 09h
+    int 41h
     ;Now we search for the files
+    mov dword [rdi + rcx], 002A2E2Ah ;and add a *.*,0
+    mov rdx, rdi    ;Ptr to search for in rdx
+    mov ecx, dirReadOnly | dirDirectory
+    mov ah, 4Eh ;Find first
+    int 41h
+    jc .dirNoMoreFiles
+.findNext:
+    call .dirPrintFileData  ;Print the file information
+    mov ah, 4Fh
+    int 41h
+    jnc .findNext 
+.dirNoMoreFiles:
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    ;Now we print the number of files and the number of bytes on the disk
 
 
 .dirCWDExit:
@@ -160,15 +179,54 @@ dir:
     int 41h
     return
 
-
-
+.dirPrintFileData:
+;Use fcbCmdSpec to build the file name with space
+    test byte [dirPrnType], 1
+    jnz .widePrint
+    ;Normal print (Name space ext <> File size <> Acc Date <> Acc Time)
+.widePrint:
+;If /W, print name space ext space space space space
+    lea rsi, qword [cmdFFBlock + ffBlock.asciizName]
+    lea rdi, fcbCmdSpec
+    call asciiFilenameToFCB
+    lea rdx, fcbCmdSpec
+    mov ecx, 8  ;Print 8 chars
+    mov ebx, 1  ;STDOUT
+    mov ah, 40h ;Write handle
+    int 41h
+    push rdx
+    mov dl, " "
+    mov ah, 02h ;Print char
+    int 41h
+    pop rdx
+    add rdx, 8  ;Go to ext field
+    mov ecx, 3  ;Print three chars
+    mov ebx, 1  ;STDOUT
+    mov ah, 40h ;Write handle
+    int 41h
+    lea rdx, fourSpc
+    mov ah, 09h ;Print string
+    int 41h
+    inc byte [dirFileCtr]   ;Increment file counter
+    inc byte [dirLineCtr]
+    cmp byte [dirLineCtr], 23
+    retne
+    lea rdx, pauseMes
+    mov ah, 09h
+    int 41h
+    mov ah, 01h ;Wait for a char from STDIN
+    int 41h
+    mov byte [dirLineCtr], 0
+    lea rdx, crlf   ;Force new line
+    mov ah, 09h
+    int 41h
+    return
+    
 .badParam:
     lea rdx, badParm
     mov ah, 09h
     int 41h
     return
-
-
 
 chdir:
     test byte [arg1Flg], -1

@@ -64,6 +64,8 @@ devWriteErr db "Error writing to device"
 backSpace   db BSP," ",BSP,NUL
 
 ansiCls  db 01BH,"[2J" ;ANSI CLS sequence, 4 chars long
+fourSpc  db "    $"
+
 
 badOnOff db "Must specify ON or OFF",CR,LF,"$"
 pathEVar db "PATH="
