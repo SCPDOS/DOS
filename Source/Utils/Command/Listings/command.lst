@@ -681,7 +681,7 @@
     11                                  %include "./Source/Utils/COMMAND/Data/cmdData.asm"
     12                              <1> ;Static Data Area for COMMAND.COM    
     13                              <1> startLbl:   ;Start symbol, this is the entry point
-    14 00000000 E93E170000          <1>     jmp cmdLdr
+    14 00000000 E93F170000          <1>     jmp cmdLdr
     15 00000005 0000000000000000    <1> stackBottom dq 0    ;Pointer to the top of the stack as allocated by DOS
     16 0000000D 0000                <1> returnCode  dw 0    ;Return Code from a child process
     17 0000000F FFFFFFFFFFFFFFFF    <1> realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here
@@ -1070,11 +1070,11 @@
     28 00000857 CD41                <1>     int 41h
     29 00000859 668905ADF7FFFF      <1>     mov word [returnCode], ax
     30                              <1> ;Reset our PSP vectors (and IVT copies) in the event they got mangled
-    31 00000860 488D151E0C0000      <1>     lea rdx, critErrorHandler
+    31 00000860 488D151F0C0000      <1>     lea rdx, critErrorHandler
     32 00000867 4989501A            <1>     mov qword [r8 + psp.oldInt44h], rdx
     33 0000086B B844250000          <1>     mov eax, 2544h
     34 00000870 CD41                <1>     int 41h
-    35 00000872 488D159C0E0000      <1>     lea rdx, int43h
+    35 00000872 488D159D0E0000      <1>     lea rdx, int43h
     36 00000879 49895012            <1>     mov qword [r8 + psp.oldInt43h], rdx
     37 0000087D B843250000          <1>     mov eax, 2543h
     38 00000882 CD41                <1>     int 41h
@@ -2775,33 +2775,15 @@
    453 0000146F F2AE                <1>     repne scasb
    454 00001471 48FFCF              <1>     dec rdi ;Go back to the final non-null char
    455 00001474 807FFF3A            <1>     cmp byte [rdi - 1], ":" ;Is the final non-null char a colon?
-   456                              <1>     retne   ;Return if not
-    59                              <2> cret ne
-    25                              <3> %%_base:
-    26                              <3> %assign baseVar %%_base-$$
-    27                              <3>  %ifdef retOff
-    28                              <3>  %if (baseVar - retOff <= 126) && (baseVar > retOff)
-    29                              <3>  %ifdef currSegVBase
-    30                              <3>  j%+1 short (retOff+currSegVBase)
-    31                              <3>  %else
-    32 00001478 75(68)              <3>  j%+1 short retOff
-    33                              <3>  %endif
-    34                              <3>  %else
-    35                              <3>  j%-1 short %%a
-    36                              <3>  return
-    37                              <3> %%a:
-    38                              <3>  %endif
-    39                              <3>  %else
-    40                              <3>  j%-1 short %%a
-    41                              <3>  return
-    42                              <3> %%a:
-    43                              <3>  %endif
+   456 00001478 750A                <1>     jne .okExit   ;Return if not
    457 0000147A 31C0                <1>     xor eax, eax
    458 0000147C 8A05A1EBFFFF        <1>     mov al, byte [pathSep]  ;IF it is, insert a pathsep
    459 00001482 66AB                <1>     stosw   ;Store the terminating 0 after the pathsep
-   460                              <1>     return
+   460                              <1> .okExit:
+   461 00001484 F8                  <1>     clc
+   462                              <1>     return
     19                              <2> %%_ret:
-    20 00001484 C3                  <2>  ret
+    20 00001485 C3                  <2>  ret
     21                              <2> %assign retOff %%_ret-$$
     17                                  %include "./Source/Utils/COMMAND/Source/int44h.asm"
     18                              <1> critErrorHandler:   ;Int 44h
@@ -2827,299 +2809,299 @@
     38                              <1> ;                  = 1 - Retry the Operation    (Retry)
     39                              <1> ;                  = 2 - Terminate the Program  (Abort)
     40                              <1> ;                  = 3 - Fail the DOS call      (Fail)
-    41 00001485 53                  <1>     push rbx
-    42 00001486 51                  <1>     push rcx
-    43 00001487 52                  <1>     push rdx
-    44 00001488 57                  <1>     push rdi
-    45 00001489 56                  <1>     push rsi
-    46 0000148A FC                  <1>     cld         ;Make String ops go forward
+    41 00001486 53                  <1>     push rbx
+    42 00001487 51                  <1>     push rcx
+    43 00001488 52                  <1>     push rdx
+    44 00001489 57                  <1>     push rdi
+    45 0000148A 56                  <1>     push rsi
+    46 0000148B FC                  <1>     cld         ;Make String ops go forward
     47                              <1> 
-    48 0000148B 6689C3              <1>     mov bx, ax  ;Save ah in bh and al in bl (if needed)
-    49 0000148E 488D154AEFFFFF      <1>     lea rdx, crlf
-    50 00001495 B409                <1>     mov ah, 09h ;Print String
-    51 00001497 CD41                <1>     int 41h
+    48 0000148C 6689C3              <1>     mov bx, ax  ;Save ah in bh and al in bl (if needed)
+    49 0000148F 488D1549EFFFFF      <1>     lea rdx, crlf
+    50 00001496 B409                <1>     mov ah, 09h ;Print String
+    51 00001498 CD41                <1>     int 41h
     52                              <1> 
-    53 00001499 81E7FF000000        <1>     and edi, 00FFh   ;Zero the upper bytes of DI just in case
-    54 0000149F B90C000000          <1>     mov ecx, 0Ch
-    55 000014A4 39CF                <1>     cmp edi, ecx  ;Check if the error number is erroniously above Gen Error
-    56 000014A6 0F47F9              <1>     cmova edi, ecx  ;If it is, move Gen Error into edi
-    57 000014A9 480FB7FF            <1>     movzx rdi, di
-    58 000014AD 4889FA              <1>     mov rdx, rdi    ;Copy error code
-    59 000014B0 48C1E704            <1>     shl rdi, 4  ;Multiply by 16
-    60 000014B4 48D1E2              <1>     shl rdx, 1  ;Multiply by 2
-    61 000014B7 4801D7              <1>     add rdi, rdx    ;Add the resultant multiplications
-    62 000014BA 488D1523010000      <1>     lea rdx, qword [.errorMsgTable]
-    63 000014C1 488D143A            <1>     lea rdx, qword [rdx+rdi]   ;Load EA to rdx
-    64 000014C5 B409                <1>     mov ah, 09h ;Print String
-    65 000014C7 CD41                <1>     int 41h     ;Call DOS to print first part of message
+    53 0000149A 81E7FF000000        <1>     and edi, 00FFh   ;Zero the upper bytes of DI just in case
+    54 000014A0 B90C000000          <1>     mov ecx, 0Ch
+    55 000014A5 39CF                <1>     cmp edi, ecx  ;Check if the error number is erroniously above Gen Error
+    56 000014A7 0F47F9              <1>     cmova edi, ecx  ;If it is, move Gen Error into edi
+    57 000014AA 480FB7FF            <1>     movzx rdi, di
+    58 000014AE 4889FA              <1>     mov rdx, rdi    ;Copy error code
+    59 000014B1 48C1E704            <1>     shl rdi, 4  ;Multiply by 16
+    60 000014B5 48D1E2              <1>     shl rdx, 1  ;Multiply by 2
+    61 000014B8 4801D7              <1>     add rdi, rdx    ;Add the resultant multiplications
+    62 000014BB 488D1523010000      <1>     lea rdx, qword [.errorMsgTable]
+    63 000014C2 488D143A            <1>     lea rdx, qword [rdx+rdi]   ;Load EA to rdx
+    64 000014C6 B409                <1>     mov ah, 09h ;Print String
+    65 000014C8 CD41                <1>     int 41h     ;Call DOS to print first part of message
     66                              <1> 
-    67 000014C9 488D1505020000      <1>     lea rdx, qword [.readmsg]
-    68 000014D0 488D3D0D020000      <1>     lea rdi, qword [.writemsg]
-    69 000014D7 F6C701              <1>     test bh, 1  ;Bit 0 is set if write operation
-    70 000014DA 480F45D7            <1>     cmovnz rdx, rdi ;Move the correct r/w part of the message to rdx
-    71 000014DE B409                <1>     mov ah, 09h ;Print String
-    72 000014E0 CD41                <1>     int 41h     ;Call DOS to print error reading/writing portion
+    67 000014CA 488D1505020000      <1>     lea rdx, qword [.readmsg]
+    68 000014D1 488D3D0D020000      <1>     lea rdi, qword [.writemsg]
+    69 000014D8 F6C701              <1>     test bh, 1  ;Bit 0 is set if write operation
+    70 000014DB 480F45D7            <1>     cmovnz rdx, rdi ;Move the correct r/w part of the message to rdx
+    71 000014DF B409                <1>     mov ah, 09h ;Print String
+    72 000014E1 CD41                <1>     int 41h     ;Call DOS to print error reading/writing portion
     73                              <1> 
-    74 000014E2 F6C780              <1>     test bh, 80h    ;Test bit 7 for char/Disk assertation
-    75 000014E5 0F85DF000000        <1>     jnz .charError
+    74 000014E3 F6C780              <1>     test bh, 80h    ;Test bit 7 for char/Disk assertation
+    75 000014E6 0F85DF000000        <1>     jnz .charError
     76                              <1> ;Disk error continues here
-    77 000014EB 488D15DC010000      <1>     lea rdx, qword [.drive] ;Drive message
-    78 000014F2 B409                <1>     mov ah, 09h
-    79 000014F4 CD41                <1>     int 41h
-    80 000014F6 88DA                <1>     mov dl, bl  ;Get zero based drive number into dl
-    81 000014F8 80C241              <1>     add dl, "A" ;Add ASCII code
-    82 000014FB B402                <1>     mov ah, 02h ;Print char in dl
-    83 000014FD CD41                <1>     int 41h
+    77 000014EC 488D15DC010000      <1>     lea rdx, qword [.drive] ;Drive message
+    78 000014F3 B409                <1>     mov ah, 09h
+    79 000014F5 CD41                <1>     int 41h
+    80 000014F7 88DA                <1>     mov dl, bl  ;Get zero based drive number into dl
+    81 000014F9 80C241              <1>     add dl, "A" ;Add ASCII code
+    82 000014FC B402                <1>     mov ah, 02h ;Print char in dl
+    83 000014FE CD41                <1>     int 41h
     84                              <1> .userInput:
-    85 000014FF 488D15D9EEFFFF      <1>     lea rdx, crlf  ;Print new line
-    86 00001506 B409                <1>     mov ah, 09h
-    87 00001508 CD41                <1>     int 41h
+    85 00001500 488D15D8EEFFFF      <1>     lea rdx, crlf  ;Print new line
+    86 00001507 B409                <1>     mov ah, 09h
+    87 00001509 CD41                <1>     int 41h
     88                              <1> ;Abort, Retry, Ignore, Fail is word order
     89                              <1> ;Last message gets a ?, otherwise a comma followed by a 20h (space)
     90                              <1> .userAbort:
     91                              <1> ;Abort is always an option
-    92 0000150A 488D15E2010000      <1>     lea rdx, qword [.abortmsg]
-    93 00001511 B409                <1>     mov ah, 09h
-    94 00001513 CD41                <1>     int 41h ;Call DOS to prompt user for ABORT option
+    92 0000150B 488D15E2010000      <1>     lea rdx, qword [.abortmsg]
+    93 00001512 B409                <1>     mov ah, 09h
+    94 00001514 CD41                <1>     int 41h ;Call DOS to prompt user for ABORT option
     95                              <1> .userRetry:
-    96 00001515 F6C710              <1>     test bh, 10h  ;Bit 4 is retry bit
-    97 00001518 7416                <1>     jz .userIgnore    ;If clear, dont print message
-    98 0000151A 488D15EA010000      <1>     lea rdx, qword [.betweenMsg]
-    99 00001521 B409                <1>     mov ah, 09h
-   100 00001523 CD41                <1>     int 41h
-   101 00001525 488D15D4010000      <1>     lea rdx, qword [.retrymsg]
-   102 0000152C B409                <1>     mov ah, 09h
-   103 0000152E CD41                <1>     int 41h
+    96 00001516 F6C710              <1>     test bh, 10h  ;Bit 4 is retry bit
+    97 00001519 7416                <1>     jz .userIgnore    ;If clear, dont print message
+    98 0000151B 488D15EA010000      <1>     lea rdx, qword [.betweenMsg]
+    99 00001522 B409                <1>     mov ah, 09h
+   100 00001524 CD41                <1>     int 41h
+   101 00001526 488D15D4010000      <1>     lea rdx, qword [.retrymsg]
+   102 0000152D B409                <1>     mov ah, 09h
+   103 0000152F CD41                <1>     int 41h
    104                              <1> .userIgnore:
-   105 00001530 F6C720              <1>     test bh, 20h    ;Bit 5 is ignore bit
-   106 00001533 7416                <1>     jz .userFail
-   107 00001535 488D15CF010000      <1>     lea rdx, qword [.betweenMsg]
-   108 0000153C B409                <1>     mov ah, 09h
-   109 0000153E CD41                <1>     int 41h
-   110 00001540 488D15B2010000      <1>     lea rdx, qword [.ignoremsg]
-   111 00001547 B409                <1>     mov ah, 09h
-   112 00001549 CD41                <1>     int 41h
+   105 00001531 F6C720              <1>     test bh, 20h    ;Bit 5 is ignore bit
+   106 00001534 7416                <1>     jz .userFail
+   107 00001536 488D15CF010000      <1>     lea rdx, qword [.betweenMsg]
+   108 0000153D B409                <1>     mov ah, 09h
+   109 0000153F CD41                <1>     int 41h
+   110 00001541 488D15B2010000      <1>     lea rdx, qword [.ignoremsg]
+   111 00001548 B409                <1>     mov ah, 09h
+   112 0000154A CD41                <1>     int 41h
    113                              <1> .userFail:
-   114 0000154B F6C708              <1>     test bh, 08h    ;Bit 3 is Fail bit
-   115 0000154E 7416                <1>     jz .userMsgEnd
-   116 00001550 488D15B4010000      <1>     lea rdx, qword [.betweenMsg]
-   117 00001557 B409                <1>     mov ah, 09h
-   118 00001559 CD41                <1>     int 41h
-   119 0000155B 488D15A4010000      <1>     lea rdx, qword [.failmsg]
-   120 00001562 B409                <1>     mov ah, 09h
-   121 00001564 CD41                <1>     int 41h
+   114 0000154C F6C708              <1>     test bh, 08h    ;Bit 3 is Fail bit
+   115 0000154F 7416                <1>     jz .userMsgEnd
+   116 00001551 488D15B4010000      <1>     lea rdx, qword [.betweenMsg]
+   117 00001558 B409                <1>     mov ah, 09h
+   118 0000155A CD41                <1>     int 41h
+   119 0000155C 488D15A4010000      <1>     lea rdx, qword [.failmsg]
+   120 00001563 B409                <1>     mov ah, 09h
+   121 00001565 CD41                <1>     int 41h
    122                              <1> .userMsgEnd:
-   123 00001566 488D15A1010000      <1>     lea rdx, qword [.endMsg]
-   124 0000156D B409                <1>     mov ah, 09h
-   125 0000156F CD41                <1>     int 41h
+   123 00001567 488D15A1010000      <1>     lea rdx, qword [.endMsg]
+   124 0000156E B409                <1>     mov ah, 09h
+   125 00001570 CD41                <1>     int 41h
    126                              <1> ;Get user input now 
-   127 00001571 31C9                <1>     xor ecx, ecx  ;4 Possible Responses
-   128 00001573 488D3D97010000      <1>     lea rdi, qword [.responses] ;Go to start of string
-   129 0000157A B401                <1>     mov ah, 01h ;STDIN without Console Echo
-   130 0000157C CD41                <1>     int 41h ;Get char in al
-   131 0000157E 3C61                <1>     cmp al, "a" ;Chack if lowercase
-   132 00001580 7202                <1>     jb .uip1    ;If the value is below, ignore subtraction
-   133 00001582 2C20                <1>     sub al, "a"-"A"  ;Turn the char into uppercase
+   127 00001572 31C9                <1>     xor ecx, ecx  ;4 Possible Responses
+   128 00001574 488D3D97010000      <1>     lea rdi, qword [.responses] ;Go to start of string
+   129 0000157B B401                <1>     mov ah, 01h ;STDIN without Console Echo
+   130 0000157D CD41                <1>     int 41h ;Get char in al
+   131 0000157F 3C61                <1>     cmp al, "a" ;Chack if lowercase
+   132 00001581 7202                <1>     jb .uip1    ;If the value is below, ignore subtraction
+   133 00001583 2C20                <1>     sub al, "a"-"A"  ;Turn the char into uppercase
    134                              <1> .uip1:
-   135 00001584 AE                  <1>     scasb   ;Compare char to list, offset gives return code
-   136 00001585 740F                <1>     je .validInput  ;If they are equal, ecx has return code
-   137 00001587 FFC1                <1>     inc ecx
-   138 00001589 81F904000000        <1>     cmp ecx, 4
-   139 0000158F 75F3                <1>     jne .uip1
-   140 00001591 E969FFFFFF          <1>     jmp .userInput ;If valid char not found, keep waiting 
+   135 00001585 AE                  <1>     scasb   ;Compare char to list, offset gives return code
+   136 00001586 740F                <1>     je .validInput  ;If they are equal, ecx has return code
+   137 00001588 FFC1                <1>     inc ecx
+   138 0000158A 81F904000000        <1>     cmp ecx, 4
+   139 00001590 75F3                <1>     jne .uip1
+   140 00001592 E969FFFFFF          <1>     jmp .userInput ;If valid char not found, keep waiting 
    141                              <1> .validInput:
-   142 00001596 88C8                <1>     mov al, cl  ;Move the offset into .responses into al
+   142 00001597 88C8                <1>     mov al, cl  ;Move the offset into .responses into al
    143                              <1> ;Now check if the input is permitted
-   144 00001598 3C02                <1>     cmp al, 2   ;Check if abort, abort always permitted
-   145 0000159A 7427                <1>     je .cehExit
-   146 0000159C 84C0                <1>     test al, al ;Check if 0 => Ignore
-   147 0000159E 740F                <1>     je .viIgnore
-   148 000015A0 3C01                <1>     cmp al, 1   ;Check if 1 => Retry
-   149 000015A2 7416                <1>     je .viRetry
+   144 00001599 3C02                <1>     cmp al, 2   ;Check if abort, abort always permitted
+   145 0000159B 7427                <1>     je .cehExit
+   146 0000159D 84C0                <1>     test al, al ;Check if 0 => Ignore
+   147 0000159F 740F                <1>     je .viIgnore
+   148 000015A1 3C01                <1>     cmp al, 1   ;Check if 1 => Retry
+   149 000015A3 7416                <1>     je .viRetry
    150                              <1> .viFail:    ;Fallthrough for fail (al = 3)
-   151 000015A4 F6C708              <1>     test bh, 8  ;Bit 3 is Fail bit
-   152 000015A7 0F8452FFFFFF        <1>     jz .userInput  ;If bit 3 is zero, prompt and get input again
-   153 000015AD EB14                <1>     jmp short .cehExit
+   151 000015A5 F6C708              <1>     test bh, 8  ;Bit 3 is Fail bit
+   152 000015A8 0F8452FFFFFF        <1>     jz .userInput  ;If bit 3 is zero, prompt and get input again
+   153 000015AE EB14                <1>     jmp short .cehExit
    154                              <1> .viIgnore:
-   155 000015AF F6C720              <1>     test bh, 20h    ;Bit 5 is Ignore bit
-   156 000015B2 0F8447FFFFFF        <1>     jz .userInput
-   157 000015B8 EB09                <1>     jmp short .cehExit
+   155 000015B0 F6C720              <1>     test bh, 20h    ;Bit 5 is Ignore bit
+   156 000015B3 0F8447FFFFFF        <1>     jz .userInput
+   157 000015B9 EB09                <1>     jmp short .cehExit
    158                              <1> .viRetry:
-   159 000015BA F6C710              <1>     test bh, 10h    ;Bit 4 is Retry bit
-   160 000015BD 0F843CFFFFFF        <1>     jz .userInput
+   159 000015BB F6C710              <1>     test bh, 10h    ;Bit 4 is Retry bit
+   160 000015BE 0F843CFFFFFF        <1>     jz .userInput
    161                              <1> .cehExit:
-   162 000015C3 5E                  <1>     pop rsi
-   163 000015C4 5F                  <1>     pop rdi
-   164 000015C5 5A                  <1>     pop rdx
-   165 000015C6 59                  <1>     pop rcx
-   166 000015C7 5B                  <1>     pop rbx
-   167 000015C8 48CF                <1>     iretq
+   162 000015C4 5E                  <1>     pop rsi
+   163 000015C5 5F                  <1>     pop rdi
+   164 000015C6 5A                  <1>     pop rdx
+   165 000015C7 59                  <1>     pop rcx
+   166 000015C8 5B                  <1>     pop rbx
+   167 000015C9 48CF                <1>     iretq
    168                              <1> .charError:
-   169 000015CA B908000000          <1>     mov ecx, 8  ;8 chars in device name
-   170 000015CF 4881C61A000000      <1>     add rsi, drvHdr.drvNam  ;Get the address of the Drive name
+   169 000015CB B908000000          <1>     mov ecx, 8  ;8 chars in device name
+   170 000015D0 4881C61A000000      <1>     add rsi, drvHdr.drvNam  ;Get the address of the Drive name
    171                              <1> .ce1:
-   172 000015D6 AC                  <1>     lodsb   ;Get a string char into al and inc rsi
-   173 000015D7 88C2                <1>     mov dl, al  ;Move char into dl
-   174 000015D9 B402                <1>     mov ah, 02h
-   175 000015DB CD41                <1>     int 41h ;Print char
-   176 000015DD E2F7                <1>     loop .ce1   ;Keep looping until all 8 char device chars have been printed
-   177 000015DF E91BFFFFFF          <1>     jmp .userInput
+   172 000015D7 AC                  <1>     lodsb   ;Get a string char into al and inc rsi
+   173 000015D8 88C2                <1>     mov dl, al  ;Move char into dl
+   174 000015DA B402                <1>     mov ah, 02h
+   175 000015DC CD41                <1>     int 41h ;Print char
+   176 000015DE E2F7                <1>     loop .ce1   ;Keep looping until all 8 char device chars have been printed
+   177 000015E0 E91BFFFFFF          <1>     jmp .userInput
    178                              <1> 
    179                              <1> .errorMsgTable: ;Each table entry is 18 chars long
-   180 000015E4 57726974652050726F- <1>             db "Write Protect $   "       ;Error 0
-   180 000015ED 746563742024202020  <1>
-   181 000015F6 556E6B6E6F776E2055- <1>             db "Unknown Unit $    "       ;Error 1
-   181 000015FF 6E6974202420202020  <1>
-   182 00001608 4E6F74205265616479- <1>             db "Not Ready $       "       ;Error 2
-   182 00001611 202420202020202020  <1>
-   183 0000161A 556E6B6E6F776E2043- <1>             db "Unknown Command $ "       ;Error 3
-   183 00001623 6F6D6D616E64202420  <1>
-   184 0000162C 446174612024202020- <1>             db "Data $            "       ;Error 4
-   184 00001635 202020202020202020  <1>
-   185 0000163E 426164205265717565- <1>             db "Bad Request $     "       ;Error 5
-   185 00001647 737420242020202020  <1>
-   186 00001650 5365656B2024202020- <1>             db "Seek $            "       ;Error 6
-   186 00001659 202020202020202020  <1>
-   187 00001662 556E6B6E6F776E204D- <1>             db "Unknown Media $   "       ;Error 7
-   187 0000166B 656469612024202020  <1>
-   188 00001674 536563746F72204E6F- <1>             db "Sector Not Found $"       ;Error 8
-   188 0000167D 7420466F756E642024  <1>
-   189 00001686 4F7574204F66205061- <1>             db "Out Of Paper $    "       ;Error 9
-   189 0000168F 706572202420202020  <1>
-   190 00001698 577269746520466175- <1>             db "Write Fault $     "       ;Error A
-   190 000016A1 6C7420242020202020  <1>
-   191 000016AA 52656164204661756C- <1>             db "Read Fault $      "       ;Error B
-   191 000016B3 742024202020202020  <1>
-   192 000016BC 47656E6572616C2046- <1>             db "General Failure $ "       ;Error C
-   192 000016C5 61696C757265202420  <1>
+   180 000015E5 57726974652050726F- <1>             db "Write Protect $   "       ;Error 0
+   180 000015EE 746563742024202020  <1>
+   181 000015F7 556E6B6E6F776E2055- <1>             db "Unknown Unit $    "       ;Error 1
+   181 00001600 6E6974202420202020  <1>
+   182 00001609 4E6F74205265616479- <1>             db "Not Ready $       "       ;Error 2
+   182 00001612 202420202020202020  <1>
+   183 0000161B 556E6B6E6F776E2043- <1>             db "Unknown Command $ "       ;Error 3
+   183 00001624 6F6D6D616E64202420  <1>
+   184 0000162D 446174612024202020- <1>             db "Data $            "       ;Error 4
+   184 00001636 202020202020202020  <1>
+   185 0000163F 426164205265717565- <1>             db "Bad Request $     "       ;Error 5
+   185 00001648 737420242020202020  <1>
+   186 00001651 5365656B2024202020- <1>             db "Seek $            "       ;Error 6
+   186 0000165A 202020202020202020  <1>
+   187 00001663 556E6B6E6F776E204D- <1>             db "Unknown Media $   "       ;Error 7
+   187 0000166C 656469612024202020  <1>
+   188 00001675 536563746F72204E6F- <1>             db "Sector Not Found $"       ;Error 8
+   188 0000167E 7420466F756E642024  <1>
+   189 00001687 4F7574204F66205061- <1>             db "Out Of Paper $    "       ;Error 9
+   189 00001690 706572202420202020  <1>
+   190 00001699 577269746520466175- <1>             db "Write Fault $     "       ;Error A
+   190 000016A2 6C7420242020202020  <1>
+   191 000016AB 52656164204661756C- <1>             db "Read Fault $      "       ;Error B
+   191 000016B4 742024202020202020  <1>
+   192 000016BD 47656E6572616C2046- <1>             db "General Failure $ "       ;Error C
+   192 000016C6 61696C757265202420  <1>
    193                              <1> 
-   194 000016CE 64726976652024      <1> .drive      db "drive $"
-   195 000016D5 6572726F7220726561- <1> .readmsg    db "error reading $"
-   195 000016DE 64696E672024        <1>
-   196 000016E4 6572726F7220777269- <1> .writemsg   db "error writing $"
-   196 000016ED 74696E672024        <1>
-   197 000016F3 41626F727424        <1> .abortmsg   db "Abort$" 
-   198 000016F9 49676E6F726524      <1> .ignoremsg  db "Ignore$"
-   199 00001700 526574727924        <1> .retrymsg   db "Retry$"
-   200 00001706 4661696C24          <1> .failmsg    db "Fail$"
-   201 0000170B 2C2024              <1> .betweenMsg db ", $"
-   202 0000170E 3F2024              <1> .endMsg     db "? $"
-   203 00001711 49524146            <1> .responses  db "IRAF"   ;Abort Retry Ignore Fail
+   194 000016CF 64726976652024      <1> .drive      db "drive $"
+   195 000016D6 6572726F7220726561- <1> .readmsg    db "error reading $"
+   195 000016DF 64696E672024        <1>
+   196 000016E5 6572726F7220777269- <1> .writemsg   db "error writing $"
+   196 000016EE 74696E672024        <1>
+   197 000016F4 41626F727424        <1> .abortmsg   db "Abort$" 
+   198 000016FA 49676E6F726524      <1> .ignoremsg  db "Ignore$"
+   199 00001701 526574727924        <1> .retrymsg   db "Retry$"
+   200 00001707 4661696C24          <1> .failmsg    db "Fail$"
+   201 0000170C 2C2024              <1> .betweenMsg db ", $"
+   202 0000170F 3F2024              <1> .endMsg     db "? $"
+   203 00001712 49524146            <1> .responses  db "IRAF"   ;Abort Retry Ignore Fail
    204                              <1> 
    205                              <1> int43h:
-   206 00001715 F9                  <1>     stc     ;Set CF to kill the task
-   207 00001716 C20800              <1>     ret 8   ;Return and pop CS off the stack to indicate we wanna kill task
+   206 00001716 F9                  <1>     stc     ;Set CF to kill the task
+   207 00001717 C20800              <1>     ret 8   ;Return and pop CS off the stack to indicate we wanna kill task
     18                                  %include "./Source/Utils/COMMAND/Data/cmdEnv.asm"
     19                              <1>     
     20                              <1> masterEnv:  ;Yeet this is this is a child command processor
-    21 00001719 5F3A434F4D4D414E44- <1>     db "_:COMMAND.COM",0
-    21 00001722 2E434F4D00          <1>
-    22 00001727 504154483D0000      <1>     db "PATH=",0,0
-    23 0000172E 202020202020202020- <1>     db ($ - masterEnv) dup (" ")    ;Pad the environment with spaces
-    23 00001737 202020202020202020- <1>
-    23 00001740 202020              <1>
+    21 0000171A 5F3A434F4D4D414E44- <1>     db "_:COMMAND.COM",0
+    21 00001723 2E434F4D00          <1>
+    22 00001728 504154483D0000      <1>     db "PATH=",0,0
+    23 0000172F 202020202020202020- <1>     db ($ - masterEnv) dup (" ")    ;Pad the environment with spaces
+    23 00001738 202020202020202020- <1>
+    23 00001741 202020              <1>
     24                              <1> endOfAlloc: ;Symbol to find the start of where I can yeet 
     19                                  %include "./Source/Utils/COMMAND/Source/cmdLdr.asm"
     20                              <1> cmdLdr:
     21                              <1> ;First check if the version is ok. If not, return.
-    22 00001743 B430                <1>     mov ah, 30h
-    23 00001745 CD41                <1>     int 41h
-    24 00001747 3C01                <1>     cmp al, 01h ;Version 1
-    25 00001749 760D                <1>     jbe .okVersion
-    26 0000174B 488D1560010000      <1>     lea rdx, badVerStr
-    27 00001752 B409                <1>     mov ah, 09h
-    28 00001754 CD41                <1>     int 41h
-    29 00001756 CD40                <1>     int 40h ;Exit to caller or DOS to print bad command interpreter line
+    22 00001744 B430                <1>     mov ah, 30h
+    23 00001746 CD41                <1>     int 41h
+    24 00001748 3C01                <1>     cmp al, 01h ;Version 1
+    25 0000174A 760D                <1>     jbe .okVersion
+    26 0000174C 488D1560010000      <1>     lea rdx, badVerStr
+    27 00001753 B409                <1>     mov ah, 09h
+    28 00001755 CD41                <1>     int 41h
+    29 00001757 CD40                <1>     int 40h ;Exit to caller or DOS to print bad command interpreter line
     30                              <1> .okVersion:
     31                              <1> ;If ok then store self as parent in the PSP, to prevent accidental closure
-    32 00001758 498B4022            <1>     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
-    33 0000175C 4D894022            <1>     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
-    34 00001760 488905A8E8FFFF      <1>     mov qword [realParent], rax ;Preserve the real parent address
+    32 00001759 498B4022            <1>     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
+    33 0000175D 4D894022            <1>     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
+    34 00001761 488905A7E8FFFF      <1>     mov qword [realParent], rax ;Preserve the real parent address
     35                              <1> ;Setup Int 43h and Int 44h
-    36 00001767 488D1517FDFFFF      <1>     lea rdx, critErrorHandler
-    37 0000176E 4989501A            <1>     mov qword [r8 + psp.oldInt44h], rdx
-    38 00001772 B844250000          <1>     mov eax, 2544h
-    39 00001777 CD41                <1>     int 41h
-    40 00001779 488D1595FFFFFF      <1>     lea rdx, int43h
-    41 00001780 49895012            <1>     mov qword [r8 + psp.oldInt43h], rdx
-    42 00001784 B843250000          <1>     mov eax, 2543h
-    43 00001789 CD41                <1>     int 41h
-    44 0000178B 488D15C0F0FFFF      <1>     lea rdx, applicationReturn
-    45 00001792 4989500A            <1>     mov qword [r8 + psp.oldInt42h], rdx
-    46 00001796 B842250000          <1>     mov eax, 2542h
-    47 0000179B CD41                <1>     int 41h
+    36 00001768 488D1517FDFFFF      <1>     lea rdx, critErrorHandler
+    37 0000176F 4989501A            <1>     mov qword [r8 + psp.oldInt44h], rdx
+    38 00001773 B844250000          <1>     mov eax, 2544h
+    39 00001778 CD41                <1>     int 41h
+    40 0000177A 488D1595FFFFFF      <1>     lea rdx, int43h
+    41 00001781 49895012            <1>     mov qword [r8 + psp.oldInt43h], rdx
+    42 00001785 B843250000          <1>     mov eax, 2543h
+    43 0000178A CD41                <1>     int 41h
+    44 0000178C 488D15BFF0FFFF      <1>     lea rdx, applicationReturn
+    45 00001793 4989500A            <1>     mov qword [r8 + psp.oldInt42h], rdx
+    46 00001797 B842250000          <1>     mov eax, 2542h
+    47 0000179C CD41                <1>     int 41h
     48                              <1> ;Get a pointer to DOS Sysvars
-    49 0000179D B452                <1>     mov ah, 52h ;Get sysvars
-    50 0000179F CD41                <1>     int 41h
-    51 000017A1 48891D6FE8FFFF      <1>     mov qword [sysVars], rbx    ;Save ptr to sysVars
+    49 0000179E B452                <1>     mov ah, 52h ;Get sysvars
+    50 000017A0 CD41                <1>     int 41h
+    51 000017A2 48891D6EE8FFFF      <1>     mov qword [sysVars], rbx    ;Save ptr to sysVars
     52                              <1> ;Call for simple internationalisation data
-    53 000017A8 B800370000          <1>     mov eax, 3700h  ;Get switchchar in dl
-    54 000017AD CD41                <1>     int 41h
-    55 000017AF 3CFF                <1>     cmp al, -1
-    56 000017B1 7412                <1>     je .skipSwitch
-    57 000017B3 88156BE8FFFF        <1>     mov byte [switchChar], dl   ;Store the switchChar in var
-    58 000017B9 80FA2D              <1>     cmp dl, "-" ;Is the switchChar Unix?
-    59 000017BC 7507                <1>     jne .skipSwitch
-    60 000017BE C6055EE8FFFF2F      <1>     mov byte [pathSep], "/" ;Swap default path separator to UNIX style
+    53 000017A9 B800370000          <1>     mov eax, 3700h  ;Get switchchar in dl
+    54 000017AE CD41                <1>     int 41h
+    55 000017B0 3CFF                <1>     cmp al, -1
+    56 000017B2 7412                <1>     je .skipSwitch
+    57 000017B4 88156AE8FFFF        <1>     mov byte [switchChar], dl   ;Store the switchChar in var
+    58 000017BA 80FA2D              <1>     cmp dl, "-" ;Is the switchChar Unix?
+    59 000017BD 7507                <1>     jne .skipSwitch
+    60 000017BF C6055DE8FFFF2F      <1>     mov byte [pathSep], "/" ;Swap default path separator to UNIX style
     61                              <1> .skipSwitch:
-    62 000017C5 B800380000          <1>     mov eax, 3800h  ;Get current country data
-    63 000017CA 488D1554E8FFFF      <1>     lea rdx, ctryData
-    64 000017D1 CD41                <1>     int 41h ;Write the data to the internal country table
+    62 000017C6 B800380000          <1>     mov eax, 3800h  ;Get current country data
+    63 000017CB 488D1553E8FFFF      <1>     lea rdx, ctryData
+    64 000017D2 CD41                <1>     int 41h ;Write the data to the internal country table
     65                              <1> ;Now determine if this is the master copy of COMMAND.COM
     66                              <1> ;Check if Int 4Eh has the same address as Int 4Dh. If so, we are master.
-    67 000017D3 B84E350000          <1>     mov eax, 354Eh  ;Get int 4Eh address
-    68 000017D8 CD41                <1>     int 41h
-    69 000017DA 4889DA              <1>     mov rdx, rbx    ;Save the pointer in rdx
-    70 000017DD B84D350000          <1>     mov eax, 354Dh  ;Get int 4Dh address
-    71 000017E2 CD41                <1>     int 41h
-    72 000017E4 4839DA              <1>     cmp rdx, rbx    ;If these are equal then this is first boot!
-    73 000017E7 7535                <1>     jne .skipMaster
+    67 000017D4 B84E350000          <1>     mov eax, 354Eh  ;Get int 4Eh address
+    68 000017D9 CD41                <1>     int 41h
+    69 000017DB 4889DA              <1>     mov rdx, rbx    ;Save the pointer in rdx
+    70 000017DE B84D350000          <1>     mov eax, 354Dh  ;Get int 4Dh address
+    71 000017E3 CD41                <1>     int 41h
+    72 000017E5 4839DA              <1>     cmp rdx, rbx    ;If these are equal then this is first boot!
+    73 000017E8 7535                <1>     jne .skipMaster
     74                              <1> ;Ok so we are master command.com
     75                              <1> ;Now make myself the real parent
-    76 000017E9 4C89051FE8FFFF      <1>     mov qword [realParent], r8
+    76 000017EA 4C89051EE8FFFF      <1>     mov qword [realParent], r8
     77                              <1> ;Set master environment as mine
-    78 000017F0 488D0522FFFFFF      <1>     lea rax, masterEnv
-    79 000017F7 4989403E            <1>     mov qword [r8 + psp.envPtr], rax
+    78 000017F1 488D0522FFFFFF      <1>     lea rax, masterEnv
+    79 000017F8 4989403E            <1>     mov qword [r8 + psp.envPtr], rax
     80                              <1> ;Set current Drive in COMSPEC
-    81 000017FB B019                <1>     mov al, 19h ;Get current Drive
-    82 000017FD CD41                <1>     int 41h
-    83 000017FF 0441                <1>     add al, "A"
-    84 00001801 880512FFFFFF        <1>     mov byte [masterEnv], al
+    81 000017FC B019                <1>     mov al, 19h ;Get current Drive
+    82 000017FE CD41                <1>     int 41h
+    83 00001800 0441                <1>     add al, "A"
+    84 00001802 880512FFFFFF        <1>     mov byte [masterEnv], al
     85                              <1> ;Set Int 4Eh up
-    86 00001807 488D15DFF4FFFF      <1>     lea rdx, int4Eh
-    87 0000180E B84E250000          <1>     mov eax, 254Eh ;Set this as Int 4Eh
-    88 00001813 CD41                <1>     int 41h
+    86 00001808 488D15DEF4FFFF      <1>     lea rdx, int4Eh
+    87 0000180F B84E250000          <1>     mov eax, 254Eh ;Set this as Int 4Eh
+    88 00001814 CD41                <1>     int 41h
     89                              <1> ;Now, open and parse AUTOEXEC.BAT. Build Master Environment here
     90                              <1>     
-    91 00001815 488D1D27FFFFFF      <1>     lea rbx, endOfAlloc ;Save the Master Environment
-    92 0000181C EB07                <1>     jmp short .printInit
+    91 00001816 488D1D27FFFFFF      <1>     lea rbx, endOfAlloc ;Save the Master Environment
+    92 0000181D EB07                <1>     jmp short .printInit
     93                              <1> .skipMaster:
-    94 0000181E 488D1DF4FEFFFF      <1>     lea rbx, masterEnv  ;This is the base address to jettison
+    94 0000181F 488D1DF4FEFFFF      <1>     lea rbx, masterEnv  ;This is the base address to jettison
     95                              <1> .printInit:
     96                              <1> ;Finish by printing INIT string.
-    97 00001825 488D1510000000      <1>     lea rdx, initString
-    98 0000182C B409                <1>     mov ah, 09h
-    99 0000182E CD41                <1>     int 41h ;Print init string
-   100 00001830 488925CEE7FFFF      <1>     mov qword [stackBottom], rsp    ;Use this to save where to reset rsp to
-   101 00001837 E902F0FFFF          <1>     jmp commandStart    ;We jump with rbx = base address to jettison
+    97 00001826 488D1510000000      <1>     lea rdx, initString
+    98 0000182D B409                <1>     mov ah, 09h
+    99 0000182F CD41                <1>     int 41h ;Print init string
+   100 00001831 488925CDE7FFFF      <1>     mov qword [stackBottom], rsp    ;Use this to save where to reset rsp to
+   101 00001838 E901F0FFFF          <1>     jmp commandStart    ;We jump with rbx = base address to jettison
    102                              <1> ;Loader Data here
    103                              <1> initString: 
-   104 0000183C 0D0A536369656E7469- <1>     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
-   104 00001845 66696320436F6D7075- <1>
-   104 0000184E 746572205265736561- <1>
-   104 00001857 726368285229205343- <1>
-   104 00001860 502F444F5328522920- <1>
-   104 00001869 56657273696F6E2031- <1>
-   104 00001872 2E300D0A            <1>
-   105 00001876 202020202020202020- <1>     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
-   105 0000187F 20284329436F707972- <1>
-   105 00001888 696768742053636965- <1>
-   105 00001891 6E746966696320436F- <1>
-   105 0000189A 6D7075746572205265- <1>
-   105 000018A3 736572616368203230- <1>
-   105 000018AC 32322E0D0A24        <1>
-   106 000018B2 496E636F7272656374- <1> badVerStr: db "Incorrect DOS version",CR,LF,"$"
-   106 000018BB 20444F532076657273- <1>
-   106 000018C4 696F6E0D0A24        <1>
+   104 0000183D 0D0A536369656E7469- <1>     db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
+   104 00001846 66696320436F6D7075- <1>
+   104 0000184F 746572205265736561- <1>
+   104 00001858 726368285229205343- <1>
+   104 00001861 502F444F5328522920- <1>
+   104 0000186A 56657273696F6E2031- <1>
+   104 00001873 2E300D0A            <1>
+   105 00001877 202020202020202020- <1>     db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
+   105 00001880 20284329436F707972- <1>
+   105 00001889 696768742053636965- <1>
+   105 00001892 6E746966696320436F- <1>
+   105 0000189B 6D7075746572205265- <1>
+   105 000018A4 736572616368203230- <1>
+   105 000018AD 32322E0D0A24        <1>
+   106 000018B3 496E636F7272656374- <1> badVerStr: db "Incorrect DOS version",CR,LF,"$"
+   106 000018BC 20444F532076657273- <1>
+   106 000018C5 696F6E0D0A24        <1>
    106          ------------------  <1>  info: assembly required 1+2+2 passes
 

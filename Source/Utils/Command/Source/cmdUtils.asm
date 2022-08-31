@@ -437,8 +437,10 @@ buildCommandPath:
     repne scasb
     dec rdi ;Go back to the final non-null char
     cmp byte [rdi - 1], ":" ;Is the final non-null char a colon?
-    retne   ;Return if not
+    jne .okExit   ;Return if not
     xor eax, eax
     mov al, byte [pathSep]  ;IF it is, insert a pathsep
     stosw   ;Store the terminating 0 after the pathsep
+.okExit:
+    clc
     return
