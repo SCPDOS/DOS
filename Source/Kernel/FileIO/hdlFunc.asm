@@ -429,11 +429,36 @@ renameFile:        ;ah = 56h
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server, store this value instead
     mov byte [searchAttr], cl
+    return
 
+getSetFileDateTime:;ah = 57h
+    cmp al, 1
+    jbe .oksubfun
+    mov eax, errInvFnc
+    jmp extErrExit
+.oksubfun:
+    call getSFTPtr  ;Preserves al unless error returned
+    jc extErrExit ;al (eax) has error code for bad file handle
+    cmp al, 1
+    je .setTimeDate
+    ;Here we get the Time/Date
+    movzx ecx, word [rdi + sft.wTime]
+    movzx edx, word [rdi + sft.wDate]
+    call getUserRegs
+    mov word [rsi + callerFrame.rcx], cx
+    mov word [rsi + callerFrame.rdx], dx
+    xor eax, eax
+    jmp extGoodExit
+.setTimeDate:
+    ;Here we set the Time/Date
+    mov word [rdi + sft.wTime], cx
+    mov word [rdi + sft.wDate], dx
+    xor eax, eax
+    jmp extGoodExit
 
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
-
+    return
 lockUnlockFile:    ;ah = 5Ch
     jmp extErrExit
 setHandleCount:    ;ah = 67h

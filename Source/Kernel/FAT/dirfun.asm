@@ -346,7 +346,6 @@ getCurrentDIR:     ;ah = 47h
     mov eax, 0100h  ;RBIL -> MS software may rely on this value
     jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
 
-getSetFileDateTime:;ah = 57h
 trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
     ;Called with a path in rsi and 128 byte buffer in rdi
     call checkPathspecOK    ;This preserves rsi
