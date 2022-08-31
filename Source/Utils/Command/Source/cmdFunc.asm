@@ -2,6 +2,7 @@ dir:
     mov byte [dirPrnType], 0    ;Clear DIR flags
     mov byte [dirLineCtr], 0
     mov byte [dirPathOff], 0    
+    mov byte [dirVolLbl], -1    ;Mark as no label
     ;Start by scanning for the switches
     lea rdi, cmdBuffer + 1  ;Goto command line input chars count
     movzx ecx, byte [rdi]   ;Get number of chars typed
@@ -29,9 +30,9 @@ dir:
     lea rdi, cmdBuffer + 2
     mov rsi, rdi
     call skipSpaces ;Skip leading spaces
-    call findTerminator ;Go to end of command
-    jc .eocReached
-    inc rsi
+    add rsi, 3  ;Go past the DIR (always three chars)
+    cmp byte [rsi], CR
+    je .eocReached
 .pathSearch:
     call skipSpaces ;Now skip intermediate spaces to next non-space
     mov al, byte [switchChar]   ;Is this a switch?
@@ -44,20 +45,131 @@ dir:
     add al, 2       ;Make it an offset from cmdBuffer
     mov byte [dirPathOff], al   ;And save it!
 .pathSearchSwitch:
-    call findTerminator
+    call findTerminatorOrEOC
     jc .eocReached
     inc rsi ;Go to next char
     jmp short .pathSearch
 .eocReached:
     cmp byte [dirPathOff], 0
     je .dirCWD
+    jmp .badParam   ;Temp measure
 .dirCWD:
-    
+    ;Build current working dir and append a \*.* to it 
+    ;First we search the root for a label
+    lea rdi, dirVolPathBuf
+    lea rsi, searchSpec ;Will need to create the same X:\ here too
+    call getCurrentDrive    ;Get current drive number (0 based) in al
+    add al, "A"
+    mov ah, ":" ;ax has X: now to store 
+    stosw
+    mov word [rsi], ax
+    add rsi, 2
+    mov al, byte [pathSep]
+    stosb
+    mov byte [rsi], al
+    mov eax, 002A2E2Ah  ;*.*,0
+    stosd
+    mov ah, 2Fh ;Get current DTA in rbx
+    int 41h 
+    push rbx    ;Preserve it on the stack
+
+    lea rdx, cmdFFBlock
+    mov ah, 1Ah ;Set DTA to internal ffblock
+    int 41h
+    lea rdx, dirVolPathBuf
+    mov cx, dirVolumeID
+    mov ah, 4Eh ;Find first
+    int 41h
+    jc .skipVolLbl
+    lea rsi, qword [cmdFFBlock + ffBlock.asciizName]
+    lea rdi, dirVolLbl
+    mov ecx, 11 ;Get the 11 chars of the volume label
+.dirLblCopy:
+    lodsb   ;Get the first char
+    cmp al, 0
+    je .skipVolLbl
+    cmp al, "."
+    je .dirLblSkipStore
+    stosb
+.dirLblSkipStore:
+    dec ecx
+    jnz .dirLblCopy
+.skipVolLbl:
+;Print volume label information now
+    call .dirPrintVolInfo
+    lea rdi, searchSpec + 3 ;Go to the fourth char in the field
+    mov ah, 47h ;Get Current Working Directory
+    mov rsi, rdi    ;rsi points to buffer to write to
+    mov dl, byte [searchSpec]
+    sub dl, "@" ;Get 1 based drive letter
+    int 41h ;Overrwrite it with the current directory
+    lea rdi, searchSpec
+    call strlen
+    dec ecx
+    mov byte [rdi + rcx], "$"   ;Replace the null with a string terminator
+    lea rdx, dirMain
+    mov ah, 09h
+    int 41h
+    mov rdx, rdi    ;Print the current directory we are working on
+    mov ah, 09h
+    int 41h
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    ;Now we search for the files
+
+
+.dirCWDExit:
+    pop rdx
+    mov ah, 1Ah
+    int 41h
+    return
+
+.dirPrintVolInfo:
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    lea rdx, volMes
+    mov ah, 09h
+    int 41h
+    mov dl, byte [dirVolPathBuf]   ;Print the drive letter out
+    mov ah, 02h
+    int 41h
+    cmp byte [dirPathOff], -1   ;No volume ID marker
+    jne .dirVolIDOk
+    lea rdx, volNo
+    mov ah, 09h
+    int 41h
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    return
+.dirVolIDOk:
+    lea rdx, volOk
+    mov ah, 09h
+    int 41h
+    lea rdi, dirVolLbl
+    call strlen
+    dec ecx
+    mov byte [rdi + rcx], "$"   ;Replace the null with a string terminator
+    lea rdx, dirVolLbl
+    mov ah, 09h
+    int 41h
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    return
+
+
+
 .badParam:
     lea rdx, badParm
     mov ah, 09h
     int 41h
     return
+
+
+
 chdir:
     test byte [arg1Flg], -1
     jnz .changeDir
@@ -295,3 +407,4 @@ truename:
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
     return
+

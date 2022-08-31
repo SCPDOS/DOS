@@ -63,4 +63,7 @@ searchSpec  db cmdBufferL dup (0)   ;Contains the pathspec for the search file
 dirPrnType  db 0    ;Print type.    Bit[0] set => /W or /w specified
 ;                                   Bit[1] set => /P or /p specified
 dirLineCtr  db 0    ;Counter to keep track of which line we printed (0-23)
+dirFileCtr  db 0
 dirPathOff  db 0
+dirVolLbl   db 13 dup (0)
+dirVolPathBuf db 8 dup (0)  ;Used to build X:\*.*,0 for volume label search

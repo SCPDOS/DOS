@@ -34,3 +34,17 @@ struc execProg  ;For use with EXEC-ing a child task
     .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
     .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
 endstruc
+
+;Directory attribute equates
+    dirReadOnly     equ 01h
+    dirHidden       equ 02h
+    dirSystem       equ 04h
+    dirVolumeID     equ 08h
+    dirDirectory    equ 10h
+    dirArchive      equ 20h
+    dirCharDev      equ 40h ;Never written to disk, used to represent a Char Dev
+    dirLongName     equ dirReadOnly | dirHidden | dirSystem | dirVolumeID
+    ;If any of the three bits are set, then ALL three bits are set
+    ; in addition to whatever the user passed to search for.
+    dirInclusive    equ dirHidden | dirSystem | dirDirectory
+    dirIncFiles     equ dirHidden | dirSystem

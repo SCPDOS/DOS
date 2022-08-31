@@ -164,6 +164,28 @@ strlen:
     pop rax
     return
 
+findTerminatorOrEOC:
+;Advances rsi to the next string terminator char or the next End of command
+; char
+;Returns with al = terminator and rsi pointing to the char in the string
+;If a end of command char found, also sets CF
+    lodsb
+    cmp al, CR
+    je .endOfInput
+    call isALterminator
+    jz .exit
+    cmp al, byte [pathSep]
+    je .exit
+    cmp al, byte [switchChar]
+    je .exit
+    jmp short findTerminatorOrEOC
+.endOfInput:
+    call .exit
+    stc 
+    return
+.exit:
+    dec rsi ;Point to the terminating char
+    return
 
 findTerminator:
 ;Advances rsi to the next string terminator char
@@ -344,7 +366,7 @@ FCBToAsciiz:
 buildCommandPath:
 ;Based on the first argument on the command line
 ; will build a full ASCIIZ path in searchSpec to the file/dir specified
-    ;If this is a relative path, must handle correctly
+    ;If this is a relative path, will handle correctly (tho unnecessary)
     movzx eax, byte [arg1Off]
     lea rsi, cmdBuffer
     add rsi, rax    ;Go to the start of the command

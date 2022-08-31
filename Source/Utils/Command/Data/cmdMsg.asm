@@ -44,7 +44,7 @@ badDir  db "Invalid Directory", CR,LF, "$"
 badMD   db "Unable to create directory",CR,LF,"$"
 badRD   db "Invalid path, not directory,",CR,LF
         db "or directory not empty",CR,LF,"$"
-dirMain db " Directory of $"
+dirMain db " Directory of  $"
 noPath  db "No Path $"
 badDrvSrch  db "Invalid drive in search path",CR,LF,"$"
 badDev  db "Invalid device",CR,LF,"$"
