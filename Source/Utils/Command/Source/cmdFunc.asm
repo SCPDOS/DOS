@@ -562,6 +562,55 @@ break:
     int 41h
     return
 
+verify:
+    test byte [arg1Flg], -1
+    jnz .argumentProvided
+    ;Here we just get the status of break
+    mov eax, 5400h  ;Get verify status in al
+    int 41h
+    mov bl, al
+    lea rdx, verifyIs
+    mov ah, 09h
+    int 41h
+    lea rdx, onMes
+    lea rcx, offMes
+    test bl, bl ;IF bl = 0, break is off
+    cmovz rdx, rcx
+    mov ah, 09h
+    int 41h
+    return
+.argumentProvided:
+    lea rsi, qword [r8 + fcb1 + fcb.filename]  ;Point to the first fcb name
+    lodsd   ;Read the word
+    mov ebx, eax
+    and eax, 0DFDFh  ;Convert first two chars to uppercase
+    shr ebx, 10h     ;Get high word low
+    cmp bx, "  " ;Two spaces is a possible ON 
+    je .maybeOn
+    cmp ax, "OF"
+    jne .badArgument
+    and bx, 0FFDFh ;Convert only the third char to UC. Fourth char MUST BE SPACE
+    cmp bx, "F "
+    jne .badArgument
+    ;Set off
+    xor eax, eax    ;AL=0 => VERIFY is off
+    jmp short .setVerify
+.maybeOn:
+    cmp ax, "ON"
+    jne .badArgument
+    ;Set on
+    xor eax, eax
+    inc eax ;AL=1 => VERIFY is on
+.setVerify:
+    mov ah, 2Eh  ;Set Verify
+    int 41h
+    return
+.badArgument:
+    lea rdx, badOnOff
+    mov ah, 09h
+    int 41h
+    return
+
 rename:
     return
 truename:

@@ -49,6 +49,9 @@ functionTable:
     db 5, "BREAK"
     dw break - startLbl
 
+    db 6, "VERIFY"
+    dw verify - startLbl
+
     db 6, "RENAME"
     dw rename - startLbl
 
