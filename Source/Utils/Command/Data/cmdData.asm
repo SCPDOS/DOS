@@ -66,6 +66,5 @@ dirLineCtr  db 0    ;Counter to keep track of which line we printed (0-23)
 dirFileCtr  db 0    ;Used in /W mode, rollover after 5
 dirPathOff  db 0
 dirVolLbl   db 13 dup (0)
-dirBytes:
-dirVolPathBuf db 16 dup (0)  ;Used to build X:\*.*,0 for volume label search
+dirVolPathBuf db 8 dup (0)  ;Used to build X:\*.*,0 for volume label search
 dirDrv      db 0    ;0 based drive number to use

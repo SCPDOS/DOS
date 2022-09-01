@@ -448,10 +448,14 @@ rmdir:
     mov eax, 0900h
     int 41h
     return
-erase:
-date:
-time:
 copy:
+    return
+erase:
+    return
+date:
+    return
+time:
+    return
 ctty:
     return
 cls:  
