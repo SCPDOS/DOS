@@ -1,6 +1,7 @@
 dir:
     mov byte [dirPrnType], 0    ;Clear DIR flags
     mov byte [dirLineCtr], 0
+    mov byte [dirFileCtr], 0
     mov byte [dirPathOff], 0    
     mov byte [dirVolLbl], -1    ;Mark as no label
     ;Start by scanning for the switches
@@ -59,6 +60,7 @@ dir:
     lea rdi, dirVolPathBuf
     lea rsi, searchSpec ;Will need to create the same X:\ here too
     call getCurrentDrive    ;Get current drive number (0 based) in al
+    mov byte [dirDrv], al   ;Store the 0 based drive number in al
     add al, "A"
     mov ah, ":" ;ax has X: now to store 
     stosw
@@ -72,7 +74,6 @@ dir:
     mov ah, 2Fh ;Get current DTA in rbx
     int 41h 
     push rbx    ;Preserve it on the stack
-
     lea rdx, cmdFFBlock
     mov ah, 1Ah ;Set DTA to internal ffblock
     int 41h
@@ -120,6 +121,12 @@ dir:
     mov ah, 09h
     int 41h
     ;Now we search for the files
+    mov al, byte [pathSep]
+    cmp byte [rdi + rcx - 1], al
+    je .noAddSlash  ;Deals with special case of root dir
+    mov byte [rdi + rcx], al
+    inc ecx
+.noAddSlash:
     mov dword [rdi + rcx], 002A2E2Ah ;and add a *.*,0
     mov rdx, rdi    ;Ptr to search for in rdx
     mov ecx, dirReadOnly | dirDirectory
@@ -132,15 +139,44 @@ dir:
     int 41h
     jnc .findNext 
 .dirNoMoreFiles:
-    lea rdx, crlf
+    pop rdx 
+    mov ah, 1Ah ;Return back the original DTA
+    int 41h
+    test byte [dirPrnType], 1
+    jz .dirNoEndNewLine
+    lea rdx, crlf   ;Only need this for /W
     mov ah, 09h
     int 41h
+.dirNoEndNewLine:
     ;Now we print the number of files and the number of bytes on the disk
-
-
-.dirCWDExit:
-    pop rdx
-    mov ah, 1Ah
+    mov ecx, 8  ;Print 8 spaces
+    mov dl, " "
+.dirNumOffSpc:
+    mov ah, 02h
+    int 41h
+    dec ecx
+    jnz .dirNumOffSpc
+    xor edx, edx
+    movzx eax, byte [dirFileCtr]   ;Get number of files
+    call printDecimalWord
+    lea rdx, dirOk
+    mov ah, 09h
+    int 41h
+    lea rdx, threeSpc
+    mov ah, 09h
+    int 41h
+    mov eax, 3600h ;Get disk info
+    mov dl, byte [dirDrv]
+    int 41h ;Get disk free space info
+    movzx eax, ax   ;Sectors per Cluster 
+    movzx ecx, cx   ;Bytes per Sector
+    or ebx, ebx ;Clear the upper bits of rbx
+    mul ecx ;Get bytes per cluster
+    mul ebx ;Multiply to the number of free clusters on the disk
+    ;edx:eax now has the number of free bytes on the disk
+    call printDecimalWord
+    lea rdx, bytesOk
+    mov ah, 09h
     int 41h
     return
 
@@ -181,11 +217,7 @@ dir:
 
 .dirPrintFileData:
 ;Use fcbCmdSpec to build the file name with space
-    test byte [dirPrnType], 1
-    jnz .widePrint
-    ;Normal print (Name space ext <> File size <> Acc Date <> Acc Time)
-.widePrint:
-;If /W, print name space ext space space space space
+;Start by print the name (same for both cases)
     lea rsi, qword [cmdFFBlock + ffBlock.asciizName]
     lea rdi, fcbCmdSpec
     call asciiFilenameToFCB
@@ -204,9 +236,64 @@ dir:
     mov ebx, 1  ;STDOUT
     mov ah, 40h ;Write handle
     int 41h
+    test byte [dirPrnType], 1
+    jnz .widePrint
+;Normal print (Name space ext <> File size <> Acc Date <> Acc Time)
+    ;Now check if a DIR
+    test byte [cmdFFBlock + ffBlock.attribFnd], dirDirectory
+    jz .dirPrintNotDir
+    lea rdx, dirLbl
+    mov ah, 09h
+    int 41h
+    lea rdx, threeSpc
+    mov ah, 09h
+    int 41h
+    jmp short .dirPrintFileDT
+.dirPrintNotDir:
+;Here we print the file size
+    mov dl, " "
+    mov ah, 02h
+    int 41h
+    mov eax, dword [cmdFFBlock + ffBlock.fileSize]
+    call getDecimalWord
+    mov rbx, rcx
+    bswap rbx
+    mov ecx, 8
+.dirPrintFileSizePrep:
+    test bl, bl ;Any leading null's get replaced with a space
+    jne .dirPrintFileSize
+    mov ah, 02h
+    mov dl, " "
+    int 41h
+    shr rbx, 8  ;Get next byte
+    dec ecx
+    cmp ecx, 1
+    jne .dirPrintFileSizePrep   ;Always print 1 byte for size
+.dirPrintFileSize:
+    mov dl, bl
+    mov ah, 02h
+    int 41h
+    shr rbx, 8  ;Get next byte
+    dec ecx
+    jnz .dirPrintFileSize
+    lea rdx, threeSpc
+    mov ah, 09h
+    int 41h
+.dirPrintFileDT:
+    lea rdx, twoSpc
+    mov ah, 09h
+    int 41h
+    ;Here we print the DATE AND TIME eventually
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    jmp short .dirPrintNameExit
+.widePrint:
+;If /W, print name space ext space space space space
     lea rdx, fourSpc
     mov ah, 09h ;Print string
     int 41h
+.dirPrintNameExit:
     inc byte [dirFileCtr]   ;Increment file counter
     inc byte [dirLineCtr]
     cmp byte [dirLineCtr], 23

@@ -14,7 +14,7 @@ filLostErr  db  "Content of destination lost before copy",CR,LF,"$"
 ;Copy end message. First write # files copied then this message 
 copyOk  db  " File(s) copied",CR,LF, "$"
 ;Dir end1 msg. First write # files in dir then this
-dirOk   db  " File(s) ", "$"
+dirOk   db  " File(s) $"
 ;Dir end2 msg. First write # bytes free then this message
 bytesOk db  " bytes free",CR,LF, "$"
 dirLbl  db  " <DIR>   $"
@@ -65,7 +65,8 @@ backSpace   db BSP," ",BSP,NUL
 
 ansiCls  db 01BH,"[2J" ;ANSI CLS sequence, 4 chars long
 fourSpc  db "    $"
-
+threeSpc db "   $"
+twoSpc   db "  $"
 
 badOnOff db "Must specify ON or OFF",CR,LF,"$"
 pathEVar db "PATH="

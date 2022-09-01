@@ -7,11 +7,18 @@ printCRLF:
     mov ecx, 2  ;Two chars to write
     int 41h
     return
-
-putDateInPrompt:
-putTimeInPrompt:
+printDate:
+    ;al = day of the week (0=Sunday)
+	;cl = year (1980-2099)
+	;dh = month (1-12)
+	;dl = day (1-31)
+printFileDate:
+	;cl = year (1980-2099)
+	;dh = month (1-12)
+	;dl = day (1-31)
     return
-
+printTime:
+    return
 putVersionInPrompt:
     lea rdx, dosVer
     mov ah, 09h ;Print String
@@ -121,21 +128,27 @@ hexToBCD:
 
 printPackedBCD:
 ;Gets a packed BCD digit in al and prints al[7:4] if non zero,
-; then prints al[3:0]
+; then prints al[3:0]. Prints a space if the upper nybble is zero
 ;Preserves all registers
     push rax
     push rdx
     mov ah, al
     and al, 0Fh     ;Isolate lower nybble
     and ah, 0F0h    ;Isolate upper nybble
-    jz .skipUpperNybble
+    jnz .upperNybble
+    mov dl, " "
+    mov ah, 02h
+    int 41h
+    jmp short .lowerNybble
+.upperNybble:
     push rax
+    shr ah, 4
     add ah, "0"  ;Convert to an ASCII digit
     mov dl, ah
     mov ah, 02h ;Print DL
     int 41h
     pop rax
-.skipUpperNybble:
+.lowerNybble:
     add al, "0"
     mov dl, al
     mov ah, 02h ;Print DL
@@ -469,4 +482,58 @@ buildCommandPath:
     stosw   ;Store the terminating 0 after the pathsep
 .okExit:
     clc
+    return
+printDecimalWord:
+;Takes qword in edx:eax and print it's decimal representation
+    push rdx    ;Save upper qword for later
+;Takes the qword in eax and prints its decimal representation
+    xor ecx, ecx
+    xor ebp, ebp  ;Use bp as #of digits counter
+    mov ebx, 0Ah  ;Divide by 10
+.dpfb0:
+    inc ebp
+    shl rcx, 8    ;Space for next nybble
+    xor edx, edx
+    div rbx
+    add dl, '0'
+    cmp dl, '9'
+    jbe .dpfb1
+    add dl, 'A'-'0'-10
+.dpfb1:
+    mov cl, dl    ;Save remainder byte
+    test rax, rax
+    jnz .dpfb0
+.dpfb2:
+    mov dl, cl    ;Get most sig digit into al
+    mov ah, 02h
+    int 41h
+    shr rcx, 8    ;Get next digit down
+    dec ebp
+    jnz .dpfb2
+    pop rdx
+    test edx, edx   ;If this is zero, we are done
+    retz    ;Return
+    mov eax, edx    ;Else move it to eax
+    xor edx, edx    ;And clear it
+    jmp short printDecimalWord
+
+getDecimalWord:
+;Works on MAX A dword in eax
+;Gets the decimalised DWORD to print in rcx (at most 8 digits)
+    xor ecx, ecx
+    xor ebp, ebp  ;Use bp as #of digits counter
+    mov ebx, 0Ah  ;Divide by 10
+.dpfb0:
+    inc ebp
+    shl rcx, 8    ;Space for next nybble
+    xor edx, edx
+    div rbx
+    add dl, '0'
+    cmp dl, '9'
+    jbe .dpfb1
+    add dl, 'A'-'0'-10
+.dpfb1:
+    mov cl, dl    ;Save remainder byte
+    test rax, rax
+    jnz .dpfb0
     return
