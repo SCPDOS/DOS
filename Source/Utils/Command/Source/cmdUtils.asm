@@ -8,17 +8,162 @@ printCRLF:
     int 41h
     return
 printDate:
-    ;al = day of the week (0=Sunday)
-	;cl = year (1980-2099)
-	;dh = month (1-12)
-	;dl = day (1-31)
-printFileDate:
-	;cl = year (1980-2099)
-	;dh = month (1-12)
-	;dl = day (1-31)
+;Input: eax = Packed Date
+;       eax[0:4] = Day of the month, a value in [0,...,31]
+;       eax[5:8] = Month of the year, a value in [0,...,12]
+;       eax[9:15] = Number of years since 1980, a value in [0,...,127]
+    mov ecx, eax    ;Save in ecx temporarily
+    cmp byte [ctryData + countryStruc.dtfmt], 1
+    jb .usDate
+    ja .jpnDate
+;European: DD/MM/YY
+    and eax, 1Fh    ;Save day bits
+    call .printDay
+    breakpoint
+    lea rsi, ctryData
+    mov dl, byte [rsi + countryStruc.dateSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 1E0h   ;Save bits 5-8
+    shr eax, 5
+    call .printMonth
+
+    mov dl, byte [ctryData + countryStruc.dateSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 0FE00h ;Save bits 9-15
+    shr eax, 9
+    call .printYear
     return
+.usDate:
+;US: MM/DD/YY
+    and eax, 1E0h   ;Save bits 5-8
+    shr eax, 5
+    call .printMonth
+
+    mov dl, byte [ctryData + countryStruc.dateSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 1Fh    ;Save day bits
+    call .printDay
+
+    mov dl, byte [ctryData + countryStruc.dateSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 0FE00h ;Save bits 9-15
+    shr eax, 9
+    call .printYear
+    return
+.jpnDate:
+;Japan: YY/MM/DD
+    and eax, 0FE00h ;Save bits 9-15
+    shr eax, 9
+    call .printYear
+
+    mov dl, byte [ctryData + countryStruc.dateSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 1E0h   ;Save bits 5-8
+    shr eax, 5
+    call .printMonth
+
+    mov dl, byte [ctryData + countryStruc.dateSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 1Fh    ;Save day bits
+    call .printDay
+    return
+
+;Each of these require eax setup correctly
+.printDay:
+    push rcx
+    call getDecimalWord
+    test ch, ch ;Do we have an upper digit?
+    jnz .skipSpace
+    mov cl, " "
+.skipSpace:
+    mov dl, cl
+    mov ah, 02h
+    int 41h
+    mov dl, ch
+    mov ah, 02h
+    int 41h
+    pop rcx
+    return
+.printMonth:
+    push rcx
+    call getDecimalWord
+    test ch, ch ;Do we have an upper digit?
+    jnz .skipSpace
+    mov cl, "0"
+    jmp short .skipSpace
+.printYear:
+    add eax, 1980
+    push rcx
+    call getDecimalWord ;Get unpacked in rcx
+    shr ecx, 10h    ;Get high word low
+    mov dl, cl  ;Print the upper digit
+    mov ah, 02h
+    int 41h
+    mov dl, ch  ;Print the lower digit
+    mov ah, 02h
+    int 41h
+    pop rcx
+    return
+
+
+
 printTime:
+;Input: eax = Packed Time
+;       eax[5:10] = Minutes, a value in [0,...,59] 
+;       eax[11:15] = Hours, a value in [0,...,23]
+
+    mov eax, ecx
+    and eax, 7E0h   ;Save bits 5-10
+    shr eax, 5
+    push rcx
+    call printDecimalWord
+    pop rcx
+
+    mov dl, byte [ctryData + countryStruc.timeSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 0F800h ;Save bits 11-15
+    shr eax, 11
+    cmp byte [ctryData + countryStruc.timefmt], 1  
+    jz .ampm
+    call printDecimalWord   ;Just print the hours
     return
+.ampm:
+    cmp eax, 12
+    ja .pm
+    call printDecimalWord
+    mov dl, "a"
+    mov ah, 02h
+    int 41h
+    return
+.pm:
+    sub eax, 12
+    call printDecimalWord
+    mov dl, "p"
+    mov ah, 02h
+    int 41h
+    return
+
 putVersionInPrompt:
     lea rdx, dosVer
     mov ah, 09h ;Print String

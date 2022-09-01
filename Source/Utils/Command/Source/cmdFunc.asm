@@ -282,10 +282,16 @@ dir:
     mov ah, 09h
     int 41h
 .dirPrintFileDT:
+    mov dl, " "
+    mov ah, 02h
+    int 41h
+    movzx eax, word [cmdFFBlock + ffBlock.fileDate]
+    call printDate
     lea rdx, twoSpc
     mov ah, 09h
     int 41h
-    ;Here we print the DATE AND TIME eventually
+    movzx eax, word [cmdFFBlock + ffBlock.fileTime]
+    call printTime
     lea rdx, crlf
     mov ah, 09h
     int 41h

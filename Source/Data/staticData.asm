@@ -13,7 +13,7 @@ dosKernName db "SCPBDOS .SYS"
 ctryTbl:
 ;Country Table (defaulting to UK), refer to struct in dosStruc.inc
     dw 1            
-    db "£",0,0,0,0
+    db 9Ch,0,0,0,0  ;9Ch = £ in British codepage
     db ",",0
     db ".",0
     db "-",0
