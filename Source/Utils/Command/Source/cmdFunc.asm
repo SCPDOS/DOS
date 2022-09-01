@@ -416,6 +416,38 @@ mkdir:
     return
 
 rmdir:
+    test byte [arg1Flg], -1
+    jz .badParams
+    test byte [arg2Flg], -1
+    jnz .badParams
+    ;We have exactly one argument
+    mov al, byte [arg1FCBret]
+    cmp al, -1 
+    je .badDrv  ;If a drive was specified and was bad, jump
+    call buildCommandPath
+    jc .badRemove
+    lea rdx, searchSpec
+    mov eax, 3A00h  ;RMDIR
+    int 41h
+    jc .badRemove   ;Return if not carry
+    mov ah, 0Dh
+    int 41h ;Flush to disk
+    return
+.badRemove:   ;Else, bad make
+    lea rdx, badRD
+    mov eax, 0900h
+    int 41h
+    return
+.badDrv:
+    lea rdx, badDrv
+    mov eax, 0900h
+    int 41h
+    return
+.badParams:
+    lea rdx, badArgs
+    mov eax, 0900h
+    int 41h
+    return
 erase:
 date:
 time:
