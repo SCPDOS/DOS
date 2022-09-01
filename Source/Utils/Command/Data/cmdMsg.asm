@@ -34,7 +34,6 @@ newTime db  CR,LF,"Enter new time: $"
 ynMes   db  "Are you sure (Y/N)? $"
 
 dosVer  db " SCP/DOS Version $"
-dosVerL equ $ - dosVer
 
 volMes  db " Volume in drive $"
 volOk   db " is $"

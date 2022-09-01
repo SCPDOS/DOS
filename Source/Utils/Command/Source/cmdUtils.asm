@@ -484,38 +484,58 @@ buildCommandPath:
     clc
     return
 printDecimalWord:
-;Takes qword in edx:eax and print it's decimal representation
-    push rdx    ;Save upper qword for later
+;Takes qword in rax and print it's decimal representation
 ;Takes the qword in eax and prints its decimal representation
     xor ecx, ecx
+    xor ebx, ebx    ;Store upper 8 nybbles here
+    test eax, eax
+    jnz .notZero
+    mov ecx, "0"
+    mov ebp, 1  ;Print one digit
+    jmp short .dpfb2
+.notZero:
     xor ebp, ebp  ;Use bp as #of digits counter
-    mov ebx, 0Ah  ;Divide by 10
+    mov esi, 0Ah  ;Divide by 10
 .dpfb0:
     inc ebp
+    cmp ebp, 8
+    jb .dpfb00
+    shl rbx, 8    ;Space for next nybble
+    jmp short .dpfb01
+.dpfb00:
     shl rcx, 8    ;Space for next nybble
+.dpfb01:
     xor edx, edx
-    div rbx
+    div rsi
     add dl, '0'
     cmp dl, '9'
     jbe .dpfb1
     add dl, 'A'-'0'-10
 .dpfb1:
+    cmp ebp, 8
+    jb .dpfb10
+    mov bl, dl ;Add the bottom bits
+    jmp short .dpfb11
+.dpfb10:
     mov cl, dl    ;Save remainder byte
+.dpfb11:
     test rax, rax
     jnz .dpfb0
 .dpfb2:
+    cmp ebp, 8
+    jb .dpfb20
+    mov dl, bl
+    shr rbx, 8
+    jmp short .dpfb21
+.dpfb20:
     mov dl, cl    ;Get most sig digit into al
+    shr rcx, 8    ;Get next digit down
+.dpfb21:
     mov ah, 02h
     int 41h
-    shr rcx, 8    ;Get next digit down
     dec ebp
     jnz .dpfb2
-    pop rdx
-    test edx, edx   ;If this is zero, we are done
-    retz    ;Return
-    mov eax, edx    ;Else move it to eax
-    xor edx, edx    ;And clear it
-    jmp short printDecimalWord
+    return
 
 getDecimalWord:
 ;Works on MAX A dword in eax

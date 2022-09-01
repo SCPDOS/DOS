@@ -156,7 +156,6 @@ dir:
     int 41h
     dec ecx
     jnz .dirNumOffSpc
-    xor edx, edx
     movzx eax, byte [dirFileCtr]   ;Get number of files
     call printDecimalWord
     lea rdx, dirOk
@@ -172,8 +171,8 @@ dir:
     movzx ecx, cx   ;Bytes per Sector
     or ebx, ebx ;Clear the upper bits of rbx
     mul ecx ;Get bytes per cluster
-    mul ebx ;Multiply to the number of free clusters on the disk
-    ;edx:eax now has the number of free bytes on the disk
+    mul rbx ;Multiply to the number of free clusters on the disk
+    ;rax now has the number of free bytes on the disk
     call printDecimalWord
     lea rdx, bytesOk
     mov ah, 09h
@@ -257,6 +256,7 @@ dir:
     mov eax, dword [cmdFFBlock + ffBlock.fileSize]
     call getDecimalWord
     mov rbx, rcx
+    push rcx
     bswap rbx
     mov ecx, 8
 .dirPrintFileSizePrep:
@@ -270,12 +270,14 @@ dir:
     cmp ecx, 1
     jne .dirPrintFileSizePrep   ;Always print 1 byte for size
 .dirPrintFileSize:
+    pop rbx
+.dirPrintFileSizeLoop:
     mov dl, bl
     mov ah, 02h
     int 41h
     shr rbx, 8  ;Get next byte
     dec ecx
-    jnz .dirPrintFileSize
+    jnz .dirPrintFileSizeLoop
     lea rdx, threeSpc
     mov ah, 09h
     int 41h
@@ -633,6 +635,29 @@ truename:
     call printCRLF
     return
 
+
+version:
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    lea rdx, dosVer
+    mov ah, 09h
+    int 41h
+    mov ah, 30h ;Get version numbers, al = Major, ah = Minor
+    int 41h
+    push rax
+    movzx eax, al
+    call printDecimalWord
+    mov dl, "."
+    mov ah, 02h
+    int 41h
+    pop rax
+    movzx eax, ah
+    call printDecimalWord
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    return
 
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn

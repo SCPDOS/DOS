@@ -58,4 +58,7 @@ functionTable:
     db 8, "TRUENAME"
     dw truename - startLbl
 
+    db 3, "VER"
+    dw version - startLbl
+
     db -1   ;End of table
