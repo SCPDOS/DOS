@@ -316,7 +316,6 @@ reallocMemory:     ;ah = 4Ah
     mov dword [rdi + mcb.blockSize], ecx ;Set it to the new arena size
     mov rcx, rsi    ;Now compute the space between the new mcb and the one
     sub rcx, rdi    ;... being absorbed
-    add rcx, mcb.program ;Add the space of the absorbed MCB
     shr rcx, 4  ;Convert to paragraphs
     add dword [rdi + mcb.blockSize], ecx
     xor ecx, ecx
