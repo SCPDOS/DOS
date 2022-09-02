@@ -310,9 +310,15 @@ reallocMemory:     ;ah = 4Ah
     cmp qword [rsi + mcb.owner], mcbOwnerFree  ;Is this free?
     jne .exit
     ;It is free, absorb it
+    mov al, byte [rsi + mcb.marker]
+    mov byte [rdi + mcb.marker], al ;We absorb the marker too
     mov ecx, dword [rsi + mcb.blockSize] ;Get the absorb arena size
-    add ecx, (mcb.program >> 4) ;Add the space of the absorbed MCB
-    add dword [rdi + mcb.blockSize], ecx ;Add it to the new arena size
+    mov dword [rdi + mcb.blockSize], ecx ;Set it to the new arena size
+    mov rcx, rsi    ;Now compute the space between the new mcb and the one
+    sub rcx, rdi    ;... being absorbed
+    add rcx, mcb.program ;Add the space of the absorbed MCB
+    shr rcx, 4  ;Convert to paragraphs
+    add dword [rdi + mcb.blockSize], ecx
     xor ecx, ecx
     ;Clear absorbed MCB
     mov qword [rsi], rcx

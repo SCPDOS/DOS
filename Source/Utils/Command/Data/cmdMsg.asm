@@ -66,6 +66,18 @@ badArgs db "Invalid number of parameters",CR,LF,"$"
 devWriteErr db "Error writing to device"
 backSpace   db BSP," ",BSP,NUL
 
+memSys  db CR,LF,"              Total system memory: $"
+memDOS  db CR,LF,"               Memory used by DOS: $"
+memApp  db CR,LF,"      Memory used by applications: $"
+memHole db CR,LF,"      Memory reserved by hardware: $"
+memFree db CR,LF,"                      Memory free: $"
+memByte db " bytes$"
+memBad0 db CR,LF,"Could Not Assertain DOS Entry Point$"
+memBad1 db CR,LF,"Memory Allocation Error$"
+memBad2 db CR,LF,"Memory Error$"
+memBad3 db CR,LF,"System halted$"
+
+
 ansiCls  db 01BH,"[2J" ;ANSI CLS sequence, 4 chars long
 fourSpc  db "    $"
 threeSpc db "   $"

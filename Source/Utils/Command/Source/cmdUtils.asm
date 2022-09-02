@@ -744,3 +744,16 @@ getDecimalWord:
     test rax, rax
     jnz .dpfb0
     return
+
+freezePC:
+    lea rdx, memBad1
+    mov ah, 09h
+    int 41h
+.altEP:
+    lea rdx, memBad3
+    mov ah, 09h
+    int 41h
+.lp:
+    pause
+    hlt
+    jmp short .lp

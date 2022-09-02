@@ -798,6 +798,124 @@ version:
     call printDecimalWord
     return
 
+
+memory:
+    mov rbx, qword [sysVars]
+    test rbx, rbx
+    jnz .sysvarsOK
+    lea rdx, memBad0
+    mov ah, 09h
+    int 41h
+    jmp freezePC.altEP
+.sysvarsOK:
+    ;Use rsi to store DOS memory, rdi to store Free memory and rbp for Hole
+    ; and rcx to store Application memory
+    xor esi, esi
+    xor edi, edi
+    xor ebp, ebp
+    xor ecx, ecx
+    lea rbx, qword [rbx - 8]    ;Go back a qword
+    mov rbx, qword [rbx]
+.memLp:
+    cmp byte [rbx], mcbMarkCtn
+    je .validMCB
+    cmp byte [rbx], mcbMarkEnd
+    jne .badMCBFound
+.validMCB:
+    mov eax, dword [rbx + mcb.blockSize]
+    shl rax, 4  ;Convert to bytes
+    cmp qword [rbx + mcb.owner], mcbOwnerDOS
+    jne .notDOS
+    add rsi, rax    ;Add to DOS count
+    jmp short .gotoNext
+.notDOS:
+    cmp qword [rbx + mcb.owner], mcbOwnerFree
+    jne .notFree
+    add rdi, rax    ;Add to Free space count
+    jmp short .gotoNext
+.notFree:
+    cmp qword [rbx + mcb.owner], mcbOwnerHole
+    jne .notHole
+    add rbp, rax    ;Add to Hole count
+    jmp short .gotoNext
+.notHole:
+    add rcx, rax    ;Add to Application count
+.gotoNext:
+    cmp byte [rbx], mcbMarkEnd
+    je .endOfWalk
+    lea rbx, qword [rbx + mcb.program + rax]
+    jmp short .memLp
+.endOfWalk:
+    
+    lea rdx, memDOS
+    mov ah, 09h
+    int 41h
+    mov rax, rsi
+    call .mcbPrintAmount
+    lea rdx, memByte
+    mov ah, 09h
+    int 41h
+
+    lea rdx, memHole
+    mov ah, 09h
+    int 41h
+    mov rax, rbp
+    call .mcbPrintAmount
+    lea rdx, memByte
+    mov ah, 09h
+    int 41h
+
+    lea rdx, memApp
+    mov ah, 09h
+    int 41h
+    mov rax, rcx
+    call .mcbPrintAmount
+    lea rdx, memByte
+    mov ah, 09h
+    int 41h
+
+    lea rdx, memFree
+    mov ah, 09h
+    int 41h
+    mov rax, rdi
+    call .mcbPrintAmount
+    lea rdx, memByte
+    mov ah, 09h
+    int 41h
+
+    lea rdx, memSys
+    mov ah, 09h
+    int 41h
+    mov rax, rsi
+    add rax, rdi
+    add rax, rcx
+    add rax, rbp
+    call .mcbPrintAmount
+    lea rdx, memByte
+    mov ah, 09h
+    int 41h
+
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    return
+
+.mcbPrintAmount:
+    push rcx
+    push rsi
+    push rdi
+    push rbp
+    call printDecimalWord
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rcx
+    return
+.badMCBFound:
+    lea rdx, memBad2
+    mov ah, 09h
+    int 41h
+    jmp freezePC.altEP
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
     return

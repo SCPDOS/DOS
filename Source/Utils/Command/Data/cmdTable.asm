@@ -64,4 +64,7 @@ functionTable:
     db 3, "VOL"
     dw volume - startLbl
 
+    db 3, "MEM"
+    dw memory - startLbl
+
     db -1   ;End of table
