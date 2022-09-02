@@ -86,16 +86,17 @@ dir:
 .dirLblCopy:
     lodsb   ;Get the first char
     cmp al, 0
-    je .skipVolLbl
+    je .skipVolLbl  ;Jump with CF=NC
     cmp al, "."
     je .dirLblSkipStore
     stosb
 .dirLblSkipStore:
     dec ecx
     jnz .dirLblCopy
+    ;Fallthru with CF=NC
 .skipVolLbl:
 ;Print volume label information now
-    call .dirPrintVolInfo
+    call .dirPrintVolInfo   ;Propagates the CF if CF was set
     test byte [dirVolFlg], -1
     jnz .dirVolExit ;If we just wanted to print the volume label, now exit
     lea rsi, dirVolPathBuf
@@ -188,6 +189,7 @@ dir:
     return
 
 .dirPrintVolInfo:
+    pushfq
     lea rdx, crlf
     mov ah, 09h
     int 41h
@@ -197,8 +199,8 @@ dir:
     mov dl, byte [dirVolPathBuf]   ;Print the drive letter out
     mov ah, 02h
     int 41h
-    cmp byte [dirPathOff], -1   ;No volume ID marker
-    jne .dirVolIDOk
+    popfq
+    jnc .dirVolIDOk
     lea rdx, volNo
     mov ah, 09h
     int 41h
