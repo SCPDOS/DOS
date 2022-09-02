@@ -219,8 +219,10 @@ findInBuffer:
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .exclusiveDir
-    cmp ah, dirVolumeID
-    je .volFile
+    cmp al, dirVolumeID ;Are WE searching for a volume only?
+    je .volFile ;If so, go here
+    cmp ah, 08h ;Is this file a volume lbl that we are not looking for?
+    je .nextEntry
     cmp ah, al  ;If file attr <= user selected attribs, scan name for match
     ja .nextEntry
     ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)

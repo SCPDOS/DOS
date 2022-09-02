@@ -60,15 +60,13 @@ dir:
     lea rdi, dirVolPathBuf
     lea rsi, searchSpec ;Will need to create the same X:\ here too
     call getCurrentDrive    ;Get current drive number (0 based) in al
+.dirVolEP:
     mov byte [dirDrv], al   ;Store the 0 based drive number in al
     add al, "A"
     mov ah, ":" ;ax has X: now to store 
     stosw
-    mov word [rsi], ax
-    add rsi, 2
     mov al, byte [pathSep]
     stosb
-    mov byte [rsi], al
     mov eax, 002A2E2Ah  ;*.*,0
     stosd
     mov ah, 2Fh ;Get current DTA in rbx
@@ -98,7 +96,12 @@ dir:
 .skipVolLbl:
 ;Print volume label information now
     call .dirPrintVolInfo
-    lea rdi, searchSpec + 3 ;Go to the fourth char in the field
+    test byte [dirVolFlg], -1
+    jnz .dirVolExit ;If we just wanted to print the volume label, now exit
+    lea rsi, dirVolPathBuf
+    lea rdi, searchSpec 
+    mov ecx, 3  ;Now copy the X:\ over
+    rep movsb
     mov ah, 47h ;Get Current Working Directory
     mov rsi, rdi    ;rsi points to buffer to write to
     mov dl, byte [searchSpec]
@@ -176,6 +179,11 @@ dir:
     call printDecimalWord
     lea rdx, bytesOk
     mov ah, 09h
+    int 41h
+    return
+.dirVolExit:
+    pop rdx 
+    mov ah, 1Ah ;Return back the original DTA
     int 41h
     return
 
@@ -754,6 +762,13 @@ truename:
     call printCRLF
     return
 
+volume:
+    mov byte [dirVolFlg], -1    ;Set this flag
+    lea rdi, dirVolPathBuf
+    call getCurrentDrive    ;Get current drive number (0 based) in al
+    call dir.dirCWD ;Use the hard work already done
+    mov byte [dirVolFlg], 0
+    return
 
 version:
     lea rdx, crlf

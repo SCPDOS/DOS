@@ -68,6 +68,8 @@ dirPathOff  db 0
 dirVolLbl   db 13 dup (0)
 dirVolPathBuf db 8 dup (0)  ;Used to build X:\*.*,0 for volume label search
 dirDrv      db 0    ;0 based drive number to use
+dirVolFlg   db 0    
+
 
 td1 db 0    ;Minutes/Year
 td2 db 0    ;Hours/Zero

@@ -61,4 +61,7 @@ functionTable:
     db 3, "VER"
     dw version - startLbl
 
+    db 3, "VOL"
+    dw volume - startLbl
+
     db -1   ;End of table
