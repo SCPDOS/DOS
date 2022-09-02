@@ -856,6 +856,8 @@ memory:
     mov ah, 09h
     int 41h
 
+    test rbp, rbp
+    jz .skipHole
     lea rdx, memHole
     mov ah, 09h
     int 41h
@@ -864,6 +866,7 @@ memory:
     lea rdx, memByte
     mov ah, 09h
     int 41h
+.skipHole:
 
     lea rdx, memApp
     mov ah, 09h
