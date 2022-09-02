@@ -18,17 +18,15 @@ printDate:
     ja .jpnDate
 ;European: DD/MM/YY
     and eax, 1Fh    ;Save day bits
-    call .printDay
-    breakpoint
-    lea rsi, ctryData
-    mov dl, byte [rsi + countryStruc.dateSep]
+    call .printFirst
+    mov dl, byte [ctryData + countryStruc.dateSep]
     mov ah, 02h
     int 41h
 
     mov eax, ecx
     and eax, 1E0h   ;Save bits 5-8
     shr eax, 5
-    call .printMonth
+    call .printSecond
 
     mov dl, byte [ctryData + countryStruc.dateSep]
     mov ah, 02h
@@ -43,7 +41,7 @@ printDate:
 ;US: MM/DD/YY
     and eax, 1E0h   ;Save bits 5-8
     shr eax, 5
-    call .printMonth
+    call .printFirst
 
     mov dl, byte [ctryData + countryStruc.dateSep]
     mov ah, 02h
@@ -51,7 +49,7 @@ printDate:
 
     mov eax, ecx
     and eax, 1Fh    ;Save day bits
-    call .printDay
+    call .printSecond
 
     mov dl, byte [ctryData + countryStruc.dateSep]
     mov ah, 02h
@@ -75,7 +73,7 @@ printDate:
     mov eax, ecx
     and eax, 1E0h   ;Save bits 5-8
     shr eax, 5
-    call .printMonth
+    call .printSecond
 
     mov dl, byte [ctryData + countryStruc.dateSep]
     mov ah, 02h
@@ -83,15 +81,16 @@ printDate:
 
     mov eax, ecx
     and eax, 1Fh    ;Save day bits
-    call .printDay
+    call .printSecond
     return
 
 ;Each of these require eax setup correctly
-.printDay:
+.printFirst:
     push rcx
     call getDecimalWord
     test ch, ch ;Do we have an upper digit?
     jnz .skipSpace
+    mov ch, cl
     mov cl, " "
 .skipSpace:
     mov dl, cl
@@ -102,11 +101,12 @@ printDate:
     int 41h
     pop rcx
     return
-.printMonth:
+.printSecond:
     push rcx
     call getDecimalWord
     test ch, ch ;Do we have an upper digit?
     jnz .skipSpace
+    mov ch, cl
     mov cl, "0"
     jmp short .skipSpace
 .printYear:
@@ -129,40 +129,65 @@ printTime:
 ;Input: eax = Packed Time
 ;       eax[5:10] = Minutes, a value in [0,...,59] 
 ;       eax[11:15] = Hours, a value in [0,...,23]
-
-    mov eax, ecx
-    and eax, 7E0h   ;Save bits 5-10
-    shr eax, 5
-    push rcx
-    call printDecimalWord
-    pop rcx
-
-    mov dl, byte [ctryData + countryStruc.timeSep]
-    mov ah, 02h
-    int 41h
-
-    mov eax, ecx
+    mov ecx, eax
     and eax, 0F800h ;Save bits 11-15
     shr eax, 11
     cmp byte [ctryData + countryStruc.timefmt], 1  
-    jz .ampm
-    call printDecimalWord   ;Just print the hours
+    jne .ampm
+    call .printHours
+    call .printMinutes
     return
 .ampm:
     cmp eax, 12
     ja .pm
-    call printDecimalWord
+    je .pm2
+    call .printHours
+    call .printMinutes
     mov dl, "a"
     mov ah, 02h
     int 41h
     return
 .pm:
     sub eax, 12
-    call printDecimalWord
+.pm2:
+    call .printHours
+    call .printMinutes
     mov dl, "p"
     mov ah, 02h
     int 41h
     return
+.printMinutes:
+    mov dl, byte [ctryData + countryStruc.timeSep]
+    mov ah, 02h
+    int 41h
+
+    mov eax, ecx
+    and eax, 7E0h   ;Save bits 5-10
+    shr eax, 5
+    push rcx
+    call getDecimalWord
+    test ch, ch ;Do we have an upper digit?
+    jnz .skipSpace
+    mov ch, cl
+    mov cl, "0"
+    jmp short .skipSpace
+.printHours:
+    push rcx
+    call getDecimalWord
+    test ch, ch ;Do we have an upper digit?
+    jnz .skipSpace
+    mov ch, cl
+    mov cl, " "
+.skipSpace:
+    mov dl, cl
+    mov ah, 02h
+    int 41h
+    mov dl, ch
+    mov ah, 02h
+    int 41h
+    pop rcx
+    return
+
 
 putVersionInPrompt:
     lea rdx, dosVer

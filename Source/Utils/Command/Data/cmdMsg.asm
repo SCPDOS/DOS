@@ -17,7 +17,7 @@ copyOk  db  " File(s) copied",CR,LF, "$"
 dirOk   db  " File(s) $"
 ;Dir end2 msg. First write # bytes free then this message
 bytesOk db  " bytes free",CR,LF, "$"
-dirLbl  db  " <DIR>   $"
+dirLbl  db  " <DIR>  $"
 
 badDrv  db  "Invalid drive specification",CR,LF,"$"
 pauseMes     db  "Strike a key when ready . . . $"

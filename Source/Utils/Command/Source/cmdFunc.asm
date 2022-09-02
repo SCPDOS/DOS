@@ -278,7 +278,7 @@ dir:
     shr rbx, 8  ;Get next byte
     dec ecx
     jnz .dirPrintFileSizeLoop
-    lea rdx, threeSpc
+    lea rdx, twoSpc
     mov ah, 09h
     int 41h
 .dirPrintFileDT:
