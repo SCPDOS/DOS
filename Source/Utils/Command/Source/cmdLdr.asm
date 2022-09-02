@@ -68,7 +68,15 @@ cmdLdr:
     mov eax, 254Eh ;Set this as Int 4Eh
     int 41h
 ;Now, open and parse AUTOEXEC.BAT. Build Master Environment here
-    
+;If no AUTOEXEC.BAT, request time and date from user
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    call time
+    call date
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
     lea rbx, endOfAlloc ;Save the Master Environment
     jmp short .printInit
 .skipMaster:
@@ -78,10 +86,16 @@ cmdLdr:
     lea rdx, initString
     mov ah, 09h
     int 41h ;Print init string
+    call version.printVersionNumber
+    lea rdx, initString2
+    mov ah, 09h
+    int 41h ;Print init string
+
     mov qword [stackBottom], rsp    ;Use this to save where to reset rsp to
     jmp commandStart    ;We jump with rbx = base address to jettison
 ;Loader Data here
 initString: 
-    db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version 1.0",CR,LF
-    db       "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
+    db CR,LF,"Scientific Computer Research(R) SCP/DOS(R) Version $"
+initString2:
+    db CR,LF, "          (C)Copyright Scientific Computer Reserach 2022.",CR,LF,"$"
 badVerStr: db "Incorrect DOS version",CR,LF,"$"

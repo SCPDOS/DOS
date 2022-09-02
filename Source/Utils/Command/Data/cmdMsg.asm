@@ -1,5 +1,6 @@
 ;COMMAND.COM Messages and strings
 crlf    db  CR,LF,"$"
+crlf2   db  CR,LF,CR,LF,"$"
 badBat  db  CR,LF,"Batch file missing",CR,LF,"$"    ;Used in BAT
 needBat db  CR,LF,"Insert disk with batch file"     ;Used in BAT
         db  CR,LF,"and press any key when ready",CR,LF,"$"

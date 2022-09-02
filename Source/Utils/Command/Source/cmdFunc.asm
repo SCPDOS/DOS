@@ -528,7 +528,6 @@ time:
     lea rdx, curTime
     mov ah, 09h
     int 41h
-    breakpoint
     mov ah, 2Ch ;DOS get time
     int 41h
     ;CH = hour (0-23)
@@ -763,6 +762,12 @@ version:
     lea rdx, dosVer
     mov ah, 09h
     int 41h
+    call .printVersionNumber
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    return
+.printVersionNumber:
     mov ah, 30h ;Get version numbers, al = Major, ah = Minor
     int 41h
     push rax
@@ -774,9 +779,6 @@ version:
     pop rax
     movzx eax, ah
     call printDecimalWord
-    lea rdx, crlf
-    mov ah, 09h
-    int 41h
     return
 
 launchChild:
