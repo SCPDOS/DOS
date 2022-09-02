@@ -12,6 +12,9 @@ printDate:
 ;       eax[0:4] = Day of the month, a value in [0,...,31]
 ;       eax[5:8] = Month of the year, a value in [0,...,12]
 ;       eax[9:15] = Number of years since 1980, a value in [0,...,127]
+;       ebx = 0 => Print two digit year
+;       ebx = 1 => Print four digit year
+    push rbx
     mov ecx, eax    ;Save in ecx temporarily
     cmp byte [ctryData + countryStruc.dtfmt], 1
     jb .usDate
@@ -35,6 +38,7 @@ printDate:
     mov eax, ecx
     and eax, 0FE00h ;Save bits 9-15
     shr eax, 9
+    pop rbx ;Get the year signature back
     call .printYear
     return
 .usDate:
@@ -58,12 +62,14 @@ printDate:
     mov eax, ecx
     and eax, 0FE00h ;Save bits 9-15
     shr eax, 9
+    pop rbx ;Get the year signature back
     call .printYear
     return
 .jpnDate:
 ;Japan: YY/MM/DD
     and eax, 0FE00h ;Save bits 9-15
     shr eax, 9
+    pop rbx ;Get the year signature back
     call .printYear
 
     mov dl, byte [ctryData + countryStruc.dateSep]
@@ -112,7 +118,18 @@ printDate:
 .printYear:
     add eax, 1980
     push rcx
+    push rbx
     call getDecimalWord ;Get unpacked in rcx
+    pop rbx
+    test bl, bl
+    jz .twoDigitYear
+    mov dl, cl  ;Print the first digit
+    mov ah, 02h
+    int 41h
+    mov dl, ch  ;Print the second digit
+    mov ah, 02h
+    int 41h
+.twoDigitYear:
     shr ecx, 10h    ;Get high word low
     mov dl, cl  ;Print the upper digit
     mov ah, 02h
@@ -122,7 +139,6 @@ printDate:
     int 41h
     pop rcx
     return
-
 
 
 printTime:
@@ -164,6 +180,7 @@ printTime:
     mov eax, ecx
     and eax, 7E0h   ;Save bits 5-10
     shr eax, 5
+.printMinutesAlt:
     push rcx
     call getDecimalWord
     test ch, ch ;Do we have an upper digit?

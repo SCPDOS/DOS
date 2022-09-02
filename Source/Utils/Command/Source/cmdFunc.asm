@@ -286,6 +286,7 @@ dir:
     mov ah, 02h
     int 41h
     movzx eax, word [cmdFFBlock + ffBlock.fileDate]
+    xor ebx, ebx    ;Ensure we print 2 digit year
     call printDate
     lea rdx, twoSpc
     mov ah, 09h
@@ -461,8 +462,121 @@ copy:
 erase:
     return
 date:
+    lea rdx, curDate
+    mov ah, 09h
+    int 41h
+    mov ah, 2Ah ;DOS get date
+    int 41h
+	;AL = day of the week (0=Sunday)
+	;CX = year (1980-2099)
+	;DH = month (1-12)
+	;DL = day (1-31)
+    mov word [td1], cx
+    mov byte [td3], dl
+    mov byte [td4], dh
+    movzx eax, al
+    mov ebx, eax
+    shl ebx, 1   ;Multiply by 2
+    add eax, ebx ;Make it 3 times 
+    lea rdx, dayName
+    lea rdx, qword [rdx + rax]  ;Go to the right day name
+    mov ecx, 3  ;Print three chars
+    mov ebx, 1  ;STDOUT
+    mov ah, 40h ;Write to handle
+    int 41h
+    mov dl, " "
+    mov ah, 02h
+    int 41h
+;       eax[0:4] = Day of the month, a value in [0,...,31]
+;       eax[5:8] = Month of the year, a value in [0,...,12]
+;       eax[9:15] = Number of years since 1980, a value in [0,...,127]
+    movzx eax, word [td1]   ;Get this word
+    shl eax, 9 ;Move it high to pack it properly
+    movzx ebx, byte [td4]
+    shl ebx, 5  ;Shift the date to the right position
+    or eax, ebx ;Add this date to eax
+    movzx ebx, byte [td3]
+    or eax, ebx
+    mov ebx, 1  ;Four digit year pls
+    call printDate
+
+    lea rdx, newDate
+    mov ah, 09h
+    int 41h
+    lea rdx, ukDate
+    lea rax, usDate
+    lea rbx, jpDate
+    cmp byte [ctryData + countryStruc.dtfmt], 1
+    cmova rdx, rbx
+    cmovb rdx, rax
+    mov ah, 09h
+    int 41h
+
+    lea rdx, qword [r8 + cmdLineCnt]
+    mov ah, 0Ah
+    int 41h
+    push rdx
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    pop rdx
+    cmp byte [rdx + 1], 0   ;If the user typed nothing...
+    rete    ;Exit!
     return
+
 time:
+    lea rdx, curTime
+    mov ah, 09h
+    int 41h
+    breakpoint
+    mov ah, 2Ch ;DOS get time
+    int 41h
+    ;CH = hour (0-23)
+	;CL = minutes (0-59)
+	;DH = seconds (0-59)
+	;DL = hundredths (0-99)
+    mov byte [td1], cl
+    mov byte [td2], ch
+    mov byte [td3], dl
+    mov byte [td4], dh
+    movzx eax, ch
+    call printTime.printHours
+
+    mov dl, byte [ctryData + countryStruc.timeSep]
+    mov ah, 02h
+    int 41h
+
+    movzx eax, byte [td1]   ;Minutes
+    call printTime.printMinutesAlt
+
+    mov dl, byte [ctryData + countryStruc.timeSep]
+    mov ah, 02h
+    int 41h
+
+    movzx eax, byte [td4]   ;Seconds
+    call printTime.printMinutesAlt
+
+    mov dl, "."
+    mov ah, 02h
+    int 41h
+
+    movzx eax, byte [td3]   ;Hundreths
+    call printTime.printMinutesAlt
+
+    lea rdx, newTime
+    mov ah, 09h
+    int 41h
+
+    lea rdx, qword [r8 + cmdLineCnt]
+    mov ah, 0Ah
+    int 41h
+    push rdx
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    pop rdx
+    cmp byte [rdx + 1], 0   ;If the user typed nothing...
+    rete    ;Exit!
     return
 ctty:
     return

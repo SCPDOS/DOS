@@ -19,7 +19,7 @@ setDate:           ;ah = 2Bh
 getTime:           ;ah = 2Ch
     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
     call getUserRegs
-    mov cx, word [CLOCKrecrd + clkStruc.hours]
+    mov cx, word [CLOCKrecrd + clkStruc.minutes]
     mov dx, word [CLOCKrecrd + clkStruc.hseconds]
     mov word [rsi + callerFrame.rdx], dx
     mov word [rsi + callerFrame.rcx], cx
