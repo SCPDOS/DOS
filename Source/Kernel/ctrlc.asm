@@ -95,8 +95,9 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     sti ;Reenable Interrupts
     ;Now we check that the response given was allowed, and translate if needed
 .checkResponse:
+    cmp al, critIgnore
+    je .checkIgnore
     cmp al, critRetry
-    jb .checkIgnore
     je .checkRetry
     cmp al, critFail
     jne .abort   ;Must be abort
@@ -104,7 +105,7 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     mov al, critFail    ;Reset al to contain fail (even if Int44 responded Fail)
     inc byte [Int44Fail]        ;Inc the fail counter!
     test byte [Int44bitfld], critFailOK
-    jnz .abort  ;If fail not permitted, abort
+    jz .abort  ;If bit not set, fail not permitted, abort
 .exit:
     mov byte [errorDrv], -1 ;Unknown drive (to be set)
     return
