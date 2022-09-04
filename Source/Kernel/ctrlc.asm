@@ -118,16 +118,11 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     jmp short .setFail  ;If retry not permitted, return Fail
 .abort:
 ;Prepare to abort. We abort from within!
-    ;First check if the process is it's own parent.
-    ;If it is, we exit fail and return to the process
-    mov rax, qword [currentPSP] ;Get the current psp
-    push rbx
-    mov rbx, qword [rax + psp.parentPtr]
-    cmp rbx, rax    ;Check if the process is it's own parent
-    pop rbx
-    jne .kill   ;If the process is not it's own parent, we kill the process
+;If a network request requests abort, translate to fail
+    cmp byte [dosInvoke], -1
+    jne .kill   ;If this is zero, local invokation
     mov byte [Int44Trans], -1   ;We are translating a Abort to Fail. Mark it
-    jmp short .setFail
+    jmp short .exit
 .kill:
     mov word [errorExCde], di ;Save the error code if Abort
     mov eax, edi    ;Make the return error code the Driver Error Code
