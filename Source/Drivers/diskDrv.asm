@@ -198,11 +198,7 @@ msdDriver:
     jb .msdWriteErrorCode
 .mbbpb0:
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
-    movzx rax, byte [rbx + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
-    lea rdi, .msdBPBTbl
-    mov rdi, qword [rdi + 8*rax] ;Get pointer to pointer to buffer
-    mov rdi, qword [rdi] ;Dereference to get pointer to buffer 
-    mov qword [rbx + bpbBuildReqPkt.bpbptr], rdi ;rdi -> final bpb resting place
+    mov rdi, rbp     ;Get pointer to buffer to overwrite
     mov ecx, bpbEx_size/8
     rep movsq   ;Move the BPB data into the right space
     ret

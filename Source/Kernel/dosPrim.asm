@@ -252,7 +252,7 @@ ensureDiskValid:
     xor eax, eax   ;Dummy read sector 0 in
     call getBufForDOS ;Get a disk buffer for DOS
     jc .exit    ;Immediately exit with the carry flag set
-    mov rdi, rbx
+    lea rdi, qword [rbx + bufferHdr.dataarea]
 .repeatEP:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
