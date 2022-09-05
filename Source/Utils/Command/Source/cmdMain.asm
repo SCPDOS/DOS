@@ -55,7 +55,8 @@ commandMain:
 ;First check we had something typed in of length greater than 1
 ;Must be greater than 0 as executable commands must have extension and filename
     cmp byte [inBuffer + 1], 1  ;Check input length valid
-    jbe .dfltErrExit
+    je .dfltErrExit
+    jb .inputMain
     ;Copy over the input text
     lea rsi, inBuffer
     lea rdi, cmdBuffer
@@ -292,7 +293,7 @@ doCommandLine:
 .nextEntry:
     movzx ecx, byte [rbx]   ;Get name entry length
     cmp cl, -1  ;Are we at the end of the table?
-    je .external      ;If so, check externally now
+    je launchChild      ;If so, check externally now
     cmp byte [cmdName], cl  ;Is command length the same as the tbl entry length?
     jnz .gotoNextEntry  ;If not, goto next entry
     ;Here they have the same length so lets see if the name is the same
@@ -316,37 +317,11 @@ doCommandLine:
     add rbx, 3      ;Go past the first count byte and the address word
     add rbx, rcx    ;Go past the length of the command name too
     jmp short .nextEntry
-
-.external:
-;Here we must search the CWD or all path componants before failing
-;Also this command must be a .COM, .EXE or .BAT so check that first
-    jmp .dfltErrExit    ;Catch all for now
-    mov eax, dword [cmdFcb + fcb.fileext]   ;Get a dword, with dummy byte 3
-    and eax, 00FFFFFFh  ;Clear byte three
-    or eax,  20000000h  ;Add a space so it is like "COM "
-    cmp eax, "    " ;Only if we have four spaces do we proceed here
-    je .noExt
-    call checkExtensionExec ;ZF=ZE => Executable
-    jnz .dfltErrExit
-    ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
-    jc .dfltErrExit ;Remove this when ready to launch batch files
-    ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
-    ;So it is a com or exe that we are searching for for now
-    
-    jmp .dfltErrExit
 .dfltErrExit:
     lea rdx, badCmd
     mov ah, 09h
     int 41h
     return
-.noExt:
-    ;Here we must search for the first file with a valid extension.
-    ;Use bl as flags. bl[0] => COM found, bl[1] => EXE found, bl[2] => BAT found
-    xor ebx, ebx
-    ;If relative path, search CWD. If absolute path, search absolute path.
-    ;If nothing, only then loop through each dir in the path for provided
-    ; pathspec (relative case), or filename (absolute case)
-
 
 
 checkExtensionExec:
@@ -356,6 +331,7 @@ checkExtensionExec:
     mov eax, dword [cmdFcb + fcb.fileext]   ;Get a dword, with dummy byte 3
     and eax, 00FFFFFFh  ;Clear byte three
     or eax,  20000000h  ;Add a space so it is like "COM "
+    and eax, 0FFDFDFDFh ;Uppercase the three letters
     cmp eax, "COM "
     rete
     cmp eax, "EXE "

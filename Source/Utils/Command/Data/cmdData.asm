@@ -42,7 +42,9 @@ cmdLineStateL equ $ - cmdLineStatePtr
 ;Structs and strings
 
 cmdFcb      db 10h dup (0) ;Internal "fcb" for parsing the command name
-cmdFFBlock  db ffBlock_size ;Internal Find First Block to use as default DTA
+cmdFFBlock  db ffBlock_size dup (0) ;Internal Find First Block to use as default DTA
+
+launchBlock db execProg_size dup (0)
 
 inBuffer    db cmdBufferL dup (0)  ;Add one to add space for terminating CR
 cmdBuffer   db cmdBufferL dup (0)  ;This is the to copy input to when processing
@@ -60,17 +62,24 @@ searchSpec  db cmdBufferL dup (0)   ;Contains the pathspec for the search file
 ; users overtyping
 
 ;Internal Function vars
+;Dir Vars
 dirPrnType  db 0    ;Print type.    Bit[0] set => /W or /w specified
 ;                                   Bit[1] set => /P or /p specified
 dirLineCtr  db 0    ;Counter to keep track of which line we printed (0-23)
 dirFileCtr  db 0    ;Used in /W mode, rollover after 5
-dirPathOff  db 0
-dirVolLbl   db 13 dup (0)
-dirVolPathBuf db 8 dup (0)  ;Used to build X:\*.*,0 for volume label search
 dirDrv      db 0    ;0 based drive number to use
-dirVolFlg   db 0    
+dirOldCWD   db cmdBufferL dup (0)   ;Space for CWD and any overspill 
+dirPathArg  db cmdBufferL dup (0)   ;Copy the pathspec argument here if any
+dirSrchPat  db 8 dup ("?")    ;We copy the search pattern here
+dirSPExt    db "."
+            db 3 dup ("?")
 
+;Volume Vars
+volLblSpc   db 13 dup (0)
+volPathBuf  db 0 ;Drive LETTER goes here
+            db ":\*.*",0  ;This remains to build X:\*.*,0 for vol label search
 
+;Time/Date vars
 td1 db 0    ;Minutes/Year
 td2 db 0    ;Hours/Zero
 td3 db 0    ;Hundredths/Day

@@ -345,7 +345,7 @@ printPackedBCD:
     return
 
 getCurrentDrive:
-;Returns the current drive in al
+;Returns the 0 based current drive in al
     mov ah, 19h
     int 41h
     return
@@ -757,3 +757,32 @@ freezePC:
     pause
     hlt
     jmp short .lp
+
+getFilenamePtrFromFilespec:
+;Gets a pointer to the first char of a filename from a asciiz pathspec
+;Input: rsi = Pathspec to search
+;Output: rsi = Points to the first char of the filename
+    mov rbx, rsi
+    xor eax, eax
+    mov rdi, rsi    ;Go to the source string 
+    call strlen     ;Get it's length
+    dec ecx ;Dont include terminating null
+    jz .exitBad ;Was the string of length zero? Exit bad if so
+    add rsi, rcx    ;Goto last char in path (not null)
+.lp:
+    cmp rbx, rsi    ;Is rdi pointing to the start of the string?
+    rete
+    mov al, byte [rsi]  ;Get the char we currently are at
+    cmp al, ":" ;X: ?
+    je .pointFilename
+    cmp al, byte [pathSep]  ;Is al pathSep?
+    je .pointFilename
+    dec rsi ;Not a terminator, go back a char
+    jmp short .lp
+.pointFilename:
+    inc rsi ;Now point to the first char of the pathname
+    return
+.exitBad:
+    stc
+.exit:
+    return

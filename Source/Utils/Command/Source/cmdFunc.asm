@@ -1,9 +1,36 @@
+;Note! Each function must setup the DTA to use for itself.
+;There is no requirement to preserve the DTA across a call.
+;Only the Int 4Eh entry point will preserve the callers DTA.
+
+;Common Error Messages, jumped to to return from
+badParamError:
+    lea rdx, badParm
+    jmp short badCmn
+badDriveError:
+    lea rdx, badDrv
+    jmp short badCmn
+badArgError:
+    lea rdx, badArgs
+    jmp short badCmn
+badDirError:
+    lea rdx, badDir
+badCmn:
+    mov eax, 0900h
+    int 41h
+    stc ;Return with CY => Error occured
+    return
+
 dir:
     mov byte [dirPrnType], 0    ;Clear DIR flags
     mov byte [dirLineCtr], 0
     mov byte [dirFileCtr], 0
-    mov byte [dirPathOff], 0    
-    mov byte [dirVolLbl], -1    ;Mark as no label
+    mov byte [dirPathArg], 0    ;Null terminate the start of the buffer
+    mov rax, "????????"
+    lea rdi, dirSrchPat ;Start also by initialising the search pattern
+    stosq
+    inc rdi ;Go past dot
+    mov word [rdi], ax
+    mov byte [rdi + 2], al
     ;Start by scanning for the switches
     lea rdi, cmdBuffer + 1  ;Goto command line input chars count
     movzx ecx, byte [rdi]   ;Get number of chars typed
@@ -21,93 +48,91 @@ dir:
     jmp short .switchScan
 .notWideSw:
     cmp al, "P" ;Pause mode?
-    jne .badParam   ;If a switch other than /P or /W, fail
+    jne badParamError   ;If a switch other than /P or /W, fail
     or byte [dirPrnType], 2 ;Set correct bit
     jmp short .switchScan
 .switchScanDone:
 ;If no args, only switches, we search CWD
 ;If one arg, search that 
 ;If more than one, fail
-    lea rdi, cmdBuffer + 2
-    mov rsi, rdi
+    lea rsi, cmdBuffer + 2
     call skipSpaces ;Skip leading spaces
     add rsi, 3  ;Go past the DIR (always three chars)
-    cmp byte [rsi], CR
-    je .eocReached
-.pathSearch:
-    call skipSpaces ;Now skip intermediate spaces to next non-space
-    mov al, byte [switchChar]   ;Is this a switch?
-    cmp byte [rsi], al
-    je .pathSearchSwitch    ;If a switch, skip it, find switch terminator
-    cmp byte [dirPathOff], 0    ;Did we previously get an argument?
-    jne .badParam ;If so, error
-    mov rax, rsi    ;Else, compute the offset in the cmdBuffer
-    sub rax, rdi    ;Offset from the cmdBuffer + 2
-    add al, 2       ;Make it an offset from cmdBuffer
-    mov byte [dirPathOff], al   ;And save it!
-.pathSearchSwitch:
-    call findTerminatorOrEOC
-    jc .eocReached
-    inc rsi ;Go to next char
-    jmp short .pathSearch
+.loop:
+    call skipSpaces ;Skip spaces after
+    lodsb   ;Get first non space char
+    call isALEndOfCommand   ;If this is the end char CR or "|", exit
+    jz .eocNoNull
+    cmp al, byte [switchChar]  ;Is al a switch char?
+    jne .notSwitch
+    ;Now we skip the switch if it was a switch
+    call findTerminatorOrEOC    ;Go past the switch
+    jc .eocNoNull  ;If we reach the EOC, exit,
+    jmp short .loop
+.notSwitch:
+    ;If not a switch, should be a path. Copy to buffer and keep searching
+    cmp byte [dirPathArg], 0    ;If a second path provided, error
+    jne badArgError
+    lea rdi, dirPathArg ;Store the path to search here AS WRITTEN BY USER
+    dec rsi ;Go back to the start of the string
+.nameCopy:
+    lodsb
+    call isALEndOfCommand
+    jz .eocReached
+    call isALterminator
+    jz .terminateCopy
+    stosb
+    jmp short .nameCopy
+.terminateCopy:
+    xor eax, eax
+    stosb   ;Store a terminating null here if a terminator found.
+    jmp short .loop ;Now search if another 
 .eocReached:
-    cmp byte [dirPathOff], 0
-    je .dirCWD
-    jmp .badParam   ;Temp measure
-.dirCWD:
-    ;Build current working dir and append a \*.* to it 
-    ;First we search the root for a label
-    lea rdi, dirVolPathBuf
-    lea rsi, searchSpec ;Will need to create the same X:\ here too
+    xor eax, eax
+    stosb   ;Store a terminating null here if a terminator found.
+.eocNoNull:
+    cmp byte [dirPathArg], 0    ;If no path provided, use CWD for current drive
+    je .currentDrv
+    ;Here we check if we have a drvSpec and path or just drvSpec
+    lea rsi, dirPathArg
+    cmp byte [rsi + 1], ":"  ;Is this a colon (drvspec check)
+    jne .currentDrv
+    ;Here the drive is specified, so lets parse filename to verify if drv ok
+    mov byte [r8 + fcb1 + fcb.driveNum], 0  ;Clear this byte by default
+    lea rdi, qword [r8 + fcb1]
+    mov eax, 2901h   ;Parse filename
+    int 41h
+    cmp al, -1
+    je badDriveError    ;If the drive is bad, bad parameter
+    ;Else the drive in the fcb is valid
+    movzx eax, byte [r8 + fcb1 + fcb.driveNum]
+    dec al  ;Convert to 0 based drive number
+    mov byte [dirDrv], al
+    jmp short .dirPrintVol
+.currentDrv:
     call getCurrentDrive    ;Get current drive number (0 based) in al
-.dirVolEP:
     mov byte [dirDrv], al   ;Store the 0 based drive number in al
+.dirPrintVol:
+    movzx eax, byte [dirDrv] 
+    call volume.dirEP
+    cmp byte [dirPathArg], 0    ;Null path here, 
+    je .printCWD
+    cmp byte [dirPathArg + 3], 0    ;Was this X:,0?
+    je .printCWD
+    ;Here we have a path
+    ;Temp measure, we just fall through ignoring the path provided
+.printCWD:
+    mov dl, byte [dirDrv]
+    mov al, dl
     add al, "A"
-    mov ah, ":" ;ax has X: now to store 
-    stosw
+    mov ah, ":"
+    mov word [searchSpec], ax
     mov al, byte [pathSep]
-    stosb
-    mov eax, 002A2E2Ah  ;*.*,0
-    stosd
-    mov ah, 2Fh ;Get current DTA in rbx
-    int 41h 
-    push rbx    ;Preserve it on the stack
-    lea rdx, cmdFFBlock
-    mov ah, 1Ah ;Set DTA to internal ffblock
-    int 41h
-    lea rdx, dirVolPathBuf
-    mov cx, dirVolumeID
-    mov ah, 4Eh ;Find first
-    int 41h
-    jc .skipVolLbl
-    lea rsi, qword [cmdFFBlock + ffBlock.asciizName]
-    lea rdi, dirVolLbl
-    mov ecx, 11 ;Get the 11 chars of the volume label
-.dirLblCopy:
-    lodsb   ;Get the first char
-    cmp al, 0
-    je .skipVolLbl  ;Jump with CF=NC
-    cmp al, "."
-    je .dirLblSkipStore
-    stosb
-.dirLblSkipStore:
-    dec ecx
-    jnz .dirLblCopy
-    ;Fallthru with CF=NC
-.skipVolLbl:
-;Print volume label information now
-    call .dirPrintVolInfo   ;Propagates the CF if CF was set
-    test byte [dirVolFlg], -1
-    jnz .dirVolExit ;If we just wanted to print the volume label, now exit
-    lea rsi, dirVolPathBuf
-    lea rdi, searchSpec 
-    mov ecx, 3  ;Now copy the X:\ over
-    rep movsb
+    mov byte [searchSpec + 2], al
+    lea rsi, searchSpec + 3  ;Make space for a X:"\"
     mov ah, 47h ;Get Current Working Directory
-    mov rsi, rdi    ;rsi points to buffer to write to
-    mov dl, byte [searchSpec]
-    sub dl, "@" ;Get 1 based drive letter
-    int 41h ;Overrwrite it with the current directory
+    inc dl  ;Convert to 1 based number
+    int 41h
     lea rdi, searchSpec
     call strlen
     dec ecx
@@ -118,21 +143,38 @@ dir:
     mov rdx, rdi    ;Print the current directory we are working on
     mov ah, 09h
     int 41h
-    lea rdx, crlf
+    lea rdx, crlf2
     mov ah, 09h
     int 41h
-    lea rdx, crlf   ;Add an extra free line
-    mov ah, 09h
-    int 41h
+    call .searchForFile
+    return
+    ;If we get no path spec or just a X: path spec then we 
+    ; search the current working directory for that pathspec
+    ;If we get an actual pathspec, we first save the CWD for that drive
+    ; and then we try to make the pathspec the CWD. 
+    ;   If it works, we then search *.* in that folder and return the og CWD.
+    ;   If it fails, we then search one level up, for the search pattern
+    ;    that we compute.
+
+    
+    ;Now we need to print the path to the folder we will be searching in
+.searchForFile:
     ;Now we search for the files
+    ;RCX must have the number of chars to the end of the pathspec
+    lea rdi, searchSpec
     mov al, byte [pathSep]
     cmp byte [rdi + rcx - 1], al
     je .noAddSlash  ;Deals with special case of root dir
     mov byte [rdi + rcx], al
     inc ecx
 .noAddSlash:
-    mov dword [rdi + rcx], 002A2E2Ah ;and add a *.*,0
+    lea rdi, qword [rdi + rcx]
+    lea rsi, dirSrchPat
     mov rdx, rdi    ;Ptr to search for in rdx
+    movsq
+    movsd
+    xor al, al
+    stosb   ;Store the terminating null
     mov ecx, dirReadOnly | dirDirectory
     mov ah, 4Eh ;Find first
     int 41h
@@ -143,9 +185,6 @@ dir:
     int 41h
     jnc .findNext 
 .dirNoMoreFiles:
-    pop rdx 
-    mov ah, 1Ah ;Return back the original DTA
-    int 41h
     test byte [dirPrnType], 1
     jz .dirNoEndNewLine
     lea rdx, crlf   ;Only need this for /W
@@ -153,13 +192,11 @@ dir:
     int 41h
 .dirNoEndNewLine:
     ;Now we print the number of files and the number of bytes on the disk
-    mov ecx, 8  ;Print 8 spaces
-    mov dl, " "
-.dirNumOffSpc:
-    mov ah, 02h
+    lea rdx, fourSpc
+    mov ah, 09h
     int 41h
-    dec ecx
-    jnz .dirNumOffSpc
+    mov ah, 09h ;Print four Spaces twice
+    int 41h
     movzx eax, byte [dirFileCtr]   ;Get number of files
     call printDecimalWord
     lea rdx, dirOk
@@ -179,47 +216,6 @@ dir:
     ;rax now has the number of free bytes on the disk
     call printDecimalWord
     lea rdx, bytesOk
-    mov ah, 09h
-    int 41h
-    return
-.dirVolExit:
-    pop rdx 
-    mov ah, 1Ah ;Return back the original DTA
-    int 41h
-    return
-
-.dirPrintVolInfo:
-    pushfq
-    lea rdx, crlf
-    mov ah, 09h
-    int 41h
-    lea rdx, volMes
-    mov ah, 09h
-    int 41h
-    mov dl, byte [dirVolPathBuf]   ;Print the drive letter out
-    mov ah, 02h
-    int 41h
-    popfq
-    jnc .dirVolIDOk
-    lea rdx, volNo
-    mov ah, 09h
-    int 41h
-    lea rdx, crlf
-    mov ah, 09h
-    int 41h
-    return
-.dirVolIDOk:
-    lea rdx, volOk
-    mov ah, 09h
-    int 41h
-    lea rdi, dirVolLbl
-    call strlen
-    dec ecx
-    mov byte [rdi + rcx], "$"   ;Replace the null with a string terminator
-    lea rdx, dirVolLbl
-    mov ah, 09h
-    int 41h
-    lea rdx, crlf
     mov ah, 09h
     int 41h
     return
@@ -327,12 +323,6 @@ dir:
     mov ah, 09h
     int 41h
     return
-    
-.badParam:
-    lea rdx, badParm
-    mov ah, 09h
-    int 41h
-    return
 
 chdir:
     test byte [arg1Flg], -1
@@ -366,7 +356,7 @@ chdir:
 .changeDir:
     mov al, byte [arg1FCBret]
     cmp al, -1 
-    je .badDrv  ;IF the drive is good, but FCB name blank, either X: or \ 
+    je badDriveError  ;IF the drive is good, but FCB name blank, either X: or \ 
     cmp byte [r8 + fcb1 + fcb.filename], " "
     jne .getFQPath
     ;Now we double check that on the command line we have . or ..
@@ -381,34 +371,22 @@ chdir:
     ;If the path is . or .., its acceptable, else fail
 .getFQPath:
     call buildCommandPath   ;Else build a fully qualified pathname
-    jc .badDir  ;If this returns CF=CY, its a badDir
+    jc badDirError  ;If this returns CF=CY, its a badDir
     lea rdx, searchSpec
     mov ah, 3Bh ;CHDIR
     int 41h
-    jc .badDir
+    jc badDirError
     return
-
-.badDrv:
-    lea rdx, badDrv
-    mov eax, 0900h
-    int 41h
-    return
-.badDir:
-    lea rdx, badDir
-    mov eax, 0900h
-    int 41h
-    return
-
 
 mkdir:
     test byte [arg1Flg], -1
-    jz .badParams
+    jz badArgError
     test byte [arg2Flg], -1
-    jnz .badParams
+    jnz badArgError
     ;We have exactly one argument
     mov al, byte [arg1FCBret]
     cmp al, -1 
-    je .badDrv  ;If a drive was specified and was bad, jump
+    je badDriveError  ;If a drive was specified and was bad, jump
     call buildCommandPath
     jc .badMake
     lea rdx, searchSpec
@@ -423,26 +401,16 @@ mkdir:
     mov eax, 0900h
     int 41h
     return
-.badDrv:
-    lea rdx, badDrv
-    mov eax, 0900h
-    int 41h
-    return
-.badParams:
-    lea rdx, badArgs
-    mov eax, 0900h
-    int 41h
-    return
 
 rmdir:
     test byte [arg1Flg], -1
-    jz .badParams
+    jz badArgError
     test byte [arg2Flg], -1
-    jnz .badParams
+    jnz badArgError
     ;We have exactly one argument
     mov al, byte [arg1FCBret]
     cmp al, -1 
-    je .badDrv  ;If a drive was specified and was bad, jump
+    je badDriveError  ;If a drive was specified and was bad, jump
     call buildCommandPath
     jc .badRemove
     lea rdx, searchSpec
@@ -457,16 +425,7 @@ rmdir:
     mov eax, 0900h
     int 41h
     return
-.badDrv:
-    lea rdx, badDrv
-    mov eax, 0900h
-    int 41h
-    return
-.badParams:
-    lea rdx, badArgs
-    mov eax, 0900h
-    int 41h
-    return
+
 copy:
     return
 erase:
@@ -671,23 +630,23 @@ break:
     cmp bx, "  " ;Two spaces is a possible ON 
     je .maybeOn
     cmp ax, "OF"
-    jne .badArgument
+    jne .badOnOff
     and bx, 0FFDFh ;Convert only the third char to UC. Fourth char MUST BE SPACE
     cmp bx, "F "
-    jne .badArgument
+    jne .badOnOff
     ;Set off
     xor edx, edx    ;DL=0 => BREAK is off
     jmp short .setBreak
 .maybeOn:
     cmp ax, "ON"
-    jne .badArgument
+    jne .badOnOff
     ;Set on
     mov edx, 1
 .setBreak:
     mov eax, 3301h  ;Set break
     int 41h
     return
-.badArgument:
+.badOnOff:
     lea rdx, badOnOff
     mov ah, 09h
     int 41h
@@ -719,16 +678,16 @@ verify:
     cmp bx, "  " ;Two spaces is a possible ON 
     je .maybeOn
     cmp ax, "OF"
-    jne .badArgument
+    jne .badOnOff
     and bx, 0FFDFh ;Convert only the third char to UC. Fourth char MUST BE SPACE
     cmp bx, "F "
-    jne .badArgument
+    jne .badOnOff
     ;Set off
     xor eax, eax    ;AL=0 => VERIFY is off
     jmp short .setVerify
 .maybeOn:
     cmp ax, "ON"
-    jne .badArgument
+    jne .badOnOff
     ;Set on
     xor eax, eax
     inc eax ;AL=1 => VERIFY is on
@@ -736,7 +695,7 @@ verify:
     mov ah, 2Eh  ;Set Verify
     int 41h
     return
-.badArgument:
+.badOnOff:
     lea rdx, badOnOff
     mov ah, 09h
     int 41h
@@ -746,12 +705,7 @@ rename:
     return
 truename:
     test byte [arg1Flg], -1
-    jnz .argumentProvided
-    lea rdx, badArgs
-    mov ah, 09h
-    int 41h
-    return
-.argumentProvided:
+    jz badArgError
     call buildCommandPath
     ;Explicitly call Truename if we remove truename from this function
     lea rdi, searchSpec
@@ -765,11 +719,91 @@ truename:
     return
 
 volume:
-    mov byte [dirVolFlg], -1    ;Set this flag
-    lea rdi, dirVolPathBuf
-    call getCurrentDrive    ;Get current drive number (0 based) in al
-    call dir.dirCWD ;Use the hard work already done
-    mov byte [dirVolFlg], 0
+    lea rsi, cmdBuffer + 2  ;Get the command buffer
+    call skipSpaces
+    add rsi, 3  ;Go past the VOL command
+    call skipSpaces
+    lodsb   ;Get the first char, and point rsi to next char
+    call isALEndOfCommand   ;If this char is end of command, use current drive
+    jnz .checkDriveLetter
+    call getCurrentDrive    ;Get 0-based current drive number in al
+    jmp short .dirEP
+.checkDriveLetter:
+    cmp byte [rsi], ":" ;If this is not a :, fail
+    jne badDriveError
+    mov rdi, rsi    ;Save start of drive spec in rsi
+    inc rsi  ;Go past the X: spec
+    call skipSpaces
+    lodsb   ;Get the non-space char in al
+    call isALEndOfCommand   ;The next non-space char must be terminator
+    jne badDriveError
+;This argument should've been parsed into FCB1 so use that result
+    mov al, byte [arg1FCBret]   ;Get the response from the parse
+    test al, -1
+    jnz badDriveError ;Can't have either wildcards nor be invalid (obviously)
+    movzx eax, byte [r8 + fcb1 + fcb.driveNum] ;Get the 1-based drive number
+    dec eax ;Convert to 0 based number
+.dirEP: ;Must be called with VALID 0 based drive number in al
+    add eax, "A" ;Get ASCII representation of 0 based number
+    mov byte [volPathBuf], al   ;Store ASCII letter here
+    lea rdx, cmdFFBlock     ;Use this as the DTA for this request
+    mov ah, 1Ah
+    int 41h
+    lea rdx, volPathBuf
+    mov cx, dirVolumeID
+    mov ah, 4Eh ;Find first
+    int 41h
+    jc .skipVolLbl
+    lea rsi, qword [cmdFFBlock + ffBlock.asciizName]
+    lea rdi, volLblSpc
+    mov ecx, 11 ;Get the 11 chars of the volume label
+.dirLblCopy:
+    lodsb   ;Get the first char
+    cmp al, 0
+    je .skipVolLbl  ;Jump with CF=NC
+    cmp al, "."
+    je .dirLblSkipStore
+    stosb
+.dirLblSkipStore:
+    dec ecx
+    jnz .dirLblCopy
+    ;Fallthru with CF=NC
+.skipVolLbl:
+;Print volume label information now
+;Propagates the CF if CF was set    
+    pushfq
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    lea rdx, volMes
+    mov ah, 09h
+    int 41h
+    mov dl, byte [volPathBuf]   ;Print the drive letter out
+    mov ah, 02h
+    int 41h
+    popfq
+    jnc .volIDOk
+    lea rdx, volNo
+    mov ah, 09h
+    int 41h
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
+    return
+.volIDOk:
+    lea rdx, volOk
+    mov ah, 09h
+    int 41h
+    lea rdi, volLblSpc
+    call strlen
+    dec ecx
+    mov byte [rdi + rcx], "$"   ;Replace the null with a string terminator
+    lea rdx, volLblSpc
+    mov ah, 09h
+    int 41h
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
     return
 
 version:
@@ -921,5 +955,111 @@ memory:
     jmp freezePC.altEP
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
+;Here we must search the CWD or all path componants before failing
+;Also this command must be a .COM, .EXE or .BAT so check that first
+    breakpoint
+    lea rdx, cmdFFBlock
+    mov ah, 1Ah     ;Set DTA for task
+    int 41h
+
+    mov eax, dword [cmdFcb + fcb.fileext]   ;Get a dword, with dummy byte 3
+    and eax, 00FFFFFFh  ;Clear byte three
+    or eax,  20000000h  ;Add a space so it is like "COM "
+    cmp eax, "    " ;Only if we have four spaces do we proceed here
+    je .noExt
+    call checkExtensionExec ;ZF=ZE => Executable
+    jnz .dfltErrExit
+    ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
+    jc .dfltErrExit ;Remove this when ready to launch batch files
+    ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
+    ;So it is a com or exe that we are searching for for now
+    jmp short .search
+.noExt:
+    ;If the filename has no extension, append a .*
+    ;Use bl as flags. bl[0] => COM found, bl[1] => EXE found, bl[2] => BAT found
+    xor ebx, ebx
+    lea rdi, cmdPathSpec
+    mov rdx, rdi
+    xor eax, eax
+    mov ecx, -1
+    repne scasb
+    dec rdi ;Point to the terminating null
+    mov rbp, rdi    ;Temporarily store the ptr to the . in rbp
+    mov ax, ".*"
+    stosw
+    xor al, al  ;Store terminating null
+    stosb
+.search:
+    mov ecx, dirIncFiles
+    mov ah, 4Eh ;Find First File
+    int 41h
+    jc .dfltErrExit
+    call .noExtCheckExt
+.moreSearch:
+    mov ah, 4Fh
+    int 41h
+    jc .noMoreFiles
+    call .noExtCheckExt
+    jmp short .moreSearch
+.noMoreFiles:
+    test ebx, ebx
+    jz .dfltErrExit
+;So we have a valid executable
+    mov rdi, rbp    ;Get back ptr to the .*,0
+    test ebx, 1
+    jz .launchexebat
+    mov eax, ".COM"
+    jmp short .launch
+.launchexebat:
+    test ebx, 2
+    jz .launchbat
+    mov eax, ".EXE"
+    jmp short .launch
+.launchbat:
+;Temporary For BAT
+    jmp .dfltErrExit
+.launch:
+    stosd
+    xor al, al
+    stosb   ;Store the terminating null
+    lea rbx, launchBlock
+    xor eax, eax
+    mov qword [rbx + execProg.pEnv], rax
+    lea rax, qword [r8 + cmdLineCnt]
+    mov qword [rbx + execProg.pCmdLine], rax
+    lea rax, qword [r8 + fcb1]
+    mov qword [rbx + execProg.pfcb1], rax
+    lea rax, qword [r8 + fcb2]
+    mov qword [rbx + execProg.pfcb2], rax
+    lea rdx, cmdPathSpec
+    mov eax, 4B00h  ;Load and execute!
+    int 41h
+    jmp .dfltErrExit    ;If something goes wrong, error out
+.noExtCheckExt:
+    ;mov eax, dword [cmdFFBlock + ffBlock.asciizName + filename.fExt]
+    lea rsi, dword [cmdFFBlock + ffBlock.asciizName]
+    lea rdi, fcbCmdSpec
+    call asciiFilenameToFCB
+    mov eax, dword [fcbCmdSpec + filename.fExt]
+    and eax, 00FFFFFFh  ;Clear byte three
+    or eax,  20000000h  ;Add a space so it is like "COM "
+    cmp eax, "COM "
+    jne .neceexe
+    or ebx, 1
+    return
+.neceexe:
+    cmp eax, "EXE "
+    jne .necebat
+    or ebx, 2
+    return
+.necebat:
+    cmp eax, "BAT "
+    retne
+    or ebx, 4
     return
 
+.dfltErrExit:
+    lea rdx, badCmd
+    mov ah, 09h
+    int 41h
+    return

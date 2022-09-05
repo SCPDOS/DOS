@@ -302,8 +302,8 @@ struc cfgFrame  ;Frame used for config.sys parsing
 endstruc
 
 struc fcb
-;Similar to a DOS 2.0 FCB. Who even used them in DOS 3.x and higher?
-    .driveNum   resb 1
+;Similar to a DOS 2.0 FCB.
+    .driveNum   resb 1  ;0 based drive number
     .filename   resb 8
     .fileext    resb 3
     .curBlock   resb 2  ;Current block number relative to 0
