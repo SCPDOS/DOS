@@ -953,6 +953,25 @@ memory:
     mov ah, 09h
     int 41h
     jmp freezePC.altEP
+
+
+exit:
+    test byte [permaSwitch], -1
+    retnz   ;Return if the flag is set
+    mov rax, qword [realParent] ;Get actual parent...
+    cmp rax, -1
+    rete    ;If the real parent is -1 => Original Command Interpreter.
+    mov qword [r8 + psp.parentPtr], rax ;and restore parent pointer
+
+    mov rdx, qword [parentInt42]
+    mov qword [r8 + psp.oldInt42h], rdx
+    mov eax, 2542h
+    int 41h
+
+    mov eax, 4C00h  ;Exit now okay
+    int 41h
+    return  ;If the exit wasn't successful for some reason, return as normal
+
 launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
 ;Here we must search the CWD or all path componants before failing

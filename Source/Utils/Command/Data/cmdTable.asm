@@ -67,4 +67,7 @@ functionTable:
     db 3, "MEM"
     dw memory - startLbl
 
+    db 4, "EXIT"
+    dw exit - startLbl
+
     db -1   ;End of table

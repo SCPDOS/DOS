@@ -217,15 +217,21 @@ terminateClean:    ;ah = 4Ch, EXIT
 .checkToFree:
     cmp qword [rsi + mcb.owner], rbx ;Is this valid block owned by current PSP?
     jne .noFree
-    mov r8, rsi ;Move pointer to r8
+    lea r8, qword [rsi + mcb.program] ;Move pointer to block in r8
+    push rbx
+    push rcx
+    push rsi
     call freeMemory ;Free this memory block
+    pop rsi
+    pop rcx
+    pop rbx
     ;If an error occured, the internal vars will be set.
 .noFree:
     cmp cl, mcbMarkEnd  ;Are we at the end of the MCB chain?
     je .step6   ;Skip if we are
     mov eax, dword [rsi + mcb.blockSize]
     shl rax, 4  ;Multiply by 4 to get bytes from paragraphs
-    add rsi, rax    ;Goto next mcb block
+    lea rsi, qword [rsi + mcb.program + rax]    ;Goto next mcb block
     jmp short .s5lp
 ;Step 6
 .step6:
@@ -251,9 +257,8 @@ terminateClean:    ;ah = 4Ch, EXIT
     int 4ah
 
     cli
-
-    mov rdx, qword [rbx + psp.oldInt42h]
     mov rbx, qword [currentPSP]
+    mov rdx, qword [rbx + psp.oldInt42h]
     ;Make the parent register frame the current one
     ;Make RSP point to user stack from parent entry to exec
     mov rsp, qword [rbx + psp.rspPtr]
@@ -265,4 +270,5 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov byte [inDOS], 0 ;Exiting DOS now
     mov byte [errorDrv], -1 ;Reset
     call dosPopRegs  ;Pop the stack frame pointed to by rsp
+    
     iretq   ;and return to address that was in rdx

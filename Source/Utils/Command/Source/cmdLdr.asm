@@ -13,7 +13,10 @@ cmdLdr:
     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
     mov qword [realParent], rax ;Preserve the real parent address
-;Setup Int 43h and Int 44h
+;Setup Int 42h, Int 43h and Int 44h
+    mov rax, qword [r8 + psp.oldInt42h] ;Preserve the original addresses
+    mov qword [parentInt42], rax
+
     lea rdx, critErrorHandler
     mov qword [r8 + psp.oldInt44h], rdx
     mov eax, 2544h
@@ -54,6 +57,7 @@ cmdLdr:
     jne .skipMaster
 ;Ok so we are master command.com
 ;Now make myself the real parent
+    mov byte [permaSwitch], -1  ;Set the permanently resident switch on
     mov qword [realParent], r8
 ;Set master environment as mine
     lea rax, masterEnv
@@ -80,6 +84,17 @@ cmdLdr:
     lea rbx, endOfAlloc ;Save the Master Environment
     jmp short .printInit
 .skipMaster:
+    lea rdi, qword [r8 + psp.progTail]
+    movzx ecx, byte [r8 + psp.parmList]
+    movzx eax, byte [switchChar]
+    repne scasb
+    jecxz .noSwitches
+    movzx eax, byte [rdi]   ;RDI points to the char after the switch
+    and al, 0DFh    ;Convert to UC
+    cmp al, "P" ;Is it permanent switch?
+    jne .noSwitches
+    mov byte [permaSwitch], -1  ;Set the permanently resident switch on
+.noSwitches:
     lea rbx, masterEnv  ;This is the base address to jettison
 .printInit:
 ;Finish by printing INIT string.

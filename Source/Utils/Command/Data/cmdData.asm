@@ -9,6 +9,8 @@ numHdls     dw 20   ;Get number of handles permitted, hardcoded in this version
 promptPtr   dw -1   ;Offset From Environemnt Start to prompt String. -1 => dflt 
 pathSep     db "\"  ;Default path sep
 switchChar  db "/"  ;Default switch char
+permaSwitch db 0    ;If -1, EXIT should just return. If 0, EXIT returns
+parentInt42 dq 0    ;Stores the parent values to restore upon exiting if it can
 ;Static strings, not used in command line parsing
 ctryData    db countryStruc_size dup (0)  ;Length of the country table
 currDirStr  db fullDirPathZL dup (0) ;Current Directory String
