@@ -226,6 +226,9 @@ dir:
 .dirPrintFileData:
 ;Use fcbCmdSpec to build the file name with space
 ;Start by print the name (same for both cases)
+;We first check if the file has attributes hidden/system and hide them if so
+    test byte [cmdFFBlock + ffBlock.attribFnd], dirIncFiles
+    retnz   ;Simply return if either bit is set
     lea rsi, qword [cmdFFBlock + ffBlock.asciizName]
     lea rdi, fcbCmdSpec
     call asciiFilenameToFCB
@@ -966,6 +969,8 @@ type:
     lea rsi, cmdBuffer
     movzx eax, byte [arg1Off]
     add rsi, rax    ;Point rsi to this argument
+    cmp byte [rsi], CR
+    je badArgError
     cmp byte [rsi + 1], ":" ;If a drive is specified, check if valid
     jne .noDrive
     movzx eax, byte [arg1FCBret]
@@ -989,26 +994,44 @@ type:
     mov eax, 3D00h  ;Open in read only mode
     int 41h
     jc badFileError
-    mov word [typeHdl], bx  ;Save the handle here
-
-    lea rdx, typeBuffer
-    mov ecx, 1
-
+    mov word [typeHdl], ax  ;Save the handle here
+    ;If the handle is a char device, we convert it to ascii mode
+    mov ebx, eax    ;Put handle in BX
+    mov eax, 4400h   ;Get mode
+    int 41h
+    test dl, 80h   ;If bit 7 set => Char device
+    jz .diskFile 
+    and edx, 0DFh    ;Clear bit 5 => Set ASCII mode
+    mov eax, 4401h   ;Set mode
+    int 41h
+.diskFile:
+    lea rdx, qword [r8 + psp.dta]
 .lp:
+    mov ecx, 128    ;Read 128 bytes at a time
     movzx ebx, word [typeHdl]  ;Get the handle here
     mov ah, 3Fh ;Read handle
     int 41h
-    cmp byte [typeBuffer], EOF
-    je .exit
+    mov ecx, eax
+    jecxz .exit
     mov ebx, 1  ;STDOUT
     mov ah, 40h
     int 41h
-    jmp short .lp
+    jc .exitBad
+    cmp eax, ecx
+    je .lp
+    dec ecx ;One less for a ^Z
+    cmp eax, ecx
+    jne .exitBad
 .exit:
     movzx ebx, word [typeHdl]
     mov ah, 3Eh ;Close handle
     int 41h
     return
+.exitBad:
+    ;Print a disk error message... use a table to build the message but for
+    ; now, just exit
+    ;If it is a char device, don't print a error
+    jmp short .exit
 
 exit:
     test byte [permaSwitch], -1

@@ -827,6 +827,10 @@ buildSFTEntry:
     or bl, devCharDev | charDevBinary | charDevNoEOF ;Set binary & noEOF on read
     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
     mov dword [rsi + sft.dFileSize], 0  ;No size
+    mov qword [rsi + sft.sFileName], rax
+    mov eax, "    "
+    mov word [rsi + sft.sFileName + 8], ax
+    mov byte [rsi + sft.sFileName + 10], al
 .openDriver:
     mov rdi, qword [currentSFT]
     mov rsi, qword [rdi + sft.qPtr] ;Get the ptr here

@@ -89,4 +89,3 @@ td4 db 0    ;Seconds/Month
 
 ;Type handle
 typeHdl dw -1
-typeBuffer  db 0
