@@ -995,15 +995,6 @@ type:
     int 41h
     jc badFileError
     mov word [typeHdl], ax  ;Save the handle here
-    ;If the handle is a char device, we convert it to ascii mode
-    mov ebx, eax    ;Put handle in BX
-    mov eax, 4400h   ;Get mode
-    int 41h
-    test dl, 80h   ;If bit 7 set => Char device
-    jz .diskFile 
-    and edx, 0DFh    ;Clear bit 5 => Set ASCII mode
-    mov eax, 4401h   ;Set mode
-    int 41h
 .diskFile:
     lea rdx, qword [r8 + psp.dta]
 .lp:

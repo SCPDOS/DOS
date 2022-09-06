@@ -824,7 +824,7 @@ buildSFTEntry:
     mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
     movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
     and bl, 01Fh    ;Clear bits 5 6 and 7
-    or bl, devCharDev | charDevBinary | charDevNoEOF ;Set binary & noEOF on read
+    or bl, devCharDev | charDevNoEOF ;Set charDev & noEOF on read
     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
     mov dword [rsi + sft.dFileSize], 0  ;No size
     mov qword [rsi + sft.sFileName], rax
