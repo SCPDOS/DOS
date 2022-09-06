@@ -14,7 +14,6 @@ struc execFrame
     .wProgHdl   resq 1  ;File handle number for executable file
     .wEnvSize   resq 1  ;Size of the environment block
     .wNameLen   resq 1  ;Needs to be less than 64 but welp
-                ;resb 1  ;Alignment byte
     .pParam     resq 1  ;Parameter list pointer
     .pProgname  resq 1  ;Ptr to ASCIIZ program name
 
@@ -25,10 +24,8 @@ struc execFrame
 .pProgEP:   ;Program EP, recycle this qword
     .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
     .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
-                ;resw 1  ;Alignment reservation
 .qRelocVal:  ;Used when computing relocations, Rebasing factor
     .dFilePtr   resq 1  ;Keep of track of where in file we are
-                ;resd 1  ;Alignment reservation, DO NOT USE FOR ANYTHING
 endstruc
 
 ;Possible blocks to be pointed to by rbx

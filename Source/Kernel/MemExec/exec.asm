@@ -84,6 +84,15 @@ loadExecChild:     ;ah = 4Bh, EXEC
     push rbp
     mov rbp, rsp
     sub rsp, execFrame_size   ;Make the space pointing at rbp
+    ;Clear up the pointers on the stack frame
+    xor eax, eax
+    mov qword [rbp - execFrame.pPSPBase], rax
+    mov qword [rbp - execFrame.pEnvBase], rax
+    mov qword [rbp - execFrame.pProgBase], rax
+    mov qword [rbp - execFrame.pPSPBase], rax
+    mov qword [rbp - execFrame.pProgEP], rax
+
+
     cmp al, execOverlay
     jbe .validSubfunction
 .badSubFunction:
@@ -142,7 +151,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor eax, eax
     mov rbx, rdi    ;Use rbx as the base ptr of the scan
 .envVerifyLp:
-    rep scasb   ;Scan for a terminating word of nulls
+    repne scasb   ;Scan for a terminating word of nulls
     jnz .invalidEnvironmentError
     jecxz .invalidEnvironmentError  ;Error if no space for a second null
     dec ecx
@@ -156,7 +165,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     add edi, ebx    ;edi has number of bytes to allocate for environment blk
     mov ebx, edi
     shr ebx, 4  ;Turn bytes needed into paragrapsh
+    push rbp
     call allocateMemory
+    pop rbp
     pop rcx ;Pop the length of the environment block into rcx
     jnc .copyEnvironment
     ;Fall thru if not enuff memory

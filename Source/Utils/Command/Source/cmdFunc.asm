@@ -957,7 +957,6 @@ launchChild:
 ;We run EXEC on this and the child task will return via applicationReturn
 ;Here we must search the CWD or all path componants before failing
 ;Also this command must be a .COM, .EXE or .BAT so check that first
-    breakpoint
     lea rdx, cmdFFBlock
     mov ah, 1Ah     ;Set DTA for task
     int 41h
@@ -973,6 +972,8 @@ launchChild:
     jc .dfltErrExit ;Remove this when ready to launch batch files
     ;!!!!!!!!!!!TEMPORARY MEASURE TO AVOID LAUNCHING BAT FILES!!!!!!!!!!!
     ;So it is a com or exe that we are searching for for now
+    lea rdi, cmdPathSpec
+    mov rdx, rdi
     jmp short .search
 .noExt:
     ;If the filename has no extension, append a .*
@@ -1024,7 +1025,7 @@ launchChild:
     stosb   ;Store the terminating null
     lea rbx, launchBlock
     xor eax, eax
-    mov qword [rbx + execProg.pEnv], rax
+    mov qword [rbx + execProg.pEnv], rax    ;Tell DOS to copy my current Env
     lea rax, qword [r8 + cmdLineCnt]
     mov qword [rbx + execProg.pCmdLine], rax
     lea rax, qword [r8 + fcb1]
