@@ -70,4 +70,7 @@ functionTable:
     db 4, "EXIT"
     dw exit - startLbl
 
+    db 4, "TYPE"
+    dw type - startLbl
+
     db -1   ;End of table

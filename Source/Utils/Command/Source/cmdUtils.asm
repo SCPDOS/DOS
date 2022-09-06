@@ -670,6 +670,9 @@ buildCommandPath:
 .okExit:
     clc
     return
+
+
+    
 printDecimalWord:
 ;Takes qword in rax and print it's decimal representation
 ;Takes the qword in eax and prints its decimal representation

@@ -12,6 +12,9 @@ badDriveError:
 badArgError:
     lea rdx, badArgs
     jmp short badCmn
+badFileError:
+    lea rdx, badSpec
+    jmp short badCmn
 badDirError:
     lea rdx, badDir
 badCmn:
@@ -954,6 +957,58 @@ memory:
     int 41h
     jmp freezePC.altEP
 
+type:
+    mov word [typeHdl], -1  ;Reset the internal var
+    test byte [arg1Flg], -1 ;If this not set, error
+    jz badArgError
+    test byte [arg2Flg], -1
+    jnz badArgError         ;If this set, error
+    breakpoint
+    lea rsi, cmdBuffer
+    movzx eax, byte [arg1Off]
+    add rsi, rax    ;Point rsi to this argument
+    cmp byte [rsi + 1], ":" ;If a drive is specified, check if valid
+    jne .noDrive
+    movzx eax, byte [arg1FCBret]
+    cmp al, -1
+    je badDriveError
+.noDrive:
+    ;Now we open the provided file
+    lea rdi, searchSpec
+.copyPath:
+    lodsb
+    call isALEndOfCommand
+    jz .finishCopy
+    call isALterminator
+    jz .finishCopy
+    stosb
+    jmp short .copyPath
+.finishCopy:
+    xor eax, eax
+    stosb
+    lea rdx, searchSpec
+    mov eax, 3D00h  ;Open in read only mode
+    int 41h
+    jc badFileError
+    mov word [typeHdl], bx  ;Save the handle here
+
+    lea rdx, typeBuffer
+    mov ecx, 1
+.lp:
+    movzx ebx, word [typeHdl]  ;Get the handle here
+    mov ah, 3Fh ;Read handle
+    int 41h
+    cmp byte [typeBuffer], EOF
+    je .exit
+    mov ebx, 1  ;STDOUT
+    mov ah, 40h
+    int 41h
+    jmp short .lp
+.exit:
+    movzx ebx, word [typeHdl]
+    mov ah, 3Eh ;Close handle
+    int 41h
+    return
 
 exit:
     test byte [permaSwitch], -1
