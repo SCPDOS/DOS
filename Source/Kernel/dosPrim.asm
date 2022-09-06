@@ -376,6 +376,7 @@ primReqOpenSetup:
 ;al = unit number if a disk device. Undefined otherwise
     push rax
     mov ah, drvOPEN
+    jmp short primReqOCcommon
 primReqCloseSetup:
 ;al = unit number if a disk device. Undefined otherwise
     push rax

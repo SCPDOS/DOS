@@ -963,7 +963,6 @@ type:
     jz badArgError
     test byte [arg2Flg], -1
     jnz badArgError         ;If this set, error
-    breakpoint
     lea rsi, cmdBuffer
     movzx eax, byte [arg1Off]
     add rsi, rax    ;Point rsi to this argument
@@ -994,6 +993,7 @@ type:
 
     lea rdx, typeBuffer
     mov ecx, 1
+
 .lp:
     movzx ebx, word [typeHdl]  ;Get the handle here
     mov ah, 3Fh ;Read handle

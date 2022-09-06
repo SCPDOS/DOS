@@ -836,7 +836,7 @@ buildSFTEntry:
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
 .charDevOpen:
     test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
-    jnz .exit  ;If not, immediately jump to exit, all is well
+    jz .exit  ;If not, immediately jump to exit, all is well
     ;rsi has device driver ptr for device, make request
     push rbx
     call primReqOpenSetup  ;rbx gets header ptr, rsi has driver ptr
