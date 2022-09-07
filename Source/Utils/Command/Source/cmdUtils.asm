@@ -789,3 +789,21 @@ getFilenamePtrFromFilespec:
     stc
 .exit:
     return
+
+
+copyArgumentToSearchSpec:
+;Works similarly to the build searchpath but is simpler
+;Null terminates
+    lea rdi, searchSpec
+.copyPath:
+    lodsb
+    call isALEndOfCommand
+    jz .finishCopy
+    call isALterminator
+    jz .finishCopy
+    stosb
+    jmp short .copyPath
+.finishCopy:
+    xor eax, eax
+    stosb
+    return

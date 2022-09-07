@@ -553,7 +553,56 @@ time:
     rete    ;Exit!
     return
 ctty:
+    test byte [arg1Flg], -1
+    jz badArgError
+    test byte [arg2Flg], -1
+    jnz badArgError
+    lea rsi, cmdBuffer
+    movzx eax, byte [arg1Off]
+    add rsi, rax  ;Goto the first char of the argument
+    cmp byte [rsi + 1], ":" ;If a drive is specified, check if valid
+    jne .noDrive
+    movzx eax, byte [arg1FCBret]
+    cmp al, -1
+    je badDriveError
+.noDrive:
+    ;Now we open the provided file
+    call copyArgumentToSearchSpec
+    lea rdx, searchSpec
+    mov eax, 3D02h  ;Open in read/write mode
+    int 41h
+    jc badFileError
+    movzx ebx, ax   ;Save the handle in ebx
+    mov eax, 4400h  ;Get device word
+    int 41h
+    test dl, 80h    ;Test if this device is a char device
+    jz .badCharDev  ;If this bit is 0 => Disk file
+    ;Now we set this handle to be STDIO
+    or dl, 3    ;Set STDIO bits
+    xor dh, dh
+    mov eax, 4401h  ;Now we set the device word
+    int 41h
+    ;Now we DUP2 for STDIN/OUT/ERR
+    xor ecx, ecx    ;STDIN
+    mov ah, 46h
+    int 41h
+    inc ecx         ;STDOUT
+    mov ah, 46h
+    int 41h
+    inc ecx         ;STDERR
+    mov ah, 46h
+    int 41h
+    mov ah, 3Eh ;Now we close the original handle
+    int 41h
     return
+.badCharDev:
+    lea rdx, badDev
+    mov ah, 09h
+    int 41h
+    mov ah, 3Eh ;Close opened handle
+    int 41h
+    return
+
 cls:  
     mov eax, 4400h  ;Get device info
     mov ebx, 1      ;for handle 1
@@ -977,23 +1026,11 @@ type:
     je badDriveError
 .noDrive:
     ;Now we open the provided file
-    lea rdi, searchSpec
-.copyPath:
-    lodsb
-    call isALEndOfCommand
-    jz .finishCopy
-    call isALterminator
-    jz .finishCopy
-    stosb
-    jmp short .copyPath
-.finishCopy:
-    xor eax, eax
-    stosb
+    call copyArgumentToSearchSpec
     lea rdx, searchSpec
     mov eax, 3D00h  ;Open in read only mode
     int 41h
     jc badFileError
-.diskFile:
     lea rdx, qword [r8 + psp.dta]
     movzx ebx, ax    ;Save the file handle in ebx
 .lp:

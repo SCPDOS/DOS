@@ -358,6 +358,7 @@ comIntr:
     jmp short .comWriteErrorCode
 .comReadError:
     mov edx, 0Bh
+    jmp short .comError
 .comWriteError:
     mov edx, 0Ah
 .comError:
@@ -383,16 +384,15 @@ comIntr:
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .comWriteErrorCode
-
     mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
     xor ecx, ecx    ;Zero the char counter
 .cr1:
     cmp ecx, dword [rbx + ioReqPkt.tfrlen]
     je .cre2
 .cr11:  ;Blocking wait, could be an infinite loop. Imitate basic DOS driver
-    mov eax, 02h    ;Recieve 
-    mov dl, byte [.comDevice]    ;Get transacting com device
-    cbw     ;Zero extend to upper byte
+    mov eax, 0200h    ;Recieve 
+    movzx edx, byte [.comDevice]    ;Get transacting com device
+    clc
     int 34h ;Recieve Char
     jc .comError
     cmp ah, 80h ;Did a "timeout" occur? If so, keep waiting
@@ -412,22 +412,11 @@ comIntr:
     jmp short .comExit
 
 .comNondestructiveRead:
-;Acts like a "read one character if there is one" function
+;The buffer is always empty for now (no keystroke available)
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], ndInNoWaitPkt_size
     jne .comWriteErrorCode
-.cndr1:
-    mov eax, 02h    ;Recieve 
-    mov dl, byte [.comDevice]    ;Get transacting com device
-    cbw     ;Zero extend to upper byte
-    int 34h ;Recieve Char
-    jc .comErrorNoCount ;Dont save a char transfer number
-    cmp ah, 80h ;Did a "timeout" occur? If so, return with busy = 1
-    je .cndr2
-    mov byte [rbx + ndInNoWaitPkt.retbyt], al   ;Get next char
-    jmp short .comExit
-.cndr2:
-    mov word [rbx + ndInNoWaitPkt.status], 200h ;Busy bit set
+    mov word [rbx + ndInNoWaitPkt.status], 0 ;Busy bit clear
     jmp short .comExit
 
 .comFlushInputBuffers:
@@ -435,9 +424,9 @@ comIntr:
     cmp byte [rbx + drvReqHdr.hdrlen], flushReqPkt_size
     jne .comWriteErrorCode
 .cfib0:
-    mov dl, byte [.comDevice]
-    cbw
-    mov eax, 02h    ;Recieve
+    movzx edx, byte [.comDevice]    ;Get transacting com device
+    mov eax, 0200h    ;Recieve
+    clc
     int 34h
     jc .comErrorNoCount
     cmp ah, 80h ;Keep looping until ah = 80h (no more chars in buffer)
@@ -456,8 +445,8 @@ comIntr:
     je .cw2
     lodsb   ;Get char into al, and inc rsi
     mov ah, 01h ;Move function number into ah
-    mov dl, byte [.comDevice]
-    cbw     ;Zero extend to upper byte
+    movzx edx, byte [.comDevice]    ;Get transacting com device
+    clc
     int 34h ;Transmit char
     jc .comError
     inc ecx
@@ -472,9 +461,9 @@ comIntr:
     cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
     jne .comWriteErrorCode
 
-    mov dl, byte [.comDevice]
-    cbw     ;Zero extend to upper byte
+    movzx edx, byte [.comDevice]    ;Get transacting com device
     mov ah, 03h     ;Get status
+    clc
     int 34h
     jc .comErrorNoCount
     and eax, 10h ;Isolate bit 4 of al, clear to set, and clear all other bits
