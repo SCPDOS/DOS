@@ -961,7 +961,6 @@ memory:
     jmp freezePC.altEP
 
 type:
-    mov word [typeHdl], -1  ;Reset the internal var
     test byte [arg1Flg], -1 ;If this not set, error
     jz badArgError
     test byte [arg2Flg], -1
@@ -994,19 +993,20 @@ type:
     mov eax, 3D00h  ;Open in read only mode
     int 41h
     jc badFileError
-    mov word [typeHdl], ax  ;Save the handle here
 .diskFile:
     lea rdx, qword [r8 + psp.dta]
+    movzx ebx, ax    ;Save the file handle in ebx
 .lp:
     mov ecx, 128    ;Read 128 bytes at a time
-    movzx ebx, word [typeHdl]  ;Get the handle here
     mov ah, 3Fh ;Read handle
     int 41h
     mov ecx, eax
     jecxz .exit
+    push rbx    ;Save the original in handle
     mov ebx, 1  ;STDOUT
     mov ah, 40h
     int 41h
+    pop rbx ;Get back the original read handle
     jc .exitBad
     cmp eax, ecx
     je .lp
@@ -1014,7 +1014,6 @@ type:
     cmp eax, ecx
     jne .exitBad
 .exit:
-    movzx ebx, word [typeHdl]
     mov ah, 3Eh ;Close handle
     int 41h
     return

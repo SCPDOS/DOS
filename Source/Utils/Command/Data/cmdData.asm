@@ -86,6 +86,3 @@ td1 db 0    ;Minutes/Year
 td2 db 0    ;Hours/Zero
 td3 db 0    ;Hundredths/Day
 td4 db 0    ;Seconds/Month
-
-;Type handle
-typeHdl dw -1
