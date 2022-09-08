@@ -187,9 +187,7 @@ devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
 charDevNamePipe equ 2000h   ;If set, device is a named pipe
 blokNoDTonClose equ 4000h   ;If set, dont update date and time when closing
 devRedirDev     equ 8000h   ;If set, dev/file is redirected!
-
-;openAddress   equ DOSSEG:367Ah   
-;createAddress equ DOSSEG:35E3h   
+ 
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 
 ; to an internal buffer, and then copying it to the specified location
