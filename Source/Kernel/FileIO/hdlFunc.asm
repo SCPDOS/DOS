@@ -24,6 +24,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     lea rcx, openMain  
     push rax    ;Save open mode on stack
 .openCommon:
+    mov rsi, rdx
     call checkPathspecOK
     jnc .pathOk ;Path ok save for potentially having wildcards
 .badPath: ;We cant have wildcards when creating or opening a file!
