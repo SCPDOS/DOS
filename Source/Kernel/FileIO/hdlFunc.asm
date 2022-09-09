@@ -24,6 +24,13 @@ openFileHdl:       ;ah = 3Dh, handle function
     lea rcx, openMain  
     push rax    ;Save open mode on stack
 .openCommon:
+    call checkPathspecOK
+    jnc .pathOk ;Path ok save for potentially having wildcards
+.badPath: ;We cant have wildcards when creating or opening a file!
+    pop rax
+    mov eax, errPnf
+    jmp extErrExit
+.pathOk:
     call dosCrit1Enter
     call findFreeSFT    ;Get free SFT in rdi or error exit
     call dosCrit1Exit
@@ -46,11 +53,12 @@ openFileHdl:       ;ah = 3Dh, handle function
     lea rax, openMain   ;Get EA for open procedure
     mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
     jnc .proceedCall
-;If CF=NC => Full path exists. For Open, Good. For Create, Good.
+;If CF=NC => Full path exists. For Open, Good. For Create, Good. 
+;                              For Create New, Bad but handled later.
 ;If CF=CY => Path doesnt all exist:
-;      If parDirExists = -1 => For Open, Bad.  For Create, Good. 
+;      If parDirExists = -1 => For Open, Bad.  For both Creates, Good. 
 ;Now we check if we are creating or opening.
-    cmp rbx, rax
+    cmp rbx, rax    ;Are we trying to open a non-existant file?
     je .badPathspec ;Jmp to error if opening file that doesnt exist
     test byte [parDirExist], -1 ;If creating, check if parent path was found
     jnz .proceedCall    ;If so, proceed.
@@ -457,12 +465,90 @@ getSetFileDateTime:;ah = 57h
     jmp extGoodExit
 
 createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
-createNewFile:     ;ah = 5Bh
+;Uses the clock to do it's bidding
+;cx = file attribute 
+;rdx -> ASCIZ path ending with a '\' + 13 zero bytes to receive the generated 
+;       filename
+    test cx, ~(archiveFile | systemFile | hiddenFile | readOnlyFile)
+    jz .validAttribs
+    mov eax, errAccDen
+    jmp extErrExit
+.validAttribs:
+    movzx r8, cx ;Save attributes in r8
+    mov r9, rdx  ;Save pointer to the path in r9
+    mov ecx, 64-13  ;First null must be at furthest, this many chars from rdx
+    xor eax, eax
+    mov rdi, rdx
+    rep scasb
+    test ecx, ecx
+    jnz .nullFnd
+    ;Bad path
+    mov eax, errPnf
+    jmp extErrExit
+.nullFnd:
+    dec rdi
+    movzx eax, byte [rdi - 1]
+    call swapPathSeparator
+    jz .pathsepFnd
+    ;If no pathsep found, force one at rdi
+    mov al, "\"
+    stosb
+.pathsepFnd:
+    mov rbp, rdi    ;Save in rbx the position of the start of the filename
+.fileCreateLoop:
+    push rbp
+    call .uniqueTimeGet ;Get time in CX:DX
+    pop rbp
+    movzx eax, cx
+    movzx edx, dx
+    shl eax, 10h
+    or eax, edx  ;Add the bits of dx too
+    call .writeNybbles
+    xor eax, eax
+    stosb   ;Store terminating null
+    mov ecx, r8d    ;Get the saved attribute back
+    mov rdx, r9     ;Get the pointer to the path
+    push rbp
+    call createNewFile
+    pop rbp
+    jnc extGoodExit ;If the create succeeded, exit directly!
+    movzx eax, word [errorExCde] ;Get pre translated error code
+    cmp eax, errAccDen
+    je .fileCreateLoop
+    cmp eax, errFilExist
+    je .fileCreateLoop
+    stc
+    jmp extErrExit  ;Exit with the error from the ExCde
+.writeNybbles:
+;Write the nybbles of eax at rdi
+    mov ecx, 8  ;8 nybbles per dword
+.wnLp:
+    rol eax, 4  ;Roll eax left by 4
+    push rax
+    and eax, 0Fh    ;Save low nybble only
+    add eax, '0'    ;Convert to ascii digit
+    cmp eax, '9'
+    jbe .notExtDigit
+    add eax, 'A' - '9' ;Convert to a letter
+.notExtDigit:
+    stosb   ;Store the digit
+    pop rax
+    dec ecx
+    jnz .wnLp
     return
-lockUnlockFile:    ;ah = 5Ch
-    jmp extErrExit
-setHandleCount:    ;ah = 67h
-    jmp extErrExit
+
+.uniqueTimeGet:
+    call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
+    mov cx, word [CLOCKrecrd + clkStruc.minutes]
+    mov dx, word [CLOCKrecrd + clkStruc.hseconds]
+    return
+
+createNewFile:     ;ah = 5Bh
+    push rcx    ;Save file attributes on stack
+    lea rcx, createNewMain
+    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
+    jmp openFileHdl.openCommon
+
 commitFile:        ;ah = 68h, flushes buffers for handle to disk 
     ;Input: bx = File to flush
     call getSFTPtr  ;Get sft pointer in rdi
@@ -499,6 +585,13 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
     call getUserRegs
     and byte [rsi + callerFrame], ~1    ;Clear CF
     return
+
+;STUB FUNCTIONS
+lockUnlockFile:    ;ah = 5Ch
+    jmp extErrExit
+setHandleCount:    ;ah = 67h
+    jmp extErrExit
+
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
@@ -601,12 +694,24 @@ openMain:
     mov eax, errAccCde
     stc
     return
+createNewMain:
+;Input: ax (formally al) = File attributes
+;       [currentSFT] = SFT we are building
+;       [workingCDS] = CDS of drive to access
+;       [workingDPB] = DPB of drive to access
+    movzx eax, al
+    test byte [fileExist], -1
+    jz createMain.createNewEP    ;Create only if the file doesnt exist!
+    mov eax, errFilExist    ;Else, return a file exists error!
+    stc
+    return
 createMain:
 ;Input: ax (formally al) = File attributes
 ;       [currentSFT] = SFT we are building
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
     movzx eax, al
+.createNewEP:
     test al, 80h | 40h   ;Invalid bits?
     jnz .invalidAttrib
     test al, dirVolumeID
