@@ -21,7 +21,7 @@ cmdStartOff db 0    ;Offset to the first char for this command (may be a space)
 cmdEndOff   db 0    ;Offset to the terminating char for this command (0Dh or |)
 pipeFlag    db 0    ;If set, we are piping across a command
 pipeHndl    dw 0    ;If pipeFlag set, this var has the handle to the pipe file
-pipeName    db 11 dup (" ") ;Name of the pipe file we created
+pipeName    db 13 dup 0, ;Space for name of the pipe file we created.
 
 cmdStatePtr:   ;Symbol to use for clearing command state variables
 ;These variables are valid for a SINGLE command in a command line

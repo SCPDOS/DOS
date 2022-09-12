@@ -186,29 +186,11 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     ;Now we check to see if we have wildcards. We do not generally allow them.
     ;Network CDS and server invokations allow wildcards
     call scanPathWC
+    mov eax, errFnf ;Wildcard file doesnt exit
     jc .badPath ;Dont allow wildcards
 .gotoDelete:
     call deleteMain
     jc extErrExit
-    cmp byte [dosInvoke], -1    ;Server invoke?
-    jne extGoodExit
-    ;Here is server invoke, pass through call again.
-    ;We found first, so build a ffblock from the curDir data and find next
-    ;If there are more, delete until no more files match wildcard pattern
-.serverWCloop:
-    push qword [currentDTA] ;Save the current DTA address
-    lea rdi, dosffblock
-    push rdi    ;Push this address onto the stack
-    call setupFFBlock   ;Setup FFblock internally
-    pop qword [currentDTA] ;And use the dosFFblock as the DTA
-    call findNextMain   ;rdi gets reloaded with DTA in this call
-    pop qword [currentDTA]
-    call deleteMain ;Whilst it keeps finding files that match, keep deleting
-    jnc .serverWCloop     
-;Stop as soon as an error occurs
-    cmp al, errNoFil    ;Check if no more files (not considered error here)
-    jne extErrExit
-    xor eax, eax
     jmp extGoodExit
 
 
@@ -438,6 +420,7 @@ renameFile:        ;ah = 56h
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server, store this value instead
     mov byte [searchAttr], cl
+    
     return
 
 getSetFileDateTime:;ah = 57h
