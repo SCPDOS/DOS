@@ -416,12 +416,52 @@ findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
     jmp short findFirstFileHdl.findfileExit
 
 renameFile:        ;ah = 56h
+;Input: rsi -> Filespec to rename
+;       rdi -> New filespec
     mov ebx, dirInclusive
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server, store this value instead
     mov byte [searchAttr], cl
-    
-    return
+    ;First test if second file exists. Error out if exists (inc with WildCards)
+    push rdi
+    push rsi
+    mov rsi, rdi
+    lea rdi, buffer2
+    call getFilePath
+    pop rdi
+    pop rsi
+    jnc .destOk
+.pnfError:
+    mov eax, errPnf
+    jmp extErrExit
+.destOk:
+    ;Now test if first file exists.
+    push qword [fname1Ptr]  ;Move the pointer to its var position
+    pop qword [fname2Ptr]
+    push rsi
+    lea rdi, buffer1
+    call getFilePath ;rdi = Buffer to use, rsi = filename
+    pop rsi
+    jnc .sourceFnd
+    ;Now we check if the file was not found. If not, the path mustve sucked
+    mov eax, errPnf
+    mov ebx, errFnf
+    test byte [parDirExist], -1
+    cmovnz eax, ebx ;If path found, swap error code to file not fount
+    jmp extErrExit
+.sourceFnd:
+    ;File found, now check we can modify it
+    ;Check if the file that was found was either a char dev or read only
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev | dirReadOnly
+    jz .modifiableFile
+.accDenError:
+    mov eax, errAccDen
+    jmp extErrExit
+.modifiableFile:
+;Now we can begin to try and modify the filename
+    call renameMain
+    jc extErrExit
+    jmp extGoodExit
 
 getSetFileDateTime:;ah = 57h
     cmp al, 1
@@ -579,6 +619,20 @@ setHandleCount:    ;ah = 67h
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
+renameMain:
+;Now, creates a special find first block for the source file
+; that is in curDirCopy. Then we build a search pattern for the new name, 
+; following wildcard rules sourcing from the filespec in the special find first 
+; block. 
+;Then we search for that file name specifically (again), replacing 
+; the filename portion of the destination buffer. If it exists or the 
+; filename is a char device, we crap out. If it doesnt exist, we create
+; the new directory entry and delete the original file. 
+    mov eax, errAccDen  ;Temp return code
+    stc
+    return
+
+    
 deleteMain:
 ;Now unlink FAT chain and then clear directory entry
 ;Get the start cluster of this file
