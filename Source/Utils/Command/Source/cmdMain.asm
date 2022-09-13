@@ -89,7 +89,7 @@ parseInput:
     push rdi
     lea rdi, cmdPathSpec    ;We copy the command name/path here
     push rdi
-    call copyCommandTailItem
+    call copyCommandTailItemProgram
     pop rdi
     pushfq  ;Save the CF state
     call strlen
@@ -389,8 +389,8 @@ checkAndSetupRedir:
     pop rdi
     return
 
-copyCommandTailItem:
-;Copies a sentence from the command tail until a terminator is found.
+copyCommandTailItemProgram:
+;Copies a program name from the command tail until a terminator is found.
 ;Stores a terminating null in the destination
 ;Input: rsi = Start of the item to copy
 ;       rdi = Location for copy
@@ -406,6 +406,46 @@ copyCommandTailItem:
     cmp al, byte [switchChar]
     je .exit
     stosb
+    jmp short copyCommandTailItemProgram
+.endOfInput:
+    call .exit
+    stc 
+    return
+.exit:
+    xor al, al
+    stosb
+    return
+
+copyCommandTailItem:
+;Copies a sentence from the command tail until a terminator is found.
+;Stores a terminating null in the destination
+;Input: rsi = Start of the item to copy
+;       rdi = Location for copy
+;Output: Sentence copied with a null terminator inserted.
+; If CF=CY, embedded CR encountered
+    lodsb
+    cmp al, CR
+    je .endOfInput
+    call isALterminator
+    jz .exit
+    cmp al, byte [pathSep]
+    je .pathSep
+    cmp al, byte [switchChar]
+    je .exit
+    stosb
+    jmp short copyCommandTailItem
+.pathSep:
+;We look ahead, if the last char is a pathsep, we ignore it
+    lodsb   ;Get the next char, increment rsi by one
+    call isALterminator
+    jz .exit
+    cmp al, CR
+    je .endOfInput
+    cmp al, byte [switchChar]
+    je .exit
+    mov al, byte [pathSep]
+    stosb   ;Else store the pathsep
+    dec rsi ;Move rsi back a piece
     jmp short copyCommandTailItem
 .endOfInput:
     call .exit

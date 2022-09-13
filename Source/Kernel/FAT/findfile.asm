@@ -838,9 +838,9 @@ copyPathspec:
 .cpsMainLoop:
     lodsb   ;Get the char in al and advance rsi
     test al, al ;Is it the null char?
-    jz .cpsProcessName  ;If so, terminate immediately
+    jz .cpsStore  ;If so, terminate immediately
     call swapPathSeparator  ;And if it is a pathsep, skip any bunched pathseps
-    jz .cpsCharSkip2 ; and then exit with the final converted pathsep in al
+    jz .cpsStore ; and then exit with the final converted pathsep in al
     cmp al, "." ;Filename extension separator
     je .cpsExtension
     ;If we have space in the filename, we check to see if the next char is *
@@ -853,7 +853,7 @@ copyPathspec:
     je .cpsInvalidChar  ;If it is not valid, replace with 0 and exit
 .store:
     cmp rdi, rbx
-    je .cpsCharSkip ;Skip any non-terminating chars, starting from [rsi]
+    je .cpsProcessName ;Skip any non-terminating chars
     stosb   ;And store the converted char in al and inc rdi
     jmp short .cpsMainLoop
 .cpsInvalidChar:
@@ -861,7 +861,7 @@ copyPathspec:
     jmp short .cpsProcessName
 .cpsExtension:
 ;rsi has been incremented past the extension field. Discard the . in al
-    mov ecx, 3  ;Set to 3 chars left, in extension (ch = 0)
+    mov ecx, 3 
     lea rdi, qword [fcbName + filename.fExt]    ;Goto the extension field
     push rdi
     mov al, " "
@@ -882,41 +882,24 @@ copyPathspec:
     cmp al, "."    ;Check now if we have a second dot
     jne .oneDotResolve
     movsb   ;Now advance rsi and rdi by copying the second dot over directly
-.cpsCharSkip:
-    call .cpsPtrSkip    ;Now we are skipping any chars that arent terminators
-    jmp short .cpsProcessName
-.cpsCharSkip2:
-    call .cpsPtrSkip2
-    jmp short .cpsProcessName
 
-
-.cpsPtrSkip:
-;Now advance rsi past the next pathsep or null char
-;If an invalid char is detected, it is considered to be a terminator
-;Output: al = Terminator char (either \ or null)
-;        rsi -> First char of next pathspec (if al = \)
-    lodsb
-    call checkCharOk
-    je .cpsBadChar
-    test al, al ;Is this null?
-    retz
-;If the next char that will be read is a pathsep, inc rsi to it
-;This is to avoid multiple successive pathseps
-.cpsPtrSkip2:
-    cmp byte [rsi], "\"
-    je .cpsPtrSkip 
-    cmp byte [rsi], "/"
-    je .cpsPtrSkip 
-    ;If the current char is the final pathsep, exit
-    call swapPathSeparator
-    retz
-    jmp short .cpsPtrSkip
-
-.cpsBadChar:
-    xor al, al  ;Convert the char to a terminator
-    return
 .cpsProcessName:
-;Store the final char in the 12 space in the FCB name field
+;Store the final char in the 12 space in the FCB name field, if it valid
+    test al, al 
+    jz .cpsStore
+    call swapPathSeparator
+    jz .cpsStore
+.cpsFindTerminator:
+    lodsb
+    test al, al 
+    jz .cpsStore
+    call swapPathSeparator
+    jz .cpsStore
+    call checkCharValid ;If this is ZF=ZE => Terminator
+    jnz short .cpsFindTerminator   ;Ensure we skip any extra chars
+    ;If we encounter a terminator, convert to 0
+    xor al, al
+.cpsStore:
     lea rdi, fcbName+11
     stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
     pop rdi
@@ -927,6 +910,9 @@ copyPathspec:
     pop rdi ;rdi points to fresh space
     dec rdi ;Point to the previous path separator
     stosb   ;Store this separator as if it is what we had before
+    return
+.cpsBadChar:
+    xor al, al  ;Convert the char to a terminator
     return
 
 searchForPathspec:
