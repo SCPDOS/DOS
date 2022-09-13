@@ -823,8 +823,7 @@ copyPathspec:
     rep stosd   ;Store 12 spaces
     pop rdi ;Point rdi back to fcb name head
 
-    mov ecx, 8 ;8 chars to move over, when ecx = 0, the char must be . or term
-    mov ch, 1   ;Set that we are in name field
+    lea rbx, fcbName + 11   ;Use rbx as the end of fcb name marker address
     lodsb   ;Get first char from user path in al
     cmp al, "."   ;Handle starting dot separately
     je .cpsDots
@@ -836,7 +835,6 @@ copyPathspec:
     inc rsi ;Push rsi to point to next char
     mov al, 05h
     stosb   ;Store the char, rsi is pointing at next char
-    dec cl  ;One less char to tfr
 .cpsMainLoop:
     lodsb   ;Get the char in al and advance rsi
     test al, al ;Is it the null char?
@@ -845,9 +843,6 @@ copyPathspec:
     jz .cpsCharSkip2 ; and then exit with the final converted pathsep in al
     cmp al, "." ;Filename extension separator
     je .cpsExtension
-    cmp ecx, 0100h  ;If ch = 1 and cl = 0, then look for either . or terminator
-    je .cpsMainLoop
-    jecxz .cpsCharSkip ;If ch = 0 and cl = 0, scan for next terminator
     ;If we have space in the filename, we check to see if the next char is *
     cmp al, "*" ;Wildcard?
     je .cpsWildcard
@@ -857,8 +852,9 @@ copyPathspec:
     call checkCharValid ; and check it is a valid char
     je .cpsInvalidChar  ;If it is not valid, replace with 0 and exit
 .store:
+    cmp rdi, rbx
+    je .cpsCharSkip ;Skip any non-terminating chars, starting from [rsi]
     stosb   ;And store the converted char in al and inc rdi
-    dec cl  ;One less char left to tfr
     jmp short .cpsMainLoop
 .cpsInvalidChar:
     xor al, al
@@ -867,7 +863,19 @@ copyPathspec:
 ;rsi has been incremented past the extension field. Discard the . in al
     mov ecx, 3  ;Set to 3 chars left, in extension (ch = 0)
     lea rdi, qword [fcbName + filename.fExt]    ;Goto the extension field
+    push rdi
+    mov al, " "
+    rep stosb
+    pop rdi
     jmp short .cpsMainLoop
+.cpsWildcard:
+    mov al, "?"
+.cpsWildcardLp:
+    stosb
+    cmp rdi, rbx
+    jne .cpsWildcardLp
+    jmp short .cpsMainLoop
+
 .cpsDots:
     stosb   ;Store the first dot
     mov al, byte [rsi]
@@ -880,17 +888,8 @@ copyPathspec:
 .cpsCharSkip2:
     call .cpsPtrSkip2
     jmp short .cpsProcessName
-.cpsWildcard:
-    ;cl has the number of chars of ? to store 
-    mov al, "?"
-    push rcx
-    movzx ecx, cl   ;Temporarily extend cl to ecx
-    rep stosb   ;Store that many ? in buffer and return cl to 0
-    pop rcx
-    test ch, 1  ;Is this bit set? If so, we jump to .cpsExtension
-    jnz .cpsExtension   ;Now fill the extension field
-    ;Else, we process filename
-    jmp short .cpsCharSkip
+
+
 .cpsPtrSkip:
 ;Now advance rsi past the next pathsep or null char
 ;If an invalid char is detected, it is considered to be a terminator
