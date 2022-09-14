@@ -1434,7 +1434,7 @@
     86                              <1> ; need to be initialised with a 0 value, are     ;
     87                              <1> ; initialised for free.                          ;
     88                              <1> ;------------------------------------------------;
-    89 0000022C B9[B2D90300]        <1>     mov ecx, dSegLen
+    89 0000022C B9[FDD90300]        <1>     mov ecx, dSegLen
     90 00000231 30C0                <1>     xor al, al
     91 00000233 57                  <1>     push rdi    ;Temp save rdi on the stack
     92 00000234 F3AA                <1>     rep stosb
@@ -1450,7 +1450,7 @@
    100 00000249 6448893425-         <1>     mov qword fs:[biosUBase], rsi
    100 0000024E [08C00300]          <1>
    101 00000252 4889FD              <1>     mov rbp, rdi    ;Save the start of dosSeg in rbp
-   102 00000255 4881C7[B2D90300]    <1>     add rdi, dSegLen ;Move destination past end of data area
+   102 00000255 4881C7[FDD90300]    <1>     add rdi, dSegLen ;Move destination past end of data area
    103 0000025C 488D35(00000000)    <1>     lea rsi, section.resSeg.start  ;Get RIP relative address to copy high
    104 00000263 B900100000          <1>     mov ecx, 1000h
    105 00000268 F348A5              <1>     rep movsq
@@ -2969,39 +2969,41 @@
    230                              <1> ;Error DPB 
    231 0003C6E0 ????????????????    <1>     tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
    232 0003C6E8 ??                  <1>     mediaByte   resb 1  ;Calls 1Bh and 1Ch return ptr to here
-   233                              <1> ;Stacks and scratch SFT
-   234 0003C6E9 <res 528h>          <1>     critStack   resq 165
-   235 0003CC11 ????????????????    <1>     critStakTop resq 1
-   236                              <1> 
-   237 0003CC19 <res 4Fh>           <1>     scratchSFT  resb sft_size   ;Used in FCB calls to emulate a SFT
+   233 0003C6E9 <res 2Bh>           <1>     renameFFBlk resb ffBlock_size   ;Source file "find first" block
+   234 0003C714 <res 20h>           <1>     renameDir   resb fatDirEntry_size   ;Build new file dir entry here
+   235                              <1> ;Stacks and scratch SFT
+   236 0003C734 <res 528h>          <1>     critStack   resq 165
+   237 0003CC5C ????????????????    <1>     critStakTop resq 1
    238                              <1> 
-   239 0003CC68 <res 638h>          <1>     AuxStack    resq 199
-   240 0003D2A0 ????????????????    <1>     AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)
-   241 0003D2A8 <res 638h>          <1>     DiskStack   resq 199
-   242 0003D8E0 ????????????????    <1>     DiskStakTop resq 1
-   243                              <1> 
-   244 0003D8E8 ??                  <1>     diskChange  resb 1  ;-1 = disk has been changed!
-   245 0003D8E9 ??                  <1>     lookahead   resb 1  ;-1 => Lookahead on select Char function calls! 
-   246                              <1> ;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
-   247 0003D8EA <res 70h>           <1>     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
-   248 0003D95A <res 28h>           <1>     sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
-   249                              <1>     sdaLen      equ     $ - sda 
-   250                              <1>     sdaMSLen    equ     $ - sda
-   251                              <1> 
-   252                              <1> ;Additional variables NOT in the SDA
-   253 0003D982 <res 2Ah>           <1>     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
-   254                              <1>     ;for saving the current header when quickly doing a second request
-   255                              <1> 
-   256 0003D9AC ??                  <1>     lastDiskNum resb 1  ;Last drive that operated
-   257 0003D9AD ????                <1>     lastOpTime  resw 1  ;Packed Time of last successful disk operation
-   258                              <1>     ;Prevent toggling print if in the middle of reading an extended ASCII char
-   259                              <1> inExtASCII:
-   260 0003D9AF ??                  <1>     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
-   261 0003D9B0 ????                <1>     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
-   262                              <1>     ;Every time this overflows, we read the clock and update the DOS internal
-   263                              <1>     ; copy of the date/time record
-   264                              <1> 
-   265                              <1>     dSegLen     equ     $
+   239 0003CC64 <res 4Fh>           <1>     scratchSFT  resb sft_size   ;Used in FCB calls to emulate a SFT
+   240                              <1> 
+   241 0003CCB3 <res 638h>          <1>     AuxStack    resq 199
+   242 0003D2EB ????????????????    <1>     AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)
+   243 0003D2F3 <res 638h>          <1>     DiskStack   resq 199
+   244 0003D92B ????????????????    <1>     DiskStakTop resq 1
+   245                              <1> 
+   246 0003D933 ??                  <1>     diskChange  resb 1  ;-1 = disk has been changed!
+   247 0003D934 ??                  <1>     lookahead   resb 1  ;-1 => Lookahead on select Char function calls! 
+   248                              <1> ;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
+   249 0003D935 <res 70h>           <1>     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
+   250 0003D9A5 <res 28h>           <1>     sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
+   251                              <1>     sdaLen      equ     $ - sda 
+   252                              <1>     sdaMSLen    equ     $ - sda
+   253                              <1> 
+   254                              <1> ;Additional variables NOT in the SDA
+   255 0003D9CD <res 2Ah>           <1>     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
+   256                              <1>     ;for saving the current header when quickly doing a second request
+   257                              <1> 
+   258 0003D9F7 ??                  <1>     lastDiskNum resb 1  ;Last drive that operated
+   259 0003D9F8 ????                <1>     lastOpTime  resw 1  ;Packed Time of last successful disk operation
+   260                              <1>     ;Prevent toggling print if in the middle of reading an extended ASCII char
+   261                              <1> inExtASCII:
+   262 0003D9FA ??                  <1>     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
+   263 0003D9FB ????                <1>     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
+   264                              <1>     ;Every time this overflows, we read the clock and update the DOS internal
+   265                              <1>     ; copy of the date/time record
+   266                              <1> 
+   267                              <1>     dSegLen     equ     $
     17                                  Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
     18                                  %define currSegVBase section.resSeg.vstart
     19                                  %include "./Source/Data/staticData.asm"
@@ -4070,7 +4072,7 @@
     20                              <2> %assign retOff %%_ret-$$
    254                              <1> .rbReadNewSector:
    255 000009F7 E8B5000000          <1>     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
-   256 000009FC 803D(E8D80300)FF    <1>     cmp byte [diskChange], -1 ;Are we in disk change?
+   256 000009FC 803D(33D90300)FF    <1>     cmp byte [diskChange], -1 ;Are we in disk change?
    257 00000A03 7506                <1>     jne .flush  ;We are not, flush buffer
    258 00000A05 483B7717            <1>     cmp rsi, qword [rdi + bufferHdr.driveDPBPtr]    ;If yes...
    259 00000A09 7407                <1>     je .skipFlush   ;Avoid flushing if same DPB being used. Lose the sector
@@ -7648,14 +7650,14 @@
    198 00002271 E846010000          <1>     call vConCtrlCheck  ;Check if the char at STDIN is ctrl and handle it
    199                              <1>     ;Also sets rsi to point to the device SFT for 
    200 00002276 7543                <1>     jnz .pullChar
-   201 00002278 803D(E9D80300)00    <1>     cmp byte [lookahead], 00    ;0 => Lookahead
+   201 00002278 803D(34D90300)00    <1>     cmp byte [lookahead], 00    ;0 => Lookahead
    202 0000227F 7507                <1>     jne .skiplookahead
    203 00002281 B405                <1>     mov ah, 05h ;Fake the lookahead for device in rsi
    204 00002283 E821FDFFFF          <1>     call mainCharIO
    205                              <1> .skiplookahead:
    206 00002288 B484                <1>     mov ah, 84h
    207 0000228A CD4A                <1>     int 4ah ;Multitasking keyboard loop
-   208 0000228C 66813D(B0D90300)FF- <1>     cmp word [keybTicks], -1    ;We reached -1 yet?
+   208 0000228C 66813D(FBD90300)FF- <1>     cmp word [keybTicks], -1    ;We reached -1 yet?
    208 00002294 FF                  <1>
    209 00002295 751B                <1>     jne .skipClockRead
    210 00002297 E87F350000          <1>     call dosPushRegs
@@ -7666,7 +7668,7 @@
    215 000022A8 E877000000          <1>     call swapPrimaryHeader
    216 000022AD E852350000          <1>     call dosPopRegs
    217                              <1> .skipClockRead:
-   218 000022B2 66FF05(B0D90300)    <1>     inc word [keybTicks]
+   218 000022B2 66FF05(FBD90300)    <1>     inc word [keybTicks]
    219 000022B9 EBB6                <1>     jmp short .readAgain
    220                              <1> .pullChar:
    221 000022BB 30E4                <1>     xor ah, ah
@@ -7675,7 +7677,7 @@
    224 000022C3 3C00                <1>     cmp al, NUL ;Is this the null char?
    225 000022C5 7507                <1>     jne .exit
    226                              <1>     ;We are mid extended ascii, prevent printer toggling
-   227 000022C7 C605(AFD90300)01    <1>     mov byte [inExtASCII], 1    ;Set to be in the Extended ASCII
+   227 000022C7 C605(FAD90300)01    <1>     mov byte [inExtASCII], 1    ;Set to be in the Extended ASCII
    228                              <1> .exit:
    229                              <1>     return
     18                              <2> %%_ret:
@@ -7793,7 +7795,7 @@
    293 00002327 48B92A000000000000- <1>     mov rcx, ioReqPkt_size
    293 00002330 00                  <1>
    294 00002331 488D35(22C40300)    <1>     lea rsi, primReqHdr
-   295 00002338 488D3D(82D90300)    <1>     lea rdi, bkupReqHdr
+   295 00002338 488D3D(CDD90300)    <1>     lea rdi, bkupReqHdr
    296 0000233F 7303                <1>     jnc .read
    297 00002341 4887F7              <1>     xchg rsi, rdi   ;If carry flag set, swap pointers
    298                              <1> .read:
@@ -8054,9 +8056,9 @@
    452 0000245D E847FBFFFF          <1>     call mainCharIO
    453 00002462 3C10                <1>     cmp al, DLE ;Was char ^P, printer echo?
    454 00002464 7514                <1>     jnz .checkBreak2
-   455 00002466 803D(AFD90300)00    <1>     cmp byte [noPrintTog], 00   ;Should we toggle?
+   455 00002466 803D(FAD90300)00    <1>     cmp byte [noPrintTog], 00   ;Should we toggle?
    456 0000246D 0F847BFFFFFF        <1>     jz .printToggle ;If 0, toggle!
-   457 00002473 C605(AFD90300)00    <1>     mov byte [noPrintTog], 00   ;Else, end extended char read!
+   457 00002473 C605(FAD90300)00    <1>     mov byte [noPrintTog], 00   ;Else, end extended char read!
    458                              <1> .checkBreak2:
    459 0000247A 3C03                <1>     cmp al, ETX
    460                              <1>     retne   ;Return if not equal, al has char and ZF=NZ
@@ -8740,7 +8742,7 @@
    162 00002979 56                  <1>     push rsi
    163 0000297A 55                  <1>     push rbp
    164                              <1> 
-   165 0000297B 66C705(B0D90300)00- <1>     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
+   165 0000297B 66C705(FBD90300)00- <1>     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
    165 00002983 00                  <1>
    166 00002984 488D1D(77C40300)    <1>     lea rbx, CLOCKrecrd ;Read into clock record
    167 0000298B B906000000          <1>     mov ecx, 6
@@ -12378,7 +12380,7 @@
    228                              <1> ;Done with the environment... more or less
    229                              <1> .loadProgram:
    230 0000492F B940000000          <1>     mov ecx, imageDosHdr_size   ;Read the DOS header for the exe file
-   231 00004934 488D15(EAD80300)    <1>     lea rdx, exeHdrSpace    ;Read into the SDA area
+   231 00004934 488D15(35D90300)    <1>     lea rdx, exeHdrSpace    ;Read into the SDA area
    232 0000493B E84D040000          <1>     call .readDataFromHdl
    233 00004940 0F8226040000        <1>     jc .badFmtErr
    234 00004946 85C0                <1>     test eax, eax   ;Were zero bytes read?
@@ -12432,8 +12434,8 @@
    282                              <1>     ; one at a time to the section header internal buffer.
    283 000049E8 807DF803            <1>     cmp byte [rbp - execFrame.bSubFunc], execOverlay
    284 000049EC 744B                <1>     je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
-   285 000049EE 8B1D(22D90300)      <1>     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
-   286 000049F4 488B05(32D90300)    <1>     mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackReserve]
+   285 000049EE 8B1D(6DD90300)      <1>     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
+   286 000049F4 488B05(7DD90300)    <1>     mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackReserve]
    287 000049FB 4885C0              <1>     test rax, rax
    288 000049FE 750A                <1>     jnz .notDefaultStackAlloc
    289 00004A00 48B800000400000000- <1>     mov rax, 40000h ;256Kb stack default
@@ -12457,7 +12459,7 @@
    306                              <1> .exeProceed1:
    307                              <1>     ;So now copy one section at a time, read section header in
    308                              <1>     ;File pointer points to the directory table, so skip that
-   309 00004A44 8B15(56D90300)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+   309 00004A44 8B15(A1D90300)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
    310 00004A4A 81FA06000000        <1>     cmp edx, 6  ;Does .reloc exist (6th directory entry)
    311 00004A50 0F8216030000        <1>     jb .badFmtErr
    312 00004A56 FFCA                <1>     dec edx ;Decrement by 1 to make into a 0 based offset
@@ -12477,7 +12479,7 @@
    326 00004A73 51                  <1>     push rcx    ;Save # of segments left on stack
    327 00004A74 57                  <1>     push rdi    ;Save the current buffer ptr here
    328 00004A75 B928000000          <1>     mov ecx, imageSectionHdr_size
-   329 00004A7A 488D15(5AD90300)    <1>     lea rdx, sectHdr    ;Read section headers here
+   329 00004A7A 488D15(A5D90300)    <1>     lea rdx, sectHdr    ;Read section headers here
    330 00004A81 E807030000          <1>     call .readDataFromHdl
    331 00004A86 5F                  <1>     pop rdi
    332 00004A87 59                  <1>     pop rcx
@@ -12489,7 +12491,7 @@
    338 00004A9B 81459828000000      <1>     add dword [rbp - execFrame.dFilePtr], imageSectionHdr_size
    339                              <1>     ;Section header read, now we load section into memory
    340                              <1>     ;Move file ptr to data location
-   341 00004AA2 8B15(6ED90300)      <1>     mov edx, dword [sectHdr + imageSectionHdr.dPointerToRawData] ;Data File ptr
+   341 00004AA2 8B15(B9D90300)      <1>     mov edx, dword [sectHdr + imageSectionHdr.dPointerToRawData] ;Data File ptr
    342 00004AA8 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get the handle
    343 00004AAC 31C0                <1>     xor eax, eax    ;Seek from start of file
    344 00004AAE 51                  <1>     push rcx
@@ -12500,7 +12502,7 @@
    349                              <1> 
    350 00004AB7 51                  <1>     push rcx
    351 00004AB8 57                  <1>     push rdi    ;Save current buffer offset
-   352 00004AB9 8B0D(6AD90300)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dSizeOfRawData]   ;Get # of bytes
+   352 00004AB9 8B0D(B5D90300)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dSizeOfRawData]   ;Get # of bytes
    353 00004ABF 4889FA              <1>     mov rdx, rdi    ;Get ptr to buffer in rdx
    354 00004AC2 E8C6020000          <1>     call .readDataFromHdl
    355 00004AC7 5F                  <1>     pop rdi
@@ -12508,15 +12510,15 @@
    357 00004AC9 0F829D020000        <1>     jc .badFmtErr
    358 00004ACF 85C0                <1>     test eax, eax
    359 00004AD1 0F8495020000        <1>     jz .badFmtErr
-   360 00004AD7 3B05(6AD90300)      <1>     cmp eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
+   360 00004AD7 3B05(B5D90300)      <1>     cmp eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
    361 00004ADD 0F8589020000        <1>     jne .badFmtErr
    362                              <1>     ;Data read ok, now fill in any zeros needed
-   363 00004AE3 8B05(6AD90300)      <1>     mov eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
+   363 00004AE3 8B05(B5D90300)      <1>     mov eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
    364 00004AE9 4801C7              <1>     add rdi, rax    ;Move rdi forwards by that amount at least
-   365 00004AEC 3B05(62D90300)      <1>     cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
+   365 00004AEC 3B05(ADD90300)      <1>     cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
    366 00004AF2 730E                <1>     jae .skipPadding
    367 00004AF4 51                  <1>     push rcx
-   368 00004AF5 8B0D(62D90300)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]
+   368 00004AF5 8B0D(ADD90300)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]
    369 00004AFB 29C1                <1>     sub ecx, eax    ;Get number of bytes to pad with in ecx
    370                              <1>     ;rdi points to pad space
    371 00004AFD 31C0                <1>     xor eax, eax
@@ -12543,7 +12545,7 @@
    392                              <1> ;We look only for .reloc segment. We have it in memory too so use it to make 
    393                              <1> ; fixups. Zero the in memory image of reloc segment once we are done with it. 
    394                              <1> ;We checked that .reloc exists so all ok
-   395 00004B1F 8B15(56D90300)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+   395 00004B1F 8B15(A1D90300)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
    396 00004B25 8B55A8              <1>     mov edx, dword [rbp - execFrame.dCOFFhdr]
    397 00004B28 81C2AC000000        <1>     add edx, imageFileHeader_size + imageFileOptionalHeader_size + 5*8
    398                              <1>     ;eax now points to position in file of direcotry entry for reloc
@@ -12553,17 +12555,17 @@
    402 00004B39 894598              <1>     mov dword [rbp - execFrame.dFilePtr], eax   ;Save table offset here
    403 00004B3C B908000000          <1>     mov ecx, imageDataDirectory_size
    404                              <1>     ;Read 8 bytes into sectHdr space
-   405 00004B41 488D15(5AD90300)    <1>     lea rdx, sectHdr
+   405 00004B41 488D15(A5D90300)    <1>     lea rdx, sectHdr
    406 00004B48 E840020000          <1>     call .readDataFromHdl   ;Read this directory entry in
    407                              <1>     ;Now we have the offset in memory if the file was loaded at imageBase
-   408 00004B4D 8B35(5AD90300)      <1>     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
+   408 00004B4D 8B35(A5D90300)      <1>     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
    409 00004B53 85F6                <1>     test esi, esi   ;If there are no relocations, skip this...
    410 00004B55 0F840F010000        <1>     jz .buildChildPSP   ;... including if overlay
    411 00004B5B 480375B8            <1>     add rsi, qword [rbp - execFrame.pProgBase]
    412                              <1>     ;Now rsi points to where in memory the relocation data table is
    413                              <1>     ;Now compute the relocation factor 
    414 00004B5F 488B45B8            <1>     mov rax, qword [rbp - execFrame.pProgBase]
-   415 00004B63 482B05(02D90300)    <1>     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
+   415 00004B63 482B05(4DD90300)    <1>     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
    416                              <1>     ;The value in rax gives how much to subtract by
    417 00004B6A 807DF803            <1>     cmp byte [rbp - execFrame.bSubFunc], execOverlay
    418 00004B6E 7507                <1>     jne .notOverlayReloc
@@ -12573,7 +12575,7 @@
    422 00004B77 48894598            <1>     mov qword [rbp - execFrame.qRelocVal], rax  ;Save relocation value
    423 00004B7B 4889C3              <1>     mov rbx, rax    ;Save this relocation factor in rbx
    424                              <1>     ;rsi points to relocation data table in memory
-   425 00004B7E 8B0D(5ED90300)      <1>     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
+   425 00004B7E 8B0D(A9D90300)      <1>     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
    426 00004B84 81F900000000        <1>     cmp ecx, 0    ;If no relocations, skip
    427 00004B8A 0F84DA000000        <1>     jz .buildChildPSP
    428 00004B90 488B7DB8            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
@@ -12599,7 +12601,7 @@
    448 00004BB3 59                  <1>     pop rcx
    449 00004BB4 FFC9                <1>     dec ecx
    450 00004BB6 75DC                <1>     jnz .nextBlock
-   451 00004BB8 8B05(FAD80300)      <1>     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
+   451 00004BB8 8B05(45D90300)      <1>     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
    452 00004BBE 480345B8            <1>     add rax, qword [rbp - execFrame.pProgBase]
    453 00004BC2 488945A8            <1>     mov qword [rbp - execFrame.pProgEP], rax
    454 00004BC6 E99F000000          <1>     jmp .buildChildPSP
@@ -13198,7 +13200,7 @@
    122                              <1> ;rdx = Start LBA to write to
    123 00005068 FA                  <1>     cli
    124 00005069 488925(DCC30300)    <1>     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
-   125 00005070 488D25(E0D80300)    <1>     lea rsp, DiskStakTop
+   125 00005070 488D25(2BD90300)    <1>     lea rsp, DiskStakTop
    126 00005077 55                  <1>     push rbp
    127 00005078 53                  <1>     push rbx    ;Save to use rbx as the driver pointer
    128 00005079 E8B5FFFFFF          <1>     call setupAbsDiskEntry
@@ -13212,7 +13214,7 @@
    136                              <1> ;rdx = Start LBA to read from
    137 00005087 FA                  <1>     cli 
    138 00005088 488925(DCC30300)    <1>     mov qword [oldRSP], rsp ;Save the stack pointer in the var space
-   139 0000508F 488D25(E0D80300)    <1>     lea rsp, DiskStakTop
+   139 0000508F 488D25(2BD90300)    <1>     lea rsp, DiskStakTop
    140 00005096 55                  <1>     push rbp    ;Save to use rbp as DPB pointer
    141 00005097 53                  <1>     push rbx    ;Save to use rbx as the driver pointer
    142 00005098 E896FFFFFF          <1>     call setupAbsDiskEntry
@@ -13331,7 +13333,7 @@
    246                              <1> 
    247                              <1> 
    248 0000516A 8A06                <1>     mov al, byte [rsi + dpb.bDriveNumber] 
-   249 0000516C 3805(ACD90300)      <1>     cmp byte [lastDiskNum], al
+   249 0000516C 3805(F7D90300)      <1>     cmp byte [lastDiskNum], al
    250 00005172 7500                <1>     jnz .exit
    251                              <1> 
    252                              <1> .exit:
@@ -13374,7 +13376,7 @@
     19 000051AF C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
    285                              <1> .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
-   286 000051B0 C605(E8D80300)FF    <1>     mov byte [diskChange], -1   ;In disk Change!
+   286 000051B0 C605(33D90300)FF    <1>     mov byte [diskChange], -1   ;In disk Change!
    287 000051B7 E8DDB7FFFF          <1>     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
    288                              <1>     ;Get a buffer to read BPB into in rdi
    289 000051BC 31C0                <1>     xor eax, eax   ;Dummy read sector 0 in
@@ -13397,7 +13399,7 @@
    306 000051F1 8A4508              <1>     mov al, byte [rbp + dpb.bNumberOfFATs]
    307 000051F4 884313              <1>     mov byte [rbx + bufferHdr.bufFATsize], al
    308 000051F7 30E4                <1>     xor ah, ah
-   309 000051F9 8825(E8D80300)      <1>     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
+   309 000051F9 8825(33D90300)      <1>     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
    310                              <1>     return
     18                              <2> %%_ret:
     19 000051FF C3                  <2>  ret
@@ -14343,7 +14345,7 @@
     92                              <1> .abortEP:
     93                              <1> .charFun0CEP:
     94                              <1> .serverEP:
-    95 00005733 488D25(11CC0300)    <1>     lea rsp, critStakTop
+    95 00005733 488D25(5CCC0300)    <1>     lea rsp, critStakTop
     96 0000573A FB                  <1>     sti         ;Reenable interrupts
     97                              <1> 
     98 0000573B 31DB                <1>     xor ebx, ebx    ;Zero rbx for later and bl for now
@@ -14370,7 +14372,7 @@
    119                              <1> ;Char operations here
    120 0000577B F605(69C30300)01    <1>     test byte [critErrFlag], 1  ;Are we in critical error?
    121 00005782 7549                <1>     jnz .fdGoToFunction         ;If we are, stay on Critical Error Stack
-   122 00005784 488D25(A0D20300)    <1>     lea rsp, AuxStakTop        ;Otherwise, switch to IO stack
+   122 00005784 488D25(EBD20300)    <1>     lea rsp, AuxStakTop        ;Otherwise, switch to IO stack
    123 0000578B EB40                <1>     jmp short .fdGoToFunction
    124                              <1> .fddiskOp:
    125                              <1>     ;Disk operations go here
@@ -14387,7 +14389,7 @@
    136 000057AE 58                  <1>     pop rax
    137                              <1> 
    138 000057AF C605(F6C30300)00    <1>     mov byte [int48Flag], 0     ;Turn off the ability to trigger Int 48h
-   139 000057B6 488D25(E0D80300)    <1>     lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
+   139 000057B6 488D25(2BD90300)    <1>     lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
    140 000057BD F605(94C30300)FF    <1>     test byte [breakFlag], -1   ;Test if set
    141 000057C4 7407                <1>     jz .fdGoToFunction
    142                              <1> ; HANDLE CTRL+BREAK HERE!
@@ -14683,7 +14685,7 @@
    392 00005977 48CF                <1>     iretq
    393                              <1> 
    394                              <1> setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
-   395 00005979 8805(E9D80300)      <1>     mov byte [lookahead], al    
+   395 00005979 8805(34D90300)      <1>     mov byte [lookahead], al    
    396 0000597F 48CF                <1>     iretq
    397                              <1> 
    398                              <1> ;========================================:

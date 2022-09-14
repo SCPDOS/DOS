@@ -214,6 +214,8 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Error DPB 
     tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
     mediaByte   resb 1  ;Calls 1Bh and 1Ch return ptr to here
+    renameFFBlk resb ffBlock_size   ;Source file "find first" block
+    renameDir   resb fatDirEntry_size   ;Build new file dir entry here
 ;Stacks and scratch SFT
     critStack   resq 165
     critStakTop resq 1
