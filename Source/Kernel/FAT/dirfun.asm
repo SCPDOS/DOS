@@ -283,9 +283,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 .okLength:
     mov rsi, rdx
     call checkPathspecOK
-    jc .badPath  ;Don't allow any malformed chars
-    call scanPathWC
-    jc .badPath ;Or wildcards
+    jc .badPath  ;Don't allow any malformed chars or wildcards
     call checkPathNet
     jz .badPath ;Or Net paths
     ;Path is ok, now proceed
@@ -350,7 +348,7 @@ trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
     ;Called with a path in rsi and 128 byte buffer in rdi
     call checkPathspecOK    ;This preserves rsi
     jnc .pathspecOk ;If CF=NC this path is totally ok
-    jz .pathspecOk  ;If the last char in the path is malformed allow it here
+    jz .pathspecOk  ;If the last part has wildcards, allow it too
 .badPath:
     mov eax, errPnf
     jmp extErrExit

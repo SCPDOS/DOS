@@ -158,6 +158,10 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     mov rsi, rdx
     call checkPathspecOK
     jnc .pathOk ;Path ok save for potentially having wildcards
+    jnz .badPath    ;If ZF=NZ, then the path was bad
+    ;Here the path has wildcards in the last portion. Check for netInvoke
+    test byte [dosInvoke], -1
+    jnz .pathOk ;If this is -1, server invoke, wildcards are OK
 .badPath:
     mov eax, errPnf
     jmp extErrExit
@@ -178,17 +182,6 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jnz extErrExit  ;Can't delete a char dev
     test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
     jnz extErrExit  ;Can't delete a read only file
-    ;Now check if the cds is redir, or we entered via server to allow wildcards.
-    call testCDSNet ;Gets working CDS in rdi
-    jc .gotoDelete
-    cmp byte [dosInvoke], -1    ;Server invoke?
-    je .gotoDelete
-    ;Now we check to see if we have wildcards. We do not generally allow them.
-    ;Network CDS and server invokations allow wildcards
-    call scanPathWC
-    mov eax, errFnf ;Wildcard file doesnt exit
-    jc .badPath ;Dont allow wildcards
-.gotoDelete:
     call deleteMain
     jc extErrExit
     jmp extGoodExit
@@ -252,7 +245,6 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     push rcx
     call checkPathspecOK
     jnc .pathOk ;Path ok save for potentially having wildcards
-    jz .pathOk  ;Can be terminated with a silly char
 .badPath:
     pop rcx
     pop rbx
@@ -376,10 +368,9 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
 ;DTA:driveNum = Bit 7 set => Network redir drive
     mov byte [searchAttr], cl
     mov rsi, rdx
-    call checkPathspecOK    ;This uses rsi and preserves it
-    jnc .pathspecOk ;If CF=NC this path is totally ok
-    ;Dont allow paths which end in a malformed char for ASCIIZ
-    ;ONLY ALLOW TRUENAME TO RESOLVE SUCH PATHS 
+    call checkPathspecOK
+    jnc .pathspecOk ;Path ok save for potentially having wildcards
+    jz .pathspecOk  ;If ZF=ZE, then we had wildcards in last part which is ok
 .badPath:
     mov eax, errPnf
     jmp extErrExit
@@ -418,10 +409,22 @@ findNextFileHdl:   ;ah = 4Fh, handle function, Find Next Matching File
 renameFile:        ;ah = 56h
 ;Input: rsi -> Filespec to rename
 ;       rdi -> New filespec
+;Wildcards are permissiable in the last path componant IFF server invoke!
     mov ebx, dirInclusive
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server, store this value instead
     mov byte [searchAttr], cl
+    ;Step 0, verify both paths provided are valid
+    push rsi
+    push rdi
+    call .renamePathCheck
+    jc .skipSecondPathCheck
+    mov rsi, rdi    ;Now check second path
+    call .renamePathCheck
+.skipSecondPathCheck:
+    pop rdi
+    pop rsi
+    jc .pnfError
     ;First test if second file exists. Error out if exists (inc with WildCards)
     push rdi
     push rsi
@@ -462,6 +465,20 @@ renameFile:        ;ah = 56h
     call renameMain
     jc extErrExit
     jmp extGoodExit
+
+.renamePathCheck:
+    call checkPathspecOK
+    jnc .pathOk     ;Path ok 
+    jnz .badPath    ;If ZF=NZ, then the path was bad
+    ;Here the path has wildcards in the last portion. Check for netInvoke
+    test byte [dosInvoke], -1
+    jnz .pathOk ;If this is -1, server invoke, wildcards are OK
+.badPath:
+    stc
+    return
+.pathOk:
+    clc
+    return
 
 getSetFileDateTime:;ah = 57h
     cmp al, 1
@@ -628,11 +645,17 @@ renameMain:
 ; the filename portion of the destination buffer. If it exists or the 
 ; filename is a char device, we crap out. If it doesnt exist, we create
 ; the new directory entry and delete the original file. 
+    lea rsi, curDirCopy
+    lea rdi, renameDir
+    mov ecx, fatDirEntry_size
+    rep movsb   ;Copy the directory entry as we will be changing the name only
+    
+
     mov eax, errAccDen  ;Temp return code
     stc
     return
 
-    
+
 deleteMain:
 ;Now unlink FAT chain and then clear directory entry
 ;Get the start cluster of this file

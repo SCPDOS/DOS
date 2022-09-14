@@ -383,93 +383,80 @@ checkPathspecOK:
 ;rsi -> points to a path to verify if it is ok.
 ;Output:
 ;CF=NC => The path is totally clean and ok to use.
-;CF=CY => the path is malformed and may be used ONLY if ZF=ZE. 
-; If ZF=ZE then the only bad char in the path is followed by a ASCII null
-;Here we check for OK chars only. Hence \ / ? * and . are considered acceptable
-
-;Full paths may start with \\<15-char machine name>\...
-; or <Drive Letter>:\...
-;CWD relative paths start with <Drive Letter>:...
-;Current Drive Root Relative paths may start with \...
-;Current Drive CWD relative paths start with any other char
-;Server calls are checked separately. 
-;Must be X:\ and cannot have . or .. entries or any "G L O B A L" chars
-
+;CF=CY => the path is malformed or longer than 64 chars.
+; If CF=CY and ZF=ZE then wildcards were found in the last portion
+; and depending on method of invokation and caller, may be permissable.
 ;We accept lc and uc characters in this check function.
     push rax
-    push rcx
+    push rbx    ;Use rbx as the return flag status
     push rsi
+    xor ebx, ebx    ;Clear the return status flags
+
+    ;Start by getting the length of the ASCIIZ string.
+    push rcx
     push rdi
-    ;First we verify that the first two chars are ok (either X: or \\ or chars)
+    mov rdi, rsi
+    call strlen
+    cmp ecx, 64    ;Check
+    pop rdi
+    pop rcx
+    ja .badExit ;Above 64 only as the count includes the terminating null
+    ;First we verify if our path is relative or canonical (absolute)
     mov ax, word [rsi]  ;Get the first two chars
-    test byte [dosInvoke], -1
-    jnz .serverCallCheck
     cmp ax, "\\"    ;UNC network start
-    je .okToScan
+    je .netName
     cmp ax, "//"    ;Also acceptable UNC network start
-    je .okToScan
+    je .netName
     cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
     je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
-    ;Is this a current drive CWD relative or current drive root relative path?
-    ;If so the pathspec is not different to normal, goto scanLoop
-    jmp short .scanLoop
+    ;Here if relative
+    test byte [dosInvoke], -1
+    jnz .badExit    ;If this is -1, server invoke.
+    jmp short .okToScan
+.netName:
+    add rsi, 2  ;Goto the first char after the \\
+    jmp short .okToScan
 .diskPath:
-;Disk Letter must be A-Z (or a-z)
-    or al, 20h  ;Force an UC char to LC
-    cmp al, "a"
-    jb .badExit
-    cmp al, "z"
-    ja .badExit
+    add rsi, 2  ;Go past the X:
+    test byte [dosInvoke], -1    ;If this is minus 1, this is a server invoke
+    jz .okToScan
+    lodsb   ;Get the third byte. It MUST be a pathsep if server invokation.
+    call swapPathSeparator
+    jnz .badExit    ;If ZF=NZ => Not a pathsep, bad path
 .okToScan:
-    add rsi, 2  ;Skip first two chars now
-.scanLoop:
-    lodsb   ;Get char, inc rsi
-    test al, al  ;Is al=0, i.e string terminator?
-    je .exit    ;Clear CF if al = 0
-    call checkCharOk    ;Check if char ok
-    jnz .scanLoop    ;If it is not, fall thru
+    lodsb   
+    test al, al ;End of path char?
+    jz .exit
+    call swapPathSeparator
+    jz .wcCheck ;If it was a pathsep, ensure no WC's have been detected
+    cmp al, "*" ;Was al a big wildcard?
+    je .wcFound
+    cmp al, "?" ;Was al a small wildcard?
+    je .wcFound ;If al was a wildcard, proceed as for wildcard
+    ;Else we check that the char in al is an acceptable char
+    cmp al, "." ;Ensure that dots are allowed through this part check
+    je .okToScan
+    call checkCharValid
+    jz .badExit ;If the char is invalid, exit immediately badly
+    jmp short .okToScan
+.wcFound:
+    mov ebx, 41h    ;Set bit 6 and bit 0
+    jmp short .okToScan
+.wcCheck:
+;This is to check we havent had any WC's upon hitting a pathsep
+    test ebx, 40h
+    jz .okToScan    ;Clearly al is not a WC, so goto next char now
+    ;Else fall through in error
 .badExit:
-;Before we bad exit, we check if the next char is ascii null.
-;If it is we set ZF
-    lodsb
-    test al, al ;Set ZF if only last char is malformed, else clear ZF
-.servBadExit:   ;Server paths must be null terminated
-    stc ;And set CF to indicate bad path
+    mov ebx, 1  ;Totally clear ZF and set CF
 .exit:
-    pop rdi
+    push rbx    ;Set bit 0 for CF and bit 6 for ZF
+    popfq
     pop rsi
-    pop rcx
+    pop rbx
     pop rax
     return
-.serverCallCheck:
-;Server calls are a bit stricter, . and .. are forbidden but dir and filenames
-; may contain an extension separated by a .
-    cmp ah, ":"
-    jne .servBadExit
-    or al, 20h  ;Force an UC char to LC
-    cmp al, "a"
-    jb .servBadExit
-    cmp al, "z"
-    ja .servBadExit
-    ;If a dot is found, must check if the . is within 4 chars of a pathsep or 0
-.servScanLoop:
-    lodsb
-    test al, al
-    je .exit
-    cmp al, "." ;Handle dots separately
-    je .secondDotCheck
-    call checkCharOk
-    jnz .servScanLoop
-    jmp short .servScanLoop
-.secondDotCheck:
-    lodsb
-    test al, al ;cannot be a dot followed by a null
-    jz .servBadExit
-    cmp al, "." ;Was this a .. entry?
-    je .servBadExit
-    call swapPathSeparator  ;Was second char a pathsep? Not allowed.
-    jz .servBadExit ;... else check if the char was valid
-    jmp short .servScanLoop ;Else keep searching.
+
 scanPathWC:
 ;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
 ; even in the final path componant.
@@ -493,24 +480,6 @@ scanPathWC:
     pop rax
     return
 
-
-checkCharOk:
-;Same as checkCharValid except DOES not return error on * ? \ / .
-;If ZF=ZE => Invalid Char
-;If ZF=NZ => Ok Char
-    cmp al, "."
-    je .exitOk
-    cmp al, "*"
-    je .exitOk
-    cmp al, "?"
-    je .exitOk
-    call swapPathSeparator  ;check if al is a path separator
-    jnz checkCharValid
-.exitOk:
-    push rax
-    or al, 1    ;Always clears the ZF
-    pop rax
-    return
 checkCharValid:
 ;If ZF=ZE => Invalid Char
 ;If ZF=NZ => Valid Char
