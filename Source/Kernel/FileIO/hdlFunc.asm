@@ -184,6 +184,22 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jnz extErrExit  ;Can't delete a read only file
     call deleteMain
     jc extErrExit
+    test byte [dosInvoke], -1
+    jz extGoodExit
+.serverWCloop:
+    push qword [currentDTA] ;Save the current DTA address
+    lea rdi, dosffblock
+    push rdi    ;Push this address onto the stack
+    call setupFFBlock   ;Setup FFblock internally
+    pop qword [currentDTA] ;And use the dosFFblock as the DTA
+    call findNextMain   ;rdi gets reloaded with DTA in this call
+    pop qword [currentDTA]
+    call deleteMain ;Whilst it keeps finding files that match, keep deleting
+    jnc .serverWCloop     
+;Stop as soon as an error occurs
+    cmp al, errNoFil    ;Check if no more files (not considered error here)
+    jne extErrExit
+    xor eax, eax
     jmp extGoodExit
 
 
