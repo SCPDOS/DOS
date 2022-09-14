@@ -358,7 +358,6 @@ trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
     push rdi    ;Save the destination
     lea rdi, buffer1    ;Build the full path here
     call canonicaliseFileName
-    mov byte [rdi], 0   ;Store a terminating zero if necessary
     pop rdi
     jc extErrExit
     lea rsi, buffer1

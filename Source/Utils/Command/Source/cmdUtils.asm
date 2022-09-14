@@ -651,27 +651,8 @@ buildCommandPath:
     lea rdi, searchSpec
 .buildPath:
     call copyCommandTailItem    ;Terminates with a 0 for free
-    lea rsi, searchSpec
-    lea rdi, searchSpec
-    mov ah, 60h ;Truename it to avoid issues
-    int 41h
-    retc    ;Return if an error with CF=CY
-    ;Here we do one final check to ensure we dont end up with a A: but A:"\"
-    xor al, al
-    xor ecx, ecx
-    dec ecx
-    repne scasb
-    dec rdi ;Go back to the final non-null char
-    cmp byte [rdi - 1], ":" ;Is the final non-null char a colon?
-    jne .okExit   ;Return if not
-    xor eax, eax
-    mov al, byte [pathSep]  ;IF it is, insert a pathsep
-    stosw   ;Store the terminating 0 after the pathsep
-.okExit:
-    clc
+    clc ;I dont care if i encounter an embedded CR rn
     return
-
-
     
 printDecimalWord:
 ;Takes qword in rax and print it's decimal representation

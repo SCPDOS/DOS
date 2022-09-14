@@ -18,7 +18,7 @@ errInvDat   equ 13  ;Invalid data
 errBadDrv   equ 15  ;Invalid drive specified
 errDelCD    equ 16  ;Attempt to delete the current directory
 errDevUnk   equ 17  ;Not the same device (Device Unknown)
-errNoFil    equ 18  ;No more files
+errNoFil    equ 18  ;No more files, no match found
 ;The following are Driver error codes + 19
 drvErrShft  equ 19  ;Used to shift Driver error codes to extended error codes
 errWpd      equ 19  ;Attempt to write on write protected disk

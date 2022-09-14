@@ -394,7 +394,6 @@ mkdir:
     cmp al, -1 
     je badDriveError  ;If a drive was specified and was bad, jump
     call buildCommandPath
-    jc .badMake
     lea rdx, searchSpec
     mov eax, 3900h  ;MKDIR
     int 41h
@@ -418,7 +417,6 @@ rmdir:
     cmp al, -1 
     je badDriveError  ;If a drive was specified and was bad, jump
     call buildCommandPath
-    jc .badRemove
     lea rdx, searchSpec
     mov eax, 3A00h  ;RMDIR
     int 41h

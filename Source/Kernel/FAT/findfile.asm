@@ -458,7 +458,19 @@ canonicaliseFileName:
     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
     inc al  ;make al = 0
     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
-    jmp short getPath.epAlt
+    call getPath.epAlt
+    retc    ;Return if an error
+    dec rdi ;Point to what should be the null char
+    cmp byte [rdi - 1], ":" ;Was the prev char a drive sep?
+    jne .storeNull
+    mov al, "\"
+    stosb   ;Store the pathsep and increment rdi
+.storeNull:
+    cmp byte [rdi], 0   ;Ensure path is null terminated (and clear CF)
+    retz
+    mov byte [rdi], 0   ;Store a terminating zero if necessary
+    return
+
 getDirPath:
     xor al, al   ;Set to Directory
     jmp short getPath
@@ -483,6 +495,13 @@ getPath:
 ; rdi = SDA Buffer for filename
 ; rsi = Potentially unqualified filename
 ; al = 0 => Search for Dir only. al != 0 => Search for File (or dir)
+    push rax
+    push rdi
+    call canonicaliseFileName   ;First canonicalise the pathspec presented
+    pop rdi
+    pop rax
+    mov rsi, rdi    ;Use the newly built path as the source
+    retc
     mov byte [fileDirFlag], al  
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default
@@ -608,13 +627,7 @@ getPath:
     mov byte [spliceFlag], 0    ;Set Splice flag to indicate Relative to CDS
 .commonDir:
 ;rsi points to the start of the string we will be appending
-    call pathWalk
-    jc .badDriveExit
-    return
-.badDriveExit:
-    mov eax, errNoFil ;No file for that spec found
-    return
-
+;Fall through now
 pathWalk:
 ;Input: rsi must point to source buffer for path to expand
 ;       rdi must point to a destination buffer
@@ -665,7 +678,7 @@ pathWalk:
     mov word [dirSect], ax
     jmp short .mainlp  ;Else, it was a found directory name, keep looping
 .badDriveExit:
-    mov eax, errNoFil ;No file for that spec found
+    mov eax, errBadDrv ;Bad drive letter found
     return
 .exitGood:
     mov byte [fileExist], -1 ;If the file exists, set to -1
@@ -969,6 +982,8 @@ addPathspecToBuffer:
 ;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
 ;rdi is advanced to the NEXT space for the next level of the filename
 ;rbx points to the "head of the path"
+    test byte [skipDisk], -1
+    retnz   ;Only add if in truename mode
     cmp byte [fcbName], "."   ;Handle destination pointer for  
     je .aptbPNDots
     ;Copy filename over to internal buffer
@@ -1009,9 +1024,9 @@ addPathspecToBuffer:
     cmp rdi, rbx    ;Are we before the start of the path? (i.e in subst?)
     jb .aptbPnf
     jmp short .aptbOkExit
-.aptbSearchError:
-    mov eax, errNoFil
-    jmp short .aptbErrExit
+;.aptbSearchError:
+;    mov eax, errFnf
+;    jmp short .aptbErrExit
 .aptbPnf:
     mov eax, errPnf
 .aptbErrExit:
@@ -1069,7 +1084,7 @@ checkDevPath:
     clc
     return
 .notOk:
-    mov eax, errNoFil
+    mov eax, errFnf
     stc
     return
 .charDevSearch:
