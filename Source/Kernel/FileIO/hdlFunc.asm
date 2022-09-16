@@ -466,7 +466,7 @@ renameFile:        ;ah = 56h
     mov eax, errPnf
     mov ebx, errFnf
     test byte [parDirExist], -1
-    cmovnz eax, ebx ;If path found, swap error code to file not fount
+    cmovnz eax, ebx ;If path found, swap error code to file not found
     jmp extErrExit
 .sourceFnd:
     ;File found, now check we can modify it
@@ -477,6 +477,14 @@ renameFile:        ;ah = 56h
     mov eax, errAccDen
     jmp extErrExit
 .modifiableFile:
+;Just check if both pathspecs are on the same drive
+    mov al, byte [buffer1]  ;Since both buffers contain normalised pathspecs...
+    mov ah, byte [buffer2]  ;... take the first char from both and compare them
+    cmp al, ah
+    je .sameDrive
+    mov eax, errDevUnk
+    jmp extErrExit
+.sameDrive:
 ;Now we can begin to try and modify the filename
     call renameMain
     jc extErrExit
@@ -661,10 +669,21 @@ renameMain:
 ; the filename portion of the destination buffer. If it exists or the 
 ; filename is a char device, we crap out. If it doesnt exist, we create
 ; the new directory entry and delete the original file. 
+;Input:
+; filenamePtr1 -> Source path + filename pattern
+; filenamePtr2 -> New path + filename pattern
+; workingCDS -> CDS for drive we are considering
+    mov rdi, qword [workingCDS]
+    call testCDSNet ;CF=CY => Not net
+    jc .notNet
+    mov eax, 1111h
+    int 4Fh
+    return
+.notNet:
     lea rsi, curDirCopy
     lea rdi, renameDir
     mov ecx, fatDirEntry_size
-    rep movsb   ;Copy the directory entry as we will be changing the name only
+    rep movsb   ;Copy the directory entry to change name and parent dir cluster
     
 
     mov eax, errAccDen  ;Temp return code
