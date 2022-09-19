@@ -671,7 +671,8 @@ renameMain:
     jne .checkpath2
 .accDen:
     mov eax, errAccDen
-    jmp .badExit
+    stc
+    jmp .exit2
 .checkpath2:
     mov eax, dword [buffer2]
     xor al, al
@@ -681,7 +682,7 @@ renameMain:
     mov rsi, qword [fname1Ptr]
     mov rdi, rsi
     call getFilePath    ;Now hit the disk to search for the file
-    jc .badExit    ;Return with CF=CY if file doesn't exist
+    jc .exit2    ;Return with CF=CY if file doesn't exist
     lea rsi, curDirCopy
     lea rdi, renameDir
     mov ecx, fatDirEntry_size/8
@@ -700,7 +701,7 @@ renameMain:
     jne .findPattern
 ;rdi points to the pathseparator
     stosb   ;Store a null over the "\" and inc rdi to char one of pattern
-    mov qword [renNamePtr], rdi ;Store the new name pattern portion ptr in var
+    push rdi    ;Push the new name pattern portion ptr in var
     ;Now check if the parent directory exists for the destination
     push rdi    ;Save the ptr to the first char of the pathsep
     push qword [fname1Ptr]  ;Preserve original source buffer
@@ -715,15 +716,26 @@ renameMain:
     mov rsi, rdi
     lea rdi, wcdFcbName
     call asciiToFCB ;Convert the asciiz name to FCB format
+    ;Ensure the destination pattern is not all question marks
+    cmp dword [wcdFcbName], "????"
+    jne .validRenPattern
+    cmp dword [wcdFcbName + 4], "????"
+    jne .validRenPattern
+    cmp word [wcdFcbName + 8], "??"
+    jne .validRenPattern
+    cmp byte [wcdFcbName + 10], "?"
+    je .bad ;Access denied buddy ol' pal
+.validRenPattern:
     ;curDirCopy has information for the destination directory file we will 
     ; write to. The cluster points to the directory file itself to search in
     ;Each filename we create must be searched for to ensure it doesnt exist
-    call .makeNewName   ;Make the new filename in fcbName
+    call .makeNewName   ;Make new fname in fcbName from asciizname in renFFblk
     lea rsi, fcbName
     lea rdi, renameDir
     mov ecx, 11
     rep movsb   ;Move the name over from fcbName to new dir entry name field
-    mov rdi, qword [renNamePtr]
+    pop rdi ;Get the first char of the filename place in destination pathspec
+    push rdi    ;Push it on stack again to be reused later if a WC spec
     mov rsi, fcbName
     call FCBToAsciiz    ;Copy the name over to asciiz 
     mov rsi, qword [fname2Ptr]
@@ -767,8 +779,28 @@ renameMain:
     movzx eax, byte [delChar]
     mov byte [rsi], al  ;Store the del char there
     call setBufferDirty ;Mark buffer as written to now
-    ;Now we check if any more files, and if so, we jump to 
+    ;Now we check if source filename or wcdFcbname has a wildcard
+    ;If it does, we find next. If not, we exit
+    mov al, "?"
+    mov rdi, qword [fname1Ptr]  ;Check filename
+    call strlen ;Get in rcx to get the length of the string
+    rep scasb
+    jecxz .exit  ;If source name has no wildcards, exit
+    mov ecx, 11
+    lea edi, wcdFcbName
+    rep scasb
+    jecxz .exit
+    ;Here we gotta do a find next now!
+    push qword [currentDTA]
+    lea rdi, renameFFBlk
+    mov qword [currentDTA], rdi ;Set renameFFBlk as currentDTA for operation
+    call findNextMain
+    pop qword [currentDTA]
+    jnc .validRenPattern    ;If this is ok, now find next file
+    ;Else propagate the CF if this ends with an error (inc no more files)
 .exit:
+    pop rdi ;Pop the ptr to the dest pathspec ptr off stack
+.exit2: ;Bad exit before we push qword on stack 
     call dosCrit1Exit
     return
 .bad:
@@ -806,7 +838,6 @@ renameMain:
     push rcx
     push rsi
     push rdi
-
     lea rsi, renameDir  ;Copy the source filename over
     lea rdi, fcbName
     push rdi    ;Preserve this as the destination for copy
