@@ -658,7 +658,7 @@ pathWalk:
     jnc .deviceFound
     call searchForPathspec  ;and search the directory
     jc .checkDev    ;If CF=CY, error exit UNLESS we were searching for \DEV"\"
-    call addPathspecToBuffer
+    call addPathspecToBuffer    ;Only entered if truename mode
     jc .exit   ;If a bad path (somehow I dont see this happening often)
     test al, al ;Exit if this pathspec was a file
     jz .exitGood
@@ -983,7 +983,7 @@ addPathspecToBuffer:
 ;rdi is advanced to the NEXT space for the next level of the filename
 ;rbx points to the "head of the path"
     test byte [skipDisk], -1
-    retnz   ;Only add if in truename mode
+    retnz   ;Only add if in truename mode (also clears CF)
     cmp byte [fcbName], "."   ;Handle destination pointer for  
     je .aptbPNDots
     ;Copy filename over to internal buffer

@@ -431,67 +431,40 @@ renameFile:        ;ah = 56h
     cmovz ecx, ebx  ;If not server, store this value instead
     mov byte [searchAttr], cl
     ;Step 0, verify both paths provided are valid
+    call .renamePathCheck   ;Preserves rsi and rdi, check rsi path
+    jc .pnfError
     push rsi
-    push rdi
+    mov rsi, rdi    ;Now check rdi path
     call .renamePathCheck
-    jc .skipSecondPathCheck
-    mov rsi, rdi    ;Now check second path
-    call .renamePathCheck
-.skipSecondPathCheck:
-    pop rdi
     pop rsi
     jc .pnfError
-    ;First test if second file exists. Error out if exists (inc with WildCards)
-    push rdi
+    ;Now we canonicalise the filenames to make life easy
     push rsi
     mov rsi, rdi
     lea rdi, buffer2
-    call getFilePath
-    pop rdi
+    call canonicaliseFileName   ;Now canonicalise rdi path
     pop rsi
-    jnc .destOk
-.pnfError:
-    mov eax, errPnf
-    jmp extErrExit
-.destOk:
+    jc .pnfError
     ;Now test if first file exists.
     push qword [fname1Ptr]  ;Move the pointer to its var position
     pop qword [fname2Ptr]
-    push rsi
     lea rdi, buffer1
-    call getFilePath ;rdi = Buffer to use, rsi = filename
-    pop rsi
-    jnc .sourceFnd
-    ;Now we check if the file was not found. If not, the path mustve sucked
-    mov eax, errPnf
-    mov ebx, errFnf
-    test byte [parDirExist], -1
-    cmovnz eax, ebx ;If path found, swap error code to file not found
-    jmp extErrExit
-.sourceFnd:
-    ;File found, now check we can modify it
-    ;Check if the file that was found was either a char dev or read only
-    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev | dirReadOnly
-    jz .modifiableFile
-.accDenError:
-    mov eax, errAccDen
-    jmp extErrExit
-.modifiableFile:
-;Just check if both pathspecs are on the same drive
-    mov al, byte [buffer1]  ;Since both buffers contain normalised pathspecs...
-    mov ah, byte [buffer2]  ;... take the first char from both and compare them
-    cmp al, ah
-    je .sameDrive
-    mov eax, errDevUnk
-    jmp extErrExit
-.sameDrive:
-;Now we can begin to try and modify the filename
-    call renameMain
+    call canonicaliseFileName ;rdi = Buffer to use, rsi = filename
+    jc .pnfError  
+
+    call renameMain ;Both pathnames made good and copied internally, lets go!!
     jc extErrExit
     jmp extGoodExit
-
+.pnfError:
+    mov eax, errPnf
+    jmp extErrExit
 .renamePathCheck:
+;Checks if the pathspec in rsi is OK
+    push rsi
+    push rdi
     call checkPathspecOK
+    pop rdi
+    pop rsi
     jnc .pathOk     ;Path ok 
     jnz .badPath    ;If ZF=NZ, then the path was bad
     ;Here the path has wildcards in the last portion. Check for netInvoke
@@ -672,7 +645,7 @@ renameMain:
 ;Input:
 ; filenamePtr1 -> Source path + filename pattern
 ; filenamePtr2 -> New path + filename pattern
-; workingCDS -> CDS for drive we are considering
+; workingCDS -> CDS for drive we are considering (set by )
     mov rdi, qword [workingCDS]
     call testCDSNet ;CF=CY => Not net
     jc .notNet
@@ -680,16 +653,182 @@ renameMain:
     int 4Fh
     return
 .notNet:
+;First check if both drives are on the same disk
+    mov al, byte [buffer1]  ;Canonicalised pathspecs are uppercased
+    mov ah, byte [buffer2]  ; so can directly compare pathspecs
+    cmp al, ah
+    je .sameDrive   ;Drives have to be the same if local file rename
+    mov eax, errDevUnk
+    stc
+    return
+.sameDrive:
+;Now we check if either pathsepc is simply X:\,0
+; If they are, return fail as we cannot rename the root dir
+    call dosCrit1Enter
+    mov eax, dword [buffer1]
+    xor al, al
+    cmp eax, 005C3A00h  ;0,:\,0, are we root?
+    jne .checkpath2
+.accDen:
+    mov eax, errAccDen
+    jmp .badExit
+.checkpath2:
+    mov eax, dword [buffer2]
+    xor al, al
+    cmp eax, 005C3A00h
+    je .accDen  ;If this is the root, exit access denied
+;Now we find first the source file
+    mov rsi, qword [fname1Ptr]
+    mov rdi, rsi
+    call getFilePath    ;Now hit the disk to search for the file
+    jc .badExit    ;Return with CF=CY if file doesn't exist
     lea rsi, curDirCopy
     lea rdi, renameDir
-    mov ecx, fatDirEntry_size
-    rep movsb   ;Copy the directory entry to change name and parent dir cluster
-    
+    mov ecx, fatDirEntry_size/8
+    rep movsq   ;Copy directory over
+    lea rdi, renameFFBlk
+    call setupFFBlock   ;Need this to save the dir entry cluster/sector/offset 
 
+    ;Now we use the destination filename pattern to build the new filename
+    mov rdi, qword [fname2Ptr]  ;Get the destination path ptr in rdi
+    xor eax, eax
+    mov ecx, 67
+    rep scasb   ;Find the null terminator of the destination path
+.findPattern:
+    dec rdi
+    cmp byte [rdi], "\" ;Is this a pathsep?
+    jne .findPattern
+;rdi points to the pathseparator
+    stosb   ;Store a null over the "\" and inc rdi to char one of pattern
+    mov qword [renNamePtr], rdi ;Store the new name pattern portion ptr in var
+    ;Now check if the parent directory exists for the destination
+    push rdi    ;Save the ptr to the first char of the pathsep
+    push qword [fname1Ptr]  ;Preserve original source buffer
+    lea rsi, buffer2
+    mov rdi, rsi
+    call getDirPath ;We are searching for a directory ONLY
+    pop qword [fname1Ptr]
+    pop rdi
+    jc .badExit    ;Error if the parent dir doesnt exist
+    mov byte [rdi - 1], "\" ;Replace the pathseparator
+    ;rdi now points to the first char of the pattern
+    mov rsi, rdi
+    lea rdi, wcdFcbName
+    call asciiToFCB ;Convert the asciiz name to FCB format
+    ;curDirCopy has information for the destination directory file we will 
+    ; write to. The cluster points to the directory file itself to search in
+    ;Each filename we create must be searched for to ensure it doesnt exist
+    call .makeNewName   ;Make the new filename in fcbName
+    lea rsi, fcbName
+    lea rdi, renameDir
+    mov ecx, 11
+    rep movsb   ;Move the name over from fcbName to new dir entry name field
+    mov rdi, qword [renNamePtr]
+    mov rsi, fcbName
+    call FCBToAsciiz    ;Copy the name over to asciiz 
+    mov rsi, qword [fname2Ptr]
+    mov rdi, rsi
+    call getFilePath    ;This must be a non-existant file
+    jnc .badExit   ;If the file exists, then error
+    cmp eax, errFnf ;If Fnf error then we may proceed
+    jne .badExit
+    ;Now we search the parent dir (the curDirCopy dir) for free space
+    movzx edx, word [curDirCopy + fatDirEntry.fstClusHi]
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusLo]
+    shl edx, 10h
+    or eax, edx ;Get first cluster of dir file in eax
+    call .searchForDirSpace
+    jc .bad
+;dir Entry found, rsi points to space in buffer
+    mov rdi, rsi
+    lea rsi, renameDir
+    mov ecx, fatDirEntry_size/8
+    rep movsq   ;Copy dir over
+    call setBufferDirty ;Mark buffer as written to now
+;Now we delete the original directory entry
+    mov eax, dword [renameFFBlk + ffBlock.dirOffset]
+    shl eax, 5  ;Turn into byte offset
+    mov rbp, qword [workingDPB]
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    div ecx ;Turn byte in clust offset into sec in clust offset and byte offset
+    mov word [dirSect], ax
+    shr edx, 5  ;Turn into 32 byte offset
+    mov dword [dirEntry], edx
+    mov eax, dword [renameFFBlk + ffBlock.parDirClus]
+    call getStartSectorOfCluster    ;Cluster number in eax, sector in rax
+    movzx edx, word [dirSect]
+    add rax, rdx
+    ;rax now has the sector number to read in
+    call getBufForDirNoFile ;Get buffer pointer in rbx
+    jc .bad
+    mov edx, dword [dirEntry]   ;Get the dir entry
+    shl edx, 5  ;Get as byte offset
+    lea rsi, qword [rbx + bufferHdr.dataarea + rdx] ;rsi points to old dir
+    movzx eax, byte [delChar]
+    mov byte [rsi], al  ;Store the del char there
+    call setBufferDirty ;Mark buffer as written to now
+    ;Now we check if any more files, and if so, we jump to 
+.exit:
+    call dosCrit1Exit
+    return
+.bad:
     mov eax, errAccDen  ;Temp return code
+.badExit:
+    stc
+    jmp short .exit
+
+.searchForDirSpace:
+;Input: eax = First directory to search 
+    mov dword [dirClustA], eax
+    xor eax, eax    ;Reset the search to the start of the current directory
+    mov word [dirSect], ax
+    mov dword [dirEntry], eax
+    call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
+    jnc .dirEntryFnd
+    cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
+    je .searchBad ;Set CF and exit
+    call growDirectory  ;Increase directory size by 1 cluster
+    jc .searchBad
+    cmp eax, -1 ;Disk Full?
+    je .searchBad
+    ;Else eax = Newly allocated cluster
+    jmp short .searchForDirSpace
+.dirEntryFnd:
+    clc
+    return
+.searchBad:
     stc
     return
 
+.makeNewName:
+;Copy old filename as initial pattern into fcbName
+;Then copies wcfcb letter by letter unless a ? is encountered
+    push rcx
+    push rsi
+    push rdi
+
+    lea rsi, renameDir  ;Copy the source filename over
+    lea rdi, fcbName
+    push rdi    ;Preserve this as the destination for copy
+    mov ecx, 11
+    rep movsb
+    pop rdi
+    lea rsi, wcdFcbName ;Now source the chars from here
+.mnnLp:
+    lodsb
+    cmp al, "?" ;Is it a wc?
+    je .mnnWC   ;Skip overriding this char
+    stosb   ;Store new char and go forwards by one
+    dec rdi ;Now go back by one
+.mnnWC:
+    inc rdi ;Goto next letter
+    inc ecx
+    cmp ecx, 11
+    jne .mnnLp
+    pop rdi
+    pop rsi
+    pop rcx
+    return  ;Return new filename in fcbName
 
 deleteMain:
 ;Now unlink FAT chain and then clear directory entry

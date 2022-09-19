@@ -212,11 +212,12 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     dirSect     resw 1  ;Sector of current directory cluster
     dirEntry    resd 1  ;32 byte offset in dir for file being searched for
 ;Error DPB 
-    tmpDPBPtr   resq 1  ;A DPB for error/temporary  situations
+    tmpDPBPtr   resq 1  ;A DPB for error/temporary situations
     mediaByte   resb 1  ;Calls 1Bh and 1Ch return ptr to here
     
     renameFFBlk resb ffBlock_size   ;Source file "find first" block
     renameDir   resb fatDirEntry_size   ;Build new file dir entry here
+    renNamePtr  resq 1  ;Ptr to offset in path to first char for new filename
 ;Stacks and scratch SFT
     critStack   resq 165
     critStakTop resq 1
