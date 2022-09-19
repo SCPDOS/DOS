@@ -299,26 +299,6 @@ struc cfgFrame  ;Frame used for config.sys parsing
     .endPtr         resq 1  ;Pointer to the end of the allocation space
 endstruc
 
-struc fcb
-;Similar to a DOS 2.0 FCB.
-    .driveNum   resb 1  ;0 based drive number
-    .filename   resb 8
-    .fileext    resb 3
-    .curBlock   resb 2  ;Current block number relative to 0
-;One block consists of 128 records, of size denoted in the below
-    .recordSize resb 2  ;Record size, default 80h
-    .fileSize   resb 4  ;File size, in bytes
-    .fileDate   resb 2  ;Standard date format
-    .fileTime   resb 2  ;Standard time format
-    .fcbByte    resb 1  ;Res. byte, bit7 = Logical drive, bit 6 = open file
-    .cluster    resb 4  ;Res. dword, Current Cluster number on disk
-    .reserved   resb 3  ;Res. 3 alignment bytes
-    .recordNum  resb 1  ;Current record in block
-    .randRecrd  resb 4  ;Relative record number, relative to start of file
-    ;If record size > 64, high byte is ignored.
-    ;Used for random read and write operations to find the right record
-endstruc
-
 struc filename
 ;8.3 File name struct
     .fName  resb 8

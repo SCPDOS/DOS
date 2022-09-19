@@ -5,6 +5,7 @@ BITS 64
 %include "./Source/Include/dosMacro.mac"
 %include "./Source/Include/driverStruc.inc"
 %include "./Source/Include/fatStruc.inc"
+%include "./Source/Include/fcbStruc.inc"
 %include "./Source/Include/dosStruc.inc"
 %include "./Source/Debug/debSym.inc"
 %include "./Source/Include/dosError.inc"

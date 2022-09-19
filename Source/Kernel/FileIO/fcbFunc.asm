@@ -1,13 +1,35 @@
 
 
-;FCB functions. Except where explicitly stated, if the selected drive 
-; for the operation is FAT 32, the request will immediately fail, unless 
-; the operation is to create\delete\find the volume label. 
-;FCBs may only be used to access data files on FAT 12/16 drives. 
+;FCB functions.
+;FCBs may only be generally used for file access FAT 12/16 volumes. 
+;On FAT 32 volumes things are a bit more restricted.
 
-;I am considering using the Extended FCB space to store additional information
-; for FAT32... but need to figure it out and I dont really care.
+;The following functions ARE currently supported for general FAT 32 files:
+;   deleteFileFCB       (to allow for easy wildcard deletion)
+;   renameFileFCB       (to allow for easy wildcard renaming)
+;   parseFilename       (I mean, this function is useful anyway)
+;   getFileSizeFCB      (sets the randRecrd field rounded up for file size)
+;   findFirstFileFCB    (allows easy access to the file directory data)
+;   findNextFileFCB     (ditto the above)
 
+;The following functions are NOT currently supported for general FAT 32 files:
+;   openFCB
+;   closeFCB
+;   createFCB
+;   randomReadFCB
+;   randomWriteFCB
+;   randBlockReadFCB
+;   randBlockWriteFCB
+;   sequentialReadFCB
+;   sequentialWriteFCB
+;An attempt to run these functions on a FAT 32 volume will result in returning 
+; al = -1 and an extended error code of 05 - Access Denied
+
+;FAT 32 volumes will support all functions for Volume Labels using xFCBs.
+;Reading and Writing to the Volume label will silently return ok.
+;Volume labels will be editable by being created/opened/closed.
+;If the current directory is not the root, Volume Label work will assume the 
+; root directory always.
 
 openFileFCB:       ;ah = 0Fh
 closeFileFCB:      ;ah = 10h
