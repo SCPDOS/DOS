@@ -5,6 +5,7 @@ BITS 64
 ;Defs, strucs and macros
 %include "./Source/Include/dosMacro.mac"
 %include "./Source/Include/dosStruc.inc"
+%include "./Source/Include/fcbStruc.inc"
 %include "./Source/Include/dosError.inc"
 %include "./Source/Utils/COMMAND/Data/cmdEqu.asm"
 Segment .data align=1 
