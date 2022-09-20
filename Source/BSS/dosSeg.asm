@@ -148,10 +148,14 @@ sdaMainSwap:
 ;Misc bookkeeping flags and vars
     dosffblock  resb ffBlock_size   ;Internal searching block
     curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed
+    tmpCDS      resb cds_size   ;Temp CDS for Server calls that need a tmp CDS
     fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0
     wcdFcbName  resb 11+1   ;Used to expand any wildcards for rename
     fileDirSect resq 1  ;File/Directory starting sector, for each level
-    tmpCDS      resb cds_size   ;Temp CDS for Server calls that need tmp CDS
+
+    volTypeFCB  resb 1  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
+    extFCBAttr  resb 1  ;Extended FCB file attribute
+    extFCBFlag  resb 1  ;Set to -1 if Extended FCB
     searchAttr  resb 1  ;Directory Search attributes
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!

@@ -109,9 +109,13 @@ getDTA:            ;ah = 2Fh, Always can be used
     mov qword [rdx + callerFrame.rbx], rbx
     return
 
-;------------------------------
-;Common FCB related Routines
-;------------------------------
+;--------------------------------
+;  Common FCB related Routines  :
+;--------------------------------
+fcbInitRoutine:
+;Checks if the FCB is extended or normal.
+;
+
 parseNameToFCB:
 ;rsi points to a command line to parse
 ;rdi points to a future unopened FCB
