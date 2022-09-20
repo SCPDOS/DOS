@@ -171,6 +171,7 @@ qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
     workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
     workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
+    workingFCB  resq 1  ;Ptr to the caller FCB for FCB function
 ;Below is the symbol for saving the oldSFTptr during a char func
 vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr being used
