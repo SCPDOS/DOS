@@ -29,12 +29,6 @@
 ;If the current directory is not the root, Volume Label work will assume the 
 ; root directory always.
 
-openFileFCB:       ;ah = 0Fh
-    mov eax, errAccDen
-    jmp fcbErrExit
-closeFileFCB:      ;ah = 10h
-    mov eax, errAccDen
-    jmp fcbErrExit
 findFirstFileFCB:  ;ah = 11h
 ;Input: rdx -> FCB
     mov qword [workingFCB], rdx ;Store FCB ptr in variable
@@ -46,7 +40,7 @@ findFirstFileFCB:  ;ah = 11h
     movzx eax, byte [rsi]
     push rax    ;Push on stack the drive number
     lea rdi, buffer1    ;Use buffer 1 to build path in
-    call fcbInitRoutine
+    call fcbInitRoutine ;Build path and find file
     jnc .fcbOk
     pop rbx ;Just pop into next reg to preserve error code
     jmp fcbErrExit
@@ -92,20 +86,47 @@ findFirstFileFCB:  ;ah = 11h
     jmp fcbGoodExit
     
 findNextFileFCB:   ;ah = 12h
-    mov eax, errAccDen
-    jmp fcbErrExit
+    mov qword [workingFCB], rdx ;Store FCB ptr in variable
+    mov byte [extFCBFlag], 0    ;Assume normal FCB for now
+    mov byte [searchAttr], 0    ;Set dir search attr to normal for now too
+    mov rsi, rdx
+
+    cmp byte [rsi], -1
+    jne .notExt
+    dec byte [extFCBFlag]   ;Make it -1 to set it
+    add rsi, exFcb.attribute
+    lodsb   ;Get search attr in al
+    mov byte [searchAttr], al
+.notExt:
+    ;rsi points to drive letter
+    lea rdi, dosffblock ;Set rdi to point to the dosffblock
+    xor eax, eax
+    lodsb   ;Get the FCB drive letter
+    push rax    ;Push drive letter on the stack
+    mov al, byte [rsi + 20] ;Get the byte I left at the end of the ffblock copy
+    stosb   ;Store this as the search drive in the ffblock
+    mov ecx, 5
+    rep movsd   ;Copy 20 bytes now to the ffblock
+    push qword [currentDTA] ;Save original currentDTA
+    lea rdi, dosffblock
+    push rdi    ;Set SDA ffblock as currentDTA
+    pop qword [currentDTA]
+    call findNextMain
+    pop qword [currentDTA]  ;Get back original current DTA
+    jnc findFirstFileFCB.fcbOk  ;Go build a new FFBlock for the found file
+    mov rdi, qword [workingFCB] ;If no more files or error, get working FCB ptr
+    test byte [rdi], -1
+    jz .notExt2
+    add rdi, exFcb.driveNum
+.notExt2:
+    pop rbx ;Get the drive letter back into bl
+    mov byte [rdi], bl
+    jmp fcbErrExit  ;And exit bad
+    
 deleteFileFCB:     ;ah = 13h
     mov eax, errAccDen
     jmp fcbErrExit
-sequentialReadFCB: ;ah = 14h
-    mov eax, errAccDen
-    jmp fcbErrExit
-sequentialWriteFCB:;ah = 15h
-    mov eax, errAccDen
-    jmp fcbErrExit
-createFileFCB:     ;ah = 16h
-    mov eax, errAccDen
-    jmp fcbErrExit
+
 renameFileFCB:     ;ah = 17h
     mov eax, errAccDen
     jmp fcbErrExit
@@ -116,24 +137,10 @@ setDTA:            ;ah = 1Ah, Always can be used
     mov rdx, qword [rbx + callerFrame.rdx]
     mov qword [currentDTA], rdx
     ret
-randomReadFCB:     ;ah = 21h
-    mov eax, errAccDen
-    jmp fcbErrExit
-randomWriteFCB:    ;ah = 22h
-    mov eax, errAccDen
-    jmp fcbErrExit
 getFileSizeFCB:    ;ah = 23h
     mov eax, errAccDen
     jmp fcbErrExit
-setRelRecordFCB:   ;ah = 24h
-    mov eax, errAccDen
-    jmp fcbErrExit
-randBlockReadFCB:  ;ah = 27h
-    mov eax, errAccDen
-    jmp fcbErrExit
-randBlockWriteFCB: ;ah = 28h
-    mov eax, errAccDen
-    jmp fcbErrExit
+
 parseFilenameFCB:  ;ah = 29h, Always can be used
 ;Input:
 ;rsi points to a command line to parse
@@ -161,6 +168,39 @@ getDTA:            ;ah = 2Fh, Always can be used
     mov rbx, qword [currentDTA] ;Get current DTA
     mov qword [rdx + callerFrame.rbx], rbx
     return
+
+;These functions CHECK the Volume type and fail if the volume is not compatible
+openFileFCB:       ;ah = 0Fh
+    mov eax, errAccDen
+    jmp fcbErrExit
+closeFileFCB:      ;ah = 10h
+    mov eax, errAccDen
+    jmp fcbErrExit
+sequentialReadFCB: ;ah = 14h
+    mov eax, errAccDen
+    jmp fcbErrExit
+sequentialWriteFCB:;ah = 15h
+    mov eax, errAccDen
+    jmp fcbErrExit
+createFileFCB:     ;ah = 16h
+    mov eax, errAccDen
+    jmp fcbErrExit
+randomReadFCB:     ;ah = 21h
+    mov eax, errAccDen
+    jmp fcbErrExit
+randomWriteFCB:    ;ah = 22h
+    mov eax, errAccDen
+    jmp fcbErrExit
+setRelRecordFCB:   ;ah = 24h
+    mov eax, errAccDen
+    jmp fcbErrExit
+randBlockReadFCB:  ;ah = 27h
+    mov eax, errAccDen
+    jmp fcbErrExit
+randBlockWriteFCB: ;ah = 28h
+    mov eax, errAccDen
+    jmp fcbErrExit
+
 
 ;--------------------------------
 ;  Common FCB related Routines  :
