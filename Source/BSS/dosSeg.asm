@@ -153,7 +153,7 @@ sdaMainSwap:
     wcdFcbName  resb 11+1   ;Used to expand any wildcards for rename
     fileDirSect resq 1  ;File/Directory starting sector, for each level
 
-    volTypeFCB  resb 1  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
+    volIncmpFCB resb 1  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
     extFCBAttr  resb 1  ;Extended FCB file attribute
     extFCBFlag  resb 1  ;Set to -1 if Extended FCB
     searchAttr  resb 1  ;Directory Search attributes

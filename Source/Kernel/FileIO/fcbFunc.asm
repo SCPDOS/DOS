@@ -113,8 +113,81 @@ getDTA:            ;ah = 2Fh, Always can be used
 ;  Common FCB related Routines  :
 ;--------------------------------
 fcbInitRoutine:
-;Checks if the FCB is extended or normal.
-;
+;Checks if the FCB is extended or normal, and fills the initial variables
+;Input: rdx -> User FCB
+;       rdi -> Buffer to use to build the X:FILENAME.EXT,0 pathspec
+    push rbp
+    mov rbp, rsp
+    sub rsp, 15    ;Make 15 char space on stack
+    ;This space is used to store X:FILENAME.EXT,0
+    push rdi    ;Save the internal destination pathname buffer 
+    lea rdi, qword [rbp - 15]
+    mov byte [extFCBFlag], 0    ;Assume normal FCB initially
+    mov byte [searchAttr], 0    ;Default search attributes
+    call isFCBExtended  ;Moves rsi to point to the drive letter (if extended)
+    jz .notExtended
+    mov byte [extFCBFlag], -1
+    mov al, byte [rdx + exFcb.attribute]    ;Get the search attribute
+    mov byte [searchAttr], al
+.notExtended:
+    lodsb  ;rsi points to the normal fcb part, advance to filename
+    call getCDS ;Get the CDS (preserves rdi)
+    jc .badDisk
+    call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
+    lea rbx, asciiCharProperties
+    mov ecx, 11 ;11 chars in a filename
+    push rsi    ;rsi -> fcb.filename
+.nameCharCheck:
+    lodsb   ;Get the char in al
+    xlatb   ;Get the char signature in al
+    test al, 8
+    jz .badDisk
+    dec ecx
+    jnz .nameCharCheck
+    pop rsi ;Point back to the start of the name field in the FCB
+    mov rbx, rdi    ;Save ptr to stackbuffer + 2 (past X:)
+    call FCBToAsciiz
+    pop rdi ;Get back the ptr the SDA buffer to store the full pathname into
+    cmp byte [rbx], 0   ;Is our path X:,0?
+    je .badDisk
+    lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
+    push rbp
+    call canonicaliseFileName   ;Create a canonical filename
+    pop rbp
+    jnc .jiggleStack
+.badDisk:
+    mov al, errPnf  ;DOS does this... so will I
+    stc
+.jiggleStack:
+    mov rsp, rbp
+    pop rbp
+.exit:
+    return
+
+storeZeroBasedDriveNumber:
+;Input: al => 0 based drive letter
+;       rdi -> Points to buffer to store the X: in
+    inc al
+storeOneBasedDriveNumber:
+;Input: al => 1 based drive letter
+;       rdi -> Points to buffer to store the X: in
+    add al, "@"
+    mov ah, ":"
+    stosw
+    return
+
+isFCBExtended:
+;Input: rdx = FCB ptr
+;Output: rsi -> Drive letter of FCB
+;        rdx -> FCB first byte
+;ZF=NZ => Extended FCB, ZF=ZY => Normal FCB
+    mov rsi, rdx
+    cmp byte [rsi], -1
+    jne .notExtended
+    add rsi, exFcb.driveNum
+.notExtended:
+    cmp rdx, rsi
+    return
 
 parseNameToFCB:
 ;rsi points to a command line to parse
