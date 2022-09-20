@@ -196,6 +196,20 @@ dosCrit2Exit:
     pop rax
     return
 
+;FCB specific returns
+fcbGoodExit:
+;Preserve the carry flag on entry to DOS
+    xor al, al ;Set return code al = 0
+    return
+fcbErrExit:
+;Preserve the carry flag on entry to DOS
+;Input: eax = Extended error code to store in SDA 
+    call xLatError
+    mov al, -1  ;Set return code al = -1
+    stc
+    return
+
+;Handle and General DOS Returns
 ;All good exits destroy AT LEAST ax 
 extGoodExit2:
 ;Good exit with an extended return code in eax

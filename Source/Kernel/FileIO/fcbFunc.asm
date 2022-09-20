@@ -1,5 +1,3 @@
-
-
 ;FCB functions.
 ;FCBs may only be generally used for file access FAT 12/16 volumes. 
 ;On FAT 32 volumes things are a bit more restricted.
@@ -32,15 +30,32 @@
 ; root directory always.
 
 openFileFCB:       ;ah = 0Fh
+    mov eax, errAccDen
+    jmp fcbErrExit
 closeFileFCB:      ;ah = 10h
+    mov eax, errAccDen
+    jmp fcbErrExit
 findFirstFileFCB:  ;ah = 11h
+    mov eax, errAccDen
+    jmp fcbErrExit
 findNextFileFCB:   ;ah = 12h
+    mov eax, errAccDen
+    jmp fcbErrExit
 deleteFileFCB:     ;ah = 13h
+    mov eax, errAccDen
+    jmp fcbErrExit
 sequentialReadFCB: ;ah = 14h
+    mov eax, errAccDen
+    jmp fcbErrExit
 sequentialWriteFCB:;ah = 15h
+    mov eax, errAccDen
+    jmp fcbErrExit
 createFileFCB:     ;ah = 16h
+    mov eax, errAccDen
+    jmp fcbErrExit
 renameFileFCB:     ;ah = 17h
-    ret
+    mov eax, errAccDen
+    jmp fcbErrExit
 setDTA:            ;ah = 1Ah, Always can be used
 ;Called with:
 ;   rdx = Pointer to the new default DTA
@@ -49,11 +64,23 @@ setDTA:            ;ah = 1Ah, Always can be used
     mov qword [currentDTA], rdx
     ret
 randomReadFCB:     ;ah = 21h
+    mov eax, errAccDen
+    jmp fcbErrExit
 randomWriteFCB:    ;ah = 22h
+    mov eax, errAccDen
+    jmp fcbErrExit
 getFileSizeFCB:    ;ah = 23h
+    mov eax, errAccDen
+    jmp fcbErrExit
 setRelRecordFCB:   ;ah = 24h
+    mov eax, errAccDen
+    jmp fcbErrExit
 randBlockReadFCB:  ;ah = 27h
+    mov eax, errAccDen
+    jmp fcbErrExit
 randBlockWriteFCB: ;ah = 28h
+    mov eax, errAccDen
+    jmp fcbErrExit
 parseFilenameFCB:  ;ah = 29h, Always can be used
 ;Input:
 ;rsi points to a command line to parse
@@ -73,7 +100,7 @@ parseFilenameFCB:  ;ah = 29h, Always can be used
     push rsi    ;rsi points now past the filename that was parsed
     call getUserRegs
     pop qword [rsi + callerFrame.rsi]
-    return  ;al now contains dl, the signature
+    return  ;al now contains dl, the signature, special unique return type
 
 
 getDTA:            ;ah = 2Fh, Always can be used
