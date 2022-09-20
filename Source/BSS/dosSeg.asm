@@ -146,7 +146,7 @@ sdaMainSwap:
     fname2Ptr   resq 1  ;Ptr to second filename argument
     skipDisk    resb 1  ;Set => Read Disk, Clear => Skip checking on disk
 ;Misc bookkeeping flags and vars
-    dosffblock  resb ffBlock_size   ;Internal searching block
+    dosffblock  resb ffBlock_size   ;Internal search block (fullsize unlike DOS)
     curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed
     tmpCDS      resb cds_size   ;Temp CDS for Server calls that need a tmp CDS
     fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0

@@ -36,8 +36,61 @@ closeFileFCB:      ;ah = 10h
     mov eax, errAccDen
     jmp fcbErrExit
 findFirstFileFCB:  ;ah = 11h
-    mov eax, errAccDen
+;Input: rdx -> FCB
+    mov qword [workingFCB], rdx ;Store FCB ptr in variable
+    mov rsi, rdx
+    cmp byte [rsi], -1
+    je .notExt1
+    add rsi, exFcb.driveNum
+.notExt1:
+    movzx eax, byte [rsi]
+    push rax    ;Push on stack the drive number
+    lea rdi, buffer1    ;Use buffer 1 to build path in
+    call fcbInitRoutine
+    jnc .fcbOk
+    pop rbx ;Just pop into next reg to preserve error code
     jmp fcbErrExit
+.fcbOk:
+;Now we build an FFBlock internally
+    lea rdi, dosffblock
+    push rdi
+    call setupFFBlock
+    pop rsi
+;Now we use the provided FCB to store the created FFblock, to be used by us only
+    mov rdi, qword [workingFCB]
+    test byte [extFCBFlag], -1
+    jz .notExt2
+    add rdi, exFcb.driveNum ;Go to the drive number 
+.notExt2:
+    pop rbx ;Get back the drive number in bl
+    test ebx, ebx
+    jnz .notCurrentDrive
+    movzx ebx, byte [currentDrv]
+    inc ebx ;Turn into a 1 based drive number
+.notCurrentDrive:
+    lodsb   ;Get search drive from FFBlock in al
+    inc rdi ;Go past the given drive number in the FCB
+    mov ecx, 5 ;Copy the 20 bytes in ffBlock after ffBlock.driveNum
+    movsd
+    stosb   ;Store the find first search drive number at the end of the FCB
+    mov rdi, qword [currentDTA] ;Now copy current directory to DTA 
+    lea rsi, curDirCopy ;Point rsi to the current directory copy
+    test byte [extFCBFlag], -1
+    jz .notExt3
+    mov eax, -1
+    stosb   ;Store at first byte of DTA the extfcb signature
+    inc eax ;Make it zero
+    stosd
+    stosb   ;Store 5 bytes of zero
+    movzx eax, byte [searchAttr]
+    stosb   ;Store the search attributes
+.notExt3:
+    mov eax, ebx    ;Get specified drive number in eax
+    stosb
+    mov ecx, fatDirEntry_size/8
+    rep movsq   ;Copy the directory entry for the file over
+    jmp fcbGoodExit
+    
 findNextFileFCB:   ;ah = 12h
     mov eax, errAccDen
     jmp fcbErrExit
@@ -112,6 +165,31 @@ getDTA:            ;ah = 2Fh, Always can be used
 ;--------------------------------
 ;  Common FCB related Routines  :
 ;--------------------------------
+fcbCheckDriveType:
+;Sets volIncmpFCB if the volume is not FAT12 or 16. This prevents us 
+; from doing file io to files on such volumes (unless they are volume lbls)
+;Input: qword [workingDPB] = DPB for transacting volume. 
+;       qword [workingCDS] = CDS for transacting volume.
+;If a net CDS, automatic fail (for now).
+    mov byte [volIncmpFCB], -1  ;Assume incompatible volume unless otherwise
+    push rcx
+    push rdi
+    push rbp
+    pushfq
+    call testCDSNet ;If CF=CY => Net CDS (with and without CDS)
+    jc .exit
+    ;rdi has cds ptr now
+    mov rbp, qword [rdi + cds.qDPBPtr]  ;Get dpb ptr in rbp
+    call getFATtype
+    cmp ecx, 1  ;0 = FAT12, 1 = FAT16
+    ja .exit
+    mov byte [volIncmpFCB], 0   ;Clear this to permit usage
+.exit:
+    popfq
+    pop rbp
+    pop rdi
+    pop rcx
+    return
 fcbInitRoutine:
 ;Checks if the FCB is extended or normal, and fills the initial variables
 ;Input: rdx -> User FCB
@@ -133,6 +211,7 @@ fcbInitRoutine:
     lodsb  ;rsi points to the normal fcb part, advance to filename
     call getCDS ;Get the CDS (preserves rdi)
     jc .badDisk
+    call fcbCheckDriveType   ;Set the volume compatibility bit for operation
     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
     lea rbx, asciiCharProperties
     mov ecx, 11 ;11 chars in a filename
@@ -152,7 +231,7 @@ fcbInitRoutine:
     je .badDisk
     lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
     push rbp
-    call canonicaliseFileName   ;Create a canonical filename
+    call getFilePath   ;Canonicalise and hit disk to find file
     pop rbp
     jnc .jiggleStack
 .badDisk:
