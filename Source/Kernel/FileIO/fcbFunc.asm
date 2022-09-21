@@ -122,10 +122,14 @@ findNextFileFCB:   ;ah = 12h
     pop rbx ;Get the drive letter back into bl
     mov byte [rdi], bl
     jmp fcbErrExit  ;And exit bad
-    
+
 deleteFileFCB:     ;ah = 13h
-    mov eax, errAccDen
-    jmp fcbErrExit
+    lea rdi, buffer1
+    call fcbInitRoutine ;Build path and find file to delete
+    jc fcbErrExit
+    call outerDeleteMain
+    jc fcbErrExit
+    jmp fcbGoodExit
 
 renameFileFCB:     ;ah = 17h
     mov eax, errAccDen

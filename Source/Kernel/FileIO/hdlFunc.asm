@@ -174,34 +174,9 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     ;In the case of a wildcard, recall this will return the first file
     cmp byte [fileExist], -1
     jnz extErrExit
-;Internal current dir is now populated with dir entry
-; and internal DOS directory variables now point to this entry.
-;Check if the file is a char device or read only.
-    mov eax, errAccDen  
-    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
-    jnz extErrExit  ;Can't delete a char dev
-    test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
-    jnz extErrExit  ;Can't delete a read only file
-    call deleteMain
+    call outerDeleteMain
     jc extErrExit
-    test byte [dosInvoke], -1
-    jz extGoodExit
-.serverWCloop:
-    push qword [currentDTA] ;Save the current DTA address
-    lea rdi, dosffblock
-    push rdi    ;Push this address onto the stack
-    call setupFFBlock   ;Setup FFblock internally
-    pop qword [currentDTA] ;And use the dosFFblock as the DTA
-    call findNextMain   ;rdi gets reloaded with DTA in this call
-    pop qword [currentDTA]
-    call deleteMain ;Whilst it keeps finding files that match, keep deleting
-    jnc .serverWCloop     
-;Stop as soon as an error occurs
-    cmp al, errNoFil    ;Check if no more files (not considered error here)
-    jne extErrExit
-    xor eax, eax
     jmp extGoodExit
-
 
 lseekHdl:          ;ah = 42h, handle function, LSEEK
 ;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
@@ -861,6 +836,52 @@ renameMain:
     pop rcx
     return  ;Return new filename in fcbName
 
+outerDeleteMain:
+;Internal current dir must be populated with dir entry
+; and internal DOS directory variables now point to this entry.
+;Checks if the file is a char device or read only.
+;Input: curDirCopy must has dir for the file to be deleted
+;       disk vars must be populated (i.e. getFilePath mustve been run)
+;Returns: CF=CY => Error (including no files if wildcard) in eax
+;         CF=NC => File deleted
+    mov rdi, qword [workingCDS]
+    call testCDSNet ;CF=CY => Not net
+    jc .notNet
+    mov eax, 1113h  ;Allows wildcards, and will delete all which match
+    int 4Fh
+    return
+.notNet:
+    mov eax, errAccDen  
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
+    jnz .exitBad  ;Can't delete a char dev
+    test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
+    jnz .exitBad  ;Can't delete a read only file
+    call deleteMain
+    jc .exitBad
+    ;Check if the name has a wildcard in it, if so, keep searching
+    mov al, "?"
+    lea rdi, fcbName
+    mov ecx, 11
+    rep scasb   ;Scan for the wildcard char
+    test ecx, ecx    ;If ecx != 0, then a wildcard found, we delete more
+    jnz .serverWCloop   ;This is not possible if entered via 21/41h
+    clc
+    return  ;Return ok!
+.serverWCloop:
+    push qword [currentDTA] ;Save the current DTA address
+    lea rdi, dosffblock
+    push rdi    ;Push this address onto the stack
+    call setupFFBlock   ;Setup FFblock internally
+    pop qword [currentDTA] ;And use the dosFFblock as the DTA
+    call findNextMain   ;rdi gets reloaded with DTA in this call
+    pop qword [currentDTA]
+    call deleteMain ;Whilst it keeps finding files that match, keep deleting
+    jnc .serverWCloop     
+;Stop as soon as an error occurs
+.exitBad:
+    stc
+    return
+
 deleteMain:
 ;Now unlink FAT chain and then clear directory entry
 ;Get the start cluster of this file
@@ -875,13 +896,6 @@ deleteMain:
 ;   al = First char of the file that was deleted.
 ;        CF=CY => Error
 ;The dir buffer must be marked as referenced once we are done with it
-    mov rdi, qword [workingCDS]
-    call testCDSNet ;CF=CY => Not net
-    jc .notNet
-    mov eax, 1113h  ;Allows wildcards, and will delete all which match
-    int 4Fh
-    return
-.notNet:
     push rdx
     movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
     movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
