@@ -173,6 +173,34 @@ renameFileFCB:     ;ah = 17h
 .bad:
     jmp fcbErrExit
 
+getFileSizeFCB:    ;ah = 23h
+;This function which can be used to test existance of file without opening it 
+;Input: rdx -> FCB
+    mov qword [workingFCB], rdx
+    lea rdi, buffer1
+    push rdi
+    call fcbInitRoutine
+    pop rdi
+    jc fcbErrExit
+    call getFilePathNoCanon
+    jc fcbErrExit
+    mov eax, dword [curDirCopy + fatDirEntry.fileSize]  ;Get filesize in eax
+    ;Now we gotta set up FCB randRecrd Field
+    mov rsi, qword [workingFCB]
+    cmp byte [rsi], -1
+    jne .notExtended
+    add rsi, exFcb.driveNum ;Go to drive number field
+.notExtended:
+;rsi points to the drive number now
+    movzx ebx, word [rsi + fcb.recordSize]  ;Get the record size
+    div ebx ;Divide filesize (in bytes) into # of records
+    test edx, edx
+    jz .noRemainder
+    inc eax ;Increment number of records by 1 if there is a remainder in edx
+.noRemainder:
+    mov dword [rsi + fcb.randRecrd], eax    ;Now write # of records to fcb
+    jmp fcbGoodExit
+
 setDTA:            ;ah = 1Ah, Always can be used
 ;Called with:
 ;   rdx = Pointer to the new default DTA
@@ -181,10 +209,12 @@ setDTA:            ;ah = 1Ah, Always can be used
     mov qword [currentDTA], rdx
     ret
 
-getFileSizeFCB:    ;ah = 23h
-    mov eax, errAccDen
-    jmp fcbErrExit
-
+getDTA:            ;ah = 2Fh, Always can be used
+    mov rdx, qword [oldRSP]
+    mov rbx, qword [currentDTA] ;Get current DTA
+    mov qword [rdx + callerFrame.rbx], rbx
+    return
+    
 parseFilenameFCB:  ;ah = 29h, Always can be used
 ;Input:
 ;rsi points to a command line to parse
@@ -206,14 +236,12 @@ parseFilenameFCB:  ;ah = 29h, Always can be used
     pop qword [rsi + callerFrame.rsi]
     return  ;al now contains dl, the signature, special unique return type
 
-
-getDTA:            ;ah = 2Fh, Always can be used
-    mov rdx, qword [oldRSP]
-    mov rbx, qword [currentDTA] ;Get current DTA
-    mov qword [rdx + callerFrame.rbx], rbx
-    return
-
-;These functions CHECK the Volume type and fail if the volume is not compatible
+;=================================================================
+;=================================================================
+;These functions CHECK the Volume type and fail if the volume is 
+; not compatible.
+;=================================================================
+;=================================================================
 openFileFCB:       ;ah = 0Fh
     mov eax, errAccDen
     jmp fcbErrExit
