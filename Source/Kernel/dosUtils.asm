@@ -179,8 +179,7 @@ getCDS:     ;Int 4Fh AX=1219h
 ;This can be called to get CDS for network drives too!
 ;Input: al = 1 based drive number
 ;Sets workingCDS var with the CDS for the device. 
-;   If device on a network, sets CF
-;Returns al with 0-based drive number
+;Returns: al with 0-based drive number and CF=CY if things not oki
     test al, al
     jnz .skip
     mov al, byte [currentDrv]   ;Get current drive

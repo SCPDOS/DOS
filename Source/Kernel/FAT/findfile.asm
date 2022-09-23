@@ -471,6 +471,12 @@ canonicaliseFileName:
     mov byte [rdi], 0   ;Store a terminating zero if necessary
     return
 
+getFilePathNoCanon:
+;Used when the path is constructed internally (as for FCB functions)
+;Input: rdi -> Buffer with qualified pathname for search
+    mov al, -1
+    mov rsi, rdi
+    jmp short getPath.noCanon
 getDirPath:
     xor al, al   ;Set to Directory
     jmp short getPath
@@ -502,6 +508,7 @@ getPath:
     pop rax
     mov rsi, rdi    ;Use the newly built path as the source
     retc
+.noCanon:
     mov byte [fileDirFlag], al  
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default

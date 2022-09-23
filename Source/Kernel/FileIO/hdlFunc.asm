@@ -860,7 +860,7 @@ outerDeleteMain:
     jc .exitBad
     ;Check if the name has a wildcard in it, if so, keep searching
     mov al, "?"
-    lea rdi, fcbName
+    lea rdi, fcbName    ;This is the search pattern we used to find the file
     mov ecx, 11
     rep scasb   ;Scan for the wildcard char
     test ecx, ecx    ;If ecx != 0, then a wildcard found, we delete more

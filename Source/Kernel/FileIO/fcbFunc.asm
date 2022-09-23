@@ -21,7 +21,7 @@
 ;   sequentialReadFCB
 ;   sequentialWriteFCB
 ;An attempt to run these functions on a FAT 32 volume will result in returning 
-; al = -1 and an extended error code of 05 - Access Denied
+; al = -1 and an extended error code of 05 - Access Denied unless a device
 
 ;FAT 32 volumes will support all functions for Volume Labels using xFCBs.
 ;Reading and Writing to the Volume label will silently return ok.
@@ -40,11 +40,17 @@ findFirstFileFCB:  ;ah = 11h
     movzx eax, byte [rsi]
     push rax    ;Push on stack the drive number
     lea rdi, buffer1    ;Use buffer 1 to build path in
-    call fcbInitRoutine ;Build path and find file
+    call fcbInitRoutine ;Build path and canonicaliseFilename
     jnc .fcbOk
     pop rbx ;Just pop into next reg to preserve error code
     jmp fcbErrExit
 .fcbOk:
+    lea rdi, buffer1
+    call getFilePathNoCanon ;Now hit disk for this file
+    jnc .fileFound
+    pop rbx
+    jmp fcbErrExit
+.fileFound:
 ;Now we build an FFBlock internally
     lea rdi, dosffblock
     push rdi
@@ -113,7 +119,7 @@ findNextFileFCB:   ;ah = 12h
     pop qword [currentDTA]
     call findNextMain
     pop qword [currentDTA]  ;Get back original current DTA
-    jnc findFirstFileFCB.fcbOk  ;Go build a new FFBlock for the found file
+    jnc findFirstFileFCB.fileFound  ;Go build a new FFBlock for the found file
     mov rdi, qword [workingFCB] ;If no more files or error, get working FCB ptr
     test byte [rdi], -1
     jz .notExt2
@@ -125,15 +131,48 @@ findNextFileFCB:   ;ah = 12h
 
 deleteFileFCB:     ;ah = 13h
     lea rdi, buffer1
+    push rdi
     call fcbInitRoutine ;Build path and find file to delete
+    pop rdi ;Point rdi to the canonised path
+    jc fcbErrExit
+    call getFilePathNoCanon ;Get the file
     jc fcbErrExit
     call outerDeleteMain
     jc fcbErrExit
     jmp fcbGoodExit
 
 renameFileFCB:     ;ah = 17h
-    mov eax, errAccDen
+;Input: rdx -> User FCB
+    mov qword [workingFCB], rdx
+    ;First we get the drive letter 
+    mov rsi, rdx
+    cmp byte [rsi], -1
+    jne .notExt
+    add rsi, exFcb.driveNum
+.notExt:
+    xor eax, eax
+    lodsb
+    push rax    ;Push the drive letter on the stack for now
+    lea rdi, buffer1    ;Store the canonicalised filename here 
+    call fcbInitRoutine ;Store the first filename in its place
+    jc .badPop
+    push qword [fname1Ptr]  ;Move ptr to source name to other pos temporarily
+    pop qword [fname2Ptr]   ;Will be xchg'd later
+    pop rax ;Get drive letter back
+    lea rdi, buffer2
+    call fcbInitName2
+    jc short .bad
+    mov rax, qword [fname2Ptr]  ;Get the old source ptr in rax
+    xchg qword [fname1Ptr], rax ;Swap ptr positions 
+    mov qword [fname2Ptr], rax  ;Now place destination pattern in correct place
+    call renameMain
+    jnc fcbGoodExit
+    jmp short .bad
+.badPop:
+    pop rbx ;Pop drive number off stack
+.bad:
     jmp fcbErrExit
+
 setDTA:            ;ah = 1Ah, Always can be used
 ;Called with:
 ;   rdx = Pointer to the new default DTA
@@ -141,6 +180,7 @@ setDTA:            ;ah = 1Ah, Always can be used
     mov rdx, qword [rbx + callerFrame.rdx]
     mov qword [currentDTA], rdx
     ret
+
 getFileSizeFCB:    ;ah = 23h
     mov eax, errAccDen
     jmp fcbErrExit
@@ -214,12 +254,15 @@ fcbCheckDriveType:
 ; from doing file io to files on such volumes (unless they are volume lbls)
 ;Input: qword [workingDPB] = DPB for transacting volume. 
 ;       qword [workingCDS] = CDS for transacting volume.
+;       curDirCopy = Current Directory for found file (for char dev)
 ;If a net CDS, automatic fail (for now).
     mov byte [volIncmpFCB], -1  ;Assume incompatible volume unless otherwise
     push rcx
     push rdi
     push rbp
     pushfq
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
+    jnz .okToGo ;If the file is a char dev, its always ok for FileIO
     call testCDSNet ;If CF=CY => Net CDS (with and without CDS)
     jc .exit
     ;rdi has cds ptr now
@@ -227,6 +270,7 @@ fcbCheckDriveType:
     call getFATtype
     cmp ecx, 1  ;0 = FAT12, 1 = FAT16
     ja .exit
+.okToGo:
     mov byte [volIncmpFCB], 0   ;Clear this to permit usage
 .exit:
     popfq
@@ -234,6 +278,23 @@ fcbCheckDriveType:
     pop rdi
     pop rcx
     return
+fcbInitName2:
+;Must be called after fcbInitRoutine has been run once
+;Input: rdi -> Buffer to use to build the X:FILENAME.EXT,0 pathspec
+;       rdx -> UserFCB
+;       eax[0] = Drive number (0 based)
+    push rbp
+    mov rbp, rsp
+    sub rsp, 15
+    push rdi
+    lea rdi, qword [rbp - 15]
+    mov rsi, rdx
+    test byte [extFCBFlag], -1
+    jz .notExtended
+    add rsi, exFcb.driveNum
+.notExtended:
+    add rsi, fcb.filename2  ;rsi points to filename 2
+    jmp short fcbInitRoutine.rename2EP
 fcbInitRoutine:
 ;Checks if the FCB is extended or normal, and fills the initial variables
 ;Input: rdx -> User FCB
@@ -246,16 +307,16 @@ fcbInitRoutine:
     lea rdi, qword [rbp - 15]
     mov byte [extFCBFlag], 0    ;Assume normal FCB initially
     mov byte [searchAttr], 0    ;Default search attributes
-    call isFCBExtended  ;Moves rsi to point to the drive letter (if extended)
+    call isFCBExtended  ;Sets rsi to point to the drive letter (if extended)
     jz .notExtended
     mov byte [extFCBFlag], -1
     mov al, byte [rdx + exFcb.attribute]    ;Get the search attribute
     mov byte [searchAttr], al
 .notExtended:
     lodsb  ;rsi points to the normal fcb part, advance to filename
+.rename2EP:
     call getCDS ;Get the CDS (preserves rdi)
     jc .badDisk
-    call fcbCheckDriveType   ;Set the volume compatibility bit for operation
     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
     lea rbx, asciiCharProperties
     mov ecx, 11 ;11 chars in a filename
@@ -275,9 +336,11 @@ fcbInitRoutine:
     je .badDisk
     lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
     push rbp
-    call getFilePath   ;Canonicalise and hit disk to find file
+    call canonicaliseFileName   ;Canonicalise filename
     pop rbp
-    jnc .jiggleStack
+    jc .badDisk
+    call fcbCheckDriveType  ;Set the volume compatibility bit for operation
+    jmp short .jiggleStack  ;Skip the error
 .badDisk:
     mov al, errPnf  ;DOS does this... so will I
     stc

@@ -6,10 +6,12 @@ struc fcb
     .driveNum   resb 1  ;0 based drive number
     .filename   resb 8
     .fileext    resb 3
+    .filename2: ;Symbol for rename destination name pattern (8 chars)
     .curBlock   resb 2  ;Current block number relative to 0
 ;One block consists of 128 records, of size denoted in the below
     .recordSize resb 2  ;Record size, default 80h
     .fileSize   resb 4  ;File size, in bytes
+    .fileext2:  ;Symbol for rename destination extension pattern (3 chars)
     .fileDate   resb 2  ;Standard date format
     .fileTime   resb 2  ;Standard time format
     ;----------------------------------------
