@@ -743,6 +743,31 @@ defaultFileHandles:
     add rbx, sft_size   ;Goto SFT 5
     mov dword [rbx + sft.wNumHandles], eax
 ;------------------------------------------------;
+;               Setup Share Hooks                ;
+;------------------------------------------------;
+    lea rdi, qword [rbp + shareHooks]
+    lea rbx, qword [rbp + goodDfltShareHook]
+    lea rax, qword [rbp + badDfltShareHook]
+    stosq   ;Store bad for marker
+    xchg rax, rbx
+    stosq   ;Store good for open
+    stosq   ;Store good for close
+    xchg rax, rbx
+;Store bad for close for machine, task, name, lock and unlock file
+    mov ecx, 5
+    rep stosq
+    xchg rax, rbx
+    stosq   ;Store good for check file lock exists
+    xchg rax, rbx
+;Store bad for open file, update fcb from sft and get fst cluster of fcb
+    mov ecx, 3
+    rep stosq
+    xchg rax, rbx
+    stosq   ;Store good for close dup file share
+    xchg rax, rbx
+    stosq   ;Store bad for close handles for new file opened 
+    stosq   ;Store bad for update dir information
+;------------------------------------------------;
 ;             Print Welcome Message              ;
 ;------------------------------------------------;
     lea rdx, strtmsg

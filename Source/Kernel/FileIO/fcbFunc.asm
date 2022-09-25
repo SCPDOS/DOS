@@ -321,7 +321,8 @@ fcbInitName2:
     jz .notExtended
     add rsi, exFcb.driveNum
 .notExtended:
-    add rsi, fcb.filename2  ;rsi points to filename 2
+;rsi points to the drive letter of the common fcb portion of the renameFcb
+    add rsi, renameFcb.newName  ;rsi goes to the second filename
     jmp short fcbInitRoutine.rename2EP
 fcbInitRoutine:
 ;Checks if the FCB is extended or normal, and fills the initial variables

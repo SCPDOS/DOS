@@ -6,12 +6,10 @@ struc fcb
     .driveNum   resb 1  ;0 based drive number
     .filename   resb 8
     .fileext    resb 3
-    .filename2: ;Symbol for rename destination name pattern (8 chars)
     .curBlock   resb 2  ;Current block number relative to 0
 ;One block consists of 128 records, of size denoted in the below
     .recordSize resb 2  ;Record size, default 80h
     .fileSize   resb 4  ;File size, in bytes
-    .fileext2:  ;Symbol for rename destination extension pattern (3 chars)
     .fileDate   resb 2  ;Standard date format
     .fileTime   resb 2  ;Standard time format
     ;----------------------------------------
@@ -47,6 +45,18 @@ struc exFcb
     .randRecrd  resb 4  ;Relative record number, relative to start of file
 endstruc
 
+struc renameFcb
+;Used for accessing the names and drive letter for renaming
+;The fcb ptr must be pointing to the drivenumber even if the passed fcb was ext
+    .driveNum   resb 1
+    .filename   resb 8
+    .fileext    resb 3
+    .reserved   resb 4  ;Alignment bytes, cleared by AH=29h
+    .resDrvNum  resb 1  ;Always zero, used by AH=29h for the drive letter
+    .newName    resb 8
+    .newExt     resb 3
+    .reserved2  resb 4  ;Alignement bytes, cleared by AH=29h
+endstruc
 
 ;FCBmode equates:
 ;Bit 7 = Set => Share loaded, Clear => Share not loaded

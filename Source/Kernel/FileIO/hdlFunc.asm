@@ -599,9 +599,54 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
     and byte [rsi + callerFrame], ~1    ;Clear CF
     return
 
-;STUB FUNCTIONS
 lockUnlockFile:    ;ah = 5Ch
+;ah = 5Ch
+;al = subfunction
+;       00h lock region of file
+;       01h unlock region of file
+;ebx = file handle
+;ecx = start offset of region within file
+;edi = length of region in bytes
+    cmp al, 1
+    ja .badFunction
+    push rdi
+    call derefSFTPtr
+    jnc .validHdl
+    pop rax ;Discard the qword on the stack
+    mov eax, errBadHdl
     jmp extErrExit
+.validHdl:
+    test al, al ;Check if al = 0
+    pop rax ;Get the length of the file region in bytes in eax
+    jz .lockFileRegion
+    test word [rdi + sft.wDeviceInfo], devRedirDev
+    jz .unlockShare ;Jump if a local file only
+    push rax
+    mov eax, 110Bh     ;Unlock Net file region
+    int 4Fh
+    pop rbx
+    jmp short .exitSelect
+.unlockShare:
+    call qword [unlockFileShare]    ;Call share hook
+.exitSelect:
+    jc extErrExit
+    jmp extGoodExit
+.lockFileRegion:
+    test word [rdi + sft.wDeviceInfo], devRedirDev
+    jz .lockShare   ;Jump if a local file only
+    push rax
+    mov eax, 110Ah  ;Lock net file region
+    int 4Fh
+    pop rbx
+    jmp short .exitSelect
+.lockShare:
+    call qword [lockFileShare]  ;Call share hook
+    jmp short .exitSelect
+.badFunction:
+    mov eax, errInvFnc
+    mov word [errorExCde], ax
+    jmp extErrExit
+;STUB FUNCTIONS
 setHandleCount:    ;ah = 67h
     jmp extErrExit
 
