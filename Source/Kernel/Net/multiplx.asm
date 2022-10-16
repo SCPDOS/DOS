@@ -1,4 +1,5 @@
 ;Default multiplexer. Current only installed function is ah=12h
+;If a ah=11h request is made, we return CF=CY (as intended)
 
 multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
     cmp ah, 12h

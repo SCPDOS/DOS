@@ -44,5 +44,31 @@ serverDispatch: ;AX=5D00h
 
 
 netServices:   ;ah = 5Eh, do nothing
-netRedir:;ah = 5Fh, do nothing
-    return
+netRedir:;ah = 5Fh, redirector needs to be installed
+;Exception: We pick off ah=07 (ENABLE DRIVE) and ah=08 (DISABLE DRIVE)
+    cmp ah, 07h
+    je .driveAction
+    cmp ah, 08h
+    je .driveAction
+    ;Else, use redirector to process request
+    push rax
+    mov eax, 111eh  ;Do redirection redirector function
+    int 4Fh
+    pop rbx
+.badExit:
+    jc extErrExit
+.goodExit:
+    jmp extGoodExit
+.driveAction:
+;dl must have valid 0-based drive number
+    xchg al, dl ;Get function number in dl and drive number in al
+    call getCDSforDrive
+    jc short .badExit
+    ;rsi points to CDS
+    sub dl, 7
+    jz .enable
+    and word [rsi + cds.wFlags], ~cdsValidDrive ;Clear bit
+    jmp short .goodExit
+.enable:
+    or word [rsi + cds.wFlags], cdsValidDrive   ;Set bit
+    jmp short .goodExit
