@@ -351,14 +351,14 @@ findLRUBuffer: ;Internal Linkage
     jmp short .flbHeadLink
 
 findSectorInBuffer:     ;Internal linkage
-;Finds the Buffer for a sector
+;Finds the Buffer for a sector belonging to a particular dpb device
 ;If the sector is not in a buffer, returns with a -1
 ;Input: rax = Sector number
-;        dl = Drive number
+;       rsi = DPB Ptr
 ;Output: rdi = Buffer hdr pointer or -1
     mov rdi, qword [bufHeadPtr]
 .fsiCheckBuffer:
-    cmp byte [rdi + bufferHdr.driveNumber], dl
+    cmp qword [rdi + bufferHdr.driveDPBPtr], rsi
     jne .fsiGotoNextBuffer
     cmp qword [rdi + bufferHdr.bufferLBA], rax
     jne .fsiGotoNextBuffer

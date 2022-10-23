@@ -991,6 +991,7 @@ openMain:
     mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
     ;Here we put Share mode stuff
+    call getCurrentSFT  ;Get SFT ptr in rdi
     call dosCrit1Exit
     return
 .setOpenMode:
