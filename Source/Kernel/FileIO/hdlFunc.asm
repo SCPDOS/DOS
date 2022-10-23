@@ -566,33 +566,10 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
     ;Input: bx = File to flush
     call getSFTPtr  ;Get sft pointer in rdi
     jc extErrExit
-    call setCurrentSFT
-    ;Now we check if the device is a char, disk or net file
-    movzx eax, word [rdi + sft.wDeviceInfo]
-    test ax, devRedirDev
-    jnz .notNet
-    ;Commit file net redir call and exit
-    mov eax, 1107h
-    int 4Fh
-    jc extErrExit
-    jmp .exitOk
-.notNet:
-    test ax, devCharDev
-    jz .blokDev
-    ;Here we simply update date/time fields in the SFT structure before exiting
-    call readDateTimeRecord ;Update DOS internal Time/Date variables
-    jc extErrExit  ;If we fail to get time/date, fail the request
-    ;Build date and time words
-    call getDirDTwords  ;Get date time words packed in eax
-    mov dword [rdi + sft.wTime], eax    ;Store them at the same time
-    jmp .exitOk
-.blokDev:
-    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer in rbp
-    call setWorkingDPB
-    call updateDirectoryEntryForFile    ;Update the directory entry
-    jc extErrExit
-    call flushFile  ;Now the file gets flushed
-    jc extErrExit
+    call setCurrentSFT  ;Set as current SFT to ensure it is committed
+    ;Now we check if the device is a char, disk or net file and commit
+    call commitMain
+    jc extErrExit   ;If an error occured, exit with error code in al
 .exitOk:
     xor al, al
     call getUserRegs
@@ -653,6 +630,36 @@ setHandleCount:    ;ah = 67h
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
+commitMain:
+;Commits the current SFT 
+    call getCurrentSFT  ;Gets currentSFT into rdi
+    movzx eax, word [rdi + sft.wDeviceInfo]
+    test ax, devRedirDev
+    jnz .notNet
+    ;Commit file net redir call and exit
+    mov eax, 1107h
+    int 4Fh
+    return  ;Propagate CF and AL if needed due to error
+.notNet:
+    call dosCrit1Enter
+    test ax, devCharDev
+    jz .blokDev
+    ;Here we simply update date/time fields in the SFT structure before exiting
+    call readDateTimeRecord ;Update DOS internal Time/Date variables
+    ;Build date and time words
+    call getDirDTwords  ;Get date time words packed in eax
+    mov dword [rdi + sft.wTime], eax    ;Store them at the same time
+    jmp short .exit ;Exit critical section
+.blokDev:
+    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer in rbp
+    call setWorkingDPB
+    call updateDirectoryEntryForFile    ;Update the directory entry
+    jc short .exit    ;Return in error if this fails, exit critical
+    call flushFile  ;Now the file gets flushed
+.exit:
+;Propagate CF and AL if needed due to error
+    call dosCrit1Exit
+    return
 renameMain:
 ;Now, creates a special find first block for the source file
 ; that is in curDirCopy. Then we build a search pattern for the new name, 

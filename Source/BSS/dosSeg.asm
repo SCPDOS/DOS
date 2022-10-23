@@ -51,9 +51,9 @@ shareHooks:
     markerShare resq 1  ;Marker Share hook, unused
     openShare   resq 1  ;Share called on open. UNUSED 
     closeShare  resq 1  ;Share called on close. UNUSED
-    closeCompShare  resq 1  ;Share to close all files for a machine. UNUSED.
-    closeTaskShare  resq 1  ;Share to close all files for a task. UNUSED.
-    closeNameShare  resq 1  ;Share to close file by name. UNUSED.
+    closeCompShare  resq 1  ;Share to close all files for a machine.
+    closeTaskShare  resq 1  ;Share to close all files for a task.
+    closeNameShare  resq 1  ;Share to close file by name.
     lockFileShare   resq 1  ;Share to lock file region.
     unlockFileShare resq 1  ;Share to unlock file region.
     checkFileLockShare  resq 1  ;Share to check file region locked. UNUSED.
@@ -262,9 +262,11 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
     sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
     sdaLen      equ     $ - sda 
-    sdaMSLen    equ     $ - sda
+    sdaMSLen    equ     $ - sdaMainSwap
 
 ;Additional variables NOT in the SDA
+    serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
+
     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
     ;for saving the current header when quickly doing a second request
 

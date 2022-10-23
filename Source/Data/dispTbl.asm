@@ -140,5 +140,15 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
 mDispTblL   equ     $ - mDispTbl
 
 serverDispTbl:  ;Server Dispatch functions
-    db 01h  ;Number of entries needs to be 0Bh, but for now, 01h
-    dw serverDispatch - serverDispTbl
+    db 0Bh  ;Number of entries
+    dw serverDispatch - serverDispTbl           ;AX=5D00h
+    dw commitAllFilesForProcess - serverDispTbl ;AX=5D01h
+    dw closeFilesByName - serverDispTbl         ;AX=5D02h
+    dw closeFilesByComputer - serverDispTbl     ;AX=5D03h
+    dw closeFilesByProcess - serverDispTbl      ;AX=5D04h
+    dw getOpenFileListEntry - serverDispTbl     ;AX=5D05h
+    dw getSDAData - serverDispTbl               ;AX=5D06h
+    dw printerRedir - serverDispTbl             ;AX=5D07h
+    dw printerRedir - serverDispTbl             ;AX=5D08h
+    dw printerRedir - serverDispTbl             ;AX=5D09h
+    dw setExtendedErrorInfo - serverDispTbl     ;AX=5D0Ah
