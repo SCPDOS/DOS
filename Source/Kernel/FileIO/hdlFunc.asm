@@ -634,6 +634,8 @@ commitMain:
 ;Commits the current SFT 
     call getCurrentSFT  ;Gets currentSFT into rdi
     movzx eax, word [rdi + sft.wDeviceInfo]
+    test eax, devCharDev | blokFileNoFlush
+    retnz   ;Return if nothing has been written or a char dev
     test ax, devRedirDev
     jnz .notNet
     ;Commit file net redir call and exit
@@ -642,15 +644,6 @@ commitMain:
     return  ;Propagate CF and AL if needed due to error
 .notNet:
     call dosCrit1Enter
-    test ax, devCharDev
-    jz .blokDev
-    ;Here we simply update date/time fields in the SFT structure before exiting
-    call readDateTimeRecord ;Update DOS internal Time/Date variables
-    ;Build date and time words
-    call getDirDTwords  ;Get date time words packed in eax
-    mov dword [rdi + sft.wTime], eax    ;Store them at the same time
-    jmp short .exit ;Exit critical section
-.blokDev:
     mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer in rbp
     call setWorkingDPB
     call updateDirectoryEntryForFile    ;Update the directory entry
@@ -1174,6 +1167,7 @@ buildSFTEntry:
     xor eax, eax
     ;Now set DeviceInfo to drive number and get the dpb for this disk file
     mov al, byte [workingDrv]
+    or al, blokFileNoFlush  ;Dont flush until it is accessed
     mov word [rdi + sft.wDeviceInfo], ax    ;AH already 0
     mov rax, qword [workingDPB]
     mov qword [rdi + sft.qPtr], rax
@@ -1626,11 +1620,11 @@ readExitOk:
 ;Input: ecx = Number of bytes left to transfer!
 ;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
     mov dword [tfrCntr], ecx    ;Update bytes left to transfer
-    jnz .skipbitClear
-    call getCurrentSFT  ;Get currentSFT in rdi
+    ;I argue as this is a simply read-only exit vector, this is unnecessary
+    ;jnz .skipbitClear
+    ;call getCurrentSFT  ;Get currentSFT in rdi
     ;The disk transfer must've flushed by now. 
-    and byte [rdi + sft.wDeviceInfo], ~(blokFileToFlush|charDevNoEOF) ;OR
-    ;Next char dev read should give EOF.
+    ;and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
 .skipbitClear:  ;Or skip that entirely
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
     return 
@@ -1953,12 +1947,12 @@ writeExit:
     call .advPtr
     return  ;Return to caller, ecx = # bytes xfrd
 .advPtr:
-    jecxz .exit
+    jecxz .exit ;If no bytes written, skip updating anything
+    and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
     add dword [rdi + sft.dCurntOff], ecx
 .exit:
     clc
     return
-
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:

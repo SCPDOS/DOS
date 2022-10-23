@@ -438,28 +438,30 @@ updateDirectoryEntryForFile:
     push rdi
     push rbp
 
+    call dosCrit1Enter
     mov rdi, qword [currentSFT]
     mov rbp, qword [workingDPB]
+    test word [rdi + sft.wDeviceInfo], blokFileNoFlush | devCharDev
+    jnz .exit   ;If it is a char dev or hasn't been written to yet, skip this
     test word [rdi + sft.wDeviceInfo], blokNoDTonClose
     jnz .skipDT
     ;Get date and time words and add them to the directory entry
     call readDateTimeRecord ;Update DOS internal Time/Date variables
-    jc .exit  ;If we fail to get time/date, fail the request
     ;Build date and time words
     call getDirDTwords  ;Get date time words packed in eax
     ;Update SFT fields
     mov word [rdi + sft.wTime], ax
     shr eax, 16 ;Eject the time, get the date in eax
     mov word [rdi + sft.wDate], ax
-    or word [rdi + sft.wDeviceInfo], blokFileToFlush  ;We update DT, so flush
+    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush  ;We update DT, so flush
 .skipDT:
 ;Before we read the dir sector in, if we never wrote to the disk
 ; we skip all of this
-    test word [rdi + sft.wDeviceInfo], blokFileToFlush
-    jz .exit ;If the file was never written to, don't bother updating DIR data
+    test word [rdi + sft.wDeviceInfo], blokFileNoFlush
+    jnz .exit ;If the file was never written to, don't bother updating DIR data
     mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
     call getBufForDir  ;Returns buffer pointer in rbx
-    jc .exit    ;If an error is to be returned from, we skip the rest of this
+    jc .exitBad    ;If an error is to be returned from, we skip the rest of this
     ;Now we write the changes to the sector
     ;Mark sector as referenced and dirty! Ready to be flushed!
     call setBufferDirty
@@ -479,18 +481,19 @@ updateDirectoryEntryForFile:
     shr eax, 10h
     mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
     ;Directory sector updated and marked to be flushed to disk!
-    ;Now mark that the file has sectors not yet flushed to disk
-     
-    pushfq  ;Save the state for if we come here from a fail
-    or word [rdi + sft.wDeviceInfo], blokFileToFlush
-    popfq
 .exit:
+    call dosCrit1Exit
     pop rbp
     pop rdi
     pop rbx
     pop rax
     return
-
+.exitBad:
+    pushfq  ;Save the state for if we come here from a fail
+    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush
+    popfq
+    jmp short .exit
+    
 growDirectory:
 ;Input: dword [dirClustPar] must have the first cluster number of the directory
 ;Output: CF=NC => All ok, directory grew by 1 sector

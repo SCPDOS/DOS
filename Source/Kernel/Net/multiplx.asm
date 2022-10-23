@@ -27,3 +27,11 @@ getDosDataSeg:  ;Int 4Fh, AX=1203h
 ;Return: r8 = Dos Data Segment Pointer
     lea r8, dosDataArea
     return
+
+;Some Share Wrapper Functions
+
+openShareCallWrapper:
+    call qword [openShare]
+    return
+closeShareCallWrappre:
+    call qword [closeShare]

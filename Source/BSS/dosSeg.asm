@@ -48,21 +48,21 @@ sysVarsPtr:
     ;Functions which are nowhere called (yet) are noted as UNUSED in caps.
     ;Those which are not meant to be used are noted as unused in lower case.
 shareHooks:
-    markerShare resq 1  ;Marker Share hook, unused
-    openShare   resq 1  ;Share called on open. UNUSED 
-    closeShare  resq 1  ;Share called on close. UNUSED
-    closeCompShare  resq 1  ;Share to close all files for a machine.
-    closeTaskShare  resq 1  ;Share to close all files for a task.
-    closeNameShare  resq 1  ;Share to close file by name.
-    lockFileShare   resq 1  ;Share to lock file region.
-    unlockFileShare resq 1  ;Share to unlock file region.
-    checkFileLockShare  resq 1  ;Share to check file region locked. UNUSED.
-    openFileListShare   resq 1  ;Share to get open file list entry. UNUSED.
-    updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.  UNUSED.
-    fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB. UNUSED.
-    closeDupFileShare   resq 1  ;Share to close file if dup for proc. UNUSED.
+    markerShare resq 1  ;Marker Share hook,                             unused
+    openShare   resq 1  ;Share called on open.                          UNUSED 
+    closeShare  resq 1  ;Share called on close.                         UNUSED
+    closeCompShare  resq 1  ;Share to close all files for a machine.    DONE
+    closeTaskShare  resq 1  ;Share to close all files for a task.       DONE
+    closeNameShare  resq 1  ;Share to close file by name.               DONE
+    lockFileShare   resq 1  ;Share to lock file region.                 DONE
+    unlockFileShare resq 1  ;Share to unlock file region.               DONE
+    checkFileLockShare  resq 1  ;Share to check file region locked.     UNUSED.
+    openFileListShare   resq 1  ;Share to get open file list entry.     DONE
+    updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.      UNUSED.
+    fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB.     UNUSED.
+    closeDupFileShare   resq 1  ;Share to close file if dup for proc.   UNUSED.
     closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. UNUSED
-    updateDirShare      resq 1  ;Share to update dir info in SFT. UNUSED. 
+    updateDirShare      resq 1  ;Share to update dir info in SFT.       UNUSED. 
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size
     firstSft    resb sft_size

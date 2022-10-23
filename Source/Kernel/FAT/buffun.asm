@@ -480,8 +480,8 @@ flushFile:
     push rdi
     push rsi
     ;First check if the file has been written to?
-    test word [rdi + sft.wDeviceInfo], blokFileToFlush
-    jz .exitNoFlush ;Exit without flushing
+    test word [rdi + sft.wDeviceInfo], blokFileNoFlush
+    jnz .exitNoFlush ;Exit without flushing if set
     mov rsi, rdi    ;Move the currentSFT to rsi
     mov rdi, qword [bufHeadPtr]
 .ffLoop:
@@ -497,7 +497,7 @@ flushFile:
     jmp short .ffLoop
 .exit:
     ;Here we undo the disk file to be flushed bit in the SFT
-    and word [rsi + sft.wDeviceInfo], ~blokFileToFlush  ;Clear that bit!
+    or word [rsi + sft.wDeviceInfo], blokFileNoFlush  ;Set that bit again!
 .exitNoFlush:
     pop rsi
     pop rdi

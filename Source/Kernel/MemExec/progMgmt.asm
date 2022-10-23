@@ -177,6 +177,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov eax, 111Dh  ; Close all remote files for process on Abort!
     int 4Fh
 .skipAbortNetClose:
+    call qword [closeTaskShare] ;Close all shared files for this task
     add rdi, psp.jobFileTbl ;Move rdi to point to the start of the JFT
     mov rsi, rdi    ;Point rsi to jft too
     movzx ecx, word [maxHndls] ;Number of entries in JFT
