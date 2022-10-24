@@ -202,6 +202,7 @@ checkIfMedCheck:
     ;!!!!!!!!!!!!
     ;Read the clock record. Cross Day Bndry will always force a new operation
     ;Read the time fields directly.
+    clc
     call swapPrimaryHeader  ;Save the primary header temporarily
     call readDateTimeRecord ;Update the time
     stc ;Set CF, write backup to primary header

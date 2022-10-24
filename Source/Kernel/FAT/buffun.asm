@@ -354,11 +354,11 @@ findSectorInBuffer:     ;Internal linkage
 ;Finds the Buffer for a sector belonging to a particular dpb device
 ;If the sector is not in a buffer, returns with a -1
 ;Input: rax = Sector number
-;       rsi = DPB Ptr
+;       dl = Drive number
 ;Output: rdi = Buffer hdr pointer or -1
     mov rdi, qword [bufHeadPtr]
 .fsiCheckBuffer:
-    cmp qword [rdi + bufferHdr.driveDPBPtr], rsi
+    call .compareDriveNumber
     jne .fsiGotoNextBuffer
     cmp qword [rdi + bufferHdr.bufferLBA], rax
     jne .fsiGotoNextBuffer
@@ -369,6 +369,19 @@ findSectorInBuffer:     ;Internal linkage
     cmp rdi, -1     ;If rdi points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
+.compareDriveNumber:
+;Return ZF=ZE => Equal numbers, proceed with this buffer
+;       ZF=NZ => Not equal, goto next buffer
+;Note, ja <=> ZF=NZ
+    cmp byte [rdi + bufferHdr.driveNumber], dl
+    rete    ;If they are equal, simply return
+    cmp dl, 1
+    reta    ;Return ZF=NZ if we are considering a drive with number > 1
+    cmp byte [rdi + bufferHdr.driveNumber], 1
+    reta    ;Return ZF=NZ if buffer belongs to a drive with number > 1
+    cmp byte [singleDrv], -1 ;Is this a single device system?
+    return  ;If not, ZF=NZ, if equal, ZF=ZE
+
 ;-----------------------------------------------------------------------------
 ;SPECIAL BUFFER FUNCTIONS
 ;Buffer functions for sectors associated to file handles and specific purposes

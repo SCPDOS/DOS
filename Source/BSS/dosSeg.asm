@@ -34,8 +34,7 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
 ;Additional internal variables
-;Only used on single remdrive systems, marks if drive A or B was last accessed
-    singleDrv   resb 1    ;Set if last drive accessed was drive B x
+    singleDrv   resb 1    ;Set if a single removable device system
     numFiles    resb 1    ;FILES=5 default, max 255
     maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
     ;PLEASE DO NOT TOUCH MAXHNDLS!!!

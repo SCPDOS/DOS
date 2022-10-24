@@ -213,14 +213,17 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 
+    call .msdCheckDeviceType
+
     mov rdi, rbx
     xor esi, esi  ;Set sector read counter to zero
 .msdr0:
     mov dh, 82h ;LBA Read Sectors
     call .msdBlkIOCommon
     jc .msdIOError
-    add qword [rdi + ioReqPkt.strtsc], 200h  ;Add one sector
-    add qword [rdi + ioReqPkt.bufptr], 200h  ;Add one sector
+    movzx eax, word [rbp + bpb.bytsPerSec] 
+    add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
+    add qword [rdi + ioReqPkt.bufptr], rax  ;Add one sector
     inc esi
     cmp esi, dword [rdi + ioReqPkt.tfrlen]
     jne .msdr0
@@ -232,14 +235,17 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 
+    call .msdCheckDeviceType
+
     mov rdi, rbx
     xor esi, esi  ;Set sector read counter to zero
 .msdw0:
     mov dh, 83h ;LBA Write Sectors
     call .msdBlkIOCommon
     jc .msdIOError
-    add qword [rdi + ioReqPkt.strtsc], 200h  ;Add one sector
-    add qword [rdi + ioReqPkt.bufptr], 200h  ;Add one sector
+    movzx eax, word [rbp + bpb.bytsPerSec] 
+    add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
+    add qword [rdi + ioReqPkt.bufptr], rax  ;Add one sector
     inc esi
     cmp esi, dword [rdi + ioReqPkt.tfrlen]
     jne .msdw0
@@ -251,6 +257,8 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 
+    call .msdCheckDeviceType
+
     mov rdi, rbx
     xor esi, esi  ;Set counter to zero
 .msdwv0:
@@ -260,8 +268,9 @@ msdDriver:
     mov dh, 84h ;LBA Verify Sectors
     call .msdBlkIOCommon
     jc .msdIOError    ;Error handler needs to add to esi the value in al
-    add qword [rbp + ioReqPkt.strtsc], 200h  ;Add one sector
-    add qword [rbp + ioReqPkt.bufptr], 200h  ;Add one sector
+    movzx eax, word [rbp + bpb.bytsPerSec] 
+    add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
+    add qword [rdi + ioReqPkt.bufptr], rax  ;Add one sector
     inc esi
     cmp esi, dword [rbp + ioReqPkt.tfrlen]
     jne .msdwv0
@@ -323,7 +332,7 @@ msdDriver:
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], setDevReqPkt_size
     jne .msdWriteErrorCode
-
+.msdInternalSetUnitNumber:  ;Called to set the unit number from reqpkt
     mov al, byte [rbx + getDevReqPkt.unitnm]
     mov byte [.msdCurDev], al
     ret
@@ -343,7 +352,40 @@ msdDriver:
     mov ah, dh
     mov al, 01h ;Do one sector at a time 
     int 33h
+    return
+
+.msdCheckDeviceType:
+;If the device numbers dont match but the bpb numbers do, print the message
+;!!!WARNING!!! THIS USES THE CONSOLE BIOS!!! VIOLATES HARDWARE ABSTRACTION!!!!
+    movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the now unit number
+    cmp al, byte [.msdCurDev]    ;Compare against the last transacted device
+    rete    ;Exit if equal
+;If not equal, check they use different BPB's before continuing
+    lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
+    shl eax, 3
+    mov rdx, qword [rsi + rax]  ;Get the bpbptr of this device too
+    cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
+    jne .msdCDTexit ;Exit by setting the new unit number
+    ;Here, device numbers are neq but bpb's are eq. Thus print message
+    shr eax, 3 
+    add al, "A" ;Convert to a letter
+    mov byte [.msdStrikeLetter], al
+    lea rsi, .msdStrike
+    mov ecx, .msdStrikeL
+.msdCDTprintMessage:
+    lodsb   ;Get the char in al, inc rsi
+    int 49h ;Print char in al
+    dec ecx
+    jnz .msdCDTprintMessage
+    xor eax, eax
+    int 36h ;Blocking wait at the keyboard for a keystroke
+.msdCDTexit:
+    call .msdInternalSetUnitNumber  ;Set unit number internally
     ret
+
+.msdStrike db 0Dh,0Ah,"Insert for drive "
+.msdStrikeLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah
+.msdStrikeL equ $ - .msdStrike
 
 .msdDefLabel db "NO NAME ",0 ;Default volume label
 ;LASTDRIVE default is 5

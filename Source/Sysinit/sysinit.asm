@@ -1291,6 +1291,7 @@ diskInit:
     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
+    mov byte fs:[singleDrv], -1    ;Denote this as a single drive system
     ret
 .initReadSector:
 ;Called with sector number in rcx and BIOS device number in dl
