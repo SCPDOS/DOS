@@ -265,7 +265,7 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 
 ;Additional variables NOT in the SDA
     serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
-
+    xActDrv     resb 1  ;0 based number of last drive to transact
     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
     ;for saving the current header when quickly doing a second request
 

@@ -10,7 +10,7 @@ goDriverChar:
 ; with rsi pointing to the SFT entry as qPtr is the driver pointer
     mov rsi, qword [rsi + sft.qPtr]
 goDriver:   ;Executes the driver packet pointed to by rbx
-;Input: rsi = Ptr to the driver to handler the call!
+;Input: rsi = Ptr to the driver to handle the call!
 ;       rbx = Ptr to the request header for the driver call!
     call dosCrit2Enter
     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here

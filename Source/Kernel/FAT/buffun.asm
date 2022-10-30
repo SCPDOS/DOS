@@ -4,6 +4,64 @@
 ;           Externally referenced functions         :
 ;----------------------------------------------------
 
+writeThroughBuffers:
+;Goes through the buffer chain, flushing all buffers for the workingDrv. If 
+; the drive is removable, it also frees them. If we cannot discern if 
+; the drive is removable, it frees the buffers. Else, the buffers remain
+; in situ. Thus, hard disks get better performance cross requests than
+; removable devices but since I cannot guarantee that a removable device,
+; will be the same across calls (or even within a call), we must free them,
+; once we are done. Consider revising this.
+; 
+;Input: byte [workingDrv] = Drive to search for
+;       qword [workingDPB] = Current DPB
+;Output: Flushes (and optionally frees), all dirty sectors belonging to 
+;        this drive.
+    push rbx
+    push rdx
+    push rsi
+    push rdi
+    mov rdx, byte [workingDPB]
+    mov rsi, qword [rdx + dpb.qDriverHeaderPtr] ;Get ptr to the driver hdr
+    movzx eax, word [rsi + drvHdr.attrib]   ;Get the attribute word
+    test eax, devDrvHdlCTL  ;Does this driver support the RemDev request?
+    lea rbx, flushAndFreeBuffer ;If we cant tell, flush and free buffer
+    jz .removable
+    ;If so, now we test the device for removability
+    ;Use primReqHdr
+    movzx eax, byte [workingDrv]
+    lea rbx, primReqHdr
+    mov byte [rbx + remMediaReqPkt.hdrlen], remMediaReqPkt_size
+    mov byte [rbx + remMediaReqPkt.unitnm], al
+    mov byte [rbx + remMediaReqPkt.cmdcde], drvREMMEDCHECK
+    mov word [rbx + remMediaReqPkt.status], 0
+    ;Busy Bit (bit 9) will be set if removable
+    call goDriver
+    test word [rsi + remMediaReqPkt.status], drvBsyStatus
+    lea rbx, flushAndFreeBuffer
+    lea rsi, flushBuffer
+    cmovnz rbx, rsi
+.removable:
+;rbx contains function to call
+;Flush all dirty buffers back
+    movzx eax, byte [workingDrv]    ;Get working drive in al
+    mov rdi, qword [bufHeadPtr] ;Get head of buffer chain
+.lp:
+    cmp byte [rdi + bufferHdr.driveNumber], al
+    je .validFound
+.nextBuffer:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    jmp short .lp
+.validFound:
+    call rbx    ;Call selected function
+    jnc .nextBuffer ;If no error, goto next buffer
+    ;Else pass through the fail!
+.exit:
+    pop rsi
+    pop rdx
+    pop rbx
+    return
+
 makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
 ;Sets the buffer in rdi to the head of the chain
 ;Input: rdi = Buffer header to move to the head of the chain
@@ -358,7 +416,7 @@ findSectorInBuffer:     ;Internal linkage
 ;Output: rdi = Buffer hdr pointer or -1
     mov rdi, qword [bufHeadPtr]
 .fsiCheckBuffer:
-    call .compareDriveNumber
+    cmp byte [rdi + bufferHdr.driveNumber], dl
     jne .fsiGotoNextBuffer
     cmp qword [rdi + bufferHdr.bufferLBA], rax
     jne .fsiGotoNextBuffer
@@ -369,18 +427,6 @@ findSectorInBuffer:     ;Internal linkage
     cmp rdi, -1     ;If rdi points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
-.compareDriveNumber:
-;Return ZF=ZE => Equal numbers, proceed with this buffer
-;       ZF=NZ => Not equal, goto next buffer
-;Note, ja <=> ZF=NZ
-    cmp byte [rdi + bufferHdr.driveNumber], dl
-    rete    ;If they are equal, simply return
-    cmp dl, 1
-    reta    ;Return ZF=NZ if we are considering a drive with number > 1
-    cmp byte [rdi + bufferHdr.driveNumber], 1
-    reta    ;Return ZF=NZ if buffer belongs to a drive with number > 1
-    cmp byte [singleDrv], -1 ;Is this a single device system?
-    return  ;If not, ZF=NZ, if equal, ZF=ZE
 
 ;-----------------------------------------------------------------------------
 ;SPECIAL BUFFER FUNCTIONS
