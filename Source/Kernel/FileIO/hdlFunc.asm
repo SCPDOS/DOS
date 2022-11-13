@@ -955,16 +955,19 @@ deleteMain:
     jz .skipUnlink  ;If there is no FAT allocation for file, skip "dealloc"
     mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
     call unlinkFAT  ;Unlink the FAT entry
-    jc .exit
+    jc .exitBad
 .skipUnlink:
     ;Now replace the first char of the directory to 0E5h
     ;Get the disk directory in a buffer to manipulate the entry
     call getDiskDirectoryEntry
-    jc .exit
+    jc .exitBad
     mov al, byte [delChar]
     xchg byte [rsi], al    ;Mark entry as free, get char in al
     ;CF must be clear
-.exit:
+    call writeThroughBuffers
+    retnc
+.exitBad:
+    call cancelWriteThroughBuffers
     return
 
 openMain:
@@ -1347,7 +1350,11 @@ closeMain: ;Int 4Fh AX=1201h
     ;Don't check the status here, as we are simply informing the driver 
     ; of an operation. Nothing should be able to go wrong. 
     ;Functionally, an ignore if anything does go wrong.
+    call writeThroughBuffers
+    jnc short .exitOk
 .exit:
+    call cancelWriteThroughBuffers
+.exitOk:
     pop rsi
     pop rbx
     call dosCrit1Exit
