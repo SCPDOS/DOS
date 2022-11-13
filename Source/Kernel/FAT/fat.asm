@@ -485,7 +485,7 @@ writeFAT:
     and edi, 0FFFFFFFh  ;Zero upper nybble
     mov dword [rbx + bufferHdr.dataarea + rdx], edi
 .exit:
-    call setBufferDirty
+    call markBufferDirty
     clc
 .exitFail:
     pop rbp
@@ -517,7 +517,7 @@ writeFAT:
     or ecx, esi ;Add low nybble of esi to upper nybble of ecx
     shr esi, 8  ;Move upper byte to lower byte of esi
     mov byte [rbx + bufferHdr.dataarea + rdx], cl
-    call setBufferDirty
+    call markBufferDirty
     inc eax ;Get next FAT sector
     call getBufForFat ;Get buffer Header in ebx
     jc .exitFail

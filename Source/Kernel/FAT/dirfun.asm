@@ -62,7 +62,7 @@ makeDIR:           ;ah = 39h
     jnc .dirEntryFnd
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
     je .bad ;Set CF and exit
-    call growDirectory  ;Increase directory size by 1 cluster
+    call growDirectory  ;Increase directory size by 1 cluster, writes to buffer
     jc .bad
     cmp eax, -1 ;Disk Full?
     je .bad
@@ -82,7 +82,7 @@ makeDIR:           ;ah = 39h
 ;Must now request a cluster and sanitise it
     call startNewChain  ;Get cluster number in eax
     jc .badExit
-    call sanitiseCluster    ;Sanitise this cluster, preserve eax
+    call sanitiseCluster    ;Sanitise this cluster, preserve eax, writes to buf
     jc .badExit
    ;Save the cluster in the dummy dir pointed to by rdi
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
@@ -96,7 +96,7 @@ makeDIR:           ;ah = 39h
     lea rdi, qword [rbx + bufferHdr.dataarea + rax] ;Point to dir entry directly
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
     ;Now need to read in data sector and make two entries . and ..
     push rdi
     push rcx
@@ -137,7 +137,9 @@ makeDIR:           ;ah = 39h
     lea rsi, curDirCopy
     mov ecx, 4
     rep movsq
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
+    call writeThroughBuffers    ;Write the buffers to disk
+    jc .badExit
 .okExit:
     ;AND WE ARE DONE!
     call dosCrit1Exit
@@ -146,6 +148,7 @@ makeDIR:           ;ah = 39h
 .bad:
     mov eax, errAccDen
 .badExit:
+    call cancelWriteThroughBuffers
     call dosCrit1Exit
     jmp extErrExit
 
@@ -255,11 +258,13 @@ removeDIR:         ;ah = 3Ah
     mov byte [rsi], al  ;Store delchar there
     movzx eax, word [rsi + fatDirEntry.fstClusLo]
     movzx edx, word [rsi + fatDirEntry.fstClusHi]
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
     shl edx, 10h
     or eax, edx
     ;Now remove the FAT chain
     call unlinkFAT
+    jc .exitBad
+    call writeThroughBuffers
     jc .exitBad
     call dosCrit1Exit
     xor eax, eax
@@ -267,6 +272,7 @@ removeDIR:         ;ah = 3Ah
 .accessDenied:
     mov eax, errAccDen
 .exitBad:
+    call cancelWriteThroughBuffers
     stc
     call dosCrit1Exit
     jmp extErrExit
@@ -464,7 +470,7 @@ updateDirectoryEntryForFile:
     jc .exitBad    ;If an error is to be returned from, we skip the rest of this
     ;Now we write the changes to the sector
     ;Mark sector as referenced and dirty! Ready to be flushed!
-    call setBufferDirty
+    call markBufferDirty
     lea rbp, qword [rbx + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
@@ -481,6 +487,8 @@ updateDirectoryEntryForFile:
     shr eax, 10h
     mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
     ;Directory sector updated and marked to be flushed to disk!
+    call writeThroughBuffers
+    jc .exitBad
 .exit:
     call dosCrit1Exit
     pop rbp
@@ -489,6 +497,7 @@ updateDirectoryEntryForFile:
     pop rax
     return
 .exitBad:
+    call cancelWriteThroughBuffers
     pushfq  ;Save the state for if we come here from a fail
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush
     popfq
@@ -547,7 +556,7 @@ sanitiseCluster:
     movzx ecx, word [rbp + dpb.wBytesPerSector]
     xor eax, eax
     rep stosb   ;Store one sectorful of zeros
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
 
     dec edx     ;One less sector in the cluster to sanitise!
     jz .exit    ;Jump if we done

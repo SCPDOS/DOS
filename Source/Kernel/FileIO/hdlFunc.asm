@@ -776,7 +776,7 @@ renameMain:
     lea rsi, renameDir
     mov ecx, fatDirEntry_size/8
     rep movsq   ;Copy dir over
-    call setBufferDirty ;Mark buffer as written to now
+    call markBufferDirty ;Mark buffer as written to now
 ;Now we delete the original directory entry
     mov eax, dword [renameFFBlk + ffBlock.dirOffset]
     shl eax, 5  ;Turn into byte offset
@@ -798,7 +798,7 @@ renameMain:
     lea rsi, qword [rbx + bufferHdr.dataarea + rdx] ;rsi points to old dir
     movzx eax, byte [delChar]
     mov byte [rsi], al  ;Store the del char there
-    call setBufferDirty ;Mark buffer as written to now
+    call markBufferDirty ;Mark buffer as written to now
     ;Now we check if source filename or wcdFcbname has a wildcard
     ;If it does, we find next. If not, we exit
     mov al, "?"
@@ -820,14 +820,18 @@ renameMain:
     ;Else propagate the CF if this ends with an error (inc no more files)
 .exit:
     pop rdi ;Pop the ptr to the dest pathspec ptr off stack
+    call writeThroughBuffers
+    jc .badExit
 .exit2: ;Bad exit before we push qword on stack 
     call dosCrit1Exit
     return
 .bad:
     mov eax, errAccDen  ;Temp return code
 .badExit:
+    call cancelWriteThroughBuffers
     stc
-    jmp short .exit
+    pop rdi
+    jmp short .exit2
 
 .searchForDirSpace:
 ;Input: eax = First directory to search 
@@ -1145,7 +1149,7 @@ buildSFTEntry:
     lea rdi, curDirCopy ;Copy this directory entry internally
     mov ecx, fatDirEntry_size
     rep movsb
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
     pop rdi
 .createCommon:  ;rdi must point to the current SFT 
     ;Now populate the remaining SFT fields 
@@ -1230,7 +1234,7 @@ buildSFTEntry:
     xchg rdi, rsi
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
     mov rdi, qword [currentSFT]
     jmp .createCommon
 .open:
@@ -1279,11 +1283,15 @@ buildSFTEntry:
     call goDriver   ;Make request
     pop rbx
 .exit:
+    call writeThroughBuffers
+    jc .bad
     pop rbp
     return
 .bad:
+    call cancelWriteThroughBuffers
     stc
-    jmp short .exit
+    pop rbp
+    return
 closeMain: ;Int 4Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
@@ -1898,7 +1906,7 @@ writeDiskFile:
     mov qword [currentDTA], rsi ;Update currentDTA
     pop rsi
     pop rdi
-    call setBufferDirty
+    call markBufferDirty
     movzx ecx, word [sectTfr]
     test byte [fileGrowing], -1
     jz .notGrowing
@@ -1924,6 +1932,7 @@ writeDiskFile:
     call .exitPrep
     pop rax
 .badExitHard:    ;AL has error code already
+    call cancelWriteThroughBuffers
     stc
     return
 .badExit:
@@ -1942,7 +1951,9 @@ writeDiskFile:
     xor eax, eax
 writeExit:
 ;Advances the bytes on the file pointer
-;eax = Number of bytes transferred
+;eax = Number of bytes transferred  
+    call writeThroughBuffers
+    jc writeDiskFile.exitPrepHardErr
     mov rdi, qword [currentSFT]
     mov ecx, eax
     call .advPtr

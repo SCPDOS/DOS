@@ -4,87 +4,6 @@
 ;           Externally referenced functions         :
 ;----------------------------------------------------
 
-flushAndFreeBuffers:
-; Walk through buffer chain, flushing and freeing the buffers for a given drive.
-; Input: al = Drive number (or -1 for all buffers)
-; Output: All drives flushed and freed for that drive letter
-    push rdi
-    mov rdi, qword [bufHeadPtr] ;Get head ptr
-.mainLp:
-    cmp al, -1
-    je .skipDrvCheck
-    cmp byte [rdi + bufferHdr.driveNumber], al
-    jne .nextBuffer ;If not equal, skip this buffer
-.skipDrvCheck:
-    call flushAndFreeBuffer ;Flush and free this buffer
-    jc .exit    ;Abort and carry CF if something went wrong
-.nextBuffer:
-    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next header
-    cmp rdi, -1
-    jne .mainLp
-.exit:
-    pop rdi
-    return
-
-
-writeThroughBuffers:
-;Goes through the buffer chain, flushing all buffers for the workingDrv. If 
-; the drive is removable, it also frees them. If we cannot discern if 
-; the drive is removable, it frees the buffers. Else, the buffers remain
-; in situ. Thus, hard disks get better performance cross requests than
-; removable devices but since I cannot guarantee that a removable device,
-; will be the same across calls (or even within a call), we must free them,
-; once we are done. Consider revising this.
-; 
-;Input: byte [workingDrv] = Drive to search for
-;       qword [workingDPB] = Current DPB
-;Output: Flushes (and optionally frees), all dirty sectors belonging to 
-;        this drive.
-    push rbx
-    push rdx
-    push rsi
-    push rdi
-    mov rdx, qword [workingDPB]
-    mov rsi, qword [rdx + dpb.qDriverHeaderPtr] ;Get ptr to the driver hdr
-    movzx eax, word [rsi + drvHdr.attrib]   ;Get the attribute word
-    test eax, devDrvHdlCTL  ;Does this driver support the RemDev request?
-    lea rbx, flushAndFreeBuffer ;If we cant tell, flush and free buffer
-    jz .removable
-    ;If so, now we test the device for removability
-    ;Use primReqHdr
-    movzx eax, byte [workingDrv]
-    lea rbx, primReqHdr
-    mov byte [rbx + remMediaReqPkt.hdrlen], remMediaReqPkt_size
-    mov byte [rbx + remMediaReqPkt.unitnm], al
-    mov byte [rbx + remMediaReqPkt.cmdcde], drvREMMEDCHECK
-    mov word [rbx + remMediaReqPkt.status], 0
-    ;Busy Bit (bit 9) will be set if removable
-    call goDriver
-    test word [rsi + remMediaReqPkt.status], drvBsyStatus
-    lea rbx, flushAndFreeBuffer
-    lea rsi, flushBuffer
-    cmovnz rbx, rsi
-.removable:
-;rbx contains function to call
-;Flush all dirty buffers back
-    movzx eax, byte [workingDrv]    ;Get working drive in al
-    mov rdi, qword [bufHeadPtr] ;Get head of buffer chain
-.lp:
-    cmp byte [rdi + bufferHdr.driveNumber], al
-    je .validFound
-.nextBuffer:
-    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-    jmp short .lp
-.validFound:
-    call rbx    ;Call selected function
-    jnc .nextBuffer ;If no error, goto next buffer
-    ;Else pass through the fail!
-.exit:
-    pop rsi
-    pop rdx
-    pop rbx
-    return
-
 makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
 ;Sets the buffer in rdi to the head of the chain
 ;Input: rdi = Buffer header to move to the head of the chain
@@ -245,7 +164,11 @@ testDirtyBufferForDrive:    ;External linkage
     je .tdbfdExit
     jmp short .tdbfdCheckBuffer
 
-freeBuffersForDPB:
+
+cancelWriteThroughBuffers:  ;External linkage
+; Frees all buffers for the workingDPB
+; Alternative symbol for the same function. Used on Fails and Aborts.
+freeBuffersForDPB:  ;External Linkage (Before Get BPB in medchk)
 ;Walks the buffer chain and sets ALL buffers with the given DPB 
 ; to have a drive number of -1, thus freeing it
 ;Given DPB is in rbp
@@ -263,7 +186,31 @@ freeBuffersForDPB:
     pop rbx
     return
 
-setBufferDirty:
+writeThroughBuffers: ;External linkage
+; Flushes and resets the dirty bit for all dirty bufs for working drive
+; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
+;          CF=CY => Buffer failed to flush, marked as dirty and return
+    push rax
+    push rdi
+    mov rax, qword [workingDPB]    ;Get current DPB to compare with
+    mov rdi, qword [bufHeadPtr]
+.mainLp:
+    cmp rdi, -1 ;When we get to the end of the buffer chain, exit
+    je .exit   
+    cmp qword [rdi + bufferHdr.driveDPBPtr], rax  ;Compare dpb numbers
+    jne .nextBuffer
+    call flushBuffer    ;Flush this buffer if it on dpb we want
+    jc .exit  ;If something went wrong, exit
+    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
+.nextBuffer:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
+    jmp short .mainLp
+.exit:
+    pop rdi
+    pop rax
+    return
+
+markBufferDirty:
     push rbp
     pushfq
     mov rbp, qword [currBuff]
@@ -300,8 +247,8 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
+    or byte [rdi + bufferHdr.bufferFlags], refBuffer ;Only set if in buf chain
 .rbExit:
-    or byte [rdi + bufferHdr.bufferFlags], refBuffer
     clc
 .rbExitNoFlag:
     pop rdi
