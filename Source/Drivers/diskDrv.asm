@@ -133,6 +133,8 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], mediaCheckReqPkt_size
     jne .msdWriteErrorCode
 
+    call .msdCheckDeviceType    ;Check and ensure that media type is "swapped"
+    jnz .mmcChange  ;Always change if swapping between same phys volume!
     movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
     lea rcx, .msdBIOSmap
     mov dl, byte [rcx + rax]    ;Translate unitnum to BIOS num
@@ -357,9 +359,10 @@ msdDriver:
 .msdCheckDeviceType:
 ;If the device numbers dont match but the bpb numbers do, print the message
 ;!!!WARNING!!! THIS USES THE CONSOLE BIOS!!! VIOLATES HARDWARE ABSTRACTION!!!!
+;Returns ZF=NZ if media number changed!
     movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the now unit number
     cmp al, byte [.msdCurDev]    ;Compare against the last transacted device
-    rete    ;Exit if equal
+    rete    ;Exit if equal (ZF=ZE)
 ;If not equal, check they use different BPB's before continuing
     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
     shl eax, 3
@@ -381,6 +384,8 @@ msdDriver:
     int 36h ;Blocking wait at the keyboard for a keystroke
 .msdCDTexit:
     call .msdInternalSetUnitNumber  ;Set unit number internally
+    xor eax, eax
+    inc eax ;Clear ZF flag (ZF=NZ)
     ret
 
 .msdStrike db 0Dh,0Ah,"Insert for drive "

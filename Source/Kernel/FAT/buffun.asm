@@ -4,6 +4,29 @@
 ;           Externally referenced functions         :
 ;----------------------------------------------------
 
+flushAndFreeBuffers:
+; Walk through buffer chain, flushing and freeing the buffers for a given drive.
+; Input: al = Drive number (or -1 for all buffers)
+; Output: All drives flushed and freed for that drive letter
+    push rdi
+    mov rdi, qword [bufHeadPtr] ;Get head ptr
+.mainLp:
+    cmp al, -1
+    je .skipDrvCheck
+    cmp byte [rdi + bufferHdr.driveNumber], al
+    jne .nextBuffer ;If not equal, skip this buffer
+.skipDrvCheck:
+    call flushAndFreeBuffer ;Flush and free this buffer
+    jc .exit    ;Abort and carry CF if something went wrong
+.nextBuffer:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next header
+    cmp rdi, -1
+    jne .mainLp
+.exit:
+    pop rdi
+    return
+
+
 writeThroughBuffers:
 ;Goes through the buffer chain, flushing all buffers for the workingDrv. If 
 ; the drive is removable, it also frees them. If we cannot discern if 
@@ -21,7 +44,7 @@ writeThroughBuffers:
     push rdx
     push rsi
     push rdi
-    mov rdx, byte [workingDPB]
+    mov rdx, qword [workingDPB]
     mov rsi, qword [rdx + dpb.qDriverHeaderPtr] ;Get ptr to the driver hdr
     movzx eax, word [rsi + drvHdr.attrib]   ;Get the attribute word
     test eax, devDrvHdlCTL  ;Does this driver support the RemDev request?

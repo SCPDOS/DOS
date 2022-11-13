@@ -183,7 +183,7 @@ getDiskDPB:
     jne .next
     test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
     jz .next    ;IF yes, skip it
-    mov dword [rdi + cds.qDPBPtr], eax  ;Reset start cluster!
+    mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
 .next:
     add rdi, cds_size
     dec cl
