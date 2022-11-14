@@ -12,7 +12,7 @@ BITS 64
 %include "./Source/Include/dosExec.inc"
 Segment .text align=1   ;Init code
 %define currSegVBase 0
-%include "./Source/Sysinit/sysInit.asm"
+%include "./Source/Sysinit/sysinit.asm"
 Segment dSeg nobits align=1 start=0     ;BSS data segment
 %include "./Source/BSS/dosSeg.asm"
 Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
@@ -33,7 +33,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Kernel/MemExec/memFunc.asm"
 %include "./Source/Kernel/MemExec/progMgmt.asm"
 %include "./Source/Kernel/MemExec/exec.asm"
-%include "./Source/Kernel/Local/Local.asm"
+%include "./Source/Kernel/Local/local.asm"
 %include "./Source/Kernel/ctrlc.asm"
 %include "./Source/Kernel/dosPrim.asm"
 %include "./Source/Kernel/dosUtils.asm"
