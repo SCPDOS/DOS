@@ -210,6 +210,7 @@ dir:
     int 41h
     mov eax, 3600h ;Get disk info
     mov dl, byte [dirDrv]
+    inc dl  ;Function 36h wants the 1 based number
     int 41h ;Get disk free space info
     movzx eax, ax   ;Sectors per Cluster 
     movzx ecx, cx   ;Bytes per Sector

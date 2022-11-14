@@ -31,8 +31,8 @@ sysVarsPtr:
     numPhysVol  resb 1    ;Number of physical volumes in the system x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     numBuffers  resb 1    ;Buffers=30 default
-    numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
+    numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
     singleDrv   resb 1    ;Set if a single removable device system
     numFiles    resb 1    ;FILES=5 default, max 255

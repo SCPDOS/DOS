@@ -335,13 +335,45 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 getCurrentDIR:     ;ah = 47h
 ;Input: rsi = Pointer to a 64 byte user memory area
 ;       dl = 1-based Drive Number (0 = Default) 
+    call dosCrit1Enter
     mov al, dl  ;Move drive number into al
-    call getCDS ;Get in rsi the dpb pointer for drive dl
-    jc extErrExit
+    call setDrive ;Set drive variables if it is valid and NOT join
+    jnc .okDrive
+.badExit:
+    call dosCrit1Exit
+    mov eax, errBadDrv
+    jmp extErrExit
 .okDrive:
-    mov rdi, rsi    ;Save destination in rdi
-    call dosCrit1Enter  ;Ensure no task interrupts our copy
+    ;Now we update the DPB, to be accurate for swapped disks
+    push rsi
+    push rdi
+    mov rdi, qword [workingCDS] ;Get CDS ptr in rdi
+    call getDiskDPB
+    pop rdi
+    pop rsi
+    jc extErrExit
+    ;Here, work needs to be done to ensure that the path built is proper
+    ;Subst drives should just fail if the subdir doesnt exist.
+    ;TEMP TEMP: subst will become deactivated if the StartingClust=-1
+    ;Else, starting clust will be made 0, and the path will be reset
+    mov rdi, rsi    ;Save destination buffer in rdi
     mov rsi, qword [workingCDS]  ;Get pointer to current CDS in rsi
+    xor eax, eax
+    dec eax
+    cmp dword [rsi + cds.dStartCluster], eax    ;StartCluster != -1 is all ok
+    jne .writePathInBuffer
+    inc eax
+    mov dword [rsi + cds.dStartCluster], eax    ;Set to root dir
+    test word [rsi + cds.wFlags], cdsSubstDrive
+    jz .notsubst
+    ;TEMP, DEACTIVATE THIS DRIVE!
+    mov word [rsi + cds.wFlags], 0  ;Clear valid bit (and other bits)
+    jmp short .badExit
+.notsubst:
+    ;Here we now add a terminating null at wBackslashOffset
+    movzx eax, word [rsi + cds.wBackslashOffset]
+    mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash
+.writePathInBuffer:
     movzx eax, word [rsi + cds.wBackslashOffset]
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
