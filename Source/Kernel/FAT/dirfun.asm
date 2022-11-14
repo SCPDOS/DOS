@@ -353,9 +353,6 @@ getCurrentDIR:     ;ah = 47h
     pop rsi
     jc extErrExit
     ;Here, work needs to be done to ensure that the path built is proper
-    ;Subst drives should just fail if the subdir doesnt exist.
-    ;TEMP TEMP: subst will become deactivated if the StartingClust=-1
-    ;Else, starting clust will be made 0, and the path will be reset
     mov rdi, rsi    ;Save destination buffer in rdi
     mov rsi, qword [workingCDS]  ;Get pointer to current CDS in rsi
     xor eax, eax
@@ -364,12 +361,8 @@ getCurrentDIR:     ;ah = 47h
     jne .writePathInBuffer
     inc eax
     mov dword [rsi + cds.dStartCluster], eax    ;Set to root dir
-    test word [rsi + cds.wFlags], cdsSubstDrive
-    jz .notsubst
-    ;TEMP, DEACTIVATE THIS DRIVE!
-    mov word [rsi + cds.wFlags], 0  ;Clear valid bit (and other bits)
-    jmp short .badExit
-.notsubst:
+    cmp word [rsi + cds.wFlags], 0  ;Is this a newly deactivated drive?
+    je .badExit ;TEMP, ERROR IF SO (WAS A SUBST DRIVE)
     ;Here we now add a terminating null at wBackslashOffset
     movzx eax, word [rsi + cds.wBackslashOffset]
     mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash

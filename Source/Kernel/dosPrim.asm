@@ -186,6 +186,11 @@ getDiskDPB:
     test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
     jz .next    ;IF yes, skip it
     mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
+    ;Subst drives should just fail if the subdir doesnt exist.
+    ;TEMP TEMP: subst will become deactivated and their StartingClust=-1
+    test word [rdi + cds.wFlags], cdsSubstDrive
+    jz .next    ;If bit not set, skip this next bit
+    mov word [rdi + cds.wFlags], 0  ;Clear the flags rendering this drv dead
 .next:
     add rdi, cds_size
     dec ecx
