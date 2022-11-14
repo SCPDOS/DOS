@@ -210,6 +210,7 @@ dir:
     int 41h
     mov eax, 3600h ;Get disk info
     mov dl, byte [dirDrv]
+    inc dl  ;Function 36h wants the 1 based number
     int 41h ;Get disk free space info
     movzx eax, ax   ;Sectors per Cluster 
     movzx ecx, cx   ;Bytes per Sector
@@ -397,10 +398,7 @@ mkdir:
     lea rdx, searchSpec
     mov eax, 3900h  ;MKDIR
     int 41h
-    jc .badMake   ;Return if not carry
-    mov ah, 0Dh
-    int 41h ;Flush to disk
-    return
+    retnc
 .badMake:   ;Else, bad make
     lea rdx, badMD
     mov eax, 0900h
@@ -420,10 +418,7 @@ rmdir:
     lea rdx, searchSpec
     mov eax, 3A00h  ;RMDIR
     int 41h
-    jc .badRemove   ;Return if not carry
-    mov ah, 0Dh
-    int 41h ;Flush to disk
-    return
+    retnc   ;Return if not carry
 .badRemove:   ;Else, bad make
     lea rdx, badRD
     mov eax, 0900h

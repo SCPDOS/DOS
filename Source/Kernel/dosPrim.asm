@@ -10,7 +10,7 @@ goDriverChar:
 ; with rsi pointing to the SFT entry as qPtr is the driver pointer
     mov rsi, qword [rsi + sft.qPtr]
 goDriver:   ;Executes the driver packet pointed to by rbx
-;Input: rsi = Ptr to the driver to handler the call!
+;Input: rsi = Ptr to the driver to handle the call!
 ;       rbx = Ptr to the request header for the driver call!
     call dosCrit2Enter
     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
@@ -173,53 +173,33 @@ getDiskDPB:
     jc .exitBad ;Preserve CF
     jnz .exit
     ;Here re-init all CDS's that refer to the dpb if the disk was switched
-    mov cl, byte [lastdrvNum]
+    movzx ecx, byte [lastdrvNum]
     xor eax, eax
     dec rax ; -1 means start of root dir and never accessed (i.e. reset path)!
     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
 .checkCDS:
-    cmp rsi, qword [rdi + cds.qDPBPtr]
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    jnz .next
+    cmp qword [rdi + cds.qDPBPtr], rsi
     jne .next
     test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
     jz .next    ;IF yes, skip it
-    mov dword [rdi + cds.qDPBPtr], eax  ;Reset start cluster!
+    mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
+    ;Subst drives should just fail if the subdir doesnt exist.
+    ;TEMP TEMP: subst will become deactivated and their StartingClust=-1
+    test word [rdi + cds.wFlags], cdsSubstDrive
+    jz .next    ;If bit not set, skip this next bit
+    mov word [rdi + cds.wFlags], 0  ;Clear the flags rendering this drv dead
 .next:
     add rdi, cds_size
-    dec cl
+    dec ecx
     jnz .checkCDS
 .exit:
     clc
 .exitBad:
     return
 
-checkIfMedCheck:
-;Input: rsi = DPB for disk
-    push rax
-    push rbx
-    ;!!!!!!!!!!!!
-    ;For now just if its the same disk, be ok with it.
-    ;!!!!!!!!!!!!
-    ;Read the clock record. Cross Day Bndry will always force a new operation
-    ;Read the time fields directly.
-    clc
-    call swapPrimaryHeader  ;Save the primary header temporarily
-    call readDateTimeRecord ;Update the time
-    stc ;Set CF, write backup to primary header
-    call swapPrimaryHeader
-
-
-    mov al, byte [rsi + dpb.bDriveNumber] 
-    cmp byte [lastDiskNum], al
-    jnz .exit
-
-.exit:
-    pop rbx
-    pop rax
-    return
-.okTime:
-    xor ebx, ebx
-    jmp short .exit
 ensureDiskValid:
 ;Do a media check, if need be to rebuild the DPB, do it!
 ;On entry: rbp = DPB (and working DPB = DPB)

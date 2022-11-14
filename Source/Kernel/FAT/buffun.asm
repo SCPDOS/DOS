@@ -164,7 +164,11 @@ testDirtyBufferForDrive:    ;External linkage
     je .tdbfdExit
     jmp short .tdbfdCheckBuffer
 
-freeBuffersForDPB:
+
+cancelWriteThroughBuffers:  ;External linkage
+; Frees all buffers for the workingDPB
+; Alternative symbol for the same function. Used on Fails and Aborts.
+freeBuffersForDPB:  ;External Linkage (Before Get BPB in medchk)
 ;Walks the buffer chain and sets ALL buffers with the given DPB 
 ; to have a drive number of -1, thus freeing it
 ;Given DPB is in rbp
@@ -182,7 +186,31 @@ freeBuffersForDPB:
     pop rbx
     return
 
-setBufferDirty:
+writeThroughBuffers: ;External linkage
+; Flushes and resets the dirty bit for all dirty bufs for working drive
+; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
+;          CF=CY => Buffer failed to flush, marked as dirty and return
+    push rax
+    push rdi
+    mov rax, qword [workingDPB]    ;Get current DPB to compare with
+    mov rdi, qword [bufHeadPtr]
+.mainLp:
+    cmp rdi, -1 ;When we get to the end of the buffer chain, exit
+    je .exit   
+    cmp qword [rdi + bufferHdr.driveDPBPtr], rax  ;Compare dpb numbers
+    jne .nextBuffer
+    call flushBuffer    ;Flush this buffer if it on dpb we want
+    jc .exit  ;If something went wrong, exit
+    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
+.nextBuffer:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
+    jmp short .mainLp
+.exit:
+    pop rdi
+    pop rax
+    return
+
+markBufferDirty:
     push rbp
     pushfq
     mov rbp, qword [currBuff]
@@ -219,8 +247,8 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
+    or byte [rdi + bufferHdr.bufferFlags], refBuffer ;Only set if in buf chain
 .rbExit:
-    or byte [rdi + bufferHdr.bufferFlags], refBuffer
     clc
 .rbExitNoFlag:
     pop rdi
@@ -358,7 +386,7 @@ findSectorInBuffer:     ;Internal linkage
 ;Output: rdi = Buffer hdr pointer or -1
     mov rdi, qword [bufHeadPtr]
 .fsiCheckBuffer:
-    call .compareDriveNumber
+    cmp byte [rdi + bufferHdr.driveNumber], dl
     jne .fsiGotoNextBuffer
     cmp qword [rdi + bufferHdr.bufferLBA], rax
     jne .fsiGotoNextBuffer
@@ -369,18 +397,6 @@ findSectorInBuffer:     ;Internal linkage
     cmp rdi, -1     ;If rdi points to -1, exit
     je .fsiExit
     jmp short .fsiCheckBuffer
-.compareDriveNumber:
-;Return ZF=ZE => Equal numbers, proceed with this buffer
-;       ZF=NZ => Not equal, goto next buffer
-;Note, ja <=> ZF=NZ
-    cmp byte [rdi + bufferHdr.driveNumber], dl
-    rete    ;If they are equal, simply return
-    cmp dl, 1
-    reta    ;Return ZF=NZ if we are considering a drive with number > 1
-    cmp byte [rdi + bufferHdr.driveNumber], 1
-    reta    ;Return ZF=NZ if buffer belongs to a drive with number > 1
-    cmp byte [singleDrv], -1 ;Is this a single device system?
-    return  ;If not, ZF=NZ, if equal, ZF=ZE
 
 ;-----------------------------------------------------------------------------
 ;SPECIAL BUFFER FUNCTIONS

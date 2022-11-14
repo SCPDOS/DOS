@@ -62,7 +62,7 @@ makeDIR:           ;ah = 39h
     jnc .dirEntryFnd
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
     je .bad ;Set CF and exit
-    call growDirectory  ;Increase directory size by 1 cluster
+    call growDirectory  ;Increase directory size by 1 cluster, writes to buffer
     jc .bad
     cmp eax, -1 ;Disk Full?
     je .bad
@@ -82,7 +82,7 @@ makeDIR:           ;ah = 39h
 ;Must now request a cluster and sanitise it
     call startNewChain  ;Get cluster number in eax
     jc .badExit
-    call sanitiseCluster    ;Sanitise this cluster, preserve eax
+    call sanitiseCluster    ;Sanitise this cluster, preserve eax, writes to buf
     jc .badExit
    ;Save the cluster in the dummy dir pointed to by rdi
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
@@ -96,7 +96,7 @@ makeDIR:           ;ah = 39h
     lea rdi, qword [rbx + bufferHdr.dataarea + rax] ;Point to dir entry directly
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
     ;Now need to read in data sector and make two entries . and ..
     push rdi
     push rcx
@@ -137,7 +137,9 @@ makeDIR:           ;ah = 39h
     lea rsi, curDirCopy
     mov ecx, 4
     rep movsq
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
+    call writeThroughBuffers    ;Write the buffers to disk
+    jc .badExit
 .okExit:
     ;AND WE ARE DONE!
     call dosCrit1Exit
@@ -146,6 +148,7 @@ makeDIR:           ;ah = 39h
 .bad:
     mov eax, errAccDen
 .badExit:
+    call cancelWriteThroughBuffers
     call dosCrit1Exit
     jmp extErrExit
 
@@ -255,11 +258,13 @@ removeDIR:         ;ah = 3Ah
     mov byte [rsi], al  ;Store delchar there
     movzx eax, word [rsi + fatDirEntry.fstClusLo]
     movzx edx, word [rsi + fatDirEntry.fstClusHi]
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
     shl edx, 10h
     or eax, edx
     ;Now remove the FAT chain
     call unlinkFAT
+    jc .exitBad
+    call writeThroughBuffers
     jc .exitBad
     call dosCrit1Exit
     xor eax, eax
@@ -267,6 +272,7 @@ removeDIR:         ;ah = 3Ah
 .accessDenied:
     mov eax, errAccDen
 .exitBad:
+    call cancelWriteThroughBuffers
     stc
     call dosCrit1Exit
     jmp extErrExit
@@ -329,13 +335,38 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 getCurrentDIR:     ;ah = 47h
 ;Input: rsi = Pointer to a 64 byte user memory area
 ;       dl = 1-based Drive Number (0 = Default) 
+    call dosCrit1Enter
     mov al, dl  ;Move drive number into al
-    call getCDS ;Get in rsi the dpb pointer for drive dl
-    jc extErrExit
+    call setDrive ;Set drive variables if it is valid and NOT join
+    jnc .okDrive
+.badExit:
+    call dosCrit1Exit
+    mov eax, errBadDrv
+    jmp extErrExit
 .okDrive:
-    mov rdi, rsi    ;Save destination in rdi
-    call dosCrit1Enter  ;Ensure no task interrupts our copy
+    ;Now we update the DPB, to be accurate for swapped disks
+    push rsi
+    push rdi
+    mov rdi, qword [workingCDS] ;Get CDS ptr in rdi
+    call getDiskDPB
+    pop rdi
+    pop rsi
+    jc extErrExit
+    ;Here, work needs to be done to ensure that the path built is proper
+    mov rdi, rsi    ;Save destination buffer in rdi
     mov rsi, qword [workingCDS]  ;Get pointer to current CDS in rsi
+    xor eax, eax
+    dec eax
+    cmp dword [rsi + cds.dStartCluster], eax    ;StartCluster != -1 is all ok
+    jne .writePathInBuffer
+    inc eax
+    mov dword [rsi + cds.dStartCluster], eax    ;Set to root dir
+    cmp word [rsi + cds.wFlags], 0  ;Is this a newly deactivated drive?
+    je .badExit ;TEMP, ERROR IF SO (WAS A SUBST DRIVE)
+    ;Here we now add a terminating null at wBackslashOffset
+    movzx eax, word [rsi + cds.wBackslashOffset]
+    mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash
+.writePathInBuffer:
     movzx eax, word [rsi + cds.wBackslashOffset]
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
@@ -464,7 +495,7 @@ updateDirectoryEntryForFile:
     jc .exitBad    ;If an error is to be returned from, we skip the rest of this
     ;Now we write the changes to the sector
     ;Mark sector as referenced and dirty! Ready to be flushed!
-    call setBufferDirty
+    call markBufferDirty
     lea rbp, qword [rbx + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
@@ -481,6 +512,8 @@ updateDirectoryEntryForFile:
     shr eax, 10h
     mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
     ;Directory sector updated and marked to be flushed to disk!
+    call writeThroughBuffers
+    jc .exitBad
 .exit:
     call dosCrit1Exit
     pop rbp
@@ -489,6 +522,7 @@ updateDirectoryEntryForFile:
     pop rax
     return
 .exitBad:
+    call cancelWriteThroughBuffers
     pushfq  ;Save the state for if we come here from a fail
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush
     popfq
@@ -547,7 +581,7 @@ sanitiseCluster:
     movzx ecx, word [rbp + dpb.wBytesPerSector]
     xor eax, eax
     rep stosb   ;Store one sectorful of zeros
-    call setBufferDirty ;We wrote to this buffer
+    call markBufferDirty ;We wrote to this buffer
 
     dec edx     ;One less sector in the cluster to sanitise!
     jz .exit    ;Jump if we done

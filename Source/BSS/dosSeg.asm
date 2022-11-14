@@ -31,8 +31,8 @@ sysVarsPtr:
     numPhysVol  resb 1    ;Number of physical volumes in the system x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     numBuffers  resb 1    ;Buffers=30 default
-    numJoinDrv  resb 1    ;Number of Joined Drives
     nulDevHdr   resb drvHdr_size
+    numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
     singleDrv   resb 1    ;Set if a single removable device system
     numFiles    resb 1    ;FILES=5 default, max 255
@@ -265,7 +265,7 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 
 ;Additional variables NOT in the SDA
     serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
-
+    xActDrv     resb 1  ;0 based number of last drive to transact
     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
     ;for saving the current header when quickly doing a second request
 
