@@ -97,8 +97,9 @@ initBegin:
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     mov byte fs:[numFiles], 5      ;Default 20 files, at start 5
-    mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
+    mov word fs:[shareCount], 3    ;Retry the repeat 3 times before failing
+    mov word fs:[shareDelay], 1    ;Go through one multiple of countdown loop
     ;If no detected Int 33h devices, halt 
     shr r8, 2*8
     test r8b, r8b
@@ -1051,6 +1052,7 @@ l1:
     mov qword [rbx + execProg.pfcb2], rax
     lea rdx, cmdLine
     mov qword [rbx + execProg.pCmdLine], rdx    ;Store command line here
+    breakpoint
     mov eax, 4B00h  ;Exec Prog
     int 41h
     lea rdx, badCom
@@ -1291,7 +1293,6 @@ diskInit:
     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
-    mov byte fs:[singleDrv], -1    ;Denote this as a single drive system
     ret
 .initReadSector:
 ;Called with sector number in rcx and BIOS device number in dl

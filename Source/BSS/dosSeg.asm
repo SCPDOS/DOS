@@ -11,7 +11,11 @@ dosDataArea:
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
 ;Above is the system stats
-;Below is the DOS vars
+;Below is the DOS vars, DO NOT TOUCH FROM SHARE TO NUMJOINDRV
+;Both below variables can be edited with Int 41h AX=440Bh
+    shareCount  resw 1    ;Share Retry Count, number of repeats before fail.
+    shareDelay  resw 1    ;Share Delay, in multiples of ms. (TEMP, just loop)
+                resq 1    ;Unused ptr for future, current disk buffer
     vConHdlOff  resq 1    ;Ptr into buff to the next char to process in hdl req
     ;   A value of 0 means no chars buffered.
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
@@ -34,9 +38,7 @@ sysVarsPtr:
     nulDevHdr   resb drvHdr_size
     numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
-    singleDrv   resb 1    ;Set if a single removable device system
     numFiles    resb 1    ;FILES=5 default, max 255
-    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
     ;PLEASE DO NOT TOUCH MAXHNDLS!!!
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
@@ -182,7 +184,7 @@ sdaMainSwap:
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
     badNameRen  resb 1  ;Device name or File not found for rename
-    rwFlag      resb 1  ;00h=Read, -1=Write
+    rwFlag      resb 1  ;00h=Read, -1=Write, used for error reporting!
     spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
