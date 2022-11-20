@@ -97,7 +97,6 @@ initBegin:
     mov byte fs:[numFixDrv], al    ;Save number of physical hard drives
     mov byte fs:[lastdrvNum], 5    ;Last drive is by default 5
     mov byte fs:[numFiles], 5      ;Default 20 files, at start 5
-    mov word fs:[maxHndls], 20     ;Maximum of 20 handles per app initially
     mov byte fs:[numBuffers], 1    ;Default 30 buffers, at start 1 
     mov word fs:[shareCount], 3    ;Retry the repeat 3 times before failing
     mov word fs:[shareDelay], 1    ;Go through one multiple of countdown loop

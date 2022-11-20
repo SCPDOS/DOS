@@ -39,7 +39,6 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
     numFiles    resb 1    ;FILES=5 default, max 255
-    maxHndls    resw 1    ;Initially hardcoded 20, will be made changable later
     ;PLEASE DO NOT TOUCH MAXHNDLS!!!
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
