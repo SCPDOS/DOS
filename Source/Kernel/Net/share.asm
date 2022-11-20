@@ -20,3 +20,17 @@ openShareCallWrapper:
 closeShareCallWrapper:
     call qword [closeShare]
     return
+
+shareCriticalError: ;Int 4Fh AX=120Ah
+    push rdi
+    mov byte [rwFlag], 0    ;Default to read
+    mov byte [Int44bitfld], critRetryOK | critFailOK
+    mov rbp, qword [workingDPB]
+    mov edi, 1
+    mov rdx, qword [rbp + dpb.qDriverHeaderPtr]
+    call fullcriticalErrorInvoke
+    pop rdi
+    cmp al, 1   ;If we returned retry, return plainly, else set CF
+    rete
+    stc
+    return

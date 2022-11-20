@@ -1,3 +1,7 @@
+fullcriticalErrorInvoke:
+    mov eax, 03 ;Always fail for now
+    return
+
 diskDevErr:
 ;Called, NOT Jumped to. 
 ;Input: rdi = Disk Buffer pointer
