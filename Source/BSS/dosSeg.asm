@@ -11,7 +11,11 @@ dosDataArea:
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
 ;Above is the system stats
-;Below is the DOS vars
+;Below is the DOS vars, DO NOT TOUCH FROM SHARE TO NUMJOINDRV
+;Both below variables can be edited with Int 41h AX=440Bh
+    shareCount  resw 1    ;Share Retry Count, number of repeats before fail.
+    shareDelay  resw 1    ;Share Delay, in multiples of ms. (TEMP, just loop)
+                resq 1    ;Unused ptr for future, current disk buffer
     vConHdlOff  resq 1    ;Ptr into buff to the next char to process in hdl req
     ;   A value of 0 means no chars buffered.
     mcbChainPtr resq 1    ;Pointer to the MCB chain x
