@@ -1608,7 +1608,12 @@ readDiskFile:
     cmova ecx, ebx  ;Move it into ecx if so
     push rdi
     mov rdi, qword [currentDTA]
-    call readWriteBytesBinary
+    ;call readWriteBytesBinary
+    push rcx
+    rep movsb
+    pop rcx
+    add dword [currByteF], ecx ;Move file pointer by ecx bytes
+    sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rdi ;rdi has been shifted by ecx on entry amount
     pop rdi
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
@@ -2201,25 +2206,6 @@ getBytesTransferred:
     neg ecx ;Multiply by -1
     add ecx, dword [tfrLen]     ;Add total bytes to transfer
     return ;Return bytes transferred in ecx
-
-readWriteBytesBinary:
-;Input: ecx = number of bytes to read in Binary mode
-;       rdi = Points to where in caller buffer to read/write bytes
-;       rsi = Points to where in DOS buffer to write/read pointer
-;xchg rdi and rsi if rwFlag is set (i.e. a write operation)
-;Preserve rcx so we know how many bytes transferred
-;Update the currByteA variable
-;Returns (rsi and rdi) + (ecx on entry)
-    push rcx
-    test byte [rwFlag], -1   ;Is this a write operaiton
-    jz .noSwap
-    xchg rdi, rsi
-.noSwap:
-    rep movsb
-    pop rcx
-    add dword [currByteF], ecx ;Move file pointer by ecx bytes
-    sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
-    return
 
 findFreeJFTSpace:
 ;Input: [currentPSP] = Task whose PSP we will look through
