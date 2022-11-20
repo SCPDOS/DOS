@@ -196,21 +196,6 @@ dosCrit2Exit:
     pop rax
     return
 
-;Generic Share Hooks
-shareBadFunction:
-    mov eax, errInvFnc
-    mov word [errorExCde], ax
-    stc
-    return
-badDfltShareHook:
-;Return CF=CY
-    call shareBadFunction
-    return
-goodDfltShareHook:
-;Return CF=NC
-    clc
-    return
-
 ;FCB specific returns
 fcbGoodExit:
 ;Preserve the carry flag on entry to DOS

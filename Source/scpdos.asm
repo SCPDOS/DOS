@@ -40,6 +40,7 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./Source/Kernel/dosMain.asm"
 %include "./Source/Kernel/Net/server.asm"
 %include "./Source/Kernel/Net/multiplx.asm"
+%include "./Source/Kernel/Net/share.asm"
 %include "./Source/Drivers/drvData.asm"
 %include "./Source/Drivers/charDrv.asm"
 %include "./Source/Drivers/diskDrv.asm"

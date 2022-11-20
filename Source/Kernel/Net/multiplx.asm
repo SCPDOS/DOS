@@ -28,12 +28,3 @@ getDosDataSeg:  ;Int 4Fh, AX=1203h
     lea r8, dosDataArea
     return
 
-;Some Share Functions (File multiplexing I suppose hehe)
-
-openShareCallWrapper:
-    call qword [openShare]
-    return
-closeShareCallWrappre:
-    call qword [closeShare]
-    return
-
