@@ -185,7 +185,7 @@ sdaMainSwap:
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
     badNameRen  resb 1  ;Device name or File not found for rename
-    rwFlag      resb 1  ;00h=Read, -1=Write
+    rwFlag      resb 1  ;00h=Read, -1=Write, read/write/share error reporting
     spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
