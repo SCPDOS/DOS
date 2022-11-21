@@ -48,21 +48,24 @@ sysVarsPtr:
     ;Note to programmer - Please adjust as necessary:
     ;Functions which are nowhere called (yet) are noted as UNUSED in caps.
     ;Those which are not meant to be used are noted as unused in lower case.
+    ;Those suffixed with a ? have their future in question.
+    ;Those suffixed with a / are done partially wrt MSDOS, because SCPDOS does
+    ; not open handles for actions such as file rename etc.
 shareHooks:
     markerShare resq 1  ;Marker Share hook,                             unused
-    openShare   resq 1  ;Share called on open.                          UNUSED 
-    closeShare  resq 1  ;Share called on close.                         UNUSED
+    openShare   resq 1  ;Share called on open.                          DONE 
+    closeShare  resq 1  ;Share called on close.                         DONE/
     closeCompShare  resq 1  ;Share to close all files for a machine.    DONE
     closeTaskShare  resq 1  ;Share to close all files for a task.       DONE
-    closeNameShare  resq 1  ;Share to close file by name.               DONE
+    closeNameShare  resq 1  ;Share to close file by name.               DONE/
     lockFileShare   resq 1  ;Share to lock file region.                 DONE
     unlockFileShare resq 1  ;Share to unlock file region.               DONE
-    checkFileLockShare  resq 1  ;Share to check file region locked.     UNUSED.
+    checkFileLockShare  resq 1  ;Share to check file region locked.     DONE
     openFileListShare   resq 1  ;Share to get open file list entry.     DONE
-    updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.      UNUSED.
-    fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB.     UNUSED.
-    closeDupFileShare   resq 1  ;Share to close file if dup for proc.   DONE.
-    closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. UNUSED
+    updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.      UNUSED?
+    fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB.     UNUSED?
+    closeDupFileShare   resq 1  ;Share to close file if dup for proc.   DONE
+    closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. UNUSED?
     updateDirShare      resq 1  ;Share to update dir info in SFT.       DONE. 
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size
