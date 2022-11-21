@@ -1598,8 +1598,22 @@ readDiskFile:
     mov dword [currClustD], eax
     test eax, eax   ;If starting cluster is zero, exit no bytes read
     jz readExitOk
-    xor ebx, ebx    ;Use ebx to contain the old cluster number
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
+    ;Check if we have opened a volume label (should never happen)
+    test word [rdi + sft.wOpenMode], volumeLabel    ;If we try read from vollbl
+    jz .shareCheck
+    mov eax, errAccDen
+    stc
+    return
+.shareCheck:
+;Entered with rdi -> SFT and ecx=number of bytes to read (to check if possible)
+    call retryShareIODelay
+    jnc .shareOk
+    call shareCheckReadLockViolation
+    jnc .shareCheck ;IF the user selected retry, lets try again
+    return  ;Otherwise, return with the share error code in eax and CF=CY
+.shareOk:
+    xor ebx, ebx    ;Use ebx to contain the old cluster number
     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
     jz .skipWalk
 .goToCurrentCluster:
@@ -1637,7 +1651,6 @@ readDiskFile:
     cmova ecx, ebx  ;Move it into ecx if so
     push rdi
     mov rdi, qword [currentDTA]
-    ;call readWriteBytesBinary
     push rcx
     rep movsb
     pop rcx
@@ -1821,10 +1834,22 @@ writeCharDev:
     return
 writeDiskFile:
     ;rdi has SFT ptr
+    mov ecx, dword [tfrLen] ;Get the transfer length 
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], -1    ;Write operation
     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
     jnz .badExit
+    test ecx, ecx
+    jnz .nonZeroWrite
+    mov ecx, -1 ;If write cnt is 0 (i.e. truncating file), check for NO locks
+.nonZeroWrite:
+    ;Now do share check here
+    call retryShareIODelay
+    jnc .proceedWithWrite   ;No lock for rdi and ecx, all good!
+    call shareCheckWriteLockViolation
+    jnc .nonZeroWrite   ;If returned retry, retry the request
+    return  ;Else return with CF=CY
+.proceedWithWrite:
     xor ebx, ebx
     mov dword [bytesAppend], ebx ;Reset the appending counter
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
