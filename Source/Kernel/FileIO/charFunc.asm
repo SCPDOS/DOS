@@ -813,7 +813,7 @@ editKeys:
     scasb   ;Compare byte 1 to al, inc rdi to point to word offset
     je .charFound
     dec ecx ;If this goes to zero, reenter count.
-    jz buffCharInput_BE.mainLoop2
+    jz .notInTable
     add rdi, 2  ;Skip next two bytes
     jmp short .lp
 .charFound:
@@ -822,3 +822,7 @@ editKeys:
     add rcx, rdi    ;Add offset from table to table address to get jump addr
     pop rdi
     jmp rcx
+.notInTable:
+    pop rcx ;Realign stack
+    pop rcx
+    jmp buffCharInput_BE.mainLoop2
