@@ -61,9 +61,9 @@ shareHooks:
     openFileListShare   resq 1  ;Share to get open file list entry.     DONE
     updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.      UNUSED.
     fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB.     UNUSED.
-    closeDupFileShare   resq 1  ;Share to close file if dup for proc.   UNUSED.
+    closeDupFileShare   resq 1  ;Share to close file if dup for proc.   DONE.
     closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. UNUSED
-    updateDirShare      resq 1  ;Share to update dir info in SFT.       UNUSED. 
+    updateDirShare      resq 1  ;Share to update dir info in SFT.       DONE. 
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size
     firstSft    resb sft_size

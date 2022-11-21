@@ -495,7 +495,6 @@ updateDirectoryEntryForFile:
     jc .exitBad    ;If an error is to be returned from, we skip the rest of this
     ;Now we write the changes to the sector
     ;Mark sector as referenced and dirty! Ready to be flushed!
-    call markBufferDirty
     lea rbp, qword [rbx + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
@@ -512,6 +511,10 @@ updateDirectoryEntryForFile:
     shr eax, 10h
     mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
     ;Directory sector updated and marked to be flushed to disk!
+    xor eax, eax
+    call qword [updateDirShare]
+    clc ;Clear CF as updateDirShare Defaults to CF=CY
+    call markBufferDirty
     call writeThroughBuffers
     jc .exitBad
 .exit:

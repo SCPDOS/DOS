@@ -89,7 +89,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
     movzx eax, word [currentHdl]
-    ;SHARE HOOK, DOS DS:[008Ch]
+    call qword [closeDupFileShare]  ;Close Duplicate Handles if opened file! 
     jmp extGoodExit ;Save ax and return OK
 .exitBad:
     sti ;To prevent new net open/create reqs from crapping out a failed request
@@ -1105,7 +1105,9 @@ createMain:
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
     pop rbx ;Pop the word off (though it has been used already!)
-    ;Here we put Share mode stuff
+    mov eax, 2
+    call qword [updateDirShare]
+    clc ;Always clear the CF flag here updateDir defaults to CF=CY
     call dosCrit1Exit
     return
 buildSFTEntry:
@@ -1361,6 +1363,11 @@ closeMain: ;Int 4Fh AX=1201h
     jnz .driverClose
     inc word [rdi + sft.wNumHandles]    ;Now make it zero again as it is -1
 .driverClose:
+    push rax
+    push rcx
+    call closeShareCallWrapper  ;The SFT count has been decremented
+    pop rcx
+    pop rax
     xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
     ;and if the device is a disk device, cl will have the unit number
     ;We first check if the driver supports oper/close requests
@@ -1967,6 +1974,8 @@ writeDiskFile:
     pop rax
 .badExitHard:    ;AL has error code already
     call cancelWriteThroughBuffers
+    mov eax, 1  ;Give it one last update of the data in the directory!
+    call qword [updateDirShare]
     stc
     return
 .badExit:
@@ -1982,6 +1991,8 @@ writeDiskFile:
     jmp writeExit
 
 .noByteExit:
+    mov eax, 2  ;Update last accessed fields of SFT
+    call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
     xor eax, eax
 writeExit:
 ;Advances the bytes on the file pointer
@@ -1997,6 +2008,8 @@ writeExit:
     and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
     add dword [rdi + sft.dCurntOff], ecx
 .exit:
+    mov eax, 1  ;Give it one last update of the data in the directory!
+    call qword [updateDirShare] ;Remember, CF=CY by default!
     clc
     return
 ;-----------------------------------:
