@@ -309,12 +309,10 @@ msdDriver:
 
     movzx rax, byte [rbx + remMediaReqPkt.unitnm]
     lea rcx, .msdBIOSmap
-    mov al, byte [rcx + rax]    ;Get BIOS number
-    mov ecx, 0200h  ;Busy bit set
-    xor edx, edx    ;Busy bit clear
-    test al, 80h
-    cmovz ecx, edx
-    mov word [rbx + remMediaReqPkt.status], cx ;Set Busy bit if removable
+    movzx eax, byte [rcx + rax]    ;Get BIOS number
+    and eax, 80h ;Isolate bit 7 (the fixed drive bit)
+    shl eax, 2  ;Shift the removable bit (bit 7) to the busy bit (bit 9)
+    mov word [rbx + remMediaReqPkt.status], ax  ;Busy set if fixed!
     ret
 .msdGenericIOCTL:    ;Function 19
     mov al, drvBadDrvReq
