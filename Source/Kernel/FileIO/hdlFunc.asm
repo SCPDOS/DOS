@@ -997,9 +997,31 @@ openMain:
     mov byte [openCreate], 0   ;Opening file, set to 0
     mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
-    ;Here we put Share mode stuff
+.openShareLoop:
+;Now we attempt to register the file with SHARE
+    movzx ecx, word [shareCount]    
+.openShareTryAgain: 
+    push rcx
+    call openShareCallWrapper
+    pop rcx
+    jnc .fileSharedOk
+    call shareRetryCountdown
+    dec ecx
+    jnz .openShareTryAgain
+    mov rdi, qword [currentSFT]
+    call shareCheckOpenViolation
+    jnc .openShareLoop  ;If user selects retry, we retry!
+    call dosCrit1Exit   ;Else we error out
+    return
+.fileSharedOk:
+    mov eax, 3  ;Update date/time and everything in the share dir sync call
     call getCurrentSFT  ;Get SFT ptr in rdi
+    call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
     call dosCrit1Exit
+    call getCurrentSFT  ;Get SFT ptr in rdi
+    test word [rdi + sft.wOpenMode], FCBopenedFile
+    retz
+    stc ;FCB opened files are not allowed anymore, this shouldnt exist anymore
     return
 .setOpenMode:
 ;Input: al = Open mode for the file open

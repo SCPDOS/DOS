@@ -162,7 +162,7 @@ netFCBShare     equ 70h
 diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 44h on disk full.
 ;Buffering on writes
 noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
-;FCB opened file?
+;FCB opened file, shouldn't see this as we are depreciating FCB's completely now
 FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
 ;Attribute Byte
 readOnlyFile    equ 1h
