@@ -885,6 +885,44 @@ renameMain:
     pop rcx
     return  ;Return new filename in fcbName
 
+updateFieldsOfAShareSFT:
+;This is so that we can update the directory entry fields of any open SFT.
+;This only works with share as share combines all open files to one SFT.
+;Otherwise, ALL FILES MUST BE CLOSED BEFORE RENAME. OTHERWISE, FAT CORRUPTION.
+;Input: SDA Filename1 -> Old filename, to get the handle for
+;       currDirCopy = Directory of the file we want to update
+;When renaming, we go thru here to update the directory data. Ensure
+; the new data directory is already set in the currentDirCopy before proceeding
+;Output: 
+;       Share MasterSFT now updated to new data
+
+    call dosPushRegs    ;Save the context completely
+    call qword [closeNewHdlShare]   ;Tad unsure but ok!
+    lea rdi, scratchSFT
+    mov qword [workingSFT], rdi
+    xor eax, eax    ;Open mode of nilch
+    mov byte [openCreate], 0    ;Make sure we are just opening the file
+    push rdi
+    call buildSFTEntry
+    pop rdi
+    jc .errorMain
+    mov word [rdi + sft.wNumHandles], 1   ;One "reference"
+    mov word [rdi + sft.wOpenMode], denyRWShare ;Prevent everything temporarily
+    push rdi
+    call shareFile  ;Now sync the Master SFT with this SFT.
+    pop rdi
+    jc .errorMain
+    mov word [rdi + sft.wNumHandles], 0
+    call closeShareCallWrapper
+    call dosPopRegs
+    clc
+    return
+.errorMain:
+    call dosPopRegs
+    mov eax, errShrVio  ;Share issue so return failed with share
+    stc
+    return
+
 outerDeleteMain:
 ;Internal current dir must be populated with dir entry
 ; and internal DOS directory variables now point to this entry.
