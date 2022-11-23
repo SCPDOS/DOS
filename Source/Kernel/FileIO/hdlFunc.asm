@@ -1056,7 +1056,6 @@ openMain:
     call getCurrentSFT  ;Get SFT ptr in rdi
     call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
     call dosCrit1Exit
-    call getCurrentSFT  ;Get SFT ptr in rdi
     test word [rdi + sft.wOpenMode], FCBopenedFile
     retz
     stc ;FCB opened files are not allowed anymore, this shouldnt exist anymore
@@ -1139,10 +1138,12 @@ createMain:
     mov byte [openCreate], -1   ;Creating file, set to FFh
     mov byte [delChar], 0E5h
     call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
+    push rdi
     push rax    ;Save the file attributes on stack
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
     pop rbx ;Pop the word off (though it has been used already!)
+    pop rdi
     mov eax, 2
     call qword [updateDirShare]
     clc ;Always clear the CF flag here updateDir defaults to CF=CY
