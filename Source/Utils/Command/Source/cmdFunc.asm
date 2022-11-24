@@ -769,11 +769,14 @@ touch:
     mov eax, 3C00h  ;Create file 
     xor ecx, ecx
     int 41h
-    jc badArgError
+    jc .touchError
     movzx ebx, ax
     mov eax, 3e00h  ;Close file immediately
     int 41h
     return
+.touchError:
+    lea rdx, touchErr
+    jmp badCmn
 ;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
 truename:
     test byte [arg1Flg], -1

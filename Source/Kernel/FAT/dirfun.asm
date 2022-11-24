@@ -20,7 +20,7 @@ makeDIR:           ;ah = 39h
     jc .badPath ;Dont allow wildcards
     ;Path is ok, now proceed
     lea rdi, buffer1    ;Build the full path here
-    call getDirPath ;Get a Directory path in buffer1, hitting the disk
+    call getFilePath ;Get a Directory path in buffer1, hitting the disk
     ;If the path exists, exit error
     jnc extErrExit
     ;Now check if the reason for the error was that the last pathcomp was 0
@@ -243,6 +243,7 @@ removeDIR:         ;ah = 3Ah
     call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
     add rsi, fatDirEntry_size*2 ;Start searching from the second entry in dir
     sub ecx, 2  ;Two fewer entries to search for in this sector
+    mov byte [fileDirFlag], -1  ;Make sure we are searching for everythin
     call searchDir.rmdirEP
     jnc .accessDenied   ;If a file is found, access denied, we can't delete this
     ;Else, this is a empty dir, we can remove it

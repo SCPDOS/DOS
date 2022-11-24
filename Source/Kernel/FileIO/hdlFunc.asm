@@ -9,7 +9,7 @@ createFileHdl:     ;ah = 3Ch, handle function
 ;        CF=NC => al = Error code
     push rcx    ;Save file attributes on stack
     lea rcx, createMain
-    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
+    mov byte [searchAttr], dirInclusive ;Inclusive w/ directory
     jmp short openFileHdl.openCommon
 openFileHdl:       ;ah = 3Dh, handle function
 ;Input: al = Open mode, to open file with
@@ -1077,6 +1077,7 @@ openMain:
     mov byte [openCreate], 0   ;Opening file, set to 0
     mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
+    jc .errorExit
 .openShareLoop:
 ;Now we attempt to register the file with SHARE
     movzx ecx, word [shareCount]    
@@ -1091,6 +1092,7 @@ openMain:
     mov rdi, qword [currentSFT]
     call shareCheckOpenViolation
     jnc .openShareLoop  ;If user selects retry, we retry!
+.errorExit:
     call dosCrit1Exit   ;Else we error out
     return
 .fileSharedOk:
@@ -1186,9 +1188,11 @@ createMain:
     call buildSFTEntry
     pop rbx ;Pop the word off (though it has been used already!)
     pop rdi
+    jc .errorExit
     mov eax, 2
     call qword [updateDirShare]
     clc ;Always clear the CF flag here updateDir defaults to CF=CY
+.errorExit:
     call dosCrit1Exit
     return
 buildSFTEntry:
@@ -1230,11 +1234,14 @@ buildSFTEntry:
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
     ;Here if Creating a file.
-    test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     ;Here disk file exists, so recreating the file.
+    ;If recreating, check we are not overwriting a Dir
+    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+    jnz .bad    ;Directories are not allowed to be created
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
     ;al has the char for the filename
     ;Sets vars for the sector/offset into the sector
@@ -1392,10 +1399,12 @@ buildSFTEntry:
     pop rbx
 .exit:
     call writeThroughBuffers
-    jc .bad
+    jc .bad2
     pop rbp
     return
-.bad:
+.bad:   ;Set Access Denied
+    mov eax, errAccDen
+.bad2:  ;Error propagating error code
     call cancelWriteThroughBuffers
     stc
     pop rbp

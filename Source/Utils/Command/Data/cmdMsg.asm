@@ -77,6 +77,8 @@ memBad1 db CR,LF,"Memory Allocation Error$"
 memBad2 db CR,LF,"Memory Error$"
 memBad3 db CR,LF,"System halted$"
 
+touchErr db "Unable to create file",CR,LF,"$"
+
 
 ansiCls  db 01BH,"[2J" ;ANSI CLS sequence, 4 chars long
 fourSpc  db "    $"
