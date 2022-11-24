@@ -15,6 +15,10 @@ badArgError:
 badFileError:
     lea rdx, badSpec
     jmp short badCmn
+badDupFnf:
+;Hybrid error message
+    lea rdx, dupName
+    jmp short badCmn
 badDirError:
     lea rdx, badDir
 badCmn:
@@ -758,7 +762,61 @@ verify:
     return
 
 rename:
-    return
+    test byte [arg1Flg], -1
+    jz badArgError
+    test byte [arg2Flg], -1
+    jz badArgError
+    lea rsi, cmdBuffer
+    movzx eax, byte [arg1Off]
+    add rsi, rax    ;Go to the start of the command
+    ;rsi points to terminating char
+    lodsb   ;Get first char in AL
+    dec rsi ;Go back to this char
+    call isALEndOfCommand
+    jc badParamError
+    lea rdi, sourcePath ;Store this in sourcePath
+.copyName1:
+    lodsb
+    call isALEndOfCommand
+    je badParamError
+    call isALterminator
+    jz .endOfName1
+    stosb
+    jmp short .copyName1
+.endOfName1:
+    xor eax, eax
+    stosb   ;Store this 0 at rdi
+    lea rsi, cmdBuffer
+    movzx eax, byte [arg2Off]
+    add rsi, rax    ;Go to the start of the command
+    cmp byte [rsi + 1], ":" ;If dest path char 2 is :, must be X:, not allowed
+    je badParamError
+    lodsb   ;Get first char in AL
+    dec rsi ;Go back to this char
+    call isALEndOfCommand
+    jc badParamError
+    lea rdi, destPath
+.copyName2:
+    lodsb
+    call isALEndOfCommand
+    je .endOfName2
+    call isALterminator
+    jz .endOfName2
+    stosb
+    jmp short .copyName2
+.endOfName2:
+    xor eax, eax
+    stosb   ;Store this 0 at rdi
+    lea rdx, sourcePath
+    lea rdi, destPath
+    mov eax, 5600h
+    int 41h
+    retnc   ;Return if all oki!
+    cmp al, errBadDrv
+    je badDriveError
+    cmp al, errBadFmt
+    je badDirError
+    jmp badDupFnf
 ;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
 touch:
 ;Temporarily used to create files
