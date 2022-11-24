@@ -317,13 +317,13 @@ asciiToFCB:
     call uppercaseChar  ;Just in ANY case, we will uppercase the cahar
     test al, al
     jz .exit
-    ;Test if the char is valid
-    call checkCharValid ;ZF=ZE => Invalid char
-    jz .exit    ;If the char invalid, consider it a terminator
     cmp al, " " ;If space or a period, go to extension field. If null, exit
     je .extSpace
     cmp al, "."
     je .ext
+    ;Test if the char is valid
+    call checkCharValid ;ZF=ZE => Invalid char
+    jz .exit    ;If the char invalid, consider it a terminator
     stosb   ;Store the char
     jmp short .processName
 .extSpace:
@@ -470,7 +470,10 @@ canonicaliseFileName:
     retz
     mov byte [rdi], 0   ;Store a terminating zero if necessary
     return
-
+getDirPathNoCanon:
+    xor eax, eax
+    mov rsi, rdi
+    jmp short getPath.noCanon
 getFilePathNoCanon:
 ;Used when the path is constructed internally (as for FCB functions)
 ;Input: rdi -> Buffer with qualified pathname for search
