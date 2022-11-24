@@ -691,6 +691,7 @@ renameMain:
     jne .checkpath2
 .accDen:
     mov eax, errAccDen
+.errorExit:
     stc
     jmp .exit2
 .checkpath2:
@@ -709,7 +710,34 @@ renameMain:
     rep movsq   ;Copy directory over
     lea rdi, renameFFBlk
     call setupFFBlock   ;Need this to save the dir entry cluster/sector/offset 
+    ;Now use FFBlock to temp swap out the filename with the source pattern
 
+    mov ecx, -1    ;Just a large number to search
+    xor eax, eax
+    mov rdi, qword [fname1Ptr]
+    rep scasb   ;Search for terminating null
+    std ;Go backwards now, to find the path sep
+    mov al, "\"
+    rep scasb   ;Now rsi points one before
+    cld ;Go normal ways now
+    add rdi, 2  ;Goto first char of pathname
+    push rdi
+    mov rsi, rdi
+    lea rdi, wcdFcbName
+    call asciiToFCB ;Copy the search pattern to wcdFcbName
+    pop rdi
+    push rdi    ;Save rdi on stack again
+    lea rsi, qword [renameFFBlk + ffBlock.asciizName]
+    ;Copy the asciiz name (including terminating null) to pathspec
+    movsq
+    movsd
+    movsb   ;This is a terminating null if a full 8.3 filename
+    pop rdi ;rdi points to first char position
+    call checkNoOpenHandlesForShareAction   ;Now do this, all regs saved!
+    jc .errorExit   ;Propagate the share error code
+    ;Else return the pattern back to its original position
+    lea rsi, wcdFcbName ;rsi -> FCBified pattern, rdi -> First char for name
+    call FCBToAsciiz
     ;Now we use the destination filename pattern to build the new filename
     mov rdi, qword [fname2Ptr]  ;Get the destination path ptr in rdi
     xor eax, eax
@@ -885,23 +913,34 @@ renameMain:
     pop rcx
     return  ;Return new filename in fcbName
 
-updateFieldsOfAShareSFT:
-;This is so that we can update the directory entry fields of any open SFT.
-;This only works with share as share combines all open files to one SFT.
-;Otherwise, ALL FILES MUST BE CLOSED BEFORE RENAME. OTHERWISE, FAT CORRUPTION.
-;Input: SDA Filename1 -> Old filename, to get the handle for
-;       currDirCopy = Directory of the file we want to update
-;When renaming, we go thru here to update the directory data. Ensure
-; the new data directory is already set in the currentDirCopy before proceeding
-;Output: 
-;       Share MasterSFT now updated to new data
-
+checkNoOpenHandlesForShareAction:
+;We check that we can proceed. This function will fail IF there are handles
+; open, and thus makes it an ideal candidate for checking in RENAME, for 
+; both filenames, DELETE and SETFILEATTRIBS if we have any open files. If we
+; do, then we should get a Share error and thus it would prevent us from 
+; proceeding.
+;
+;If SHARE not loaded, ALL handles must be closed before Rename or Delete.
+;Input: SDA fname1Ptr -> Filename we want to consider
+;       currDirCopy = Directory entry for the file
     call dosPushRegs    ;Save the context completely
-    call qword [closeNewHdlShare]   ;Tad unsure but ok!
+    cmp byte [openFileCheck], 0 ;Some 16-bit SHAREs set the marker to 0.
+    jz .noOpenFileCheckHandler
+    call qword [openFileCheck]
+    jc .noOpenFileCheckHandler  ;If CF=CY, this function not defined
+    jz .exit    ;If CF=NC && ZF=ZE, Function defined and No open files, proceed.
+    jmp short .errorMain    ;If ZF=NZ -> Have some open files, error out!
+.noOpenFileCheckHandler:
+    ;The following closes most recent shared handles referencing it
+    ;Only if sharePSP, shareMachineNumber are equal and openMode not Compat
+    ; mode and if there is precisely 1  
+    call qword [closeNewHdlShare]    
+    ;The close of the handle will only happen if there is 1 file referring to it
     lea rdi, scratchSFT
     mov qword [workingSFT], rdi
-    xor eax, eax    ;Open mode of nilch
+    mov eax, RWAccess | CompatShare ;Set open mode
     mov byte [openCreate], 0    ;Make sure we are just opening the file
+    ;This is to avoid needing to put the file attributes on the stack
     push rdi
     call buildSFTEntry
     pop rdi
@@ -909,11 +948,12 @@ updateFieldsOfAShareSFT:
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
     mov word [rdi + sft.wOpenMode], denyRWShare ;Prevent everything temporarily
     push rdi
-    call shareFile  ;Now sync the Master SFT with this SFT.
+    call shareFile
     pop rdi
     jc .errorMain
     mov word [rdi + sft.wNumHandles], 0
     call closeShareCallWrapper
+.exit:
     call dosPopRegs
     clc
     return
@@ -983,6 +1023,8 @@ deleteMain:
 ;   al = First char of the file that was deleted.
 ;        CF=CY => Error
 ;The dir buffer must be marked as referenced once we are done with it
+    call checkNoOpenHandlesForShareAction   ;Also cannot delete if open handle
+    retc    ;Return immediately if CF=CY and propagate error code
     push rdx
     movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
     movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]

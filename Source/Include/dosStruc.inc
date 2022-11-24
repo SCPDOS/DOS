@@ -156,7 +156,7 @@ denyWriteShare  equ 20h
 denyReadShare   equ 30h
 denyNoneShare   equ 40h
 netFCBShare     equ 70h
-;Bit 7 reserved 0
+noInherit       equ 80h
 ;Bits 8-12 reserved 0
 
 diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 44h on disk full.

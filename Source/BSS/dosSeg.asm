@@ -39,7 +39,6 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
     numFiles    resb 1    ;FILES=5 default, max 255
-    ;PLEASE DO NOT TOUCH MAXHNDLS!!!
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
     ;Thus ALL offsets from SFT header increase by 4 bytes and each entry
@@ -49,10 +48,22 @@ sysVarsPtr:
     ;Functions which are nowhere called (yet) are noted as UNUSED in caps.
     ;Those which are not meant to be used are noted as unused in lower case.
     ;Those suffixed with a ? have their future in question.
-    ;Those suffixed with a / are done partially wrt MSDOS, because SCPDOS does
-    ; not open handles for actions such as file rename etc.
+    ;Those suffixed with a / are done partially wrt MSDOS.
+
+    ;SCPDOS has an optional handle, openFileCheck. This function can be used 
+    ; to see if there are any open handles. Its implementation is completely
+    ; optional, and an equivalent form of the function is provided for older
+    ; SHARE versions that might be ported that don't have a particular function.
+    ;This function is defined as follows:
+    ; Input: fname1Ptr -> Filename we want to see if there are any open records
+    ;                       for.
+    ; Output: CF=CY -> Handle not supported.
+    ;         CF=NC -> Handle supported. 
+    ;           ZF=ZE -> No Files open.
+    ;           ZF=NZ -> Some files are open.
 shareHooks:
-    markerShare resq 1  ;Marker Share hook,                             unused
+    ;markerShare resq 1  ;Marker Share hook
+    openFileCheck   resq 1  ;Check if share record for file exist       DONE
     openShare   resq 1  ;Share called on open.                          DONE 
     closeShare  resq 1  ;Share called on close.                         DONE/
     closeCompShare  resq 1  ;Share to close all files for a machine.    DONE
@@ -65,8 +76,8 @@ shareHooks:
     updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.      UNUSED?
     fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB.     UNUSED?
     closeDupFileShare   resq 1  ;Share to close file if dup for proc.   DONE
-    closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. UNUSED?
-    updateDirShare      resq 1  ;Share to update dir info in SFT.       DONE. 
+    closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. DONE
+    updateDirShare      resq 1  ;Share to update dir info in SFT.       DONE 
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  resb sfth_size
     firstSft    resb sft_size

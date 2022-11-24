@@ -753,7 +753,7 @@ defaultFileHandles:
     lea rdi, qword [rbp + shareHooks]
     lea rbx, qword [rbp + goodDfltShareHook]
     lea rax, qword [rbp + badDfltShareHook]
-    stosq   ;Store bad for marker
+    stosq   ;Store bad for openFileCheck
     xchg rax, rbx
     stosq   ;Store good for open
     stosq   ;Store good for close
