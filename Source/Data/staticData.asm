@@ -3,7 +3,7 @@
 ;       Static Data Variables       :
 ;-----------------------------------:
 dosMajor    db 00h      ;Version 0
-dosMinor    db 32      ;.32
+dosMinor    db 33      ;.33
 dosBIOSName db "SCPBIOS .SYS"
 dosKernName db "SCPBDOS .SYS"
 maxHndls    dw 20    ;Initially hardcoded 20, will be made changable soon

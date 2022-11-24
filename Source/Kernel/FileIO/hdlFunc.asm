@@ -936,8 +936,9 @@ checkNoOpenHandlesForShareAction:
     ; mode and if there is precisely 1  
     call qword [closeNewHdlShare]    
     ;The close of the handle will only happen if there is 1 file referring to it
+    breakpoint
     lea rdi, scratchSFT
-    mov qword [workingSFT], rdi
+    mov qword [currentSFT], rdi
     mov eax, RWAccess | CompatShare ;Set open mode
     mov byte [openCreate], 0    ;Make sure we are just opening the file
     ;This is to avoid needing to put the file attributes on the stack
@@ -1042,6 +1043,7 @@ deleteMain:
     jc .exitBad
     mov al, byte [delChar]
     xchg byte [rsi], al    ;Mark entry as free, get char in al
+    call markBufferDirty
     ;CF must be clear
     call writeThroughBuffers
     retnc
