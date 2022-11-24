@@ -434,7 +434,6 @@ erase:
     lea rdx, searchSpec
     mov eax, 4100h  ;Delete File 
     xor ecx, ecx
-    breakpoint
     int 41h
     jc badArgError
     return

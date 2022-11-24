@@ -936,7 +936,6 @@ checkNoOpenHandlesForShareAction:
     ; mode and if there is precisely 1  
     call qword [closeNewHdlShare]    
     ;The close of the handle will only happen if there is 1 file referring to it
-    breakpoint
     lea rdi, scratchSFT
     mov qword [currentSFT], rdi
     mov eax, RWAccess | CompatShare ;Set open mode
