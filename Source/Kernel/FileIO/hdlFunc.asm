@@ -667,8 +667,8 @@ renameMain:
 ; filenamePtr2 -> New path + filename pattern
 ; workingCDS -> CDS for drive we are considering (set by )
     mov rdi, qword [workingCDS]
-    call testCDSNet ;CF=CY => Not net
-    jc .notNet
+    call testCDSNet ;CF=NC => Not net
+    jnc .notNet
     mov eax, 1111h
     int 4Fh
     return
@@ -715,10 +715,10 @@ renameMain:
     mov ecx, -1    ;Just a large number to search
     xor eax, eax
     mov rdi, qword [fname1Ptr]
-    rep scasb   ;Search for terminating null
+    repne scasb   ;Search for terminating null
     std ;Go backwards now, to find the path sep
     mov al, "\"
-    rep scasb   ;Now rsi points one before
+    repne scasb   ;Now rsi points one before
     cld ;Go normal ways now
     add rdi, 2  ;Goto first char of pathname
     push rdi
@@ -742,7 +742,7 @@ renameMain:
     mov rdi, qword [fname2Ptr]  ;Get the destination path ptr in rdi
     xor eax, eax
     mov ecx, 67
-    rep scasb   ;Find the null terminator of the destination path
+    repne scasb   ;Find the null terminator of the destination path
 .findPattern:
     dec rdi
     cmp byte [rdi], "\" ;Is this a pathsep?
@@ -832,12 +832,12 @@ renameMain:
     mov al, "?"
     mov rdi, qword [fname1Ptr]  ;Check filename
     call strlen ;Get in rcx to get the length of the string
-    rep scasb
-    jecxz .exit  ;If source name has no wildcards, exit
+    repne scasb
+    jne .exit  ;If source name has no wildcards, exit
     mov ecx, 11
     lea edi, wcdFcbName
-    rep scasb
-    jecxz .exit
+    repne scasb
+    jne .exit
     ;Here we gotta do a find next now!
     push qword [currentDTA]
     lea rdi, renameFFBlk
@@ -972,8 +972,8 @@ outerDeleteMain:
 ;Returns: CF=CY => Error (including no files if wildcard) in eax
 ;         CF=NC => File deleted
     mov rdi, qword [workingCDS]
-    call testCDSNet ;CF=CY => Not net
-    jc .notNet
+    call testCDSNet ;CF=NC => Not net
+    jnc .notNet
     mov eax, 1113h  ;Allows wildcards, and will delete all which match
     int 4Fh
     return
@@ -989,9 +989,8 @@ outerDeleteMain:
     mov al, "?"
     lea rdi, fcbName    ;This is the search pattern we used to find the file
     mov ecx, 11
-    rep scasb   ;Scan for the wildcard char
-    test ecx, ecx    ;If ecx != 0, then a wildcard found, we delete more
-    jnz .serverWCloop   ;This is not possible if entered via 21/41h
+    repne scasb   ;Scan for the wildcard char
+    je .serverWCloop   ;This is not possible if entered via 21/41h
     clc
     return  ;Return ok!
 .serverWCloop:

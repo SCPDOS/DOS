@@ -428,6 +428,15 @@ rmdir:
 copy:
     return
 erase:
+    test byte [arg1Flg], -1
+    jz badArgError
+    call buildCommandPath
+    lea rdx, searchSpec
+    mov eax, 4100h  ;Delete File 
+    xor ecx, ecx
+    breakpoint
+    int 41h
+    jc badArgError
     return
 date:
     lea rdx, curDate
@@ -751,6 +760,22 @@ verify:
 
 rename:
     return
+;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
+touch:
+;Temporarily used to create files
+    test byte [arg1Flg], -1
+    jz badArgError
+    call buildCommandPath
+    lea rdx, searchSpec
+    mov eax, 3C00h  ;Create file 
+    xor ecx, ecx
+    int 41h
+    jc badArgError
+    movzx ebx, ax
+    mov eax, 3e00h  ;Close file immediately
+    int 41h
+    return
+;TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP TEMP
 truename:
     test byte [arg1Flg], -1
     jz badArgError

@@ -73,4 +73,7 @@ functionTable:
     db 4, "TYPE"
     dw type - startLbl
 
+    db 5, "TOUCH"
+    dw touch - startLbl
+
     db -1   ;End of table
