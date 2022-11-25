@@ -871,7 +871,119 @@ notHDD:
 ;   data structures according to the values on the stack frame.
 ;-------------------------------------------------------------------------;
 ;Start CONFIG.SYS parsing here
-
+configParse:
+    movzx ebx, ax   ;Move the handle into ebx
+.newLine:
+    mov rdx, qword [rbp - cfgFrame.endPtr]  ;Start reading into here
+    mov rsi, rdx	;Use rsi to keep track of the start of the line
+.nextChar:
+    mov eax, 3F00h  ;Read handle
+    mov ecx, 1  ;Read one byte
+    int 41h
+    jc .stopProcessError
+    test ecx, ecx	;If this is zero, EOF reached
+    jnz .notEOF
+    mov byte [rdx], EOF	;Store an EOF
+.notEOF:
+    inc qword [rbp - cfgFrame.endPtr]	;Goto next byte
+    cmp byte [rdx], CR
+    je .endOfLine
+    cmp byte [rdx], EOF
+    je .endOfLine
+    cmp byte [rdx], "a"
+    jb .notChar
+    cmp byte [rdx], "z"
+    ja .notChar
+    or byte [rdx], 20h	 ;Set the UC bit
+    and byte [rdx], ~40h ;Clear the LC bit
+.notChar:
+    inc rdx ;Now move our local pointer to the next byte
+    jmp short .nextChar
+.endOfLine:
+;Remember rsi points to the start of the line
+;rdx points to terminating char
+;First find the length of the word
+    push rsi
+    xor ecx, ecx
+.cmdNameLenGet:
+    lodsb
+    call .isCharTerminal
+    jz .endOfCommandFound
+    inc ecx
+    cmp ecx, 10 ;If shorter than longest command, keep looping
+    jb .cmdNameLenGet
+;Else, fall through in error
+.endOfCommandFound:
+;ecx has the length of the command
+    pop rsi ;Go back to the start of the command
+    cmp ecx, 10
+    je .stopProcessError
+    lea rdi, .keyTbl ;Put rdi at the table to search for
+.cmdSearch:
+    cmp byte [rdi], -1
+    je .stopProcessError
+    cmp byte [rdi], cl
+    jne .gotoNextCmd
+    ;Candidate command found, now search
+    push rcx
+    push rsi
+    push rdi
+    pop rdi
+    pop rsi
+    pop rcx
+.gotoNextCmd:
+    movzx eax, byte [rdi]
+    add eax, 3
+    add rdi, rax
+    jmp short .cmdSearch
+.cmdFound:
+.isCharTerminal:
+;Input: AL = Char to check
+;Output: ZF=ZE -> Char terminal
+;        ZF=NZ -> Char not terminal
+    cmp al, "="
+    rete
+    cmp al, SPC
+    rete
+    cmp al, TAB
+    rete
+    cmp al, ";"
+    rete
+    return
+.stopProcessError:
+    lea rdx, .speLine
+    mov eax, 0900h
+    int 41h
+    ;Reset all values to default
+    mov byte [rbp - cfgFrame.newBuffers], buffersDefault
+    mov byte [rbp - cfgFrame.newSFTVal], filesDefault
+    mov byte [rbp - cfgFrame.newFCBSVal], fcbsDefault
+    mov byte [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
+    mov byte [rbp - cfgFrame.newLastdrive], lastDriveDeflt
+    jmp short .cfgExit
+.speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
+.keyTbl: db 5, "BREAK"
+	 dw 0
+         db 7, "BUFFERS"
+	 dw 0
+	 db 7, "COUNTRY"  ;Ignored for now
+	 dw 0
+	 db 5, "DEVICE"
+	 dw 0
+	 db 4, "FCBS"
+	 dw 0
+	 db 5, "FILES"
+	 dw 0
+	 db 9, "LASTDRIVE"
+	 dw 0
+	 db 5, "SHELL"
+	 dw 0
+	 db 6, "STACKS"
+	 dw 0
+	 db -1	;End of table marker
+.cfgExit:
+    mov eax, 3eh    ;Close the handle
+    int 41h ;bx already has the handle
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
