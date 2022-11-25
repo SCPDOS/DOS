@@ -832,6 +832,46 @@ notHDD:
 ; New FCBS value.           Default = 4,  Min = 4, Max = 254
 ; New protected FCBS value. Default = 0,  Min = 0, Max = New FCBS value
 ; New CDS value.            Default = 5,  Min = 5, Max = 26
+;
+;Remember to maintain the base of occupied memory on stack (endPtr)
+;-------------------------------------------------------------------------;
+; CONFIG.SYS processing pseudocode:-
+;
+; _START:
+; Read file one byte at a time a until a EOF or CR encountered.
+; If (EOF encountered)
+;   Insert a terminating ^Z to the end of the line. 
+;   Close handle.
+; Parse the line from beginning looking for a DOS terminating char.
+;   If (CR or EOF encoutered before terminating char)
+;       Bad line error msg. 
+;       If (CR encountered)
+;           Goto _START
+;       Else
+;           Goto _EXIT
+;   Else 
+;       If (Keyword AND not DEVICE) 
+;           Store it's value on stack or change internal variable value
+;       If (DEVICE)
+;           Move endPtr after end of line and try load the driver.
+;           If (driver doesn't exist or fails to init)
+;               print bad driver error msg.
+;       Else 
+;           Bad line error msg
+;       If (line terminated by CR)
+;           Goto _START
+; _EXIT:
+;-------------------------------------------------------------------------;
+; Note:
+; If driver a Block Device Driver, build all the DPB's for it (up until max)
+;   directly after the driver pointer as returned by the driver. Then, 
+;   adjust the memory pointer and start loading next line.
+;   The space marked as "endPtr" can be used as a buffer by the disk buffers.
+; Once EOF has been reached, we jmp to noCfg which configures the other
+;   data structures according to the values on the stack frame.
+;-------------------------------------------------------------------------;
+;Start CONFIG.SYS parsing here
+
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
