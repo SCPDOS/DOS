@@ -322,6 +322,24 @@ mcbBuild:
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
+;Adjust Interrupt Entries Int 00h-15h
+adjExceptions:
+    xor bl, bl
+    mov eax, 0F007h ;Get the descriptor
+    int 35h
+    xor ecx, ecx    ;Start from interrupt 00h
+    lea rdi, exceptData
+    mov esi, eax    ;Move segment selector info to esi
+.ai0:
+    mov eax, 0F008h ;Set the descriptor
+    mov rbx, qword [rdi]    ;Get address pointed to by rdi
+    add rbx, rbp            ;Add the relocated base to rbx
+.ai1:
+    int 35h
+    add rdi, 8
+    inc ecx
+    cmp ecx, 21
+    jne .ai0
 ;Adjust Interrupt Entries Int 40h-49h
 adjInts:
     mov bl, 40h
@@ -1636,6 +1654,29 @@ cmdBlock:
     at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
     at execProg.pfcb2,      dq 0
     iend
+exceptData:
+    dq i0
+    dq i1
+    dq i2
+    dq i3
+    dq i4
+    dq i5
+    dq i6
+    dq i7
+    dq i8
+    dq i9
+    dq i10
+    dq i11
+    dq i12
+    dq i13
+    dq i14
+    dq i15
+    dq i16
+    dq i17
+    dq i18
+    dq i19
+    dq i20
+    dq i21
 
 intData:
     dq terminateProcess ;Int 40h

@@ -141,6 +141,7 @@ ctrlBreakHdlr:
     ;Reset the console back to 0
     mov byte [vConDrvSwp],  0   ;Set to 0
 ;Handles a control break, juggles stacks and enters int 41h 
+.exceptEP:
 	cli
 	mov rsp, qword [oldRSP]	;Get registers frame
 	call dosPopRegs ;Get user state back
@@ -164,3 +165,260 @@ ctrlBreakHdlr:
     mov byte [ctrlCExit], -1  ;CTRL+BREAK termination
     jmp functionDispatch
 
+;CPU Exception handlers
+;If a CPU exception occurs, and inDOS = 0, the default behaviour will be to 
+; CTRL+C exit.
+; If inDOS > 0, then we assume the error is within DOS and thus we halt the
+; system.
+; Also halt if the application is it's own parent.
+;An application should hook these interupts if they wish to not 
+; CTRL+C exit, and instead return to DOS.
+i0:
+    xor eax, eax
+    jmp cpu_2args
+i1:
+    mov eax, 1
+    jmp cpu_2args
+i2:
+    mov eax, 2
+    jmp cpu_2args
+i3:
+    mov eax, 3
+    jmp cpu_2args
+i4:
+    mov eax, 4
+    jmp cpu_2args
+i5:
+    mov eax, 5
+    jmp short cpu_2args
+i6:
+    mov eax, 6
+    jmp short cpu_2args
+i7:
+    mov eax, 7
+    jmp short cpu_2args
+i8:
+    mov eax, 8
+    jmp short cpu_3args
+i9:
+    mov eax, 9
+    jmp short cpu_2args
+i10:
+    mov eax, 0Ah
+    jmp short cpu_3args
+i11:
+    mov eax, 0Bh
+    jmp short cpu_3args
+i12:
+    mov eax, 0Ch
+    jmp short cpu_3args
+i13:
+    mov eax, 0Dh
+    jmp short cpu_3args
+i14:
+    mov eax, 0Eh
+    jmp short cpu_4args
+i15:
+    mov eax, 0Fh
+    jmp short cpu_2args
+i16:
+    mov eax, 10h
+    jmp short cpu_2args
+i17:
+    mov eax, 11h
+    jmp short cpu_3args
+i18:
+    mov eax, 12h
+    jmp short cpu_2args
+i19:
+    mov eax, 13h
+    jmp short cpu_2args
+i20:
+    mov eax, 14h
+    jmp short cpu_2args
+i21:
+    mov eax, 15h
+cpu_4args:
+    mov ecx, 3
+    jmp short cpu_exception
+cpu_3args:
+    mov ecx, 2
+    jmp short cpu_exception
+cpu_2args:
+    mov ecx, 1
+cpu_exception:
+;Enter with:
+; eax = Exception number in binary
+; ecx = Number of arguments to print and pop from stack - 1 
+    lea rsi, .fatalt0   ;Get the ptr
+    mov ebx, fatalt0L  ;Get the length
+    call .writeExceptionMessage
+
+    cmp byte [inDOS], 1
+    jae .introStop
+    cmp eax, 2
+    je .introStop
+
+    mov rbx, qword [currentPSP] ;If a command shell craps out, Halt
+    cmp rbx, qword [rbx + psp.parentPtr]
+    je .introStop
+
+    lea rsi, .fatal1
+    mov ebx, fatal1L
+    call .writeExceptionMessage
+    jmp short .introEnd
+.introStop:
+    mov byte [.halt], -1
+    lea rsi, .fatalHalt   ;Get the ptr
+    mov ebx, fatalHaltL  ;Get the length
+    call .writeExceptionMessage
+.introEnd:
+    lea rdi, .byteBuffer
+    call .printbyte ;Store the error code in the byte buffer
+    lea rsi, .byteBuffer
+    mov ebx, 2  ;Print the two nybbles
+    call .writeExceptionMessage
+
+    cmp cl, 1
+    ja .cpuextendederror    ;rax contains error code, or extra cr2 value
+.cpurollprint:
+    lea rdi, .byteBuffer
+    mov rdx, qword [rsp]    ;Get address
+;Takes whats in rdx, rols left by one byte, prints al
+    mov cl, 8    ;8 bytes
+.cpurollprint1:
+    rol rdx, 8
+    mov al, dl
+    push rdx
+    call .printbyte
+    pop rdx
+    dec cl
+    jnz .cpurollprint1
+
+    mov ebx, 16 ;Print the 16 nybbles
+    lea rsi, .byteBuffer
+    call .writeExceptionMessage
+    lea rsi, .crlf
+    mov ebx, 3
+    call .writeExceptionMessage    
+    test byte [.halt], -1
+    jnz .fatalStop
+    call .readInputChar
+    jmp ctrlBreakHdlr.exceptEP ;Jump to CTRL+C out (without a ^C printed)
+.fatalStop:
+;This is called if inDOS > 1 or NMI occured
+;Permanently locks up the system by turning off interrupts and infinite looping.
+    cli
+    hlt
+    jmp short .fatalStop
+
+.cpuextendederror:
+    lea rsi, .fatal2
+    mov ebx, fatal2L  ;Print the colon string
+    call .writeExceptionMessage
+
+    pop rdx
+    dec rcx
+    push rcx
+    lea rdi, .byteBuffer
+    mov cl, 2    ;CAN CHANGE TO 4 BYTES IN THE FUTURE
+.pr1:
+    rol edx, 8    ;Print just edx
+    mov al, dl
+    push rdx
+    call .printbyte
+    pop rdx
+    dec cl
+    jnz .pr1
+
+    lea rsi, .byteBuffer
+    mov ebx, 4  ;Print one nybble
+    call .writeExceptionMessage
+
+    lea rsi, .fatal2
+    mov ebx, fatal2L  ;Print the colon string
+    call .writeExceptionMessage
+
+    pop rcx    ;Bring the comparison value back into rcx
+    dec rcx
+    jz .cpurollprint
+
+    mov cl, 8   ;16 nybbles
+    mov rdx, cr2    ;Get page fault address
+    lea rdi, .byteBuffer
+.pr2:
+    rol rdx, 8    ;Print rdx
+    mov al, dl
+    push rdx
+    call .printbyte
+    pop rdx
+    dec cl
+    jnz .pr2
+
+    lea rsi, .byteBuffer
+    mov ebx, 16
+    call .writeExceptionMessage
+
+    lea rsi, .fatal2
+    mov ebx, fatal2L  ;Print the colon string
+    call .writeExceptionMessage
+
+    jmp .cpurollprint
+
+
+.char:    ;Print a single character
+    lea rbx, .ascii
+    xlatb    ;point al to entry in ascii table, using al as offset into table
+    stosb   ;Store the byte in the buffer and inc rdi
+    ret
+.printbyte:
+    mov dl, al            ;save byte in dl
+    and ax, 00F0h        ;Hi nybble
+    and dx, 000Fh        ;Lo nybble
+    shr ax, 4            ;shift one hex place value pos right
+    call .char
+    mov ax, dx            ;mov lo nybble, to print
+    call .char
+    ret        
+
+
+.readInputChar:
+    mov byte [critReqHdr + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
+    lea rsi, singleIObyt
+    mov ebx, 1  ;Read one char
+    jmp short .ioException
+.writeExceptionMessage:
+;Called with ebx=Number of chars to print, rsi -> String to print
+    mov byte [critReqHdr + ioReqPkt.cmdcde], drvWRITE
+.ioException:
+    mov byte [critReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov word [critReqHdr + ioReqPkt.status], 0
+    mov dword [critReqHdr + ioReqPkt.tfrlen], ebx
+    lea rbx, critReqHdr
+    mov qword [critReqHdr + ioReqPkt.bufptr], rsi
+    mov rsi, qword [vConPtr]
+    call goDriver
+    return
+
+
+;Error messages
+.ascii:    db '0123456789ABCDEF'
+.fatalt0:  db CR,LF,LF,"SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
+fatalt0L   equ $ - .fatalt0
+
+.fatal1:   
+    db "A potentially fatal error has been detected and the current application"
+    db " will be terminated.",CR,LF,
+    db "Press any key to continue or CTRL+ALT+DEL to restart the machine."
+    db CR,LF,"SYSTEM ERROR: "   ;Print standard Error message here
+fatal1L equ $ - .fatal1
+
+.fatal2:   db " : "
+fatal2L    equ $ - .fatal2
+
+;The below error is displayed is inDOS > 1 or NMI occured
+.fatalHalt: db "SCP/DOS SYSTEM STOP: "
+fatalHaltL equ $ - .fatalHalt
+.halt:  db 0    ;Set to -1 on permahalt
+.byteBuffer:    db 8 dup (0)
+.crlf:  db CR,LF,LF
