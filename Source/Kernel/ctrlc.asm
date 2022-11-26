@@ -324,12 +324,13 @@ cpu_exception:
     push rcx
     lea rdi, .byteBuffer
     mov cl, 2    ;CAN CHANGE TO 4 BYTES IN THE FUTURE
+    xchg dl, dh   
 .pr1:
-    rol edx, 8    ;Print just edx
     mov al, dl
     push rdx
     call .printbyte
     pop rdx
+    ror edx, 8    ;Print just dx for now
     dec cl
     jnz .pr1
 
