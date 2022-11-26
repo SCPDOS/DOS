@@ -201,10 +201,56 @@ serverFunctionSelect:
     pop rbp
     ret 3*8 ;Clear stack of all argument bytes
 
-
-
 netServices:   ;ah = 5Eh, do nothing
-    return
+;Only two native functions, AL=0 and AL=1 (get/set machine name)
+    cmp al, 01
+    jb .getName
+    jz .setName
+    cmp al, 6
+    jb .netRedir
+.badExit:
+    jmp extErrExit
+.getName:
+;Input: rdx -> 16 byte buffer to fill with machine name
+;Output: CF=NC => Success.
+;        CH = Name Validity (if 0, the name is invalid)
+;        CL = NetBIOS number for the machine
+;        rdx -> Blank padded Filled buffer with machine name
+;        CF=CY => Failure
+;        AX = Errorcode
+    mov rdi, rdx
+    movzx ecx, word [validNetNam]
+    call getUserRegs
+    mov word [rsi + callerFrame.rcx], cx
+    lea rsi, machineName
+.nameCmn:
+    xor eax, eax
+    movsq
+    movsd
+    movsw
+    movsb
+    stosb   ;Store terminating null
+    jmp short .exitGood
+.setName:
+;Input: rdx -> 16 byte buffer with new machine name
+;       CH = 0 => Mark name as invalid
+;         != 0 => Mark name as valid
+;       CL = NetBIOS number for the name
+    mov word [validNetNam], cx
+    mov rsi, rdx
+    inc byte [serverCnt]    ;Increment the name change flag
+    lea rdi, machineName
+    jmp short .nameCmn
+
+.netRedir:
+    push rax
+    mov eax, 111Fh  ;Net Services over the Redirector
+    int 4Fh
+    pop rdx
+    jc .badExit
+.exitGood:
+    jmp extGoodExit
+
 netRedir:;ah = 5Fh, redirector needs to be installed
 ;Exception: We pick off ah=07 (ENABLE DRIVE) and ah=08 (DISABLE DRIVE)
     cmp ah, 07h

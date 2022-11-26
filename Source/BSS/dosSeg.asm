@@ -13,6 +13,7 @@ dosDataArea:
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM SHARE TO NUMJOINDRV
 ;Both below variables can be edited with Int 41h AX=440Bh
+    validNetNam resw 1    ;Flag if machinename valid, deflt no=0
     shareCount  resw 1    ;Share Retry Count, number of repeats before fail.
     shareDelay  resw 1    ;Share Delay, in multiples of ms. (TEMP, just loop)
                 resq 1    ;Unused ptr for future, current disk buffer
@@ -106,8 +107,8 @@ vConBuf:    ;Proper buffer symbol
 ;Server stuff. Default to all zeros (blank)
     shareFlag   resb 1  ;Sharing flag, set to 0 for now (future expansion)
     ;When share is loaded, this flag is set to -1 !!!!!
-    serverCnt   resb 1  ;Increments on each 41h/5D01h call
-    machineName resb 16 ;Machine name (Set via 41h/5D01h) (set to SPC)    
+    serverCnt   resb 1  ;Increments on each 41h/5E01h call
+    machineName resb 16 ;Machine name (Set via 41h/5E01h) (set to SPC)    
 ;Swappable Data Area
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
@@ -276,8 +277,9 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
     sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
+;Exception handler vars in SDA now 
     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
-    haltDOS     resb 1  ;Used by DOS exception handler to indicate DOS will halt
+    haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
     sdaLen      equ     $ - sda 
     sdaMSLen    equ     $ - sdaMainSwap
 
