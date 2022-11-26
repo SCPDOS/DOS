@@ -1131,6 +1131,8 @@ checkIfCharDevice:  ;Int 4Fh AX=1223h
     xchg bh, bl ;Swap lo and hi bytes
     test bl, 80h  ;Is the driver for disk drive?
     jz .walkList ;Jump to skip ANY and ALL Disk Drives
+    or bh, 20h  ;RBIL says Bit 5 set and Bits 6-7 clear if Char dev
+    and  bh, ~(80h|40h) ;Clear the upper two bits
     cmp rax, qword [rdi + drvHdr.drvNam]
     je .exit    ;If equal, CF=NC is already cleared
 .walkList:
