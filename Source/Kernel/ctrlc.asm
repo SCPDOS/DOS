@@ -298,9 +298,11 @@ cpu_exception:
     mov ebx, 16 ;Print the 16 nybbles
     lea rsi, .byteBuffer
     call .writeExceptionMessage
+
+    mov ebx, crlfL
     lea rsi, .crlf
-    mov ebx, 3
     call .writeExceptionMessage    
+
     test byte [.halt], -1
     jnz .fatalStop
     call .readInputChar
@@ -332,7 +334,7 @@ cpu_exception:
     jnz .pr1
 
     lea rsi, .byteBuffer
-    mov ebx, 4  ;Print one nybble
+    mov ebx, 4  ;Print four nybbles
     call .writeExceptionMessage
 
     lea rsi, .fatal2
@@ -420,5 +422,6 @@ fatal2L    equ $ - .fatal2
 .fatalHalt: db "SCP/DOS SYSTEM STOP: "
 fatalHaltL equ $ - .fatalHalt
 .halt:  db 0    ;Set to -1 on permahalt
-.byteBuffer:    db 8 dup (0)
+.byteBuffer:    db 16 dup (0)
 .crlf:  db CR,LF,LF
+crlfL  equ $ - .crlf
