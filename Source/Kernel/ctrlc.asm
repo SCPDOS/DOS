@@ -1,5 +1,6 @@
 fullcriticalErrorInvoke:
     mov eax, 03 ;Always fail for now
+    stc
     return
 
 diskDevErr:

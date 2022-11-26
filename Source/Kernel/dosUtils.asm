@@ -258,7 +258,14 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     pop rbx
     return
 
-strlen: ;Int 4Fh, AX=1212h
+strlen2:    ;Int 4Fh, AX=1212h
+;Entry point for Multiplex
+    push rdi
+    mov rdi, rsi
+    call strlen
+    pop rdi
+    return
+strlen: 
 ;Gets the length of a ASCIIZ string
 ;Input: rdi = Source buffer
 ;Output: ecx = Length of string

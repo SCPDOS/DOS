@@ -121,8 +121,8 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw decrementOpenCount - mDispTbl    ;AX=1208h, Decrement SFT open count
     dw flushAndFreeBuffer - mDispTbl    ;AX=1209h, Flush and Free disk buffer
     dw shareCriticalError - mDispTbl    ;AX=120Ah, Signal Share Critical Error
-    dw noOp - mDispTbl  ;AX=120Bh, Signal Sharing Violation to User
-    dw noOp - mDispTbl  ;AX=120Ch, Open devce and set SFT owner
+    dw shareCheckOpenViolation - mDispTbl  ;AX=120Bh, Signal Sharing Violation 
+    dw noOp - mDispTbl  ;AX=120Ch, Open device and set SFT owner
     dw getDateAndTimeOld - mDispTbl ;AX=120Dh, Get Date and Time words
     dw markBuffersAsUnreferenced - mDispTbl ;AX=120Eh
     dw makeBufferMostRecentlyUsedGetNext - mDispTbl ;AX=120Fh
@@ -137,6 +137,17 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw getUserRegs - mDispTbl   ;AX=1218h
     dw getCDS - mDispTbl    ;AX=1219h
     dw getDrvLetterFromPath - mDispTbl ;AX=121Ah
+    dw setDaysInFeb - mDispTbl  ;AX=121Bh
+    dw noOp - mDispTbl  ;AX=121Ch -> Old Checksum memory
+    dw noOp - mDispTbl  ;AX=121Dh -> Old Sum Memory
+    dw compareFileNames - mDispTbl ;AX=121Eh, Compare Filenames
+    dw buildNewCDS - mDispTbl   ;AX=121Fh, Build CDS
+    dw getJFTPtr - mDispTbl     ;AX=1220h, Get JFT entry
+    dw trueNameMultiplex - mDispTbl     ;AX=1221h, Truename
+    dw setExtendedErrorMulti - mDispTbl ;AX=1222h, Set Extended Error Info
+    dw noOp - mDispTbl  ;AX=1223 -> Check If Char Device (MUST IMPLEMENT!)
+    dw shareRetryCountdown - mDispTbl   ;AX=1224h, Share Retry
+    dw strlen2 - mDispTbl   ;AX=1225h, strlen
 mDispTblL   equ     $ - mDispTbl
 
 serverDispTbl:  ;Server Dispatch functions

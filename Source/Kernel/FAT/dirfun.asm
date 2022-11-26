@@ -376,7 +376,14 @@ getCurrentDIR:     ;ah = 47h
     mov eax, 0100h  ;RBIL -> MS software may rely on this value
     jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
 
-trueName:          ;ah = 60h, get fully qualified name. Int 4Fh, AX=1221h
+trueNameMultiplex:  ;Int 4Fh, AX=1221h
+    push rax
+    mov eax, 6000h
+    int 41h
+    pop rax
+    return
+    
+trueName:          ;ah = 60h, get fully qualified name. 
     ;Called with a path in rsi and 128 byte buffer in rdi
     call checkPathspecOK    ;This preserves rsi
     jnc .pathspecOk ;If CF=NC this path is totally ok
