@@ -1186,9 +1186,13 @@ configParse:
     ;First adjust .endPtr
     mov rax, qword [rbx + initReqPkt.endptr]    ;Get the end pointer
     mov qword [rbp - cfgFrame.endPtr], rax  ;Move it here
+    ;Now we link the driver into the driver chain
+    mov rdi, qword [nulDevHdr + drvHdr.nxtPtr]  ;Get next ptr from nul drvr
+    mov qword [rsi + drvHdr.nxtPtr], rdi    ;And store it here
+    mov qword [nulDevHdr + drvHdr.nxtPtr], rsi  ;And link nul to this driver
     ;Now if we are a char device, we are done so check here
     test word [rsi + drvHdr.attrib], devDrvChar
-    jnz .drvWantsClose  ;We are complete
+    jnz .drvWantsCloseChar  ;We are complete
     ;Now for block devices, we get the BPB ptr array and numUnits supported
     movzx ecx, byte [rbx + initReqPkt.numunt]
     mov rbx, qword [rbx + initReqPkt.optptr]    ;Get the BPB array pointer
@@ -1255,6 +1259,16 @@ configParse:
     int 41h
     clc ;Never return with CF=CY
     return
+.drvWantsCloseChar:
+;Final checks, to see if we are CLOCK$ or CON
+    test word [rsi + drvHdr.attrib], devDrvConIn
+    jz .dwccClock
+    mov qword [vConPtr], rsi
+.dwccClock:
+    test word [rsi + drvHdr.attrib], devDrvClockDev
+    jz .drvWantsClose
+    mov qword [clockPtr], rsi
+    jmp short .drvWantsClose
 .drvBadMsg: db "Bad or missing filename",CR,LF,"$"
 .drvInitStruc: db initReqPkt_size dup (0)  
 .drvHandle: dw -1
@@ -1460,6 +1474,38 @@ noCfg:
     add r8, mcb.program
     mov ah, 4Ah
     int 41h
+;Now we close all five default handles and open AUX, CON and PRN.
+    mov r8, qword fs:[currentPSP]
+    xor ebx, ebx
+closeHandlesLoop:
+    mov eax, 3e00h  ;Close
+    int 41h
+    inc ebx ;Goto next handle
+    cmp ebx, 6
+    jne closeHandlesLoop
+    lea rdx, auxName
+    mov eax, 3D02h   ;Open read/write
+    int 41h
+    mov ebx, eax
+    mov ecx, 3  ;
+    mov eax, 4600h  ;DUP2
+    int 41h
+    mov eax, 3e00h
+    int 41h ;Close the original handle
+    mov eax, 3D02h  ;Open read/write
+    lea rdx, conName
+    int 41h
+    mov ebx, eax    ;Move file handle to ebx
+    mov ecx, 1
+    mov eax, 4600h  ;DUP2
+    int 41h
+    inc ecx         ;Goto next handle
+    mov eax, 4600h  ;DUP2
+    int 41h
+    lea rdx, prnName
+    mov eax, 3D02h
+    int 41h       ;Open file
+
     
     %if DEBUG && ALLOCTEST
 ;Test Allocation, Growth and Deallocation

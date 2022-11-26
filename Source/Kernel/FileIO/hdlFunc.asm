@@ -333,14 +333,19 @@ duplicateHandle:   ;ah = 45h, handle function
 forceDuplicateHdl: ;ah = 46h, handle function
 ;Input: bx = Handle to duplicate
 ;       cx = Handle to close and replace with a duplicate of bx
-    ;First we close cx
+    ;First we close cx if it exists
     xchg ebx, ecx ;Swap cx and bx
     push rbx
     push rcx
     call closeFileHdl   ;Close handle 
     pop rcx
     pop rbx
-    retc    ;The error code is set by errExtExit and CF is set on callerFrame
+    jnc .hdlClosed
+    cmp eax, errBadHdl  ;If the handle didnt first exist, just proceed!
+    je .hdlClosed
+    stc
+    return    ;The error code is set by errExtExit and CF is set on callerFrame
+.hdlClosed:
     ;Else, close was ok, lets duplicate now
     call getJFTPtr  ;Get a pointer to bx in rdi, destination for copy
     jc extErrExit   ;Return bad with error code in al
