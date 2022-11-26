@@ -145,7 +145,7 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw getJFTPtr - mDispTbl     ;AX=1220h, Get JFT entry
     dw trueNameMultiplex - mDispTbl     ;AX=1221h, Truename
     dw setExtendedErrorMulti - mDispTbl ;AX=1222h, Set Extended Error Info
-    dw noOp - mDispTbl  ;AX=1223 -> Check If Char Device (MUST IMPLEMENT!)
+    dw checkIfCharDevice - mDispTbl  ;AX=1223, Check If Char Device
     dw shareRetryCountdown - mDispTbl   ;AX=1224h, Share Retry
     dw strlen2 - mDispTbl   ;AX=1225h, strlen
 mDispTblL   equ     $ - mDispTbl

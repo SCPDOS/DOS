@@ -208,6 +208,8 @@ netServices:   ;ah = 5Eh, do nothing
     jz .setName
     cmp al, 6
     jb .netRedir
+    mov byte [errorLocus], eLocUnk
+    mov al, errInvFnc
 .badExit:
     jmp extErrExit
 .getName:
