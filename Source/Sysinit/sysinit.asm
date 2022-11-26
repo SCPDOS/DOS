@@ -802,11 +802,11 @@ setupFrame:
     mov rbp, rsp
     sub rsp, cfgFrame_size
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Store the end pointer here
-    mov byte [rbp - cfgFrame.newBuffers], buffersDefault
-    mov byte [rbp - cfgFrame.newSFTVal], filesDefault
-    mov byte [rbp - cfgFrame.newFCBSVal], fcbsDefault
-    mov byte [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
-    mov byte [rbp - cfgFrame.newLastdrive], lastDriveDeflt
+    mov qword [rbp - cfgFrame.newBuffers], buffersDefault
+    mov qword [rbp - cfgFrame.newSFTVal], filesDefault
+    mov qword [rbp - cfgFrame.newFCBSVal], fcbsDefault
+    mov qword [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
+    mov qword [rbp - cfgFrame.newLastdrive], lastDriveDeflt
 
     mov al, byte fs:[bootDrive]
     test al, 80h    ;Was boot drive hard disk?
@@ -821,14 +821,13 @@ notHDD:
     mov al, ReadAccess
     int 41h
     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
-
 ;------------------------------------------------;
 ;              Process CONFIG.SYS                ;
 ;------------------------------------------------;
 ;Create a stack frame with the following order.
 ;Values greater than max are set to max. Values less than min are set to min.
 ; New Buffers value.        Default = 30, Min = 1, Max = 99
-; New SFT value.            Default = 20, Min = 5, Max = 254
+; New SFT value.            Default = 20, Min = 8, Max = 254
 ; New FCBS value.           Default = 4,  Min = 4, Max = 254
 ; New protected FCBS value. Default = 0,  Min = 0, Max = New FCBS value
 ; New CDS value.            Default = 5,  Min = 5, Max = 26
@@ -872,38 +871,45 @@ notHDD:
 ;-------------------------------------------------------------------------;
 ;Start CONFIG.SYS parsing here
 configParse:
-    movzx ebx, ax   ;Move the handle into ebx
+    mov qword [rbp - cfgFrame.cfgHandle], rax
+    mov qword [rbp - cfgFrame.lastLine], 0
 .newLine:
+;Keeps the new line unless a DEVICE= command read it, which adjusts endPtr
     mov rdx, qword [rbp - cfgFrame.endPtr]  ;Start reading into here
-    mov rsi, rdx	;Use rsi to keep track of the start of the line
+    mov qword [rbp - cfgFrame.linePtr], rdx	;Use var for start of line ptr
 .nextChar:
+    mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into ebx
+    cmp bx, -1
+    je .stopProcessError
     mov eax, 3F00h  ;Read handle
     mov ecx, 1  ;Read one byte
     int 41h
     jc .stopProcessError
     test ecx, ecx	;If this is zero, EOF reached
     jnz .notEOF
-    mov byte [rdx], EOF	;Store an EOF
+    mov qword [rbp - cfgFrame.lastLine], -1	;Note we are at EOF
 .notEOF:
     inc qword [rbp - cfgFrame.endPtr]	;Goto next byte
-    cmp byte [rdx], CR
+    movzx eax, byte [rdx]
+    cmp al, CR
     je .endOfLine
-    cmp byte [rdx], EOF
+    cmp al, LF
     je .endOfLine
-    cmp byte [rdx], "a"
+    cmp al, "a"
     jb .notChar
-    cmp byte [rdx], "z"
+    cmp al, "z"
     ja .notChar
-    or byte [rdx], 20h	 ;Set the UC bit
-    and byte [rdx], ~40h ;Clear the LC bit
+    push rax    ;Push rax on stack as the argument to normalise
+    mov eax, 1213h  ;Uppercase the char
+    int 4fh
+    mov byte [rdx], al  ;Replace the char with the capitalised form
+    pop rax ;Pop into rax to renormalise the stack
 .notChar:
     inc rdx ;Now move our local pointer to the next byte
     jmp short .nextChar
 .endOfLine:
-;Remember rsi points to the start of the line
 ;rdx points to terminating char
-;First find the length of the word
-    push rsi
+;First find the length of the instruction word
     xor ecx, ecx
 .cmdNameLenGet:
     lodsb
@@ -915,7 +921,6 @@ configParse:
 ;Else, fall through in error
 .endOfCommandFound:
 ;ecx has the length of the command
-    pop rsi ;Go back to the start of the command
     cmp ecx, 10
     je .stopProcessError
     lea rdi, .keyTbl ;Put rdi at the table to search for
@@ -924,19 +929,34 @@ configParse:
     je .stopProcessError
     cmp byte [rdi], cl
     jne .gotoNextCmd
-    ;Candidate command found, now search
-    push rcx
-    push rsi
+    ;Candidate command found, check said command is the command we want
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    cmp rsi, -1 ;Error?
+    je .stopProcessError
     push rdi
-    pop rdi
-    pop rsi
+    push rcx
+    inc rdi ;Go to next char
+    repe cmpsb  ;Compare whilst the strings are equal
     pop rcx
+    pop rdi
+    jne .gotoNextCmd    ;If not equal, just goto next command
+    ;Else, rdi + rcx points to the word of the function
+    ;rdx points to the terminating char of the line 
+    push rdx    ;This is to know whether we continue processing or end now
+    lea rsi, .keyTbl
+    add rsi, qword [rdi + rcx + 1]
+    clc ;Esure flags are happy before entering
+    call rsi    ;Call this function
+    pop rdx
+    jc .stopProcessError    ;If the function returns CF=CY, error exit
+    test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
+    jnz .cfgExit
+    jmp .newLine
 .gotoNextCmd:
     movzx eax, byte [rdi]
     add eax, 3
     add rdi, rax
     jmp short .cmdSearch
-.cmdFound:
 .isCharTerminal:
 ;Input: AL = Char to check
 ;Output: ZF=ZE -> Char terminal
@@ -955,32 +975,376 @@ configParse:
     mov eax, 0900h
     int 41h
     ;Reset all values to default
-    mov byte [rbp - cfgFrame.newBuffers], buffersDefault
-    mov byte [rbp - cfgFrame.newSFTVal], filesDefault
-    mov byte [rbp - cfgFrame.newFCBSVal], fcbsDefault
-    mov byte [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
-    mov byte [rbp - cfgFrame.newLastdrive], lastDriveDeflt
-    jmp short .cfgExit
+    mov qword [rbp - cfgFrame.newBuffers], buffersDefault
+    mov qword [rbp - cfgFrame.newSFTVal], filesDefault
+    mov qword [rbp - cfgFrame.newFCBSVal], fcbsDefault
+    mov qword [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
+    mov qword [rbp - cfgFrame.newLastdrive], lastDriveDeflt
+    jmp .cfgExit
 .speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
-.keyTbl: db 5, "BREAK"
-	 dw 0
-         db 7, "BUFFERS"
-	 dw 0
-	 db 7, "COUNTRY"  ;Ignored for now
-	 dw 0
-	 db 5, "DEVICE"
-	 dw 0
-	 db 4, "FCBS"
-	 dw 0
-	 db 5, "FILES"
-	 dw 0
-	 db 9, "LASTDRIVE"
-	 dw 0
-	 db 5, "SHELL"
-	 dw 0
-	 db 6, "STACKS"
-	 dw 0
-	 db -1	;End of table marker
+.keyTbl: 
+    db 5, "BREAK"           ;DONE
+	dw .breakHandler - .keyTbl
+    db 7, "BUFFERS"         ;DONE
+	dw .bufHandler - .keyTbl
+	db 7, "COUNTRY"         ;Ignored for now
+	dw .countryScan - .keyTbl
+	db 6, "DEVICE"          ;DONE
+	dw .drvLoader - .keyTbl
+	db 4, "FCBS"            ;DONE (to be ignored for a while now)
+	dw .fcbHandler - .keyTbl
+	db 5, "FILES"           ;DONE
+	dw .sftHandler - .keyTbl
+	db 9, "LASTDRIVE"       ;DONE
+	dw .lastdriveHandler - .keyTbl
+	db 5, "SHELL"           ;Ignored for now
+	dw .shellHandler - .keyTbl
+	db 6, "STACKS"          ;Ignored for now
+	dw .stacksHandler - .keyTbl
+	db -1	;End of table marker
+.breakHandler:
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    add rsi, 6  ;Go past BREAK=
+    ;This must be the word ON or OFF 
+    xor edx, edx    ;Clear CF and default to OFF
+    cmp word [rsi], "ON"
+    je .breakOn
+    cmp word [rsi], "OF"
+    jne .breakBad
+    cmp byte [rsi + 2], "F"
+    je .breakCommon
+.breakBad:
+    stc
+    return
+.breakOn:
+    inc edx ;Go from OFF to ON  (keeps CF=NC)
+.breakCommon:
+    mov eax, 3301h  ;Set break to value in dl
+    int 41h
+    return
+
+.bufHandler:
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    add rsi, 8  ;Go past BUFFERS=
+    ;This must be at most three digits, anything else is a failure
+    mov rdi, rsi    ;Save the start in rdi
+    xor ecx, ecx
+    lodsb   ;Get the first char. Must be between ASCII '0' and '9'
+    cmp al, "0"
+    jb .bufHandlerErr
+    cmp al, "9"
+    ja .bufHandlerErr
+    inc ecx ;Increment char counter
+    lodsb   ;Get second char
+    call .bufHandlerTermCheck
+    je .bufHandlerProcess   ;If it is a terminating char, exit
+    cmp al, "0"
+    jb .bufHandlerErr
+    cmp al, "9"
+    ja .bufHandlerErr
+    lodsb   ;Check no more chars!
+    call .bufHandlerTermCheck
+    jne .bufHandlerErr
+.bufHandlerProcess:
+    xor edx, edx    ;Accumulate value in edx
+    mov rsi, rdi    ;Go back to the first number
+.bufHandlerLp:
+    lodsb   ;Get the digit
+    call .bufHandlerMul
+    jecxz .bufHandlerPrepExit
+    dec ecx
+    jmp short .bufHandlerLp 
+.bufHandlerPrepExit:
+;edx has the value now, so place it in stack
+    mov ecx, buffersDefault
+    test edx, edx
+    cmovz edx, ecx  ;Replace zero with default if the user specified 0 buffers
+    mov qword [rbp - cfgFrame.newBuffers], rdx
+    clc
+    return
+.bufHandlerMul:
+    sub al, "0" ;Convert to a binary value
+    mul cl  ;Multiply al by cl, answer in ax
+    movzx eax, ax
+    add edx, eax
+    return
+.bufHandlerErr:
+    stc
+    return
+.bufHandlerTermCheck:
+    cmp al, SPC
+    rete
+    cmp al, TAB
+    rete
+    cmp al, CR
+    rete
+    cmp al, LF
+    rete
+    return
+.countryScan:
+    return
+.drvLoader:
+;We first try to read the driver into the byte after rdx.
+;If we cannot open the file, or we can open but not read the whole file
+; we error with Bad or missing filename msg, and proceed as if nothing happened 
+; (CF=NC). 
+; Thus we DO NOT adjust .endPtr or .linePtr and recycle that space for the 
+; next line.
+;If the open succeeded and we were able to read the whole driver into memory, 
+; we pass the lineptr to the driver and call init for the driver.
+; Once the driver returns, if the DONE bit is set, we read the offset of 
+; free memory above the driver and add that to the endPtr. If the driver
+; is a block driver, we add to the endPtr the space for "Units supported" 
+; number of DPBs.
+    mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
+    mov rdi, qword [rbp - cfgFrame.linePtr]
+    add rdi, 7  ;Go past DEVICE= to the pathname
+    mov rdx, rdi    ;Prepare rdx for the open
+    mov eax, SPC
+.drvFindEndOfFileName:
+    scasb  ;Is this char the space?
+    je .fileNameFound
+    ;Was the char terminal?
+    cmp byte [rdi - 1], CR
+    je .drvBad
+    cmp byte [rdi - 1], LF
+    je .drvBad
+    jmp short .drvFindEndOfFileName
+.fileNameFound:
+    mov byte [rdi - 1], 0   ;Null terminate the path to the file
+    mov eax, 3D00h  ;Read only file
+    int 41h
+    jc .drvBad
+    mov byte [rdi - 1], " " ;Replace the null with a space now again
+    movzx ebx, ax   ;Get the handle in ebx
+    mov word [.drvHandle], ax   ;Save the handle in variable
+    xor edx, edx    ;Move the handle to the end of the file
+    mov eax, 4202h  ;LSEEK to SEEK_END
+    int 41h
+    mov ecx, eax    ;Get the file size in ecx
+    xor edx, edx    ;Move the handle to the start of the file
+    mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
+    int 41h
+    ;Now we read ecx bytes to rsi as rsi points to first byte past the end
+    ; of the DEVICE= line 
+    mov rdx, rsi    ;Point to first byte past the end of DEVICE= line
+    mov esi, ecx    ;Save the number of bytes to read in esi
+    mov eax, 3F00h  ;Read handle    
+    int 41h
+    jc .drvBadClose
+    cmp esi, ecx    ;Were all bytes read in?
+    jne .drvBadClose
+    ;Ok, full file read in, now prepare to call driver init routine
+    mov rsi, rdx    ;Move ptr to driver header to rsi
+    lea rbx, .drvInitStruc
+    mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
+    mov byte [rbx + initReqPkt.cmdcde], drvINIT
+    mov word [rbx + initReqPkt.status], 0
+    mov byte [rbx + initReqPkt.numunt], 0
+    mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
+    add rax, 7  ;Goto the first byte past DEVICE=
+    mov qword [rbx + initReqPkt.endptr], rax
+    mov qword [rbx + initReqPkt.optptr], 0
+    movzx eax, byte fs:[numPhysVol]
+    dec eax ;Get a 0 based count
+    mov byte [rbx + initReqPkt.drvnum], al
+    call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
+    call qword [rsi + drvHdr.intPtr]
+    test word [rbx + initReqPkt.status], drvDonStatus
+    jz .drvBadClose
+    test word [rbx + initReqPkt.status], drvErrStatus
+    jnz .drvBadClose
+    ;Now check that the driver wants to be installed
+    cmp rsi, qword [rbx + initReqPkt.endptr]    ;This is for char and blk devs
+    je .drvWantsClose
+    test word [rsi + drvHdr.attrib], devDrvChar
+    jnz .drvChar
+    cmp byte [rbx + initReqPkt.numunt], 0
+    je .drvWantsClose
+.drvChar:
+    ;Otherwise, this init passed, now build the structures we need.
+    ;First adjust .endPtr
+    mov rax, qword [rbx + initReqPkt.endptr]    ;Get the end pointer
+    mov qword [rbp - cfgFrame.endPtr], rax  ;Move it here
+    ;Now if we are a char device, we are done so check here
+    test word [rsi + drvHdr.attrib], devDrvChar
+    jnz .drvWantsClose  ;We are complete
+    ;Now for block devices, we get the BPB ptr array and numUnits supported
+    movzx ecx, byte [rbx + initReqPkt.numunt]
+    mov rbx, qword [rbx + initReqPkt.optptr]    ;Get the BPB array pointer
+
+    mov rdx, rsi    ;Move the driver pointer to rdx
+    mov rsi, qword [rbp - cfgFrame.endPtr]  ;Build DPB array here
+    mov rdi, rsi    ;Move rdi here too, to point to first new DPB later
+    push rcx
+    push rdx
+    xor edx, edx
+    mov eax, dpb_size
+    mul ecx ;Multiply the number of DPB's needed with the size of a dpb
+    add qword [rbp - cfgFrame.endPtr], rax  ;Add this value to endPtr
+    pop rdx ;Get back the driver ptr in rdx
+    pop rcx ;Get back the number of units count
+    
+    xchg rbp, rbx   ;Swap stack frame ptr and BPB array ptr
+    xchg rsi, rbp   ;Swap BPB array and DPB space ptrs
+.drvBuildDPB:
+    mov eax, 5300h
+    int 41h
+    add rsi, bpbEx_size ;Goto next bpb in array
+    ;Adjust fields in DPB
+    inc byte fs:[numPhysVol] 
+    mov al, byte fs:[numPhysVol]
+    mov byte [rbp + dpb.bDriveNumber], al
+    mov byte [rbp + dpb.bUnitNumber], ch
+    mov qword [rbp + dpb.qDriverHeaderPtr], rdx
+    lea rax, qword [rbp + dpb_size] ;Point to next DPB
+    mov qword [rbp + dpb.qNextDPBPtr], rax
+    inc ch  ;Increment unit number 
+    cmp cl, ch  ;Are we done?
+    je .dpbInitDone
+    add rbp, dpb_size   ;Go to space for next DPB
+    jmp short .drvBuildDPB
+.dpbInitDone:
+;Make sure we now make the last qNextDPBPtr = -1
+    mov qword [rbp + dpb.qNextDPBPtr], -1
+    ;Now we set the old last dpb to point to the first one
+    mov rsi, qword fs:[dpbHeadPtr]
+.drvDPBLp:
+    cmp byte [rsi + dpb.qNextDPBPtr], -1
+    je .drvLastDPBFound
+    mov rsi, qword [rsi + dpb.qNextDPBPtr]  ;Goto next DPB
+    jmp short .drvDPBLp
+.drvLastDPBFound:
+    mov qword [rsi], rdi    ;Chain this dpb now to the first new dpb
+    mov rbp, rbx    ;Return the stack frame ptr to rbp
+;And we are done!
+.drvWantsClose:
+;If the driver wants to not install silently, it can here
+    movzx ebx, word [.drvHandle] ;Get the handle back, close it and proceed
+    mov eax, 3E00h  
+    int 41h 
+    clc ;Never return with CF=CY
+    return  
+.drvBadClose:
+    movzx ebx, word [.drvHandle]    ;Get back handle to close
+    mov eax, 3E00h  ;Close handle in ebx
+    int 41h
+.drvBad:
+    lea rdx, .drvBadMsg
+    mov eax, 0900h
+    int 41h
+    clc ;Never return with CF=CY
+    return
+.drvBadMsg: db "Bad or missing filename",CR,LF,"$"
+.drvInitStruc: db initReqPkt_size dup (0)  
+.drvHandle: dw -1
+
+.fcbHandler:
+    return
+.sftHandler:
+;This reads the line to set the number of FILE to between 1 and 254
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    add rsi, 6  ;Go past FILES=
+    ;This must be at most three digits, anything else is a failure
+    mov rdi, rsi    ;Save the start in rdi
+    xor ecx, ecx
+    lodsb   ;Get the first char. Must be between ASCII '0' and '9'
+    cmp al, "0"
+    jb .sftHandlerErr
+    cmp al, "9"
+    ja .sftHandlerErr
+    inc ecx ;Increment char counter
+    lodsb   ;Get second char
+    call .sftHandlerTermCheck
+    je .sftHandlerProcess   ;If it is a terminating char, exit
+    cmp al, "0"
+    jb .sftHandlerErr
+    cmp al, "9"
+    ja .sftHandlerErr
+    inc ecx ;Increment char counter
+    lodsb   ;Get third char
+    call .sftHandlerTermCheck
+    cmp al, "0"
+    jb .sftHandlerErr
+    cmp al, "2" ;Max BUFFERS=254 soooo, sorry buddy!
+    ja .sftHandlerErr
+    lodsb   ;Check no more chars!
+    call .sftHandlerTermCheck
+    jne .sftHandlerErr
+.sftHandlerProcess:
+    xor edx, edx    ;Accumulate value in edx
+    mov rsi, rdi    ;Go back to the first number
+.sftHandlerLp:
+    lodsb   ;Get the digit
+    call .sftHandlerMul
+    jecxz .sftHandlerPrepExit
+    dec ecx
+    jmp short .sftHandlerLp 
+.sftHandlerPrepExit:
+;edx has the value now, so place it in stack
+    mov ecx, filesDefault  ;Get default if the user specifies less than min
+    cmp edx, 8
+    cmovb edx, ecx
+    mov qword [rbp - cfgFrame.newSFTVal], rdx
+    clc
+    return
+.sftHandlerMul:
+    sub al, "0" ;Convert to a binary value
+    mul cl  ;Multiply al by cl, answer in ax
+    movzx eax, ax
+    add edx, eax
+    return
+.sftHandlerErr:
+    stc
+    return
+.sftHandlerTermCheck:
+    cmp al, SPC
+    rete
+    cmp al, TAB
+    rete
+    cmp al, CR
+    rete
+    cmp al, LF
+    rete
+    return
+.lastdriveHandler:
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    add rsi, 10  ;Go past LASTDRIVE=
+    lodsb   ;Get this char
+    movzx eax, al   ;Zero extend to eax
+    push rax    ;Push on stack
+    mov eax, 1213h  ;Uppercase the char
+    int 4Fh
+    pop rbx
+    cmp al, "Z"
+    ja .sftHandlerErr
+    cmp al, "A"
+    jb .sftHandlerErr
+    cmp byte [rsi], CR
+    je .ldProceed
+    cmp byte [rsi], LF
+    je .ldProceed
+    cmp byte [rsi], TAB
+    je .ldProceed
+    cmp byte [rsi], SPC
+    jne .sftHandlerErr
+.ldProceed:
+    sub al, "A" ;Convert into a number
+    movzx eax, al   ;Zero extend in case DOS rets something dumb in upper bits
+    mov edx, lastDriveDeflt
+    cmp eax, lastDriveDeflt
+    cmovb eax, edx
+    mov qword [rbp - cfgFrame.newLastdrive], rax
+    clc
+    return
+.ldBad:
+    stc
+    return
+.shellHandler:
+    return
+.stacksHandler:
+    return
+
 .cfgExit:
     mov eax, 3eh    ;Close the handle
     int 41h ;bx already has the handle
@@ -994,7 +1358,7 @@ configParse:
 ;Create a larger CDS if needed.
 noCfg:
 ;Start with buffers:
-    movzx ecx, byte [rbp - cfgFrame.newBuffers]    ;Get new buffers size
+    mov rcx, qword [rbp - cfgFrame.newBuffers]    ;Get new buffers size
     mov byte fs:[numBuffers], cl    ;Store this value in var
     ;Now do the allocation at rdi. Each buffer = maxSectorSize + bufferHdr_size
     movzx ebx, word fs:[maxBytesSec]    ;Get buffer sector size
@@ -1029,7 +1393,7 @@ noCfg:
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
 
 ;Now build a new SFT header for the number of files specified by user
-    movzx ecx, byte [rbp - cfgFrame.newSFTVal]
+    mov rcx, qword [rbp - cfgFrame.newSFTVal]
     cmp ecx, 5  ;If we are not adding anything, skip building SFT
     je .skipSFT
     mov rsi, qword fs:[sftHeadPtr]  ;Get the current only SFT head pointer
@@ -1046,16 +1410,16 @@ noCfg:
 ;FCBS at rdi
     mov qword fs:[fcbsHeadPtr], rdi ;Setup the fcbs var here
     mov qword [rdi + sfth.qNextSFTPtr], -1  ;No more FCBS headers for now
-    movzx ecx, byte [rbp - cfgFrame.newFCBSVal]
+    mov rcx, qword [rbp - cfgFrame.newFCBSVal]
     mov word [rdi + sfth.wNumFiles], cx ;Move this value here
     mov eax, sft_size
     mul ecx ;Multiply number of sft with their size to get allocation
     add rdi, rax    ;Add that many bytes to rdi
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
-    movzx ecx, byte [rbp - cfgFrame.newProtFCBSVal] ;Get number of safe FCBs
+    mov rcx, qword [rbp - cfgFrame.newProtFCBSVal] ;Get number of safe FCBs
     mov word fs:[numSafeSFCB], cx   ;And save that there
 ;And CDS now
-    movzx ecx, byte [rbp - cfgFrame.newLastdrive]
+    mov rcx, qword [rbp - cfgFrame.newLastdrive]
     mov byte fs:[lastdrvNum], cl ;Save this value
     mov qword fs:[cdsHeadPtr], rdi  ;Point cdsHeadPtr here
     call makeCDSArray

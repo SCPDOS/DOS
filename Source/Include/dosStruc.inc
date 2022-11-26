@@ -286,17 +286,19 @@ struc dpl
 endstruc
 
 struc cfgFrame  ;Frame used for config.sys parsing
-    .oldRBP         resq 1  
-    .newBuffers     resb 1  ;New buffers value
-    .newSFTVal      resb 1
-    .newFCBSVal     resb 1
-    .newProtFCBSVal resb 1  ;Number of protected FCBS
-    .newLastdrive   resb 1
-    .newStacks      resb 1  ;Ignored for now
-    .newStackSize   resb 2  ;Ignored for now
-    .newAllocSize   resd 1  ;Used to keep track of reallocation size
-                    resd 1  ;Alignment byte
+                    resq 1  ;Alignment qword
+    .newBuffers     resq 1  ;New buffers value
+    .newSFTVal      resq 1
+    .newFCBSVal     resq 1
+    .newProtFCBSVal resq 1  ;Number of protected FCBS
+    .newLastdrive   resq 1
+    .newStacks      resq 1  ;Ignored for now
+    .newStackSize   resq 1  ;Ignored for now
+    .newAllocSize   resq 1  ;Used to keep track of reallocation size
+    .cfgHandle      resq 1  ;CONFIG.SYS handle
+    .lastLine       resq 1  ;Set if the last line is current
     .endPtr         resq 1  ;Pointer to the end of the allocation space
+    .linePtr        resq 1  ;Ptr to line being processed by CONFIG.SYS
 endstruc
 
 struc filename
