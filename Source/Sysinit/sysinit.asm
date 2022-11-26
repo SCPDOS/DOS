@@ -1001,6 +1001,8 @@ configParse:
 	dw .shellHandler - .keyTbl
 	db 6, "STACKS"          ;Ignored for now
 	dw .stacksHandler - .keyTbl
+    db 8, "DRIVPARM"
+    dw .drivParm - .keyTbl  ;Ignored for now
 	db -1	;End of table marker
 .breakHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
@@ -1344,8 +1346,11 @@ configParse:
     return
 .stacksHandler:
     return
+.drivParm:
+    return
 
 .cfgExit:
+    mov rbx, qword [rbp - cfgFrame.cfgHandle] ;Get the handle back
     mov eax, 3eh    ;Close the handle
     int 41h ;bx already has the handle
 ;------------------------------------------------;
