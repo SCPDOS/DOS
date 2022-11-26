@@ -11,15 +11,23 @@ multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
     jae .exitBad   ;If above or equal, exit
     push rbx
     push rcx
-    xor ecx, ecx
     lea rbx, mDispTbl   ;Get multiplex displacement table
-    mov cl, al   ;Get the subfunction number into ecx
+    push rbx
+    movzx ecx, al   ;Get the subfunction number into ecx
     mov rax, qword [rsp + 5*8]  ;Pick the word pushed on the stack before call 
     shl ecx, 1   ;multiply by 2
-    add rbx, rcx    ;rbx now points to function to call
-    call rbx
+    movzx ebx, word [rbx + rcx] ;Get the word at this address
+    pop rcx ;Get the EA of the displacement table in rcx
+    add rbx, rcx
+    mov qword [oldRBX], rbx
     pop rcx
     pop rbx
+    call qword [oldRBX]
+    mov qword [oldRBX], rbx
+    pushfq  ;Move flags on the stack
+    pop rbx
+    mov qword [rsp + 8*2], rbx  ;Replace entry flags with our own flags
+    mov rbx, qword [oldRBX]
     iretq
 .exitBad:
     or byte [rsp + 8h*2], 1

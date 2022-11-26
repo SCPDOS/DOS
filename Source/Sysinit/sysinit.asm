@@ -958,11 +958,13 @@ configParse:
     pop rcx
     pop rdi
     jne .gotoNextCmd    ;If not equal, just goto next command
-    ;Else, rdi + rcx points to the word of the function
+    ;Else, rdi + rcx points to the word ptr of the function
     ;rdx points to the terminating char of the line 
     push rdx    ;This is to know whether we continue processing or end now
     lea rsi, .keyTbl
-    add rsi, qword [rdi + rcx + 1]
+    mov rax, rsi    ;Keep a copy in rax
+    add rsi, qword [rdi + rcx + 1]  ;This is the offset from .keyTbl
+    add rsi, rax    ;So add the EA of the head of the tbl before calling
     clc ;Esure flags are happy before entering
     call rsi    ;Call this function
     pop rdx

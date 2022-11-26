@@ -87,6 +87,11 @@ td2 db 0    ;Hours/Zero
 td3 db 0    ;Hundredths/Day
 td4 db 0    ;Seconds/Month
 
-;Rename Buffers
+;Rename/Copy Buffers
 sourcePath  db cmdBufferL dup (0)
 destPath    db cmdBufferL dup (0)
+;Copy Handles
+sourceHdl   dw -1
+destHdl     dw -1
+
+copyBuffer  db 0 dup (128)  ;Copy up to 128 bytes at a time

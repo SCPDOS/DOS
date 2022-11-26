@@ -3,6 +3,9 @@
 ;Only the Int 4Eh entry point will preserve the callers DTA.
 
 ;Common Error Messages, jumped to to return from
+noSelfCopyError:
+    lea rdx, noSelfCopy
+    jmp short badCmn
 badParamError:
     lea rdx, badParm
     jmp short badCmn
@@ -430,7 +433,123 @@ rmdir:
     return
 
 copy:
+    test byte [arg1Flg], -1
+    jz badArgError
+    test byte [arg2Flg], -1
+    jz badArgError
+    lea rsi, cmdBuffer
+    movzx eax, byte [arg1Off]
+    add rsi, rax    ;Go to the start of the command
+    ;rsi points to terminating char
+    lodsb   ;Get first char in AL
+    dec rsi ;Go back to this char
+    call isALEndOfCommand
+    jc badParamError
+    lea rdi, sourcePath ;Store this in sourcePath
+.copyName1:
+    lodsb
+    call isALEndOfCommand
+    je badParamError
+    call isALterminator
+    jz .endOfName1
+    stosb
+    jmp short .copyName1
+.endOfName1:
+    xor eax, eax
+    stosb   ;Store this 0 at rdi
+    lea rsi, cmdBuffer
+    movzx eax, byte [arg2Off]
+    add rsi, rax    ;Go to the start of the command
+    cmp byte [rsi + 1], ":" ;If dest path char 2 is :, must be X:, not allowed
+    je badParamError
+    lodsb   ;Get first char in AL
+    dec rsi ;Go back to this char
+    call isALEndOfCommand
+    jc badParamError
+    lea rdi, destPath
+.copyName2:
+    lodsb
+    call isALEndOfCommand
+    je .endOfName2
+    call isALterminator
+    jz .endOfName2
+    stosb
+    jmp short .copyName2
+.endOfName2:
+    xor eax, eax
+    stosb   ;Store this 0 at rdi
+;Before we open, we check if the two filenames are equal
+; If so, crap out.
+    lea rsi, sourcePath
+    lea rdi, destPath
+    mov eax, 121Eh
+    breakpoint
+    int 4Fh
+    jz .sameFilename
+    ;Open source with read permission
+    ;Open destination with write permission
+    lea rdx, sourcePath
+    mov eax, 3D00h  ;Read open
+    int 41h
+    jc badParamError
+    mov word [sourceHdl], ax
+    lea rdx, destPath
+    mov eax, 3C00h  ;Create the file
+    xor ecx, ecx    ;No file attributes
+    int 41h
+    jc .badExit
+    mov word [destHdl], ax
+.copyLoop:
+    mov ecx, 128
+    lea rdx, copyBuffer
+    movzx ebx, word [sourceHdl]
+    mov ah, 3Fh ;Read
+    int 41h
+    jc .badExit
+    cmp ecx, 128
+    jb .okExit
+    mov ecx, 128
+    lea rdx, copyBuffer
+    mov ah, 40h ;Write
+    int 41h
+    jc .badExit
+    cmp ecx, 128
+    jnb .copyLoop
+    call .okExit
+.okExit:
+    mov ah, 02h
+    mov dl, "1" ;1 File(s) copied
+    int 41h
+    lea rdx, copyOk
+    mov ah, 09h
+    int 41h
     return
+.sameFilename:
+    call .leaveCopyClose ;Close the handles
+    jmp noSelfCopyError
+.leaveCopyClose:
+    mov bx, word [sourceHdl]
+    mov eax, 3E00h
+    int 41h
+    mov bx, word [destHdl]
+    mov eax, 3E00h
+    int 41h
+    return
+.badExit:
+;Prototypically use badParamError for error reporting... sucks I know
+    mov bx, word [sourceHdl]
+    cmp bx, -1
+    je .skipSource
+    mov eax, 3E00h  ;Close this handle
+    int 41h
+.skipSource:
+    mov bx, word [destHdl]
+    cmp bx, -1
+    je badParamError
+    mov eax, 3E00h
+    int 41h
+    jmp badParamError
+
 erase:
     test byte [arg1Flg], -1
     jz badArgError
