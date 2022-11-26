@@ -269,21 +269,21 @@ cpu_exception:
     call .writeExceptionMessage
     jmp short .introEnd
 .introStop:
-    mov byte [.halt], -1
+    mov byte [haltDOS], -1
     lea rsi, .fatalHalt   ;Get the ptr
     mov ebx, fatalHaltL  ;Get the length
     call .writeExceptionMessage
 .introEnd:
-    lea rdi, .byteBuffer
+    lea rdi, byteBuffer
     call .printbyte ;Store the error code in the byte buffer
-    lea rsi, .byteBuffer
+    lea rsi, byteBuffer
     mov ebx, 2  ;Print the two nybbles
     call .writeExceptionMessage
 
     cmp cl, 1
     ja .cpuextendederror    ;rax contains error code, or extra cr2 value
 .cpurollprint:
-    lea rdi, .byteBuffer
+    lea rdi, byteBuffer
     mov rdx, qword [rsp]    ;Get address
 ;Takes whats in rdx, rols left by one byte, prints al
     mov cl, 8    ;8 bytes
@@ -297,23 +297,25 @@ cpu_exception:
     jnz .cpurollprint1
 
     mov ebx, 16 ;Print the 16 nybbles
-    lea rsi, .byteBuffer
+    lea rsi, byteBuffer
     call .writeExceptionMessage
 
     mov ebx, crlfL
     lea rsi, .crlf
     call .writeExceptionMessage    
 
-    test byte [.halt], -1
+    test byte [haltDOS], -1
     jnz .fatalStop
     call .readInputChar
     jmp ctrlBreakHdlr.exceptEP ;Jump to CTRL+C out (without a ^C printed)
 .fatalStop:
 ;This is called if inDOS > 1 or NMI occured
 ;Permanently locks up the system by turning off interrupts and infinite looping.
+    call dosCrit2Enter  ;Suspend multitasking now
+.fatalLp:
     cli
     hlt
-    jmp short .fatalStop
+    jmp short .fatalLp
 
 .cpuextendederror:
     lea rsi, .fatal2
@@ -323,7 +325,7 @@ cpu_exception:
     pop rdx
     dec rcx
     push rcx
-    lea rdi, .byteBuffer
+    lea rdi, byteBuffer
     mov cl, 2    ;CAN CHANGE TO 4 BYTES IN THE FUTURE
     xchg dl, dh   
 .pr1:
@@ -335,7 +337,7 @@ cpu_exception:
     dec cl
     jnz .pr1
 
-    lea rsi, .byteBuffer
+    lea rsi, byteBuffer
     mov ebx, 4  ;Print four nybbles
     call .writeExceptionMessage
 
@@ -349,7 +351,7 @@ cpu_exception:
 
     mov cl, 8   ;16 nybbles
     mov rdx, cr2    ;Get page fault address
-    lea rdi, .byteBuffer
+    lea rdi, byteBuffer
 .pr2:
     rol rdx, 8    ;Print rdx
     mov al, dl
@@ -359,7 +361,7 @@ cpu_exception:
     dec cl
     jnz .pr2
 
-    lea rsi, .byteBuffer
+    lea rsi, byteBuffer
     mov ebx, 16
     call .writeExceptionMessage
 
@@ -423,7 +425,5 @@ fatal2L    equ $ - .fatal2
 ;The below error is displayed is inDOS > 1 or NMI occured
 .fatalHalt: db "SCP/DOS SYSTEM STOP: "
 fatalHaltL equ $ - .fatalHalt
-.halt:  db 0    ;Set to -1 on permahalt
-.byteBuffer:    db 16 dup (0)
 .crlf:  db CR,LF,LF
 crlfL  equ $ - .crlf

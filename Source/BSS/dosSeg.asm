@@ -276,6 +276,8 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
     sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
+    byteBuffer  resb 16 ;Used by DOS exception handler to build strings
+    haltDOS     resb 1  ;Used by DOS exception handler to indicate DOS will halt
     sdaLen      equ     $ - sda 
     sdaMSLen    equ     $ - sdaMainSwap
 
