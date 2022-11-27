@@ -306,9 +306,11 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate
 ;Output: If ok then ax = New handle
-    call findFreeJFTSpace    ;First find a free space in the JFT
+    push rbx
+    call findFreeJFTEntry    ;First find a free space in the JFT
+    pop rbx
     jc extErrExit   ;Exit if no space
-    ;rsi points to the free space
+    mov rsi, rdi    ;Points rsi to the free space
 .duplicateCommon:
     call getJFTPtr  ;Get a pointer to the JFT entry in rdi for bx
     xchg rsi, rdi
@@ -2376,26 +2378,6 @@ getBytesTransferred:
     neg ecx ;Multiply by -1
     add ecx, dword [tfrLen]     ;Add total bytes to transfer
     return ;Return bytes transferred in ecx
-
-findFreeJFTSpace:
-;Input: [currentPSP] = Task whose PSP we will look through
-;If there are no free spaces, then we return with al = errNhl and CF=CY
-;Else, a pointer to the free space in rsi and al = -1
-    push rcx
-    mov rsi, qword [currentPSP]
-    movzx ecx, word [maxHndls]
-    lea rsi, qword [rsi + psp.jobFileTbl]   ;Point to start of table
-.search:
-    lodsb
-    cmp al, -1
-    je .exit
-    dec ecx
-    jnz .search
-    mov al, errNhl  ;No free handles buddy, sorry
-    stc ;Set error bit
-.exit:
-    pop rcx
-    return
 
 getSFTndxInheritable:
 ;Given a SFTndx this function will verify if it is inheritable

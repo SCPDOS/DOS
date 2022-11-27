@@ -483,11 +483,11 @@ copy:
     lea rsi, sourcePath
     lea rdi, destPath
     mov eax, 121Eh
-    breakpoint
     int 4Fh
     jz .sameFilename
     ;Open source with read permission
     ;Open destination with write permission
+    breakpoint
     lea rdx, sourcePath
     mov eax, 3D00h  ;Read open
     int 41h
@@ -499,6 +499,7 @@ copy:
     int 41h
     jc .badExit
     mov word [destHdl], ax
+    breakpoint
 .copyLoop:
     mov ecx, 128
     lea rdx, copyBuffer
@@ -510,6 +511,7 @@ copy:
     jb .okExit
     mov ecx, 128
     lea rdx, copyBuffer
+    movzx ebx, word [destHdl]
     mov ah, 40h ;Write
     int 41h
     jc .badExit

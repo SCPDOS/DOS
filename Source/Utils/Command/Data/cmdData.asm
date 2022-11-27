@@ -94,4 +94,4 @@ destPath    db cmdBufferL dup (0)
 sourceHdl   dw -1
 destHdl     dw -1
 
-copyBuffer  db 0 dup (128)  ;Copy up to 128 bytes at a time
+copyBuffer  db 128 dup (0)  ;Copy up to 128 bytes at a time

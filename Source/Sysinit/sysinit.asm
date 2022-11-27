@@ -1498,11 +1498,9 @@ closeHandlesLoop:
     lea rdx, conName
     int 41h
     mov ebx, eax    ;Move file handle to ebx
-    mov ecx, 1
-    mov eax, 4600h  ;DUP2
+    mov eax, 4500h  ;DUP
     int 41h
-    inc ecx         ;Goto next handle
-    mov eax, 4600h  ;DUP2
+    mov eax, 4500h  ;DUP
     int 41h
     lea rdx, prnName
     mov eax, 3D02h
