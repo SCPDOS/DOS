@@ -1264,7 +1264,10 @@ buildSFTEntry:
     ;If recreating, check we are not overwriting a Dir
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
     jnz .bad    ;Directories are not allowed to be created
+    push rbp
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
+    pop rbp
+    jc .bad
     ;al has the char for the filename
     ;Sets vars for the sector/offset into the sector
     mov rdi, qword [currentSFT]
@@ -2030,7 +2033,7 @@ writeDiskFile:
     movzx ecx, word [rbp + dpb.wBytesPerSector]
     sub ecx, eax    ;Get bytes left to fill this sector in ecx
     mov eax, dword [tfrCntr] ;Get # bytes left to transfer
-    cmp cx, ax  ;Is # of bytes leftto tfr less than bytes left in sector?
+    cmp cx, ax  ;Is # of bytes left to tfr less than bytes left in sector?
     cmova cx, ax    ;If yes, swap
     mov word [sectTfr], cx  ;Save this value in the var
     movzx eax, byte [currSectC] ;Get sector offset in cluster
