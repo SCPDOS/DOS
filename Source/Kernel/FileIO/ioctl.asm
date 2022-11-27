@@ -398,8 +398,6 @@ ioctrl:            ;ah = 44h, handle function
     movzx eax, word [errorExCde] 
     jmp extErrExit
 
-
-
 .getDrvLogicalDevice:
     mov al, bl
     lea rbx, primReqHdr
