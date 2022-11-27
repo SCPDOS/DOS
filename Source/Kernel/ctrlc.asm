@@ -327,7 +327,9 @@ cpu_exception:
     test byte [haltDOS], -1
     jnz .fatalStop
     call .readInputChar
-    jmp ctrlBreakHdlr.exceptEP ;Jump to CTRL+C out (without a ^C printed)
+    mov eax, 4c00h
+    mov byte [ctrlCExit], -1
+    jmp functionDispatch    ;Call Int 41h politely
 .fatalStop:
 ;This is called if inDOS > 1 or NMI occured
 ;Permanently locks up the system by turning off interrupts and infinite looping.
