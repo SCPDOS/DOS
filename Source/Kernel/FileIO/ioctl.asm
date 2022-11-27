@@ -52,7 +52,9 @@ ioctrl:            ;ah = 44h, handle function
     dec al
     jz .setSharingCount
     sub al, 2
-    jz .genericDevIOCTL
+    jz .genericCharDevIOCTL
+    dec al
+    jz .genericBlokDevIOCTL
     dec al
     jz .getDrvLogicalDevice
     jmp .setDrvLogicalDevice
@@ -152,7 +154,7 @@ ioctrl:            ;ah = 44h, handle function
     ;rbx -> Request Header
     ;al = Media descriptor
     mov byte [rbx + ioReqPkt.medesc], al
-    test word [rsi + drvHdr.attrib], devDrvIOCTL
+    test word [rsi + drvHdr.attrib], devDrvIOCTLRW
     jz .invalidFunction ;If not supported, invalid function error 
     ;Make request now
 .ioctlStringCommonRetry:
@@ -322,9 +324,68 @@ ioctrl:            ;ah = 44h, handle function
     mov word [shareDelay], dx
     xor eax, eax
     jmp extGoodExit
-.genericDevIOCTL:
+.genericCharDevIOCTL:
+;Don't support any IOCTL for char devs yet
     mov al, errAccDen
     jmp extErrExit
+.genericBlokDevIOCTL:
+    mov al, bl  ;Move the drive number from bl to al
+    push rcx
+    push rdx
+    call getCDS ;Sets the current CDS
+    pop rdx
+    pop rcx
+    jc .badDrv
+    ;Check the CDS not net, subst or join
+    mov rsi, qword [workingCDS]
+    movzx eax, word [rsi + cds.wFlags]
+    test ax, cdsValidDrive  ;If not valid, fail
+    jz .badDrv
+    test ax, cdsRedirDrive|cdsJoinDrive|cdsSubstDrive|cdsRdirLocDrive
+    jz .goodDrive
+.badDrv:
+    mov byte [errorLocus], eLocDsk
+    mov eax, errBadDrv  ;Error code if error
+    jmp extErrExit
+.goodDrive:
+    ;CDS is good,now get the DPB
+    mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
+    mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
+    xchg rsi, rdi   ;And swap em
+    test word [rsi + drvHdr.attrib], devDrvIOCTL
+    jnz .supportsIOCTL
+    mov byte [errorLocus], eLocUnk
+    mov eax, errInvFnc
+    jmp extErrExit
+.supportsIOCTL:
+    ;Setup the request header
+    lea rbx, primReqHdr
+    mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
+    mov al, byte [rdi + dpb.bUnitNumber]
+    mov byte [rbx + ioctlReqPkt.unitnm], al
+    mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
+    mov word [rbx + ioctlReqPkt.status], 0
+    mov word [rbx + ioctlReqPkt.majfun], cx ;Store maj and min together
+    mov qword [rbx + ioctlReqPkt.ctlptr], rdx
+    mov rdi, rsi    ;Save the driver header ptr in rdi
+    call getUserRegs
+    mov rax, qword [rsi + callerFrame.rsi]
+    mov qword [rbx + ioctlReqPkt.rsival], rax
+    mov rax, qword [rsi + callerFrame.rdi]
+    mov qword [rbx + ioctlReqPkt.rdival], rax
+    mov rsi, rdi
+    call goDriver
+    test word [rbx + ioctlReqPkt.status], drvErrStatus
+    jz extGoodExit
+    movzx edi, word [rbx + ioctlReqPkt.status]
+    and edi, 0FFh   ;Save the low byte only
+    mov eax, edi
+    call xlatHardError
+    movzx eax, word [errorExCde] 
+    jmp extErrExit
+
+
+
 .getDrvLogicalDevice:
     mov al, bl
     lea rbx, primReqHdr
@@ -342,7 +403,7 @@ ioctrl:            ;ah = 44h, handle function
     mov al, byte [rdi + dpb.bUnitNumber]
     mov byte [rbx + getDevReqPkt.unitnm], al
 
-    test word [rsi + drvHdr.attrib], devDrvExtFun
+    test word [rsi + drvHdr.attrib], devDrvIOCTL
     jz .invalidFunction
     call goDriver
     test word [rbx + getDevReqPkt.status], drvErrStatus
@@ -375,7 +436,7 @@ ioctrl:            ;ah = 44h, handle function
     mov rsi, qword [rdi + dpb.qDriverHeaderPtr]
     mov al, byte [rdi + dpb.bUnitNumber]
     mov byte [rbx + setDevReqPkt.unitnm], al
-    test word [rsi + drvHdr.attrib], devDrvExtFun
+    test word [rsi + drvHdr.attrib], devDrvIOCTL
     jz .invalidFunction
     call goDriver
     xor al, al

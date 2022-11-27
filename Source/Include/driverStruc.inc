@@ -63,10 +63,9 @@ endstruc
     devDrvNulDev   equ 4h  ;If set, device is NULL device
     devDrvClockDev equ 8h  ;If set, device is CLOCK device
     devDrvFastOut  equ 10h ;If set, device supports INT 49h
-    devDrvExtFun   equ 40h ;If set, functions 13h, 17h, 18h supported (must be)
-    devDrvIOCTL2   equ 80h ;If set, IOCTL function 19 supported
+    devDrvIOCTL    equ 40h ;If set, IOCTL and GET/SET suported
     devDrvHdlCTL   equ 800h ;If set, Open, Close and Rem media supported
-    devDrvIOCTL    equ 4000h ;If set, Generic IOCTL supported
+    devDrvIOCTLRW  equ 4000h ;If set, IOCTL Read/Write supported
     devDrvChar     equ 8000h ;If set, Char device
 ;Bit 0 1=console input
 ;    1 1=console output (character devices)

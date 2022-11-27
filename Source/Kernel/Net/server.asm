@@ -149,33 +149,6 @@ setExtendedErrorInfo:       ;AX=5D0Ah
     mov byte [errorLocus], ah
     return  ;Return to the function ptr on the stack (the return function)
 
-setExtendedErrorMulti:   ;Int 4Fh, AX=1222h
-;Input: rsi -> Four byte records. Value of -1 means dont change.
-    push rax
-    lodsb
-    cmp al, -1
-    je .skipExCde
-    xor ah, ah
-    mov word [errorExCde], ax
-.skipExCde:
-    lodsb
-    cmp al, -1
-    je .skipClass
-    mov byte [errorClass], al
-.skipClass:
-    lodsb
-    cmp al, -1
-    je .skipAct
-    mov byte [errorAction], al
-.skipAct:
-    lodsb
-    cmp al, -1
-    je .exit
-    mov byte [errorLocus], al
-.exit:
-    pop rax
-    return
-
 serverFunctionSelect:
 ;First parameter is al ONLY, subfunction number (BP + 2*8)
 ;Second parameter is table address, (BP + 3*8)

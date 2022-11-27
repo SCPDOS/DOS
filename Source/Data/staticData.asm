@@ -234,3 +234,9 @@ asciiCharProperties:   ;This table needs to replaces in other Codepages
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   
+
+hardErrorStack:
+    db errWpd
+    db eClsMedia
+    db eActRetUsr
+    db eLocDsk

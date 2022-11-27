@@ -281,7 +281,7 @@ xLatError:
     pop rcx
     pop rbx
     return
-setErrorVars:
+setErrorVars:   ;Int 4Fh, AX=1222h
 ;Looks up the error code in the variable and sets the other error vars
 ;Called with the lookup table in rsi
 ;All regs preserved

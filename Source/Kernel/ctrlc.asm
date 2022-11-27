@@ -1,6 +1,22 @@
+
 fullcriticalErrorInvoke:
     mov eax, 03 ;Always fail for now
     stc
+    return
+xlatHardError:
+;Translates a hard error code to a generic DOS error
+;Input: edi = eax = Hard Error Code
+    push rax
+    cmp eax, drvErrShft
+    jb .skipXlat
+    add eax, drvErrShft
+.skipXlat:
+    mov byte [hardErrorStack], al   ;Store this error code here
+    pop rax
+    push rsi
+    lea rsi, extErrTbl
+    call setErrorVars
+    pop rsi
     return
 
 diskDevErr:
@@ -280,6 +296,10 @@ cpu_exception:
     mov ebx, 2  ;Print the two nybbles
     call .writeExceptionMessage
 
+    lea rsi, .fatal2
+    mov ebx, fatal2L  ;Print the colon string
+    call .writeExceptionMessage
+
     cmp cl, 1
     ja .cpuextendederror    ;rax contains error code, or extra cr2 value
 .cpurollprint:
@@ -318,10 +338,6 @@ cpu_exception:
     jmp short .fatalLp
 
 .cpuextendederror:
-    lea rsi, .fatal2
-    mov ebx, fatal2L  ;Print the colon string
-    call .writeExceptionMessage
-
     pop rdx
     dec rcx
     push rcx
