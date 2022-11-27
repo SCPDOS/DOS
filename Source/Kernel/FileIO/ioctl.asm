@@ -324,10 +324,21 @@ ioctrl:            ;ah = 44h, handle function
     mov word [shareDelay], dx
     xor eax, eax
     jmp extGoodExit
+
 .genericCharDevIOCTL:
-;Don't support any IOCTL for char devs yet
-    mov al, errAccDen
+    call getSFTPtr  ;Get in rdi the SFT ptr
+    jnc .okHandle
+.ioctrlBadHandle:
+    mov byte [errorLocus], eLocChr
+    mov eax, errBadHdl
     jmp extErrExit
+.okHandle:
+    test word [rdi + sft.wDeviceInfo], devRedirDev
+    jnz .ioctrlBadHandle
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    jz .ioctrlBadHandle
+    mov rsi, qword [rdi + sft.qPtr] ;Get the driver ptr in rsi
+    jmp short .ioctlReqMake
 .genericBlokDevIOCTL:
     mov al, bl  ;Move the drive number from bl to al
     push rcx
@@ -351,9 +362,14 @@ ioctrl:            ;ah = 44h, handle function
     ;CDS is good,now get the DPB
     mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
     mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
-    xchg rsi, rdi   ;And swap em
+    mov al, byte [rsi + dpb.bUnitNumber]
+    mov byte [primReqHdr + ioctlReqPkt.unitnm], al
+    mov rsi, rdi   ;Get the driver ptr in rsi 
+.ioctlReqMake:
+;rsi must point to the driver header here
     test word [rsi + drvHdr.attrib], devDrvIOCTL
     jnz .supportsIOCTL
+.badFunction:
     mov byte [errorLocus], eLocUnk
     mov eax, errInvFnc
     jmp extErrExit
@@ -361,8 +377,6 @@ ioctrl:            ;ah = 44h, handle function
     ;Setup the request header
     lea rbx, primReqHdr
     mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
-    mov al, byte [rdi + dpb.bUnitNumber]
-    mov byte [rbx + ioctlReqPkt.unitnm], al
     mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
     mov word [rbx + ioctlReqPkt.status], 0
     mov word [rbx + ioctlReqPkt.majfun], cx ;Store maj and min together
