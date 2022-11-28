@@ -1256,10 +1256,10 @@ buildSFTEntry:
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
     ;Here if Creating a file.
-    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
-    jnz .charDev
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
+    jnz .charDev
     ;Here disk file exists, so recreating the file.
     ;If recreating, check we are not overwriting a Dir
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
@@ -1284,7 +1284,6 @@ buildSFTEntry:
     mov eax, dword [rdi + sft.wTime]    ;Get the SFT time to set as crt and wrt
     mov dword [rsi + fatDirEntry.crtTime], eax
     mov dword [rsi + fatDirEntry.wrtTime], eax
-
     push rdi    ;Save SFT pointer
     lea rdi, curDirCopy ;Copy this directory entry internally
     mov ecx, fatDirEntry_size
@@ -1965,6 +1964,7 @@ writeDiskFile:
     jnc .nonZeroWrite   ;If returned retry, retry the request
     return  ;Else return with CF=CY
 .proceedWithWrite:
+    ;breakpoint
     xor ebx, ebx
     mov dword [bytesAppend], ebx ;Reset the appending counter
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster

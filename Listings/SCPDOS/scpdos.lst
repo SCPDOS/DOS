@@ -12223,10 +12223,10 @@
   1287 00003DA3 F605(E7C60300)FF    <1>     test byte [openCreate], -1  ;Create = -1
   1288 00003DAA 0F8491010000        <1>     jz .openProc
   1289                              <1>     ;Here if Creating a file.
-  1290 00003DB0 F605(49C60300)40    <1>     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
-  1291 00003DB7 0F858D010000        <1>     jnz .charDev
-  1292 00003DBD F605(E4C60300)FF    <1>     test byte [fileExist], -1   ;-1 => File exists
-  1293 00003DC4 0F84C0000000        <1>     jz .createFile
+  1290 00003DB0 F605(E4C60300)FF    <1>     test byte [fileExist], -1   ;-1 => File exists
+  1291 00003DB7 0F84CD000000        <1>     jz .createFile
+  1292 00003DBD F605(49C60300)40    <1>     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
+  1293 00003DC4 0F8580010000        <1>     jnz .charDev
   1294                              <1>     ;Here disk file exists, so recreating the file.
   1295                              <1>     ;If recreating, check we are not overwriting a Dir
   1296 00003DCA F605(49C60300)10    <1>     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
@@ -12251,743 +12251,743 @@
   1315 00003E03 8B4713              <1>     mov eax, dword [rdi + sft.wTime]    ;Get the SFT time to set as crt and wrt
   1316 00003E06 89460E              <1>     mov dword [rsi + fatDirEntry.crtTime], eax
   1317 00003E09 894616              <1>     mov dword [rsi + fatDirEntry.wrtTime], eax
-  1318                              <1> 
-  1319 00003E0C 57                  <1>     push rdi    ;Save SFT pointer
-  1320 00003E0D 488D3D(3EC60300)    <1>     lea rdi, curDirCopy ;Copy this directory entry internally
-  1321 00003E14 B920000000          <1>     mov ecx, fatDirEntry_size
-  1322 00003E19 F3A4                <1>     rep movsb
-  1323 00003E1B E8FDCBFFFF          <1>     call markBufferDirty ;We wrote to this buffer
-  1324 00003E20 5F                  <1>     pop rdi
-  1325                              <1> .createCommon:  ;rdi must point to the current SFT 
-  1326                              <1>     ;Now populate the remaining SFT fields 
-  1327 00003E21 488D35(3EC60300)    <1>     lea rsi, curDirCopy
-  1328 00003E28 8A460B              <1>     mov al, byte [rsi + fatDirEntry.attribute]
-  1329 00003E2B 884704              <1>     mov byte [rdi + sft.bFileAttrib], al
-  1330 00003E2E 488B05(26C70300)    <1>     mov rax, qword [tempSect]   ;Get directory entry sector
-  1331 00003E35 48894727            <1>     mov qword [rdi + sft.qDirSect], rax
-  1332 00003E39 0FB705(2EC70300)    <1>     movzx eax, word [entry]     ;Get 32 byte offset into sector for directory
-  1333 00003E40 C0E805              <1>     shr al, 5   ;Divide by 5 to get directory entry number
-  1334 00003E43 88472F              <1>     mov byte [rdi + sft.bNumDirEnt], al
-  1335 00003E46 8B461C              <1>     mov eax, dword [rsi + fatDirEntry.fileSize] ;Get the filesize
-  1336 00003E49 894717              <1>     mov dword [rdi + sft.dFileSize], eax
-  1337 00003E4C 0FB7461A            <1>     movzx eax, word [rsi + fatDirEntry.fstClusLo]   ;Get first cluster
-  1338 00003E50 0FB75614            <1>     movzx edx, word [rsi + fatDirEntry.fstClusHi]
-  1339 00003E54 C1E210              <1>     shl edx, 10h
-  1340 00003E57 09D0                <1>     or eax, edx
-  1341 00003E59 89470F              <1>     mov dword [rdi + sft.dStartClust], eax
-  1342                              <1> 
-  1343 00003E5C 31C0                <1>     xor eax, eax
-  1344                              <1>     ;Now set DeviceInfo to drive number and get the dpb for this disk file
-  1345 00003E5E 8A05(E9C60300)      <1>     mov al, byte [workingDrv]
-  1346 00003E64 0C40                <1>     or al, blokFileNoFlush  ;Dont flush until it is accessed
-  1347 00003E66 66894705            <1>     mov word [rdi + sft.wDeviceInfo], ax    ;AH already 0
-  1348 00003E6A 488B05(EAC60300)    <1>     mov rax, qword [workingDPB]
-  1349 00003E71 48894707            <1>     mov qword [rdi + sft.qPtr], rax
-  1350                              <1>     ;Last thing, copy the filename over
-  1351                              <1>     ;Now save the name
-  1352                              <1>     ;Copy from curDirCopy as we have a copy of the dir now
-  1353 00003E75 488D7F30            <1>     lea rdi, qword [rdi + sft.sFileName]
-  1354 00003E79 488D35(3EC60300)    <1>     lea rsi, curDirCopy
-  1355 00003E80 48A5                <1>     movsq   ;Copy over the space padded name to the sft
-  1356 00003E82 66A5                <1>     movsw
-  1357 00003E84 A4                  <1>     movsb
-  1358                              <1>     ;SFT filled, now we open on the driver if it supports it
-  1359 00003E85 E905010000          <1>     jmp .openDriver
-  1360                              <1> .createFile:
-  1361                              <1>     ;Create a dummy dir entry in the SDA to swap into the disk buffer
-  1362                              <1>     ;rsi points to current sda entry
-  1363 00003E8A 488D3D(3EC60300)    <1>     lea rdi, curDirCopy
-  1364                              <1>     ;Clear out the dir entry
-  1365 00003E91 57                  <1>     push rdi
-  1366 00003E92 B904000000          <1>     mov ecx, 4
-  1367 00003E97 31C0                <1>     xor eax, eax
-  1368 00003E99 F348AB              <1>     rep stosq   ;Store 32 bytes of 0
-  1369 00003E9C 5F                  <1>     pop rdi
-  1370                              <1>     ;Copy the FCB name over    
-  1371 00003E9D 56                  <1>     push rsi
-  1372 00003E9E 57                  <1>     push rdi
-  1373 00003E9F B90B000000          <1>     mov ecx, 11
-  1374 00003EA4 488D35(B9C60300)    <1>     lea rsi, fcbName
-  1375 00003EAB F3A4                <1>     rep movsb   ;Move over the FCB name
-  1376 00003EAD 5F                  <1>     pop rdi
-  1377 00003EAE 5E                  <1>     pop rsi
-  1378                              <1> 
-  1379 00003EAF 488B4510            <1>     mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
-  1380                              <1>     ;al has file attributes.
-  1381 00003EB3 2427                <1>     and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
-  1382 00003EB5 88470B              <1>     mov byte [rdi + fatDirEntry.attribute], al
-  1383 00003EB8 8B4613              <1>     mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
-  1384 00003EBB 89470E              <1>     mov dword [rdi + fatDirEntry.crtTime], eax
-  1385 00003EBE 894716              <1>     mov dword [rdi + fatDirEntry.wrtTime], eax
-  1386 00003EC1 8B05(60C70300)      <1>     mov eax, dword [dirClustPar]    ;Get the parent directory information
-  1387                              <1> .searchForDirSpace:
-  1388 00003EC7 8905(64C70300)      <1>     mov dword [dirClustA], eax
-  1389 00003ECD 31C0                <1>     xor eax, eax    ;Reset the search to the start of the current directory
-  1390 00003ECF 668905(68C70300)    <1>     mov word [dirSect], ax
-  1391 00003ED6 8905(6AC70300)      <1>     mov dword [dirEntry], eax
-  1392 00003EDC 57                  <1>     push rdi
-  1393 00003EDD E82FE0FFFF          <1>     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
-  1394 00003EE2 5F                  <1>     pop rdi ;Preserve rdi = curDirCopy
-  1395 00003EE3 7328                <1>     jnc .dirEntryFnd
-  1396 00003EE5 813D(60C70300)0000- <1>     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
-  1396 00003EED 0000                <1>
-  1397 00003EEF 0F84D2000000        <1>     je .bad ;Set CF and exit
-  1398 00003EF5 E853E1FFFF          <1>     call growDirectory  ;Increase directory size by 1 cluster
-  1399 00003EFA 0F82BE000000        <1>     jc .exit
-  1400 00003F00 3DFFFFFFFF          <1>     cmp eax, -1 ;Disk Full?
-  1401 00003F05 0F84BC000000        <1>     je .bad
-  1402                              <1>     ;Else eax = Newly allocated cluster
-  1403 00003F0B EBBA                <1>     jmp short .searchForDirSpace
-  1404                              <1> .dirEntryFnd:
-  1405 00003F0D 4887FE              <1>     xchg rdi, rsi
-  1406 00003F10 B904000000          <1>     mov ecx, 4
-  1407 00003F15 F348A5              <1>     rep movsq   ;Copy over the buffered directory
-  1408 00003F18 E800CBFFFF          <1>     call markBufferDirty ;We wrote to this buffer
-  1409 00003F1D 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
-  1410 00003F24 E9F8FEFFFF          <1>     jmp .createCommon
-  1411                              <1> .open:
-  1412                              <1> ;curdircopy has a copy of the disk file directory
-  1413                              <1> ;Disk vars are set, compute sector and 32 byte entry numbers
-  1414 00003F29 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
-  1415 00003F30 488B2D(EAC60300)    <1>     mov rbp, qword [workingDPB] ;Need it for the following proc
-  1416                              <1>     ;Now we can jump to common. qword [tempSect] and byte [entry] setup
-  1417 00003F37 E8E8DFFFFF          <1>     call getDiskDirectoryEntry  ;And setup vars! rsi points to disk buffer
-  1418 00003F3C E9E0FEFFFF          <1>     jmp .createCommon
-  1419                              <1> .openProc:
-  1420                              <1>     ;Here if Opening a file.
-  1421 00003F41 F605(49C60300)40    <1>     test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
-  1422 00003F48 74DF                <1>     jz .open
-  1423                              <1> .charDev:
-  1424 00003F4A 488B05(3EC60300)    <1>     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
-  1425 00003F51 E8D5290000          <1>     call getCharDevDriverPtr    ;Get in rdi device header ptr
-  1426 00003F56 7307                <1>     jnc .notBadCharDevName
-  1427 00003F58 B805000000          <1>     mov eax, errAccDen
-  1428 00003F5D EB5F                <1>     jmp short .exit ;CF already set
-  1429                              <1> .notBadCharDevName:
-  1430 00003F5F 488B35(12C70300)    <1>     mov rsi, qword [currentSFT]
-  1431 00003F66 48897E07            <1>     mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
-  1432 00003F6A 0FB65F08            <1>     movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
-  1433 00003F6E 80E31F              <1>     and bl, 01Fh    ;Clear bits 5 6 and 7
-  1434 00003F71 80CBC0              <1>     or bl, devCharDev | charDevNoEOF ;Set charDev & noEOF on read
-  1435 00003F74 66895E05            <1>     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
-  1436 00003F78 C7461700000000      <1>     mov dword [rsi + sft.dFileSize], 0  ;No size
-  1437 00003F7F 48894630            <1>     mov qword [rsi + sft.sFileName], rax
-  1438 00003F83 B820202020          <1>     mov eax, "    "
-  1439 00003F88 66894638            <1>     mov word [rsi + sft.sFileName + 8], ax
-  1440 00003F8C 88463A              <1>     mov byte [rsi + sft.sFileName + 10], al
-  1441                              <1> .openDriver:
-  1442 00003F8F 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
-  1443 00003F96 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get the ptr here
-  1444 00003F9A 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
-  1445 00003FA0 7508                <1>     jnz .charDevOpen
-  1446 00003FA2 0FB64601            <1>     movzx eax, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
-  1447 00003FA6 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
-  1448                              <1> .charDevOpen:
-  1449 00003FAA 66F746080008        <1>     test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
-  1450 00003FB0 740C                <1>     jz .exit  ;If not, immediately jump to exit, all is well
-  1451                              <1>     ;rsi has device driver ptr for device, make request
-  1452 00003FB2 53                  <1>     push rbx
-  1453 00003FB3 E80E260000          <1>     call primReqOpenSetup  ;rbx gets header ptr, rsi has driver ptr
-  1454 00003FB8 E8C9220000          <1>     call goDriver   ;Make request
-  1455 00003FBD 5B                  <1>     pop rbx
-  1456                              <1> .exit:
-  1457 00003FBE E828CAFFFF          <1>     call writeThroughBuffers
-  1458 00003FC3 7207                <1>     jc .bad2
-  1459 00003FC5 5D                  <1>     pop rbp
-  1460                              <1>     return
+  1318 00003E0C 57                  <1>     push rdi    ;Save SFT pointer
+  1319 00003E0D 488D3D(3EC60300)    <1>     lea rdi, curDirCopy ;Copy this directory entry internally
+  1320 00003E14 B920000000          <1>     mov ecx, fatDirEntry_size
+  1321 00003E19 F3A4                <1>     rep movsb
+  1322 00003E1B E8FDCBFFFF          <1>     call markBufferDirty ;We wrote to this buffer
+  1323 00003E20 5F                  <1>     pop rdi
+  1324                              <1> .createCommon:  ;rdi must point to the current SFT 
+  1325                              <1>     ;Now populate the remaining SFT fields 
+  1326 00003E21 488D35(3EC60300)    <1>     lea rsi, curDirCopy
+  1327 00003E28 8A460B              <1>     mov al, byte [rsi + fatDirEntry.attribute]
+  1328 00003E2B 884704              <1>     mov byte [rdi + sft.bFileAttrib], al
+  1329 00003E2E 488B05(26C70300)    <1>     mov rax, qword [tempSect]   ;Get directory entry sector
+  1330 00003E35 48894727            <1>     mov qword [rdi + sft.qDirSect], rax
+  1331 00003E39 0FB705(2EC70300)    <1>     movzx eax, word [entry]     ;Get 32 byte offset into sector for directory
+  1332 00003E40 C0E805              <1>     shr al, 5   ;Divide by 5 to get directory entry number
+  1333 00003E43 88472F              <1>     mov byte [rdi + sft.bNumDirEnt], al
+  1334 00003E46 8B461C              <1>     mov eax, dword [rsi + fatDirEntry.fileSize] ;Get the filesize
+  1335 00003E49 894717              <1>     mov dword [rdi + sft.dFileSize], eax
+  1336 00003E4C 0FB7461A            <1>     movzx eax, word [rsi + fatDirEntry.fstClusLo]   ;Get first cluster
+  1337 00003E50 0FB75614            <1>     movzx edx, word [rsi + fatDirEntry.fstClusHi]
+  1338 00003E54 C1E210              <1>     shl edx, 10h
+  1339 00003E57 09D0                <1>     or eax, edx
+  1340 00003E59 89470F              <1>     mov dword [rdi + sft.dStartClust], eax
+  1341                              <1> 
+  1342 00003E5C 31C0                <1>     xor eax, eax
+  1343                              <1>     ;Now set DeviceInfo to drive number and get the dpb for this disk file
+  1344 00003E5E 8A05(E9C60300)      <1>     mov al, byte [workingDrv]
+  1345 00003E64 0C40                <1>     or al, blokFileNoFlush  ;Dont flush until it is accessed
+  1346 00003E66 66894705            <1>     mov word [rdi + sft.wDeviceInfo], ax    ;AH already 0
+  1347 00003E6A 488B05(EAC60300)    <1>     mov rax, qword [workingDPB]
+  1348 00003E71 48894707            <1>     mov qword [rdi + sft.qPtr], rax
+  1349                              <1>     ;Last thing, copy the filename over
+  1350                              <1>     ;Now save the name
+  1351                              <1>     ;Copy from curDirCopy as we have a copy of the dir now
+  1352 00003E75 488D7F30            <1>     lea rdi, qword [rdi + sft.sFileName]
+  1353 00003E79 488D35(3EC60300)    <1>     lea rsi, curDirCopy
+  1354 00003E80 48A5                <1>     movsq   ;Copy over the space padded name to the sft
+  1355 00003E82 66A5                <1>     movsw
+  1356 00003E84 A4                  <1>     movsb
+  1357                              <1>     ;SFT filled, now we open on the driver if it supports it
+  1358 00003E85 E905010000          <1>     jmp .openDriver
+  1359                              <1> .createFile:
+  1360                              <1>     ;Create a dummy dir entry in the SDA to swap into the disk buffer
+  1361                              <1>     ;rsi points to current sda entry
+  1362 00003E8A 488D3D(3EC60300)    <1>     lea rdi, curDirCopy
+  1363                              <1>     ;Clear out the dir entry
+  1364 00003E91 57                  <1>     push rdi
+  1365 00003E92 B904000000          <1>     mov ecx, 4
+  1366 00003E97 31C0                <1>     xor eax, eax
+  1367 00003E99 F348AB              <1>     rep stosq   ;Store 32 bytes of 0
+  1368 00003E9C 5F                  <1>     pop rdi
+  1369                              <1>     ;Copy the FCB name over    
+  1370 00003E9D 56                  <1>     push rsi
+  1371 00003E9E 57                  <1>     push rdi
+  1372 00003E9F B90B000000          <1>     mov ecx, 11
+  1373 00003EA4 488D35(B9C60300)    <1>     lea rsi, fcbName
+  1374 00003EAB F3A4                <1>     rep movsb   ;Move over the FCB name
+  1375 00003EAD 5F                  <1>     pop rdi
+  1376 00003EAE 5E                  <1>     pop rsi
+  1377                              <1> 
+  1378 00003EAF 488B4510            <1>     mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
+  1379                              <1>     ;al has file attributes.
+  1380 00003EB3 2427                <1>     and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
+  1381 00003EB5 88470B              <1>     mov byte [rdi + fatDirEntry.attribute], al
+  1382 00003EB8 8B4613              <1>     mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
+  1383 00003EBB 89470E              <1>     mov dword [rdi + fatDirEntry.crtTime], eax
+  1384 00003EBE 894716              <1>     mov dword [rdi + fatDirEntry.wrtTime], eax
+  1385 00003EC1 8B05(60C70300)      <1>     mov eax, dword [dirClustPar]    ;Get the parent directory information
+  1386                              <1> .searchForDirSpace:
+  1387 00003EC7 8905(64C70300)      <1>     mov dword [dirClustA], eax
+  1388 00003ECD 31C0                <1>     xor eax, eax    ;Reset the search to the start of the current directory
+  1389 00003ECF 668905(68C70300)    <1>     mov word [dirSect], ax
+  1390 00003ED6 8905(6AC70300)      <1>     mov dword [dirEntry], eax
+  1391 00003EDC 57                  <1>     push rdi
+  1392 00003EDD E82FE0FFFF          <1>     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
+  1393 00003EE2 5F                  <1>     pop rdi ;Preserve rdi = curDirCopy
+  1394 00003EE3 7328                <1>     jnc .dirEntryFnd
+  1395 00003EE5 813D(60C70300)0000- <1>     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
+  1395 00003EED 0000                <1>
+  1396 00003EEF 0F84D2000000        <1>     je .bad ;Set CF and exit
+  1397 00003EF5 E853E1FFFF          <1>     call growDirectory  ;Increase directory size by 1 cluster
+  1398 00003EFA 0F82BE000000        <1>     jc .exit
+  1399 00003F00 3DFFFFFFFF          <1>     cmp eax, -1 ;Disk Full?
+  1400 00003F05 0F84BC000000        <1>     je .bad
+  1401                              <1>     ;Else eax = Newly allocated cluster
+  1402 00003F0B EBBA                <1>     jmp short .searchForDirSpace
+  1403                              <1> .dirEntryFnd:
+  1404 00003F0D 4887FE              <1>     xchg rdi, rsi
+  1405 00003F10 B904000000          <1>     mov ecx, 4
+  1406 00003F15 F348A5              <1>     rep movsq   ;Copy over the buffered directory
+  1407 00003F18 E800CBFFFF          <1>     call markBufferDirty ;We wrote to this buffer
+  1408 00003F1D 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
+  1409 00003F24 E9F8FEFFFF          <1>     jmp .createCommon
+  1410                              <1> .open:
+  1411                              <1> ;curdircopy has a copy of the disk file directory
+  1412                              <1> ;Disk vars are set, compute sector and 32 byte entry numbers
+  1413 00003F29 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
+  1414 00003F30 488B2D(EAC60300)    <1>     mov rbp, qword [workingDPB] ;Need it for the following proc
+  1415                              <1>     ;Now we can jump to common. qword [tempSect] and byte [entry] setup
+  1416 00003F37 E8E8DFFFFF          <1>     call getDiskDirectoryEntry  ;And setup vars! rsi points to disk buffer
+  1417 00003F3C E9E0FEFFFF          <1>     jmp .createCommon
+  1418                              <1> .openProc:
+  1419                              <1>     ;Here if Opening a file.
+  1420 00003F41 F605(49C60300)40    <1>     test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
+  1421 00003F48 74DF                <1>     jz .open
+  1422                              <1> .charDev:
+  1423 00003F4A 488B05(3EC60300)    <1>     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
+  1424 00003F51 E8D5290000          <1>     call getCharDevDriverPtr    ;Get in rdi device header ptr
+  1425 00003F56 7307                <1>     jnc .notBadCharDevName
+  1426 00003F58 B805000000          <1>     mov eax, errAccDen
+  1427 00003F5D EB5F                <1>     jmp short .exit ;CF already set
+  1428                              <1> .notBadCharDevName:
+  1429 00003F5F 488B35(12C70300)    <1>     mov rsi, qword [currentSFT]
+  1430 00003F66 48897E07            <1>     mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
+  1431 00003F6A 0FB65F08            <1>     movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
+  1432 00003F6E 80E31F              <1>     and bl, 01Fh    ;Clear bits 5 6 and 7
+  1433 00003F71 80CBC0              <1>     or bl, devCharDev | charDevNoEOF ;Set charDev & noEOF on read
+  1434 00003F74 66895E05            <1>     mov word [rsi + sft.wDeviceInfo], bx    ;Store word save for inherit bit
+  1435 00003F78 C7461700000000      <1>     mov dword [rsi + sft.dFileSize], 0  ;No size
+  1436 00003F7F 48894630            <1>     mov qword [rsi + sft.sFileName], rax
+  1437 00003F83 B820202020          <1>     mov eax, "    "
+  1438 00003F88 66894638            <1>     mov word [rsi + sft.sFileName + 8], ax
+  1439 00003F8C 88463A              <1>     mov byte [rsi + sft.sFileName + 10], al
+  1440                              <1> .openDriver:
+  1441 00003F8F 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
+  1442 00003F96 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get the ptr here
+  1443 00003F9A 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
+  1444 00003FA0 7508                <1>     jnz .charDevOpen
+  1445 00003FA2 0FB64601            <1>     movzx eax, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
+  1446 00003FA6 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
+  1447                              <1> .charDevOpen:
+  1448 00003FAA 66F746080008        <1>     test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
+  1449 00003FB0 740C                <1>     jz .exit  ;If not, immediately jump to exit, all is well
+  1450                              <1>     ;rsi has device driver ptr for device, make request
+  1451 00003FB2 53                  <1>     push rbx
+  1452 00003FB3 E80E260000          <1>     call primReqOpenSetup  ;rbx gets header ptr, rsi has driver ptr
+  1453 00003FB8 E8C9220000          <1>     call goDriver   ;Make request
+  1454 00003FBD 5B                  <1>     pop rbx
+  1455                              <1> .exit:
+  1456 00003FBE E828CAFFFF          <1>     call writeThroughBuffers
+  1457 00003FC3 7207                <1>     jc .bad2
+  1458 00003FC5 5D                  <1>     pop rbp
+  1459                              <1>     return
     18                              <2> %%_ret:
     19 00003FC6 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1461                              <1> .bad:   ;Set Access Denied
-  1462 00003FC7 B805000000          <1>     mov eax, errAccDen
-  1463                              <1> .bad2:  ;Error propagating error code
-  1464 00003FCC E8F8C9FFFF          <1>     call cancelWriteThroughBuffers
-  1465 00003FD1 F9                  <1>     stc
-  1466 00003FD2 5D                  <1>     pop rbp
-  1467                              <1>     return
+  1460                              <1> .bad:   ;Set Access Denied
+  1461 00003FC7 B805000000          <1>     mov eax, errAccDen
+  1462                              <1> .bad2:  ;Error propagating error code
+  1463 00003FCC E8F8C9FFFF          <1>     call cancelWriteThroughBuffers
+  1464 00003FD1 F9                  <1>     stc
+  1465 00003FD2 5D                  <1>     pop rbp
+  1466                              <1>     return
     18                              <2> %%_ret:
     19 00003FD3 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1468                              <1> closeMain: ;Int 4Fh AX=1201h
-  1469                              <1> ;Gets the directory entry for a file
-  1470                              <1> ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
-  1471                              <1> ;If CF=CY on return: Error, return error with al = error code
-  1472                              <1> ;Preserve all regs except eax and rdi
-  1473                              <1> ; If CF=NC on return: eax = Unknown
-  1474                              <1> ;                     rdi = current SFT ptr
-  1475 00003FD4 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT] ;Get the sft pointer
-  1476 00003FDB 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
-  1477 00003FE1 7408                <1>     jz .physical
-  1478                              <1>     ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
-  1479 00003FE3 B806110000          <1>     mov eax, 1106h  ;Make request
-  1480 00003FE8 CD4F                <1>     int 4Fh ;Beep!
-  1481                              <1>     return  ;Returns with CF set or clear as appropriate
+  1467                              <1> closeMain: ;Int 4Fh AX=1201h
+  1468                              <1> ;Gets the directory entry for a file
+  1469                              <1> ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
+  1470                              <1> ;If CF=CY on return: Error, return error with al = error code
+  1471                              <1> ;Preserve all regs except eax and rdi
+  1472                              <1> ; If CF=NC on return: eax = Unknown
+  1473                              <1> ;                     rdi = current SFT ptr
+  1474 00003FD4 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT] ;Get the sft pointer
+  1475 00003FDB 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
+  1476 00003FE1 7408                <1>     jz .physical
+  1477                              <1>     ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
+  1478 00003FE3 B806110000          <1>     mov eax, 1106h  ;Make request
+  1479 00003FE8 CD4F                <1>     int 4Fh ;Beep!
+  1480                              <1>     return  ;Returns with CF set or clear as appropriate
     18                              <2> %%_ret:
     19 00003FEA C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1482                              <1> .physical:  
-  1483                              <1> ; We make a request to the dev dir to close the device
-  1484                              <1> ; If the device is disk, we then update the directory entry for the disk file
-  1485 00003FEB E8DE2A0000          <1>     call dosCrit1Enter  ;Enter critical section 1
-  1486 00003FF0 53                  <1>     push rbx
-  1487 00003FF1 56                  <1>     push rsi
-  1488 00003FF2 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get driver or DPB ptr in rsi
-  1489 00003FF6 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
-  1490 00003FFC 7520                <1>     jnz .charClose   ;Char devs aren't affected by directory work
-  1491                              <1>     ;rsi has DPB pointer here
-  1492                              <1>     ;rdi has the SFT pointer
-  1493 00003FFE 55                  <1>     push rbp
-  1494 00003FFF 4889F5              <1>     mov rbp, rsi ;Move the dpb pointer into rbp
-  1495 00004002 E8F5250000          <1>     call setWorkingDPB  ;Set the working dpb to rbp
-  1496 00004007 E884DFFFFF          <1>     call updateDirectoryEntryForFile
-  1497 0000400C 5D                  <1>     pop rbp
-  1498                              <1>     ;If CF is set, Fail was requested and ax has an error code
-  1499 0000400D 723F                <1>     jc .exit
-  1500 0000400F E8EDCBFFFF          <1>     call flushFile
-  1501 00004014 7238                <1>     jc .exit    ;If something went wrong, exit
-  1502 00004016 0FB64E01            <1>     movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
-  1503 0000401A 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
-  1504                              <1> .charClose:
-  1505                              <1>     ;Now rsi = Device Driver Header and rdi = Current SFT header
-  1506                              <1>     ;We now decrement handle count in SFT structure
-  1507 0000401E E8AA090000          <1>     call decrementOpenCount ;rdi = current SFT, returns ax = old handle count
-  1508 00004023 66FFC8              <1>     dec ax  ;If this is zero, then we need to set wNumHandles to zero
-  1509 00004026 7503                <1>     jnz .driverClose
-  1510 00004028 66FF07              <1>     inc word [rdi + sft.wNumHandles]    ;Now make it zero again as it is -1
-  1511                              <1> .driverClose:
-  1512 0000402B 50                  <1>     push rax
-  1513 0000402C 51                  <1>     push rcx
-  1514 0000402D E890310000          <1>     call closeShareCallWrapper  ;The SFT count has been decremented
-  1515 00004032 59                  <1>     pop rcx
-  1516 00004033 58                  <1>     pop rax
-  1517 00004034 91                  <1>     xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
-  1518                              <1>     ;and if the device is a disk device, cl will have the unit number
-  1519                              <1>     ;We first check if the driver supports oper/close requests
-  1520 00004035 66F746080008        <1>     test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
-  1521 0000403B 7511                <1>     jnz .exit  ;If not, immediately jump to exit, all is well
-  1522                              <1>     ;rsi has device driver ptr for device, make request
-  1523 0000403D E889250000          <1>     call primReqCloseSetup  ;rbx gets header ptr, rsi has driver ptr
-  1524 00004042 E83F220000          <1>     call goDriver   ;Make request
-  1525                              <1>     ;Don't check the status here, as we are simply informing the driver 
-  1526                              <1>     ; of an operation. Nothing should be able to go wrong. 
-  1527                              <1>     ;Functionally, an ignore if anything does go wrong.
-  1528 00004047 E89FC9FFFF          <1>     call writeThroughBuffers
-  1529 0000404C 7305                <1>     jnc short .exitOk
-  1530                              <1> .exit:
-  1531 0000404E E876C9FFFF          <1>     call cancelWriteThroughBuffers
-  1532                              <1> .exitOk:
-  1533 00004053 5E                  <1>     pop rsi
-  1534 00004054 5B                  <1>     pop rbx
-  1535 00004055 E87E2A0000          <1>     call dosCrit1Exit
-  1536                              <1>     return
+  1481                              <1> .physical:  
+  1482                              <1> ; We make a request to the dev dir to close the device
+  1483                              <1> ; If the device is disk, we then update the directory entry for the disk file
+  1484 00003FEB E8DE2A0000          <1>     call dosCrit1Enter  ;Enter critical section 1
+  1485 00003FF0 53                  <1>     push rbx
+  1486 00003FF1 56                  <1>     push rsi
+  1487 00003FF2 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get driver or DPB ptr in rsi
+  1488 00003FF6 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
+  1489 00003FFC 7520                <1>     jnz .charClose   ;Char devs aren't affected by directory work
+  1490                              <1>     ;rsi has DPB pointer here
+  1491                              <1>     ;rdi has the SFT pointer
+  1492 00003FFE 55                  <1>     push rbp
+  1493 00003FFF 4889F5              <1>     mov rbp, rsi ;Move the dpb pointer into rbp
+  1494 00004002 E8F5250000          <1>     call setWorkingDPB  ;Set the working dpb to rbp
+  1495 00004007 E884DFFFFF          <1>     call updateDirectoryEntryForFile
+  1496 0000400C 5D                  <1>     pop rbp
+  1497                              <1>     ;If CF is set, Fail was requested and ax has an error code
+  1498 0000400D 723F                <1>     jc .exit
+  1499 0000400F E8EDCBFFFF          <1>     call flushFile
+  1500 00004014 7238                <1>     jc .exit    ;If something went wrong, exit
+  1501 00004016 0FB64E01            <1>     movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
+  1502 0000401A 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
+  1503                              <1> .charClose:
+  1504                              <1>     ;Now rsi = Device Driver Header and rdi = Current SFT header
+  1505                              <1>     ;We now decrement handle count in SFT structure
+  1506 0000401E E8AA090000          <1>     call decrementOpenCount ;rdi = current SFT, returns ax = old handle count
+  1507 00004023 66FFC8              <1>     dec ax  ;If this is zero, then we need to set wNumHandles to zero
+  1508 00004026 7503                <1>     jnz .driverClose
+  1509 00004028 66FF07              <1>     inc word [rdi + sft.wNumHandles]    ;Now make it zero again as it is -1
+  1510                              <1> .driverClose:
+  1511 0000402B 50                  <1>     push rax
+  1512 0000402C 51                  <1>     push rcx
+  1513 0000402D E890310000          <1>     call closeShareCallWrapper  ;The SFT count has been decremented
+  1514 00004032 59                  <1>     pop rcx
+  1515 00004033 58                  <1>     pop rax
+  1516 00004034 91                  <1>     xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
+  1517                              <1>     ;and if the device is a disk device, cl will have the unit number
+  1518                              <1>     ;We first check if the driver supports oper/close requests
+  1519 00004035 66F746080008        <1>     test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
+  1520 0000403B 7511                <1>     jnz .exit  ;If not, immediately jump to exit, all is well
+  1521                              <1>     ;rsi has device driver ptr for device, make request
+  1522 0000403D E889250000          <1>     call primReqCloseSetup  ;rbx gets header ptr, rsi has driver ptr
+  1523 00004042 E83F220000          <1>     call goDriver   ;Make request
+  1524                              <1>     ;Don't check the status here, as we are simply informing the driver 
+  1525                              <1>     ; of an operation. Nothing should be able to go wrong. 
+  1526                              <1>     ;Functionally, an ignore if anything does go wrong.
+  1527 00004047 E89FC9FFFF          <1>     call writeThroughBuffers
+  1528 0000404C 7305                <1>     jnc short .exitOk
+  1529                              <1> .exit:
+  1530 0000404E E876C9FFFF          <1>     call cancelWriteThroughBuffers
+  1531                              <1> .exitOk:
+  1532 00004053 5E                  <1>     pop rsi
+  1533 00004054 5B                  <1>     pop rbx
+  1534 00004055 E87E2A0000          <1>     call dosCrit1Exit
+  1535                              <1>     return
     18                              <2> %%_ret:
     19 0000405A C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1537                              <1> 
-  1538                              <1> readBytes:
-  1539                              <1> ;Reads the bytes into the user buffer for the setup SFT (currentSFT)
-  1540                              <1> ;Input: ecx = Number of bytes to read
-  1541                              <1> ;Output: ecx = Number of bytes read
-  1542                              <1> ;Number of bytes read 
-  1543                              <1> ;If CF=CY, return with error code in ax
-  1544 0000405B E87E070000          <1>     call getCurrentSFT  ;Get current SFT in rdi
-  1545 00004060 0FB74702            <1>     movzx eax, word [rdi + sft.wOpenMode]
-  1546 00004064 240F                <1>     and al, 0Fh ;Eliminate except access mode
-  1547 00004066 3C01                <1>     cmp al, WriteAccess
-  1548 00004068 7509                <1>     jne .readable
-  1549 0000406A B805000000          <1>     mov eax, errAccDen
-  1550 0000406F 31C9                <1>     xor ecx, ecx    ;Zero chars tfrred
-  1551 00004071 F9                  <1>     stc
-  1552                              <1>     return
+  1536                              <1> 
+  1537                              <1> readBytes:
+  1538                              <1> ;Reads the bytes into the user buffer for the setup SFT (currentSFT)
+  1539                              <1> ;Input: ecx = Number of bytes to read
+  1540                              <1> ;Output: ecx = Number of bytes read
+  1541                              <1> ;Number of bytes read 
+  1542                              <1> ;If CF=CY, return with error code in ax
+  1543 0000405B E87E070000          <1>     call getCurrentSFT  ;Get current SFT in rdi
+  1544 00004060 0FB74702            <1>     movzx eax, word [rdi + sft.wOpenMode]
+  1545 00004064 240F                <1>     and al, 0Fh ;Eliminate except access mode
+  1546 00004066 3C01                <1>     cmp al, WriteAccess
+  1547 00004068 7509                <1>     jne .readable
+  1548 0000406A B805000000          <1>     mov eax, errAccDen
+  1549 0000406F 31C9                <1>     xor ecx, ecx    ;Zero chars tfrred
+  1550 00004071 F9                  <1>     stc
+  1551                              <1>     return
     18                              <2> %%_ret:
     19 00004072 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1553                              <1> .readable:
-  1554 00004073 E8A7070000          <1>     call setupVarsForTransfer   ;Setup initial stuff only!
-  1555 00004078 67E310              <1>     jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
-  1556 0000407B 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev
-  1557 00004081 740A                <1>     jz .notRedir
-  1558 00004083 B808110000          <1>     mov eax, 1108h  ;Call Redir Read Bytes function
-  1559 00004088 CD4F                <1>     int 4Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
-  1560                              <1>     return 
+  1552                              <1> .readable:
+  1553 00004073 E8A7070000          <1>     call setupVarsForTransfer   ;Setup initial stuff only!
+  1554 00004078 67E310              <1>     jecxz .exitOk  ;If ecx = 0 (number of bytes to transfer = 0), exit
+  1555 0000407B 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev
+  1556 00004081 740A                <1>     jz .notRedir
+  1557 00004083 B808110000          <1>     mov eax, 1108h  ;Call Redir Read Bytes function
+  1558 00004088 CD4F                <1>     int 4Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
+  1559                              <1>     return 
     18                              <2> %%_ret:
     19 0000408A C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1561                              <1> .exitOk:
-  1562 0000408B F8                  <1>     clc
-  1563                              <1>     return 
+  1560                              <1> .exitOk:
+  1561 0000408B F8                  <1>     clc
+  1562                              <1>     return 
     18                              <2> %%_ret:
     19 0000408C C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1564                              <1> .notRedir:
-  1565 0000408D 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
-  1566 00004093 7510                <1>     jnz readCharDev
-  1567 00004095 E8342A0000          <1>     call dosCrit1Enter
-  1568 0000409A E89C010000          <1>     call readDiskFile   ;Called with rbp = Working DPB and rdi = CurrentSFT
-  1569 0000409F E8342A0000          <1>     call dosCrit1Exit
-  1570                              <1>     return 
+  1563                              <1> .notRedir:
+  1564 0000408D 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
+  1565 00004093 7510                <1>     jnz readCharDev
+  1566 00004095 E8342A0000          <1>     call dosCrit1Enter
+  1567 0000409A E89C010000          <1>     call readDiskFile   ;Called with rbp = Working DPB and rdi = CurrentSFT
+  1568 0000409F E8342A0000          <1>     call dosCrit1Exit
+  1569                              <1>     return 
     18                              <2> %%_ret:
     19 000040A4 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1571                              <1> readCharDev:
-  1572                              <1> ;rdi points to sft for char dev to read
-  1573                              <1> ;ecx has the number of bytes to transfer
-  1574                              <1> ;Vars have been set up and DTA has the transfer address
-  1575                              <1> ;Returns in ecx, the actual bytes transferred
-  1576                              <1> ;If CF=CY, return with error code in ax
-  1577 000040A5 C605(EFC30300)04    <1>     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
-  1578 000040AC 668B5F05            <1>     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
-  1579 000040B0 488B3D(FCC30300)    <1>     mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
-  1580 000040B7 F6C340              <1>     test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
-  1581 000040BA 0F848C020000        <1>     jz readExitOk    ;If it does, jump to exit as if EOF has been hit
-  1582 000040C0 F6C304              <1>     test bl, charDevNulDev  ;Is our device the NUL device?
-  1583 000040C3 7407                <1>     jz .notNul
-  1584                              <1>     ;If it is the NUL device, we can simply return unsucessfully!
-  1585                              <1>     ;NUL never transfers bytes 
-  1586 000040C5 31C0                <1>     xor eax, eax    ;Set ZF so the next read causes EOF!
-  1587 000040C7 E980020000          <1>     jmp readExitOk    ;Goto exit
-  1588                              <1> .notNul:
-  1589 000040CC F6C320              <1>     test bl, charDevBinary
-  1590 000040CF 0F857F000000        <1>     jnz .binary
-  1591                              <1>     ;Here if the device is in ASCII mode
-  1592 000040D5 F6C301              <1>     test bl, charDevConIn   ;Is this device STDIN?
-  1593 000040D8 0F84D8000000        <1>     jz .generalASCII    ;If not, goto generalASCII, else fallthru
-  1594                              <1> .consoleInput:
-  1595                              <1>     ;Console input here
-  1596 000040DE E89BE5FFFF          <1>     call vConSwapDriver    ;Prepare CON Useage!
-  1597                              <1>     ;Get current offset into buffer (if one exists)
-  1598 000040E3 488B35(31C00300)    <1>     mov rsi, qword [vConHdlOff]
-  1599 000040EA 4885F6              <1>     test rsi, rsi   ;Any chars in the buffer?
-  1600 000040ED 753C                <1>     jnz .tfrBuf ;If so, we want to keep tfring those chars to user DTA
-  1601 000040EF 803D(33C30300)80    <1>     cmp byte [vConInBuf], 80h ;Is this buffer full?
-  1602 000040F6 7409                <1>     je .oldBuf  ;If so, we set up the buffer function to allow editing of buffer
-  1603                              <1>     ;Else, reset the buffer
-  1604 000040F8 66C705(33C30300)80- <1>     mov word [vConInBuf], 0FF80h ;Byte 0=>length of buf, byte 1 => chars in buf
-  1604 00004100 FF                  <1>
-  1605                              <1> .oldBuf:
-  1606                              <1> ;Preserve the dta and number of chars to tfr
-  1607 00004101 51                  <1>     push rcx
-  1608 00004102 57                  <1>     push rdi
-  1609 00004103 488D15(33C30300)    <1>     lea rdx, vConInBuf
-  1610 0000410A E88FE5FFFF          <1>     call buffCharInput_BE   ;Get con buffered input
-  1611 0000410F 5F                  <1>     pop rdi
-  1612 00004110 59                  <1>     pop rcx
-  1613 00004111 488D35(35C30300)    <1>     lea rsi, qword [vConInBuf + 2]  ;Get the address of the data area of buffer
-  1614 00004118 803E1A              <1>     cmp byte [rsi], EOF
-  1615 0000411B 750E                <1>     jne .tfrBuf ;If not equal, start copying over the buffer to the user DTA
-  1616 0000411D C6071A              <1>     mov byte [rdi], EOF ;Store EOF at start of user DTA
-  1617 00004120 B00A                <1>     mov al, LF
-  1618 00004122 E809E1FFFF          <1>     call charOut_B.in   ;Echo CRLF
-  1619 00004127 31F6                <1>     xor esi, esi    ;Set ZF = ZE
-  1620 00004129 EB18                <1>     jmp short .exit
-  1621                              <1> .tfrBuf:
-  1622 0000412B AC                  <1>     lodsb   ;Get the char across from rsi to rdi with a copy in al
-  1623 0000412C AA                  <1>     stosb
-  1624 0000412D 3C0D                <1>     cmp al, CR 
-  1625 0000412F 7503                <1>     jne .noCRLF
-  1626 00004131 C6060A              <1>     mov byte [rsi], LF  ;Store an LF in source to go one more time around
-  1627                              <1> .noCRLF:
-  1628 00004134 3C0A                <1>     cmp al, LF  ;Compare if al is LF
-  1629 00004136 E0F3                <1>     loopne .tfrBuf  ;Copy the LF over if so and exit and dec ecx one more time
-  1630 00004138 7509                <1>     jne .exit   ;If the reason for exiting loop was ecx = 0, skip the following
-  1631                              <1>     ;This only applies if the reason for exiting the loop is al=LF
-  1632 0000413A E8F1E0FFFF          <1>     call charOut_B.in   ;Echo CRLF
-  1633 0000413F 31F6                <1>     xor esi, esi
-  1634 00004141 0C01                <1>     or al, 1    ;Set ZF = NZ
-  1635                              <1> .exit:
-  1636 00004143 E84EE5FFFF          <1>     call vConRetDriver
-  1637 00004148 488935(31C00300)    <1>     mov qword [vConHdlOff], rsi ;Store the offset (or 0 value)
-  1638 0000414F E9F8010000          <1>     jmp readExitOk    ;Exit ok! ecx has # chars tfred and ZF=ZE if @ EOF
-  1639                              <1> 
-  1640                              <1> .binary:
-  1641                              <1>     ;Setup registers for transfer
-  1642 00004154 4889FB              <1>     mov rbx, rdi    ;Transfer the buffer pointer into rbx
-  1643 00004157 4831ED              <1>     xor rbp, rbp    ;Indicate Char device to the function
-  1644                              <1>     ;ecx has the number of bytes to transfer directly
-  1645 0000415A E8BB230000          <1>     call primReqReadSetup   ;Setup req hdr for read and get hdr addr in rbx 
-  1646 0000415F 488B35(EAC60300)    <1>     mov rsi, qword [workingDD]  ;Get the working device driver
-  1647 00004166 E81B210000          <1>     call goDriver   ;Make the request
-  1648 0000416B 4889FA              <1>     mov rdx, rdi    ;Save transfer buffer in rdx
-  1649 0000416E 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
-  1650 00004175 F7C700800000        <1>     test edi, drvErrStatus  ;Did an error occur?
-  1651 0000417B 7422                <1>     jz .binNoError
-  1652                              <1>     ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
-  1653 0000417D B486                <1>     mov ah, critCharDev | critData ;Char device, data error signature
-  1654 0000417F E8331C0000          <1>     call charDevErr   ;ah = has part of the error 
-  1655                              <1>     ;al now has the response
-  1656 00004184 3C00                <1>     cmp al, critIgnore
-  1657 00004186 7417                <1>     je .binNoError ;Simply proceed as normal
-  1658 00004188 4889D7              <1>     mov rdi, rdx    ;Get back the buffer if it is a retry operation
-  1659 0000418B 3C03                <1>     cmp al, critFail
-  1660 0000418D 75C5                <1>     jne .binary ;If not fail, re-try the operation (ecx isn't touched)
-  1661                              <1>     ;Fallthrough here for fail!
-  1662                              <1> .failExit:
-  1663 0000418F 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
-  1664 00004196 31C9                <1>     xor ecx, ecx
-  1665 00004198 B805000000          <1>     mov eax, errAccDen
-  1666 0000419D F9                  <1>     stc ;Set carry flag to get caught as a error by caller
-  1667                              <1>     return
+  1570                              <1> readCharDev:
+  1571                              <1> ;rdi points to sft for char dev to read
+  1572                              <1> ;ecx has the number of bytes to transfer
+  1573                              <1> ;Vars have been set up and DTA has the transfer address
+  1574                              <1> ;Returns in ecx, the actual bytes transferred
+  1575                              <1> ;If CF=CY, return with error code in ax
+  1576 000040A5 C605(EFC30300)04    <1>     mov byte [errorLocus], eLocChr  ;Error is with a char device operation
+  1577 000040AC 668B5F05            <1>     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
+  1578 000040B0 488B3D(FCC30300)    <1>     mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
+  1579 000040B7 F6C340              <1>     test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
+  1580 000040BA 0F848C020000        <1>     jz readExitOk    ;If it does, jump to exit as if EOF has been hit
+  1581 000040C0 F6C304              <1>     test bl, charDevNulDev  ;Is our device the NUL device?
+  1582 000040C3 7407                <1>     jz .notNul
+  1583                              <1>     ;If it is the NUL device, we can simply return unsucessfully!
+  1584                              <1>     ;NUL never transfers bytes 
+  1585 000040C5 31C0                <1>     xor eax, eax    ;Set ZF so the next read causes EOF!
+  1586 000040C7 E980020000          <1>     jmp readExitOk    ;Goto exit
+  1587                              <1> .notNul:
+  1588 000040CC F6C320              <1>     test bl, charDevBinary
+  1589 000040CF 0F857F000000        <1>     jnz .binary
+  1590                              <1>     ;Here if the device is in ASCII mode
+  1591 000040D5 F6C301              <1>     test bl, charDevConIn   ;Is this device STDIN?
+  1592 000040D8 0F84D8000000        <1>     jz .generalASCII    ;If not, goto generalASCII, else fallthru
+  1593                              <1> .consoleInput:
+  1594                              <1>     ;Console input here
+  1595 000040DE E89BE5FFFF          <1>     call vConSwapDriver    ;Prepare CON Useage!
+  1596                              <1>     ;Get current offset into buffer (if one exists)
+  1597 000040E3 488B35(31C00300)    <1>     mov rsi, qword [vConHdlOff]
+  1598 000040EA 4885F6              <1>     test rsi, rsi   ;Any chars in the buffer?
+  1599 000040ED 753C                <1>     jnz .tfrBuf ;If so, we want to keep tfring those chars to user DTA
+  1600 000040EF 803D(33C30300)80    <1>     cmp byte [vConInBuf], 80h ;Is this buffer full?
+  1601 000040F6 7409                <1>     je .oldBuf  ;If so, we set up the buffer function to allow editing of buffer
+  1602                              <1>     ;Else, reset the buffer
+  1603 000040F8 66C705(33C30300)80- <1>     mov word [vConInBuf], 0FF80h ;Byte 0=>length of buf, byte 1 => chars in buf
+  1603 00004100 FF                  <1>
+  1604                              <1> .oldBuf:
+  1605                              <1> ;Preserve the dta and number of chars to tfr
+  1606 00004101 51                  <1>     push rcx
+  1607 00004102 57                  <1>     push rdi
+  1608 00004103 488D15(33C30300)    <1>     lea rdx, vConInBuf
+  1609 0000410A E88FE5FFFF          <1>     call buffCharInput_BE   ;Get con buffered input
+  1610 0000410F 5F                  <1>     pop rdi
+  1611 00004110 59                  <1>     pop rcx
+  1612 00004111 488D35(35C30300)    <1>     lea rsi, qword [vConInBuf + 2]  ;Get the address of the data area of buffer
+  1613 00004118 803E1A              <1>     cmp byte [rsi], EOF
+  1614 0000411B 750E                <1>     jne .tfrBuf ;If not equal, start copying over the buffer to the user DTA
+  1615 0000411D C6071A              <1>     mov byte [rdi], EOF ;Store EOF at start of user DTA
+  1616 00004120 B00A                <1>     mov al, LF
+  1617 00004122 E809E1FFFF          <1>     call charOut_B.in   ;Echo CRLF
+  1618 00004127 31F6                <1>     xor esi, esi    ;Set ZF = ZE
+  1619 00004129 EB18                <1>     jmp short .exit
+  1620                              <1> .tfrBuf:
+  1621 0000412B AC                  <1>     lodsb   ;Get the char across from rsi to rdi with a copy in al
+  1622 0000412C AA                  <1>     stosb
+  1623 0000412D 3C0D                <1>     cmp al, CR 
+  1624 0000412F 7503                <1>     jne .noCRLF
+  1625 00004131 C6060A              <1>     mov byte [rsi], LF  ;Store an LF in source to go one more time around
+  1626                              <1> .noCRLF:
+  1627 00004134 3C0A                <1>     cmp al, LF  ;Compare if al is LF
+  1628 00004136 E0F3                <1>     loopne .tfrBuf  ;Copy the LF over if so and exit and dec ecx one more time
+  1629 00004138 7509                <1>     jne .exit   ;If the reason for exiting loop was ecx = 0, skip the following
+  1630                              <1>     ;This only applies if the reason for exiting the loop is al=LF
+  1631 0000413A E8F1E0FFFF          <1>     call charOut_B.in   ;Echo CRLF
+  1632 0000413F 31F6                <1>     xor esi, esi
+  1633 00004141 0C01                <1>     or al, 1    ;Set ZF = NZ
+  1634                              <1> .exit:
+  1635 00004143 E84EE5FFFF          <1>     call vConRetDriver
+  1636 00004148 488935(31C00300)    <1>     mov qword [vConHdlOff], rsi ;Store the offset (or 0 value)
+  1637 0000414F E9F8010000          <1>     jmp readExitOk    ;Exit ok! ecx has # chars tfred and ZF=ZE if @ EOF
+  1638                              <1> 
+  1639                              <1> .binary:
+  1640                              <1>     ;Setup registers for transfer
+  1641 00004154 4889FB              <1>     mov rbx, rdi    ;Transfer the buffer pointer into rbx
+  1642 00004157 4831ED              <1>     xor rbp, rbp    ;Indicate Char device to the function
+  1643                              <1>     ;ecx has the number of bytes to transfer directly
+  1644 0000415A E8BB230000          <1>     call primReqReadSetup   ;Setup req hdr for read and get hdr addr in rbx 
+  1645 0000415F 488B35(EAC60300)    <1>     mov rsi, qword [workingDD]  ;Get the working device driver
+  1646 00004166 E81B210000          <1>     call goDriver   ;Make the request
+  1647 0000416B 4889FA              <1>     mov rdx, rdi    ;Save transfer buffer in rdx
+  1648 0000416E 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+  1649 00004175 F7C700800000        <1>     test edi, drvErrStatus  ;Did an error occur?
+  1650 0000417B 7422                <1>     jz .binNoError
+  1651                              <1>     ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
+  1652 0000417D B486                <1>     mov ah, critCharDev | critData ;Char device, data error signature
+  1653 0000417F E8331C0000          <1>     call charDevErr   ;ah = has part of the error 
+  1654                              <1>     ;al now has the response
+  1655 00004184 3C00                <1>     cmp al, critIgnore
+  1656 00004186 7417                <1>     je .binNoError ;Simply proceed as normal
+  1657 00004188 4889D7              <1>     mov rdi, rdx    ;Get back the buffer if it is a retry operation
+  1658 0000418B 3C03                <1>     cmp al, critFail
+  1659 0000418D 75C5                <1>     jne .binary ;If not fail, re-try the operation (ecx isn't touched)
+  1660                              <1>     ;Fallthrough here for fail!
+  1661                              <1> .failExit:
+  1662 0000418F 488B3D(12C70300)    <1>     mov rdi, qword [currentSFT]
+  1663 00004196 31C9                <1>     xor ecx, ecx
+  1664 00004198 B805000000          <1>     mov eax, errAccDen
+  1665 0000419D F9                  <1>     stc ;Set carry flag to get caught as a error by caller
+  1666                              <1>     return
     18                              <2> %%_ret:
     19 0000419E C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1668                              <1> .binNoError:
-  1669                              <1>     ;Get number of bytes transferred into 
-  1670 0000419F 8B05(BBC40300)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
-  1671 000041A5 F7D8                <1>     neg eax ;make it into -eax
-  1672 000041A7 678D0C01            <1>     lea ecx, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
-  1673                              <1>     ;ecx now has bytes left to transfer
-  1674 000041AB 50                  <1>     push rax    ;Save value on stack
-  1675 000041AC 31C0                <1>     xor eax, eax ;Set ZF
-  1676 000041AE FFC0                <1>     inc eax ;Clear ZF
-  1677 000041B0 58                  <1>     pop rax ;Get back the original value
-  1678 000041B1 E996010000          <1>     jmp readExitOk    ;GoExit with ecx=Bytes left to read
-  1679                              <1> .generalASCII:
-  1680                              <1>     ;ecx has bytes to transfer here
-  1681                              <1>     ;Setup registers for transfer
-  1682 000041B6 4889FB              <1>     mov rbx, rdi    ;Move the DTA address into rbx for readSetup
-  1683 000041B9 51                  <1>     push rcx
-  1684 000041BA B901000000          <1>     mov ecx, 1  ;Get one char
-  1685 000041BF 4831ED              <1>     xor rbp, rbp    ;Indicate a char device
-  1686 000041C2 E853230000          <1>     call primReqReadSetup   ;Setup request
-  1687 000041C7 59                  <1>     pop rcx
-  1688                              <1>     ;rbx now has request header ptr
-  1689 000041C8 488B35(EAC60300)    <1>     mov rsi, qword [workingDD]  ;Get device driver header ptr in rsi
-  1690                              <1> .asciiReadChar:
-  1691 000041CF 4889FA              <1>     mov rdx, rdi    ;Save the current buffer pointer position in rdx
-  1692 000041D2 E82BE4FFFF          <1>     call checkBreak ;Check we don't have a ^C pending on CON
-  1693 000041D7 E8AA200000          <1>     call goDriver   ;If no ^C found (which exits DOS) Make request!
-  1694 000041DC 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
-  1695 000041E3 F7C700800000        <1>     test edi, drvErrStatus  ;Did an error occur?
-  1696 000041E9 741E                <1>     jz .asciiNoError
-  1697 000041EB E8C71B0000          <1>     call charDevErr    ;Call Int 44h
-  1698                              <1>     ;Now setup number of bytes to transfer to 1 if the user requests retry
-  1699 000041F0 C705(BBC40300)0100- <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
-  1699 000041F8 0000                <1>
-  1700 000041FA 4889D7              <1>     mov rdi, rdx    ;Get the buffer position back into rdi
-  1701 000041FD 3C03                <1>     cmp al, critFail
-  1702 000041FF 748E                <1>     je .failExit
-  1703 00004201 3C01                <1>     cmp al, critRetry
-  1704 00004203 74CA                <1>     je .asciiReadChar
-  1705                              <1>     ;Ignore here, pretend NULL CHAR was read
-  1706 00004205 30C0                <1>     xor al, al
-  1707 00004207 EB15                <1>     jmp short .asciiIgnoreEP
-  1708                              <1> .asciiNoError:
-  1709                              <1> ;Now process the char, add 1 to the transfer buffer (and rdi->BufferPtr)
-  1710                              <1> ; and dec 1 from ecx (tfrCntr is dealt with later)
-  1711                              <1> ;Preserve RBX, RSI
-  1712                              <1> ;Check EXACTLY 1 char was transferred. Any other value => exit from request
-  1713 00004209 4889D7              <1>     mov rdi, rdx    ;Get the buffer position back into rdi
-  1714 0000420C 813D(BBC40300)0100- <1>     cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
-  1714 00004214 0000                <1>
-  1715 00004216 0F8530010000        <1>     jne readExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
-  1716 0000421C 8A07                <1>     mov al, byte [rdi]  ;Get byte just input from driver in al
-  1717                              <1> .asciiIgnoreEP:
-  1718 0000421E 48FF05(B3C40300)    <1>     inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
-  1719 00004225 48FFC7              <1>     inc rdi ;Also advance register pointer
-  1720 00004228 3C1A                <1>     cmp al, EOF ;Was this char EOF?
-  1721 0000422A 0F841C010000        <1>     je readExitOk
-  1722 00004230 3C0D                <1>     cmp al, CR  ;Was this char CR?
-  1723 00004232 E09B                <1>     loopne .asciiReadChar   ;dec rcx, jnz .asciiReadChar
-  1724                              <1>     ;Fallthrough also if al = CR (i.e ZF=ZE)
-  1725 00004234 FEC0                <1>     inc al  ;make ZF=NZ
-  1726 00004236 E911010000          <1>     jmp readExitOk    ;Called with ecx = Number of bytes LEFT to transfer
-  1727                              <1> 
-  1728                              <1> readDiskFile:
-  1729                              <1> ;rdi = Current SFT
-  1730                              <1> ;rbp = WorkingDPB
-  1731                              <1> ;ecx = Bytes to transfer
-  1732 0000423B C605(EFC30300)02    <1>     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
-  1733 00004242 C605(E0C60300)00    <1>     mov byte [rwFlag], 0    ;Read operation
-  1734                              <1>     ;We have the following vars setup:
-  1735                              <1>     ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
-  1736                              <1>     ;currClustF
-  1737                              <1>     ;Now convert currSectC to disk sector by using currClustF
-  1738                              <1>     ;Using currClustF as a counter, we walk the fat from startingCluster
-  1739 00004249 8B5717              <1>     mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
-  1740 0000424C 85D2                <1>     test edx, edx
-  1741 0000424E 0F84F8000000        <1>     jz readExitOk  ;Return with zero bytes transferred
-  1742 00004254 8B15(30C70300)      <1>     mov edx, dword [currClustF] ;Use edx as the counter reg
-  1743 0000425A 8B470F              <1>     mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
-  1744 0000425D 8905(34C70300)      <1>     mov dword [currClustD], eax
-  1745 00004263 85C0                <1>     test eax, eax   ;If starting cluster is zero, exit no bytes read
-  1746 00004265 0F84E1000000        <1>     jz readExitOk
-  1747 0000426B 8B0D(58C70300)      <1>     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
-  1748                              <1>     ;Check if we have opened a volume label (should never happen)
-  1749 00004271 66F747020800        <1>     test word [rdi + sft.wOpenMode], volumeLabel    ;If we try read from vollbl
-  1750 00004277 7407                <1>     jz .shareCheck
-  1751 00004279 B805000000          <1>     mov eax, errAccDen
-  1752 0000427E F9                  <1>     stc
-  1753                              <1>     return
+  1667                              <1> .binNoError:
+  1668                              <1>     ;Get number of bytes transferred into 
+  1669 0000419F 8B05(BBC40300)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
+  1670 000041A5 F7D8                <1>     neg eax ;make it into -eax
+  1671 000041A7 678D0C01            <1>     lea ecx, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
+  1672                              <1>     ;ecx now has bytes left to transfer
+  1673 000041AB 50                  <1>     push rax    ;Save value on stack
+  1674 000041AC 31C0                <1>     xor eax, eax ;Set ZF
+  1675 000041AE FFC0                <1>     inc eax ;Clear ZF
+  1676 000041B0 58                  <1>     pop rax ;Get back the original value
+  1677 000041B1 E996010000          <1>     jmp readExitOk    ;GoExit with ecx=Bytes left to read
+  1678                              <1> .generalASCII:
+  1679                              <1>     ;ecx has bytes to transfer here
+  1680                              <1>     ;Setup registers for transfer
+  1681 000041B6 4889FB              <1>     mov rbx, rdi    ;Move the DTA address into rbx for readSetup
+  1682 000041B9 51                  <1>     push rcx
+  1683 000041BA B901000000          <1>     mov ecx, 1  ;Get one char
+  1684 000041BF 4831ED              <1>     xor rbp, rbp    ;Indicate a char device
+  1685 000041C2 E853230000          <1>     call primReqReadSetup   ;Setup request
+  1686 000041C7 59                  <1>     pop rcx
+  1687                              <1>     ;rbx now has request header ptr
+  1688 000041C8 488B35(EAC60300)    <1>     mov rsi, qword [workingDD]  ;Get device driver header ptr in rsi
+  1689                              <1> .asciiReadChar:
+  1690 000041CF 4889FA              <1>     mov rdx, rdi    ;Save the current buffer pointer position in rdx
+  1691 000041D2 E82BE4FFFF          <1>     call checkBreak ;Check we don't have a ^C pending on CON
+  1692 000041D7 E8AA200000          <1>     call goDriver   ;If no ^C found (which exits DOS) Make request!
+  1693 000041DC 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+  1694 000041E3 F7C700800000        <1>     test edi, drvErrStatus  ;Did an error occur?
+  1695 000041E9 741E                <1>     jz .asciiNoError
+  1696 000041EB E8C71B0000          <1>     call charDevErr    ;Call Int 44h
+  1697                              <1>     ;Now setup number of bytes to transfer to 1 if the user requests retry
+  1698 000041F0 C705(BBC40300)0100- <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
+  1698 000041F8 0000                <1>
+  1699 000041FA 4889D7              <1>     mov rdi, rdx    ;Get the buffer position back into rdi
+  1700 000041FD 3C03                <1>     cmp al, critFail
+  1701 000041FF 748E                <1>     je .failExit
+  1702 00004201 3C01                <1>     cmp al, critRetry
+  1703 00004203 74CA                <1>     je .asciiReadChar
+  1704                              <1>     ;Ignore here, pretend NULL CHAR was read
+  1705 00004205 30C0                <1>     xor al, al
+  1706 00004207 EB15                <1>     jmp short .asciiIgnoreEP
+  1707                              <1> .asciiNoError:
+  1708                              <1> ;Now process the char, add 1 to the transfer buffer (and rdi->BufferPtr)
+  1709                              <1> ; and dec 1 from ecx (tfrCntr is dealt with later)
+  1710                              <1> ;Preserve RBX, RSI
+  1711                              <1> ;Check EXACTLY 1 char was transferred. Any other value => exit from request
+  1712 00004209 4889D7              <1>     mov rdi, rdx    ;Get the buffer position back into rdi
+  1713 0000420C 813D(BBC40300)0100- <1>     cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
+  1713 00004214 0000                <1>
+  1714 00004216 0F8530010000        <1>     jne readExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
+  1715 0000421C 8A07                <1>     mov al, byte [rdi]  ;Get byte just input from driver in al
+  1716                              <1> .asciiIgnoreEP:
+  1717 0000421E 48FF05(B3C40300)    <1>     inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
+  1718 00004225 48FFC7              <1>     inc rdi ;Also advance register pointer
+  1719 00004228 3C1A                <1>     cmp al, EOF ;Was this char EOF?
+  1720 0000422A 0F841C010000        <1>     je readExitOk
+  1721 00004230 3C0D                <1>     cmp al, CR  ;Was this char CR?
+  1722 00004232 E09B                <1>     loopne .asciiReadChar   ;dec rcx, jnz .asciiReadChar
+  1723                              <1>     ;Fallthrough also if al = CR (i.e ZF=ZE)
+  1724 00004234 FEC0                <1>     inc al  ;make ZF=NZ
+  1725 00004236 E911010000          <1>     jmp readExitOk    ;Called with ecx = Number of bytes LEFT to transfer
+  1726                              <1> 
+  1727                              <1> readDiskFile:
+  1728                              <1> ;rdi = Current SFT
+  1729                              <1> ;rbp = WorkingDPB
+  1730                              <1> ;ecx = Bytes to transfer
+  1731 0000423B C605(EFC30300)02    <1>     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
+  1732 00004242 C605(E0C60300)00    <1>     mov byte [rwFlag], 0    ;Read operation
+  1733                              <1>     ;We have the following vars setup:
+  1734                              <1>     ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
+  1735                              <1>     ;currClustF
+  1736                              <1>     ;Now convert currSectC to disk sector by using currClustF
+  1737                              <1>     ;Using currClustF as a counter, we walk the fat from startingCluster
+  1738 00004249 8B5717              <1>     mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
+  1739 0000424C 85D2                <1>     test edx, edx
+  1740 0000424E 0F84F8000000        <1>     jz readExitOk  ;Return with zero bytes transferred
+  1741 00004254 8B15(30C70300)      <1>     mov edx, dword [currClustF] ;Use edx as the counter reg
+  1742 0000425A 8B470F              <1>     mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
+  1743 0000425D 8905(34C70300)      <1>     mov dword [currClustD], eax
+  1744 00004263 85C0                <1>     test eax, eax   ;If starting cluster is zero, exit no bytes read
+  1745 00004265 0F84E1000000        <1>     jz readExitOk
+  1746 0000426B 8B0D(58C70300)      <1>     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
+  1747                              <1>     ;Check if we have opened a volume label (should never happen)
+  1748 00004271 66F747020800        <1>     test word [rdi + sft.wOpenMode], volumeLabel    ;If we try read from vollbl
+  1749 00004277 7407                <1>     jz .shareCheck
+  1750 00004279 B805000000          <1>     mov eax, errAccDen
+  1751 0000427E F9                  <1>     stc
+  1752                              <1>     return
     18                              <2> %%_ret:
     19 0000427F C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1754                              <1> .shareCheck:
-  1755                              <1> ;Entered with rdi -> SFT and ecx=number of bytes to read (to check if possible)
-  1756 00004280 E8442F0000          <1>     call retryShareIODelay
-  1757 00004285 7308                <1>     jnc .shareOk
-  1758 00004287 E83E300000          <1>     call shareCheckReadLockViolation
-  1759 0000428C 73F2                <1>     jnc .shareCheck ;IF the user selected retry, lets try again
-  1760                              <1>     return  ;Otherwise, return with the share error code in eax and CF=CY
+  1753                              <1> .shareCheck:
+  1754                              <1> ;Entered with rdi -> SFT and ecx=number of bytes to read (to check if possible)
+  1755 00004280 E8442F0000          <1>     call retryShareIODelay
+  1756 00004285 7308                <1>     jnc .shareOk
+  1757 00004287 E83E300000          <1>     call shareCheckReadLockViolation
+  1758 0000428C 73F2                <1>     jnc .shareCheck ;IF the user selected retry, lets try again
+  1759                              <1>     return  ;Otherwise, return with the share error code in eax and CF=CY
     18                              <2> %%_ret:
     19 0000428E C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1761                              <1> .shareOk:
-  1762 0000428F 31DB                <1>     xor ebx, ebx    ;Use ebx to contain the old cluster number
-  1763 00004291 85D2                <1>     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
-  1764 00004293 741E                <1>     jz .skipWalk
-  1765                              <1> .goToCurrentCluster:
-  1766 00004295 3DFFFFFFFF          <1>     cmp eax, -1 ;Are we gonna go past the end of the file?
-  1767 0000429A 0F84AC000000        <1>     je readExitOk ;Exit with no bytes transferred
-  1768 000042A0 89C3                <1>     mov ebx, eax    ;Save eax as current cluster
-  1769 000042A2 E8F9CBFFFF          <1>     call readFAT    ;Get in eax the next cluster
-  1770 000042A7 0F8290000000        <1>     jc .badExit   ;This can only return Fail
-  1771 000042AD FFCA                <1>     dec edx ;Decrement counter
-  1772 000042AF 75E4                <1>     jnz .goToCurrentCluster
-  1773                              <1> ;Now we fall out with ebx = Current cluster
-  1774 000042B1 89D8                <1>     mov eax, ebx    ;Get the current cluster in eax
-  1775                              <1> .skipWalk:
-  1776 000042B3 E80ECAFFFF          <1>     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
-  1777                              <1>     ;Now we add the offset to this
-  1778 000042B8 0FB61D(3CC70300)    <1>     movzx ebx, byte [currSectC] ;Get the sector offset into the cluster
-  1779 000042BF 4801D8              <1>     add rax, rbx    ;And finally get the absolute cluster on the disk
-  1780 000042C2 488905(3DC70300)    <1>     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
-  1781                              <1> ;Main
-  1782                              <1> .mainRead:
-  1783 000042C9 E80FC9FFFF          <1>     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
-  1784 000042CE 726D                <1>     jc .badExit
-  1785 000042D0 488D7330            <1>     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
-  1786 000042D4 0FB71D(45C70300)    <1>     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
-  1787 000042DB 4801DE              <1>     add rsi, rbx    ;Shift rsi by that amount into the sector
-  1788                              <1>     ;Now we read the smallest of the following from the sector buffer:
-  1789                              <1>     ; 1) Sector size, 2) Bytes left in File, 3) Bytes left to read from Request
-  1790 000042DE 8B4F17              <1>     mov ecx, dword [rdi + sft.dFileSize]
-  1791 000042E1 2B4F1B              <1>     sub ecx, dword [rdi + sft.dCurntOff] ;Get bytes left to read in file in ecx
-  1792 000042E4 8B1D(5CC70300)      <1>     mov ebx, dword [tfrCntr]
-  1793 000042EA 39D9                <1>     cmp ecx, ebx    ;Is bytes left to read in file > bytes user has left?
-  1794 000042EC 0F47CB              <1>     cmova ecx, ebx  ;Move ebx into ecx if so
-  1795 000042EF 0FB75D02            <1>     movzx ebx, word [rbp + dpb.wBytesPerSector]  ;Compare to sector size
-  1796 000042F3 39D9                <1>     cmp ecx, ebx  ;ecx > sector size?
-  1797 000042F5 0F47CB              <1>     cmova ecx, ebx  ;Move it into ecx if so
-  1798 000042F8 57                  <1>     push rdi
-  1799 000042F9 488B3D(FCC30300)    <1>     mov rdi, qword [currentDTA]
-  1800 00004300 51                  <1>     push rcx
-  1801 00004301 F3A4                <1>     rep movsb
-  1802 00004303 59                  <1>     pop rcx
-  1803 00004304 010D(47C70300)      <1>     add dword [currByteF], ecx ;Move file pointer by ecx bytes
-  1804 0000430A 290D(5CC70300)      <1>     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
-  1805 00004310 48893D(FCC30300)    <1>     mov qword [currentDTA], rdi ;rdi has been shifted by ecx on entry amount
-  1806 00004317 5F                  <1>     pop rdi
-  1807 00004318 8B0D(5CC70300)      <1>     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
-  1808 0000431E 85C9                <1>     test ecx, ecx  ;Are we at the end yet?
-  1809 00004320 742A                <1>     jz readExitOk ;Exit if so!
-  1810 00004322 E8EDCAFFFF          <1>     call getNextSectorOfFile    ;Get the next sector of the file
-  1811 00004327 7214                <1>     jc .badExit
-  1812                              <1>     ;If ZF=ZE then CurrClustF has last cluster
-  1813 00004329 7421                <1>     jz readExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
-  1814                              <1>     ;Else repeat
-  1815                              <1>     ;currSectD has been updated, we now set currByteS = 0
-  1816 0000432B 66C705(45C70300)00- <1>     mov word [currByteS], 0 ;We start reading now from the start of the sector
-  1816 00004333 00                  <1>
-  1817 00004334 488B05(3DC70300)    <1>     mov rax, qword [currSectD]  ;Get the next sector to read from
-  1818 0000433B EB8C                <1>     jmp short .mainRead
-  1819                              <1> .badExit:
-  1820                              <1>     ;When a disk error occurs within the bit where vars have changed,
-  1821                              <1>     ; we need to update the SFT before returning
-  1822 0000433D 8B0D(5CC70300)      <1>     mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
-  1823 00004343 30C0                <1>     xor al, al  ;Set ZF flag
-  1824 00004345 E802000000          <1>     call readExitOk   ;We call this
-  1825 0000434A F9                  <1>     stc ;All calls which end up here return Fail!
-  1826 0000434B C3                  <1>     ret
-  1827                              <1> 
-  1828                              <1> readExitOk:
-  1829                              <1> ;Input: ecx = Number of bytes left to transfer!
-  1830                              <1> ;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
-  1831 0000434C 890D(5CC70300)      <1>     mov dword [tfrCntr], ecx    ;Update bytes left to transfer
-  1832                              <1>     ;I argue as this is a simply read-only exit vector, this is unnecessary
-  1833                              <1>     ;jnz .skipbitClear
-  1834                              <1>     ;call getCurrentSFT  ;Get currentSFT in rdi
-  1835                              <1>     ;The disk transfer must've flushed by now. 
-  1836                              <1>     ;and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
-  1837                              <1> .skipbitClear:  ;Or skip that entirely
-  1838 00004352 E88F040000          <1>     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
-  1839                              <1>     return 
+  1760                              <1> .shareOk:
+  1761 0000428F 31DB                <1>     xor ebx, ebx    ;Use ebx to contain the old cluster number
+  1762 00004291 85D2                <1>     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
+  1763 00004293 741E                <1>     jz .skipWalk
+  1764                              <1> .goToCurrentCluster:
+  1765 00004295 3DFFFFFFFF          <1>     cmp eax, -1 ;Are we gonna go past the end of the file?
+  1766 0000429A 0F84AC000000        <1>     je readExitOk ;Exit with no bytes transferred
+  1767 000042A0 89C3                <1>     mov ebx, eax    ;Save eax as current cluster
+  1768 000042A2 E8F9CBFFFF          <1>     call readFAT    ;Get in eax the next cluster
+  1769 000042A7 0F8290000000        <1>     jc .badExit   ;This can only return Fail
+  1770 000042AD FFCA                <1>     dec edx ;Decrement counter
+  1771 000042AF 75E4                <1>     jnz .goToCurrentCluster
+  1772                              <1> ;Now we fall out with ebx = Current cluster
+  1773 000042B1 89D8                <1>     mov eax, ebx    ;Get the current cluster in eax
+  1774                              <1> .skipWalk:
+  1775 000042B3 E80ECAFFFF          <1>     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
+  1776                              <1>     ;Now we add the offset to this
+  1777 000042B8 0FB61D(3CC70300)    <1>     movzx ebx, byte [currSectC] ;Get the sector offset into the cluster
+  1778 000042BF 4801D8              <1>     add rax, rbx    ;And finally get the absolute cluster on the disk
+  1779 000042C2 488905(3DC70300)    <1>     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
+  1780                              <1> ;Main
+  1781                              <1> .mainRead:
+  1782 000042C9 E80FC9FFFF          <1>     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
+  1783 000042CE 726D                <1>     jc .badExit
+  1784 000042D0 488D7330            <1>     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
+  1785 000042D4 0FB71D(45C70300)    <1>     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
+  1786 000042DB 4801DE              <1>     add rsi, rbx    ;Shift rsi by that amount into the sector
+  1787                              <1>     ;Now we read the smallest of the following from the sector buffer:
+  1788                              <1>     ; 1) Sector size, 2) Bytes left in File, 3) Bytes left to read from Request
+  1789 000042DE 8B4F17              <1>     mov ecx, dword [rdi + sft.dFileSize]
+  1790 000042E1 2B4F1B              <1>     sub ecx, dword [rdi + sft.dCurntOff] ;Get bytes left to read in file in ecx
+  1791 000042E4 8B1D(5CC70300)      <1>     mov ebx, dword [tfrCntr]
+  1792 000042EA 39D9                <1>     cmp ecx, ebx    ;Is bytes left to read in file > bytes user has left?
+  1793 000042EC 0F47CB              <1>     cmova ecx, ebx  ;Move ebx into ecx if so
+  1794 000042EF 0FB75D02            <1>     movzx ebx, word [rbp + dpb.wBytesPerSector]  ;Compare to sector size
+  1795 000042F3 39D9                <1>     cmp ecx, ebx  ;ecx > sector size?
+  1796 000042F5 0F47CB              <1>     cmova ecx, ebx  ;Move it into ecx if so
+  1797 000042F8 57                  <1>     push rdi
+  1798 000042F9 488B3D(FCC30300)    <1>     mov rdi, qword [currentDTA]
+  1799 00004300 51                  <1>     push rcx
+  1800 00004301 F3A4                <1>     rep movsb
+  1801 00004303 59                  <1>     pop rcx
+  1802 00004304 010D(47C70300)      <1>     add dword [currByteF], ecx ;Move file pointer by ecx bytes
+  1803 0000430A 290D(5CC70300)      <1>     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
+  1804 00004310 48893D(FCC30300)    <1>     mov qword [currentDTA], rdi ;rdi has been shifted by ecx on entry amount
+  1805 00004317 5F                  <1>     pop rdi
+  1806 00004318 8B0D(5CC70300)      <1>     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
+  1807 0000431E 85C9                <1>     test ecx, ecx  ;Are we at the end yet?
+  1808 00004320 742A                <1>     jz readExitOk ;Exit if so!
+  1809 00004322 E8EDCAFFFF          <1>     call getNextSectorOfFile    ;Get the next sector of the file
+  1810 00004327 7214                <1>     jc .badExit
+  1811                              <1>     ;If ZF=ZE then CurrClustF has last cluster
+  1812 00004329 7421                <1>     jz readExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
+  1813                              <1>     ;Else repeat
+  1814                              <1>     ;currSectD has been updated, we now set currByteS = 0
+  1815 0000432B 66C705(45C70300)00- <1>     mov word [currByteS], 0 ;We start reading now from the start of the sector
+  1815 00004333 00                  <1>
+  1816 00004334 488B05(3DC70300)    <1>     mov rax, qword [currSectD]  ;Get the next sector to read from
+  1817 0000433B EB8C                <1>     jmp short .mainRead
+  1818                              <1> .badExit:
+  1819                              <1>     ;When a disk error occurs within the bit where vars have changed,
+  1820                              <1>     ; we need to update the SFT before returning
+  1821 0000433D 8B0D(5CC70300)      <1>     mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
+  1822 00004343 30C0                <1>     xor al, al  ;Set ZF flag
+  1823 00004345 E802000000          <1>     call readExitOk   ;We call this
+  1824 0000434A F9                  <1>     stc ;All calls which end up here return Fail!
+  1825 0000434B C3                  <1>     ret
+  1826                              <1> 
+  1827                              <1> readExitOk:
+  1828                              <1> ;Input: ecx = Number of bytes left to transfer!
+  1829                              <1> ;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
+  1830 0000434C 890D(5CC70300)      <1>     mov dword [tfrCntr], ecx    ;Update bytes left to transfer
+  1831                              <1>     ;I argue as this is a simply read-only exit vector, this is unnecessary
+  1832                              <1>     ;jnz .skipbitClear
+  1833                              <1>     ;call getCurrentSFT  ;Get currentSFT in rdi
+  1834                              <1>     ;The disk transfer must've flushed by now. 
+  1835                              <1>     ;and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
+  1836                              <1> .skipbitClear:  ;Or skip that entirely
+  1837 00004352 E88F040000          <1>     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
+  1838                              <1>     return 
     18                              <2> %%_ret:
     19 00004357 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1840                              <1> 
-  1841                              <1> writeBytes:
-  1842                              <1> ;Writes the bytes from the user buffer
-  1843                              <1> ;Input: ecx = Bytes to xfr
-  1844                              <1> ;Returns number of bytes written in ecx
-  1845 00004358 E881040000          <1>     call getCurrentSFT  ;Get current SFT in rdi
-  1846 0000435D 0FB74702            <1>     movzx eax, word [rdi + sft.wOpenMode]
-  1847 00004361 240F                <1>     and al, 0Fh ;Eliminate except access mode
-  1848 00004363 3C00                <1>     cmp al, ReadAccess
-  1849 00004365 7509                <1>     jne .writeable
-  1850                              <1> .noWrite:
-  1851 00004367 B805000000          <1>     mov eax, errAccDen
-  1852 0000436C 31C9                <1>     xor ecx, ecx
-  1853 0000436E F9                  <1>     stc
-  1854 0000436F C3                  <1>     ret
-  1855                              <1> .writeable:
-  1856 00004370 66F747020080        <1>     test word [rdi + sft.wOpenMode], FCBopenedFile
-  1857 00004376 7406                <1>     jz .skipAttribCheck ;FCB files don't check file attributes
-  1858 00004378 807F0401            <1>     cmp byte [rdi + sft.bFileAttrib], readOnlyFile
-  1859 0000437C 74E9                <1>     je .noWrite ;If the file is read only, RIP
-  1860                              <1> .skipAttribCheck:
-  1861 0000437E E89C040000          <1>     call setupVarsForTransfer   ;Returns bytes to transfer in ecx
-  1862 00004383 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev
-  1863 00004389 7408                <1>     jz .notRedir
-  1864 0000438B B809110000          <1>     mov eax, 1109h  ;Write to redir
-  1865 00004390 CD4F                <1>     int 4Fh
-  1866                              <1>     return
+  1839                              <1> 
+  1840                              <1> writeBytes:
+  1841                              <1> ;Writes the bytes from the user buffer
+  1842                              <1> ;Input: ecx = Bytes to xfr
+  1843                              <1> ;Returns number of bytes written in ecx
+  1844 00004358 E881040000          <1>     call getCurrentSFT  ;Get current SFT in rdi
+  1845 0000435D 0FB74702            <1>     movzx eax, word [rdi + sft.wOpenMode]
+  1846 00004361 240F                <1>     and al, 0Fh ;Eliminate except access mode
+  1847 00004363 3C00                <1>     cmp al, ReadAccess
+  1848 00004365 7509                <1>     jne .writeable
+  1849                              <1> .noWrite:
+  1850 00004367 B805000000          <1>     mov eax, errAccDen
+  1851 0000436C 31C9                <1>     xor ecx, ecx
+  1852 0000436E F9                  <1>     stc
+  1853 0000436F C3                  <1>     ret
+  1854                              <1> .writeable:
+  1855 00004370 66F747020080        <1>     test word [rdi + sft.wOpenMode], FCBopenedFile
+  1856 00004376 7406                <1>     jz .skipAttribCheck ;FCB files don't check file attributes
+  1857 00004378 807F0401            <1>     cmp byte [rdi + sft.bFileAttrib], readOnlyFile
+  1858 0000437C 74E9                <1>     je .noWrite ;If the file is read only, RIP
+  1859                              <1> .skipAttribCheck:
+  1860 0000437E E89C040000          <1>     call setupVarsForTransfer   ;Returns bytes to transfer in ecx
+  1861 00004383 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev
+  1862 00004389 7408                <1>     jz .notRedir
+  1863 0000438B B809110000          <1>     mov eax, 1109h  ;Write to redir
+  1864 00004390 CD4F                <1>     int 4Fh
+  1865                              <1>     return
     18                              <2> %%_ret:
     19 00004392 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1867                              <1> .notRedir:
-  1868 00004393 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
-  1869 00004399 7510                <1>     jnz writeCharDev
-  1870 0000439B E82E270000          <1>     call dosCrit1Enter
-  1871 000043A0 E84C010000          <1>     call writeDiskFile
-  1872 000043A5 E82E270000          <1>     call dosCrit1Exit
-  1873                              <1>     return
+  1866                              <1> .notRedir:
+  1867 00004393 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
+  1868 00004399 7510                <1>     jnz writeCharDev
+  1869 0000439B E82E270000          <1>     call dosCrit1Enter
+  1870 000043A0 E84C010000          <1>     call writeDiskFile
+  1871 000043A5 E82E270000          <1>     call dosCrit1Exit
+  1872                              <1>     return
     18                              <2> %%_ret:
     19 000043AA C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1874                              <1> writeCharDev:
-  1875 000043AB C605(EFC30300)04    <1>     mov byte [errorLocus], eLocChr
-  1876                              <1>     ;We are adding bytes to this file so no EOF when reading from it
-  1877 000043B2 66814F054000        <1>     or word [rdi + sft.wDeviceInfo], charDevNoEOF
-  1878 000043B8 0FB75F05            <1>     movzx ebx, word [rdi + sft.wDeviceInfo]
-  1879                              <1>     ;If ecx = 0, we exit
-  1880 000043BC 31C0                <1>     xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
-  1881 000043BE 85C9                <1>     test ecx, ecx
-  1882 000043C0 0F84E3030000        <1>     jz writeExit
-  1883 000043C6 488B1D(FCC30300)    <1>     mov rbx, qword [currentDTA] ;Get ptr to storage buffer in rbx
-  1884 000043CD 4889DF              <1>     mov rdi, rbx
-  1885 000043D0 31D2                <1>     xor edx, edx    ;Set edx to keep track of how many bytes have been xfrd
-  1886 000043D2 A820                <1>     test al, charDevBinary
-  1887 000043D4 744A                <1>     jz .asciiDev
-  1888                              <1> ;Write binary transfer here
-  1889                              <1> .binaryLp:
-  1890 000043D6 31C0                <1>     xor eax, eax
-  1891 000043D8 4831ED              <1>     xor rbp, rbp    ;Indicate a char device
-  1892 000043DB E82F210000          <1>     call primReqWriteSetup   ;Setup request, rbx points to buffer
-  1893 000043E0 488B35(12C70300)    <1>     mov rsi, qword [currentSFT]
-  1894 000043E7 E8961E0000          <1>     call goDriverChar
-  1895 000043EC 4889FA              <1>     mov rdx, rdi    ;Save buffer ptr in rdx
-  1896 000043EF B487                <1>     mov ah, critCharDev | critData | critWrite
-  1897 000043F1 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
-  1898 000043F8 F7C700800000        <1>     test edi, drvErrStatus
-  1899 000043FE 7415                <1>     jz .binXfrOk
-  1900 00004400 E8B2190000          <1>     call charDevErr ;Invoke Int 44h
-  1901 00004405 4889D3              <1>     mov rbx, rdx    ;Return the buffer ptr in rbx
-  1902 00004408 3C00                <1>     cmp al, critIgnore
-  1903 0000440A 7409                <1>     je .binXfrOk
-  1904 0000440C 3C01                <1>     cmp al, critRetry
-  1905 0000440E 74C6                <1>     je .binaryLp
-  1906 00004410 E9D5000000          <1>     jmp .exitFail
-  1907                              <1> .binXfrOk:
-  1908 00004415 8B05(BBC40300)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]
-  1909 0000441B E989030000          <1>     jmp writeExit   ;Exit oki with # bytes xfrd in eax
-  1910                              <1> .asciiDev:
-  1911 00004420 A802                <1>     test al, charDevConOut
-  1912 00004422 0F859E000000        <1>     jnz .conDev
-  1913 00004428 A804                <1>     test al, charDevNulDev
-  1914 0000442A 0F858F000000        <1>     jnz .nulDev
-  1915                              <1>     ;Here we transfer for a generic character device in ascii mode
-  1916 00004430 89D0                <1>     mov eax, edx    ;Move bytes transferred into eax
-  1917 00004432 803B1A              <1>     cmp byte [rbx], EOF ;Is the string pointer at a EOF character?
-  1918 00004435 0F846E030000        <1>     je writeExit
-  1919 0000443B 51                  <1>     push rcx
-  1920 0000443C B901000000          <1>     mov ecx, 1  ;xfr 1 byte
-  1921 00004441 4831ED              <1>     xor rbp, rbp    ;Indicate a char device
-  1922 00004444 E8C6200000          <1>     call primReqWriteSetup   ;Setup request, rbx points to buffer
-  1923 00004449 59                  <1>     pop rcx
-  1924 0000444A 488B35(12C70300)    <1>     mov rsi, qword [currentSFT]
-  1925 00004451 488B7607            <1>     mov rsi, qword [rsi + sft.qPtr] ;Get the dev drv pointer in rsi
-  1926                              <1> .asciiLp:
-  1927 00004455 E8A8E1FFFF          <1>     call checkBreak
-  1928 0000445A E8271E0000          <1>     call goDriver
-  1929 0000445F 57                  <1>     push rdi
-  1930 00004460 B487                <1>     mov ah, critCharDev | critData | critWrite
-  1931 00004462 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
-  1932 00004469 F7C700800000        <1>     test edi, drvErrStatus
-  1933 0000446F 741D                <1>     jz .asciiNoError
-  1934 00004471 E841190000          <1>     call charDevErr ;Invoke Int 44h
-  1935 00004476 5F                  <1>     pop rdi
-  1936 00004477 C705(BBC40300)0100- <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
-  1936 0000447F 0000                <1>
-  1937 00004481 3C01                <1>     cmp al, critRetry
-  1938 00004483 74D0                <1>     je .asciiLp
-  1939 00004485 3C00                <1>     cmp al, critIgnore
-  1940 00004487 7412                <1>     je .ignoreEp
-  1941 00004489 E95C000000          <1>     jmp .exitFail
-  1942                              <1> .asciiNoError:
-  1943 0000448E 5F                  <1>     pop rdi
-  1944 0000448F 813D(BBC40300)0000- <1>     cmp dword [primReqHdr + ioReqPkt.tfrlen], 0
-  1944 00004497 0000                <1>
-  1945 00004499 741D                <1>     je .bytesXfrdOk
-  1946                              <1> .ignoreEp:
-  1947 0000449B FFC2                <1>     inc edx ;One more char has been xfrd
-  1948 0000449D FF05(B3C40300)      <1>     inc dword [primReqHdr + ioReqPkt.bufptr]    ;Increment buffer ptr
-  1949 000044A3 48FFC7              <1>     inc rdi ;And our copy... 
-  1950 000044A6 803F1A              <1>     cmp byte [rdi], EOF ;... to do this!
-  1951 000044A9 740D                <1>     je .bytesXfrdOk
-  1952 000044AB 66C705(A8C40300)00- <1>     mov word [primReqHdr + ioReqPkt.status], 0
-  1952 000044B3 00                  <1>
-  1953 000044B4 FFC9                <1>     dec ecx
-  1954 000044B6 759D                <1>     jnz .asciiLp
-  1955                              <1> .bytesXfrdOk:
-  1956 000044B8 89D0                <1>     mov eax, edx
-  1957 000044BA E9EA020000          <1>     jmp writeExit
-  1958                              <1> .nulDev:
-  1959 000044BF 89C8                <1>     mov eax, ecx    ;Move bytes to transfer into eax (as if it happened)
-  1960 000044C1 E9E3020000          <1>     jmp writeExit
-  1961                              <1> .conDev:
-  1962 000044C6 E8B3E1FFFF          <1>     call vConSwapDriver
-  1963 000044CB 4889DE              <1>     mov rsi, rbx    ;Move the buffer ptr into rsi
-  1964 000044CE 51                  <1>     push rcx
-  1965                              <1> .conDevLp:
-  1966 000044CF AC                  <1>     lodsb
-  1967 000044D0 3C1A                <1>     cmp al, EOF
-  1968 000044D2 7409                <1>     je .conDevExit
-  1969 000044D4 E857DDFFFF          <1>     call charOut_B.in   ;Use internal ep to tfr byte out to CON
-  1970 000044D9 FFC9                <1>     dec ecx
-  1971 000044DB 75F2                <1>     jnz .conDevLp
-  1972                              <1> .conDevExit:
-  1973 000044DD 58                  <1>     pop rax ;Get initial ecx back into eax
-  1974 000044DE 29C8                <1>     sub eax, ecx
-  1975 000044E0 E8B1E1FFFF          <1>     call vConRetDriver
-  1976 000044E5 E9BF020000          <1>     jmp writeExit   ;Input: eax = bytes xfrd
-  1977                              <1> .exitFail:
-  1978 000044EA B805000000          <1>     mov eax, errAccDen
-  1979 000044EF F9                  <1>     stc
-  1980                              <1>     return
+  1873                              <1> writeCharDev:
+  1874 000043AB C605(EFC30300)04    <1>     mov byte [errorLocus], eLocChr
+  1875                              <1>     ;We are adding bytes to this file so no EOF when reading from it
+  1876 000043B2 66814F054000        <1>     or word [rdi + sft.wDeviceInfo], charDevNoEOF
+  1877 000043B8 0FB75F05            <1>     movzx ebx, word [rdi + sft.wDeviceInfo]
+  1878                              <1>     ;If ecx = 0, we exit
+  1879 000043BC 31C0                <1>     xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
+  1880 000043BE 85C9                <1>     test ecx, ecx
+  1881 000043C0 0F84E3030000        <1>     jz writeExit
+  1882 000043C6 488B1D(FCC30300)    <1>     mov rbx, qword [currentDTA] ;Get ptr to storage buffer in rbx
+  1883 000043CD 4889DF              <1>     mov rdi, rbx
+  1884 000043D0 31D2                <1>     xor edx, edx    ;Set edx to keep track of how many bytes have been xfrd
+  1885 000043D2 A820                <1>     test al, charDevBinary
+  1886 000043D4 744A                <1>     jz .asciiDev
+  1887                              <1> ;Write binary transfer here
+  1888                              <1> .binaryLp:
+  1889 000043D6 31C0                <1>     xor eax, eax
+  1890 000043D8 4831ED              <1>     xor rbp, rbp    ;Indicate a char device
+  1891 000043DB E82F210000          <1>     call primReqWriteSetup   ;Setup request, rbx points to buffer
+  1892 000043E0 488B35(12C70300)    <1>     mov rsi, qword [currentSFT]
+  1893 000043E7 E8961E0000          <1>     call goDriverChar
+  1894 000043EC 4889FA              <1>     mov rdx, rdi    ;Save buffer ptr in rdx
+  1895 000043EF B487                <1>     mov ah, critCharDev | critData | critWrite
+  1896 000043F1 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+  1897 000043F8 F7C700800000        <1>     test edi, drvErrStatus
+  1898 000043FE 7415                <1>     jz .binXfrOk
+  1899 00004400 E8B2190000          <1>     call charDevErr ;Invoke Int 44h
+  1900 00004405 4889D3              <1>     mov rbx, rdx    ;Return the buffer ptr in rbx
+  1901 00004408 3C00                <1>     cmp al, critIgnore
+  1902 0000440A 7409                <1>     je .binXfrOk
+  1903 0000440C 3C01                <1>     cmp al, critRetry
+  1904 0000440E 74C6                <1>     je .binaryLp
+  1905 00004410 E9D5000000          <1>     jmp .exitFail
+  1906                              <1> .binXfrOk:
+  1907 00004415 8B05(BBC40300)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]
+  1908 0000441B E989030000          <1>     jmp writeExit   ;Exit oki with # bytes xfrd in eax
+  1909                              <1> .asciiDev:
+  1910 00004420 A802                <1>     test al, charDevConOut
+  1911 00004422 0F859E000000        <1>     jnz .conDev
+  1912 00004428 A804                <1>     test al, charDevNulDev
+  1913 0000442A 0F858F000000        <1>     jnz .nulDev
+  1914                              <1>     ;Here we transfer for a generic character device in ascii mode
+  1915 00004430 89D0                <1>     mov eax, edx    ;Move bytes transferred into eax
+  1916 00004432 803B1A              <1>     cmp byte [rbx], EOF ;Is the string pointer at a EOF character?
+  1917 00004435 0F846E030000        <1>     je writeExit
+  1918 0000443B 51                  <1>     push rcx
+  1919 0000443C B901000000          <1>     mov ecx, 1  ;xfr 1 byte
+  1920 00004441 4831ED              <1>     xor rbp, rbp    ;Indicate a char device
+  1921 00004444 E8C6200000          <1>     call primReqWriteSetup   ;Setup request, rbx points to buffer
+  1922 00004449 59                  <1>     pop rcx
+  1923 0000444A 488B35(12C70300)    <1>     mov rsi, qword [currentSFT]
+  1924 00004451 488B7607            <1>     mov rsi, qword [rsi + sft.qPtr] ;Get the dev drv pointer in rsi
+  1925                              <1> .asciiLp:
+  1926 00004455 E8A8E1FFFF          <1>     call checkBreak
+  1927 0000445A E8271E0000          <1>     call goDriver
+  1928 0000445F 57                  <1>     push rdi
+  1929 00004460 B487                <1>     mov ah, critCharDev | critData | critWrite
+  1930 00004462 0FB73D(A8C40300)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+  1931 00004469 F7C700800000        <1>     test edi, drvErrStatus
+  1932 0000446F 741D                <1>     jz .asciiNoError
+  1933 00004471 E841190000          <1>     call charDevErr ;Invoke Int 44h
+  1934 00004476 5F                  <1>     pop rdi
+  1935 00004477 C705(BBC40300)0100- <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
+  1935 0000447F 0000                <1>
+  1936 00004481 3C01                <1>     cmp al, critRetry
+  1937 00004483 74D0                <1>     je .asciiLp
+  1938 00004485 3C00                <1>     cmp al, critIgnore
+  1939 00004487 7412                <1>     je .ignoreEp
+  1940 00004489 E95C000000          <1>     jmp .exitFail
+  1941                              <1> .asciiNoError:
+  1942 0000448E 5F                  <1>     pop rdi
+  1943 0000448F 813D(BBC40300)0000- <1>     cmp dword [primReqHdr + ioReqPkt.tfrlen], 0
+  1943 00004497 0000                <1>
+  1944 00004499 741D                <1>     je .bytesXfrdOk
+  1945                              <1> .ignoreEp:
+  1946 0000449B FFC2                <1>     inc edx ;One more char has been xfrd
+  1947 0000449D FF05(B3C40300)      <1>     inc dword [primReqHdr + ioReqPkt.bufptr]    ;Increment buffer ptr
+  1948 000044A3 48FFC7              <1>     inc rdi ;And our copy... 
+  1949 000044A6 803F1A              <1>     cmp byte [rdi], EOF ;... to do this!
+  1950 000044A9 740D                <1>     je .bytesXfrdOk
+  1951 000044AB 66C705(A8C40300)00- <1>     mov word [primReqHdr + ioReqPkt.status], 0
+  1951 000044B3 00                  <1>
+  1952 000044B4 FFC9                <1>     dec ecx
+  1953 000044B6 759D                <1>     jnz .asciiLp
+  1954                              <1> .bytesXfrdOk:
+  1955 000044B8 89D0                <1>     mov eax, edx
+  1956 000044BA E9EA020000          <1>     jmp writeExit
+  1957                              <1> .nulDev:
+  1958 000044BF 89C8                <1>     mov eax, ecx    ;Move bytes to transfer into eax (as if it happened)
+  1959 000044C1 E9E3020000          <1>     jmp writeExit
+  1960                              <1> .conDev:
+  1961 000044C6 E8B3E1FFFF          <1>     call vConSwapDriver
+  1962 000044CB 4889DE              <1>     mov rsi, rbx    ;Move the buffer ptr into rsi
+  1963 000044CE 51                  <1>     push rcx
+  1964                              <1> .conDevLp:
+  1965 000044CF AC                  <1>     lodsb
+  1966 000044D0 3C1A                <1>     cmp al, EOF
+  1967 000044D2 7409                <1>     je .conDevExit
+  1968 000044D4 E857DDFFFF          <1>     call charOut_B.in   ;Use internal ep to tfr byte out to CON
+  1969 000044D9 FFC9                <1>     dec ecx
+  1970 000044DB 75F2                <1>     jnz .conDevLp
+  1971                              <1> .conDevExit:
+  1972 000044DD 58                  <1>     pop rax ;Get initial ecx back into eax
+  1973 000044DE 29C8                <1>     sub eax, ecx
+  1974 000044E0 E8B1E1FFFF          <1>     call vConRetDriver
+  1975 000044E5 E9BF020000          <1>     jmp writeExit   ;Input: eax = bytes xfrd
+  1976                              <1> .exitFail:
+  1977 000044EA B805000000          <1>     mov eax, errAccDen
+  1978 000044EF F9                  <1>     stc
+  1979                              <1>     return
     18                              <2> %%_ret:
     19 000044F0 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1981                              <1> writeDiskFile:
-  1982                              <1>     ;rdi has SFT ptr
-  1983 000044F1 8B0D(58C70300)      <1>     mov ecx, dword [tfrLen] ;Get the transfer length 
-  1984 000044F7 C605(EFC30300)02    <1>     mov byte [errorLocus], eLocDsk 
-  1985 000044FE C605(E0C60300)FF    <1>     mov byte [rwFlag], -1    ;Write operation
-  1986 00004505 66F747020800        <1>     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
-  1987 0000450B 0F856A020000        <1>     jnz .badExit
-  1988 00004511 85C9                <1>     test ecx, ecx
-  1989 00004513 7505                <1>     jnz .nonZeroWrite
-  1990 00004515 B9FFFFFFFF          <1>     mov ecx, -1 ;If write cnt is 0 (i.e. truncating file), check for NO locks
-  1991                              <1> .nonZeroWrite:
-  1992                              <1>     ;Now do share check here
-  1993 0000451A E8AA2C0000          <1>     call retryShareIODelay
-  1994 0000451F 7308                <1>     jnc .proceedWithWrite   ;No lock for rdi and ecx, all good!
-  1995 00004521 E89B2D0000          <1>     call shareCheckWriteLockViolation
-  1996 00004526 73F2                <1>     jnc .nonZeroWrite   ;If returned retry, retry the request
-  1997                              <1>     return  ;Else return with CF=CY
+  1980                              <1> writeDiskFile:
+  1981                              <1>     ;rdi has SFT ptr
+  1982 000044F1 8B0D(58C70300)      <1>     mov ecx, dword [tfrLen] ;Get the transfer length 
+  1983 000044F7 C605(EFC30300)02    <1>     mov byte [errorLocus], eLocDsk 
+  1984 000044FE C605(E0C60300)FF    <1>     mov byte [rwFlag], -1    ;Write operation
+  1985 00004505 66F747020800        <1>     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
+  1986 0000450B 0F856A020000        <1>     jnz .badExit
+  1987 00004511 85C9                <1>     test ecx, ecx
+  1988 00004513 7505                <1>     jnz .nonZeroWrite
+  1989 00004515 B9FFFFFFFF          <1>     mov ecx, -1 ;If write cnt is 0 (i.e. truncating file), check for NO locks
+  1990                              <1> .nonZeroWrite:
+  1991                              <1>     ;Now do share check here
+  1992 0000451A E8AA2C0000          <1>     call retryShareIODelay
+  1993 0000451F 7308                <1>     jnc .proceedWithWrite   ;No lock for rdi and ecx, all good!
+  1994 00004521 E89B2D0000          <1>     call shareCheckWriteLockViolation
+  1995 00004526 73F2                <1>     jnc .nonZeroWrite   ;If returned retry, retry the request
+  1996                              <1>     return  ;Else return with CF=CY
     18                              <2> %%_ret:
     19 00004528 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-  1998                              <1> .proceedWithWrite:
+  1997                              <1> .proceedWithWrite:
+  1998                              <1>     ;breakpoint
   1999 00004529 31DB                <1>     xor ebx, ebx
   2000 0000452B 891D(54C70300)      <1>     mov dword [bytesAppend], ebx ;Reset the appending counter
   2001 00004531 8B470F              <1>     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
