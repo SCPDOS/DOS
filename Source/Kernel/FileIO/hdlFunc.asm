@@ -1967,6 +1967,7 @@ writeDiskFile:
     ;breakpoint
     xor ebx, ebx
     mov dword [bytesAppend], ebx ;Reset the appending counter
+    mov byte [fileGrowing], bl   ;and the file growth flag!
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
     ;If the start cluster is 0, we create a new cluster chain
     test eax, eax
