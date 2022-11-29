@@ -500,24 +500,27 @@ copy:
     jc .badExit
     mov word [destHdl], ax
     breakpoint
+    lea rdx, copyBuffer
 .copyLoop:
     mov ecx, 128
-    lea rdx, copyBuffer
     movzx ebx, word [sourceHdl]
     mov ah, 3Fh ;Read
     int 41h
     jc .badExit
-    cmp ecx, 128
-    jb .okExit
+    ;mov ecx, eax    ;Move number of bytes read into ecx
+    mov eax, EOF
+    mov rdi, rdx
     mov ecx, 128
-    lea rdx, copyBuffer
+    repne scasb ;Scan for an EOF
+    mov eax, 128
+    sub eax, ecx    ;If an EOF found, only print up to it
+    mov ecx, eax
     movzx ebx, word [destHdl]
     mov ah, 40h ;Write
     int 41h
     jc .badExit
-    cmp ecx, 128
+    cmp eax, 128
     jnb .copyLoop
-    call .okExit
 .okExit:
     mov ah, 02h
     mov dl, "1" ;1 File(s) copied
