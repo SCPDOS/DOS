@@ -1964,7 +1964,7 @@ writeDiskFile:
     jnc .nonZeroWrite   ;If returned retry, retry the request
     return  ;Else return with CF=CY
 .proceedWithWrite:
-    breakpoint
+    ;breakpoint
     xor ebx, ebx
     mov dword [bytesAppend], ebx    ;Used for file extends (not writes!)
     mov byte [fileGrowing], bl   ;Reset the file growth flag!
@@ -2092,9 +2092,6 @@ writeDiskFile:
     jmp short .badExitHard
 
 .exitPrep:
-    breakpoint
-    ;mov ecx, dword [bytesAppend]
-    add dword [rdi + sft.dFileSize], ecx    ;Add these bytes to the filesize
     mov eax, dword [tfrLen]
     sub eax, dword [tfrCntr]    ;Subtract by bytes left to tfr
     jmp writeExit
@@ -2114,6 +2111,7 @@ writeExit:
     jecxz .exit ;If no bytes written, skip updating anything
     and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
     add dword [rdi + sft.dCurntOff], ecx
+    add dword [rdi + sft.dFileSize], ecx
 .exit:
     mov eax, 1  ;Give it one last update of the data in the directory!
     call qword [updateDirShare] ;Remember, CF=CY by default!

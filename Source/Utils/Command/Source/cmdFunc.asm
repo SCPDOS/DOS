@@ -507,7 +507,8 @@ copy:
     mov ah, 3Fh ;Read
     int 41h
     jc .badExit
-    ;mov ecx, eax    ;Move number of bytes read into ecx
+    test eax, eax
+    jz .okExit
     mov eax, EOF
     mov rdi, rdx
     mov ecx, 128
@@ -522,6 +523,10 @@ copy:
     cmp eax, 128
     jnb .copyLoop
 .okExit:
+    call .leaveCopyClose
+    lea rdx, fourSpc
+    mov ah, 09h
+    int 41h
     mov ah, 02h
     mov dl, "1" ;1 File(s) copied
     int 41h
