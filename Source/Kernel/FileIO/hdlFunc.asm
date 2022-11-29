@@ -1987,6 +1987,7 @@ writeDiskFile:
     test edx, edx
     jz .skipWalk
 .goToCurrentCluster:
+    breakpoint
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
 .addCluster:
