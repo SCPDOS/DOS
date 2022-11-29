@@ -177,6 +177,7 @@ allocateClusters:
 ;   If eax = -1, then no more free clusters. 
 ;   CF=CY => Hard error, exit
 ; ecx always has number of allocated clusters
+    clc ;Always clear the flags before starting
     push rbx
     push rsi
     push rcx    ;Save tfr count on stack
@@ -202,8 +203,10 @@ allocateClusters:
     jnz .allocateLoop
 .exit:
     pop rsi ;Pop the tfr count into esi
+    pushfq
     neg ecx
     add ecx, esi
+    popfq
     pop rsi
     pop rbx
     return
