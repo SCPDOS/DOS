@@ -190,7 +190,9 @@ allocateClusters:
     ;eax has first free cluster value to use
     ;First we link the previous cluster to this cluster
     mov esi, -1 ;EOC marker
+    push rax
     call writeFAT   ;Allocate this cluster first
+    pop rax
     jc .exit    ;Errors don't get flushed to disk so this is safe
     ;eax points to this allocated cluster
     ;ebx points to the previous last cluster
@@ -359,21 +361,24 @@ truncateFAT:
 ;Output: CF = NC => All ok. CF = CY => Hard Error, exit
     push rax
     push rbx
+    push rcx
     push rsi
     mov ebx, eax    ;Store the current cluster we are at in ebx
 .lp:
     call readFAT    ;Get the value of the cluster at this location in eax
     jc .exit    ;Error exit
-    cmp eax, -1 ;End of chain?
-    je .exit
+    mov ecx, eax   ;Move chain marker to ecx
     xchg eax, ebx  ;Move clust. to write at in eax and save next cluster in ebx
     xor esi, esi   ;Free cluster at eax (write a 0)
     call writeFAT
     jc .exit    ;Error exit
+    cmp ecx, -1 ;End of chain?
+    je .exit
     mov eax, ebx    ;Move next cluster into eax
     jmp short .lp
 .exit:
     pop rsi
+    pop rcx
     pop rbx
     pop rax
     return
@@ -482,11 +487,11 @@ writeFAT:
     test ecx, 1
     jz .goToNextClusterFat32
     ;Here we handle FAT16
-    mov word [rbx + bufferHdr.dataarea + rdx], di ;Store the value
+    mov word [rbx + bufferHdr.dataarea + rdx], si ;Store the value
     jmp short .exit
 .goToNextClusterFat32:
-    and edi, 0FFFFFFFh  ;Zero upper nybble
-    mov dword [rbx + bufferHdr.dataarea + rdx], edi
+    and esi, 0FFFFFFFh  ;Zero upper nybble
+    mov dword [rbx + bufferHdr.dataarea + rdx], esi
 .exit:
     call markBufferDirty
     clc

@@ -1733,13 +1733,13 @@ readDiskFile:
 .goToCurrentCluster:
     cmp eax, -1 ;Are we gonna go past the end of the file?
     je readExitOk ;Exit with no bytes transferred
-    mov ebx, eax    ;Save eax as current cluster
+    mov dword [currClustD], eax    ;Save eax as current cluster
     call readFAT    ;Get in eax the next cluster
     jc .badExit   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
 ;Now we fall out with ebx = Current cluster
-    mov eax, ebx    ;Get the current cluster in eax
+    mov eax, dword [currClustD]    ;Get the current cluster in eax
 .skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
     ;Now we add the offset to this
@@ -1964,7 +1964,6 @@ writeDiskFile:
     jnc .nonZeroWrite   ;If returned retry, retry the request
     return  ;Else return with CF=CY
 .proceedWithWrite:
-    ;breakpoint
     xor ebx, ebx
     mov dword [bytesAppend], ebx    ;Used for file extends (not writes!)
     mov byte [fileGrowing], bl   ;Reset the file growth flag!
@@ -1982,7 +1981,6 @@ writeDiskFile:
 .notStart:
 ;eax has the start cluster of the file
 ;Now we go to CurntOff
-    mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
     mov dword [currClustD], eax ;Store in var
     xor ebx, ebx
     mov edx, dword [currClustF] ;Use edx as the counter reg
@@ -1991,23 +1989,25 @@ writeDiskFile:
 .goToCurrentCluster:
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
+.addCluster:
     ;Here we extend by one cluster
     mov eax, dword [currClustD] ;Get the disk cluster 
-    mov ecx, 1
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
     jc .exitPrepHardErr
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    movzx ebx, word [rbp + dpb.wBytesPerSector]
-    add dword [bytesAppend], ebx    ;Add a bytes per sector to filesize
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    add dword [bytesAppend], ecx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
 .stillInFile:
-    mov ebx, eax    ;Save eax as current cluster
+    mov dword [currClustD], eax    ;Save eax as current cluster
     call readFAT    ;Get in eax the next cluster
     jc .exitPrepHardErr   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
+;Now we fall out with ebx = Current cluster
+    mov eax, dword [currClustD]
 .skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
     ;Now we add the offset to this
@@ -2057,10 +2057,10 @@ writeDiskFile:
     jz writeExit
     call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
     jc .exitPrepHardErr
-    jnz .noExtend
+    cmp eax, -1
+    jne .noExtend
     ;Here we need to extend by a cluster
     mov eax, dword [currClustD] ;Get the disk cluster 
-    mov ecx, 1
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
@@ -2071,7 +2071,9 @@ writeDiskFile:
     mov byte [fileGrowing], -1
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
     jc .exitPrepHardErr
-    jz .exitPrepHardErr
+    cmp eax, -1
+    mov eax, errAccDen
+    je .exitPrepHardErr
 .noExtend:
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
@@ -2110,7 +2112,7 @@ writeExit:
 .advPtr:
     jecxz .exit ;If no bytes written, skip updating anything
     and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
-    add dword [rdi + sft.dCurntOff], ecx
+    call updateCurrentSFT
     add dword [rdi + sft.dFileSize], ecx
 .exit:
     mov eax, 1  ;Give it one last update of the data in the directory!
