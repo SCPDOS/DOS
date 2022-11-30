@@ -487,7 +487,6 @@ copy:
     jz .sameFilename
     ;Open source with read permission
     ;Open destination with write permission
-    breakpoint
     lea rdx, sourcePath
     mov eax, 3D00h  ;Read open
     int 41h
@@ -499,7 +498,7 @@ copy:
     int 41h
     jc .badExit
     mov word [destHdl], ax
-    breakpoint
+    xor esi, esi
     lea rdx, copyBuffer
 .copyLoop:
     mov ecx, 128
@@ -509,21 +508,26 @@ copy:
     jc .badExit
     test eax, eax
     jz .okExit
-    mov eax, EOF
-    mov rdi, rdx
-    mov ecx, 128
-    repne scasb ;Scan for an EOF
-    mov eax, 128
-    sub eax, ecx    ;If an EOF found, only print up to it
+    ;mov eax, EOF
+    ;mov rdi, rdx
+    ;mov ecx, 128
+    ;repne scasb ;Scan for an EOF
+    ;mov eax, 128
+    ;sub eax, ecx    ;If an EOF found, only print up to it
     mov ecx, eax
     movzx ebx, word [destHdl]
     mov ah, 40h ;Write
     int 41h
     jc .badExit
-    cmp eax, 128
+    add esi, eax
+    cmp eax, 128    ;Change this for writing from Char devices in ASCII mode
     jnb .copyLoop
 .okExit:
+    breakpoint
     call .leaveCopyClose
+    lea rdx, crlf
+    mov ah, 09h
+    int 41h
     lea rdx, fourSpc
     mov ah, 09h
     int 41h

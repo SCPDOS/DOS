@@ -1734,12 +1734,14 @@ readDiskFile:
     cmp eax, -1 ;Are we gonna go past the end of the file?
     je readExitOk ;Exit with no bytes transferred
     mov dword [currClustD], eax    ;Save eax as current cluster
+    ;mov ebx, eax
     call readFAT    ;Get in eax the next cluster
     jc .badExit   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
 ;Now we fall out with ebx = Current cluster
     mov eax, dword [currClustD]    ;Get the current cluster in eax
+    ;mov eax, ebx
 .skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
     ;Now we add the offset to this
@@ -1847,7 +1849,7 @@ writeCharDev:
     ;If ecx = 0, we exit
     xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
     test ecx, ecx
-    jz writeExit
+    jz writeExitChar
     mov rbx, qword [currentDTA] ;Get ptr to storage buffer in rbx
     mov rdi, rbx
     xor edx, edx    ;Set edx to keep track of how many bytes have been xfrd
@@ -1874,7 +1876,7 @@ writeCharDev:
     jmp .exitFail
 .binXfrOk:
     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]
-    jmp writeExit   ;Exit oki with # bytes xfrd in eax
+    jmp writeExitChar   ;Exit oki with # bytes xfrd in eax
 .asciiDev:
     test al, charDevConOut
     jnz .conDev
@@ -1883,7 +1885,7 @@ writeCharDev:
     ;Here we transfer for a generic character device in ascii mode
     mov eax, edx    ;Move bytes transferred into eax
     cmp byte [rbx], EOF ;Is the string pointer at a EOF character?
-    je writeExit
+    je writeExitChar
     push rcx
     mov ecx, 1  ;xfr 1 byte
     xor rbp, rbp    ;Indicate a char device
@@ -1922,10 +1924,10 @@ writeCharDev:
     jnz .asciiLp
 .bytesXfrdOk:
     mov eax, edx
-    jmp writeExit
+    jmp writeExitChar
 .nulDev:
     mov eax, ecx    ;Move bytes to transfer into eax (as if it happened)
-    jmp writeExit
+    jmp writeExitChar
 .conDev:
     call vConSwapDriver
     mov rsi, rbx    ;Move the buffer ptr into rsi
@@ -1941,7 +1943,7 @@ writeCharDev:
     pop rax ;Get initial ecx back into eax
     sub eax, ecx
     call vConRetDriver
-    jmp writeExit   ;Input: eax = bytes xfrd
+    jmp writeExitChar   ;Input: eax = bytes xfrd
 .exitFail:
     mov eax, errAccDen
     stc
@@ -1974,7 +1976,7 @@ writeDiskFile:
     call startNewChain  ;Allocate a first cluster! 
     jc .exitPrepHardErr
     cmp eax, -1
-    je .exitPrep
+    je writeExit
     ;Now eax has the first cluster of chain
     mov dword [rdi + sft.dStartClust], eax  ;Store the start cluster in the sft
     mov byte [fileGrowing], -1  ;Set to true as this only occurs for new files!
@@ -1987,7 +1989,7 @@ writeDiskFile:
     test edx, edx
     jz .skipWalk
 .goToCurrentCluster:
-    breakpoint
+    ;breakpoint
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
 .addCluster:
@@ -2001,13 +2003,15 @@ writeDiskFile:
     movzx ecx, word [rbp + dpb.wBytesPerSector]
     add dword [bytesAppend], ecx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
+    call readFAT    ;Get in eax the new cluster
+    jc .exitPrepHardErr
 .stillInFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
     call readFAT    ;Get in eax the next cluster
     jc .exitPrepHardErr   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
-;Now we fall out with ebx = Current cluster
+;Now we fall out
     mov eax, dword [currClustD]
 .skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
@@ -2038,7 +2042,7 @@ writeDiskFile:
     ; 1) Sector size, 2) Bytes left to read from Request
     movzx ebx, word [rbp + dpb.wBytesPerSector]
     mov ecx, dword [tfrCntr]
-    cmp ecx, ebx    ;If tfrCntr - wBytesPerSector < 0, then mov ecx, ebx
+    cmp ecx, ebx    ;If tfrCntr - wBytesPerSector < 0
     cmova ecx, ebx
     push rsi
     mov rsi, qword [currentDTA]
@@ -2081,7 +2085,7 @@ writeDiskFile:
     jmp .mainWrite
 .exitPrepHardErr:
     push rax    ;Save error code
-    call .exitPrep
+    call writeExit
     pop rax
 .badExitHard:    ;AL has error code already
     call cancelWriteThroughBuffers
@@ -2094,32 +2098,36 @@ writeDiskFile:
     mov eax, errAccDen
     jmp short .badExitHard
 
-.exitPrep:
-    mov eax, dword [tfrLen]
-    sub eax, dword [tfrCntr]    ;Subtract by bytes left to tfr
-    jmp writeExit
-
 .noByteExit:
     mov eax, 2  ;Update last accessed fields of SFT
     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
-    xor eax, eax
 writeExit:
 ;Advances the bytes on the file pointer
-;eax = Number of bytes transferred  
+;Return: ecx = Number of bytes transferred
     mov rdi, qword [currentSFT]
-    mov ecx, eax
-    call .advPtr
-    return  ;Return to caller, ecx = # bytes xfrd
-.advPtr:
-    jecxz .exit ;If no bytes written, skip updating anything
-    and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
     call updateCurrentSFT
-    add dword [rdi + sft.dFileSize], ecx
+    test ecx, ecx   ;If no bytes transferred, dont flush
+    jz .noFlush
+    and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
+.noFlush:
+    test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
+    jnz .exit
+    mov eax, dword [rdi + sft.dFileSize]
+    cmp dword [rdi + sft.dCurntOff], eax
+    jbe .exit   ;Don't change filesize unless offset is past the Filesize
+    mov eax, dword [rdi + sft.dCurntOff]
+    mov dword [rdi + sft.dFileSize], eax
 .exit:
     mov eax, 1  ;Give it one last update of the data in the directory!
     call qword [updateDirShare] ;Remember, CF=CY by default!
     clc
     return
+writeExitChar:
+;Input: eax = Number of chars transferred
+    mov ecx, dword [tfrLen]
+    sub ecx, eax    ;Get chars left to xfr
+    mov dword [tfrCntr], ecx
+    jmp short writeExit
 ;-----------------------------------:
 ;        File Handle routines       :
 ;-----------------------------------:
@@ -2137,8 +2145,7 @@ updateCurrentSFT:
 ;Return: ecx = Actual bytes transferred and CF=NC
     push rdi
     mov rdi, qword [currentSFT]
-    mov ecx, dword [tfrLen]     ;Get bytes to transfer
-    sub ecx, dword [tfrCntr]    ;Subtract bytes left to transfer
+    call getBytesTransferred
     ;ecx has bytes transferred
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit
@@ -2154,6 +2161,7 @@ updateCurrentSFT:
     pop rdi
     clc
     return 
+
 setupVarsForTransfer:
 ;Computes the actual bytes to be transferred and 
 ; sets up internal variables for the transfer. 
