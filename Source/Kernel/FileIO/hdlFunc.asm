@@ -1712,6 +1712,8 @@ readDiskFile:
     mov dword [currClustD], eax
     test eax, eax   ;If starting cluster is zero, exit no bytes read
     jz readExitOk
+    cmp eax, -1 ;If left in an indeterminate state somehow, exit no bytes
+    jz readExitOk   
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
     ;Check if we have opened a volume label (should never happen)
     test word [rdi + sft.wOpenMode], volumeLabel    ;If we try read from vollbl
@@ -1731,12 +1733,11 @@ readDiskFile:
     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
     jz .skipWalk
 .goToCurrentCluster:
+    call readFAT    ;Get in eax the next cluster
+    jc .badExit   ;This can only return Fail
     cmp eax, -1 ;Are we gonna go past the end of the file?
     je readExitOk ;Exit with no bytes transferred
     mov dword [currClustD], eax    ;Save eax as current cluster
-    ;mov ebx, eax
-    call readFAT    ;Get in eax the next cluster
-    jc .badExit   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
 ;Now we fall out with ebx = Current cluster
@@ -1773,6 +1774,11 @@ readDiskFile:
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rdi ;rdi has been shifted by ecx on entry amount
+    mov eax, dword [currByteF]  ;Get current byte in file
+    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+    xor edx, edx    ;Zero rdx
+    div ebx ;Divide current byte in file by bytes per sector
+    mov word [currByteS], dx ;CurrbyteS is a word!
     pop rdi
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
@@ -1785,7 +1791,7 @@ readDiskFile:
     ;currSectD has been updated, we now set currByteS = 0
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
-    jmp short .mainRead
+    jmp .mainRead
 .badExit:
     ;When a disk error occurs within the bit where vars have changed,
     ; we need to update the SFT before returning
