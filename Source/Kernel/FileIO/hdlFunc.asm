@@ -2027,7 +2027,7 @@ writeDiskFile:
     jnz .extend
 ;Here we truncate where needed
     mov eax, dword [currClustD] ;We must free the chain from currClustD
-    call truncateFAT    ;Truncate from the current cluster
+    call truncateFAT    ;Truncate from the current cluster 
 .extend:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
