@@ -1990,6 +1990,8 @@ writeDiskFile:
     jz .skipWalk
 .goToCurrentCluster:
     ;breakpoint
+    call readFAT    ;Get in eax the next cluster
+    jc .exitPrepHardErr   ;This can only return Fail
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
 .addCluster:
@@ -2007,8 +2009,6 @@ writeDiskFile:
     jc .exitPrepHardErr
 .stillInFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
-    call readFAT    ;Get in eax the next cluster
-    jc .exitPrepHardErr   ;This can only return Fail
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
 ;Now we fall out
@@ -2146,6 +2146,7 @@ updateCurrentSFT:
     push rdi
     mov rdi, qword [currentSFT]
     call getBytesTransferred
+    jecxz .exit
     ;ecx has bytes transferred
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit
@@ -2156,7 +2157,10 @@ updateCurrentSFT:
     mov dword [rdi + sft.dRelClust], eax
     pop rax
     jecxz .exit ;Skip this if ecx = 0
-    add dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
+    push rcx
+    mov ecx, dword [currByteF]
+    mov dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
+    pop rcx
 .exit:
     pop rdi
     clc

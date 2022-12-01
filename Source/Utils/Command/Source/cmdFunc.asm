@@ -508,6 +508,7 @@ copy:
     jc .badExit
     test eax, eax
     jz .okExit
+    add esi, eax
     ;mov eax, EOF
     ;mov rdi, rdx
     ;mov ecx, 128
@@ -519,7 +520,6 @@ copy:
     mov ah, 40h ;Write
     int 41h
     jc .badExit
-    add esi, eax
     cmp eax, 128    ;Change this for writing from Char devices in ASCII mode
     jnb .copyLoop
 .okExit:

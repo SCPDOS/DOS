@@ -445,8 +445,9 @@ readFAT:
     inc eax ;Get next FAT sector
     push rbx
     call getBufForFat ;Get buffer Header in ebx
+    pop rcx ;Get bl in ecx, the last entry from the previous buffer
     jc .exitFail
-    pop rax ;Get bl in al, the last entry from the previous buffer
+    mov eax, ecx    ;Move the entry if all ok
     mov ah, byte [rbx + bufferHdr.dataarea]  ;Read first entry of next sector
     shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
     jmp short .checkIfLastFAT12Cluster
@@ -460,7 +461,7 @@ readFAT:
     and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
 .checkIfLastFAT12Cluster:
     cmp eax, 0FEFh   ;Is it below the first invalid cluster number?
-    jb .exit         ;If so, exit with it in eax
+    jb .exit         ;If so, exit with it in eax (and clear CF)
     mov eax, -1 ;Else, replace with -1, EOC
     jmp .exit
 
