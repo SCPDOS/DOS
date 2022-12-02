@@ -416,7 +416,7 @@ findFreeDiskDirEntry:
 ;       Directory vars must be set up for the directory we are searching in
 ;Output: CF=CY => Error, eax has error code
 ;        CF=NC => Refer to getDiskDirectoryEntry
-    breakpoint
+    ;breakpoint
     mov al, byte [delChar]
     mov byte [fcbName], al
     call searchDir  ;Return in rsi a pointer to the directory entry
@@ -442,8 +442,14 @@ getDiskDirectoryEntry:
 .skipCluster:
     push rbp
     mov rbp, qword [workingDPB]
+    movzx eax, word [dirSect]
     mov ebx, dword [rbp + dpb.dFirstUnitOfRootDir]
+    ;If dirSect is greater than wNumberRootDirEntries, then ret fail
+    cmp ax, word [rbp + dpb.wNumberRootDirEntries]
     pop rbp
+    jb .skipOldFat
+    stc
+    return
 .skipOldFat:
     add rax, rbx    ;Add sector offset to start sector of cluster
     mov qword [tempSect], rax   ;Save this sector number
