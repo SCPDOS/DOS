@@ -1298,7 +1298,7 @@ buildSFTEntry:
     mov rax, qword [tempSect]   ;Get directory entry sector
     mov qword [rdi + sft.qDirSect], rax
     movzx eax, word [entry]     ;Get 32 byte offset into sector for directory
-    shr al, 5   ;Divide by 5 to get directory entry number
+    shr eax, 5   ;Divide by 32 to get directory entry number
     mov byte [rdi + sft.bNumDirEnt], al
     mov eax, dword [rsi + fatDirEntry.fileSize] ;Get the filesize
     mov dword [rdi + sft.dFileSize], eax
@@ -1995,7 +1995,6 @@ writeDiskFile:
     test edx, edx
     jz .skipWalk
 .goToCurrentCluster:
-    ;breakpoint
     call readFAT    ;Get in eax the next cluster
     jc .exitPrepHardErr   ;This can only return Fail
     cmp eax, -1 ;Is this cluster the last cluster?
@@ -2152,7 +2151,7 @@ updateCurrentSFT:
     push rdi
     mov rdi, qword [currentSFT]
     call getBytesTransferred
-    jecxz .exit
+    jecxz .exit ;Skip this if ecx = 0
     ;ecx has bytes transferred
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit
@@ -2162,7 +2161,6 @@ updateCurrentSFT:
     mov eax, dword [currClustF]
     mov dword [rdi + sft.dRelClust], eax
     pop rax
-    jecxz .exit ;Skip this if ecx = 0
     push rcx
     mov ecx, dword [currByteF]
     mov dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
