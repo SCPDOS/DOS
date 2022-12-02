@@ -156,7 +156,6 @@ searchDir:
 .oldRoot:
 ;Different search for FAT 12/16 root directories. We assume we have 
 ; one large contiguous cluster.
-;   ecx = Number of entries per sector
 .oldSectorLp:
     movzx eax, word [dirSect]    ;Move the sector number into eax
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
@@ -167,9 +166,10 @@ searchDir:
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     jz .fnfError
+    ;breakpoint
     inc word [dirSect]  ;Goto next sector in directory
-    mov eax, dword [rbp + dpb.wNumberRootDirEntries]
-    cmp word [dirEntry], ax ;Have we reached the last dir entry?
+    movzx eax, word [rbp + dpb.wNumberRootDirEntries]
+    cmp dword [dirEntry], eax ;Have we reached the last dir entry?
     jb .oldSectorLp    ;If equal, no more entries to search. Game over!
 .fnfError:
     mov al, errNoFil
@@ -187,13 +187,13 @@ adjustDosDirBuffer:
     return
 
 findInBuffer:
-;Input: ecx = Number of entries in sector buffer to look for
-;       rsi = Sector buffer data area
+;Input:  rsi = Sector buffer data area
 ;Output: CF=CY => No entries found
 ;        ZF=NE => Keep searching in subsequent directories
 ;        ZF=ZE => End of directory reached early, stop
 ;        CF=NC => Entry found, directory data copied to SDA
 ;        rsi = Points to start of the disk buffer directory entry
+    call .getNumberOfEntries    ;Get in ecx # of entries in sector
     mov al, byte [searchAttr]  ;Get the search attrib
     call adjustSearchAttr   ;Adjust the search attributes 
 .searchMainLp:
@@ -286,7 +286,13 @@ findInBuffer:
 .ncExit:
     pop rcx
     return
-
+.getNumberOfEntries:
+    push rbp
+    mov rbp, qword [workingDPB]
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
+    shr ecx, 5  ;Divide by 32
+    pop rbp
+    return
 adjustSearchAttr:
 ;Converts the byte to a system only if the bit is set
 ;Input: eax = User selected search mask

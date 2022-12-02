@@ -416,6 +416,7 @@ findFreeDiskDirEntry:
 ;       Directory vars must be set up for the directory we are searching in
 ;Output: CF=CY => Error, eax has error code
 ;        CF=NC => Refer to getDiskDirectoryEntry
+    breakpoint
     mov al, byte [delChar]
     mov byte [fcbName], al
     call searchDir  ;Return in rsi a pointer to the directory entry
