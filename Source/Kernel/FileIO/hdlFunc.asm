@@ -1264,9 +1264,10 @@ buildSFTEntry:
     ;If recreating, check we are not overwriting a Dir
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
     jnz .bad    ;Directories are not allowed to be created
-    ;breakpoint
     push rbp
+    push qword [currentSFT]
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
+    pop qword [currentSFT]
     pop rbp
     jc .bad
     ;al has the char for the filename

@@ -174,8 +174,6 @@ searchDir:
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     jz .fnfError
-    movzx eax, word [dirSect] 
-    mov eax, dword [dirEntry]
     inc word [dirSect]  ;Goto next sector in directory
     movzx eax, word [rbp + dpb.wNumberRootDirEntries]
     cmp dword [dirEntry], eax ;Have we reached the last dir entry?
