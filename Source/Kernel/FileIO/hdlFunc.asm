@@ -1435,6 +1435,17 @@ buildSFTEntry:
     stc
     pop rbp
     return
+
+openDriverWrapper:  ;Int 4Fh, AX=120Ch
+    push rsi    ;Preserve rsi
+    lea rsi, .returnAddress
+    push rsi    ;Push the return address on the stack, popped on Return
+    push rbp    ;Push rbp on the stack, popped just before return
+    jmp buildSFTEntry.openDriver ;JUMP, don't call
+.returnAddress:
+    pop rsi ;Get back preserved rsi
+    return
+
 closeMain: ;Int 4Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
