@@ -38,3 +38,8 @@ bios:
 #Build COMMAND.COM
 command:
 	nasm ./Source/Utils/COMMAND/command.asm -o ./Source/Utils/COMMAND/Binaries/command.com -f bin -l ./Source/Utils/COMMAND/Listings/command.lst -O0v
+# Temp, to test Executable files
+tst:
+	nasm ./Source/Utils/EXETEST/tst.asm -o ./Source/Utils/EXETEST/Binaries/tst.obj -f win64 -l ./Source/Utils/EXETEST/Listings/tst.lst -O0v
+	gcc ./Source/Utils/EXETEST/Binaries/tst.obj -o ./Source/Utils/EXETEST/Binaries/tst.exe
+	rm  ./Source/Utils/EXETEST/Binaries/tst.obj

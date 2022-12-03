@@ -427,21 +427,21 @@ cpu_exception:
 
 ;Error messages
 .ascii:    db '0123456789ABCDEF'
-.fatalt0:  db CR,LF,LF,"SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
+.fatalt0:  db CR,LF,LF,"        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
 fatalt0L   equ $ - .fatalt0
 
 .fatal1:   
-    db "A potentially fatal error has been detected and the current application"
-    db " will be terminated.",CR,LF,
-    db "Press any key to continue or CTRL+ALT+DEL to restart the machine."
-    db CR,LF,"SYSTEM ERROR: "   ;Print standard Error message here
+    db "    A potentially fatal error has been detected",CR,LF
+    db "    and the current application must be terminated.",CR,LF,LF
+    db "    Press any key to continue or CTRL+ALT+DEL to restart the machine."
+    db CR,LF, LF,"    SYSTEM ERROR: "   ;Print standard Error message here
 fatal1L equ $ - .fatal1
 
 .fatal2:   db " : "
 fatal2L    equ $ - .fatal2
 
 ;The below error is displayed is inDOS > 1 or NMI occured
-.fatalHalt: db "SCP/DOS SYSTEM STOP: "
+.fatalHalt: db "    SCP/DOS SYSTEM STOP: "
 fatalHaltL equ $ - .fatalHalt
 .crlf:  db CR,LF,LF
 crlfL  equ $ - .crlf
