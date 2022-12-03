@@ -523,7 +523,6 @@ copy:
     cmp eax, 128    ;Change this for writing from Char devices in ASCII mode
     jnb .copyLoop
 .okExit:
-    breakpoint
     call .leaveCopyClose
     lea rdx, crlf
     mov ah, 09h

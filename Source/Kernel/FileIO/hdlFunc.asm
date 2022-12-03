@@ -1264,6 +1264,7 @@ buildSFTEntry:
     ;If recreating, check we are not overwriting a Dir
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
     jnz .bad    ;Directories are not allowed to be created
+    ;breakpoint
     push rbp
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
     pop rbp

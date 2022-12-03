@@ -34,10 +34,13 @@ searchMoreDir:
     mov dword [dirClustPar], eax
     ;Get number of 32 byte entries in a sector
     mov eax, dword [rdi + ffBlock.dirOffset]    ;Get the 32 byte entry
+    mov dword [dirEntry], eax
     ;Multiply by 32 to get the byte offset into the directory file
     shl eax, 5  ;eax has byte offset into directory file
     ;Now get bytes per cluster
     mov esi, eax    ;Save bytewise file ptr in esi
+    cmp dword [dirClustA], 0   ;If we at cluster 0, we are in old style root dir
+    je .oldFat
     movzx eax, word [rbp + dpb.wBytesPerSector]
     movzx ecx, byte [rbp + dpb.bSectorsPerClusterShift]
     shl eax, cl ;Shift to get bytes per cluster in eax
@@ -53,14 +56,10 @@ searchMoreDir:
     mov eax, edx    ;Move offset into cluster
     xor edx, edx
     div ecx 
-    ;eax now has sector offset into cluster (or root dir)
+    ;eax now has sector offset into cluster
     ;edx has byte offset into sector 
     mov word [dirSect], ax  ;Store the sector offset into var
-    shr edx, 5 ;Divide edx by 32 to get Dir Entry
-    mov dword [dirEntry], edx
     mov eax, dword [dirClustA]  ;Get disk cluster number
-    test eax, eax   ;If we at cluster 0, we are in old style root dir
-    jz .oldFat
     ;Now walk the FAT ebx many times starting from dirClustA in eax
     mov ecx, ebx
     jecxz .skipFatWalk  ;IF ecx is 0, skip walking FAT
@@ -82,7 +81,9 @@ searchMoreDir:
     call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
     jc searchDir.hardError
     call adjustDosDirBuffer  ;rbx has the buffer ptr for this dir sector
+    call findInBuffer.getNumberOfEntries    ;Get in ecx # of entries in sector
     mov eax, dword [dirEntry]
+    and eax, 0Fh    ;Get the value modulo 16
     sub ecx, eax    ;Subtract the offset to get the number of entries left
     shl eax, 5  ;Multiply by 32 to turn into bytes to add to rsi
     add rsi, rax    ;rsi points to current entry in the sector.
@@ -93,9 +94,16 @@ searchMoreDir:
     ;The return address on the stack will return to the ep's pushed
 .oldFat:
 ;Old FAT 12/16 root dirs fall thru here only
+;esi = byte ptr in root dir of entry
     lea rax, searchDir.oldNextEP
     push rax    ;Push return address onto the stack
-    movzx eax, word [dirSect]   ;Get the root directory sector offset
+    movzx eax, word [rbp + dpb.wBytesPerSector]
+    xor edx, edx
+    xchg esi, eax
+    div esi ;Divide dir file position by bytes per sector
+    ;eax = Sector number 
+    ;edx = Byte offset within the sector
+    mov word [dirSect], ax ;Set the root directory sector offset
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Add sector 0 of root dir
     jmp short .common
 .errorExit:
@@ -166,7 +174,6 @@ searchDir:
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
     jz .fnfError
-    breakpoint
     movzx eax, word [dirSect] 
     mov eax, dword [dirEntry]
     inc word [dirSect]  ;Goto next sector in directory
