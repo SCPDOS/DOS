@@ -268,6 +268,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
     add rax, psp_size
     mov qword [rbp - execFrame.pProgBase], rax  ;First byte of code goes here
+    ;Finally, just check that we have some code to execute. 
+    ;Empty code sections are NOT allowed if executing. Only for overlays
+    cmp dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfCode], 0
+    je .badFmtErr   ;If no bytes, exit error
     jmp short .exeProceed1
 .exeOvlySkipAlloc:
     mov rbx, qword [rbp - execFrame.pParam]
@@ -401,7 +405,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     lea rdx, sectHdr
     call .readDataFromHdl   ;Read this directory entry in
     ;Now we have the offset in memory if the file was loaded at imageBase
-    cmp byte [rbp - execFrame.bSubFunc], 03h    ;If overlay, skip this
+    cmp byte [rbp - execFrame.bSubFunc], execOverlay    ;If overlay, skip this
     jz .exeComplete
     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
     test esi, esi   ;If there are no relocations, skip this...
