@@ -41,5 +41,5 @@ command:
 # Temp, to test Executable files
 tst:
 	nasm ./Source/Utils/EXETEST/tst.asm -o ./Source/Utils/EXETEST/Binaries/tst.obj -f win64 -l ./Source/Utils/EXETEST/Listings/tst.lst -O0v
-	gcc ./Source/Utils/EXETEST/Binaries/tst.obj -o ./Source/Utils/EXETEST/Binaries/tst.exe
-	rm  ./Source/Utils/EXETEST/Binaries/tst.obj
+#Link using VS Dev Console using good old MASM/VC LINK with 
+#link tst.obj /entry:main /machine:x64

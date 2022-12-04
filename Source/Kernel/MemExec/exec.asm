@@ -224,6 +224,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp eax, imageFileHeader_size
     jb .badFmtErr
     ;So now rdx points to the imageFileHeader
+    cmp dword [rdx + imageFileHeader.dPESignature], imagePESignature
+    jne .badFmtErr
     cmp word [rdx + imageFileHeader.wMachineType], imageFileMachineAMD64
     jne .badFmtErr
     cmp word [rdx + imageFileHeader.wSizeOfOptionalHdr], imageFileOptionalHeader_size
@@ -257,9 +259,11 @@ loadExecChild:     ;ah = 4Bh, EXEC
     add ebx, eax    ;Add stack allocation
     add ebx, psp_size   ;Add space for the PSP to the allocation too
     mov dword [rbp - execFrame.dProgSize], ebx  ;Save the program size
-    add ebx, 11
+    add ebx, 11h
     shr ebx, 4  ;Turn into paragraphs
+    push rbp
     call allocateMemory ;Get in rax, ptr to memory block
+    pop rbp
     jc .insufficientMemory  ;Unless not enough, sorry buddy!
     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
     add rax, psp_size
@@ -270,12 +274,26 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
     mov qword [rbp - execFrame.pProgBase], rax
 .exeProceed1:
+    ;Now we align the progBase to full header size aligned to the next page
+    mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
+    add rax, rbx    ;Add this offset where the header should go in future
+    ;Now we section pad
+    push rax
+    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+    dec ecx ;Turn into a mask
+    and rax, rcx    ;Compute ptr modulo mask
+    inc ecx
+    sub rcx, rax
+    pop rdi
+    xor eax, eax
+    rep stosb
+    mov qword [rbp - execFrame.pProgBase], rdi
     ;So now copy one section at a time, read section header in
     ;File pointer points to the directory table, so skip that
     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
     cmp edx, 6  ;Does .reloc exist (6th directory entry)
     jb .badFmtErr
-    dec edx ;Decrement by 1 to make into a 0 based offset
+    ;dec edx ;Decrement by 1 to make into a 0 based offset
     ;Each directory is 8 bytes, so multiply edx by 8
     shl edx, 3  ;edx has number of bytes to move file pointer forwards by
     xor ecx, ecx
@@ -329,7 +347,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
     add rdi, rax    ;Move rdi forwards by that amount at least
     cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
-    jae .skipPadding
+    jae .skipInnerPadding
     push rcx
     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]
     sub ecx, eax    ;Get number of bytes to pad with in ecx
@@ -337,7 +355,19 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor eax, eax
     rep stosb   ;Pad that many zeros
     pop rcx
-.skipPadding:
+.skipInnerPadding:
+    push rcx
+    ;Here do section padding
+    mov rax, rdi    ;Get the current address
+    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+    dec ecx ;Turn into a mask
+    and rax, rcx    ;Compute ptr modulo mask
+    inc ecx
+    sub rcx, rax
+    ;mov rcx, rax    ;Thats the number of bytes to pad by
+    xor eax, eax
+    rep stosb
+    pop rcx
     dec ecx ;Decrement our section counter
     jz .doExeFixups
     ;Read next section header in here
@@ -371,9 +401,11 @@ loadExecChild:     ;ah = 4Bh, EXEC
     lea rdx, sectHdr
     call .readDataFromHdl   ;Read this directory entry in
     ;Now we have the offset in memory if the file was loaded at imageBase
+    cmp byte [rbp - execFrame.bSubFunc], 03h    ;If overlay, skip this
+    jz .exeComplete
     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
     test esi, esi   ;If there are no relocations, skip this...
-    jz .buildChildPSP   ;... including if overlay
+    jz .exeComplete   ;... including if overlay
     add rsi, qword [rbp - execFrame.pProgBase]
     ;Now rsi points to where in memory the relocation data table is
     ;Now compute the relocation factor 
@@ -389,8 +421,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rbx, rax    ;Save this relocation factor in rbx
     ;rsi points to relocation data table in memory
     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
-    cmp ecx, 0    ;If no relocations, skip
-    jz .buildChildPSP
+    test ecx, ecx    ;If no relocations, skip
+    jz .exeComplete
     mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
     ;rsi points to the first base relocation block. The relocations begin
     ; after the first block
@@ -414,8 +446,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rcx
     dec ecx
     jnz .nextBlock
+.exeComplete:
     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
     add rax, qword [rbp - execFrame.pProgBase]
+    mov rax, qword [rbp - execFrame.pProgBase]
     mov qword [rbp - execFrame.pProgEP], rax
     jmp .buildChildPSP
 .loadCom:
@@ -446,7 +480,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp edx, psp_size   ;If filesize - memory space is < psp_size...
     jb .insufficientMemory   ;Fail
     mov dword [rbp - execFrame.dProgSize], ebx  ;Store progsize
+    push rbp
     call allocateMemory
+    pop rbp
     jc .cleanAndFail
     jmp .comallocOk
 .comOverlay:
@@ -592,15 +628,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jmp .badExit
 
 .readDataFromHdl:
-;Input: bx = File Handle
-;       ecx = Number of bytes to transfer
+;Input: ecx = Number of bytes to transfer
 ;       rdx = Ptr to the buffer to use
+    push rdx
     call .clearArenaOwner   ;Entering critical section!
     movzx ebx, word [rbp - execFrame.wProgHdl]
     push rbp
     call readFileHdl
     pop rbp
     call .setPSPArenaOwner  ;Exiting critical section!
+    pop rdx
     return
 .clearArenaOwner:
     push rbx

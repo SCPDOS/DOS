@@ -89,6 +89,7 @@ imagePESignature    equ 00004550h   ; PE00, ACCEPT
 ;COFF File header, immadiately follows the signature so @ [e_lfanew + 4]
 
 struc imageFileHeader
+    .dPESignature        resd 1  ;PESignature, must be PE00
     .wMachineType        resw 1  ;Machine Type, must be imageFileMachineAMD64
     .wNumberOfSections   resw 1  ;Number of sections in file
     .dTimeDateStamp      resd 1  ;Unix datestamp
@@ -158,7 +159,7 @@ endstruc
 ;Each entry is one imageSectionHdr
 
 struc imageSectionHdr       ;size 40 bytes
-    .name                   resb 8
+    .qName                  resb 8
 	.dVirtualSize           resd 1  ;If this is bigger than RawData, 0 pad
 	.dVirtualAddress        resd 1  ;Offset from ImageBase
 	.dSizeOfRawData         resd 1
