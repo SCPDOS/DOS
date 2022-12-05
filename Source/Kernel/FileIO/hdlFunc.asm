@@ -434,7 +434,6 @@ renameFile:        ;ah = 56h
     lea rdi, buffer1
     call canonicaliseFileName ;rdi = Buffer to use, rsi = filename
     jc .pnfError  
-
     call renameMain ;Both pathnames made good and copied internally, lets go!!
     jc extErrExit
     jmp extGoodExit
@@ -719,8 +718,34 @@ renameMain:
     rep movsq   ;Copy directory over
     lea rdi, renameFFBlk
     call setupFFBlock   ;Need this to save the dir entry cluster/sector/offset 
+    ;Now we check this path, if it is a DIR, ensure it is not the current
+    ; dir for any CDS.
+    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+    jnz .notDirCheck
+    mov rdi, qword [fname1Ptr]
+    push rdi
+    call strlen ;Get asciiz length in ecx
+    pop rbx
+    dec ecx ;Get one less char to check, we check the last one manually
+    mov rsi, qword [cdsHeadPtr]
+    movzx edx, byte [lastdrvNum]
+.dirCheck:
+    mov rdi, rbx
+    push rsi    ;Save rsi pointing to the start of the CDS
+    repe cmpsb  ;Compare while they are equal
+    lodsb   ;Get the last char to check in al
+    pop rsi ;Put rsi back to the start of the string
+    jne .neqDir
+    cmp al, "\" ;Check the last char manually for pathend
+    je .accDen
+    test al, al
+    je .accDen
+.neqDir:
+    add rsi, cds_size   ;Goto next CDS
+    dec edx
+    jnz .dirCheck
+.notDirCheck:
     ;Now use FFBlock to temp swap out the filename with the source pattern
-
     mov ecx, -1    ;Just a large number to search
     xor eax, eax
     mov rdi, qword [fname1Ptr]
