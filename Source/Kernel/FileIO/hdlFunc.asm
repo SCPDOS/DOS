@@ -228,6 +228,11 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     cmp al, 1
     jbe .subFuncOk
     mov eax, errInvFnc
+.chmodError:
+;Call with ax = errorcode
+    mov byte [errorLocus], eLocUnk
+    mov byte [errorClass], eClsAppFlt
+    mov byte [errorAction], eActRetUsr
     jmp extErrExit
 .subFuncOk:
     mov rsi, rdx
@@ -240,7 +245,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     pop rcx
     pop rbx
     mov eax, errPnf
-    jmp extErrExit
+    jmp short .chmodError
 .pathOk:
     call checkPathNet 
     jz .badPath ;Or Net paths
@@ -256,7 +261,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     jc extErrExit   ;If the file or path was not found or error, bye bye
     ;In the case of a wildcard, recall this will return the first file
     cmp byte [fileExist], -1
-    jnz extErrExit
+    jnz .chmodError
 
     call testCDSNet
     jnc .notNet
@@ -276,6 +281,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 .getDiskAttribs:
     movzx eax, byte [curDirCopy + fatDirEntry.attribute]   ;Get disk attributes
     jmp extGoodExit
+
 .setAttribs:
     ;Set attribs here
     test word [rdi + cds.wFlags], cdsRedirDrive
@@ -288,6 +294,11 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     jc extErrExit
     jmp extGoodExit
 .setDiskAttribs:
+    call checkNoOpenHandlesForShareAction
+    jnc .okToSet
+    mov eax, errShrVio
+    jmp extErrExit
+.okToSet:
     call getDiskDirectoryEntry  ;Get ptr to entry in rsi
     jc extErrExit
     test cl, dirVolumeID | dirDirectory
@@ -299,9 +310,13 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     and ch, (dirVolumeID | dirDirectory)    ;Keep these two bits
     or cl, ch
     mov byte [rsi + fatDirEntry.attribute], cl  ;Set new bits
+    call writeThroughBuffers
+    jc .setError
     xor eax, eax
     jmp extGoodExit
-
+.setError:
+    call cancelWriteThroughBuffers
+    jmp extErrExit
 
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate
@@ -323,8 +338,12 @@ duplicateHandle:   ;ah = 45h, handle function
     ;al has SFT ndx
     mov rsi, rdi    ;Move rsi to point to the new position jft position
     movzx ebx, al   ;Move SFTndx into ebx
-    call getSFTPtrfromSFTNdx    ;Get the pointer to the SFT in rdi
+    call getSFTPtr    ;Get the pointer to the SFT in rdi
     inc word [rdi + sft.wNumHandles]    ;Increase the number of handles in SFT
+    test word [rdi + sft.wDeviceInfo], devRedirDev
+    jnz .netFile
+    call openDriverWrapper
+.netFile:
     ;Now we must return in ax the entry in the JFT 
     mov rdi, qword [currentPSP]
     lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to head of table
