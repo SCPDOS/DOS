@@ -455,6 +455,23 @@ loadExecChild:     ;ah = 4Bh, EXEC
     add rax, qword [rbp - execFrame.pProgBase]
     mov rax, qword [rbp - execFrame.pProgBase]
     mov qword [rbp - execFrame.pProgEP], rax
+    ;Now we copy the header into the memory space to pspPtr+psp_size
+    xor ecx, ecx
+    xor edx, edx
+    movzx ebx, word [rbp - execFrame.wProgHdl]    ;Get the handle
+    xor eax, eax
+    call lseekHdl
+    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
+    mov rdx, qword [rbp - execFrame.pPSPBase] 
+    add rdx, psp_size
+    call .readDataFromHdl
+    jc .badFmtErr
+    test eax, eax
+    jz .badFmtErr
+    cmp ecx, eax
+    jnz .badFmtErr
+    call qword [registerDLL]    ;Now we register the DLL
+    jc .badFmtErr   ;If this errors out for some reason, quit loading EXE
     jmp .buildChildPSP
 .loadCom:
     ;File is open here, so just read the file into memory. 

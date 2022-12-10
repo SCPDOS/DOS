@@ -40,6 +40,32 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
     numFiles    resb 1    ;FILES=5 default, max 255
+
+    ;DLL Manager hook functions here
+    ;All DLLMGR hooks are 8 byte pointers and are new to the DOS kernel.
+    ;They allow for the installation of a DLL manager program, which hooks
+    ; these pointers, to point to their own subroutines in the DLLMGR prog.
+    ;These hooks are called from within EXEC, only for PE type executables
+    ; and from within EXIT. 
+    ;
+    ;In EXEC mode, modes 0 and 1 create a PSP for the task and thus the 
+    ; task is self standing and has a PSP as a Unique ID. 
+    ;If mode 3, this is an overlay EXE. This means it is not it's own task and 
+    ; is an extension of the parent task. In such a case, the DLL Manager must 
+    ; look at where the overlay is to be loaded (execFrame.pProgBase), and if 
+    ; there is already an overlay there, to remove it's functions from the 
+    ; registery, replacing them with the new overlay's functions. All overlay
+    ; exports must be flagged as belonging to the parent task PSP so that
+    ; on EXIT, they can be removed from the registry. 
+    ;
+    ;In EXIT, the PSP of the ending task must be taken
+    ; into consideration, as if the PSP isn't registered then the task ending
+    ; is a .COM file or an .EXE with no exports.
+    ;Furthermore, if register fails (due to memory or namespace constraints),
+    ; it must return CF=CY.
+dllHooks:
+    registerDLL   resq 1    ;Entered with rbp = execFrame
+    unloadDLLHook   resq 1  ;
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
     ;Thus ALL offsets from SFT header increase by 4 bytes and each entry

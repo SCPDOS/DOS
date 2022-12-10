@@ -766,6 +766,13 @@ defaultFileHandles:
     add rbx, sft_size   ;Goto SFT 5
     mov dword [rbx + sft.wNumHandles], eax
 ;------------------------------------------------;
+;              Setup DLLMGR Hooks                ;
+;------------------------------------------------;   
+    lea rdi, qword [rbp + dllHooks]
+    lea rax, qword [rbp + goodDfltShareHook]    ;Return CF = CY
+    stosq
+    stosq
+;------------------------------------------------;
 ;               Setup Share Hooks                ;
 ;------------------------------------------------;
     lea rdi, qword [rbp + shareHooks]

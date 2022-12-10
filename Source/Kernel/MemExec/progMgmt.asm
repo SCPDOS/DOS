@@ -178,6 +178,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     int 4Fh
 .skipAbortNetClose:
     call qword [closeTaskShare] ;Close all shared files for this task
+    call qword [unloadDLLHook]  ;Now free exported function for this task
     add rdi, psp.jobFileTbl ;Move rdi to point to the start of the JFT
     mov rsi, rdi    ;Point rsi to jft too
     movzx ecx, word [maxHndls] ;Number of entries in JFT
@@ -236,6 +237,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     jmp short .s5lp
 ;Step 6
 .step6:
+
     mov rax, qword [rbx + psp.parentPtr]    ;Get the parent PSP pointer
     mov qword [currentPSP], rax ;and set it to be the current PSP
 ;Step 7
