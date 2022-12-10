@@ -89,6 +89,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     ;Clear up error info
     mov byte [errorLocus], 1    ;Reset to generic, unknown locus
     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
+    mov byte [ctrlCExit], 0     ;Also reset the ctrlC exit flag
     mov byte [errorDrv], -1     ;Set the drive which caused the error to none
 
     push rax

@@ -10,6 +10,7 @@ cmdLdr:
     int 40h ;Exit to caller or DOS to print bad command interpreter line
 .okVersion:
 ;If ok then store self as parent in the PSP, to prevent accidental closure
+    mov qword [pspPtr], r8  ;Store PSP ptr in internal var 
     mov rax, qword [r8 + psp.parentPtr] ;Get PSP parent
     mov qword [r8 + psp.parentPtr], r8  ;Store self as parent
     mov qword [realParent], rax ;Preserve the real parent address

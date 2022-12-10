@@ -186,5 +186,16 @@ critErrorHandler:   ;Int 44h
 .responses  db "IRAF"   ;Abort Retry Ignore Fail
 
 int43h:
+    test byte [permaSwitch], -1
+    jnz .exit   ;If this is non-zero, just exit as normal
+    ;Else, we juggle parent PSP's
+    push rax
+    push rbx
+    mov rax, qword [realParent]
+    mov rbx, qword [pspPtr]
+    mov qword [rbx + psp.parentPtr], rax    ;Store the parent there
+    pop rbx
+    pop rax
+.exit:
     stc     ;Set CF to kill the task
     ret 8   ;Return and pop CS off the stack to indicate we wanna kill task
