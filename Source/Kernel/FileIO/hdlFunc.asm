@@ -1789,6 +1789,12 @@ readDiskFile:
     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
 ;Main
 .mainRead:
+    test byte [breakFlag], -1   ;If break flag is set, 
+    jz .mainReadNoBreak
+    push rax
+    call checkBreak
+    pop rax
+.mainReadNoBreak:
     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
@@ -2076,6 +2082,12 @@ writeDiskFile:
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
 .mainWrite:
+    test byte [breakFlag], -1   ;If break flag is set, 
+    jz .mainWriteNoBreak
+    push rax
+    call checkBreak
+    pop rax
+.mainWriteNoBreak:
     call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
     jc .badExit
     lea rdi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rdi
