@@ -274,7 +274,7 @@ msdDriver:
     add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
     add qword [rdi + ioReqPkt.bufptr], rax  ;Add one sector
     inc esi
-    cmp esi, dword [rbp + ioReqPkt.tfrlen]
+    cmp esi, dword [rdi + ioReqPkt.tfrlen]
     jne .msdwv0
     mov rbx, rdi
     ret
