@@ -277,6 +277,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rbx, qword [rbp - execFrame.pParam]
     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
     mov qword [rbp - execFrame.pProgBase], rax
+    mov qword [rbp - execFrame.pPSPBase], rax   ;Pretend this is the case
 .exeProceed1:
     ;Now we align the progBase to full header size aligned to the next page
     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
