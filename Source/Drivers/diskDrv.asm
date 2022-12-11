@@ -318,7 +318,8 @@ msdDriver:
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], ioctlReqPkt_size
     jne .msdWriteErrorCode
-
+;Need to spend some time to implement proper IOCTL with LBA instead of CHS.
+;Thus for v1.0, require each BIOS implementer to also write a format routine.
     ret
 .msdGetLogicalDev:   ;Function 23
     mov al, drvBadDrvReq
