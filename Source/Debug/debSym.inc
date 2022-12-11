@@ -7,7 +7,7 @@
 %define DEBUG false
 %define DPBINFO false
 %define REGS false
-%define ENDSTATUS true
+%define ENDSTATUS false
 %define ALLOCTEST false
 
 
