@@ -363,9 +363,12 @@ msdDriver:
     cmp al, byte [.msdCurDev]    ;Compare against the last transacted device
     rete    ;Exit if equal (ZF=ZE)
 ;If not equal, check they use different BPB's before continuing
+    push rax
+    movzx eax, byte [.msdCurDev]  ;Compare current BPB ptr to previous
     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
     shl eax, 3
     mov rdx, qword [rsi + rax]  ;Get the bpbptr of this device too
+    pop rax
     cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
     jne .msdCDTexit ;Exit by setting the new unit number
     ;Here, device numbers are neq but bpb's are eq. Thus print message
