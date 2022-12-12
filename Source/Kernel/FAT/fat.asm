@@ -7,13 +7,13 @@ getFATtype:
 ;Exit: ecx = 0 => FAT 12, ecx = 1 => FAT 16, ecx = 2 => FAT 32
     push rbx
     mov ebx, dword [rbp + dpb.dClusterCount]
-    mov ecx, 1  ;FAT 16 marker
+    mov ecx, 2  ;FAT 32 marker
     cmp ebx, fat16MaxClustCnt
     jae .exit
-    dec ecx     ;FAT 12 marker
+    dec ecx     ;FAT 16 marker
     cmp ebx, fat12MaxClustCnt
-    jb .exit
-    mov ecx, 2  ;Must be FAT 32 otherwise
+    jae .exit
+    dec ecx     ;FAT 12 marker
 .exit:
     pop rbx
     return
