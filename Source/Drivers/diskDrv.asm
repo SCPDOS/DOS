@@ -345,7 +345,8 @@ msdDriver:
 ;Sector count handled by caller
 ;Called with dh = BIOS function number
     movzx rax, byte [rdi + ioReqPkt.unitnm]
-    mov dl, byte [.msdBIOSmap + rax]  ;Get translated BIOS number for req in dl
+    lea rcx, .msdBIOSmap
+    mov dl, byte [rcx + rax]  ;Get translated BIOS number for req in dl
     xor ecx, ecx
     mov ecx, dword [rbp + bpb32.hiddSec]  ;Goto start of volume
     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
