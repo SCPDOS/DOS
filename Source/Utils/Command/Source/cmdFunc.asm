@@ -460,8 +460,6 @@ copy:
     lea rsi, cmdBuffer
     movzx eax, byte [arg2Off]
     add rsi, rax    ;Go to the start of the command
-    cmp byte [rsi + 1], ":" ;If dest path char 2 is :, must be X:, not allowed
-    je badParamError
     lodsb   ;Get first char in AL
     dec rsi ;Go back to this char
     call isALEndOfCommand
