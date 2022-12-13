@@ -1763,6 +1763,13 @@ diskInit:
     ;   Add each other primary or logical ptn (until max)
     ;Then finish with removable devices. First two devs become A: and B: resp.
     ;Use r8 as device counter
+    ;First set up the two default BPB's if no removable drives
+    lea rsi, qword [rbp + msdDriver.msdBPBblks]
+    lea rdi, qword [rbp + msdDriver.msdBPBTbl]  ;point to the bpbtable
+    mov qword [rdi], rsi  ;Save this as the first bpbptr
+    add rsi, bpbEx_size
+    mov qword [rdi + 8], rsi
+
     lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
     cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
     jz .remInit ;No? Go to removables

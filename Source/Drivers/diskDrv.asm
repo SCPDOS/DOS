@@ -373,7 +373,6 @@ msdDriver:
     cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
     jne .msdCDTexit ;Exit by setting the new unit number
     ;Here, device numbers are neq but bpb's are eq. Thus print message
-    shr eax, 3 
     add al, "A" ;Convert to a letter
     mov byte [.msdStrikeLetter], al
     lea rsi, .msdStrike
