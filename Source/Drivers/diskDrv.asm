@@ -319,8 +319,64 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioctlReqPkt_size
     jne .msdWriteErrorCode
 ;Need to spend some time to implement proper IOCTL with LBA instead of CHS.
-;Thus for v1.0, require each BIOS implementer to also write a format routine.
-    ret
+;Implement two undoc functions 80h|42h (format) and 80h|60h (get LBA params)
+    mov al, drvBadCmd
+    movzx ecx, word [rbx + ioctlReqPkt.majfun]
+    cmp cl, 08h    ;Disk Drive Major Code?
+    jne .msdWriteErrorCode  ;If not, exit bad
+    test ch, 80h    ;Extended function bit set?
+    jz .msdWriteErrorCode
+    and ch, 7Fh     ;Clear the upper bit
+    cmp ch, 42h
+    je .msdGIOCTLFormat
+    cmp ch, 60h
+    jne .msdWriteErrorCode  ;Error if not this function with bad command
+    ;Get params here
+    movzx eax, byte [rbx + ioctlReqPkt.unitnm] ;Get the driver unit number
+    lea rdx, .msdBIOSmap
+    mov dl, byte [rdx + rax]    ;Get the BIOS number for the device
+    mov ah, 88h ;Read LBA Device Parameters
+    int 33h
+    ;Returns:
+    ;rax = Sector size in bytes
+    ;rcx = Last LBA block
+    jc .msdGenDiskError
+;Get LBA Table:
+;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
+;Offset 1:  Reserved, 7 bytes
+;Offset 8:  Sector size in bytes (DWORD)
+;Offset 16: Number Of Sectors on Medium + 1 (QWORD)
+    mov rdx, qword [rbx + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
+    mov qword [rdx + genioctlGetParamsTable.size], 24
+    mov qword [rdx + genioctlGetParamsTable.sectorSize], rax
+    mov qword [rdx + genioctlGetParamsTable.numSectors], rcx
+    return
+.msdGIOCTLFormat:
+;Format Table:
+;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
+;Offset 1:  Reserved, 7 bytes
+;Offset 8:  Sector to start format at (QWORD)
+;Offset 16: Number of sectors to format (QWORD) 
+    mov rsi, rbx
+    mov rdi, qword [rsi + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
+    mov rcx, qword [rdi + genioctlLBAformat.startSector]    ;Get start sector
+    mov rdx, qword [rdi + genioctlLBAformat.numSectors]     ;Get number to fmt
+.mgioctlfMainLoop:
+    mov ah, 85h ;LBA Format
+    cmp rdx, 0FFh
+    jbe .mgioctlfLastFmt
+    mov al, -1
+    int 33h ;Do the format
+    jc .msdGenDiskError
+    add rcx, 0FFh   ;Go forwards by this many sectors
+    sub rdx, 0FFh   ;We have this many sectors less to format
+    jmp short .mgioctlfMainLoop
+.mgioctlfLastFmt:
+    clc
+    mov al, dl  ;Place this in sectors left to read
+    int 33h
+    jc .msdGenDiskError
+    return
 .msdGetLogicalDev:   ;Function 23
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], getDevReqPkt_size

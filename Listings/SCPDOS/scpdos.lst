@@ -381,6 +381,21 @@
     99                              <2> 
    202                              <1> 
    203                              <1> endstruc
+   204                              <1> 
+   205                              <1> 
+   206                              <1> struc genioctlGetParamsTable
+   207 00000000 ??                  <1>     .size           resb 1
+   208 00000001 ??????????????      <1>     .res            resb 7
+   209 00000008 ????????????????    <1>     .sectorSize     resb 8  ;Only the lower dword is valid here
+   210 00000010 ????????????????    <1>     .numSectors     resb 8
+   211                              <1> endstruc
+   212                              <1> 
+   213                              <1> struc genioctlLBAformat
+   214 00000000 ??                  <1>     .size           resb 1
+   215 00000001 ??????????????      <1>     .res            resb 7
+   216 00000008 ????????????????    <1>     .startSector    resb 8  ;Sector to start format at
+   217 00000010 ????????????????    <1>     .numSectors     resb 8  ;Number of sectors to format
+   218                              <1> endstruc
      7                                  %include "./Source/Include/fatStruc.inc"
      8                              <1> 
      9                              <1> ;-------------------------------------------------------;
@@ -2012,7 +2027,7 @@
    552 00000780 648A0425[7DC00300]  <1>     mov al, byte fs:[numPhysVol]
    553 00000788 84C0                <1>     test al, al ;If no media with valid filesystems were detected, stop boot
    554 0000078A 0F84570B0000        <1>     jz errorInit
-   555 00000790 488D95[B7790000]    <1>     lea rdx, qword [rbp + msdDriver.msdBPBTbl]
+   555 00000790 488D95[4B7A0000]    <1>     lea rdx, qword [rbp + msdDriver.msdBPBTbl]
    556 00000797 30C9                <1>     xor cl, cl  ;Clear counter
    557 00000799 64488B2C25-         <1>     mov rbp, fs:[dpbHeadPtr]  ;Get first DPB address in rdi
    557 0000079E [41C00300]          <1>
@@ -2046,7 +2061,7 @@
    585                              <1> ;------------------------------------------------;
    586                              <1> sectorSizeSearch:
    587                              <1> ;Done by reading BPB's for each drive
-   588 000007E3 488D9D[B7790000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
+   588 000007E3 488D9D[4B7A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
    589                              <1>     
    590                              <1>     ;Go thru each block individually
    591 000007EA 31C0                <1>     xor eax, eax
@@ -3593,13 +3608,13 @@
   1779                              <1>     ;Then finish with removable devices. First two devs become A: and B: resp.
   1780                              <1>     ;Use r8 as device counter
   1781                              <1>     ;First set up the two default BPB's if no removable drives
-  1782 00001525 488DB5[DF790000]    <1>     lea rsi, qword [rbp + msdDriver.msdBPBblks]
-  1783 0000152C 488DBD[B7790000]    <1>     lea rdi, qword [rbp + msdDriver.msdBPBTbl]  ;point to the bpbtable
+  1782 00001525 488DB5[737A0000]    <1>     lea rsi, qword [rbp + msdDriver.msdBPBblks]
+  1783 0000152C 488DBD[4B7A0000]    <1>     lea rdi, qword [rbp + msdDriver.msdBPBTbl]  ;point to the bpbtable
   1784 00001533 488937              <1>     mov qword [rdi], rsi  ;Save this as the first bpbptr
   1785 00001536 4881C678000000      <1>     add rsi, bpbEx_size
   1786 0000153D 48897708            <1>     mov qword [rdi + 8], rsi
   1787                              <1> 
-  1788 00001541 488DBD[DF790000]    <1>     lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
+  1788 00001541 488DBD[737A0000]    <1>     lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
   1789 00001548 64803C25[12C00300]- <1>     cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
   1789 00001550 00                  <1>
   1790 00001551 0F84C6000000        <1>     jz .remInit ;No? Go to removables
@@ -3660,10 +3675,10 @@
   1843 000015E4 F348A5              <1>     rep movsq   ;Copy the BPB
   1844 000015E7 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
   1845                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
-  1846 000015E8 4A8D9C05[AD790000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+  1846 000015E8 4A8D9C05[417A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
   1847                              <1>     ;Add device count to rbx to point to correct entry
   1848 000015F0 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
-  1849 000015F2 4A8D9CC5[B7790000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+  1849 000015F2 4A8D9CC5[4B7A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
   1850 000015FA 488933              <1>     mov qword [rbx], rsi
   1851 000015FD 49FFC0              <1>     inc r8  ;Goto next logical drive
   1852 00001600 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
@@ -3686,10 +3701,10 @@
   1869                              <1> ; for some reason the removable drives stop working or dont exist.
   1870                              <1> ;This forces the hard drives to start at C:
   1871 0000161D 53                  <1>     push rbx
-  1872 0000161E 488D9D[DF790000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBblks] ;Get default drive A block ptr
-  1873 00001625 48899D[B7790000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl], rbx  ;Store in ptrs table
+  1872 0000161E 488D9D[737A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBblks] ;Get default drive A block ptr
+  1873 00001625 48899D[4B7A0000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl], rbx  ;Store in ptrs table
   1874 0000162C 4881C378000000      <1>     add rbx, bpbEx_size ;Goto next ptr
-  1875 00001633 48899D[BF790000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl + 8], rbx  ;Store next pointer
+  1875 00001633 48899D[537A0000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl + 8], rbx  ;Store next pointer
   1876 0000163A 5B                  <1>     pop rbx
   1877                              <1> ;Now handle removable devices, at least 2 rem. devs.
   1878 0000163B 4D89C1              <1>     mov r9, r8  ;Save number of next device in r9b
@@ -3718,10 +3733,10 @@
   1899 00001675 F348A5              <1>     rep movsq   ;Copy the BPB
   1900 00001678 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
   1901                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
-  1902 00001679 4A8D9C05[AD790000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+  1902 00001679 4A8D9C05[417A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
   1903                              <1>     ;Add device count to rbx to point to correct entry
   1904 00001681 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
-  1905 00001683 4A8D9CC5[B7790000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+  1905 00001683 4A8D9CC5[4B7A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
   1906 0000168B 488933              <1>     mov qword [rbx], rsi
   1907 0000168E 49FFC0              <1>     inc r8  ;Goto next logical drive
   1908 00001691 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
@@ -3742,10 +3757,10 @@
   1922 000016C2 C3                  <1>     ret
   1923                              <1> .singleRemDev:
   1924                              <1>     ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
-  1925 000016C3 488D9D[AD790000]    <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap]
-  1926 000016CA 8A95[AD790000]      <1>     mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
+  1925 000016C3 488D9D[417A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap]
+  1926 000016CA 8A95[417A0000]      <1>     mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
   1927 000016D0 885301              <1>     mov byte [rbx + 1], dl  ;Store in byte for Drive B:
-  1928 000016D3 488D9D[B7790000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
+  1928 000016D3 488D9D[4B7A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
   1929 000016DA 488B13              <1>     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
   1930 000016DD 48895308            <1>     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
   1931 000016E1 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
@@ -19026,7 +19041,7 @@
     62 000075D7 B001                <1>     mov al, drvBadUnit 
     63 000075D9 807B0105            <1>     cmp byte [rbx + drvReqHdr.unitnm], 05h  ;Unit greater than 5 is invalid
     64 000075DD 0F87B2000000        <1>     ja .msdWriteErrorCode ;If yes, error!
-    65 000075E3 488D35CD030000      <1>     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
+    65 000075E3 488D3561040000      <1>     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
     66 000075EA 0FB64301            <1>     movzx eax, byte [rbx + drvReqHdr.unitnm]
     67 000075EE C1E003              <1>     shl eax, 3  ;Multiply by 8 to get pointer to pointer to bpb
     68 000075F1 488B2C06            <1>     mov rbp, qword [rsi + rax]    ;Get pointer to bpb in rbp
@@ -19136,8 +19151,8 @@
    172 000076C4 0000                <1>     dw 0                            ;Function 20
    173 000076C6 0000                <1>     dw 0                            ;Function 21
    174 000076C8 0000                <1>     dw 0                            ;Function 22
-   175 000076CA 3202                <1>     dw .msdGetLogicalDev - .msdTable    ;Function 23
-   176 000076CC 4702                <1>     dw .msdSetLogicalDev - .msdTable    ;Function 24
+   175 000076CA C602                <1>     dw .msdGetLogicalDev - .msdTable    ;Function 23
+   176 000076CC DB02                <1>     dw .msdSetLogicalDev - .msdTable    ;Function 24
    177                              <1> 
    178                              <1> ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
    179                              <1> .msdMedChk:          ;Function 1
@@ -19145,10 +19160,10 @@
    181 000076D0 803B17              <1>     cmp byte [rbx + drvReqHdr.hdrlen], mediaCheckReqPkt_size
    182 000076D3 75C0                <1>     jne .msdWriteErrorCode
    183                              <1> 
-   184 000076D5 E841020000          <1>     call .msdCheckDeviceType    ;Check and ensure that media type is "swapped"
+   184 000076D5 E8D5020000          <1>     call .msdCheckDeviceType    ;Check and ensure that media type is "swapped"
    185 000076DA 753E                <1>     jnz .mmcChange  ;Always change if swapping between same phys volume!
    186 000076DC 480FB64301          <1>     movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
-   187 000076E1 488D0DC5020000      <1>     lea rcx, .msdBIOSmap
+   187 000076E1 488D0D59030000      <1>     lea rcx, .msdBIOSmap
    188 000076E8 8A1401              <1>     mov dl, byte [rcx + rax]    ;Translate unitnum to BIOS num
    189 000076EB F6C280              <1>     test dl, 80h    ;If it is a fixed disk, no change!
    190 000076EE 753F                <1>     jnz .mmcNoChange
@@ -19173,7 +19188,7 @@
    209 00007718 7410                <1>     je .mmcUnsure
    210                              <1> .mmcChange:
    211 0000771A C6430EFF            <1>     mov byte [rbx + mediaCheckReqPkt.medret], -1
-   212 0000771E 488D057E020000      <1>     lea rax, .msdDefLabel          ;Temp, ret def label
+   212 0000771E 488D0512030000      <1>     lea rax, .msdDefLabel          ;Temp, ret def label
    213 00007725 4889430F            <1>     mov qword [rbx + mediaCheckReqPkt.desptr], rax 
    214                              <1>     ;Check here if there were any open handles on the device when it was changed
    215 00007729 C3                  <1>     ret
@@ -19192,7 +19207,7 @@
    228                              <1> 
    229 0000773F 4889DE              <1>     mov rsi, rbx
    230 00007742 480FB64601          <1>     movzx rax, byte [rsi + bpbBuildReqPkt.unitnm]  ;Get unit number into rax
-   231 00007747 488D0D5F020000      <1>     lea rcx, .msdBIOSmap
+   231 00007747 488D0DF3020000      <1>     lea rcx, .msdBIOSmap
    232 0000774E 8A1401              <1>     mov dl, byte [rcx + rax]  ;Get translated BIOS number for req
    233 00007751 488B5E0E            <1>     mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
    234 00007755 31C9                <1>     xor ecx, ecx    ;Read Sector 0...
@@ -19227,13 +19242,13 @@
    263 000077A2 803B2A              <1>     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
    264 000077A5 0F85EAFEFFFF        <1>     jne .msdWriteErrorCode
    265                              <1> 
-   266 000077AB E86B010000          <1>     call .msdCheckDeviceType
+   266 000077AB E8FF010000          <1>     call .msdCheckDeviceType
    267                              <1> 
    268 000077B0 4889DF              <1>     mov rdi, rbx
    269 000077B3 31F6                <1>     xor esi, esi  ;Set sector read counter to zero
    270                              <1> .msdr0:
    271 000077B5 B682                <1>     mov dh, 82h ;LBA Read Sectors
-   272 000077B7 E83C010000          <1>     call .msdBlkIOCommon
+   272 000077B7 E8D0010000          <1>     call .msdBlkIOCommon
    273 000077BC 0F825DFEFFFF        <1>     jc .msdIOError
    274 000077C2 0FB7450B            <1>     movzx eax, word [rbp + bpb.bytsPerSec] 
    275 000077C6 4801471A            <1>     add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
@@ -19249,13 +19264,13 @@
    285 000077DB 803B2A              <1>     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
    286 000077DE 0F85B1FEFFFF        <1>     jne .msdWriteErrorCode
    287                              <1> 
-   288 000077E4 E832010000          <1>     call .msdCheckDeviceType
+   288 000077E4 E8C6010000          <1>     call .msdCheckDeviceType
    289                              <1> 
    290 000077E9 4889DF              <1>     mov rdi, rbx
    291 000077EC 31F6                <1>     xor esi, esi  ;Set sector read counter to zero
    292                              <1> .msdw0:
    293 000077EE B683                <1>     mov dh, 83h ;LBA Write Sectors
-   294 000077F0 E803010000          <1>     call .msdBlkIOCommon
+   294 000077F0 E897010000          <1>     call .msdBlkIOCommon
    295 000077F5 0F8224FEFFFF        <1>     jc .msdIOError
    296 000077FB 0FB7450B            <1>     movzx eax, word [rbp + bpb.bytsPerSec] 
    297 000077FF 4801471A            <1>     add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
@@ -19271,16 +19286,16 @@
    307 00007814 803B2A              <1>     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
    308 00007817 0F8578FEFFFF        <1>     jne .msdWriteErrorCode
    309                              <1> 
-   310 0000781D E8F9000000          <1>     call .msdCheckDeviceType
+   310 0000781D E88D010000          <1>     call .msdCheckDeviceType
    311                              <1> 
    312 00007822 4889DF              <1>     mov rdi, rbx
    313 00007825 31F6                <1>     xor esi, esi  ;Set counter to zero
    314                              <1> .msdwv0:
    315 00007827 B683                <1>     mov dh, 83h ;LBA Write Sectors
-   316 00007829 E8CA000000          <1>     call .msdBlkIOCommon
+   316 00007829 E85E010000          <1>     call .msdBlkIOCommon
    317 0000782E 0F82EBFDFFFF        <1>     jc .msdIOError    ;Error handler needs to add to esi the value in al
    318 00007834 B684                <1>     mov dh, 84h ;LBA Verify Sectors
-   319 00007836 E8BD000000          <1>     call .msdBlkIOCommon
+   319 00007836 E851010000          <1>     call .msdBlkIOCommon
    320 0000783B 0F82DEFDFFFF        <1>     jc .msdIOError    ;Error handler needs to add to esi the value in al
    321 00007841 0FB7450B            <1>     movzx eax, word [rbp + bpb.bytsPerSec] 
    322 00007845 4801471A            <1>     add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
@@ -19302,7 +19317,7 @@
    338 00007869 0F8526FEFFFF        <1>     jne .msdWriteErrorCode
    339                              <1> 
    340 0000786F 480FB64301          <1>     movzx rax, byte [rbx + openReqPkt.unitnm]
-   341 00007874 488D0D37010000      <1>     lea rcx, .msdHdlCnt
+   341 00007874 488D0DCB010000      <1>     lea rcx, .msdHdlCnt
    342 0000787B FE0401              <1>     inc byte [rcx + rax]  ;Inc handle cnt for given unit
    343 0000787E C3                  <1>     ret
    344                              <1> .msdDevClose:        ;Function 14
@@ -19311,7 +19326,7 @@
    347 00007884 0F850BFEFFFF        <1>     jne .msdWriteErrorCode
    348                              <1> 
    349 0000788A 480FB64301          <1>     movzx rax, byte [rbx + closeReqPkt.unitnm]
-   350 0000788F 488D0D1C010000      <1>     lea rcx, .msdHdlCnt
+   350 0000788F 488D0DB0010000      <1>     lea rcx, .msdHdlCnt
    351 00007896 FE0C01              <1>     dec byte [rcx + rax]  ;Dec handle cnt for given unit
    352 00007899 C3                  <1>     ret
    353                              <1> .msdRemovableMedia:  ;Function 15
@@ -19320,7 +19335,7 @@
    356 0000789F 0F85F0FDFFFF        <1>     jne .msdWriteErrorCode
    357                              <1> 
    358 000078A5 480FB64301          <1>     movzx rax, byte [rbx + remMediaReqPkt.unitnm]
-   359 000078AA 488D0DFC000000      <1>     lea rcx, .msdBIOSmap
+   359 000078AA 488D0D90010000      <1>     lea rcx, .msdBIOSmap
    360 000078B1 0FB60401            <1>     movzx eax, byte [rcx + rax]    ;Get BIOS number
    361 000078B5 2580000000          <1>     and eax, 80h ;Isolate bit 7 (the fixed drive bit)
    362 000078BA C1E002              <1>     shl eax, 2  ;Shift the removable bit (bit 7) to the busy bit (bit 9)
@@ -19331,60 +19346,122 @@
    367 000078C4 803B27              <1>     cmp byte [rbx + drvReqHdr.hdrlen], ioctlReqPkt_size
    368 000078C7 0F85C8FDFFFF        <1>     jne .msdWriteErrorCode
    369                              <1> ;Need to spend some time to implement proper IOCTL with LBA instead of CHS.
-   370                              <1> ;Thus for v1.0, require each BIOS implementer to also write a format routine.
-   371 000078CD C3                  <1>     ret
-   372                              <1> .msdGetLogicalDev:   ;Function 23
-   373 000078CE B005                <1>     mov al, drvBadDrvReq
-   374 000078D0 803B0D              <1>     cmp byte [rbx + drvReqHdr.hdrlen], getDevReqPkt_size
-   375 000078D3 0F85BCFDFFFF        <1>     jne .msdWriteErrorCode
-   376                              <1> 
-   377 000078D9 8A05CD000000        <1>     mov al, byte [.msdCurDev]
-   378 000078DF 884301              <1>     mov byte [rbx + getDevReqPkt.unitnm], al
-   379 000078E2 C3                  <1>     ret
-   380                              <1> .msdSetLogicalDev:   ;Function 24
-   381 000078E3 B005                <1>     mov al, drvBadDrvReq
-   382 000078E5 803B0D              <1>     cmp byte [rbx + drvReqHdr.hdrlen], setDevReqPkt_size
-   383 000078E8 0F85A7FDFFFF        <1>     jne .msdWriteErrorCode
-   384                              <1> .msdInternalSetUnitNumber:  ;Called to set the unit number from reqpkt
-   385 000078EE 8A4301              <1>     mov al, byte [rbx + getDevReqPkt.unitnm]
-   386 000078F1 8805B5000000        <1>     mov byte [.msdCurDev], al
-   387 000078F7 C3                  <1>     ret
-   388                              <1> 
-   389                              <1> .msdBlkIOCommon:  ;Does block IO
-   390                              <1> ;Called with rdi containing old rbx value and ah with function number
-   391                              <1> ;rbp points to bpb
-   392                              <1> ;Error handled by caller
-   393                              <1> ;Sector count handled by caller
-   394                              <1> ;Called with dh = BIOS function number
-   395 000078F8 480FB64701          <1>     movzx rax, byte [rdi + ioReqPkt.unitnm]
-   396 000078FD 488D0DA9000000      <1>     lea rcx, .msdBIOSmap
-   397 00007904 8A1401              <1>     mov dl, byte [rcx + rax]  ;Get translated BIOS number for req in dl
-   398 00007907 31C9                <1>     xor ecx, ecx
-   399 00007909 8B4D1C              <1>     mov ecx, dword [rbp + bpb32.hiddSec]  ;Goto start of volume
-   400 0000790C 48034F1A            <1>     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
-   401 00007910 488B5F0E            <1>     mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
-   402 00007914 88F4                <1>     mov ah, dh
-   403 00007916 B001                <1>     mov al, 01h ;Do one sector at a time 
-   404 00007918 CD33                <1>     int 33h
-   405                              <1>     return
+   370                              <1> ;Implement two undoc functions 80h|42h (format) and 80h|60h (get LBA params)
+   371 000078CD B003                <1>     mov al, drvBadCmd
+   372 000078CF 0FB74B0D            <1>     movzx ecx, word [rbx + ioctlReqPkt.majfun]
+   373 000078D3 80F908              <1>     cmp cl, 08h    ;Disk Drive Major Code?
+   374 000078D6 0F85B9FDFFFF        <1>     jne .msdWriteErrorCode  ;If not, exit bad
+   375 000078DC F6C580              <1>     test ch, 80h    ;Extended function bit set?
+   376 000078DF 0F84B0FDFFFF        <1>     jz .msdWriteErrorCode
+   377 000078E5 80E57F              <1>     and ch, 7Fh     ;Clear the upper bit
+   378 000078E8 80FD42              <1>     cmp ch, 42h
+   379 000078EB 7435                <1>     je .msdGIOCTLFormat
+   380 000078ED 80FD60              <1>     cmp ch, 60h
+   381 000078F0 0F859FFDFFFF        <1>     jne .msdWriteErrorCode  ;Error if not this function with bad command
+   382                              <1>     ;Get params here
+   383 000078F6 0FB64301            <1>     movzx eax, byte [rbx + ioctlReqPkt.unitnm] ;Get the driver unit number
+   384 000078FA 488D1540010000      <1>     lea rdx, .msdBIOSmap
+   385 00007901 8A1402              <1>     mov dl, byte [rdx + rax]    ;Get the BIOS number for the device
+   386 00007904 B488                <1>     mov ah, 88h ;Read LBA Device Parameters
+   387 00007906 CD33                <1>     int 33h
+   388                              <1>     ;Returns:
+   389                              <1>     ;rax = Sector size in bytes
+   390                              <1>     ;rcx = Last LBA block
+   391 00007908 0F821CFDFFFF        <1>     jc .msdGenDiskError
+   392                              <1> ;Get LBA Table:
+   393                              <1> ;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
+   394                              <1> ;Offset 1:  Reserved, 7 bytes
+   395                              <1> ;Offset 8:  Sector size in bytes (DWORD)
+   396                              <1> ;Offset 16: Number Of Sectors on Medium + 1 (QWORD)
+   397 0000790E 488B531F            <1>     mov rdx, qword [rbx + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
+   398 00007912 48C70218000000      <1>     mov qword [rdx + genioctlGetParamsTable.size], 24
+   399 00007919 48894208            <1>     mov qword [rdx + genioctlGetParamsTable.sectorSize], rax
+   400 0000791D 48894A10            <1>     mov qword [rdx + genioctlGetParamsTable.numSectors], rcx
+   401                              <1>     return
     18                              <2> %%_ret:
-    19 0000791A C3                  <2>  ret
+    19 00007921 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   406                              <1> 
-   407                              <1> .msdCheckDeviceType:
-   408                              <1> ;If the device numbers dont match but the bpb numbers do, print the message
-   409                              <1> ;!!!WARNING!!! THIS USES THE CONSOLE BIOS!!! VIOLATES HARDWARE ABSTRACTION!!!!
-   410                              <1> ;Returns ZF=NZ if media number changed!
-   411 0000791B 0FB64301            <1>     movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the now unit number
-   412 0000791F 3A0587000000        <1>     cmp al, byte [.msdCurDev]    ;Compare against the last transacted device
-   413                              <1>     rete    ;Exit if equal (ZF=ZE)
+   402                              <1> .msdGIOCTLFormat:
+   403                              <1> ;Format Table:
+   404                              <1> ;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
+   405                              <1> ;Offset 1:  Reserved, 7 bytes
+   406                              <1> ;Offset 8:  Sector to start format at (QWORD)
+   407                              <1> ;Offset 16: Number of sectors to format (QWORD) 
+   408 00007922 4889DE              <1>     mov rsi, rbx
+   409 00007925 488B7E1F            <1>     mov rdi, qword [rsi + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
+   410 00007929 488B4F08            <1>     mov rcx, qword [rdi + genioctlLBAformat.startSector]    ;Get start sector
+   411 0000792D 488B5710            <1>     mov rdx, qword [rdi + genioctlLBAformat.numSectors]     ;Get number to fmt
+   412                              <1> .mgioctlfMainLoop:
+   413 00007931 B485                <1>     mov ah, 85h ;LBA Format
+   414 00007933 4881FAFF000000      <1>     cmp rdx, 0FFh
+   415 0000793A 761A                <1>     jbe .mgioctlfLastFmt
+   416 0000793C B0FF                <1>     mov al, -1
+   417 0000793E CD33                <1>     int 33h ;Do the format
+   418 00007940 0F82E4FCFFFF        <1>     jc .msdGenDiskError
+   419 00007946 4881C1FF000000      <1>     add rcx, 0FFh   ;Go forwards by this many sectors
+   420 0000794D 4881EAFF000000      <1>     sub rdx, 0FFh   ;We have this many sectors less to format
+   421 00007954 EBDB                <1>     jmp short .mgioctlfMainLoop
+   422                              <1> .mgioctlfLastFmt:
+   423 00007956 F8                  <1>     clc
+   424 00007957 88D0                <1>     mov al, dl  ;Place this in sectors left to read
+   425 00007959 CD33                <1>     int 33h
+   426 0000795B 0F82C9FCFFFF        <1>     jc .msdGenDiskError
+   427                              <1>     return
+    18                              <2> %%_ret:
+    19 00007961 C3                  <2>  ret
+    20                              <2> %assign retOff %%_ret-$$
+   428                              <1> .msdGetLogicalDev:   ;Function 23
+   429 00007962 B005                <1>     mov al, drvBadDrvReq
+   430 00007964 803B0D              <1>     cmp byte [rbx + drvReqHdr.hdrlen], getDevReqPkt_size
+   431 00007967 0F8528FDFFFF        <1>     jne .msdWriteErrorCode
+   432                              <1> 
+   433 0000796D 8A05CD000000        <1>     mov al, byte [.msdCurDev]
+   434 00007973 884301              <1>     mov byte [rbx + getDevReqPkt.unitnm], al
+   435 00007976 C3                  <1>     ret
+   436                              <1> .msdSetLogicalDev:   ;Function 24
+   437 00007977 B005                <1>     mov al, drvBadDrvReq
+   438 00007979 803B0D              <1>     cmp byte [rbx + drvReqHdr.hdrlen], setDevReqPkt_size
+   439 0000797C 0F8513FDFFFF        <1>     jne .msdWriteErrorCode
+   440                              <1> .msdInternalSetUnitNumber:  ;Called to set the unit number from reqpkt
+   441 00007982 8A4301              <1>     mov al, byte [rbx + getDevReqPkt.unitnm]
+   442 00007985 8805B5000000        <1>     mov byte [.msdCurDev], al
+   443 0000798B C3                  <1>     ret
+   444                              <1> 
+   445                              <1> .msdBlkIOCommon:  ;Does block IO
+   446                              <1> ;Called with rdi containing old rbx value and ah with function number
+   447                              <1> ;rbp points to bpb
+   448                              <1> ;Error handled by caller
+   449                              <1> ;Sector count handled by caller
+   450                              <1> ;Called with dh = BIOS function number
+   451 0000798C 480FB64701          <1>     movzx rax, byte [rdi + ioReqPkt.unitnm]
+   452 00007991 488D0DA9000000      <1>     lea rcx, .msdBIOSmap
+   453 00007998 8A1401              <1>     mov dl, byte [rcx + rax]  ;Get translated BIOS number for req in dl
+   454 0000799B 31C9                <1>     xor ecx, ecx
+   455 0000799D 8B4D1C              <1>     mov ecx, dword [rbp + bpb32.hiddSec]  ;Goto start of volume
+   456 000079A0 48034F1A            <1>     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
+   457 000079A4 488B5F0E            <1>     mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
+   458 000079A8 88F4                <1>     mov ah, dh
+   459 000079AA B001                <1>     mov al, 01h ;Do one sector at a time 
+   460 000079AC CD33                <1>     int 33h
+   461                              <1>     return
+    18                              <2> %%_ret:
+    19 000079AE C3                  <2>  ret
+    20                              <2> %assign retOff %%_ret-$$
+   462                              <1> 
+   463                              <1> .msdCheckDeviceType:
+   464                              <1> ;If the device numbers dont match but the bpb numbers do, print the message
+   465                              <1> ;!!!WARNING!!! THIS USES THE CONSOLE BIOS!!! VIOLATES HARDWARE ABSTRACTION!!!!
+   466                              <1> ;Returns ZF=NZ if media number changed!
+   467 000079AF 0FB64301            <1>     movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the now unit number
+   468 000079B3 3A0587000000        <1>     cmp al, byte [.msdCurDev]    ;Compare against the last transacted device
+   469                              <1>     rete    ;Exit if equal (ZF=ZE)
     54                              <2> cret e
     24                              <3> %%_base:
     25                              <3> %assign baseVar %%_base-$$
     26                              <3>  %ifdef retOff
     27                              <3>  %if (baseVar - retOff <= 126) && (baseVar > retOff)
     28                              <3>  %ifdef currSegVBase
-    29 00007925 74F3                <3>  j%+1 short (retOff+currSegVBase)
+    29 000079B9 74F3                <3>  j%+1 short (retOff+currSegVBase)
     30                              <3>  %else
     31                              <3>  j%+1 short retOff
     32                              <3>  %endif
@@ -19398,159 +19475,159 @@
     40                              <3>  return
     41                              <3> %%a:
     42                              <3>  %endif
-   414                              <1> ;If not equal, check they use different BPB's before continuing
-   415 00007927 50                  <1>     push rax
-   416 00007928 0FB6057D000000      <1>     movzx eax, byte [.msdCurDev]  ;Compare current BPB ptr to previous
-   417 0000792F 488D3581000000      <1>     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
-   418 00007936 C1E003              <1>     shl eax, 3
-   419 00007939 488B1406            <1>     mov rdx, qword [rsi + rax]  ;Get the bpbptr of this device too
-   420 0000793D 58                  <1>     pop rax
-   421 0000793E 4839D5              <1>     cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
-   422 00007941 751F                <1>     jne .msdCDTexit ;Exit by setting the new unit number
-   423                              <1>     ;Here, device numbers are neq but bpb's are eq. Thus print message
-   424 00007943 0441                <1>     add al, "A" ;Convert to a letter
-   425 00007945 880534000000        <1>     mov byte [.msdStrikeLetter], al
-   426 0000794B 488D351A000000      <1>     lea rsi, .msdStrike
-   427 00007952 B937000000          <1>     mov ecx, .msdStrikeL
-   428                              <1> .msdCDTprintMessage:
-   429 00007957 AC                  <1>     lodsb   ;Get the char in al, inc rsi
-   430 00007958 CD49                <1>     int 49h ;Print char in al
-   431 0000795A FFC9                <1>     dec ecx
-   432 0000795C 75F9                <1>     jnz .msdCDTprintMessage
-   433 0000795E 31C0                <1>     xor eax, eax
-   434 00007960 CD36                <1>     int 36h ;Blocking wait at the keyboard for a keystroke
-   435                              <1> .msdCDTexit:
-   436 00007962 E887FFFFFF          <1>     call .msdInternalSetUnitNumber  ;Set unit number internally
-   437 00007967 31C0                <1>     xor eax, eax
-   438 00007969 FFC0                <1>     inc eax ;Clear ZF flag (ZF=NZ)
-   439 0000796B C3                  <1>     ret
-   440                              <1> 
-   441 0000796C 0D0A496E7365727420- <1> .msdStrike db 0Dh,0Ah,"Insert for drive "
-   441 00007975 666F72206472697665- <1>
-   441 0000797E 20                  <1>
-   442 0000797F 413A20616E64207374- <1> .msdStrikeLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah
-   442 00007988 72696B650D0A616E79- <1>
-   442 00007991 206B6579207768656E- <1>
-   442 0000799A 2072656164790D0A0A  <1>
-   443                              <1> .msdStrikeL equ $ - .msdStrike
-   444                              <1> 
-   445 000079A3 4E4F204E414D452000  <1> .msdDefLabel db "NO NAME ",0 ;Default volume label
-   446                              <1> ;LASTDRIVE default is 5
-   447                              <1> ;This driver can only handle a maximum of 5 drives. Any more and 
-   448                              <1> ; more MSD drivers must be loaded from CONFIG.SYS
-   449 000079AC 00                  <1> .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
-   450                              <1> ; Except when single drive in use, in which case Drive A and B refer to device 0
-   451 000079AD 0001FFFFFF          <1> .msdBIOSmap  db 0, 1, -1, -1, -1 ;Translates DOS drive number to BIOS number
-   452 000079B2 0000000000          <1> .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
-   453 000079B7 000000000000000000- <1> .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
-   453 000079C0 000000000000000000- <1>
-   453 000079C9 000000000000000000- <1>
-   453 000079D2 000000000000000000- <1>
-   453 000079DB 00000000            <1>
-   454                              <1> .msdBPBblks  defaultBPB ;Add two default BPB's. If no remdrv, these are used
-   454                              <2> .msdBPBblks :
-   181 000079DF E9                  <2>  db 0E9h
-   182 000079E0 00                  <2>  db 00h
-   183 000079E1 90                  <2>  db 90h
-   184 000079E2 534350444F537631    <2>  db 'SCPDOSv1'
-   185 000079EA 0002                <2>  dw 0200h
-   186 000079EC 01                  <2>  db 01h
-   187 000079ED 0100                <2>  dw 0001h
-   188 000079EF 02                  <2>  db 02h
-   189 000079F0 E000                <2>  dw 00E0h
-   190 000079F2 400B                <2>  dw 0B40h
-   191 000079F4 F0                  <2>  db 0F0h
-   192 000079F5 0900                <2>  dw 0009h
-   193 000079F7 1200                <2>  dw 0012h
-   194 000079F9 0200                <2>  dw 0002h
-   195 000079FB 00000000            <2>  dd 0
-   196 000079FF 00000000            <2>  dd 0
-   197 00007A03 00                  <2>  db 00h
-   198 00007A04 00                  <2>  db 00h
-   199 00007A05 29                  <2>  db 29h
-   200 00007A06 00000000            <2>  dd 0
-   201 00007A0A 4E4F204E414D452020- <2>  db 'NO NAME    '
-   201 00007A13 2020                <2>
-   202 00007A15 4641543132202020    <2>  db 'FAT12   '
-   203 00007A1D 000000000000000000- <2>  db 58 dup 0
-   203 00007A26 000000000000000000- <2>
-   203 00007A2F 000000000000000000- <2>
-   203 00007A38 000000000000000000- <2>
-   203 00007A41 000000000000000000- <2>
-   203 00007A4A 000000000000000000- <2>
-   203 00007A53 00000000            <2>
-   455                              <1>              defaultBPB ;If remdrvs found, these are overridden
-   181 00007A57 E9                  <2>  db 0E9h
-   182 00007A58 00                  <2>  db 00h
-   183 00007A59 90                  <2>  db 90h
-   184 00007A5A 534350444F537631    <2>  db 'SCPDOSv1'
-   185 00007A62 0002                <2>  dw 0200h
-   186 00007A64 01                  <2>  db 01h
-   187 00007A65 0100                <2>  dw 0001h
-   188 00007A67 02                  <2>  db 02h
-   189 00007A68 E000                <2>  dw 00E0h
-   190 00007A6A 400B                <2>  dw 0B40h
-   191 00007A6C F0                  <2>  db 0F0h
-   192 00007A6D 0900                <2>  dw 0009h
-   193 00007A6F 1200                <2>  dw 0012h
-   194 00007A71 0200                <2>  dw 0002h
-   195 00007A73 00000000            <2>  dd 0
-   196 00007A77 00000000            <2>  dd 0
-   197 00007A7B 00                  <2>  db 00h
-   198 00007A7C 00                  <2>  db 00h
-   199 00007A7D 29                  <2>  db 29h
-   200 00007A7E 00000000            <2>  dd 0
-   201 00007A82 4E4F204E414D452020- <2>  db 'NO NAME    '
-   201 00007A8B 2020                <2>
-   202 00007A8D 4641543132202020    <2>  db 'FAT12   '
-   203 00007A95 000000000000000000- <2>  db 58 dup 0
-   203 00007A9E 000000000000000000- <2>
-   203 00007AA7 000000000000000000- <2>
-   203 00007AB0 000000000000000000- <2>
-   203 00007AB9 000000000000000000- <2>
-   203 00007AC2 000000000000000000- <2>
-   203 00007ACB 00000000            <2>
-   456 00007ACF 000000000000000000- <1>              db 3*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
-   456 00007AD8 000000000000000000- <1>
-   456 00007AE1 000000000000000000- <1>
-   456 00007AEA 000000000000000000- <1>
-   456 00007AF3 000000000000000000- <1>
-   456 00007AFC 000000000000000000- <1>
-   456 00007B05 000000000000000000- <1>
-   456 00007B0E 000000000000000000- <1>
-   456 00007B17 000000000000000000- <1>
-   456 00007B20 000000000000000000- <1>
-   456 00007B29 000000000000000000- <1>
-   456 00007B32 000000000000000000- <1>
-   456 00007B3B 000000000000000000- <1>
-   456 00007B44 000000000000000000- <1>
-   456 00007B4D 000000000000000000- <1>
-   456 00007B56 000000000000000000- <1>
-   456 00007B5F 000000000000000000- <1>
-   456 00007B68 000000000000000000- <1>
-   456 00007B71 000000000000000000- <1>
-   456 00007B7A 000000000000000000- <1>
-   456 00007B83 000000000000000000- <1>
-   456 00007B8C 000000000000000000- <1>
-   456 00007B95 000000000000000000- <1>
-   456 00007B9E 000000000000000000- <1>
-   456 00007BA7 000000000000000000- <1>
-   456 00007BB0 000000000000000000- <1>
-   456 00007BB9 000000000000000000- <1>
-   456 00007BC2 000000000000000000- <1>
-   456 00007BCB 000000000000000000- <1>
-   456 00007BD4 000000000000000000- <1>
-   456 00007BDD 000000000000000000- <1>
-   456 00007BE6 000000000000000000- <1>
-   456 00007BEF 000000000000000000- <1>
-   456 00007BF8 000000000000000000- <1>
-   456 00007C01 000000000000000000- <1>
-   456 00007C0A 000000000000000000- <1>
-   456 00007C13 000000000000000000- <1>
-   456 00007C1C 000000000000000000- <1>
-   456 00007C25 000000000000000000- <1>
-   456 00007C2E 000000000000000000  <1>
-   457                              <1> endptr equ $
+   470                              <1> ;If not equal, check they use different BPB's before continuing
+   471 000079BB 50                  <1>     push rax
+   472 000079BC 0FB6057D000000      <1>     movzx eax, byte [.msdCurDev]  ;Compare current BPB ptr to previous
+   473 000079C3 488D3581000000      <1>     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
+   474 000079CA C1E003              <1>     shl eax, 3
+   475 000079CD 488B1406            <1>     mov rdx, qword [rsi + rax]  ;Get the bpbptr of this device too
+   476 000079D1 58                  <1>     pop rax
+   477 000079D2 4839D5              <1>     cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
+   478 000079D5 751F                <1>     jne .msdCDTexit ;Exit by setting the new unit number
+   479                              <1>     ;Here, device numbers are neq but bpb's are eq. Thus print message
+   480 000079D7 0441                <1>     add al, "A" ;Convert to a letter
+   481 000079D9 880534000000        <1>     mov byte [.msdStrikeLetter], al
+   482 000079DF 488D351A000000      <1>     lea rsi, .msdStrike
+   483 000079E6 B937000000          <1>     mov ecx, .msdStrikeL
+   484                              <1> .msdCDTprintMessage:
+   485 000079EB AC                  <1>     lodsb   ;Get the char in al, inc rsi
+   486 000079EC CD49                <1>     int 49h ;Print char in al
+   487 000079EE FFC9                <1>     dec ecx
+   488 000079F0 75F9                <1>     jnz .msdCDTprintMessage
+   489 000079F2 31C0                <1>     xor eax, eax
+   490 000079F4 CD36                <1>     int 36h ;Blocking wait at the keyboard for a keystroke
+   491                              <1> .msdCDTexit:
+   492 000079F6 E887FFFFFF          <1>     call .msdInternalSetUnitNumber  ;Set unit number internally
+   493 000079FB 31C0                <1>     xor eax, eax
+   494 000079FD FFC0                <1>     inc eax ;Clear ZF flag (ZF=NZ)
+   495 000079FF C3                  <1>     ret
+   496                              <1> 
+   497 00007A00 0D0A496E7365727420- <1> .msdStrike db 0Dh,0Ah,"Insert for drive "
+   497 00007A09 666F72206472697665- <1>
+   497 00007A12 20                  <1>
+   498 00007A13 413A20616E64207374- <1> .msdStrikeLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah
+   498 00007A1C 72696B650D0A616E79- <1>
+   498 00007A25 206B6579207768656E- <1>
+   498 00007A2E 2072656164790D0A0A  <1>
+   499                              <1> .msdStrikeL equ $ - .msdStrike
+   500                              <1> 
+   501 00007A37 4E4F204E414D452000  <1> .msdDefLabel db "NO NAME ",0 ;Default volume label
+   502                              <1> ;LASTDRIVE default is 5
+   503                              <1> ;This driver can only handle a maximum of 5 drives. Any more and 
+   504                              <1> ; more MSD drivers must be loaded from CONFIG.SYS
+   505 00007A40 00                  <1> .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
+   506                              <1> ; Except when single drive in use, in which case Drive A and B refer to device 0
+   507 00007A41 0001FFFFFF          <1> .msdBIOSmap  db 0, 1, -1, -1, -1 ;Translates DOS drive number to BIOS number
+   508 00007A46 0000000000          <1> .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
+   509 00007A4B 000000000000000000- <1> .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
+   509 00007A54 000000000000000000- <1>
+   509 00007A5D 000000000000000000- <1>
+   509 00007A66 000000000000000000- <1>
+   509 00007A6F 00000000            <1>
+   510                              <1> .msdBPBblks  defaultBPB ;Add two default BPB's. If no remdrv, these are used
+   510                              <2> .msdBPBblks :
+   181 00007A73 E9                  <2>  db 0E9h
+   182 00007A74 00                  <2>  db 00h
+   183 00007A75 90                  <2>  db 90h
+   184 00007A76 534350444F537631    <2>  db 'SCPDOSv1'
+   185 00007A7E 0002                <2>  dw 0200h
+   186 00007A80 01                  <2>  db 01h
+   187 00007A81 0100                <2>  dw 0001h
+   188 00007A83 02                  <2>  db 02h
+   189 00007A84 E000                <2>  dw 00E0h
+   190 00007A86 400B                <2>  dw 0B40h
+   191 00007A88 F0                  <2>  db 0F0h
+   192 00007A89 0900                <2>  dw 0009h
+   193 00007A8B 1200                <2>  dw 0012h
+   194 00007A8D 0200                <2>  dw 0002h
+   195 00007A8F 00000000            <2>  dd 0
+   196 00007A93 00000000            <2>  dd 0
+   197 00007A97 00                  <2>  db 00h
+   198 00007A98 00                  <2>  db 00h
+   199 00007A99 29                  <2>  db 29h
+   200 00007A9A 00000000            <2>  dd 0
+   201 00007A9E 4E4F204E414D452020- <2>  db 'NO NAME    '
+   201 00007AA7 2020                <2>
+   202 00007AA9 4641543132202020    <2>  db 'FAT12   '
+   203 00007AB1 000000000000000000- <2>  db 58 dup 0
+   203 00007ABA 000000000000000000- <2>
+   203 00007AC3 000000000000000000- <2>
+   203 00007ACC 000000000000000000- <2>
+   203 00007AD5 000000000000000000- <2>
+   203 00007ADE 000000000000000000- <2>
+   203 00007AE7 00000000            <2>
+   511                              <1>              defaultBPB ;If remdrvs found, these are overridden
+   181 00007AEB E9                  <2>  db 0E9h
+   182 00007AEC 00                  <2>  db 00h
+   183 00007AED 90                  <2>  db 90h
+   184 00007AEE 534350444F537631    <2>  db 'SCPDOSv1'
+   185 00007AF6 0002                <2>  dw 0200h
+   186 00007AF8 01                  <2>  db 01h
+   187 00007AF9 0100                <2>  dw 0001h
+   188 00007AFB 02                  <2>  db 02h
+   189 00007AFC E000                <2>  dw 00E0h
+   190 00007AFE 400B                <2>  dw 0B40h
+   191 00007B00 F0                  <2>  db 0F0h
+   192 00007B01 0900                <2>  dw 0009h
+   193 00007B03 1200                <2>  dw 0012h
+   194 00007B05 0200                <2>  dw 0002h
+   195 00007B07 00000000            <2>  dd 0
+   196 00007B0B 00000000            <2>  dd 0
+   197 00007B0F 00                  <2>  db 00h
+   198 00007B10 00                  <2>  db 00h
+   199 00007B11 29                  <2>  db 29h
+   200 00007B12 00000000            <2>  dd 0
+   201 00007B16 4E4F204E414D452020- <2>  db 'NO NAME    '
+   201 00007B1F 2020                <2>
+   202 00007B21 4641543132202020    <2>  db 'FAT12   '
+   203 00007B29 000000000000000000- <2>  db 58 dup 0
+   203 00007B32 000000000000000000- <2>
+   203 00007B3B 000000000000000000- <2>
+   203 00007B44 000000000000000000- <2>
+   203 00007B4D 000000000000000000- <2>
+   203 00007B56 000000000000000000- <2>
+   203 00007B5F 00000000            <2>
+   512 00007B63 000000000000000000- <1>              db 3*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
+   512 00007B6C 000000000000000000- <1>
+   512 00007B75 000000000000000000- <1>
+   512 00007B7E 000000000000000000- <1>
+   512 00007B87 000000000000000000- <1>
+   512 00007B90 000000000000000000- <1>
+   512 00007B99 000000000000000000- <1>
+   512 00007BA2 000000000000000000- <1>
+   512 00007BAB 000000000000000000- <1>
+   512 00007BB4 000000000000000000- <1>
+   512 00007BBD 000000000000000000- <1>
+   512 00007BC6 000000000000000000- <1>
+   512 00007BCF 000000000000000000- <1>
+   512 00007BD8 000000000000000000- <1>
+   512 00007BE1 000000000000000000- <1>
+   512 00007BEA 000000000000000000- <1>
+   512 00007BF3 000000000000000000- <1>
+   512 00007BFC 000000000000000000- <1>
+   512 00007C05 000000000000000000- <1>
+   512 00007C0E 000000000000000000- <1>
+   512 00007C17 000000000000000000- <1>
+   512 00007C20 000000000000000000- <1>
+   512 00007C29 000000000000000000- <1>
+   512 00007C32 000000000000000000- <1>
+   512 00007C3B 000000000000000000- <1>
+   512 00007C44 000000000000000000- <1>
+   512 00007C4D 000000000000000000- <1>
+   512 00007C56 000000000000000000- <1>
+   512 00007C5F 000000000000000000- <1>
+   512 00007C68 000000000000000000- <1>
+   512 00007C71 000000000000000000- <1>
+   512 00007C7A 000000000000000000- <1>
+   512 00007C83 000000000000000000- <1>
+   512 00007C8C 000000000000000000- <1>
+   512 00007C95 000000000000000000- <1>
+   512 00007C9E 000000000000000000- <1>
+   512 00007CA7 000000000000000000- <1>
+   512 00007CB0 000000000000000000- <1>
+   512 00007CB9 000000000000000000- <1>
+   512 00007CC2 000000000000000000  <1>
+   513                              <1> endptr equ $
     49                                  Segment dynamicDataArea nobits valign=10h vfollows=resSeg
     50                                  ;Paragraph alignment
     51                                  %include "./Source/BSS/dosDynaDataArea.asm"

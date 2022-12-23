@@ -195,3 +195,18 @@ struc setDevReqPkt ;Set Logical Device Request Packet
     drvReqHdrM    ;Common Driver Header Macro
 
 endstruc
+
+
+struc genioctlGetParamsTable
+    .size           resb 1
+    .res            resb 7
+    .sectorSize     resb 8  ;Only the lower dword is valid here
+    .numSectors     resb 8
+endstruc
+
+struc genioctlLBAformat
+    .size           resb 1
+    .res            resb 7
+    .startSector    resb 8  ;Sector to start format at
+    .numSectors     resb 8  ;Number of sectors to format
+endstruc
