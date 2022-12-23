@@ -43,11 +43,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
 ;Network related variable resetting
     mov byte [dosInvoke], 0 ;Invoked Locally
 ;Here, we want to save oldRSP in the callers PSP
-    cmp byte [inDOS], 1 ;Check how many times we are in DOS
-    jne .fsb1   ;If this is first entry, save rsp in callers PSP
     mov rax, qword [currentPSP] ;Get current PSP address
     mov qword [rax + psp.rspPtr], rsp    ;Save rsp on callers stack
-.fsb1:
     pop rax     ;Get old rax back
     push rax    ;and push it back onto the stack
 .abortEP:

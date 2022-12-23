@@ -273,5 +273,4 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov byte [inDOS], 0 ;Exiting DOS now
     mov byte [errorDrv], -1 ;Reset
     call dosPopRegs  ;Pop the stack frame pointed to by rsp
-    
     iretq   ;and return to address that was in rdx
