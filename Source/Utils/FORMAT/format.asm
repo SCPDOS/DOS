@@ -48,3 +48,6 @@ endstruc
 %include "./Source/Utils/FORMAT/Source/fmtMain.asm"
 %include "./Source/Utils/FORMAT/Data/fmtData.asm"
 %include "./Source/Utils/FORMAT/Data/fmtMsg.asm"
+bootloader:
+;Symbol pointing to the bootloader
+;When building the COM for format, we append the loader binary here

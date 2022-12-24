@@ -37,6 +37,7 @@ startSector equ 33
     
 ;-----------------------------------------------------------
 start: 
+    cli
     xor ax, ax
     mov ds, ax
     mov es, ax
@@ -47,9 +48,12 @@ start:
     mov cx, 100h
     cld             ;Ensure writes are in the write direction
     rep movsw
+    sti
     jmp 0:s1       ;Far jump to the next instruction
 
 s1:
+    cmp byte [relocBase + 509], -1  ;Any non -1 value is non-bootable
+    jne fail
     mov si, dx  ;Save drive number in si
     mov ax, 0e801h
     int 15h
@@ -144,15 +148,17 @@ fail:
     int 16h	;await keystroke
     int 18h	;Reset
 .msg: db "Non System Disk or Disk Error.",0Ah,0Dh,0
-SysInitTable:
-.lengthb db 0Ch
-.numSecb db 1
-.resWord dw 00h
-.FileLBA dq 5Bh  ;Start at Sector 91 (first sector of load)
 
-times 510-($-$$) db 0E8h
-    db 55h
-    db 0AAh
+times 509-0Ch-($-$$) db 0E8h
+SysInitTable:
+    .lengthb    db 0Ch
+    .numSecb    db 1
+    .resWord    dw 00h
+    .FileLBA    dq 5Bh  ;Start at Sector 91 (first sector of load)
+
+bootOnFlag:     db -1   ;Bootable signature
+                db 55h
+                db 0AAh
 
 Segment .bss nobits start=502h
 drvnum  resb  1 ;Drive number

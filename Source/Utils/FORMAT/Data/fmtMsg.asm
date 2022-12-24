@@ -6,3 +6,4 @@ badGeneric  db 0Ah,0Dh,"Cannot Format Drive",0Ah,0Dh,"$"
 cancel      db 0Ah,0Dh,"Are you sure you wish to abort formatting drive "
 driveLetter db "A?", 0Ah,0Dh
             db "Doing so will result in an unusable volume. Y/N?",0Ah,0Dh,"$"
+badVolBig   db 0Ah,0Dh,"Volume too large to format",0Ah,0Dh,"$"
