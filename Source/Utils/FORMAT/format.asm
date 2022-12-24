@@ -10,9 +10,8 @@
 ;2) Format begins by ascertaining how large the volume/device is.
 ;    -If the device is removable, format will get the device parameters to 
 ;      ascertain the size of the volume.
-;    -If the device fixed, format will use the MBR (and eventually GPT) to 
-;      ascertain the size of the volume and gets device parameters to get the 
-;      sector size.
+;    -If the device fixed, format will use the VBR to ascertain the size of the 
+;      volume and gets device parameters to get the sector size.
 ;3) Format will then choose which FAT to use and build the BPB accordingly
 ;    and write it to disk.
 ;4) Format will then rebuild the disk DPB from the new BPB.
@@ -32,98 +31,20 @@
 ;Format also doesnt depend on any old BPB's or anything like so.
 ;Any old FAT (or other FS) data structures are considered nukable.
 
+[map all ./Source/Utils/FORMAT/Listings/format.map]
+[DEFAULT REL]
+BITS 64
+%include "./Source/Include/dosMacro.mac"
+%include "./Source/Include/dosStruc.inc"
+%include "./Source/Include/fatStruc.inc"
 
-;We start by checking that the version number is OK
-;al has flag if the passed argument is ok
-;r8 points to the PSP
-start:
-    jmp short .cVersion
-.vNum:    db 1
-.cVersion:
-    push rax
-    mov ah, 30h
-    int 41h
-    cmp al, byte [.vNum] ;Version 1
-    jbe .okVersion
-    pop rax
-    lea rdx, badVerStr
-.printExit:
-    mov ah, 09h
-    int 41h
-    int 40h ;Exit to caller or DOS to print bad command interpreter line
-.okVersion:
-;Check the passed argument is ok (flag in al)
-    pop rax
-    cmp al, -1
-    jnz .driveOk
-    lea rdx, badDrvLtr
-    jmp short .printExit
-.driveOk:
-;Now save the old default drive, and set our drive to default.
-;On exit this must be restored
-    mov ah, 19h ;Get Current Default Drive in al
-    int 41h
-    mov byte [oldDrive], al
-    add al, "A"
-    mov byte [driveLetter], al  ;Store for error message
+struc genioctlGetParamsTable
+    .size           resb 1
+    .res            resb 7
+    .sectorSize     resb 8  ;Only the lower dword is valid here
+    .numSectors     resb 8
+endstruc
 
-; Here we now hook ^C so that if the user calls ^C we restore DOS state
-; (i.e. default drive and reactivate the drive if it is deactivated)
-
-    mov dl, byte [r8 + psp.fcb1 + fcb.driveNum] ;Get the fcb 0 based drvNum
-    mov byte [fmtDrive], dl
-    mov ah, 0Eh ;Select Drive
-    int 41h
-;Now we check that the associate drive is not a network, subst or join.
-; If it is, fail. Else, we deactivate
-    mov ah, 52h
-    int 41h ;Get in rbx a ptr to list of lists
-    add rbx, 2Ah  ;Point rbx to cdsHeadPtr
-    mov rsi, qword [rbx]    ;Get the ptr to the CDS array
-    movzx ecx, byte [fmtDrive]
-    jecxz .atCurrentCDS
-.walkCDSArray:
-    add rsi, cds_size
-    dec ecx
-    jnz .walkCDSArray
-.atCurrentCDS: 
-
-
-.breakRoutine:
-;This subroutine is called by ^C
-;Prompts the user for what they want to do.
-    lea rdx, cancel
-    mov ah, 09h
-    int 41h
-    mov ah, 01h ;Get a char
-    int 41h
-    cmp al, "y"
-    je short .breakReturnExit
-    cmp al, "Y"
-    je short .breakReturnExit
-    cmp al, "n"
-    je short .breakReturnNoExit
-    cmp al, "N"
-    jmp short .breakRoutine 
-.breakReturnNoExit:
-    iretq   ;Just exit away back to the instantiating task
-.breakReturnExit:
-
-
-
-
-;Data area here
-oldDrive    db -1       ;Old default drive (0 based)
-fmtDrive    db -1       ;Drive we are operating on (0 based)
-fmtDrvInv   db 0        ;If set to -1, the drive needs to be reactivated
-oldxtBreak  db 0        ;If set to -1, og state of xtBreak was set
-;Format Data here
-fatType     db -1       ;0 = FAT12, 1 = FAT16, 2 = FAT32, -1 = No FAT
-
-;Messages go here
-badVerStr   db 0Ah,0Dh,"Invalid DOS Version",0Ah,0Dh,"$"
-badDrvLtr   db 0Ah,0Dh,"Invalid Drive Specified",0Ah,0Dh,"$"
-
-cancel      db 0Ah,0Dh,"Are you sure you wish to abort formatting drive "
-driveLetter db "A?", 0Ah,0Dh
-            db "Doing so will result in an unusable volume. Y/N?",0Ah,0Dh,"$"
+%include "./Source/Utils/FORMAT/Source/fmtMain.asm"
+%include "./Source/Utils/FORMAT/Data/fmtData.asm"
+%include "./Source/Utils/FORMAT/Data/fmtMsg.asm"
