@@ -44,6 +44,9 @@ format:
 # Now stick the generic bootloader to the end of the file
 	cat ./Binaries/loader.bin >> ./Source/Utils/FORMAT/Binaries/FORMAT.COM
 
+sys:
+	nasm ./Source/Utils/SYS/sys.asm -o ./Source/Utils/SYS/Binaries/SYS.COM -f bin -l ./Source/Utils/SYS/Listings/sys.lst -O0v
+
 # Temp, to test Executable files
 tst:
 	nasm ./Source/Utils/EXETEST/tst.asm -o ./Source/Utils/EXETEST/Binaries/tst.obj -f win64 -l ./Source/Utils/EXETEST/Listings/tst.lst -O0v
