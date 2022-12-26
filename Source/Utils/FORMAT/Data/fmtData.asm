@@ -2,9 +2,8 @@
 reqTable    db genioctlGetParamsTable_size dup (0)
 
 ;Data area here
-oldDrive    db -1       ;Old default drive (0 based)
 fmtDrive    db -1       ;Drive we are operating on (0 based)
-fmtDrvInv   db 0        ;If set to -1, the drive needs to be reactivated
+inCrit      db 0        ;If not 0, in a critical section, must exit
 cdsPtr      dq 0        ;CDS ptr here
 bufferArea  dq 0        ;Ptr to the buffer area
 ;Format Data here
@@ -13,31 +12,36 @@ fatType     db -1       ;0 = FAT12, 1 = FAT16, 2 = FAT32, -1 = No FAT
 sectorSize  dw 0        ;Sector size in bytes
 numSectors  dq 0        ;Number of sectors in volume
 secPerClust db 0        ;Copy the sectors per cluster over
+fatSize     dd 0        ;FAT size (number of sectors per FAT)
 bpbPointer  dq 0        ;Pointer to the BPB we will use
 bpbSize     db 0        ;Size of the BPB
+hiddSector  dd 0        ;Only used for Fixed Disks, offset to add
 
 ;Tables
 ;Each row is 5 bytes, {DWORD, BYTE} with DWORD = diskSize, BYTE=secPerClusVal
+;This table assumes a 512 byte sector (fair assumption) but we do a byte size
+; comparison in format to eventually allow for other sized sectors
 fat16ClusterTable:
-    dd 8400 ;Disks up to 4.1MB, must use FAT12 with 0.5 K clusters
+    dd 8400*512 ;Disks up to 4.1MB, must use FAT12 with 0.5 K clusters
     db 1    ;ALL FAT12 uses 1, unless it is a preexisting meddesc type medium
-    dd 32680    ; Disk up to 16MB, 1K clusters
+    dd 32680*512    ; Disk up to 16MB, 1K clusters
     db 2
-    dd 262144   ; Disk up to 128MB, 2K clusters
+    dd 262144*512   ; Disk up to 128MB, 2K clusters
     db 4
-    dd 524288   ; Disk up to 256MB, 4K clusters
+    dd 524288*512   ; Disk up to 256MB, 4K clusters
     db 8
-    dd 1048576  ; Disk up to 512Mb, 8K clusters
+    dd 1048576*512  ; Disk up to 512Mb, 8K clusters
     db 16
 
+;Here DWORD becomes QWORD
 fat32ClusterTable:
-    dd 16777216 ; Disk up to 8GB, 4K clusters
+    dq 16777216*512 ; Disk up to 8GB, 4K clusters
     db 8        
-    dd 33554432 ; Disk up to 16GB, 8K clusters
+    dq 33554432*512 ; Disk up to 16GB, 8K clusters
     db 16
-    dd 67108864 ; Disk up to 32Gb, 16K clusters
+    dq 67108864*512 ; Disk up to 32Gb, 16K clusters
     db 32
-    dd -1       ; Disk up to 2TB, 32K clusters
+    dq -1       ; Disk up to 2TB, 32K clusters
     db 64
 
 ;Static BPBs here, fields set to -1 must be edited.

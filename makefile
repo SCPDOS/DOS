@@ -41,7 +41,9 @@ command:
 
 format:
 	nasm ./Source/Utils/FORMAT/format.asm -o ./Source/Utils/FORMAT/Binaries/FORMAT.COM -f bin -l ./Source/Utils/FORMAT/Listings/format.lst -O0v
-	
+# Now stick the generic bootloader to the end of the file
+	cat ./Binaries/loader.bin >> ./Source/Utils/FORMAT/Binaries/FORMAT.COM
+
 # Temp, to test Executable files
 tst:
 	nasm ./Source/Utils/EXETEST/tst.asm -o ./Source/Utils/EXETEST/Binaries/tst.obj -f win64 -l ./Source/Utils/EXETEST/Listings/tst.lst -O0v

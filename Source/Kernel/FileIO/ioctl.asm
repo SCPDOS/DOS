@@ -34,8 +34,6 @@ ioctrl:            ;ah = 44h, handle function
 ;======================================================
     cmp al, 15
     ja .invalidFunction
-    cmp al, 0Ch
-    je .accessDeniedError
     test al, al
     jz .getDevWord
     cmp al, 1
@@ -49,9 +47,9 @@ ioctrl:            ;ah = 44h, handle function
     sub al, 2
     cmp al, 2
     jbe .devControl
-    dec al
+    sub al, 3
     jz .setSharingCount
-    sub al, 2
+    dec al
     jz .genericCharDevIOCTL
     dec al
     jz .genericBlokDevIOCTL

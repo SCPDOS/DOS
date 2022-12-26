@@ -613,6 +613,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov esi, dword [rbp - execFrame.dProgSize]  ;Get program size
     ;Add psp base (rdi) to prog size to get the last byte of the allocation
     lea rsi, qword [rsi + rdi - 8]    ;Get new rsp in rsi (last qword of alloc)
+    mov rax, ~7     ;Clear the bottom 3 bits
+    and rsi, rax    ;To align downwards
     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
     je .xfrProgram
     mov rax, qword [rbp - execFrame.pProgEP]

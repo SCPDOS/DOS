@@ -135,10 +135,26 @@ absDiskExit:
     pop rbx
     pop rbp
     cli
-    dec byte [inDOS]
     mov rsp, qword [oldRSP]
     sti ;Reenable interrupts
-    return ;Return from interrupt without popping flags!
+    lea rcx, absStackJuggle
+    pushfq
+    pop rdx ;Get the current flags
+    xchg qword [rsp], rcx   ;Get the old return address in rcx
+    xchg rdx, qword [rsp + 2*8]  ;Swap old flags with current flags
+    iretq ;Return from interrupt (to align the stack as needed)
+absStackJuggle:
+    cli
+    push rdx    ;Push the flags on the stack
+    push rcx    ;Push the return address on the stack
+    pushfq
+    xor ecx, ecx  ;Zero the registers without affecting the flags
+    mov edx, ecx
+    dec byte [inDOS]    ;Only now do we leave DOS
+    popfq
+    sti
+    return
+
 absDiskDriverCall:
 ;Input: rbp = Transacting DPB, ecx = Number of sectors to transfer
 ;       rbx = Request header address

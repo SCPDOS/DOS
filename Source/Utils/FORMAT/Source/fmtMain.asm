@@ -5,7 +5,8 @@
 ;r8 points to the PSP
 startFormat:
     jmp short .cVersion
-.vNum:    db 1
+.vNum:          db 1
+.sectorSize:    dw 200h
 .cVersion:
     push rax
     mov ah, 30h
@@ -27,28 +28,25 @@ startFormat:
     lea rdx, badDrvLtr
     jmp short .printExit
 .driveOk:
-;Now save the old default drive, and set our drive to default.
-;On exit this must be restored
-    mov ah, 19h ;Get Current Default Drive in al
-    int 41h
-    mov byte [oldDrive], al
-    add al, "A"
-    mov byte [driveLetter], al  ;Store for error message
-
 ; Here we now hook ^C so that if the user calls ^C we restore DOS state
 ; (i.e. default drive and reactivate the drive if it is deactivated)
     lea rdx, breakRoutine
     mov eax, 2543h
     int 41h
 ;Now fetch the drive we are working on
-    mov dl, byte [r8 + psp.fcb1] ;Get the fcb 0 based drvNum
+    mov dl, byte [r8 + psp.fcb1] ;Get the fcb 1 based drvNum
+    dec dl  ;Turn it into a 0 based number
     mov byte [fmtDrive], dl
-    mov ah, 0Eh ;Select Drive
-    int 41h
-    jnc .driveSelected
-    lea rdx, badRedir
-    jmp badExit
+    mov byte [driveLetter], dl  ;Store for error message
 .driveSelected:
+;Now check that drive we want to fmt is not current drv
+    mov eax, 1900h  ;Get current drive 
+    int 41h
+    cmp al, byte [fmtDrive]
+    jne .notCurrentDrive
+    lea rdx, currentFmt
+    jmp badExit
+.notCurrentDrive:
 ;Now we check that the associate drive is not a network, subst or join.
 ; If it is, fail. Else, we deactivate
     mov ah, 52h
@@ -64,19 +62,16 @@ startFormat:
 .atCurrentCDS: 
     mov qword [cdsPtr], rsi ;Save a ptr to the current CDS
     test word [rsi + cds.wFlags], cdsJoinDrive | cdsSubstDrive | cdsRedirDrive
-    jnz .badDrive   ;Cannot format a Join/Subst/Redir drive
-
-    call dosCrit1Enter
-    and word [rsi + cds.wFlags], ~cdsValidDrive ;Clear the validDrive bit
-    mov byte [fmtDrvInv], -1    ;Set flag to indicate we need to reactivate CDS
-    call dosCrit1Exit
-    ;CDS deactivated, now we can format disk.
-    ;First attempt to ascertain if removable or not.
-    xor ebx, ebx    ;Default Drive
+    jnz .badRedir   ;Cannot format a Join/Subst/Redir drive
+    ;Now attempt to ascertain if removable or not.
+    movzx ebx, byte [fmtDrive]    ;0 based number
+    inc ebx  ;Turn it into a 1 based number
     mov eax, 4408h  ;IOCTL, Get if removable or not
     int 41h
     jnc .gotRemStatus
-    jmp badExitGenericString
+.badRedir:
+    lea rdx, badRedir
+    jmp badExit
 .gotRemStatus:
     test al, al
     jnz .fixedDisk
@@ -84,13 +79,13 @@ startFormat:
     mov ch, 08h ;Disk drive type IOCTL
     mov cl, 80h | 60h   ;Use undocumented LBA get parameters
     mov eax, 440Dh  ;Generic IOCTL 
-    lea rdx, reqTable   ;Point to the table to fill in
+    lea rdx, reqTable   ;Point to the table to fill in, bl has drive number 
     int 41h
-    jc badExitNoString
+    jc badExitGenericString
     mov rax, qword [rdx + genioctlGetParamsTable.sectorSize]    ;Get sector size
     mov word [sectorSize], ax
     mov rax, qword [rdx + genioctlGetParamsTable.numSectors]    ;Get num sectors
-    jmp short selectFATtype
+    jmp selectFATtype
 .fixedDisk:
     mov byte [remDev], -1   ;Set flag for fixed disk
     ;Read VBR for volume, request a buffer of 1000h bytes (max sector size 4k)
@@ -99,14 +94,18 @@ startFormat:
     int 41h
     jc badExitGenericString
     mov qword [bufferArea], rax ;Use this as the buffer
-    mov rbx, rax
-    mov al, byte [fmtDrive] ;Get the format drive
     mov ecx, 1
     xor edx, edx    ;Read sector 0 of the volume
+    call dosCrit1Enter
+    mov byte [inCrit], -1   ;Entered a critical section
     call readSector
+    mov byte [inCrit], 0    ;Exited critical section
+    call dosCrit1Exit
     jc badExitGenericString
     movzx eax, word [rbx + bpb.bytsPerSec]  ;Get sector size
     mov word [sectorSize], ax
+    mov eax, dword [rbx + bpb.hiddSec]  ;Get the number of hidden sectors
+    mov dword [hiddSector], eax
     movzx ecx, word [rbx + bpb.totSec16]
     mov eax, dword [rbx + bpb.totSec32]
     cmp eax, ecx
@@ -123,6 +122,10 @@ selectFATtype:
 ;Arrive here with rax = Number of sectors in volume
     sub rax, 2 ;Always sub 2 to ensure no edge issues and round clusters down
     mov qword [numSectors], rax
+    movzx edx, word [startFormat.sectorSize]  ;Get the start var
+    cmp word [sectorSize], dx ;Only allow for sector size 200h for now
+    lea rdx, badSecSize
+    jne badExit
     ;Now we select the FAT based on the size of the volume
     movzx ebx, word [sectorSize]    ;Get the sector size
     mul rbx ;Multiply rax with rbx
@@ -134,6 +137,7 @@ selectFATtype:
     lea rdx, badVolBig
     jmp badExit
 .okSize:
+    xor ebx, ebx
     mov byte [fatType], 0   ;Start by saying it must be FAT12
     mov ecx, 4  ;4 entries in the fat16table without the first entry
     lea rsi, fat16ClusterTable
@@ -142,7 +146,8 @@ selectFATtype:
     inc byte [fatType]  ;Make now FAT 16
     add rsi, 5  ;Goto next entry    
 .fat16Lp:
-    cmp eax, dword [rsi]
+    mov ebx, dword [rsi]    ;Clears upper 32 bytes of ebx
+    cmp rax, rbx
     jbe .medFound
     add rsi, 5
     dec ecx
@@ -150,7 +155,7 @@ selectFATtype:
     inc byte [fatType]
     mov ecx, 4
 .fat32Lp:
-    cmp eax, dword [rsi]
+    cmp rax, qword [rsi]
     jbe .medFound
     dec ecx
     jnz .fat32Lp
@@ -173,6 +178,8 @@ selectFATtype:
     mov word [rdi + bpb.totSec16], ax
     call computeFATSize
     mov word [rdi + bpb.FATsz16], ax
+    movzx eax, ax
+    mov dword [fatSize], eax
     mov al, byte [remDev]
     and al, 80h ;Save only bit 7
     mov byte [rdi + bpb.drvNum], al
@@ -190,6 +197,7 @@ selectFATtype:
     mov dword [rdi + bpb32.totSec32], eax
     call computeFATSize
     mov dword [rdi + bpb32.FATsz32], eax
+    mov dword [fatSize], eax
     mov al, byte [remDev]
     and al, 80h ;Save only bit 7
     mov byte [rdi + bpb32.drvNum], al
@@ -222,9 +230,175 @@ selectFATtype:
     mov rsi, qword [bpbPointer]
     movzx ecx, byte [bpbSize]
     rep movsb
+;The attached bootloader has a FAT12 BPB, skip it
+    lea rsi, qword [bootloader + 62]    ;Go past the BPB of the bootloader
+    movzx ecx, word [sectorSize]
+    sub ecx, 62 ;That many fewer bytes
+    rep movsb   ;Copy the bootsector over
+    mov rbx, qword [bufferArea] ;rbx = Memory Buffer address to read from
+    mov byte [rbx + 509], 0 ;Make the disk not bootable
+    mov ecx, 1      ;ecx = Number of sectors to write
+    xor edx, edx    ;rdx = Start LBA to write to
+    call dosCrit1Enter
+    mov byte [inCrit], -1   ;Entering a DOS level 1 critical section
+    call writeSector
+    jc badExitGenericString
+createDPB:
+    ;Here we now create a DPB for this BPB
+    ;First we find the current DPB for this device
+    mov rbp, qword [cdsPtr] ;Get CDS ptr
+    mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the CDS's DPB ptr
+    mov rsi, qword [bpbPointer]
+    mov eax, 5300h  ;Now we update the DPB with this new information
+    int 41h 
+createFAT:
+    ;Now we create the FAT sectors.
+    ;We write both copies one sector at a time interleaving them.
+    breakpoint
+    mov esi, dword [fatSize]    ;Get the number of sectors to write, as counter
+    mov rdi, qword [bufferArea] ;Get the buffer area
+    mov rbx, rdi    ;Save the pointer in rbx
+    xor eax, eax
+    movzx ecx, word [sectorSize]
+    shr ecx, 3  ;Divide by 8
+    rep stosq   ;Store that many 0 qwords
+    mov rdi, rbx    ;Return rdi back to the start of the sector
+    call writeFATStartSig   ;Write the first two clusters in the map
+    mov ecx, 1  ;ecx = Number of sectors to write
+    mov rdi, qword [bpbPointer] ;Get the ptr to the BPB
+    movzx edx, word [rdi + bpb.revdSecCnt]  ;Get the first sector past reserved
+    push rdx
+    push rsi
+    call writeSector
+    pop rsi
+    pop rdx
+    jc badExitGenericString
+    mov eax, dword [fatSize]
+    add edx, eax    ;Go to second fat copy
+    mov ecx, 1
+    push rax
+    push rdx
+    push rsi
+    call writeSector
+    pop rsi
+    pop rdx
+    pop rax
+    jc badExitGenericString
+    mov rdi, qword [bufferArea]
+    mov qword [rdi], 0  ;Overwrite the FAT reserved cluster markers
+    mov dword [rdi + 8], 0  ;Overwrite potential additional FAT32 data
+    dec esi ;Decrement the number of fat sectors left to count
+.fatFillLoop:
+    sub edx, eax    ;Come back to the first FAT copy
+    inc edx ;Goto next sector
+    mov ecx, 1
+    push rdx
+    push rsi
+    call writeSector
+    pop rsi
+    pop rdx
+    jc badExitGenericString
+    mov eax, dword [fatSize]
+    add edx, eax    ;Go to second fat copy
+    mov ecx, 1
+    push rax
+    push rdx
+    push rsi
+    call writeSector
+    pop rsi
+    pop rdx
+    pop rax
+    jc badExitGenericString
+    dec esi
+    jnz .fatFillLoop
+    ;Fall through once done with FAT
+rootDirectory:
+    ;FAT12 and 16 are simple, FAT32 is a bit more complex
+    cmp byte [fatType], 2
+    je .fat32
+    ;Here we compute the number of Root Dir sectors and sanitise them
+    ;rdx should point to that sector now (since it works on FAT copy 2 last)
+    mov rbx, qword [bpbPointer]
+    movzx esi, word [rbx + bpb.rootEntCnt]  ;Get the number of 32 byte entries
+    shl esi, 5  ;Convert into the number of bytes in root directory
+    movzx eax, word [sectorSize]    ;Get the sector size
+    xchg esi, eax
+    push rdx
+    xor edx, edx
+    div esi ;Divide to get number of sectors in eax, preserve edx
+    pop rdx ;Save edx
+    mov esi, eax    ;Number of sectors in esi
+    mov ecx, 1  ;Write one sector
+.fatLoop:
+    inc edx ;Go to next sector now
+    push rcx
+    push rdx
+    push rsi
+    call writeSector
+    pop rsi
+    pop rdx
+    pop rcx
+    jc badExitGenericString
+    dec esi
+    jnz .fatLoop
+    jmp exitFormat
+.fat32:
+    ;Now we have to allocate one cluster to the root directory.
+    ;Allocate cluster 2, as this is a quick and dirty program
+    ; Later come back and make this proper with bad cluster tags etc
+    ;We do this by writing our zero sectors to the cluster
+    ;edx should have the sector number for the first sector of cluster 2 at 
+    ; this point.
+    mov rbx, qword [bpbPointer] ;Get the bpbPointer
+    movzx esi, byte [rbx + bpb32.secPerClus]
+    mov ecx, 1  ;Write one sector at a time
+.fat32Loop:
+    inc edx ;Go to next sector now
+    push rcx
+    push rdx
+    push rsi
+    call writeSector
+    pop rsi
+    pop rdx
+    pop rcx
+    jc badExitGenericString
+    dec esi
+    jnz .fat32Loop
+
+exitFormat:
+    mov byte [inCrit], 0    ;Out of the critical section now
+    call dosCrit1Exit
+    lea rdx, okFormat
+    mov eax, 0900h
+    int 41h
+    mov eax, 4C00h  ;Return with 0 as error code
+    int 41h
 
 
 ;Utility functions below
+writeFATStartSig:
+;Writes the first two cluster blocks with the necessary signature
+;Input: rdi -> Start of the FAT sector
+    push rax
+    push rbx
+    mov rbx, qword [bpbPointer]
+    movsx eax, byte [rbx + bpb.media]   ;Get the media byte, sign extend
+    cmp byte [fatType], 1
+    je .fat16
+    ja .fat32
+;Fat 12 here
+    and eax, 00FFFFFFh  ;Save only low three bytes
+.fat16:
+    mov dword [rdi], eax
+    jmp short .exit
+.fat32:
+    mov dword [rdi], eax
+    mov rax, -1
+    mov qword [rdi + 4], rax    ;Write a qword to allocate cluster 2 too
+.exit:
+    pop rbx
+    pop rax
+    return
 getVolumeID:
 ;Uses the time to set a volume ID
 ;Output: eax = VolumeID
@@ -293,10 +467,11 @@ computeFATSize:
 
 readSector:
 ;Input:
-;al = Drive number
 ;rbx = Memory Buffer address to write to
 ;ecx = Number of sectors to read
 ;rdx = Start LBA to read from
+    mov al, byte [fmtDrive]     ; Always read from fmtDrive
+    mov rbx, qword [bufferArea] ; Memory Buffer address to read from
     int 45h
     pop rax ;Pop old flags into rax
     return
@@ -306,42 +481,26 @@ writeSector:
 ;rbx = Memory Buffer address to read from
 ;ecx = Number of sectors to write
 ;rdx = Start LBA to write to
+    mov al, byte [fmtDrive]     ; Always write to fmtDrive
+    mov rbx, qword [bufferArea] ; Memory Buffer address to read from
     int 46h
     pop rax ;Pop old flags into rax
     return
 badExitGenericString:
     lea rdx, badGeneric
-badExitNoString:
-    jmp short badExit.noPrint
 badExit:
 ;Jumped to with rdx = Error message or 0 if no message
+    test byte [inCrit], -1
+    jz .noCrit
+    call dosCrit1Exit
+.noCrit:
     test rdx, rdx
     jz .noPrint
     mov ah, 09h
     int 41h
 .noPrint:
-    call reset
     mov eax, 4CFFh  ;Return with -1 as error code
     int 41h
-
-reset:
-    call reactivateCDS
-    call resetDriveForExit
-    return
-resetDriveForExit:
-    mov dl, byte [fmtDrive]
-    mov ah, 0Eh ;Select Drive
-    int 41h
-    return
-reactivateCDS:
-    test byte [fmtDrvInv], -1   ;If no bits set, drive is active
-    retz
-    mov rsi, qword [cdsPtr]
-    call dosCrit1Enter
-    mov byte [fmtDrvInv], 0    ;Clear flag
-    or word [rsi + cds.wFlags], cdsValidDrive
-    call dosCrit1Exit
-    return
 
 dosCrit1Enter:
     push rax 
@@ -372,11 +531,8 @@ breakRoutine:
     je short .breakReturnNoExit
     cmp al, "N"
     jmp short breakRoutine 
-.breakReturnNoExit:
-    cli
-    add rsp, 8*3    ;Skip returning to DOS and just return to task
-    iretq
 .breakReturnExit:
-;Set Default Drive back, reactivate the CDS if it is deactivated
-    stc
-    ret 8 
+    or byte [rsp + 8*2], 1  ;Set CF on the stack flags
+    call dosCrit1Exit   ;Exit the critical section since we are quitting
+.breakReturnNoExit:
+    iretq   ;Redo the operation

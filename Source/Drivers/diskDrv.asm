@@ -306,7 +306,7 @@ msdDriver:
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], remMediaReqPkt_size
     jne .msdWriteErrorCode
-
+    
     movzx rax, byte [rbx + remMediaReqPkt.unitnm]
     lea rcx, .msdBIOSmap
     movzx eax, byte [rcx + rax]    ;Get BIOS number
@@ -322,24 +322,27 @@ msdDriver:
 ;Implement two undoc functions 80h|42h (format) and 80h|60h (get LBA params)
     mov al, drvBadCmd
     movzx ecx, word [rbx + ioctlReqPkt.majfun]
-    cmp cl, 08h    ;Disk Drive Major Code?
+    cmp ch, 08h    ;Disk Drive Major Code?
     jne .msdWriteErrorCode  ;If not, exit bad
-    test ch, 80h    ;Extended function bit set?
+    test cl, 80h    ;Extended function bit set?
     jz .msdWriteErrorCode
-    and ch, 7Fh     ;Clear the upper bit
-    cmp ch, 42h
+    and cl, 7Fh     ;Clear the upper bit
+    cmp cl, 42h
     je .msdGIOCTLFormat
-    cmp ch, 60h
+    cmp cl, 60h
     jne .msdWriteErrorCode  ;Error if not this function with bad command
     ;Get params here
     movzx eax, byte [rbx + ioctlReqPkt.unitnm] ;Get the driver unit number
     lea rdx, .msdBIOSmap
     mov dl, byte [rdx + rax]    ;Get the BIOS number for the device
     mov ah, 88h ;Read LBA Device Parameters
+    push rbx
     int 33h
     ;Returns:
-    ;rax = Sector size in bytes
+    ;rbx = Sector size in bytes
     ;rcx = Last LBA block
+    mov rax, rbx    ;Move sector size into rax
+    pop rbx ;Get back the ioctlReqPktPtr
     jc .msdGenDiskError
 ;Get LBA Table:
 ;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)

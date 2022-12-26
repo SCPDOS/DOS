@@ -177,7 +177,7 @@ ctrlBreakHdlr:
     mov rax, qword [oldRAX]
     jmp functionDispatch    ;Goto int 41h
 .checkCF:
-    mov rsp, qword [xInt43hRSP]  ;Account for the flags left on the stack
+    mov rsp, qword [xInt43hRSP]  ;Account for the flags and SS:RSP left on stack
     test al, 1  ;CF set?
     jz .returnToDOS ;If yes, subfunction number must be in al
     mov eax, 4c00h  ;Exit without error code

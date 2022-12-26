@@ -28,7 +28,7 @@ clkHdr:
     db "CLOCK$  "
 msdHdr:
     dq com1Hdr
-    dw 00800h   ;Once Generic IO implemented, change to 00840h
+    dw 00840h   
     dq commonStrat
     dq msdDriver
     db 0,0,0,0,0,0,0,0
