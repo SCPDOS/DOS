@@ -3,7 +3,6 @@ ORG	600h
 
 relocBase   equ 600h ;Relocate to 600h
 loadAddress equ 800h
-startSector equ 33
     jmp short start
     nop
 ;---------------------------Tables--------------------------
@@ -36,6 +35,9 @@ startSector equ 33
     fstype: db 'FAT12   '     ;file system type
     
 ;-----------------------------------------------------------
+;Non BPB additional variables
+startSector:        dd 33   ;Usually read as a word
+numberOfSectors:    dw 58   ;Number of sectors to read
 start: 
     cli
     xor ax, ax
@@ -78,19 +80,21 @@ s1:
     mov cx, 8
     rep stosw   ;Store 8 zero words
     mov word [si], 0010h    ;Packet size and reserved zero
-    mov word [si + 2], 58   ;Number of sectors to transfer
+    mov ax, word [numberOfSectors]
+    mov word [si + 2], ax   ;Number of sectors to transfer
     mov word [si + 4], loadAddress   ;Offset of buffer
     mov word [si + 6], 0      ;Segment of buffer
-    mov word [si + 8], startSector     ;Starting sector
-    mov ah, 42h
+    mov ax, word [startSector]
+    mov word [si + 8], ax     ;Starting sector
+    mov ax, 4200h
     int 13h
     mov ah, 6
     jc fail
     jmp short launchSCP
 readFloppy:
     mov si, 10h     ;Up to 16 error retries
-    mov di, 58      ;Copy MAXIMUM 58 sectors!!!!
-    mov bp, startSector      ;Start at LBA 33
+    mov di, word [numberOfSectors]  ;Copy MAXIMUM 58 sectors!!!!
+    mov bp, word [startSector]      ;Start at LBA 33
     mov bx, loadAddress    ;Start copy buffer at 800h
 readDisk:
 ;Convert bp into CHS for int 13h
