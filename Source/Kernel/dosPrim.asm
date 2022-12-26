@@ -259,7 +259,9 @@ ensureDiskValid:
     jnz .diskDrvCritErrBPB
     ;Now rebuild the dpb fields for this drive
     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
-    call createDPB
+    push rbx
+    call createDPB  ;Modifies rbx
+    pop rbx
     ;Adjust the buffer header information
     mov eax, dword [rbp + dpb.dFATlength]
     mov dword [rbx + bufferHdr.bufFATsize], eax

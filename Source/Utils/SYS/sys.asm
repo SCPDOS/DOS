@@ -22,6 +22,8 @@
 ;The transfer packet is always located before the boot switch byte.
 ;The boot switch byte is always located before the boot signature.
 
+;Called with SYS X: where X is the drive we want to install System files on
+
 [map all ./Source/Utils/SYS/Listings/sys.map]
 [DEFAULT REL]
 BITS 64
@@ -30,5 +32,14 @@ BITS 64
 %include "./Source/Include/fatStruc.inc"
 %include "./Source/Include/dosError.inc"
 
-%include "./Source/Utils/FORMAT/Source/sysMain.asm"
-%include "./Source/Utils/FORMAT/Data/sysData.asm"
+struc sysInitTableStruc
+    .length     resb 1
+    .numSec     resb 1
+    .resWord    resb 2
+    .firstLba   resb 8
+;---------The below is added for convenience----------
+    .bootable   resb 1  ;Flag to indicate bootable
+endstruc
+
+%include "./Source/Utils/SYS/Source/sysMain.asm"
+%include "./Source/Utils/SYS/Data/sysData.asm"
