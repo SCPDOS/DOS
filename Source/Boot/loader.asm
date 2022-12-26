@@ -36,7 +36,7 @@ loadAddress equ 800h
     
 ;-----------------------------------------------------------
 ;Non BPB additional variables
-startSector:        dd 33   ;Usually read as a word
+startSector:        dq 33   ;Usually read as a word
 numberOfSectors:    dw 58   ;Number of sectors to read
 start: 
     cli
@@ -84,8 +84,13 @@ s1:
     mov word [si + 2], ax   ;Number of sectors to transfer
     mov word [si + 4], loadAddress   ;Offset of buffer
     mov word [si + 6], 0      ;Segment of buffer
-    mov ax, word [startSector]
-    mov word [si + 8], ax     ;Starting sector
+    push si
+    add si, 8   ;Goto the starting sector qword destination
+    mov di, startSector ;Starting sector qword source
+    xchg di, si ;Swap the source and destination pointers
+    mov cx, 4   ;Copy all 4 words over
+    rep movsw
+    pop si      ;Return si to the head of the read packet
     mov ax, 4200h
     int 13h
     mov ah, 6

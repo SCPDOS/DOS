@@ -3,7 +3,7 @@
      3                                  
      4                                  relocBase   equ 600h ;Relocate to 600h
      5                                  loadAddress equ 800h
-     6 00000000 EB42                        jmp short start
+     6 00000000 EB46                        jmp short start
      7 00000002 90                          nop
      8                                  ;---------------------------Tables--------------------------
      9 00000003 534350444F537631            osname: db 'SCPDOSv1'
@@ -37,140 +37,145 @@
     36                                      
     37                                  ;-----------------------------------------------------------
     38                                  ;Non BPB additional variables
-    39 0000003E 21000000                startSector:        dd 33   ;Usually read as a word
-    40 00000042 3A00                    numberOfSectors:    dw 58   ;Number of sectors to read
+    39 0000003E 2100000000000000        startSector:        dq 33   ;Usually read as a word
+    40 00000046 3A00                    numberOfSectors:    dw 58   ;Number of sectors to read
     41                                  start: 
-    42 00000044 FA                          cli
-    43 00000045 31C0                        xor ax, ax
-    44 00000047 8ED8                        mov ds, ax
-    45 00000049 8EC0                        mov es, ax
-    46 0000004B 8ED0                        mov ss, ax
-    47 0000004D BC0080                      mov sp, 8000h
-    48 00000050 BE007C                      mov si, 7C00h 
-    49 00000053 BF0006                      mov di, relocBase
-    50 00000056 B90001                      mov cx, 100h
-    51 00000059 FC                          cld             ;Ensure writes are in the write direction
-    52 0000005A F3A5                        rep movsw
-    53 0000005C FB                          sti
-    54 0000005D EA[6200]0000                jmp 0:s1       ;Far jump to the next instruction
+    42 00000048 FA                          cli
+    43 00000049 31C0                        xor ax, ax
+    44 0000004B 8ED8                        mov ds, ax
+    45 0000004D 8EC0                        mov es, ax
+    46 0000004F 8ED0                        mov ss, ax
+    47 00000051 BC0080                      mov sp, 8000h
+    48 00000054 BE007C                      mov si, 7C00h 
+    49 00000057 BF0006                      mov di, relocBase
+    50 0000005A B90001                      mov cx, 100h
+    51 0000005D FC                          cld             ;Ensure writes are in the write direction
+    52 0000005E F3A5                        rep movsw
+    53 00000060 FB                          sti
+    54 00000061 EA[6600]0000                jmp 0:s1       ;Far jump to the next instruction
     55                                  
     56                                  s1:
-    57 00000062 803EFD07FF                  cmp byte [relocBase + 509], -1  ;Any non -1 value is non-bootable
-    58 00000067 0F85A900                    jne fail
-    59 0000006B 89D6                        mov si, dx  ;Save drive number in si
-    60 0000006D B801E8                      mov ax, 0e801h
-    61 00000070 CD15                        int 15h
-    62 00000072 3D0008                      cmp ax, 800h    ;Get number of Kb
-    63 00000075 730A                        jae .s2         ;Above or equal, OK!
-    64 00000077 30C0                        xor al, al      ;Error code
-    65 00000079 81F90008                    cmp cx, 800h
-    66 0000007D 0F829300                    jb fail
+    57 00000066 803EFD07FF                  cmp byte [relocBase + 509], -1  ;Any non -1 value is non-bootable
+    58 0000006B 0F85B300                    jne fail
+    59 0000006F 89D6                        mov si, dx  ;Save drive number in si
+    60 00000071 B801E8                      mov ax, 0e801h
+    61 00000074 CD15                        int 15h
+    62 00000076 3D0008                      cmp ax, 800h    ;Get number of Kb
+    63 00000079 730A                        jae .s2         ;Above or equal, OK!
+    64 0000007B 30C0                        xor al, al      ;Error code
+    65 0000007D 81F90008                    cmp cx, 800h
+    66 00000081 0F829D00                    jb fail
     67                                  .s2:
-    68 00000081 B80300                      mov ax, 03h
-    69 00000084 CD10                        int 10h ;set video mode
+    68 00000085 B80300                      mov ax, 03h
+    69 00000088 CD10                        int 10h ;set video mode
     70                                  ;sectrc used and numhed used for sectors per track and number of heads
-    71 00000086 89F2                        mov dx, si
-    72 00000088 8816[0000]                  mov byte [drvnum], dl   ;Save the drive byte from dl
-    73 0000008C F6C280                      test dl, 80h
-    74 0000008F 7431                        jz readFloppy
+    71 0000008A 89F2                        mov dx, si
+    72 0000008C 8816[0000]                  mov byte [drvnum], dl   ;Save the drive byte from dl
+    73 00000090 F6C280                      test dl, 80h
+    74 00000093 743B                        jz readFloppy
     75                                  ;If the boot device is emulated as a hard drive, 
     76                                  ;   use BIOS extensions as CHS is buggy.
-    77 00000091 BE[0400]                    mov si, pktptr
-    78 00000094 89F7                        mov di, si
-    79 00000096 31C0                        xor ax, ax
-    80 00000098 B90800                      mov cx, 8
-    81 0000009B F3AB                        rep stosw   ;Store 8 zero words
-    82 0000009D C7041000                    mov word [si], 0010h    ;Packet size and reserved zero
-    83 000000A1 A1[4200]                    mov ax, word [numberOfSectors]
-    84 000000A4 894402                      mov word [si + 2], ax   ;Number of sectors to transfer
-    85 000000A7 C744040008                  mov word [si + 4], loadAddress   ;Offset of buffer
-    86 000000AC C744060000                  mov word [si + 6], 0      ;Segment of buffer
-    87 000000B1 A1[3E00]                    mov ax, word [startSector]
-    88 000000B4 894408                      mov word [si + 8], ax     ;Starting sector
-    89 000000B7 B80042                      mov ax, 4200h
-    90 000000BA CD13                        int 13h
-    91 000000BC B406                        mov ah, 6
-    92 000000BE 7254                        jc fail
-    93 000000C0 EB43                        jmp short launchSCP
-    94                                  readFloppy:
-    95 000000C2 BE1000                      mov si, 10h     ;Up to 16 error retries
-    96 000000C5 8B3E[4200]                  mov di, word [numberOfSectors]  ;Copy MAXIMUM 58 sectors!!!!
-    97 000000C9 8B2E[3E00]                  mov bp, word [startSector]      ;Start at LBA 33
-    98 000000CD BB0008                      mov bx, loadAddress    ;Start copy buffer at 800h
-    99                                  readDisk:
-   100                                  ;Convert bp into CHS for int 13h
-   101 000000D0 55                          push bp         ;Save the current LBA on the stack temporarily
-   102                                  ;Sector
-   103 000000D1 89E8                        mov ax, bp		;mov LBA into ax to get head and sec num
-   104 000000D3 F636[1800]              	div byte [sectrc]	;divide ax by the low byte of sectrc	
-   105 000000D7 FEC4                    	inc ah			;increment the remainder to get sectors
-   106 000000D9 88E1                    	mov cl, ah		;save the remainder in its ret register
-   107                                  ;--------------------------------------				
-   108                                  ;Head
-   109 000000DB 30E4                    	xor ah, ah		;nullify the remainder for the next part
-   110 000000DD F636[1A00]              	div byte [numhed]	;divide ax by the low byte of numhed
-   111 000000E1 88E5                    	mov ch, ah		;Save the head in ch
+    77 00000095 BE[0400]                    mov si, pktptr
+    78 00000098 89F7                        mov di, si
+    79 0000009A 31C0                        xor ax, ax
+    80 0000009C B90800                      mov cx, 8
+    81 0000009F F3AB                        rep stosw   ;Store 8 zero words
+    82 000000A1 C7041000                    mov word [si], 0010h    ;Packet size and reserved zero
+    83 000000A5 A1[4600]                    mov ax, word [numberOfSectors]
+    84 000000A8 894402                      mov word [si + 2], ax   ;Number of sectors to transfer
+    85 000000AB C744040008                  mov word [si + 4], loadAddress   ;Offset of buffer
+    86 000000B0 C744060000                  mov word [si + 6], 0      ;Segment of buffer
+    87 000000B5 56                          push si
+    88 000000B6 81C60800                    add si, 8   ;Goto the starting sector qword destination
+    89 000000BA BF[3E00]                    mov di, startSector ;Starting sector qword source
+    90 000000BD 87FE                        xchg di, si ;Swap the source and destination pointers
+    91 000000BF B90400                      mov cx, 4   ;Copy all 4 words over
+    92 000000C2 F3A5                        rep movsw
+    93 000000C4 5E                          pop si      ;Return si to the head of the read packet
+    94 000000C5 B80042                      mov ax, 4200h
+    95 000000C8 CD13                        int 13h
+    96 000000CA B406                        mov ah, 6
+    97 000000CC 7254                        jc fail
+    98 000000CE EB43                        jmp short launchSCP
+    99                                  readFloppy:
+   100 000000D0 BE1000                      mov si, 10h     ;Up to 16 error retries
+   101 000000D3 8B3E[4600]                  mov di, word [numberOfSectors]  ;Copy MAXIMUM 58 sectors!!!!
+   102 000000D7 8B2E[3E00]                  mov bp, word [startSector]      ;Start at LBA 33
+   103 000000DB BB0008                      mov bx, loadAddress    ;Start copy buffer at 800h
+   104                                  readDisk:
+   105                                  ;Convert bp into CHS for int 13h
+   106 000000DE 55                          push bp         ;Save the current LBA on the stack temporarily
+   107                                  ;Sector
+   108 000000DF 89E8                        mov ax, bp		;mov LBA into ax to get head and sec num
+   109 000000E1 F636[1800]              	div byte [sectrc]	;divide ax by the low byte of sectrc	
+   110 000000E5 FEC4                    	inc ah			;increment the remainder to get sectors
+   111 000000E7 88E1                    	mov cl, ah		;save the remainder in its ret register
    112                                  ;--------------------------------------				
-   113                                  ;Cylinder
-   114 000000E3 A1[1A00]                	mov ax, word [numhed]	;mov numhead into ax
-   115 000000E6 F726[1800]              	mul word [sectrc]	    ;multiply ax by sec/trc
-   116 000000EA 95                      	xchg bp, ax		;switch bp and ax so that we can divide them
-   117 000000EB F7F5                    	div bp			;Divide them here!
-   118 000000ED 88C6                    	mov dh, al		;Save the result in dh
-   119                                  ;--------------------------------------				
-   120 000000EF 86EE                        xchg ch, dh     ;Swap ch and dh for return value
-   121 000000F1 5D                          pop bp          ;Return the current LBA
-   122 000000F2 8A16[0000]                  mov dl, byte [drvnum]   ;we saved the drive in medesc
-   123 000000F6 B80102                      mov ax, 0201h           ;Disk read, one sector at a time
-   124 000000F9 CD13                        int 13h
-   125 000000FB 7210                        jc diskError	    ; Error detected, restart file copy
-   126 000000FD 81C30002                    add bx, 200h        ; Goto next sector position
-   127 00000101 45                          inc bp
-   128 00000102 4F                          dec di
-   129 00000103 75CB                        jnz readDisk
-   130                                  launchSCP:
-   131                                  ;Construct SCPBIOS SysInit Parameter Table
-   132 00000105 BB[F101]                    mov bx, SysInitTable    ;es points to segment, get table to bx
-   133 00000108 EA00080000                  jmp 0:loadAddress ; go to the next file
-   134                                  diskError: 
-   135 0000010D 31C0                        xor ax, ax 		; Disk reset
-   136 0000010F CD13                        int 13h			
-   137 00000111 4E                          dec si
-   138 00000112 75BC                        jnz readDisk	; Reset disk and read sector again
-   139                                  ;-------------------------------Errors------------------------------
-   140                                  fail:
-   141 00000114 BE[2B01]                    mov si, .msg
-   142                                  .write: ;destroys registers ax and bx
-   143 00000117 AC                          lodsb
-   144 00000118 3C00                        cmp al, 0 ;check for zero
-   145 0000011A 7409                        je .cont
-   146 0000011C B40E                        mov ah, 0Eh	;TTY output
-   147 0000011E BB0700                      mov bx, 0007h ;colour
-   148 00000121 CD10                        int 10h
-   149 00000123 EBF2                        jmp short .write
-   150                                  .cont:
-   151 00000125 31C0                        xor ax, ax
-   152 00000127 CD16                        int 16h	;await keystroke
-   153 00000129 CD18                        int 18h	;Reset
-   154 0000012B 4E6F6E205379737465-     .msg: db "Non System Disk or Disk Error.",0Ah,0Dh,0
-   154 00000134 6D204469736B206F72-
-   154 0000013D 204469736B20457272-
-   154 00000146 6F722E0A0D00       
-   155                                  
-   156 0000014C E8<rep A5h>             times 509-0Ch-($-$$) db 0E8h
-   157                                  SysInitTable:
-   158 000001F1 0C                          .lengthb    db 0Ch
-   159 000001F2 01                          .numSecb    db 1
-   160 000001F3 0000                        .resWord    dw 00h
-   161 000001F5 5B00000000000000            .FileLBA    dq 5Bh  ;Start at Sector 91 (first sector of load)
-   162                                  
-   163 000001FD FF                      bootOnFlag:     db -1   ;Bootable signature
-   164 000001FE 55                                      db 55h
-   165 000001FF AA                                      db 0AAh
-   166                                  
-   167                                  Segment .bss nobits start=502h
-   168 00000000 ??                      drvnum  resb  1 ;Drive number
-   169 00000001 ??????                      alignb 4
-   170 00000004 <res 10h>               pktptr  resq  2 ;Packet Pointer, 16 bytes in size
-   170          ------------------       info: assembly required 1+2+2 passes
+   113                                  ;Head
+   114 000000E9 30E4                    	xor ah, ah		;nullify the remainder for the next part
+   115 000000EB F636[1A00]              	div byte [numhed]	;divide ax by the low byte of numhed
+   116 000000EF 88E5                    	mov ch, ah		;Save the head in ch
+   117                                  ;--------------------------------------				
+   118                                  ;Cylinder
+   119 000000F1 A1[1A00]                	mov ax, word [numhed]	;mov numhead into ax
+   120 000000F4 F726[1800]              	mul word [sectrc]	    ;multiply ax by sec/trc
+   121 000000F8 95                      	xchg bp, ax		;switch bp and ax so that we can divide them
+   122 000000F9 F7F5                    	div bp			;Divide them here!
+   123 000000FB 88C6                    	mov dh, al		;Save the result in dh
+   124                                  ;--------------------------------------				
+   125 000000FD 86EE                        xchg ch, dh     ;Swap ch and dh for return value
+   126 000000FF 5D                          pop bp          ;Return the current LBA
+   127 00000100 8A16[0000]                  mov dl, byte [drvnum]   ;we saved the drive in medesc
+   128 00000104 B80102                      mov ax, 0201h           ;Disk read, one sector at a time
+   129 00000107 CD13                        int 13h
+   130 00000109 7210                        jc diskError	    ; Error detected, restart file copy
+   131 0000010B 81C30002                    add bx, 200h        ; Goto next sector position
+   132 0000010F 45                          inc bp
+   133 00000110 4F                          dec di
+   134 00000111 75CB                        jnz readDisk
+   135                                  launchSCP:
+   136                                  ;Construct SCPBIOS SysInit Parameter Table
+   137 00000113 BB[F101]                    mov bx, SysInitTable    ;es points to segment, get table to bx
+   138 00000116 EA00080000                  jmp 0:loadAddress ; go to the next file
+   139                                  diskError: 
+   140 0000011B 31C0                        xor ax, ax 		; Disk reset
+   141 0000011D CD13                        int 13h			
+   142 0000011F 4E                          dec si
+   143 00000120 75BC                        jnz readDisk	; Reset disk and read sector again
+   144                                  ;-------------------------------Errors------------------------------
+   145                                  fail:
+   146 00000122 BE[3901]                    mov si, .msg
+   147                                  .write: ;destroys registers ax and bx
+   148 00000125 AC                          lodsb
+   149 00000126 3C00                        cmp al, 0 ;check for zero
+   150 00000128 7409                        je .cont
+   151 0000012A B40E                        mov ah, 0Eh	;TTY output
+   152 0000012C BB0700                      mov bx, 0007h ;colour
+   153 0000012F CD10                        int 10h
+   154 00000131 EBF2                        jmp short .write
+   155                                  .cont:
+   156 00000133 31C0                        xor ax, ax
+   157 00000135 CD16                        int 16h	;await keystroke
+   158 00000137 CD18                        int 18h	;Reset
+   159 00000139 4E6F6E205379737465-     .msg: db "Non System Disk or Disk Error.",0Ah,0Dh,0
+   159 00000142 6D204469736B206F72-
+   159 0000014B 204469736B20457272-
+   159 00000154 6F722E0A0D00       
+   160                                  
+   161 0000015A E8<rep 97h>             times 509-0Ch-($-$$) db 0E8h
+   162                                  SysInitTable:
+   163 000001F1 0C                          .lengthb    db 0Ch
+   164 000001F2 01                          .numSecb    db 1
+   165 000001F3 0000                        .resWord    dw 00h
+   166 000001F5 5B00000000000000            .FileLBA    dq 5Bh  ;Start at Sector 91 (first sector of load)
+   167                                  
+   168 000001FD FF                      bootOnFlag:     db -1   ;Bootable signature
+   169 000001FE 55                                      db 55h
+   170 000001FF AA                                      db 0AAh
+   171                                  
+   172                                  Segment .bss nobits start=502h
+   173 00000000 ??                      drvnum  resb  1 ;Drive number
+   174 00000001 ??????                      alignb 4
+   175 00000004 <res 10h>               pktptr  resq  2 ;Packet Pointer, 16 bytes in size
+   175          ------------------       info: assembly required 1+2+2 passes
 

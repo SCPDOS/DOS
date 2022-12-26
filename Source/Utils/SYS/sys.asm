@@ -10,3 +10,4 @@
 ;6) Set the bootable flag to on and fix the SCP/BIOS struct data for 
 ;    SCP/BIOS.SYS and SCP/DOS.SYS.
 ;7) Write back to disk, Exit critical section and exit.
+
