@@ -2,8 +2,7 @@
 ;Also sets the byte in the VBR to bootable once everything is copied over.
 
 ;1) Check Root Dir has no entries in it (ignoring Volume Labels)
-;2) Starting from drive A:, excluding the drive being formatted,
-;    search for the boot files, first in X:\ then X:\DOS\
+;2) Search for the boot files in the root dir of current drive.
 ;3) If the boot files are found, read them both into memory.
 ;4) Write them onto the target medium root dir and close the handles.
 ;5) Enter a critical section and direct IO read sector 0 of the volume
@@ -29,6 +28,7 @@ BITS 64
 %include "./Source/Include/dosMacro.mac"
 %include "./Source/Include/dosStruc.inc"
 %include "./Source/Include/fatStruc.inc"
+%include "./Source/Include/dosError.inc"
 
 %include "./Source/Utils/FORMAT/Source/sysMain.asm"
 %include "./Source/Utils/FORMAT/Data/sysData.asm"

@@ -45,6 +45,7 @@ msdDriver:
     mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
 ;Now fall through to general error
 .msdGenDiskError:   ;DISK DRIVER ERROR HANDLER
+    mov rbx, qword [reqHdrPtr]
     mov ah, 01h
     int 33h ;Read status of last operation
     cmp ah, 80h ;Timeout/Media Not Ready response (device not present)
@@ -327,6 +328,8 @@ msdDriver:
     test cl, 80h    ;Extended function bit set?
     jz .msdWriteErrorCode
     and cl, 7Fh     ;Clear the upper bit
+    cmp cl, 41h     
+    je .msdGIOCTLWrite
     cmp cl, 42h
     je .msdGIOCTLFormat
     cmp cl, 60h
@@ -354,32 +357,49 @@ msdDriver:
     mov qword [rdx + genioctlGetParamsTable.sectorSize], rax
     mov qword [rdx + genioctlGetParamsTable.numSectors], rcx
     return
+
+.msdGIOCTLWrite:
+;Write Table:
+;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
+;Offset 1:  Number of sectors to write (BYTE)
+;Offset 2:  Reserved, 6 bytes
+;Offset 8:  Sector to start format at (QWORD)
+;Offset 16: Pointer to transfer buffer (QWORD)
+    call .msdGIOCTLFormatWriteSetup
+    mov rbx, qword [rdi + genioctlLBAwrite.xferBuffer]
+    mov ah, 83h
+.msdGIOCTLwfCommon:
+    int 33h
+    jc .msdGenDiskError
+    mov rbx, rsi    ;Geturns rbx to point to the request pointer
+    return 
+
 .msdGIOCTLFormat:
 ;Format Table:
 ;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
-;Offset 1:  Reserved, 7 bytes
+;Offset 1:  Number of sectors to format (BYTE)
+;Offset 2:  Reserved, 6 bytes
 ;Offset 8:  Sector to start format at (QWORD)
-;Offset 16: Number of sectors to format (QWORD) 
+    call .msdGIOCTLFormatWriteSetup
+    mov ah, 85h
+    jmp short .msdGIOCTLwfCommon
+
+.msdGIOCTLFormatWriteSetup:
+;Sets the following:
+;al = Number of sectors to write/format
+;rcx = Sector to begin transfer at
+;dl = BIOS Drive to do transfer on
+;rsi = Driver Packet (usually set to rbx)
+;rdi = Write/Format packet
+    movzx eax, byte [rbx + ioctlReqPkt.unitnm] ;Get the driver unit number
+    lea rdx, .msdBIOSmap
+    mov dl, byte [rdx + rax]    ;Get the BIOS number for the device
     mov rsi, rbx
     mov rdi, qword [rsi + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
-    mov rcx, qword [rdi + genioctlLBAformat.startSector]    ;Get start sector
-    mov rdx, qword [rdi + genioctlLBAformat.numSectors]     ;Get number to fmt
-.mgioctlfMainLoop:
-    mov ah, 85h ;LBA Format
-    cmp rdx, 0FFh
-    jbe .mgioctlfLastFmt
-    mov al, -1
-    int 33h ;Do the format
-    jc .msdGenDiskError
-    add rcx, 0FFh   ;Go forwards by this many sectors
-    sub rdx, 0FFh   ;We have this many sectors less to format
-    jmp short .mgioctlfMainLoop
-.mgioctlfLastFmt:
-    clc
-    mov al, dl  ;Place this in sectors left to read
-    int 33h
-    jc .msdGenDiskError
+    mov al, byte [rdi + genioctlLBAformat.numSectors]
+    mov rcx, qword [rdi + genioctlLBAformat.startSector]
     return
+
 .msdGetLogicalDev:   ;Function 23
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], getDevReqPkt_size

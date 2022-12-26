@@ -204,9 +204,18 @@ struc genioctlGetParamsTable
     .numSectors     resb 8
 endstruc
 
+;THE WRITE STRUCT MUST BE A STRICT SUPERSET OF THE FORMAT STRUCT ALWAYS
 struc genioctlLBAformat
     .size           resb 1
-    .res            resb 7
+    .numSectors     resb 1  ;Number of sectors to format
+    .res            resb 6
     .startSector    resb 8  ;Sector to start format at
-    .numSectors     resb 8  ;Number of sectors to format
+endstruc
+
+struc genioctlLBAwrite
+    .size           resb 1
+    .numSectors     resb 1  ;Number of sectors to write
+    .res            resb 6
+    .startSector    resb 8  ;Sector to start write at
+    .xferBuffer     resb 8  ;Transfer buffer for data
 endstruc
