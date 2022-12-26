@@ -383,6 +383,7 @@ rootDirectory:
 exitFormat:
     mov byte [inCrit], 0    ;Out of the critical section now
     call dosCrit1Exit
+    call freeMemoryBlock
     lea rdx, okFormat
     mov eax, 0900h
     int 41h
@@ -391,6 +392,14 @@ exitFormat:
 
 
 ;Utility functions below
+freeMemoryBlock:
+    mov r8, qword [bufferArea]
+    test r8, r8
+    retz
+    mov eax, 4900h
+    int 41h
+    return
+
 freeAllDriveBuffers:
 ;Frees all buffers that belong to the drive being formatted
 ;Called once in the critical section
@@ -535,6 +544,7 @@ badExit:
     mov ah, 09h
     int 41h
 .noPrint:
+    call freeMemoryBlock    ;Free the memory block if it needs freeing
     mov eax, 4CFFh  ;Return with -1 as error code
     int 41h
 
