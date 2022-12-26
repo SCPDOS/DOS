@@ -5,6 +5,7 @@ reqTable    db genioctlGetParamsTable_size dup (0)
 fmtDrive    db -1       ;Drive we are operating on (0 based)
 inCrit      db 0        ;If not 0, in a critical section, must exit
 cdsPtr      dq 0        ;CDS ptr here
+dosBuffPtr  dq 0        ;Ptr to the DOS buffer chain
 bufferArea  dq 0        ;Ptr to the buffer area
 ;Format Data here
 remDev      db 0        ;0 = Removable, -1 = Fixed
@@ -13,6 +14,7 @@ sectorSize  dw 0        ;Sector size in bytes
 numSectors  dq 0        ;Number of sectors in volume
 secPerClust db 0        ;Copy the sectors per cluster over
 fatSize     dd 0        ;FAT size (number of sectors per FAT)
+media       db 0        ;Media type (F0h or F8h)
 bpbPointer  dq 0        ;Pointer to the BPB we will use
 bpbSize     db 0        ;Size of the BPB
 hiddSector  dd 0        ;Only used for Fixed Disks, offset to add
@@ -48,7 +50,7 @@ fat32ClusterTable:
 ;Fields with a preset value should NOT be touched.
 genericBPB12:
     istruc bpb
-    at bpb.jmpBoot,     db 0E9h, 3Ch, 90h   ;60 bytes, jump forward by that 
+    at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;60 bytes, jump forward by that 
     at bpb.oemName,     db 'SCPDOSv1'
     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb.secPerClus,  db -1           ;1 sector per cluster, normally
@@ -60,7 +62,7 @@ genericBPB12:
     at bpb.FATsz16,     dw -1           ;9 FAT sectors, normally
     at bpb.secPerTrk,   dw 0012h        ;18 Sectors per track
     at bpb.numHeads,    dw 0002h        ;2 Heads
-    at bpb.hiddSec,     dd 0            ;No hidden sectors
+    at bpb.hiddSec,     dd -1           ;No hidden sectors on removable
     at bpb.totSec32,    dd 0            ;Not a FAT32 BPB
     at bpb.drvNum,      db -1           ;Set to 80h if fixed
     at bpb.reserved1,   db 00h
@@ -72,7 +74,7 @@ genericBPB12:
 
 genericBPB16:
     istruc bpb
-    at bpb.jmpBoot,     db 0E9h, 3Ch, 90h   ;Jump forward by 60 bytes
+    at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;Jump forward by 60 bytes
     at bpb.oemName,     db 'SCPDOSv1'
     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb.secPerClus,  db -1           ;Sectors per cluster
@@ -82,9 +84,9 @@ genericBPB16:
     at bpb.totSec16,    dw -1           ;Total number of sectors on disk
     at bpb.media,       db 0F0h         ;Media byte
     at bpb.FATsz16,     dw -1           ;Number of sectors per FAT
-    at bpb.secPerTrk,   dw 0012h        ;18 Sectors per track
-    at bpb.numHeads,    dw 0002h        ;2 Heads
-    at bpb.hiddSec,     dd 0            ;No hidden sectors
+    at bpb.secPerTrk,   dw 003Fh        ;FAT16 and 32 have Hard disk geometry 
+    at bpb.numHeads,    dw 00FFh        ;255 Heads
+    at bpb.hiddSec,     dd -1           ;No hidden sectors on removable
     at bpb.totSec32,    dd 0            ;Not a FAT32 BPB
     at bpb.drvNum,      db -1           ;Set to 80h if fixed
     at bpb.reserved1,   db 00h
@@ -96,7 +98,7 @@ genericBPB16:
 
 genericBPB32:
     istruc bpb32
-    at bpb32.jmpBoot,     db 0E9h, 58h, 90h   ;Jump forward by 88 bytes
+    at bpb32.jmpBoot,     db 0EBh, 58h, 90h   ;Jump forward by 88 bytes
     at bpb32.oemName,     db 'SCPDOSv1'
     at bpb32.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb32.secPerClus,  db -1           ;Sectors per cluster
@@ -106,9 +108,9 @@ genericBPB32:
     at bpb32.totSec16,    dw 0            ;Not a FAT 12/16 BPB
     at bpb32.media,       db 0F0h         ;Media byte
     at bpb32.FATsz16,     dw 0            ;Not a FAT 12/16 BPB
-    at bpb32.secPerTrk,   dw 0012h        ;18 Sectors per track
-    at bpb32.numHeads,    dw 0002h        ;2 Heads
-    at bpb32.hiddSec,     dd 0            ;No hidden sectors
+    at bpb32.secPerTrk,   dw 003Fh        ;FAT16 and 32 have Hard disk geometry 
+    at bpb32.numHeads,    dw 00FFh        ;255 Heads
+    at bpb32.hiddSec,     dd -1           ;No hidden sectors on removable
     at bpb32.totSec32,    dd -1           ;Total number of sectors on disk
 
     at bpb32.FATsz32,     dd -1  ;Number of sectors per FAT

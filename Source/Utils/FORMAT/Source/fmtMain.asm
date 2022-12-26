@@ -51,7 +51,10 @@ startFormat:
 ; If it is, fail. Else, we deactivate
     mov ah, 52h
     int 41h ;Get in rbx a ptr to list of lists
-    add rbx, 2Ah  ;Point rbx to cdsHeadPtr
+    add rbx, 22h    ;Point rbx to bufHeadPtr
+    mov rbp, qword [rbx]    ;Get the ptr to the buffer header array
+    mov qword [dosBuffPtr], rbp
+    add rbx, 8h     ;Point rbx to cdsHeadPtr
     mov rsi, qword [rbx]    ;Get the ptr to the CDS array
     movzx ecx, byte [fmtDrive]
     jecxz .atCurrentCDS
@@ -85,6 +88,9 @@ startFormat:
     mov rax, qword [rdx + genioctlGetParamsTable.sectorSize]    ;Get sector size
     mov word [sectorSize], ax
     mov rax, qword [rdx + genioctlGetParamsTable.numSectors]    ;Get num sectors
+    sub rax, 2 ;Sub 2 to ensure no edge issues and round clusters down
+    mov byte [media], 0F0h
+    mov dword [hiddSector], 0   ;Make sure we initialise this to 0
     jmp selectFATtype
 .fixedDisk:
     mov byte [remDev], -1   ;Set flag for fixed disk
@@ -102,6 +108,7 @@ startFormat:
     mov byte [inCrit], 0    ;Exited critical section
     call dosCrit1Exit
     jc badExitGenericString
+    mov rbx, qword [bufferArea]
     movzx eax, word [rbx + bpb.bytsPerSec]  ;Get sector size
     mov word [sectorSize], ax
     mov eax, dword [rbx + bpb.hiddSec]  ;Get the number of hidden sectors
@@ -118,9 +125,9 @@ startFormat:
     pop r8
     pop rax
     mov qword [bufferArea], 0   ;Clear the ptr
+    mov byte [media], 0F8h
 selectFATtype:
 ;Arrive here with rax = Number of sectors in volume
-    sub rax, 2 ;Always sub 2 to ensure no edge issues and round clusters down
     mov qword [numSectors], rax
     movzx edx, word [startFormat.sectorSize]  ;Get the start var
     cmp word [sectorSize], dx ;Only allow for sector size 200h for now
@@ -170,6 +177,10 @@ selectFATtype:
     lea rsi, genericBPB16
     cmp byte [fatType], 1
     cmove rdi, rsi  ;Use FAT16 BPB if FAT16 volume
+    mov al, byte [media]
+    mov byte [rdi + bpb.media], al
+    mov eax, dword [hiddSector]
+    mov dword [rdi + bpb.hiddSec], eax
     mov ax, word [sectorSize]
     mov word [rdi + bpb.bytsPerSec], ax
     mov al, byte [secPerClust]
@@ -189,6 +200,10 @@ selectFATtype:
     jmp short .bpbReady
 .fat32:
     lea rdi, genericBPB32
+    mov al, byte [media]
+    mov byte [rdi + bpb32.media], al
+    mov eax, dword [hiddSector]
+    mov dword [rdi + bpb.hiddSec], eax
     mov ax, word [sectorSize]
     mov word [rdi + bpb32.bytsPerSec], ax
     mov al, byte [secPerClust]
@@ -241,6 +256,7 @@ selectFATtype:
     xor edx, edx    ;rdx = Start LBA to write to
     call dosCrit1Enter
     mov byte [inCrit], -1   ;Entering a DOS level 1 critical section
+    call freeAllDriveBuffers    ;Now we begin formatting, free all buffers
     call writeSector
     jc badExitGenericString
 createDPB:
@@ -254,7 +270,6 @@ createDPB:
 createFAT:
     ;Now we create the FAT sectors.
     ;We write both copies one sector at a time interleaving them.
-    breakpoint
     mov esi, dword [fatSize]    ;Get the number of sectors to write, as counter
     mov rdi, qword [bufferArea] ;Get the buffer area
     mov rbx, rdi    ;Save the pointer in rbx
@@ -376,6 +391,25 @@ exitFormat:
 
 
 ;Utility functions below
+freeAllDriveBuffers:
+;Frees all buffers that belong to the drive being formatted
+;Called once in the critical section
+    push rax
+    push rdi
+    mov al, byte [fmtDrive]
+    mov rdi, qword [dosBuffPtr]
+.mainLp:
+    cmp byte [rdi + bufferHdr.driveNumber], al
+    jne .gotoNextBuffer
+    mov word [rdi + bufferHdr.driveNumber], 0   ;Clears the flags too
+.gotoNextBuffer:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+    cmp rdi, -1
+    jne .mainLp
+    pop rdi
+    pop rax
+    return
+
 writeFATStartSig:
 ;Writes the first two cluster blocks with the necessary signature
 ;Input: rdi -> Start of the FAT sector
@@ -432,6 +466,7 @@ computeFATSize:
     dec ebx
     add eax, ebx
     inc ebx
+    xor edx, edx
     div ebx
     mov edx, eax    ;edx = RootDirSectors
 
@@ -457,6 +492,7 @@ computeFATSize:
     dec ebx
     add eax, ebx    ;TmpVal1 + (TmpVal2 - 1)
     inc ebx
+    xor edx, edx
     div ebx ;Exit with eax = number of sectors needed per FAT
 .exit:
     pop rdi
