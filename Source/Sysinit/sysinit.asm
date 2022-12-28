@@ -1813,8 +1813,11 @@ diskInit:
     jmp short .checkPrimary
 .primaryFound:
     ;Copy the first sector of this partition into memory
+    breakpoint
+    push rcx
     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
     call .initReadSector
+    pop rcx
     jc .primaryEpilog
     ;Now verify this is a BPB
     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
@@ -1823,10 +1826,12 @@ diskInit:
     jne .primaryEpilog   ;If not, skip
     ;Now copy data to internal tables
     mov rsi, rbx    ;Point rsi to the temp buffer
+    push rcx
     mov ecx, bpbEx_size/8   ;Copy BPB
     push rdi
     rep movsq   ;Copy the BPB
     pop rsi ;Get the pointer to the copied bpb into rsi
+    pop rcx
     ;Store BIOS map value and BPBblk pointer in bpbTbl
     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
     ;Add device count to rbx to point to correct entry

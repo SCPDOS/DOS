@@ -28,12 +28,14 @@ startSys:
     mov byte [rootDir], dl
     mov byte [biosDest], dl
     mov byte [dosDest], dl
+    mov byte [cmdDest], dl
     ;Now get current drive
     mov eax, 1900h  ;Get current drive as the source of the copy
     int 41h
     add al, "A" ;Convert to an ASCII char
     mov byte [biosFile], al
     mov byte [dosFile], al
+    mov byte [cmdFile], al
 ;Now we check that the drive specified is a physical device
     mov ah, 52h
     int 41h ;Get in rbx a ptr to list of lists
@@ -89,12 +91,21 @@ startSys:
     lea rsi, biosNamePair
     lea rdi, biosPair
     mov ecx, biosNameL
+    mov bl, dirReadOnly | dirHidden | dirSystem    ;Attribute
     call openFiles
     jc badHandle
 
     lea rsi, dosNamePair
     lea rdi, dosPair
     mov ecx, dosNameL
+    mov bl, dirReadOnly | dirHidden | dirSystem    ;Attribute
+    call openFiles
+    jc badHandle
+
+    lea rsi, cmdNamePair
+    lea rdi, cmdPair
+    mov ecx, cmdNameL
+    xor ebx, ebx    ;Attribute, no attribute
     call openFiles
     jc badHandle
 
@@ -103,6 +114,10 @@ startSys:
     jc badXfer
 
     lea rsi, dosPair
+    call copyFile
+    jc badXfer
+
+    lea rsi, cmdPair
     call copyFile
     jc badXfer
 
@@ -202,6 +217,8 @@ startSys:
     mov byte [rsi + sysInitTableStruc.bootable], -1
     call writeWrapper
     jc badPrint
+;Now copy COMMAND.COM
+
 exit:
     call dosCrit1Exit
     call freeResources
@@ -249,6 +266,10 @@ freeResources:
     call freeHandle
     movsx ebx, word [dosHdlDst]
     cmp ebx, -1
+    movsx ebx, word [cmdHdlDst]
+    cmp ebx, -1
+    movsx ebx, word [cmdHdlDst]
+    cmp ebx, -1
     call freeHandle
     mov r8, qword [memoryBlock]
     test r8, r8
@@ -265,6 +286,7 @@ freeHandle:
 openFiles:
 ;Input: rsi = Name Pair ptr
 ;       rcx = Name Pair length
+;       bl = Attribute to open with
 ;       rdi = Handle pair ptr
 ;Return:
 ;   If CF=CY and esi = 0, error on create, else error on open
@@ -277,7 +299,7 @@ openFiles:
     add rsi, rcx    ;Move the name forwards by its length
     mov rdx, rsi
     xor esi, esi    ;Indicate we are in the create phase now
-    mov ecx, dirReadOnly | dirHidden | dirSystem    ;Attribute
+    movzx ecx, bl
     mov eax, 3C00h
     int 41h
     retc

@@ -1,0 +1,2593 @@
+     1                                  
+     2                                  ;FDISK utility for SCP/DOS 1.0
+     3                                  ;Bypases filesystem to "low-level format" the target fixed disk.
+     4                                  ;Restarts the machine upon completion by triple faulting.
+     5                                  
+     6                                  ;Steps taken:
+     7                                  ;0) Call Int 4Ah/EAX=0h. If it returns ah <> 0, then tell the user to
+     8                                  ;    stop any other tasks and networking software before continuing.
+     9                                  ;    Give them a "Press Enter to continue or ESC to return to DOS" prompt.
+    10                                  ;1) Queries the BIOS implementation (in this case SCP/BIOS) for the number
+    11                                  ;    of fixed disks.
+    12                                  ; Enter the Menu.
+    13                                  ;Main menu will have 4 main options and 1 optional option
+    14                                  ;   1) Create 
+    15                                  
+    16                                  ;If the user wants to create a new partition, we ask them how much of the 
+    17                                  ; disk they want their partioned to take up as a percentage from 1%-99%
+    18                                  ;We then round to the nearest cylinder (multiple of 64 sectors), 
+    19                                  ; rounding up (if 0) or down (if past max sector).
+    20                                  
+    21                                  [map all ./Utils/FDISK/Listings/fdisk.map]
+    22                                  [DEFAULT REL]
+    23                                  BITS 64
+    24                                  %include "./Source/Include/dosMacro.mac"
+    25                              <1> 
+    26                              <1> ;-------------------------------------------------------------------------------
+    27                              <1> ;Generic Macros file
+    28                              <1> ;The following instruction extensions allow to conditionally return
+    29                              <1> ;The idea was borrowed from the DOS Source Code
+    30                              <1> ;
+    31                              <1> ;-------------------------------------------------------------------------------
+    32                              <1> 
+    33                              <1> ;-------------------------------------------------------------------------------
+    34                              <1> ;These macros are live and must not be touched
+    35                              <1> ;-------------------------------------------------------------------------------
+    36                              <1> %macro return 0
+    37                              <1> %%_ret:
+    38                              <1>     ret
+    39                              <1> %assign retOff %%_ret-$$  ;Get offset into segment of %%_ret
+    40                              <1> %endmacro
+    41                              <1> 
+    42                              <1> %macro cret 1
+    43                              <1> %%_base:
+    44                              <1> %assign baseVar %%_base-$$ ;Get offset into segment of %%_base
+    45                              <1>     %ifdef retOff
+    46                              <1>     %if (baseVar - retOff <= 126) && (baseVar > retOff)
+    47                              <1>     %ifdef currSegVBase
+    48                              <1>     j%+1 short (retOff+currSegVBase)
+    49                              <1>     %else
+    50                              <1>     j%+1 short retOff
+    51                              <1>     %endif  ;End ifdef currSegVBase
+    52                              <1>     %else 
+    53                              <1>     j%-1 short %%a
+    54                              <1>     return
+    55                              <1> %%a:
+    56                              <1>     %endif  ;End the distance measurement if
+    57                              <1>     %else   
+    58                              <1>     j%-1 short %%a
+    59                              <1>     return
+    60                              <1> %%a:
+    61                              <1>     %endif  ;End ifdef retoff
+    62                              <1> %endmacro
+    63                              <1> 
+    64                              <1> %macro retz 0
+    65                              <1> cret z
+    66                              <1> %endmacro
+    67                              <1> 
+    68                              <1> %macro retnz 0
+    69                              <1> cret nz
+    70                              <1> %endmacro
+    71                              <1> 
+    72                              <1> %macro rete 0
+    73                              <1> cret e
+    74                              <1> %endmacro
+    75                              <1> 
+    76                              <1> %macro retne 0
+    77                              <1> cret ne
+    78                              <1> %endmacro
+    79                              <1> 
+    80                              <1> %macro retc 0
+    81                              <1> cret c
+    82                              <1> %endmacro
+    83                              <1> 
+    84                              <1> %macro retnc 0
+    85                              <1> cret nc
+    86                              <1> %endmacro
+    87                              <1> 
+    88                              <1> %macro retb 0
+    89                              <1> cret b
+    90                              <1> %endmacro
+    91                              <1> 
+    92                              <1> %macro retnb 0
+    93                              <1> cret nb
+    94                              <1> %endmacro
+    95                              <1> 
+    96                              <1> %macro reta 0
+    97                              <1> cret a
+    98                              <1> %endmacro
+    99                              <1> 
+   100                              <1> %macro retna 0
+   101                              <1> cret na
+   102                              <1> %endmacro
+   103                              <1> 
+   104                              <1> %macro breakpoint 0
+   105                              <1> xchg bx, bx
+   106                              <1> %endmacro
+    25                                  %include "./Source/Include/dosStruc.inc"
+    26                              <1> 
+    27                              <1> ;-------------------------------------------------------;
+    28                              <1> ; This include file contains miscellaneous internal     ;
+    29                              <1> ; SCP/DOS structures.                                   ;
+    30                              <1> ;-------------------------------------------------------;
+    31                              <1> 
+    32                              <1> ;------------------------------------------------------------------------;
+    33                              <1> ; Each mass storage device up to LASTDRIVE gets a DPB, describing 
+    34                              <1> ; its file system structure. This is used to locate files and structures
+    35                              <1> ; on the device itself and to translate file requests to cluster chains
+    36                              <1> ; to LBAs to pass to the disk driver..
+    37                              <1> ; The DPBs form a linked list, with each DPB formed after the devices 
+    38                              <1> ; drivers Initialise routine has been called.
+    39                              <1> ;------------------------------------------------------------------------;
+    40                              <1> struc dpb        ;Drive Parameter Block
+    41                              <1> 
+    42 00000000 ??                  <1>     .bDriveNumber            resb 1  ;Drive number (0=A, 1=B ...) x
+    43 00000001 ??                  <1>     .bUnitNumber             resb 1  ;Unit number in device x
+    44 00000002 ????                <1>     .wBytesPerSector         resw 1  ;min 512, max 4096 x
+    45 00000004 ??                  <1>     .bMaxSectorInCluster     resb 1  ;(Maximum sector in cluster) - 1 x
+    46 00000005 ??                  <1>     .bSectorsPerClusterShift resb 1  ;Sectors per cluster exponent x
+    47 00000006 ????                <1>     .wFAToffset              resw 1  ;Number of reserved sectors in partition x
+    48 00000008 ??                  <1>     .bNumberOfFATs           resb 1  ;Number of FATs x
+    49 00000009 ????                <1>     .wNumberRootDirEntries   resw 1  ;In 32 byte units, this is 0 for FAT32 x
+    50 0000000B ????????            <1>     .dClusterHeapOffset      resd 1  ;Start sector of data area x
+    51 0000000F ????????            <1>     .dClusterCount           resd 1  ;Total number of clusters in data area x
+    52 00000013 ????????            <1>     .dFATlength              resd 1  ;FAT length, in sectors x
+    53 00000017 ????????            <1>     .dFirstUnitOfRootDir     resd 1  
+    54                              <1>     ;Unit=Sector/Cluster of Root Directory (FAT12/16 = Sector, FAT32 = Cluster)x
+    55 0000001B ????????????????    <1>     .qDriverHeaderPtr        resq 1  ;Pointer to device driver header x
+    56 00000023 ??                  <1>     .bMediaDescriptor        resb 1  ;Media descriptor x
+    57 00000024 ??                  <1>     .bAccessFlag             resb 1  ;Access Flag (0 if accessed, else -1) x
+    58 00000025 ????????????????    <1>     .qNextDPBPtr             resq 1  ;Pointer to next DPB, -1 if at end
+    59 0000002D ????????            <1>     .dFirstFreeCluster       resd 1  ;Starting cluster of free space search x
+    60 00000031 ????????            <1>     .dNumberOfFreeClusters   resd 1  ;Number of free clusters, -1 unknown x
+    61                              <1> 
+    62                              <1> endstruc
+    63                              <1> 
+    64                              <1> fat12MaxClustCnt    equ 4085    ;Cluster count less than this is FAT12
+    65                              <1> fat16MaxClustCnt    equ 65525   ;Cluster count less than this is FAT16
+    66                              <1> ;------------------------------------------------------------------------;
+    67                              <1> ; Each mass storage device up to LASTDRIVE has a CDS associated with it.
+    68                              <1> ; All disk pathing requests go via the CDS for that drive.
+    69                              <1> ; The default drive is the last accessed drive, this number is stored
+    70                              <1> ; in the DOS data area.
+    71                              <1> ; The CDS is stored as an array with the offset into the array being 
+    72                              <1> ; given by the drive letter's offset into the alphabet (with A=0).
+    73                              <1> ;
+    74                              <1> ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
+    75                              <1> ;------------------------------------------------------------------------;
+    76                              <1> struc cds       ;Current Directory structure
+    77 00000000 <res 43h>           <1>     .sCurrentPath        resb 67    ;Current Directory Path String
+    78 00000043 ????                <1>     .wFlags              resw 1 ;CDS Flags - 
+    79 00000045 ????????????????    <1>     .qDPBPtr             resq 1 ;Ptr to the DPB of the dev using this CDS
+    80 0000004D ????????            <1>     .dStartCluster       resd 1 ;Starting cluster of the directory on disk
+    81 00000051 ????????????????    <1>     .qReserved           resq 1 ;Reserved for future expansions
+    82 00000059 ????                <1>     .wBackslashOffset    resw 1 ;How many chars to start of current dir in the 
+    83                              <1> ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
+    84                              <1> ; another, we save the number of chars to skip to that deep level).
+    85                              <1> ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6
+    86                              <1> ; Only affects for SUBST drives, not JOIN
+    87                              <1> ; Flags: Bit 15 set = Network drive
+    88                              <1> ;        Bit 14 set = Physical drive
+    89                              <1> ;        Bit 13 set = JOIN'ed drive
+    90                              <1> ;        Bit 12 set = SUBST'ed drive
+    91                              <1> ;        Bit 7  set = Redirected, not net. drive (This is how MSCDEX worked)
+    92                              <1> endstruc
+    93                              <1> ;CDS equates
+    94                              <1> cdsRedirDrive   equ 8000h   ;All drives which use the Redirector interface
+    95                              <1> cdsValidDrive   equ 4000h   ;CDS valid
+    96                              <1> cdsJoinDrive    equ 2000h   ;CDS for joined drives
+    97                              <1> cdsSubstDrive   equ 1000h   ;Drives formed by Subst
+    98                              <1> cdsRdirLocDrive equ 0080h   ;Redirector but Local
+    99                              <1> ;------------------------------------------------------------------------;
+   100                              <1> ; The SFT is a way to allow applications to open file handles to files 
+   101                              <1> ; and devices. As things stand, the SFT chain will have 5 file handles
+   102                              <1> ; under the first header, and then a second header will be linked to the 
+   103                              <1> ; first one after CONFIG.SYS has been read, to allow for FILES= to specify
+   104                              <1> ; a size for the second SFT (default 10 files). Same for System FCBs, 
+   105                              <1> ; using the FCBS= command. Default FCBS=5.
+   106                              <1> ;
+   107                              <1> ; A file handle describes the file, and the location within the file that
+   108                              <1> ; we are reading. The file handle can be manipulated without the file
+   109                              <1> ; being in memory, thus allowing the user to access data without needing 
+   110                              <1> ; to take up large portions of memory. Similarly, file handles allow for
+   111                              <1> ; accessing devices, by treating them as files with their drivers 
+   112                              <1> ; responding and translating the manipulations of the file handle itself.
+   113                              <1> ; Neither the driver nor the application should see or use the SFT for
+   114                              <1> ; the handle, as it is subject to change (and will change when file 
+   115                              <1> ; sharing provisions are included). The DOS will make requests to the 
+   116                              <1> ; driver in a generic way and the driver will respond, with DOS keeping
+   117                              <1> ; track of the information in the SFT entry for that handle. 
+   118                              <1> ;
+   119                              <1> ; One SFT entry can have multiple handles and multiple SFT entries
+   120                              <1> ; can point to the same file. It all depends on what the applications 
+   121                              <1> ; want to do with the File.
+   122                              <1> ;
+   123                              <1> ; !!!!IMPORTANT!!!!
+   124                              <1> ; Currently there are plans for File Sharing, but I include minimal 
+   125                              <1> ; provisions for it. I really just wanna get a DOS out the door.
+   126                              <1> ;
+   127                              <1> ;Each SFT may look like this:
+   128                              <1> ;sysvars-->sfth------------>sfth------------>|ENDOFLIST|
+   129                              <1> ;            |                |
+   130                              <1> ;       wNumFiles*sft    wNumFiles*sft
+   131                              <1> ;
+   132                              <1> ; Two SFT chains are built; one for files, and a one for so called 
+   133                              <1> ; System FCBs.
+   134                              <1> ;
+   135                              <1> ; Each SFT header has an array of SFT's below it, with the number of 
+   136                              <1> ; SFTs given by wNumFiles. The SFT headers form a linked list.
+   137                              <1> ;
+   138                              <1> ; DEFAULT FILES=8, MINIMUM FILES=5
+   139                              <1> ; DEFAULT FCBS=5,  MINIMUM FCBS=5
+   140                              <1> ;------------------------------------------------------------------------;
+   141                              <1> struc sfth   ;System file table header
+   142                              <1> ; This is the SFT header.
+   143                              <1> ; This structure comes before the start of the first file in the array/table.
+   144 00000000 ????????????????    <1>     .qNextSFTPtr resq 1    ;Pointer to the next SFT
+   145 00000008 ????                <1>     .wNumFiles   resw 1    ;Number of files in this table
+   146                              <1> endstruc
+   147                              <1> 
+   148                              <1> struc sft
+   149                              <1> ;This is the file struc itself
+   150 00000000 ????                <1>     .wNumHandles resw 1    ;Number of handles pointing to this file
+   151 00000002 ????                <1>     .wOpenMode   resw 1    ;File access permissions and behvaiours
+   152 00000004 ??                  <1>     .bFileAttrib resb 1    ;Regular File Attributes
+   153 00000005 ????                <1>     .wDeviceInfo resw 1    ;Includes unit number if a block device
+   154 00000007 ????????????????    <1>     .qPtr        resq 1    ;IF char, ptr to device driver header, ELSE DPBptr
+   155 0000000F ????????            <1>     .dStartClust resd 1    ;Start cluster of file pointed to by SFT entry
+   156 00000013 ????                <1>     .wTime       resw 1    ;File Time, updated on open and writes
+   157 00000015 ????                <1>     .wDate       resw 1    ;File Date, updated on open and writes
+   158 00000017 ????????            <1>     .dFileSize   resd 1    ;File Size, in bytes
+   159 0000001B ????????            <1>     .dCurntOff   resd 1    ;Current Offset pointed to by SFT entry, in bytes
+   160 0000001F ????????            <1>     .dRelClust   resd 1    ;Rel cluster pointed to by SFT entry
+   161 00000023 ????????            <1>     .dAbsClusr   resd 1    ;Absolute cluster pointed to by SFT entry
+   162 00000027 ????????????????    <1>     .qDirSect    resq 1    ;Abs number of sector containing directory entry 
+   163 0000002F ??                  <1>     .bNumDirEnt  resb 1    ;Directory entry within dir sector (byte offset/32)
+   164 00000030 <res Bh>            <1>     .sFileName   resb 11   ;8.3 Filename
+   165 0000003B ????????????????    <1>     .qSharePtr   resq 1    ;SHARE pointer to previous SFT sharing same file
+   166 00000043 ????                <1>     .wMachNum    resw 1    ;SHARE number of network machine opening file
+   167 00000045 ????????????????    <1>     .qPSPOwner   resq 1    ;Addr of PSP of program which first opened this file
+   168 0000004D ????                <1>     .wShareRec   resw 1    ;offset within SHARE code segment of sharing record
+   169                              <1> ;                           0 means no record
+   170                              <1> endstruc
+   171                              <1> ;Open Mode equates
+   172                              <1> ;Access modes   Bits[2:0]
+   173                              <1> ReadAccess      equ 0h
+   174                              <1> WriteAccess     equ 1h
+   175                              <1> RWAccess        equ 2h
+   176                              <1> ;Bit 3 reserved 0
+   177                              <1> ;Sharing modes  Bits[6:4]
+   178                              <1> CompatShare     equ 0h
+   179                              <1> denyRWShare     equ 10h
+   180                              <1> denyWriteShare  equ 20h
+   181                              <1> denyReadShare   equ 30h
+   182                              <1> denyNoneShare   equ 40h
+   183                              <1> netFCBShare     equ 70h
+   184                              <1> noInherit       equ 80h
+   185                              <1> ;Bits 8-12 reserved 0
+   186                              <1> 
+   187                              <1> diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 44h on disk full.
+   188                              <1> ;Buffering on writes
+   189                              <1> noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
+   190                              <1> ;FCB opened file, shouldn't see this as we are depreciating FCB's completely now
+   191                              <1> FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
+   192                              <1> ;Attribute Byte
+   193                              <1> readOnlyFile    equ 1h
+   194                              <1> hiddenFile      equ 2h
+   195                              <1> systemFile      equ 4h
+   196                              <1> volumeLabel     equ 8h
+   197                              <1> directoryFile   equ 10h ;Directory entry
+   198                              <1> archiveFile     equ 20h
+   199                              <1> ;Device Info equates
+   200                              <1> ;For a block device, bits [5:0] contain the drive number
+   201                              <1> charDevConIn    equ 1h  ;If set, device is CON input
+   202                              <1> charDevConOut   equ 2h  ;If set, device is CON output
+   203                              <1> charDevNulDev   equ 4h  ;If set, device is NULL device
+   204                              <1> charDevClockDev equ 8h  ;If set, device is CLOCK device
+   205                              <1> charDevFastOut  equ 10h ;If set, device supports INT 49h
+   206                              <1> charDevBinary   equ 20h ;If set, r/w char device in Binary mode!!!
+   207                              <1> charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
+   208                              <1> blokFileNoFlush equ 40h ;Set if file has not yet been accessed (sol no flush!)
+   209                              <1> devCharDev      equ 80h ;If set, it is a char device!
+   210                              <1> charDevNetSpool equ 800h    ;If set, device is a network spooler
+   211                              <1> devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
+   212                              <1> charDevNamePipe equ 2000h   ;If set, device is a named pipe
+   213                              <1> blokNoDTonClose equ 4000h   ;If set, dont update date and time when closing
+   214                              <1> devRedirDev     equ 8000h   ;If set, dev/file is redirected!
+   215                              <1>  
+   216                              <1> ;------------------------------------------------------------------------;
+   217                              <1> ; Buffers allow for buffered drive IO, by first transferring a sector 
+   218                              <1> ; to an internal buffer, and then copying it to the specified location
+   219                              <1> ; in memory. The buffer is kept in the buffer chain,  in the event that 
+   220                              <1> ; another request for the same sector from the same device is made, so 
+   221                              <1> ; that is can be read from the device directly. Buffers are uniform in 
+   222                              <1> ; size, selected according to the largest detected sector size during 
+   223                              <1> ; the initial loadup.
+   224                              <1> ;
+   225                              <1> ; The buffer pointer in SysVars points to most recently used Buffer
+   226                              <1> ;
+   227                              <1> ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
+   228                              <1> ;------------------------------------------------------------------------;
+   229                              <1> 
+   230                              <1> struc bufferHdr
+   231 00000000 ????????????????    <1>     .nextBufPtr  resq  1   ;Pointer to the next buffer in the chain or -1 at end
+   232 00000008 ??                  <1>     .driveNumber resb  1   ;Drive number the buffer is used for (or -1 for free)
+   233 00000009 ??                  <1>     .bufferFlags resb  1   ;Standard Flags
+   234 0000000A ????????????????    <1>     .bufferLBA   resq  1   ;LBA the buffer contains
+   235 00000012 ??                  <1>     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
+   236 00000013 ????????            <1>     .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
+   237 00000017 ????????????????    <1>     .driveDPBPtr resq  1   ;Pointer to the device DPB block
+   238 0000001F ????????????????    <1>     .owningFile  resq  1   ;Ptr to SFT/FCBS which owns buff (-1 if not in chain)
+   239 00000027 <res 9h>            <1>     .reserved    resb  9   ;Alignment bytes
+   240                              <1>     .dataarea:             ;Points to the start of the data area
+   241                              <1> endstruc
+   242                              <1> ;Buffer Flag equates
+   243                              <1> dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
+   244                              <1> fatBuffer   equ 2h  ;FAT sector in buffer
+   245                              <1> dirBuffer   equ 4h  ;Directory sector in buffer
+   246                              <1> dataBuffer  equ 8h  ;File Data sector in buffer
+   247                              <1> refBuffer   equ 20h ;Data in buffer has been referenced by an application
+   248                              <1> dirtyBuffer equ 40h ;Data in buffer modified by an application
+   249                              <1> ;Note! A buffer is marked as referenced only when the application 
+   250                              <1> ; is done with that buffer OR if a hard error has occured (both read and write)
+   251                              <1> ;------------------------------------------------------------------------;
+   252                              <1> ; Memory control block for each memory arena
+   253                              <1> ;------------------------------------------------------------------------;
+   254                              <1> struc mcb
+   255 00000000 ??                  <1>     .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
+   256 00000001 ????????????????    <1>     .owner      resq 1  ;Owning application PSP (para aligned) or 0 for free
+   257 00000009 ????????            <1>     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
+   258 0000000D ??????              <1>     .reserved   resb 3  ;Reserved three bytes
+   259                              <1>     .program:
+   260                              <1> endstruc
+   261                              <1> ;MCB equates
+   262                              <1> mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
+   263                              <1> mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
+   264                              <1> mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
+   265                              <1> mcbMarkCtn      equ "M"
+   266                              <1> mcbMarkEnd      equ "Z"
+   267                              <1> 
+   268                              <1> memFirstFit     equ 0   ;First free block goes to application
+   269                              <1> memBestFit      equ 1   ;Block whos size closest matches requirement
+   270                              <1> memLastFit      equ 2   ;Last free block goes to application
+   271                              <1> 
+   272                              <1> ;Owner = Para aligned address => Owning application PSP
+   273                              <1> ;...To consider...
+   274                              <1> ;Owner = Non-para aligned address => Error? Should maybe lock up system?
+   275                              <1> ;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
+   276                              <1> ;------------------------------------------------------------------------;
+   277                              <1> ; For Int 41h, the callers registers are saved on their stack in the 
+   278                              <1> ; following order, thus allowing for return values to be placed in the 
+   279                              <1> ; registers by accessing the caller register stack frame.
+   280                              <1> ;------------------------------------------------------------------------;
+   281                              <1> struc callerFrame
+   282 00000000 ????????????????    <1>     .rax    resq 1  ;Bottom of frame, pointer to rax saved in oldRSP
+   283 00000008 ????????????????    <1>     .rbx    resq 1    
+   284 00000010 ????????????????    <1>     .rcx    resq 1
+   285 00000018 ????????????????    <1>     .rdx    resq 1
+   286 00000020 ????????????????    <1>     .rsi    resq 1
+   287 00000028 ????????????????    <1>     .rdi    resq 1
+   288 00000030 ????????????????    <1>     .rbp    resq 1
+   289 00000038 ????????????????    <1>     .r8     resq 1  ;To be removed if truly not needed
+   290 00000040 ????????????????    <1>     .r9     resq 1
+   291                              <1> ;Pushed by Processor when invoked via Interrupt
+   292 00000048 ????????????????    <1>     .rip    resq 1
+   293 00000050 ????????????????    <1>     .cs     resq 1
+   294 00000058 ????????????????    <1>     .flags  resq 1
+   295                              <1> endstruc
+   296                              <1> 
+   297                              <1> struc dpl
+   298                              <1> ;DOS parameter list, pointer to this stack is passed to DOS in rdx on
+   299                              <1> ; server calls
+   300 00000000 ????????????????    <1>     .rax    resq 1
+   301 00000008 ????????????????    <1>     .rbx    resq 1
+   302 00000010 ????????????????    <1>     .rcx    resq 1
+   303 00000018 ????????????????    <1>     .rdx    resq 1
+   304 00000020 ????????????????    <1>     .rsi    resq 1
+   305 00000028 ????????????????    <1>     .rdi    resq 1
+   306 00000030 ????????????????    <1>     .r8     resq 1
+   307 00000038 ????????????????    <1>     .r9     resq 1
+   308 00000040 ????????????????    <1>     .align  resq 1
+   309 00000048 ????????????????    <1>     .compID resq 1  ;Computer id, low word used only
+   310 00000050 ????????????????    <1>     .procID resq 1  ;Process ID
+   311                              <1> endstruc
+   312                              <1> 
+   313                              <1> struc cfgFrame  ;Frame used for config.sys parsing
+   314 00000000 ????????????????    <1>                     resq 1  ;Alignment qword
+   315 00000008 ????????????????    <1>     .newBuffers     resq 1  ;New buffers value
+   316 00000010 ????????????????    <1>     .newSFTVal      resq 1
+   317 00000018 ????????????????    <1>     .newFCBSVal     resq 1
+   318 00000020 ????????????????    <1>     .newProtFCBSVal resq 1  ;Number of protected FCBS
+   319 00000028 ????????????????    <1>     .newLastdrive   resq 1
+   320 00000030 ????????????????    <1>     .newStacks      resq 1  ;Ignored for now
+   321 00000038 ????????????????    <1>     .newStackSize   resq 1  ;Ignored for now
+   322 00000040 ????????????????    <1>     .newAllocSize   resq 1  ;Used to keep track of reallocation size
+   323 00000048 ????????????????    <1>     .cfgHandle      resq 1  ;CONFIG.SYS handle
+   324 00000050 ????????????????    <1>     .lastLine       resq 1  ;Set if the last line is current
+   325 00000058 ????????????????    <1>     .endPtr         resq 1  ;Pointer to the end of the allocation space
+   326 00000060 ????????????????    <1>     .linePtr        resq 1  ;Ptr to line being processed by CONFIG.SYS
+   327                              <1> endstruc
+   328                              <1> 
+   329                              <1> struc filename
+   330                              <1> ;8.3 File name struct
+   331 00000000 ????????????????    <1>     .fName  resb 8
+   332 00000008 ??????              <1>     .fExt   resb 3
+   333                              <1> endstruc
+   334                              <1> 
+   335                              <1> struc ffBlock   ;The structure of the Find First structure at the DTA
+   336 00000000 ??                  <1>     .driveNum   resb 1  ;Drive we are searching on
+   337 00000001 <res Bh>            <1>     .template   resb 11 ;Search template (? meaning anything)
+   338 0000000C ??                  <1>     .attrib     resb 1  ;Search attribute
+   339 0000000D ????????            <1>     .dirOffset  resd 1  ;32 byte entry within dir cluster
+   340 00000011 ????????            <1>     .parDirClus resd 1  ;Parent Directory Cluster number
+   341 00000015 ??                  <1>     .attribFnd  resb 1  ;Attrib of file found
+   342 00000016 ????                <1>     .fileTime   resw 1  ;File time
+   343 00000018 ????                <1>     .fileDate   resw 1  ;File date
+   344 0000001A ????????            <1>     .fileSize   resd 1  ;Number of bytes
+   345 0000001E <res Dh>            <1>     .asciizName resb 13 ;ASCIIZ name with dot and terminating nul
+   346                              <1> endstruc
+   347                              <1> 
+   348                              <1> struc psp
+   349 00000000 ????                <1>     .return     resb 2  ;Should always be CDh 40h, same place as DOS
+   350 00000002 ????????            <1>     .allocSize  resd 1  ;Number of paras in init alloc or when exiting as TSR.
+   351 00000006 ????????            <1>                 resd 1  ;Reserved 4 bytes (for now, may recycle later)
+   352 0000000A ????????????????    <1>     .oldInt42h  resq 1  ;Int 42h pointer on overlay load
+   353 00000012 ????????????????    <1>     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
+   354 0000001A ????????????????    <1>     .oldInt44h  resq 1  ;Int 44h pointer on overlay load
+   355 00000022 ????????????????    <1>     .parentPtr  resq 1  ;Pointer to parent process PSP
+   356 0000002A <res 14h>           <1>     .jobFileTbl resb 20 ;Main File handle array, JFT
+   357 0000003E ????????????????    <1>     .envPtr     resq 1  ;Pointer to the environment
+   358 00000046 ????????????????    <1>     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
+   359 0000004E ????                <1>     .xtraHdlSz  resw 1  ;Additional File Handle array size, 0 by default
+   360 00000050 ??????              <1>     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
+   361 00000053 ????????????????    <1>     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
+   362 0000005B ??                  <1>     .xtraHdlNum resb 1  ;Lookup number of extra handle array, -1 = unused
+   363                              <1> ;Extra handle arrays are grouped into a linked list
+   364                              <1> ;The below are in the same place as in DOS
+   365 0000005C <res 10h>           <1>     .fcb1       resb 16  ;First FCB
+   366 0000006C <res 14h>           <1>     .fcb2       resb 20  ;Second FCB
+   367                              <1>     .dta:   ;Pointer to the default DTA in the PSP
+   368 00000080 ??                  <1>     .parmList   resb 1   ;Number of characters in command tail
+   369 00000081 <res 7Fh>           <1>     .progTail   resb 127 ;Default DTA/Program tail
+   370                              <1> endstruc
+   371                              <1> 
+   372                              <1> struc clkStruc
+   373 00000000 ????                <1>     .dateWord   resw 1
+   374 00000002 ??                  <1>     .minutes    resb 1
+   375 00000003 ??                  <1>     .hours      resb 1
+   376 00000004 ??                  <1>     .hseconds   resb 1  ;Hundreths of seconds
+   377 00000005 ??                  <1>     .seconds    resb 1
+   378                              <1> endstruc
+   379                              <1> 
+   380                              <1> struc countryStruc
+   381 00000000 ????                <1>     .dtfmt     resw 1   ;Date time format (2 bytes)
+   382                              <1>                         ;0 = month day year hh:mm:ss
+   383                              <1>                         ;1 = day month year hh:mm:ss
+   384                              <1>                         ;2 = year month day hh:mm:ss
+   385 00000002 ??????????          <1>     .curr      resb 5   ;ASCIIZ Currency symbol (5 chars)
+   386 00000007 ????                <1>     .thouSep   resb 2   ;ASCIIZ Thousands separator
+   387 00000009 ????                <1>     .dcmlSep   resb 2   ;ASCIIZ Decimal separator
+   388 0000000B ????                <1>     .dateSep   resb 2   ;ASCIIZ Date separator
+   389 0000000D ????                <1>     .timeSep   resb 2   ;ASCIIZ Time separator
+   390 0000000F ??                  <1>     .currFmt   resb 1   ;Currency Format
+   391                              <1>                         ;0 = Symbol leads, without space
+   392                              <1>                         ;1 = Symbol follows, without space
+   393                              <1>                         ;2 = Symbol leads, one space
+   394                              <1>                         ;3 = Symbol follows, one space
+   395                              <1>                         ;4 = Symbol replace decimal separator
+   396 00000010 ??                  <1>     .digtdpt   resb 1   ;Number of digits after the decimal point
+   397 00000011 ??                  <1>     .timefmt   resb 1   ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
+   398 00000012 ????????????????    <1>     .mapaddr   resb 8   ;Case map address (0 is nulptr), needs fixing up
+   399 0000001A ????                <1>     .dataSep   resb 2   ;Data list separator
+   400 0000001C <res Ah>            <1>     .resv      resb 10  ;Reserve 10 bytes
+   401                              <1> endstruc
+   402                              <1> 
+   403                              <1> ;60 4kb pages, giving a total of 264kb of space allocated to paging
+   404                              <1> ;for a space of 64Gb
+   405                              <1> dosAPTsize  equ 60*4096 ;(APT = Additional Page Tables)
+   406                              <1> dosLowBase  equ 600h    ;Low load address
+   407                              <1> 
+   408                              <1> ;Critical Error AH bitfield equates
+   409                              <1> critRead    equ 0h
+   410                              <1> critWrite   equ 1h
+   411                              <1> critDOS     equ 0h
+   412                              <1> critFAT     equ 2h
+   413                              <1> critDir     equ 4h
+   414                              <1> critData    equ 6h
+   415                              <1> critFailOK  equ 8h
+   416                              <1> critRetryOK equ 10h
+   417                              <1> critIgnorOK equ 20h
+   418                              <1> critCharDev equ 80h
+   419                              <1> 
+   420                              <1> critIgnore  equ 0
+   421                              <1> critRetry   equ 1
+   422                              <1> critAbort   equ 2
+   423                              <1> critFail    equ 3
+   424                              <1> 
+   425                              <1> ;MISC ASCII control chars
+   426                              <1> NUL equ 00h ;^@         | ASCII Null
+   427                              <1> ETX equ 03h ;^C         | ASCII Break (End of Text) 
+   428                              <1> ACK equ 06h ;^F         | ASCII Acknowledgement
+   429                              <1> BEL equ 07h ;^G         | ASCII Bell
+   430                              <1> BSP equ 08h ;^H         | ASCII Backspace
+   431                              <1> TAB equ 09h ;^I         | ASCII Horizontal Tab
+   432                              <1> LF  equ 0Ah ;^J         | ASCII Line Feed
+   433                              <1> CR  equ 0Dh ;^M         | ASCII Carriage Return
+   434                              <1> DLE equ 10h ;^P         | ASCII Data Link End (Toggle Print Echo)
+   435                              <1> DC3 equ 13h ;^S         | ASCII Device Control 3 (Toggle Scroll Lock)
+   436                              <1> DC4 equ 14h ;^T         | ASCII Device Control 4
+   437                              <1> NAK equ 15h ;^U         | ASCII Negative Acknowledgement
+   438                              <1> ETB equ 17h ;^W         | ASCII End of Transmission Block
+   439                              <1> EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
+   440                              <1> ESC equ 1Bh ;           | ASCII Escape char, used for ANSI.SYS
+   441                              <1> SPC equ 20h ;Printable  | ASCII Space
+   442                              <1> ;This last one is NEVER printed with a caret as it is a console control char
+   443                              <1> DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
+   444                              <1> 
+   445                              <1> asciiCaret  equ 20h ;Used to check which chars need to be printed with caret
+   446                              <1> ;Extended Ascii Codes
+   447                              <1> eF1     equ 3Bh ;F1 second byte
+   448                              <1> eF2     equ 3Ch ;F2 second byte
+   449                              <1> eF3     equ 3Dh ;F3 second byte
+   450                              <1> eF4     equ 3Eh ;F4 second byte
+   451                              <1> eF5     equ 3Fh ;F5 second byte
+   452                              <1> eF6     equ 40h ;F6 second byte
+   453                              <1> eF7     equ 41h ;F7 second byte
+   454                              <1> eCursL  equ 4Bh ;Cursor Left second byte
+   455                              <1> eCursR  equ 4Dh ;Cursor Right second byte
+   456                              <1> eIns    equ 52h ;Insert second byte
+   457                              <1> eDel    equ 53h ;DEL second byte (not necessarily delete key)
+   458                              <1> 
+   459                              <1> ;Default Configuration for the system
+   460                              <1> 
+   461                              <1> buffersDefault  equ 30
+   462                              <1> filesDefault    equ 20
+   463                              <1> fcbsDefault     equ 4
+   464                              <1> safeFcbsDeflt   equ 0
+   465                              <1> lastDriveDeflt  equ 5   
+    26                                  %include "./Source/Include/fatStruc.inc"
+    27                              <1> 
+    28                              <1> ;-------------------------------------------------------;
+    29                              <1> ; This include file contains miscellaneous FAT driver   ;
+    30                              <1> ; structures. exFAT will have it's own files at a later ;
+    31                              <1> ; stage.                                                ;
+    32                              <1> ;-------------------------------------------------------;
+    33                              <1> ;-------------------------------------------------------;
+    34                              <1> ;-------------------------------------------------------;
+    35                              <1> ;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
+    36                              <1> ;   REMEMBER, CLUSTER NUMBERS START AT 2!               ;
+    37                              <1> ;   THE FIRST DATA CLUSTER ON A DISK IS CLUSTER 2!!!    ;
+    38                              <1> ;   ON FAT12/16, A CLUSTER NUMBER OF 0 MEANS ROOT DIR!  ;
+    39                              <1> ;   ON FAT32, A CLUSTER NUMBER OF 0 ALIASES THE FIRST   ;
+    40                              <1> ;       CLUSTER OF THE ROOT DIRECTORY!!                 ;
+    41                              <1> ;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
+    42                              <1> ;-------------------------------------------------------;
+    43                              <1> 
+    44                              <1> struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
+    45                              <1> 
+    46 00000000 ??????              <1>     .jmpBoot    resb 3 
+    47 00000003 ????????????????    <1>     .oemName    resb 8  ;OEM name
+    48 0000000B ????                <1>     .bytsPerSec resw 1  ;Bytes per sector
+    49 0000000D ??                  <1>     .secPerClus resb 1  ;Sectors per cluster
+    50 0000000E ????                <1>     .revdSecCnt resw 1  ;Number of reserved sectors, in volume
+    51 00000010 ??                  <1>     .numFATs    resb 1  ;Number of FATs on media
+    52 00000011 ????                <1>     .rootEntCnt resw 1  ;Number of 32 byte entries in Root directory
+    53 00000013 ????                <1>     .totSec16   resw 1  ;Number of sectors on medium
+    54 00000015 ??                  <1>     .media      resb 1  ;Media descriptor byte
+    55 00000016 ????                <1>     .FATsz16    resw 1  ;Number of sectors per FAT
+    56 00000018 ????                <1>     .secPerTrk  resw 1  ;Number of sectors per "track"
+    57 0000001A ????                <1>     .numHeads   resw 1  ;Number of read "heads"
+    58 0000001C ????????            <1>     .hiddSec    resd 1  ;Number of hidden sectors, preceeding volume start
+    59 00000020 ????????            <1>     .totSec32   resd 1  ;32 bit count of sectors
+    60                              <1> 
+    61 00000024 ??                  <1>     .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    62 00000025 ??                  <1>     .reserved1  resb 1  ;Reserved byte
+    63 00000026 ??                  <1>     .bootSig    resb 1  ;Extended boot signature (29h)
+    64 00000027 ????????            <1>     .volID      resd 1  ;Volume serial number
+    65 0000002B <res Bh>            <1>     .volLab     resb 11 ;Volume label string
+    66 00000036 ????????????????    <1>     .filSysType resb 8  ;File system type string
+    67                              <1> 
+    68                              <1> endstruc
+    69                              <1> 
+    70                              <1> struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
+    71                              <1> 
+    72 00000000 ??????              <1>     .jmpBoot    resb 3
+    73 00000003 ????????????????    <1>     .oemName    resb 8  ;OEM name
+    74 0000000B ????                <1>     .bytsPerSec resw 1  ;Bytes per sector
+    75 0000000D ??                  <1>     .secPerClus resb 1  ;Sectors per cluster
+    76 0000000E ????                <1>     .revdSecCnt resw 1  ;Number of reserved sectors
+    77 00000010 ??                  <1>     .numFATs    resb 1  ;Number of FATs on media
+    78 00000011 ????                <1>     .rootEntCnt resw 1  ;Number of entries in Root directory
+    79 00000013 ????                <1>     .totSec16   resw 1  ;Number of sectors on medium
+    80 00000015 ??                  <1>     .media      resb 1  ;Media descriptor byte
+    81 00000016 ????                <1>     .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
+    82 00000018 ????                <1>     .secPerTrk  resw 1  ;Number of sectors per "track"
+    83 0000001A ????                <1>     .numHeads   resw 1  ;Number of read "heads"
+    84 0000001C ????????            <1>     .hiddSec    resd 1  ;Number of hidden sectors
+    85 00000020 ????????            <1>     .totSec32   resd 1  ;32 bit count of sectors
+    86                              <1> 
+    87 00000024 ????????            <1>     .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
+    88 00000028 ????                <1>     .extFlags   resw 1  ;Extended Flags word
+    89 0000002A ????                <1>     .FSver      resw 1  ;File system version word, must be 0
+    90 0000002C ????????            <1>     .RootClus   resd 1  ;First Cluster of Root Directory
+    91 00000030 ????                <1>     .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
+    92 00000032 ????                <1>     .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
+    93 00000034 <res Ch>            <1>     .reserved   resb 12 ;Reserved 12 bytes
+    94                              <1> 
+    95 00000040 ??                  <1>     .drvNum     resb 1  ;Logical drive number (00h or 80h)
+    96 00000041 ??                  <1>     .reserved1  resb 1  ;Reserved byte
+    97 00000042 ??                  <1>     .bootSig    resb 1  ;Extended boot signature (29h)
+    98 00000043 ????????            <1>     .volID      resd 1  ;Volume serial number
+    99 00000047 <res Bh>            <1>     .volLab     resb 11 ;Volume label string
+   100 00000052 ????????????????    <1>     .filSysType resb 8  ;File system type string
+   101                              <1> 
+   102                              <1> endstruc
+   103                              <1> 
+   104                              <1> struc mbr
+   105 00000000 <res 1B8h>          <1>     .bsCode     resb 440
+   106 000001B8 ????????            <1>     .diskID     resb 4
+   107 000001BC ????                <1>     .reserved   resb 2
+   108 000001BE <res 10h>           <1>     .mbrEntry1  resb 16
+   109 000001CE <res 10h>           <1>     .mbrEntry2  resb 16
+   110 000001DE <res 10h>           <1>     .mbrEntry3  resb 16
+   111 000001EE <res 10h>           <1>     .mbrEntry4  resb 16
+   112 000001FE ????                <1>     .mbrSig     resb 2
+   113                              <1> endstruc
+   114                              <1> 
+   115                              <1> struc mbrEntry
+   116 00000000 ??                  <1>     .ptnAtrib   resb 1  ;80h = active
+   117 00000001 ??????              <1>     .chsStart   resb 3  ;Ignore practically
+   118 00000004 ??                  <1>     .ptnType    resb 1  ;This being 00 means free
+   119 00000005 ??????              <1>     .chsEnd     resb 3  ;Ignore
+   120 00000008 ????????            <1>     .lbaStart   resb 4  ;Start of partition in 32 bit LBA
+   121 0000000C ????????            <1>     .numSectors resb 4  ;Number of sectors in partition
+   122                              <1> endstruc
+   123                              <1> 
+   124                              <1> struc ebr
+   125 00000000 <res 1BEh>          <1>     .bsCode     resb 446    ;Basic 16-bit code to error if launched into
+   126 000001BE <res 10h>           <1>     .ebrVolHdr  resb 16 ;Information about the volume itself
+   127 000001CE <res 10h>           <1>     .ebrLinkHdr resb 16 ;Link header information to next logical volume in ebr
+   128 000001DE <res 20h>           <1>     .reserved   resb 32 ;Reserved
+   129 000001FE ????                <1>     .mbrSig     resb 2
+   130                              <1> endstruc
+   131                              <1> 
+   132                              <1> 
+   133                              <1> struc fatDirEntry
+   134                              <1> 
+   135 00000000 <res Bh>            <1>     .name       resb 11 ;8.3 File Name w/o fullstop
+   136 0000000B ??                  <1>     .attribute  resb 1  ;Usual attributes
+   137 0000000C ??                  <1>     .ntRes      resb 1  ;Reserved 0
+   138 0000000D ??                  <1>     .crtTimeT   resb 1  ;Count of tenths of a second of file creation time <=199
+   139 0000000E ????                <1>     .crtTime    resb 2  ;Creation time, granularity of 2 seconds
+   140 00000010 ????                <1>     .crtDate    resb 2  ;Creation date
+   141 00000012 ????                <1>     .lastAccDat resb 2  ;Last Read/Write date
+   142 00000014 ????                <1>     .fstClusHi  resb 2  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
+   143 00000016 ????                <1>     .wrtTime    resb 2  ;Last modification (write) time
+   144 00000018 ????                <1>     .wrtDate    resb 2  ;Last modification (write) date
+   145 0000001A ????                <1>     .fstClusLo  resb 2  ;Lo word of 1st data cluster for file/dir
+   146 0000001C ????????            <1>     .fileSize   resb 4  ;32-bit quantity with size of file described by entry
+   147                              <1> 
+   148                              <1> endstruc
+   149                              <1> ;Directory attribute equates
+   150                              <1>     dirReadOnly     equ 01h
+   151                              <1>     dirHidden       equ 02h
+   152                              <1>     dirSystem       equ 04h
+   153                              <1>     dirVolumeID     equ 08h
+   154                              <1>     dirDirectory    equ 10h
+   155                              <1>     dirArchive      equ 20h
+   156                              <1>     dirCharDev      equ 40h ;Never written to disk, used to represent a Char Dev
+   157                              <1>     dirLongName     equ dirReadOnly | dirHidden | dirSystem | dirVolumeID
+   158                              <1>     ;If any of the three bits are set, then ALL three bits are set
+   159                              <1>     ; in addition to whatever the user passed to search for.
+   160                              <1>     dirInclusive    equ dirHidden | dirSystem | dirDirectory
+   161                              <1>     dirIncFiles     equ dirHidden | dirSystem
+   162                              <1> 
+   163                              <1> struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
+   164                              <1> 
+   165 00000000 ??????              <1>     .jmpBoot                resb 3 
+   166 00000003 ????????????????    <1>     .oemName                resb 8  ;OEM name
+   167 0000000B <res 35h>           <1>     .MustBeZero             resb 53 ;Must be 0, 53 bytes
+   168 00000040 ????????????????    <1>     .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
+   169 00000048 ????????????????    <1>     .volumeLength           resq 1  ;Volume Length in sectors
+   170 00000050 ????????            <1>     .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
+   171 00000054 ????????            <1>     .FATlength              resd 1  ;FAT length, in sectors
+   172 00000058 ????????            <1>     .clusterHeapOffset      resd 1  ;Start of data area, in sectors
+   173 0000005C ????????            <1>     .clusterCount           resd 1  ;Number of clusters on medium
+   174 00000060 ????????            <1>     .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
+   175 00000064 ????????            <1>     .volumeSerialNum        resd 1  ;Volume Serial Number
+   176 00000068 ????                <1>     .FSrevision             resw 1  ;Should be 0001 (v1.00)
+   177 0000006A ????                <1>     .volumeFlags            resw 1  ;Volume Flags, refer to documentation
+   178 0000006C ??                  <1>     .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
+   179 0000006D ??                  <1>     .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
+   180 0000006E ??                  <1>     .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
+   181 0000006F ??                  <1>     .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
+   182 00000070 ??                  <1>     .percentInUse           resb 1  ;Rounded down. FFh means unknown
+   183 00000071 ??????????????      <1>     .reserved               resb 7  ;Reserved for alignment
+   184                              <1> 
+   185                              <1> endstruc
+   186                              <1> 
+   187                              <1> struc FSInfo
+   188                              <1> 
+   189 00000000 ????????            <1>     .leadSig    resb 4  ;Leading Signature, should be 041615252h
+   190 00000004 <res 1E0h>          <1>     .reserved1  resb 480
+   191 000001E4 ????????            <1>     .strucSig   resb 4  ;Should be 061417272h
+   192 000001E8 ????????            <1>     .freeCount  resb 4  ;Contains the last known free cluster on volume
+   193 000001EC ????????            <1>     .nextFree   resb 4  ;Contains the first known free cluster on volume
+   194 000001F0 <res Ch>            <1>     .reserved2  resb 12 ;Should be 0
+   195 000001FC ????????            <1>     .trailSig   resb 4  ;Should be 0AA550000h
+   196                              <1> 
+   197                              <1> endstruc
+   198                              <1> 
+   199                              <1> %macro defaultBPB 0
+   200                              <1>     db 0E9h
+   201                              <1>     db 00h
+   202                              <1>     db 90h
+   203                              <1>     db 'SCPDOSv1'
+   204                              <1>     dw 0200h                       
+   205                              <1>     db 01h                         
+   206                              <1>     dw 0001h                           
+   207                              <1>     db 02h                              
+   208                              <1>     dw 00E0h            
+   209                              <1>     dw 0B40h   
+   210                              <1>     db 0F0h                   
+   211                              <1>     dw 0009h                   
+   212                              <1>     dw 0012h                     
+   213                              <1>     dw 0002h                  
+   214                              <1>     dd 0                 
+   215                              <1>     dd 0 
+   216                              <1>     db 00h
+   217                              <1>     db 00h
+   218                              <1>     db 29h
+   219                              <1>     dd 0
+   220                              <1>     db 'NO NAME    '
+   221                              <1>     db 'FAT12   '
+   222                              <1>     db 58 dup 0 ;Size padding for a FAT12/16 BPB to make it 120 bytes long
+   223                              <1> %endmacro
+    27                                  %include "./Source/Include/dosError.inc"
+    28                              <1> ;DOS Error codes
+    29                              <1> 
+    30                              <1> ;Extended Error Codes
+    31                              <1> errInvFnc   equ 1   ;Invalid function number
+    32                              <1> errFnf      equ 2   ;File not found
+    33                              <1> errPnf      equ 3   ;Path not found
+    34                              <1> errNhl      equ 4   ;Too many open handles, no handles left
+    35                              <1> errAccDen   equ 5   ;Access denied (to resource)
+    36                              <1> errBadHdl   equ 6   ;Invalid handle
+    37                              <1> errMCBbad   equ 7   ;MCB's destroyed
+    38                              <1> errNoMem    equ 8   ;Insufficient memory
+    39                              <1> errMemAddr  equ 9   ;Invalid Memory Block Address
+    40                              <1> errBadEnv   equ 10  ;Invalid environment
+    41                              <1> errBadFmt   equ 11  ;Invalid format (path etc)
+    42                              <1> errAccCde   equ 12  ;Invalid Access Code    ?
+    43                              <1> errInvDat   equ 13  ;Invalid data
+    44                              <1> ;           equ 14  ;Reserved
+    45                              <1> errBadDrv   equ 15  ;Invalid drive specified
+    46                              <1> errDelCD    equ 16  ;Attempt to delete the current directory
+    47                              <1> errDevUnk   equ 17  ;Not the same device (Device Unknown)
+    48                              <1> errNoFil    equ 18  ;No more files, no match found
+    49                              <1> ;The following are Driver error codes + 19
+    50                              <1> drvErrShft  equ 19  ;Used to shift Driver error codes to extended error codes
+    51                              <1> errWpd      equ 19  ;Attempt to write on write protected disk
+    52                              <1> errUnkUnt   equ 20  ;Unknown Unit
+    53                              <1> errDrvNR    equ 21  ;Drive not ready
+    54                              <1> errUnkCmd   equ 22  ;Unknown Command
+    55                              <1> errCRCerr   equ 23  ;Data (CRC) error
+    56                              <1> errBadRLn   equ 24  ;Bad request structure length
+    57                              <1> errSekErr   equ 25  ;Seek error
+    58                              <1> errUnkMed   equ 26  ;Unknown media type
+    59                              <1> errSecNF    equ 27  ;Sector not Found
+    60                              <1> errNoPap    equ 28  ;Printer out of paper
+    61                              <1> errWF       equ 29  ;Write fault
+    62                              <1> errRF       equ 30  ;Read fault
+    63                              <1> errGF       equ 31  ;General fault
+    64                              <1> ;----------------------------------------------
+    65                              <1> ;The following two go inbetween the Disk errors
+    66                              <1> errShrVio   equ 32  ;Sharing violations
+    67                              <1> errLokVio   equ 33  ;File Lock violation
+    68                              <1> ;----------------------------------------------
+    69                              <1> errIDC      equ 34  ;Driver code, Invalid Disk Change
+    70                              <1> errNoFCB    equ 35  ;FCB unavailable
+    71                              <1> errShrFul   equ 36  ;Sharing buffer full
+    72                              <1> 
+    73                              <1> errNoNet    equ 50  ;Network request not supported, generic net fail
+    74                              <1> 
+    75                              <1> errFilExist equ 80  ;File already exists
+    76                              <1> errDirExist equ 82  ;Directory already exists
+    77                              <1> errFI44     equ 83  ;Fail on INT 44h
+    78                              <1> errRedir    equ 84  ;Too many levels of redirection
+    79                              <1> errDupRedir equ 85  ;Trying to redirect a redirection
+    80                              <1> errBadPass  equ 86  ;Bad password
+    81                              <1> errBadParam equ 87  ;Bad parameter passed to request
+    82                              <1> errNetWrite equ 88  ;Network Write Fault
+    83                              <1> ;-----------------------------------------------------------------------------
+    84                              <1> ;Error Loci
+    85                              <1> eLocUnk     equ 1   ;Unknown locus, nonspecific or not appropriate
+    86                              <1> eLocDsk     equ 2   ;Disk, related to Random Access to a disk or block device
+    87                              <1> eLocNet     equ 3   ;Network related issues, shouldnt affect us (yet!)
+    88                              <1> eLocChr     equ 4   ;Serial/Character Device error
+    89                              <1> eLocMem     equ 5   ;Related to RAM
+    90                              <1> ;-----------------------------------------------------------------------------
+    91                              <1> ;Error Actions
+    92                              <1> eActRet     equ 1   ;Retry
+    93                              <1> eActDRet    equ 2   ;Delay then retry (Try again later)
+    94                              <1> eActUsr     equ 3   ;Ask user to re-input data, i.e. bad filename or something
+    95                              <1> eActAbt     equ 4   ;Abort with cleanup
+    96                              <1> eActKil     equ 5   ;Abort without cleanup
+    97                              <1> eActIgn     equ 6   ;Ignore error
+    98                              <1> eActRetUsr  equ 7   ;Retry after user intervention (i.e swap remdev)
+    99                              <1> ;-----------------------------------------------------------------------------
+   100                              <1> ;Error classes
+   101                              <1> eClsOoR     equ 1   ;Out of resources, no mem or handles
+   102                              <1> eClsTS      equ 2   ;Temp sitch, should go away
+   103                              <1> eClsAuth    equ 3   ;Authorisation, e.g. file permission error 
+   104                              <1> eClsInt     equ 4   ;Internal DOS error or bug
+   105                              <1> eClsHrdFlt  equ 5   ;Hardware Failure
+   106                              <1> eClsSysFlt  equ 6   ;System Failure, i.e. missing or bad cfg files
+   107                              <1> eClsAppFlt  equ 7   ;Application Program error, inconsistent requests etc...
+   108                              <1> eClsNotFnd  equ 8   ;Resource not found (such as free SFT entry etc...)
+   109                              <1> eClsBadFmt  equ 9   ;Bad format for resource
+   110                              <1> eClsLocked  equ 10  ;Resource Locked
+   111                              <1> eClsMedia   equ 11  ;Error is on medium, i.e. wrong or damaged remdev
+   112                              <1> eClsClash   equ 12  ;Resource already exists!
+   113                              <1> eClsUnk     equ 13  ;Unknown class
+    28                                  
+    29                                  ;Hard disks must have 512 byte sectors
+    30                                  fddSectorSize   equ 200h
+    31                                  
+    32                                  %include "./Utils/FDISK/Source/fdskMain.asm"
+    33                              <1> ;Main FDISK file
+    34                              <1> startFdisk:
+    35 00000000 EB01                <1>     jmp short .cVersion
+    36 00000002 01                  <1> .vNum:          db 1
+    37                              <1> .cVersion:
+    38 00000003 FC                  <1>     cld
+    39 00000004 31C0                <1>     xor eax, eax
+    40 00000006 CD4A                <1>     int 4Ah
+    41 00000008 85C0                <1>     test eax, eax
+    42 0000000A 7422                <1>     jz notMultitasking
+    43 0000000C 488D15730C0000      <1>     lea rdx, multiMsg
+    44 00000013 B800090000          <1>     mov eax, 0900h
+    45 00000018 CD41                <1>     int 41h
+    46                              <1> .inLoop:
+    47 0000001A B800080000          <1>     mov eax, 0800h  ;Console input no echo
+    48 0000001F CD41                <1>     int 41h
+    49 00000021 3C0D                <1>     cmp al, CR
+    50 00000023 7409                <1>     je notMultitasking
+    51 00000025 3C1B                <1>     cmp al, ESC 
+    52 00000027 75F1                <1>     jne .inLoop
+    53 00000029 E9CA060000          <1>     jmp badExit
+    54                              <1> notMultitasking:
+    55                              <1> ;Check Version Number
+    56 0000002E B430                <1>     mov ah, 30h
+    57 00000030 CD41                <1>     int 41h
+    58 00000032 3A05CAFFFFFF        <1>     cmp al, byte [startFdisk.vNum] ;Version 1
+    59 00000038 760C                <1>     jbe .okVersion
+    60 0000003A 488D1537130000      <1>     lea rdx, badVerStr
+    61 00000041 E9AE060000          <1>     jmp badPrint ;Exit to caller or DOS to print bad version
+    62                              <1> .okVersion:
+    63 00000046 E84D0B0000          <1>     call biosGetNumberOfFixedDisks
+    64 0000004B 803D100C000000      <1>     cmp byte [numDisks], 0
+    65 00000052 750C                <1>     jnz .nonZeroDisks   ;Jump if we have any Fixed Disks
+    66 00000054 488D1535130000      <1>     lea rdx, noDisks
+    67 0000005B E994060000          <1>     jmp badPrint
+    68                              <1> .nonZeroDisks:
+    69                              <1> ;Set CtrlC hook
+    70 00000060 488D155B060000      <1>     lea rdx, exit.ctrlCHandler
+    71 00000067 B843250000          <1>     mov eax, 2543h
+    72 0000006C CD41                <1>     int 41h
+    73                              <1> ;Print Start message
+    74 0000006E 488D15A60C0000      <1>     lea rdx, strtMsg
+    75 00000075 E89B080000          <1>     call print
+    76 0000007A E8BF080000          <1>     call printVersion.noCRLF
+    77 0000007F 488D15ED0C0000      <1>     lea rdx, cpyrtMsg
+    78 00000086 E88A080000          <1>     call print
+    79                              <1>     ;Allocate 512 bytes now
+    80 0000008B B800480000          <1>     mov eax, 4800h
+    81 00000090 BB20000000          <1>     mov ebx, fddSectorSize >> 4 
+    82 00000095 CD41                <1>     int 41h
+    83 00000097 0F8247060000        <1>     jc badMemoryExit
+    84 0000009D 488905CF0B0000      <1>     mov qword [xferBuffer], rax
+    85                              <1> 
+    86 000000A4 C605AC0B000001      <1>     mov byte [currentDisk], 1
+    87 000000AB E86C0B0000          <1>     call biosGetHardDiskParameters  ;Start by getting the FDD params for disk 1
+    88 000000B0 66813DA70B00000002  <1>     cmp word [sectorSize], fddSectorSize
+    89 000000B9 0F852E060000        <1>     jne badSectorExit
+    90 000000BF E894060000          <1>     call getPartitionFlags  ;Get the partition flags
+    91                              <1> 
+    92                              <1> mainLoop:
+    93 000000C4 E845080000          <1>     call printcrlf
+    94 000000C9 E840080000          <1>     call printcrlf
+    95 000000CE 488D15100E0000      <1>     lea rdx, mainPageMsg
+    96 000000D5 E83B080000          <1>     call print
+    97 000000DA 803D810B000001      <1>     cmp byte [numDisks], 1
+    98 000000E1 740C                <1>     je .singlefdisk
+    99 000000E3 488D15920E0000      <1>     lea rdx, mpOptionalMsg
+   100 000000EA E826080000          <1>     call print
+   101                              <1> .singlefdisk:
+   102 000000EF 488D153F0D0000      <1>     lea rdx, exitOptionMsg
+   103 000000F6 E81A080000          <1>     call print
+   104 000000FB E81D080000          <1>     call printPrompt    ;Now print the prompt
+   105                              <1> ;Now we input loop
+   106 00000100 B302                <1>     mov bl, 2
+   107 00000102 E8C4070000          <1>     call takeInput
+   108 00000107 803D610B000001      <1>     cmp byte [charsTyped], 1
+   109 0000010E 75B4                <1>     jne mainLoop    ;If the user didnt type 1 char, reprompt the user
+   110 00000110 E8F9070000          <1>     call printcrlf
+   111 00000115 8A05550B0000        <1>     mov al, byte [inputString]  ;Get the char typed
+   112 0000011B 3C31                <1>     cmp al, "1"
+   113 0000011D 744A                <1>     je createPtnMain
+   114 0000011F 3C32                <1>     cmp al, "2"
+   115 00000121 0F8477020000        <1>     je changeActivePtnMain
+   116 00000127 3C33                <1>     cmp al, "3"
+   117 00000129 0F849C030000        <1>     je deletePtnMain
+   118 0000012F 3C34                <1>     cmp al, "4"
+   119 00000131 0F84B6040000        <1>     je displayPtnInfoMain
+   120 00000137 803D240B000001      <1>     cmp byte [numDisks], 1
+   121 0000013E 7408                <1>     je .singleDiskOptions
+   122 00000140 3C35                <1>     cmp al, "5"
+   123 00000142 0F84C0040000        <1>     je selectDiskMain
+   124                              <1> .singleDiskOptions:
+   125 00000148 3C58                <1>     cmp al, "X"
+   126 0000014A 0F841B050000        <1>     je exit
+   127 00000150 3C78                <1>     cmp al, "x"
+   128 00000152 0F8413050000        <1>     je exit
+   129                              <1>     ;If we didnt get any valid options, go back again
+   130                              <1>     ;Prompt the user to make a valid selection
+   131 00000158 488D150D0D0000      <1>     lea rdx, selectValidOption
+   132 0000015F E8B1070000          <1>     call print
+   133 00000164 E95BFFFFFF          <1>     jmp mainLoop
+   134                              <1> 
+   135                              <1> 
+   136                              <1> createPtnMain:
+   137                              <1> ;Read the MBR for the selected Fixed Disk
+   138                              <1> ;If there is a discernable MBR, error and return to mainLoop
+   139                              <1> ;Else, go through the createPage
+   140 00000169 31D2                <1>     xor edx, edx    ;Read sector 0
+   141 0000016B E8CD060000          <1>     call sectorRead
+   142 00000170 0F8265050000        <1>     jc badReadExit
+   143                              <1>     ;Sector in buffer, now we check
+   144 00000176 488B1DF60A0000      <1>     mov rbx, qword [xferBuffer]
+   145 0000017D 0FB783FE010000      <1>     movzx eax, word [rbx + mbr.mbrSig]  ;Get this sig
+   146 00000184 663D55AA            <1>     cmp ax, 0AA55h  ;Usual
+   147 00000188 7406                <1>     je .mbrFound
+   148 0000018A 663DAA55            <1>     cmp ax, 055AAh  ;Unusual but we accept it
+   149 0000018E 756C                <1>     jne .createNewMBR
+   150                              <1> .mbrFound:
+   151                              <1> ;An MBR was found here. 
+   152                              <1> ;DOS can currently only be installed on the first partition. Thus we 
+   153                              <1> ; only check the first partition entry for a DOS signature. If one is 
+   154                              <1> ; found, we refuse to proceed.
+   155                              <1> ;We also refuse to use CHS. Set those entries to 0
+   156 00000190 53                  <1>     push rbx
+   157 00000191 E8C2050000          <1>     call getPartitionFlags  ;Now lets get some stats on the partition
+   158 00000196 5B                  <1>     pop rbx
+   159 00000197 803DCF0A000000      <1>     cmp byte [numValidPtn], 0   ;If no valid partitions, act like new MBR
+   160 0000019E 745C                <1>     je .createNewMBR
+   161 000001A0 8A83C2010000        <1>     mov al, byte [rbx + mbr.mbrEntry1 + mbrEntry.ptnType]
+   162 000001A6 3C01                <1>     cmp al, 01h
+   163 000001A8 7437                <1>     je .fatPtnDetected
+   164 000001AA 3C04                <1>     cmp al, 04
+   165 000001AC 7433                <1>     je .fatPtnDetected
+   166 000001AE 3C06                <1>     cmp al, 06
+   167 000001B0 742F                <1>     je .fatPtnDetected
+   168 000001B2 3C0B                <1>     cmp al, 0Bh
+   169 000001B4 742B                <1>     je .fatPtnDetected
+   170 000001B6 3C0C                <1>     cmp al, 0Ch
+   171 000001B8 7427                <1>     je .fatPtnDetected
+   172 000001BA 3C0E                <1>     cmp al, 0Eh
+   173 000001BC 7423                <1>     je .fatPtnDetected
+   174                              <1>     ;Here we have space available, take the data from the table
+   175                              <1>     ; put it into the variables and jump
+   176                              <1>     ;Since the ptn size isnt changing, CHS values can remain in situ
+   177 000001BE 8805A70A0000        <1>     mov byte [ptnType], al
+   178 000001C4 8B83C6010000        <1>     mov eax, dword [rbx + mbr.mbrEntry1 + mbrEntry.lbaStart]
+   179 000001CA 8905930A0000        <1>     mov dword [ptnStart], eax
+   180 000001D0 8B83CA010000        <1>     mov eax, dword [rbx + mbr.mbrEntry1 + mbrEntry.numSectors]
+   181 000001D6 89058B0A0000        <1>     mov dword [ptnSize], eax
+   182 000001DC E9F9000000          <1>     jmp .installPartition
+   183                              <1> .fatPtnDetected:
+   184 000001E1 E828070000          <1>     call printcrlf
+   185 000001E6 E823070000          <1>     call printcrlf
+   186 000001EB 488D15A90D0000      <1>     lea rdx, createPageBadMsg
+   187 000001F2 E81E070000          <1>     call print
+   188 000001F7 E9C8FEFFFF          <1>     jmp mainLoop
+   189                              <1> .createNewMBR:
+   190                              <1> ;Here we lay down a fresh MBR.
+   191                              <1> ;Prompt the user for their ptn size
+   192 000001FC 488D15BF0D0000      <1>     lea rdx, createPageMsg
+   193 00000203 E8FE050000          <1>     call getYNresponse  ;ZF=ZE => Y response, ZF=NZ => N response
+   194                              <1>     ;If the user responds Y, then we allocate the whole disk
+   195 00000208 752A                <1>     jnz .partialAllocation
+   196                              <1>     ;If here, start from "cylinder 1"
+   197 0000020A C7054F0A0000400000- <1>     mov dword [ptnStart], 40h
+   197 00000213 00                  <1>
+   198 00000214 8B053E0A0000        <1>     mov eax, dword [curDiskSize]
+   199 0000021A 89C3                <1>     mov ebx, eax
+   200 0000021C 81E33F000000        <1>     and ebx, 03Fh   ;Get the remainder over one cylinder size
+   201 00000222 29D8                <1>     sub eax, ebx    ;And round eax down
+   202 00000224 89053D0A0000        <1>     mov dword [ptnSize], eax
+   203                              <1>     ;Always produce ptn types 0Ch - FAT with LBA (technically FAT32)
+   204 0000022A E89C050000          <1>     call getPtnType
+   205 0000022F E990000000          <1>     jmp .copyMBR
+   206                              <1> .partialAllocation:
+   207 00000234 488D15D60D0000      <1>     lea rdx, createPage2Msg
+   208 0000023B E8D5060000          <1>     call print
+   209 00000240 E8AE060000          <1>     call printReturn
+   210                              <1> .paLp:
+   211 00000245 488D15060E0000      <1>     lea rdx, createPromptMsg
+   212 0000024C E8C4060000          <1>     call print
+   213 00000251 B303                <1>     mov bl, 3
+   214 00000253 E873060000          <1>     call takeInput
+   215 00000258 803D100A000001      <1>     cmp byte [charsTyped], 1    ;Repeat prompt if no chars typed (somehow)
+   216 0000025F 74E4                <1>     je .paLp 
+   217 00000261 803D080A000078      <1>     cmp byte [inputString], "x"
+   218 00000268 0F8456FEFFFF        <1>     je mainLoop
+   219 0000026E 803DFB09000058      <1>     cmp byte [inputString], "X"
+   220 00000275 0F8449FEFFFF        <1>     je mainLoop
+   221 0000027B 0FB60DED090000      <1>     movzx ecx, byte [charsTyped]    ;Get the chars types + 1
+   222 00000282 FFC9                <1>     dec ecx
+   223 00000284 8A25E6090000        <1>     mov ah, [inputString]
+   224 0000028A FFC9                <1>     dec ecx
+   225 0000028C 7406                <1>     jz .gotDigits
+   226 0000028E 8A05DD090000        <1>     mov al, [inputString + 1]
+   227                              <1> .gotDigits:
+   228                              <1> ;Now check the digits are ok
+   229                              <1> ;ah contains high digit, al contains low digit
+   230 00000294 E89B040000          <1>     call getValue
+   231 00000299 72AA                <1>     jc .paLp
+   232                              <1>     breakpoint
+   105 0000029B 6687DB              <2> xchg bx, bx
+   233                              <1>     ;eax has the percentage of the disk to use
+   234 0000029E 8B1DB4090000        <1>     mov ebx, dword [curDiskSize]    ;Get the disk size
+   235 000002A4 F7E3                <1>     mul ebx
+   236 000002A6 BB64000000          <1>     mov ebx, 100    ;Divide by 100
+   237 000002AB 31D2                <1>     xor edx, edx
+   238 000002AD F7F3                <1>     div ebx ;Get in eax the number of sectors to allocate rounded down
+   239 000002AF C705AA090000400000- <1>     mov dword [ptnStart], 64
+   239 000002B8 00                  <1>
+   240 000002B9 8905A8090000        <1>     mov dword [ptnSize], eax
+   241 000002BF E807050000          <1>     call getPtnType
+   242                              <1> .copyMBR:
+   243                              <1> ;Now we copy the MBR into the xferBuffer
+   244 000002C4 488D35E0110000      <1>     lea rsi, freshMBRcopy   ;Has Zeroed CHS fields
+   245 000002CB 488B3DA1090000      <1>     mov rdi, qword [xferBuffer]
+   246 000002D2 B940000000          <1>     mov ecx, 200h/8
+   247 000002D7 F348A5              <1>     rep movsq   ;Copy it over
+   248                              <1> .installPartition:
+   249 000002DA 488B1D92090000      <1>     mov rbx, qword [xferBuffer]
+   250 000002E1 8B057C090000        <1>     mov eax, dword [ptnStart]
+   251 000002E7 8983C6010000        <1>     mov dword [rbx + mbr.mbrEntry1 + mbrEntry.lbaStart], eax
+   252 000002ED 8B0574090000        <1>     mov eax, dword [ptnSize]
+   253 000002F3 8983CA010000        <1>     mov dword [rbx + mbr.mbrEntry1 + mbrEntry.numSectors], eax
+   254 000002F9 0FB6056B090000      <1>     movzx eax, byte [ptnType]
+   255 00000300 8883C2010000        <1>     mov byte [rbx + mbr.mbrEntry1 + mbrEntry.ptnType], al
+   256                              <1>     ;Finish by marking this partition as active, and clearing
+   257                              <1>     ; active flag from other partitions
+   258 00000306 C683BE01000080      <1>     mov byte [rbx + mbr.mbrEntry1 + mbrEntry.ptnAtrib], 80h
+   259 0000030D C683CE01000000      <1>     mov byte [rbx + mbr.mbrEntry2 + mbrEntry.ptnAtrib], 00h
+   260 00000314 C683DE01000000      <1>     mov byte [rbx + mbr.mbrEntry3 + mbrEntry.ptnAtrib], 00h
+   261 0000031B C683EE01000000      <1>     mov byte [rbx + mbr.mbrEntry4 + mbrEntry.ptnAtrib], 00h
+   262                              <1> 
+   263 00000322 31D2                <1>     xor edx, edx    ;Write sector 0 on the selected disk 
+   264 00000324 E83C050000          <1>     call sectorWrite
+   265 00000329 0F82A3030000        <1>     jc badWriteExit
+   266                              <1>     ;Now setup the partial VBR to the first sector of the partition
+   267                              <1>     ;Start by sanitising the Buffer
+   268 0000032F 488B3D3D090000      <1>     mov rdi, qword [xferBuffer]
+   269 00000336 31C0                <1>     xor eax, eax
+   270 00000338 B940000000          <1>     mov ecx, 200h/8
+   271 0000033D 57                  <1>     push rdi
+   272 0000033E F348AB              <1>     rep stosq
+   273 00000341 5F                  <1>     pop rdi
+   274 00000342 488D3524110000      <1>     lea rsi, partialVBR
+   275 00000349 B93E000000          <1>     mov ecx, partialVBRL
+   276 0000034E F3A4                <1>     rep movsb
+   277                              <1>     ;xferBuffer has the partial vbr in it now
+   278                              <1>     ;rbx points to it
+   279 00000350 8B050D090000        <1>     mov eax, dword [ptnStart]
+   280 00000356 89431C              <1>     mov dword [rbx + bpb.hiddSec], eax
+   281 00000359 8B0508090000        <1>     mov eax, dword [ptnSize]
+   282 0000035F A90000FFFF          <1>     test eax, 0FFFF0000h ;Check for high bits
+   283 00000364 750D                <1>     jnz .fat32Var
+   284 00000366 66894313            <1>     mov word [rbx + bpb.totSec16], ax
+   285 0000036A C7432000000000      <1>     mov dword [rbx + bpb.totSec32], 0
+   286 00000371 EB09                <1>     jmp short .writeVBR
+   287                              <1> .fat32Var:
+   288 00000373 66C743130000        <1>     mov word [rbx + bpb.totSec16], 0
+   289 00000379 894320              <1>     mov dword [rbx + bpb.totSec32], eax
+   290                              <1> .writeVBR:
+   291 0000037C 8B15E1080000        <1>     mov edx, dword [ptnStart]
+   292 00000382 E8DE040000          <1>     call sectorWrite
+   293 00000387 0F8245030000        <1>     jc badWriteExit
+   294                              <1> 
+   295 0000038D 488D15DF0C0000      <1>     lea rdx, createDoneMsg
+   296 00000394 E87C050000          <1>     call print
+   297 00000399 E926FDFFFF          <1>     jmp mainLoop
+   298                              <1> 
+   299                              <1> changeActivePtnMain:
+   300                              <1>     ;Now we check which partitions are online. 
+   301                              <1>     ; If no partitions are OK, prompt the bad MBR string and return to mainLoop
+   302                              <1>     ; If 1 partition is OK and Active, say Partition already active and ret.
+   303                              <1>     ; If 1 partition is OK and set active and say Partition already...
+   304                              <1>     ; If more than 1 ptn is OK, prompt which partition to set active
+   305 0000039E E8F3040000          <1>     call getMBRandCheckValid
+   306 000003A3 0F8232030000        <1>     jc badReadExit
+   307 000003A9 0F8515FDFFFF        <1>     jnz mainLoop
+   308 000003AF E8A7050000          <1>     call printPartitionStatusTable
+   309 000003B4 803DB208000000      <1>     cmp byte [numValidPtn], 0  ;If no partitions are valid, prompt to create
+   310 000003BB 750A                <1>     jnz .validPtn
+   311 000003BD E828050000          <1>     call printBadMBR
+   312 000003C2 E9FDFCFFFF          <1>     jmp mainLoop 
+   313                              <1> .validPtn:
+   314                              <1> ;At least 1 partition is ok.
+   315                              <1> ;If it is exactly 1 partition that is ok, check it is active too
+   316 000003C7 803D9F08000001      <1>     cmp byte [numValidPtn], 1
+   317 000003CE 7552                <1>     jne .manyPartitions
+   318                              <1>     ;Now we check if that one partition is active. If it is, write message.
+   319                              <1>     ;If it is not, set it to active and write message.
+   320                              <1>     ;First we find partition
+   321 000003D0 31C0                <1>     xor eax, eax  ;Start from partition 1
+   322                              <1> .ptnSearchLp:
+   323 000003D2 FFC0                <1>     inc eax
+   324 000003D4 E8DA030000          <1>     call checkPartitionValid
+   325 000003D9 74F7                <1>     jz .ptnSearchLp ;This can never infinite loop
+   326                              <1> ;eax has the partition number to check for being active
+   327                              <1> ;mbr_size is 16 bytes so shift eax left by 4
+   328 000003DB 89C1                <1>     mov ecx, eax    ;Save the number in ecx
+   329 000003DD FFC8                <1>     dec eax ;Turn eax into an offset
+   330 000003DF C1E004              <1>     shl eax, 4  ;Multiply by 16
+   331 000003E2 89C3                <1>     mov ebx, eax
+   332 000003E4 488B3588080000      <1>     mov rsi, qword [xferBuffer]
+   333 000003EB 488DB41EBE010000    <1>     lea rsi, qword [rsi + mbr.mbrEntry1 + rbx]
+   334                              <1>     ;rsi now points to the 1 partition
+   335 000003F3 F60680              <1>     test byte [rsi + mbrEntry.ptnAtrib], 80h    ;Is active bit set?
+   336 000003F6 7510                <1>     jnz .singleActive   ;If yes, skip setting
+   337 000003F8 800E80              <1>     or byte [rsi + mbrEntry.ptnAtrib], 80h  ;Else set the bit
+   338 000003FB 31D2                <1>     xor edx, edx
+   339 000003FD E863040000          <1>     call sectorWrite    ;Write that sector back to the disk
+   340 00000402 0F82CA020000        <1>     jc badWriteExit
+   341                              <1> .singleActive:
+   342                              <1> ;Use the partition number in ecx to fix message
+   343 00000408 80C930              <1>     or cl, "0"
+   344 0000040B 880D890C0000        <1>     mov byte [activeSinglePtnMsg.number], cl
+   345 00000411 488D15770C0000      <1>     lea rdx, activeSinglePtnMsg
+   346 00000418 E8F8040000          <1>     call print
+   347 0000041D E9A2FCFFFF          <1>     jmp mainLoop
+   348                              <1> 
+   349                              <1> .manyPartitions:
+   350                              <1> ;If multiple partitions are marked as active, claim invalid MBR
+   351 00000422 8A0544080000        <1>     mov al, byte [ptnFlags]
+   352 00000428 C0E804              <1>     shr al, 4   ;Bring the high nybble bitfield into low nybble
+   353 0000042B 3C01                <1>     cmp al, 1
+   354 0000042D 7416                <1>     je .manyValid
+   355 0000042F 3C02                <1>     cmp al, 2
+   356 00000431 7412                <1>     je .manyValid
+   357 00000433 3C04                <1>     cmp al, 4
+   358 00000435 740E                <1>     je .manyValid
+   359 00000437 3C08                <1>     cmp al, 8
+   360 00000439 740A                <1>     je .manyValid
+   361                              <1>     ;Multiple active partitions is a bad MBR. Exit and rebuild MBR
+   362 0000043B E8AA040000          <1>     call printBadMBR
+   363 00000440 E97FFCFFFF          <1>     jmp mainLoop
+   364                              <1> .manyValid:
+   365 00000445 488D15640C0000      <1>     lea rdx, activePromptMsg
+   366 0000044C E8C4040000          <1>     call print
+   367 00000451 B302                <1>     mov bl, 2
+   368 00000453 E873040000          <1>     call takeInput
+   369 00000458 803D1008000001      <1>     cmp byte [charsTyped], 1
+   370 0000045F 74E4                <1>     je .manyValid
+   371 00000461 0FB60508080000      <1>     movzx eax, byte [inputString]  ;Get the first byte
+   372 00000468 3C31                <1>     cmp al, "1"
+   373 0000046A 72D9                <1>     jb .manyValid
+   374 0000046C 3C34                <1>     cmp al, "4"
+   375 0000046E 77D5                <1>     ja .manyValid
+   376 00000470 88057B0C0000        <1>     mov byte [activePartitionSetMsg.number], al ;Set this as the new active ptn
+   377 00000476 2C31                <1>     sub al, "1"
+   378                              <1>     ;al is now a 0 based partition number
+   379 00000478 C1E004              <1>     shl eax, 4  ;Multiply by 16 to get number of bytes into the table
+   380 0000047B 488B35F1070000      <1>     mov rsi, qword [xferBuffer]
+   381 00000482 488DB6BE010000      <1>     lea rsi, qword [rsi + mbr.mbrEntry1]    ;Point to the first table entry
+   382 00000489 488D3C06            <1>     lea rdi, qword [rsi + rax]  ;Get the pointer to mark as active
+   383 0000048D B904000000          <1>     mov ecx, 4
+   384                              <1> .setActiveBytes:
+   385 00000492 E827000000          <1>     call .editActiveByte
+   386 00000497 FFC9                <1>     dec ecx
+   387 00000499 75F7                <1>     jnz .setActiveBytes
+   388                              <1>     
+   389 0000049B 488D15440C0000      <1>     lea rdx, activePartitionSetMsg
+   390 000004A2 E86E040000          <1>     call print
+   391                              <1>     ;Print the status table again to confirm what has happened
+   392 000004A7 E8AF040000          <1>     call printPartitionStatusTable
+   393 000004AC 31D2                <1>     xor edx, edx
+   394 000004AE E8B2030000          <1>     call sectorWrite    ;Write the sector to disk with updated 
+   395 000004B3 0F8219020000        <1>     jc badWriteExit
+   396 000004B9 E906FCFFFF          <1>     jmp mainLoop
+   397                              <1>     
+   398                              <1> .editActiveByte:
+   399                              <1> ;rsi -> current partition entry
+   400                              <1> ;rdi -> Entry to mark as active
+   401 000004BE C60600              <1>     mov byte [rsi + mbrEntry.ptnAtrib], 00h ;Always clear
+   402 000004C1 4839FE              <1>     cmp rsi, rdi
+   403                              <1>     retz
+    65                              <2> cret z
+    43                              <3> %%_base:
+    44                              <3> %assign baseVar %%_base-$$
+    45                              <3>  %ifdef retOff
+    46                              <3>  %if (baseVar - retOff <= 126) && (baseVar > retOff)
+    47                              <3>  %ifdef currSegVBase
+    48                              <3>  j%+1 short (retOff+currSegVBase)
+    49                              <3>  %else
+    50                              <3>  j%+1 short retOff
+    51                              <3>  %endif
+    52                              <3>  %else
+    53                              <3>  j%-1 short %%a
+    54                              <3>  return
+    55                              <3> %%a:
+    56                              <3>  %endif
+    57                              <3>  %else
+    58 000004C4 7501                <3>  j%-1 short %%a
+    59                              <3>  return
+    37                              <4> %%_ret:
+    38 000004C6 C3                  <4>  ret
+    39                              <4> %assign retOff %%_ret-$$
+    60                              <3> %%a:
+    61                              <3>  %endif
+   404 000004C7 C60680              <1>     mov byte [rsi + mbrEntry.ptnAtrib], 80h ;Else, set the bit
+   405                              <1>     return
+    37                              <2> %%_ret:
+    38 000004CA C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   406                              <1> 
+   407                              <1> deletePtnMain:
+   408                              <1> ;The user cannot delete an active partition UNLESS it is the last
+   409                              <1> ; partition left on the MBR
+   410 000004CB E8C6030000          <1>     call getMBRandCheckValid    ;Gets up to date info on our MBR
+   411 000004D0 0F8205020000        <1>     jc badReadExit
+   412 000004D6 0F85E8FBFFFF        <1>     jnz mainLoop
+   413 000004DC E87A040000          <1>     call printPartitionStatusTable
+   414 000004E1 803D8507000000      <1>     cmp byte [numValidPtn], 0
+   415 000004E8 750A                <1>     jne .notNewMBR
+   416 000004EA E8FB030000          <1>     call printBadMBR
+   417 000004EF E9D0FBFFFF          <1>     jmp mainLoop 
+   418                              <1> .notNewMBR:
+   419 000004F4 803D7207000001      <1>     cmp byte [numValidPtn], 1
+   420 000004FB 754D                <1>     jne .multiplePartitions
+   421                              <1>     ;Here we have a single partition, do we want to delete
+   422                              <1> .nukeMBR:
+   423 000004FD 488D15000C0000      <1>     lea rdx, deleteNukeMsg
+   424 00000504 E80C040000          <1>     call print
+   425 00000509 E8F8020000          <1>     call getYNresponse  ;ZF = ZE => Y, ZF = NZ => N
+   426 0000050E 0F85B0FBFFFF        <1>     jnz mainLoop
+   427                              <1>     ;Nuke the whole partition table
+   428 00000514 488B3D58070000      <1>     mov rdi, qword [xferBuffer]
+   429 0000051B 488DBFBE010000      <1>     lea rdi, qword [rdi + mbr.mbrEntry1]
+   430 00000522 B908000000          <1>     mov ecx, 8
+   431 00000527 31C0                <1>     xor eax, eax
+   432 00000529 F348AB              <1>     rep stosq
+   433 0000052C 31D2                <1>     xor edx, edx
+   434 0000052E E832030000          <1>     call sectorWrite
+   435 00000533 0F8299010000        <1>     jc badWriteExit
+   436 00000539 488D15EE0B0000      <1>     lea rdx, deleteNukeCompleteMsg
+   437 00000540 E8D0030000          <1>     call print
+   438 00000545 E97AFBFFFF          <1>     jmp mainLoop
+   439                              <1> .multiplePartitions: 
+   440                              <1> ;Now before we proceed, check if we have multiple active partitions.
+   441                              <1> ;If so, we jump to the nuke subroutine
+   442 0000054A 8A051C070000        <1>     mov al, byte [ptnFlags]
+   443 00000550 C0E804              <1>     shr al, 4
+   444 00000553 3C01                <1>     cmp al, 1
+   445 00000555 741A                <1>     je .multipleOk
+   446 00000557 3C02                <1>     cmp al, 2
+   447 00000559 7416                <1>     je .multipleOk
+   448 0000055B 3C04                <1>     cmp al, 4
+   449 0000055D 7412                <1>     je .multipleOk
+   450 0000055F 3C08                <1>     cmp al, 8
+   451 00000561 740E                <1>     je .multipleOk
+   452 00000563 488D15340C0000      <1>     lea rdx, deleteBadFoundMsg
+   453 0000056A E8A6030000          <1>     call print
+   454 0000056F EB8C                <1>     jmp short .nukeMBR
+   455                              <1> .multipleOk:
+   456 00000571 488D15D20B0000      <1>     lea rdx, deleteSelectMsg
+   457 00000578 E898030000          <1>     call print
+   458 0000057D B302                <1>     mov bl, 2
+   459 0000057F E847030000          <1>     call takeInput
+   460 00000584 803DE406000001      <1>     cmp byte [charsTyped], 1
+   461 0000058B 74BD                <1>     je .multiplePartitions
+   462 0000058D 0FB605DC060000      <1>     movzx eax, byte [inputString]  ;Get the first byte
+   463 00000594 3C31                <1>     cmp al, "1"
+   464 00000596 72B2                <1>     jb .multiplePartitions
+   465 00000598 3C34                <1>     cmp al, "4"
+   466 0000059A 77AE                <1>     ja .multiplePartitions
+   467 0000059C 88C3                <1>     mov bl, al
+   468 0000059E 2C31                <1>     sub al, "1"
+   469                              <1>     ;al is now a 0 based partition number
+   470 000005A0 C1E004              <1>     shl eax, 4  ;Multiply by 16 to get number of bytes into the table
+   471 000005A3 488B35C9060000      <1>     mov rsi, qword [xferBuffer]
+   472 000005AA 488DB406BE010000    <1>     lea rsi, qword [rsi + mbr.mbrEntry1 + rax]    ;Point to the entry we need
+   473 000005B2 F60680              <1>     test byte [rsi + mbrEntry.ptnAtrib], 80h
+   474 000005B5 7411                <1>     jz .okToDelete
+   475 000005B7 488D15BA0B0000      <1>     lea rdx, deleteCannotMsg
+   476 000005BE E852030000          <1>     call print
+   477 000005C3 E9FCFAFFFF          <1>     jmp mainLoop
+   478                              <1> .okToDelete:
+   479 000005C8 881DFD0B0000        <1>     mov byte [deleteOkMsg.number], bl
+   480 000005CE 31C0                <1>     xor eax, eax
+   481 000005D0 48AB                <1>     stosq
+   482 000005D2 48AB                <1>     stosq
+   483 000005D4 31D2                <1>     xor edx, edx
+   484 000005D6 E88A020000          <1>     call sectorWrite
+   485 000005DB 0F82F1000000        <1>     jc badWriteExit
+   486 000005E1 488D15D80B0000      <1>     lea rdx, deleteOkMsg
+   487 000005E8 E9D7FAFFFF          <1>     jmp mainLoop
+   488                              <1> 
+   489                              <1> displayPtnInfoMain:
+   490                              <1> ;This is done
+   491 000005ED E8A4020000          <1>     call getMBRandCheckValid
+   492 000005F2 0F82E3000000        <1>     jc badReadExit
+   493 000005F8 0F85C6FAFFFF        <1>     jnz mainLoop
+   494 000005FE E858030000          <1>     call printPartitionStatusTable
+   495 00000603 E9BCFAFFFF          <1>     jmp mainLoop
+   496                              <1> 
+   497                              <1> selectDiskMain:
+   498                              <1> ;We select the disk and also read its size and sector size into the variables
+   499                              <1> ;1) Say how many disks there are
+   500                              <1> ;2) Prompt the user to select a disk
+   501                              <1> ;3) Ensure it is a valid number
+   502                              <1> ;4) Set the disk number variable
+   503                              <1> ;5) Get the disk parameters
+   504                              <1> ;6) Exit
+   505                              <1> ;If al is greater than 8, then FDISK (for now), can only handle 8 hard disks
+   506 00000608 8A0554060000        <1>     mov al, byte [numDisks] ;Get the number of disks
+   507 0000060E 3C08                <1>     cmp al, 8
+   508 00000610 7602                <1>     jbe .proceed
+   509 00000612 B008                <1>     mov al, 8
+   510                              <1> .proceed:
+   511 00000614 0430                <1>     add al, "0" ;Convert to ASCII
+   512 00000616 8805CF0B0000        <1>     mov byte [selectNumber.number], al
+   513 0000061C 8805FF0B0000        <1>     mov byte [selectPrompt.number], al
+   514 00000622 488D15AE0B0000      <1>     lea rdx, selectNumber
+   515 00000629 E8E7020000          <1>     call print
+   516                              <1> .promptLoop:
+   517 0000062E 488D15CC0B0000      <1>     lea rdx, selectPrompt
+   518 00000635 E8DB020000          <1>     call print
+   519 0000063A B302                <1>     mov bl, 2
+   520 0000063C E88A020000          <1>     call takeInput
+   521 00000641 803D2706000001      <1>     cmp byte [charsTyped], 1
+   522 00000648 74E4                <1>     je .promptLoop
+   523 0000064A 0FB6051F060000      <1>     movzx eax, byte [inputString]  ;Get the first byte
+   524 00000651 3C31                <1>     cmp al, "1"
+   525 00000653 72D9                <1>     jb .promptLoop
+   526 00000655 3C38                <1>     cmp al, "8"
+   527 00000657 77D5                <1>     ja .promptLoop
+   528 00000659 2C30                <1>     sub al, "0" ;Get 1 based number 
+   529 0000065B 8805F6050000        <1>     mov byte [currentDisk], al  ;Change the current Disk value
+   530 00000661 E8B6050000          <1>     call biosGetHardDiskParameters  ;Now we get the FDD parameters.
+   531 00000666 E959FAFFFF          <1>     jmp mainLoop
+   532                              <1> 
+   533                              <1> exit:
+   534                              <1> ;In this case exit is done by ways of triple fault
+   535                              <1> ;To do this, we hook int43h to prevent the user from stopping this 
+   536                              <1> ; process and to link it directly to this the triple fault
+   537 0000066B F605E4050000FF      <1>     test byte [reboot], -1
+   538 00000672 750C                <1>     jnz .reboot
+   539 00000674 E898000000          <1>     call freeResources
+   540 00000679 B8004C0000          <1>     mov eax, 4C00h
+   541 0000067E CD41                <1>     int 41h
+   542                              <1> .reboot:
+   543 00000680 488D1521070000      <1>     lea rdx, exitMsg
+   544 00000687 B800090000          <1>     mov eax, 0900h
+   545 0000068C CD41                <1>     int 41h
+   546 0000068E 488D150E000000      <1>     lea rdx, .badInstruction
+   547 00000695 B843250000          <1>     mov eax, 2543h
+   548 0000069A CD41                <1>     int 41h
+   549 0000069C B800080000          <1>     mov eax, 0800h  ;Input no echo
+   550 000006A1 CD41                <1>     int 41h
+   551                              <1> .badInstruction:
+   552 000006A3 0F011D0E000000      <1>     lidt [.resetIDT] ;Triple fault the machine
+   553 000006AA 0F011507000000      <1>     lgdt [.resetIDT]
+   554 000006B1 31C0                <1>     xor eax, eax
+   555 000006B3 668EC8              <1>     mov cs, ax
+   556 000006B6 CD00                <1>     int 00h ;Call div by 0 to trigger reboot if not somehow failed yet
+   557                              <1> .resetIDT:
+   558 000006B8 0000                <1>     dw 0
+   559 000006BA 0000000000000000    <1>     dq 0
+   560                              <1> .ctrlCHandler:
+   561                              <1> ;If the reboot flag is set, kill the computer
+   562 000006C2 F6058D050000FF      <1>     test byte [reboot], -1
+   563 000006C9 75B5                <1>     jnz .reboot
+   564 000006CB E841000000          <1>     call freeResources
+   565 000006D0 F9                  <1>     stc ;Continue with the exit
+   566 000006D1 C3                  <1>     ret ;Return with CF set kills the task
+   567                              <1> 
+   568                              <1> badWriteExit:
+   569 000006D2 488D15F9FFFFFF      <1>     lea rdx, badWriteExit
+   570 000006D9 EB19                <1>     jmp short badPrint
+   571                              <1> badReadExit:
+   572 000006DB 488D15550D0000      <1>     lea rdx, badReadMsg
+   573 000006E2 EB10                <1>     jmp short badPrint
+   574                              <1> badMemoryExit:
+   575 000006E4 488D15BE0C0000      <1>     lea rdx, noMemoryMsg
+   576 000006EB EB07                <1>     jmp short badPrint
+   577                              <1> badSectorExit:
+   578 000006ED 488D15280D0000      <1>     lea rdx, badSectorMsg
+   579                              <1> badPrint:
+   580 000006F4 B409                <1>     mov ah, 09h
+   581 000006F6 CD41                <1>     int 41h
+   582                              <1> badExit:
+   583                              <1> ;If we need to reboot, reboot even after an error.
+   584 000006F8 F60557050000FF      <1>     test byte [reboot], -1
+   585 000006FF 0F857BFFFFFF        <1>     jnz exit.reboot
+   586 00000705 E807000000          <1>     call freeResources
+   587 0000070A B8FF4C0000          <1>     mov eax, 4CFFh  ;Exit bad
+   588 0000070F CD41                <1>     int 41h
+   589                              <1> 
+   590                              <1> freeResources:
+   591                              <1> ;Any memory taken from DOS, free it here
+   592 00000711 48813D570500000000- <1>     cmp qword [xferBuffer], 0
+   592 0000071A 0000                <1>
+   593                              <1>     retz
+    65                              <2> cret z
+    43                              <3> %%_base:
+    44                              <3> %assign baseVar %%_base-$$
+    45                              <3>  %ifdef retOff
+    46                              <3>  %if (baseVar - retOff <= 126) && (baseVar > retOff)
+    47                              <3>  %ifdef currSegVBase
+    48                              <3>  j%+1 short (retOff+currSegVBase)
+    49                              <3>  %else
+    50                              <3>  j%+1 short retOff
+    51                              <3>  %endif
+    52                              <3>  %else
+    53 0000071C 7501                <3>  j%-1 short %%a
+    54                              <3>  return
+    37                              <4> %%_ret:
+    38 0000071E C3                  <4>  ret
+    39                              <4> %assign retOff %%_ret-$$
+    55                              <3> %%a:
+    56                              <3>  %endif
+    57                              <3>  %else
+    58                              <3>  j%-1 short %%a
+    59                              <3>  return
+    60                              <3> %%a:
+    61                              <3>  %endif
+   594 0000071F 50                  <1>     push rax
+   595 00000720 4150                <1>     push r8
+   596 00000722 4C8B054A050000      <1>     mov r8, qword [xferBuffer]
+   597 00000729 B800490000          <1>     mov eax, 4900h
+   598 0000072E CD41                <1>     int 41h
+   599 00000730 4158                <1>     pop r8
+   600 00000732 58                  <1>     pop rax
+   601                              <1>     return
+    37                              <2> %%_ret:
+    38 00000733 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    33                                  %include "./Utils/FDISK/Source/fdskUtil.asm"
+    34                              <1> 
+    35                              <1> ;General Utility functions
+    36                              <1> getValue:
+    37                              <1> ;Input: ah = Upper ASCII digit
+    38                              <1> ;       al = Lower ASCII digit
+    39                              <1> ;Output: eax = Number typed in (between 0 and 99)
+    40                              <1> ;           If CF=CY, error
+    41 00000734 3C39                <1>     cmp al, "9"
+    42 00000736 771E                <1>     ja .bad
+    43 00000738 3C30                <1>     cmp al, "0"
+    44 0000073A 721A                <1>     jb .bad
+    45 0000073C 80FC39              <1>     cmp ah, "9"
+    46 0000073F 7715                <1>     ja .bad
+    47 00000741 80FC30              <1>     cmp ah, "0"
+    48 00000744 7210                <1>     jb .bad
+    49                              <1> ;Digits are valid, now proceed
+    50 00000746 0FB6C8              <1>     movzx ecx, al
+    51 00000749 0FB6C4              <1>     movzx eax, ah
+    52 0000074C B30A                <1>     mov bl, 10
+    53 0000074E F6E3                <1>     mul bl  ;Multiply al with bl, result in al
+    54 00000750 00C8                <1>     add al, cl
+    55 00000752 0FB6C0              <1>     movzx eax, al
+    56                              <1>     return
+    37                              <2> %%_ret:
+    38 00000755 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    57                              <1> .bad:
+    58 00000756 F9                  <1>     stc
+    59                              <1>     return
+    37                              <2> %%_ret:
+    38 00000757 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    60                              <1> 
+    61                              <1> getPartitionFlags:
+    62                              <1> ;Gets the partition flags ptnFlags and numValidPtn
+    63 00000758 488B3514050000      <1>     mov rsi, qword [xferBuffer]
+    64 0000075F 488DB6BE010000      <1>     lea rsi, qword [rsi + mbr.mbrEntry1]
+    65 00000766 C605FF04000000      <1>     mov byte [ptnFlags], 0  ;Clear the bitfield
+    66 0000076D C605F904000000      <1>     mov byte [numValidPtn], 0   ;And this variable
+    67 00000774 B301                <1>     mov bl, 1
+    68 00000776 B904000000          <1>     mov ecx, 4  ;Scan 4 MBR table entries
+    69                              <1> .ptnScanLoop:
+    70 0000077B E805000000          <1>     call .ptnSigSet
+    71 00000780 FFC9                <1>     dec ecx
+    72 00000782 75F7                <1>     jnz .ptnScanLoop
+    73                              <1>     return
+    37                              <2> %%_ret:
+    38 00000784 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    74                              <1> 
+    75                              <1> .ptnSigSet:
+    76                              <1> ;Input: bl = On first call, with inital value of mask
+    77 00000785 8A4604              <1>     mov al, byte [rsi + mbrEntry.ptnType]
+    78 00000788 A8FF                <1>     test al, -1
+    79 0000078A 741D                <1>     jz .pssNo
+    80 0000078C 081DDA040000        <1>     or byte [ptnFlags], bl
+    81 00000792 FE05D5040000        <1>     inc byte [numValidPtn]
+    82 00000798 F60680              <1>     test byte byte [rsi + mbrEntry.ptnAtrib], 80h
+    83 0000079B 740C                <1>     jz .pssNo
+    84 0000079D C0E304              <1>     shl bl, 4   ;Move bit to high nybble
+    85 000007A0 081DC6040000        <1>     or byte [ptnFlags], bl
+    86 000007A6 C0EB04              <1>     shr bl, 4   ;Bring it back low
+    87                              <1> .pssNo:
+    88 000007A9 4881C610000000      <1>     add rsi, mbrEntry_size
+    89 000007B0 D0E3                <1>     shl bl, 1
+    90                              <1>     return
+    37                              <2> %%_ret:
+    38 000007B2 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    91                              <1> 
+    92                              <1> checkPartitionValid:
+    93                              <1> ;Checks if the given partition number is valid or invalid
+    94                              <1> ;Input: eax = Partition Number 1-4 
+    95                              <1> ;Output: ZF = ZE if value in eax not valid
+    96                              <1> ;        ZF = NZ if value in eax is valid
+    97 000007B3 50                  <1>     push rax
+    98 000007B4 51                  <1>     push rcx
+    99 000007B5 FEC8                <1>     dec al  ;Turn into a zero based number (for shift factor)
+   100 000007B7 88C1                <1>     mov cl, al  
+   101 000007B9 B001                <1>     mov al, 1   ;Set mask bit
+   102 000007BB D2E0                <1>     shl al, cl  ;Shift the mask bit into the right place
+   103 000007BD 8A0DA9040000        <1>     mov cl, byte [ptnFlags] ;Get the flags
+   104 000007C3 80E10F              <1>     and cl, 0Fh ;Keep only the low nybble
+   105 000007C6 20C1                <1>     and cl, al  ;Set the Status Flags. If this is zero, ptn not active
+   106 000007C8 59                  <1>     pop rcx
+   107 000007C9 58                  <1>     pop rax
+   108                              <1>     return
+    37                              <2> %%_ret:
+    38 000007CA C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   109                              <1> 
+   110                              <1> getPtnType:
+   111                              <1> ;Based on ptnStart and ptnSize, puts the right type of partition
+   112                              <1> ;Since we can only make these partitions (for now) at sector 64
+   113                              <1> ; of the disk, we can always assume that ptnStart is at 64
+   114                              <1> ;If size < 4MB, FAT12, use 01h
+   115                              <1> ;If size < 65,536 sectors, use 04h
+   116                              <1> ;If size < 1048576 sectors (512Mb), use 06h
+   117                              <1> ;Else, use 0Ch
+   118 000007CB 8B0596040000        <1>     mov eax, dword [ptnSize]
+   119 000007D1 3DEA1F0000          <1>     cmp eax, 4085*2
+   120 000007D6 7216                <1>     jb .fat12
+   121 000007D8 3D00000100          <1>     cmp eax, 65536
+   122 000007DD 7217                <1>     jb .fat16
+   123 000007DF 3D00001000          <1>     cmp eax, 1048576
+   124 000007E4 7218                <1>     jb .fat16b
+   125 000007E6 C6057E0400000C      <1>     mov byte [ptnType], 0Ch
+   126                              <1>     return
+    37                              <2> %%_ret:
+    38 000007ED C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   127                              <1> .fat12:
+   128 000007EE C6057604000001      <1>     mov byte [ptnType], 01h
+   129                              <1>     return
+    37                              <2> %%_ret:
+    38 000007F5 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   130                              <1> .fat16:
+   131 000007F6 C6056E04000004      <1>     mov byte [ptnType], 04h
+   132                              <1>     return
+    37                              <2> %%_ret:
+    38 000007FD C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   133                              <1> .fat16b:
+   134 000007FE C6056604000006      <1>     mov byte [ptnType], 06h
+   135                              <1>     return
+    37                              <2> %%_ret:
+    38 00000805 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   136                              <1> 
+   137                              <1> 
+   138                              <1> getYNresponse:
+   139                              <1> ;Prints a message, and waits for input and verfies it is Y or N.
+   140                              <1> ;Input: rdx = String to print
+   141                              <1> ;Return: ZF = ZE => Y
+   142                              <1> ;        ZF = NZ => N
+   143 00000806 52                  <1>     push rdx    ;Save the input string ptr
+   144                              <1> .ep:
+   145 00000807 E809010000          <1>     call print
+   146 0000080C B302                <1>     mov bl, 2
+   147 0000080E E8B8000000          <1>     call takeInput
+   148 00000813 803D5504000001      <1>     cmp byte [charsTyped], 1
+   149 0000081A 75EB                <1>     jne .ep
+   150 0000081C 0FB6054D040000      <1>     movzx eax, byte [inputString]
+   151 00000823 3C79                <1>     cmp al, "y"
+   152 00000825 740F                <1>     je .yResponse
+   153 00000827 3C59                <1>     cmp al, "Y"
+   154 00000829 740B                <1>     je .yResponse
+   155 0000082B 3C6E                <1>     cmp al, "n"
+   156 0000082D 7409                <1>     je .nResponse
+   157 0000082F 3C4E                <1>     cmp al, "N"
+   158 00000831 7405                <1>     je .nResponse
+   159 00000833 5A                  <1>     pop rdx
+   160 00000834 EBD0                <1>     jmp short getYNresponse
+   161                              <1> .yResponse:
+   162 00000836 5A                  <1>     pop rdx
+   163                              <1>     return
+    37                              <2> %%_ret:
+    38 00000837 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   164                              <1> .nResponse:
+   165 00000838 5A                  <1>     pop rdx
+   166 00000839 4839D0              <1>     cmp rax, rdx    ;These cannot be equal at all
+   167                              <1>     return
+    37                              <2> %%_ret:
+    38 0000083C C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   168                              <1> 
+   169                              <1> 
+   170                              <1> sectorRead:
+   171                              <1> ;Input: rdx = Sector to read from disk into the buffer
+   172 0000083D 48891537040000      <1>     mov qword [sectorNum], rdx
+   173 00000844 51                  <1>     push rcx
+   174 00000845 B903030000          <1>     mov ecx, 0303h  ;ch=number of "resets", cl = Number of retrys
+   175                              <1> .tryAgain:
+   176 0000084A E879030000          <1>     call biosReadSector
+   177 0000084F 7312                <1>     jnc .exit
+   178 00000851 FEC9                <1>     dec cl  ;One less retry
+   179 00000853 75F5                <1>     jnz .tryAgain
+   180 00000855 E8B4030000          <1>     call biosResetHardDisk
+   181 0000085A 7207                <1>     jc .exit    ;If this fails, just fail automatically
+   182 0000085C B103                <1>     mov cl, 3   ;Reset retry count
+   183 0000085E FECD                <1>     dec ch      ;One less reset check
+   184 00000860 75E8                <1>     jnz .tryAgain
+   185 00000862 F9                  <1>     stc
+   186                              <1> .exit:
+   187 00000863 59                  <1>     pop rcx
+   188                              <1>     return
+    37                              <2> %%_ret:
+    38 00000864 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   189                              <1> 
+   190                              <1> sectorWrite:
+   191                              <1> ;Input: rdx = Sector to write to disk from the buffer
+   192 00000865 4889150F040000      <1>     mov qword [sectorNum], rdx
+   193 0000086C 51                  <1>     push rcx
+   194 0000086D B903030000          <1>     mov ecx, 0303h  ;ch=number of "resets", cl = Number of retrys
+   195                              <1> .tryAgain:
+   196 00000872 E874030000          <1>     call biosWriteSector
+   197 00000877 7314                <1>     jnc .exitGood
+   198 00000879 FEC9                <1>     dec cl  ;One less retry
+   199 0000087B 75F5                <1>     jnz .tryAgain
+   200 0000087D E88C030000          <1>     call biosResetHardDisk
+   201 00000882 7207                <1>     jc .exit    ;If this fails, just fail automatically
+   202 00000884 B103                <1>     mov cl, 3   ;Reset retry count
+   203 00000886 FECD                <1>     dec ch      ;One less reset check
+   204 00000888 75E8                <1>     jnz .tryAgain
+   205 0000088A F9                  <1>     stc
+   206                              <1> .exit:
+   207 0000088B 59                  <1>     pop rcx
+   208                              <1>     return
+    37                              <2> %%_ret:
+    38 0000088C C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   209                              <1> .exitGood:
+   210 0000088D C605C2030000FF      <1>     mov byte [reboot], -1   ;Successful write => Need to reboot now
+   211 00000894 EBF5                <1>     jmp short .exit
+   212                              <1> 
+   213                              <1> getMBRandCheckValid:
+   214                              <1> ;If CF=CY, error, exit. Error reading disk
+   215                              <1> ;If CF=NC and ZF=ZE, Valid MBR
+   216                              <1> ;If CF=CY and ZF=NZ, Invalid or missing MBR, return to mainLoop
+   217                              <1> ;Updates the partition info if all ok!
+   218 00000896 31D2                <1>     xor edx, edx    ;Read sector 0
+   219 00000898 E8A0FFFFFF          <1>     call sectorRead
+   220                              <1>     retc
+    81                              <2> cret c
+    43                              <3> %%_base:
+    44                              <3> %assign baseVar %%_base-$$
+    45                              <3>  %ifdef retOff
+    46                              <3>  %if (baseVar - retOff <= 126) && (baseVar > retOff)
+    47                              <3>  %ifdef currSegVBase
+    48                              <3>  j%+1 short (retOff+currSegVBase)
+    49                              <3>  %else
+    50 0000089D 72(8C)              <3>  j%+1 short retOff
+    51                              <3>  %endif
+    52                              <3>  %else
+    53                              <3>  j%-1 short %%a
+    54                              <3>  return
+    55                              <3> %%a:
+    56                              <3>  %endif
+    57                              <3>  %else
+    58                              <3>  j%-1 short %%a
+    59                              <3>  return
+    60                              <3> %%a:
+    61                              <3>  %endif
+   221 0000089F 488B35CD030000      <1>     mov rsi, qword [xferBuffer]
+   222 000008A6 0FB786FE010000      <1>     movzx eax, word [rsi + mbr.mbrSig]  ;Get this sig
+   223 000008AD 663D55AA            <1>     cmp ax, 0AA55h  ;Usual
+   224 000008B1 7410                <1>     je .greatMbr
+   225 000008B3 663DAA55            <1>     cmp ax, 055AAh  ;Unusual but we accept it
+   226 000008B7 740A                <1>     je .greatMbr
+   227                              <1>     ;Bad Disk error, return to main menu
+   228 000008B9 E82C000000          <1>     call printBadMBR
+   229 000008BE 31C0                <1>     xor eax, eax
+   230 000008C0 FFC0                <1>     inc eax
+   231                              <1>     return
+    37                              <2> %%_ret:
+    38 000008C2 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   232                              <1> .greatMbr:
+   233 000008C3 9C                  <1>     pushf
+   234 000008C4 E88FFEFFFF          <1>     call getPartitionFlags  ;Now update the partition detail flags
+   235 000008C9 9D                  <1>     popf
+   236                              <1>     return
+    37                              <2> %%_ret:
+    38 000008CA C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   237                              <1>     
+   238                              <1> takeInput:
+   239                              <1> ;Input: bl = Number of chars to input
+   240                              <1> ;Simply wraps the call to the buffered input function and sanitises the cmdline
+   241 000008CB 31C0                <1>     xor eax, eax
+   242 000008CD 89059B030000        <1>     mov dword [cmdLine], eax
+   243 000008D3 880599030000        <1>     mov byte [cmdLine + 4], al
+   244 000008D9 488D158E030000      <1>     lea rdx, cmdLine
+   245 000008E0 881A                <1>     mov byte [rdx], bl   ;Read 1 char (plus CR)
+   246 000008E2 B8000A0000          <1>     mov eax, 0A00h  ;Buffered Input
+   247 000008E7 CD41                <1>     int 41h
+   248                              <1>     return
+    37                              <2> %%_ret:
+    38 000008E9 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   249                              <1> 
+   250                              <1> 
+   251                              <1> ;Print Util Functions
+   252                              <1> printBadMBR:
+   253 000008EA 488D15DB0A0000      <1>     lea rdx, invalidMBRMsg
+   254 000008F1 EB22                <1>     jmp short print
+   255                              <1> printReturn:
+   256 000008F3 488D154D050000      <1>     lea rdx, retMsg
+   257 000008FA EB19                <1>     jmp short print
+   258                              <1> printExit:
+   259 000008FC 488D15A5040000      <1>     lea rdx, exitMsg
+   260 00000903 EB10                <1>     jmp short print
+   261                              <1> printHelp:
+   262 00000905 488D150A050000      <1>     lea rdx, helpMsg
+   263 0000090C EB07                <1>     jmp short print
+   264                              <1> printcrlf:
+   265 0000090E 488D156E030000      <1>     lea rdx, crlf
+   266                              <1> print:
+   267 00000915 B800090000          <1>     mov eax, 0900h
+   268 0000091A CD41                <1>     int 41h
+   269                              <1>     return
+    37                              <2> %%_ret:
+    38 0000091C C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   270                              <1> 
+   271                              <1> printPrompt:
+   272 0000091D E8ECFFFFFF          <1>     call printcrlf
+   273 00000922 8A052F030000        <1>     mov al, byte [currentDisk]
+   274 00000928 0430                <1>     add al, "0" ;Convert to ASCII digit
+   275 0000092A 8805E2040000        <1>     mov byte [drvNum], al
+   276 00000930 488D15D0040000      <1>     lea rdx, prompt
+   277 00000937 EBDC                <1>     jmp short print
+   278                              <1> 
+   279                              <1> printVersion:
+   280 00000939 E8D0FFFFFF          <1>     call printcrlf
+   281                              <1> .noCRLF:
+   282 0000093E B430                <1>     mov ah, 30h ;Get version numbers, al = Major, ah = Minor
+   283 00000940 CD41                <1>     int 41h
+   284 00000942 50                  <1>     push rax
+   285 00000943 0FB6C0              <1>     movzx eax, al
+   286 00000946 E883010000          <1>     call printDecimalWord
+   287 0000094B B22E                <1>     mov dl, "."
+   288 0000094D B402                <1>     mov ah, 02h
+   289 0000094F CD41                <1>     int 41h
+   290 00000951 58                  <1>     pop rax
+   291 00000952 0FB6C4              <1>     movzx eax, ah
+   292 00000955 E874010000          <1>     call printDecimalWord
+   293                              <1>     return
+    37                              <2> %%_ret:
+    38 0000095A C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   294                              <1> 
+   295                              <1> printPartitionStatusTable:
+   296                              <1> ;xferBuffer must have the MBR we are acting on loaded
+   297                              <1> ;Start by cleaning the string
+   298 0000095B E8AEFFFFFF          <1>     call printcrlf
+   299 00000960 E8A9FFFFFF          <1>     call printcrlf
+   300 00000965 488D15BA080000      <1>     lea rdx, partTitle
+   301 0000096C E8A4FFFFFF          <1>     call print
+   302                              <1> 
+   303 00000971 488B35FB020000      <1>     mov rsi, qword [xferBuffer]
+   304 00000978 488DB6BE010000      <1>     lea rsi, qword [rsi + mbr.mbrEntry1]    ;Goto first table entry
+   305 0000097F 807E0400            <1>     cmp byte [rsi + mbrEntry.ptnType], 00
+   306 00000983 7407                <1>     je .second
+   307 00000985 B301                <1>     mov bl, 1
+   308 00000987 E88B000000          <1>     call .fillString
+   309                              <1> .second:
+   310 0000098C 4881C610000000      <1>     add rsi, mbrEntry_size  ;Goto next entry
+   311 00000993 807E0400            <1>     cmp byte [rsi + mbrEntry.ptnType], 00
+   312 00000997 7407                <1>     je .third
+   313 00000999 B302                <1>     mov bl, 2
+   314 0000099B E877000000          <1>     call .fillString
+   315                              <1> .third:
+   316 000009A0 4881C610000000      <1>     add rsi, mbrEntry_size  ;Goto next entry
+   317 000009A7 807E0400            <1>     cmp byte [rsi + mbrEntry.ptnType], 00
+   318 000009AB 7407                <1>     je .fourth
+   319 000009AD B303                <1>     mov bl, 3
+   320 000009AF E863000000          <1>     call .fillString
+   321                              <1> .fourth:
+   322 000009B4 4881C610000000      <1>     add rsi, mbrEntry_size  ;Goto next entry
+   323 000009BB 807E0400            <1>     cmp byte [rsi + mbrEntry.ptnType], 00
+   324 000009BF 7407                <1>     je .exit
+   325 000009C1 B304                <1>     mov bl, 4
+   326 000009C3 E84F000000          <1>     call .fillString
+   327                              <1> .exit:
+   328 000009C8 488D3D3B090000      <1>     lea rdi, totalSpaceMsg.sizeCount
+   329 000009CF 48B820202020202020- <1>     mov rax, "        "
+   329 000009D8 20                  <1>
+   330 000009D9 57                  <1>     push rdi
+   331 000009DA 48AB                <1>     stosq
+   332 000009DC 5F                  <1>     pop rdi
+   333 000009DD 8B0575020000        <1>     mov eax, dword [curDiskSize]    ;Get the current disk size
+   334 000009E3 FFC0                <1>     inc eax
+   335 000009E5 E8E4000000          <1>     call printDecimalWord
+   336                              <1> 
+   337 000009EA 488D3D38090000      <1>     lea rdi, totalSpaceMsg.sectorCount
+   338 000009F1 B820202020          <1>     mov eax, "    "
+   339 000009F6 57                  <1>     push rdi
+   340 000009F7 AB                  <1>     stosd
+   341 000009F8 5F                  <1>     pop rdi
+   342 000009F9 0FB70560020000      <1>     movzx eax, word [sectorSize]
+   343 00000A00 E8C9000000          <1>     call printDecimalWord
+   344                              <1> 
+   345 00000A05 488D15B5080000      <1>     lea rdx, totalSpaceMsg
+   346 00000A0C E804FFFFFF          <1>     call print
+   347 00000A11 E8F8FEFFFF          <1>     call printcrlf
+   348                              <1>     return
+    37                              <2> %%_ret:
+    38 00000A16 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   349                              <1> 
+   350                              <1> .fillString:
+   351                              <1> ;Input:
+   352                              <1> ; bl = Partition number (number 1-4)
+   353                              <1> ; rsi -> mbr entry to write the string for
+   354 00000A17 488D3D6F080000      <1>     lea rdi, partString
+   355 00000A1E B020                <1>     mov al, SPC ;Fill the string with space characters
+   356 00000A20 B931000000          <1>     mov ecx, partStringL
+   357 00000A25 F3AA                <1>     rep stosb   ;Cleanse the string
+   358                              <1>     
+   359 00000A27 80C330              <1>     add bl, "0"
+   360 00000A2A 881D61080000        <1>     mov byte [partString.ptnNum], bl
+   361 00000A30 F60680              <1>     test byte [rsi + mbrEntry.ptnAtrib], 80h
+   362 00000A33 7407                <1>     jz .notActive
+   363 00000A35 C6055E08000041      <1>     mov byte [partString.ptnSts], "A"
+   364                              <1> .notActive:
+   365                              <1> ;01h is FAT12
+   366                              <1> ;04h, 06h and 0Eh are FAT16
+   367                              <1> ;0Bh and 0Ch are FAT32 
+   368 00000A3C 488D3D5B080000      <1>     lea rdi, partString.ptnFS   ;Point to the FS part
+   369 00000A43 8A4604              <1>     mov al, byte [rsi + mbrEntry.ptnType]   ;Get the type
+   370 00000A46 3C01                <1>     cmp al, 01
+   371 00000A48 7424                <1>     je .fat12
+   372 00000A4A 3C04                <1>     cmp al, 04h
+   373 00000A4C 742A                <1>     je .fat16
+   374 00000A4E 3C06                <1>     cmp al, 06h
+   375 00000A50 7426                <1>     je .fat16
+   376 00000A52 3C0E                <1>     cmp al, 0Eh
+   377 00000A54 7422                <1>     je .fat16
+   378 00000A56 3C0B                <1>     cmp al, 0Bh
+   379 00000A58 7428                <1>     je .fat32
+   380 00000A5A 3C0C                <1>     cmp al, 0Ch
+   381 00000A5C 7424                <1>     je .fat32
+   382                              <1>     ;Else we print the number
+   383 00000A5E E8DB000000          <1>     call getHexTwoBytes
+   384 00000A63 86C4                <1>     xchg al, ah
+   385 00000A65 AA                  <1>     stosb
+   386 00000A66 88E0                <1>     mov al, ah
+   387 00000A68 AA                  <1>     stosb
+   388 00000A69 B468                <1>     mov ah, "h"
+   389 00000A6B AA                  <1>     stosb
+   390 00000A6C EB1F                <1>     jmp short .fatCont
+   391                              <1> .fat12:
+   392 00000A6E 56                  <1>     push rsi
+   393 00000A6F 488D35F3080000      <1>     lea rsi, fat12String
+   394 00000A76 EB12                <1>     jmp short .fatCmn
+   395                              <1> .fat16:
+   396 00000A78 56                  <1>     push rsi
+   397 00000A79 488D35EE080000      <1>     lea rsi, fat16String
+   398 00000A80 EB08                <1>     jmp short .fatCmn
+   399                              <1> .fat32:
+   400 00000A82 56                  <1>     push rsi
+   401 00000A83 488D35E9080000      <1>     lea rsi, fat32String
+   402                              <1> .fatCmn:
+   403 00000A8A A5                  <1>     movsd
+   404 00000A8B A4                  <1>     movsb
+   405 00000A8C 5E                  <1>     pop rsi
+   406                              <1> .fatCont:
+   407 00000A8D 8B4608              <1>     mov eax, dword [rsi + mbrEntry.lbaStart]
+   408 00000A90 488D3D0D080000      <1>     lea rdi, partString.ptnStart
+   409 00000A97 50                  <1>     push rax
+   410 00000A98 E831000000          <1>     call printDecimalWord
+   411 00000A9D 58                  <1>     pop rax
+   412 00000A9E 8B5E0C              <1>     mov ebx, dword [rsi + mbrEntry.numSectors]
+   413 00000AA1 01D8                <1>     add eax, ebx
+   414 00000AA3 FFC8                <1>     dec eax ;Account for sector 0
+   415 00000AA5 488D3D01080000      <1>     lea rdi, partString.ptnEnd
+   416 00000AAC 53                  <1>     push rbx
+   417 00000AAD E81C000000          <1>     call printDecimalWord
+   418 00000AB2 5B                  <1>     pop rbx
+   419 00000AB3 89D8                <1>     mov eax, ebx
+   420 00000AB5 488D3DFA070000      <1>     lea rdi, partString.ptnSize
+   421 00000ABC E80D000000          <1>     call printDecimalWord
+   422                              <1> 
+   423 00000AC1 488D15C5070000      <1>     lea rdx, partString
+   424 00000AC8 E848FEFFFF          <1>     call print
+   425                              <1>     return
+    37                              <2> %%_ret:
+    38 00000ACD C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   426                              <1> 
+   427                              <1> 
+   428                              <1> 
+   429                              <1> printDecimalWord:
+   430                              <1> ;Takes the qword in eax and prints its decimal representation
+   431                              <1> ;Result placed at [rdi]
+   432 00000ACE 56                  <1>     push rsi
+   433 00000ACF 31C9                <1>     xor ecx, ecx
+   434 00000AD1 31DB                <1>     xor ebx, ebx    ;Store upper 8 nybbles here
+   435 00000AD3 85C0                <1>     test eax, eax
+   436 00000AD5 750C                <1>     jnz .notZero
+   437 00000AD7 B930000000          <1>     mov ecx, "0"
+   438 00000ADC BD01000000          <1>     mov ebp, 1  ;Print one digit
+   439 00000AE1 EB3E                <1>     jmp short .dpfb2
+   440                              <1> .notZero:
+   441 00000AE3 31ED                <1>     xor ebp, ebp  ;Use bp as #of digits counter
+   442 00000AE5 BE0A000000          <1>     mov esi, 0Ah  ;Divide by 10
+   443                              <1> .dpfb0:
+   444 00000AEA FFC5                <1>     inc ebp
+   445 00000AEC 81FD08000000        <1>     cmp ebp, 8
+   446 00000AF2 7206                <1>     jb .dpfb00
+   447 00000AF4 48C1E308            <1>     shl rbx, 8    ;Space for next nybble
+   448 00000AF8 EB04                <1>     jmp short .dpfb01
+   449                              <1> .dpfb00:
+   450 00000AFA 48C1E108            <1>     shl rcx, 8    ;Space for next nybble
+   451                              <1> .dpfb01:
+   452 00000AFE 31D2                <1>     xor edx, edx
+   453 00000B00 48F7F6              <1>     div rsi
+   454 00000B03 80C230              <1>     add dl, '0'
+   455 00000B06 80FA39              <1>     cmp dl, '9'
+   456 00000B09 7603                <1>     jbe .dpfb1
+   457 00000B0B 80C207              <1>     add dl, 'A'-'0'-10
+   458                              <1> .dpfb1:
+   459 00000B0E 81FD08000000        <1>     cmp ebp, 8
+   460 00000B14 7204                <1>     jb .dpfb10
+   461 00000B16 88D3                <1>     mov bl, dl ;Add the bottom bits
+   462 00000B18 EB02                <1>     jmp short .dpfb11
+   463                              <1> .dpfb10:
+   464 00000B1A 88D1                <1>     mov cl, dl    ;Save remainder byte
+   465                              <1> .dpfb11:
+   466 00000B1C 4885C0              <1>     test rax, rax
+   467 00000B1F 75C9                <1>     jnz .dpfb0
+   468                              <1> .dpfb2:
+   469 00000B21 81FD08000000        <1>     cmp ebp, 8
+   470 00000B27 7208                <1>     jb .dpfb20
+   471 00000B29 88DA                <1>     mov dl, bl
+   472 00000B2B 48C1EB08            <1>     shr rbx, 8
+   473 00000B2F EB06                <1>     jmp short .dpfb21
+   474                              <1> .dpfb20:
+   475 00000B31 88C8                <1>     mov al, cl    ;Get most sig digit into al
+   476 00000B33 48C1E908            <1>     shr rcx, 8    ;Get next digit down
+   477                              <1> .dpfb21:
+   478 00000B37 AA                  <1>     stosb
+   479 00000B38 FFCD                <1>     dec ebp
+   480 00000B3A 75E5                <1>     jnz .dpfb2
+   481 00000B3C 5E                  <1>     pop rsi
+   482                              <1>     return
+    37                              <2> %%_ret:
+    38 00000B3D C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   483                              <1> 
+   484                              <1> getHexTwoBytes:
+   485                              <1> ;Given a number in al, get the HEX digits in ASCII in ax
+   486                              <1> ;Input: al = 8 bit number 
+   487                              <1> ;Output: ax = ASCII representation of the number
+   488 00000B3E 53                  <1>     push rbx
+   489 00000B3F 52                  <1>     push rdx
+   490 00000B40 488D1D1A000000      <1>     lea rbx, .ascii
+   491 00000B47 0FB6C0              <1>     movzx eax, al
+   492 00000B4A 0FB6D0              <1>     movzx edx, al
+   493 00000B4D 81E20F000000        <1>     and edx, 0Fh    ;Isolate low nybble
+   494 00000B53 C1E804              <1>     shr eax, 4      ;Isolate high nybble and bring it low
+   495 00000B56 D7                  <1>     xlatb  ;Get high digit first
+   496 00000B57 88C6                <1>     mov dh, al  ;Save the digit in dh
+   497 00000B59 88D0                <1>     mov al, dl
+   498 00000B5B D7                  <1>     xlatb
+   499 00000B5C 88F4                <1>     mov ah, dh  ;Get the high digit in ah to form ax
+   500 00000B5E 5A                  <1>     pop rdx
+   501 00000B5F 5B                  <1>     pop rbx
+   502                              <1>     return
+    37                              <2> %%_ret:
+    38 00000B60 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   503 00000B61 303132333435363738- <1> .ascii: db "0123456789ABCEDF"
+   503 00000B6A 39414243454446      <1>
+   504                              <1> 
+   505                              <1> getDecimalWord:
+   506                              <1> ;Works on MAX A dword in eax
+   507                              <1> ;Gets the decimalised DWORD to print in rcx (at most 8 digits)
+   508 00000B71 31C9                <1>     xor ecx, ecx
+   509 00000B73 31ED                <1>     xor ebp, ebp  ;Use bp as #of digits counter
+   510 00000B75 BB0A000000          <1>     mov ebx, 0Ah  ;Divide by 10
+   511                              <1> .dpfb0:
+   512 00000B7A FFC5                <1>     inc ebp
+   513 00000B7C 48C1E108            <1>     shl rcx, 8    ;Space for next nybble
+   514 00000B80 31D2                <1>     xor edx, edx
+   515 00000B82 48F7F3              <1>     div rbx
+   516 00000B85 80C230              <1>     add dl, '0'
+   517 00000B88 80FA39              <1>     cmp dl, '9'
+   518 00000B8B 7603                <1>     jbe .dpfb1
+   519 00000B8D 80C207              <1>     add dl, 'A'-'0'-10
+   520                              <1> .dpfb1:
+   521 00000B90 88D1                <1>     mov cl, dl    ;Save remainder byte
+   522 00000B92 4885C0              <1>     test rax, rax
+   523 00000B95 75E3                <1>     jnz .dpfb0
+   524                              <1>     return
+    37                              <2> %%_ret:
+    38 00000B97 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    34                                  %include "./Utils/FDISK/Source/fdskExt.asm"
+    35                              <1> ;FDISK BIOS implementers subroutine file.
+    36                              <1> ;All functions that need to be implemented by BIOS implementers 
+    37                              <1> ; are contained within this file with a description of what goes where and how.
+    38                              <1> ;All used registers are expected to be preserved across a call.
+    39                              <1> 
+    40                              <1> 
+    41                              <1> ;DISK FUNCTIONS
+    42                              <1> ;These functions are for Disk actions
+    43                              <1> biosGetNumberOfFixedDisks:
+    44                              <1> ;Saves the number of Fixed Disks in numDisks
+    45                              <1> ;Output: byte [numDisks] = Number of physical hard disks
+    46 00000B98 50                  <1>     push rax
+    47 00000B99 4150                <1>     push r8
+    48 00000B9B 4151                <1>     push r9
+    49 00000B9D 4152                <1>     push r10
+    50 00000B9F 4153                <1>     push r11
+    51 00000BA1 4154                <1>     push r12
+    52 00000BA3 4155                <1>     push r13
+    53 00000BA5 4156                <1>     push r14
+    54 00000BA7 4157                <1>     push r15
+    55 00000BA9 CD31                <1>     int 31h
+    56 00000BAB 49C1E808            <1>     shr r8, 8   ;Isolate bytes 1 of r8
+    57 00000BAF 448805AC000000      <1>     mov byte [numDisks], r8b    ;Save number of physical hard drives
+    58 00000BB6 415F                <1>     pop r15
+    59 00000BB8 415E                <1>     pop r14
+    60 00000BBA 415D                <1>     pop r13
+    61 00000BBC 415C                <1>     pop r12
+    62 00000BBE 415B                <1>     pop r11
+    63 00000BC0 415A                <1>     pop r10
+    64 00000BC2 4159                <1>     pop r9
+    65 00000BC4 4158                <1>     pop r8
+    66 00000BC6 58                  <1>     pop rax
+    67                              <1>     return
+    37                              <2> %%_ret:
+    38 00000BC7 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    68                              <1> 
+    69                              <1> biosReadSector:
+    70                              <1> ;Reads one sector.
+    71                              <1> ;Input: byte [curentDisk] = 1 based disk number to transact on
+    72                              <1> ;       qword [xferBuffer] = Ptr to where to read from disk to
+    73                              <1> ;       qword [sectorNum] = Number of disk sector to read
+    74                              <1> ;Output: CF=NC, Nothing went wrong
+    75                              <1> ;        CF=CY, Error in disk read.
+    76 00000BC8 50                  <1>     push rax
+    77 00000BC9 53                  <1>     push rbx
+    78 00000BCA 51                  <1>     push rcx
+    79 00000BCB 52                  <1>     push rdx
+    80 00000BCC 488B1DA0000000      <1>     mov rbx, qword [xferBuffer]
+    81 00000BD3 488B0DA1000000      <1>     mov rcx, qword [sectorNum]
+    82 00000BDA E867000000          <1>     call biosgetBIOSDiskNumber  ;Get disk number in dl in our case
+    83 00000BDF B801820000          <1>     mov eax, 8201h
+    84 00000BE4 CD33                <1>     int 33h
+    85 00000BE6 5A                  <1>     pop rdx
+    86 00000BE7 59                  <1>     pop rcx
+    87 00000BE8 5B                  <1>     pop rbx
+    88 00000BE9 58                  <1>     pop rax
+    89                              <1>     return
+    37                              <2> %%_ret:
+    38 00000BEA C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    90                              <1>     
+    91                              <1> biosWriteSector:
+    92                              <1> ;Writes one sector.
+    93                              <1> ;Input: byte [curentDisk] = 1 based disk number to transact on
+    94                              <1> ;       qword [xferBuffer] = Ptr to where to write to disk from
+    95                              <1> ;       qword [sectorNum] = Number of disk sector to write to disk
+    96                              <1> ;Output: CF=NC, Nothing went wrong
+    97                              <1> ;        CF=CY, Error in disk write.
+    98 00000BEB 50                  <1>     push rax
+    99 00000BEC 53                  <1>     push rbx
+   100 00000BED 51                  <1>     push rcx
+   101 00000BEE 52                  <1>     push rdx
+   102 00000BEF 488B1D7D000000      <1>     mov rbx, qword [xferBuffer]
+   103 00000BF6 488B0D7E000000      <1>     mov rcx, qword [sectorNum]
+   104 00000BFD E844000000          <1>     call biosgetBIOSDiskNumber
+   105 00000C02 B801830000          <1>     mov eax, 8301h
+   106 00000C07 CD33                <1>     int 33h
+   107 00000C09 5A                  <1>     pop rdx
+   108 00000C0A 59                  <1>     pop rcx
+   109 00000C0B 5B                  <1>     pop rbx
+   110 00000C0C 58                  <1>     pop rax
+   111                              <1>     return
+    37                              <2> %%_ret:
+    38 00000C0D C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   112                              <1> 
+   113                              <1> biosResetHardDisk:
+   114                              <1> ;Reset currentDisk
+   115                              <1> ;Input: byte [curentDisk] = 1 based disk number to reset
+   116                              <1> ;Output: CF=NC, Nothing went wrong
+   117                              <1> ;        CF=CY, Failed to reset the disk system. Abort...
+   118 00000C0E 50                  <1>     push rax
+   119 00000C0F 52                  <1>     push rdx
+   120 00000C10 E831000000          <1>     call biosgetBIOSDiskNumber
+   121 00000C15 31C0                <1>     xor eax, eax
+   122 00000C17 CD33                <1>     int 33h
+   123 00000C19 5A                  <1>     pop rdx
+   124 00000C1A 58                  <1>     pop rax
+   125                              <1>     return
+    37                              <2> %%_ret:
+    38 00000C1B C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   126                              <1> 
+   127                              <1> biosGetHardDiskParameters:
+   128                              <1> ;Get the size of the hard disk
+   129                              <1> ;Output: qword [curDiskSize] = Number of sectors on disk
+   130                              <1> ;        word [sectorSize] = Bytes/Sector value
+   131 00000C1C 50                  <1>     push rax
+   132 00000C1D 53                  <1>     push rbx
+   133 00000C1E 51                  <1>     push rcx
+   134 00000C1F 52                  <1>     push rdx
+   135 00000C20 E821000000          <1>     call biosgetBIOSDiskNumber
+   136 00000C25 B800880000          <1>     mov eax, 8800h
+   137 00000C2A CD33                <1>     int 33h
+   138                              <1>     ;Int 33h/8800h returns
+   139                              <1>     ;rbx = Sector size in bytes
+   140                              <1>     ;rcx = Last LBA block
+   141 00000C2C 4881E902000000      <1>     sub rcx, 2
+   142 00000C33 48890D1E000000      <1>     mov qword [curDiskSize], rcx
+   143 00000C3A 66891D1F000000      <1>     mov word [sectorSize], bx
+   144 00000C41 5A                  <1>     pop rdx
+   145 00000C42 59                  <1>     pop rcx
+   146 00000C43 5B                  <1>     pop rbx
+   147 00000C44 58                  <1>     pop rax
+   148                              <1>     return
+    37                              <2> %%_ret:
+    38 00000C45 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+   149                              <1> 
+   150                              <1> 
+   151                              <1> ;BIOS implementer utility function
+   152                              <1> biosgetBIOSDiskNumber:
+   153                              <1> ;A utility function, can be left as just return if unnecessary. 
+   154                              <1> ;Used to translate currentDisk from an FDISK number to a BIOS specific 
+   155                              <1> ; value.
+   156                              <1> ;This is only used in this file and is implementer specific.
+   157                              <1> ;In this case, 
+   158                              <1> ;Output: dl = BIOS disk number
+   159 00000C46 0FB6150A000000      <1>     movzx edx, byte [currentDisk]
+   160 00000C4D FFCA                <1>     dec edx
+   161 00000C4F 81CA80000000        <1>     or edx, 80h ;Set SCPBIOS fixed disk bit
+   162                              <1>     return
+    37                              <2> %%_ret:
+    38 00000C55 C3                  <2>  ret
+    39                              <2> %assign retOff %%_ret-$$
+    35                                  %include "./Utils/FDISK/Data/fdskData.asm"
+    36                              <1> ;Disk Vars
+    37 00000C56 00                  <1> reboot      db 0    ;If this flag is set, should reboot on exit
+    38 00000C57 01                  <1> currentDisk db 1    ;1 based. For SCP/BIOS disk 1 = 80h, disk 2 = 81h etc...
+    39                              <1> 
+    40 00000C58 0000000000000000    <1> curDiskSize dq 0    ;Number of usable sectors on device
+    41 00000C60 0000                <1> sectorSize  dw 0    ;Size of a sector (should always be 512, error if not)
+    42                              <1> 
+    43 00000C62 00                  <1> numDisks    db 0    ;Count of fixed disks
+    44                              <1> 
+    45                              <1> ;Create Partition Variables
+    46                              <1> ;We also refuse to use CHS. Set those entries to 0 generally
+    47 00000C63 00000000            <1> ptnStart    dd 0    ;LBA for start of partition
+    48 00000C67 00000000            <1> ptnSize     dd 0    ;Number of sectors in partition
+    49 00000C6B 00                  <1> ptnType     db 0    ;Partition signature, always 0Ch
+    50                              <1> 
+    51                              <1> ;ActivePtnVariables
+    52                              <1> ;Copy the partition status bytes here if the table is not free.
+    53 00000C6C 00                  <1> ptnFlags    db 0    ;Bits [3-0] give the valid partitions
+    54                              <1>                     ;Bits [7-4] give the active status of the partitions
+    55 00000C6D 00                  <1> numValidPtn db 0    ;Keeps a count of the number of valid partitions
+    56                              <1> 
+    57                              <1> 
+    58                              <1> cmdLine:    ;Users type at most 1 or 2 chars, add some padding
+    59 00000C6E 00                  <1> stringLen   db 0    ;Byte 0 = Max string len
+    60 00000C6F 00                  <1> charsTyped  db 0    ;Byte 1 = Num typed chars
+    61 00000C70 000000              <1> inputString db 3 dup (0)    ;Where the chars are typed
+    62                              <1> ;xfer Variables
+    63 00000C73 0000000000000000    <1> xferBuffer  dq 0    ;A ptr to the memory block through which all xacts occur
+    64 00000C7B 0000000000000000    <1> sectorNum   dq 0    ;Number of the sector we wish to xact with
+    36                                  %include "./Utils/FDISK/Data/fdskMsg.asm"
+    37                              <1> ;This file will contain the "pages" of the application
+    38                              <1> 
+    39 00000C83 0A0D24              <1> crlf    db LF,CR,"$"
+    40                              <1> ;This message is only printed if a multitasker is detected as installed
+    41                              <1> multiMsg:   
+    42 00000C86 506C65617365207374- <1>     db "Please stop all other programs and/or any networking software",
+    42 00000C8F 6F7020616C6C206F74- <1>
+    42 00000C98 6865722070726F6772- <1>
+    42 00000CA1 616D7320616E642F6F- <1>
+    42 00000CAA 7220616E79206E6574- <1>
+    42 00000CB3 776F726B696E672073- <1>
+    42 00000CBC 6F667477617265      <1>
+    43 00000CC3 206265666F72652070- <1>     db " before proceeding.",LF,CR
+    43 00000CCC 726F63656564696E67- <1>
+    43 00000CD5 2E0A0D              <1>
+    44 00000CD8 507265737320456E74- <1>     db "Press Enter to continue once this is done or ESC to return to",
+    44 00000CE1 657220746F20636F6E- <1>
+    44 00000CEA 74696E7565206F6E63- <1>
+    44 00000CF3 652074686973206973- <1>
+    44 00000CFC 20646F6E65206F7220- <1>
+    44 00000D05 45534320746F207265- <1>
+    44 00000D0E 7475726E20746F      <1>
+    45 00000D15 444F530A0D24        <1>     db "DOS",LF,CR,"$"
+    46                              <1> strtMsg:
+    47 00000D1B 0D0A                <1>     db CR,LF
+    48 00000D1D 536369656E74696669- <1>     db "Scientific Control Program / Disk Operating System",LF,CR
+    48 00000D26 6320436F6E74726F6C- <1>
+    48 00000D2F 2050726F6772616D20- <1>
+    48 00000D38 2F204469736B204F70- <1>
+    48 00000D41 65726174696E672053- <1>
+    48 00000D4A 797374656D0A0D      <1>
+    49 00000D51 466978656420446973- <1>     db "Fixed Disk Setup Program Version $"
+    49 00000D5A 6B2053657475702050- <1>
+    49 00000D63 726F6772616D205665- <1>
+    49 00000D6C 7273696F6E2024      <1>
+    50                              <1> cpyrtMsg:
+    51 00000D73 0A0D28432920436F70- <1>     db LF,CR,"(C) Copyright Scientific Computer Research. 2022", LF,CR,"$"
+    51 00000D7C 797269676874205363- <1>
+    51 00000D85 69656E746966696320- <1>
+    51 00000D8E 436F6D707574657220- <1>
+    51 00000D97 52657365617263682E- <1>
+    51 00000DA0 20323032320A0D24    <1>
+    52                              <1> 
+    53                              <1> exitMsg:
+    54 00000DA8 53797374656D207769- <1>     db "System will now restart",LF,CR
+    54 00000DB1 6C6C206E6F77207265- <1>
+    54 00000DBA 73746172740A0D      <1>
+    55 00000DC1 496E7365727420626F- <1>     db "Insert bootable DOS medium in drive A:",LF,CR
+    55 00000DCA 6F7461626C6520444F- <1>
+    55 00000DD3 53206D656469756D20- <1>
+    55 00000DDC 696E20647269766520- <1>
+    55 00000DE5 413A0A0D            <1>
+    56 00000DE9 507265737320616E79- <1>     db "Press any key when ready...",LF,CR,"$"
+    56 00000DF2 206B6579207768656E- <1>
+    56 00000DFB 2072656164792E2E2E- <1>
+    56 00000E04 0A0D24              <1>
+    57                              <1> 
+    58 00000E07 466978656420446973- <1> prompt: db "Fixed Disk "
+    58 00000E10 6B20                <1>
+    59 00000E12 315D2024            <1> drvNum  db "1] $"
+    60                              <1> 
+    61                              <1> helpMsg:
+    62 00000E16 3F2920446973706C61- <1>     db "?) Display Available Options",LF,CR,"$"
+    62 00000E1F 7920417661696C6162- <1>
+    62 00000E28 6C65204F7074696F6E- <1>
+    62 00000E31 730A0D24            <1>
+    63                              <1> 
+    64                              <1> exitOptionMsg:
+    65 00000E35 507265737320582074- <1>     db "Press X to exit",LF,CR,"$"
+    65 00000E3E 6F20657869740A0D24  <1>
+    66                              <1> retMsg:
+    67 00000E47 507265737320582074- <1>     db "Press X to return to FDISK options",CR,LF,"$"
+    67 00000E50 6F2072657475726E20- <1>
+    67 00000E59 746F20464449534B20- <1>
+    67 00000E62 6F7074696F6E730D0A- <1>
+    67 00000E6B 24                  <1>
+    68                              <1> 
+    69                              <1> selectValidOption:
+    70 00000E6C 0D0A0A0A            <1>     db CR,LF,LF,LF,
+    71 00000E70 2D2D2D2D2D2D2D2D2D- <1>     db "------------------------------------",CR,LF
+    71 00000E79 2D2D2D2D2D2D2D2D2D- <1>
+    71 00000E82 2D2D2D2D2D2D2D2D2D- <1>
+    71 00000E8B 2D2D2D2D2D2D2D2D2D- <1>
+    71 00000E94 0D0A                <1>
+    72 00000E96 20202020506C656173- <1>     db "    Please select a valid choice    ",CR,LF,
+    72 00000E9F 652073656C65637420- <1>
+    72 00000EA8 612076616C69642063- <1>
+    72 00000EB1 686F69636520202020- <1>
+    72 00000EBA 0D0A                <1>
+    73 00000EBC 2D2D2D2D2D2D2D2D2D- <1>     db "------------------------------------",CR,LF,LF,LF,"$"
+    73 00000EC5 2D2D2D2D2D2D2D2D2D- <1>
+    73 00000ECE 2D2D2D2D2D2D2D2D2D- <1>
+    73 00000ED7 2D2D2D2D2D2D2D2D2D- <1>
+    73 00000EE0 0D0A0A0A24          <1>
+    74                              <1> 
+    75                              <1> ;Pages
+    76                              <1> ;MAIN PAGE
+    77                              <1> mainPageMsg:
+    78 00000EE5 43686F6F7365206F6E- <1>     db "Choose one of the following:",LF,CR
+    78 00000EEE 65206F662074686520- <1>
+    78 00000EF7 666F6C6C6F77696E67- <1>
+    78 00000F00 3A0A0D              <1>
+    79 00000F03 202031292043726561- <1>     db "  1) Create DOS Partition",LF,CR
+    79 00000F0C 746520444F53205061- <1>
+    79 00000F15 72746974696F6E0A0D  <1>
+    80 00000F1E 20203229204368616E- <1>     db "  2) Change Active Partition",LF,CR
+    80 00000F27 676520416374697665- <1>
+    80 00000F30 20506172746974696F- <1>
+    80 00000F39 6E0A0D              <1>
+    81 00000F3C 202033292044656C65- <1>     db "  3) Delete DOS Partition",LF,CR
+    81 00000F45 746520444F53205061- <1>
+    81 00000F4E 72746974696F6E0A0D  <1>
+    82 00000F57 202034292044697370- <1>     db "  4) Display Partition Information",LF,CR,"$"
+    82 00000F60 6C6179205061727469- <1>
+    82 00000F69 74696F6E20496E666F- <1>
+    82 00000F72 726D6174696F6E0A0D- <1>
+    82 00000F7B 24                  <1>
+    83                              <1> mpOptionalMsg:
+    84 00000F7C 202035292053656C65- <1>     db "  5) Select Fixed Disk Drive",LF,CR,"$"
+    84 00000F85 637420466978656420- <1>
+    84 00000F8E 4469736B2044726976- <1>
+    84 00000F97 650A0D24            <1>
+    85                              <1> 
+    86                              <1> ;CREATE PARTITION PAGE
+    87                              <1> createPageBadMsg:
+    88 00000F9B 5072696D6172792044- <1>     db "Primary DOS partition already exists",LF,CR,"$"
+    88 00000FA4 4F5320706172746974- <1>
+    88 00000FAD 696F6E20616C726561- <1>
+    88 00000FB6 647920657869737473- <1>
+    88 00000FBF 0A0D24              <1>
+    89                              <1> createPageMsg:
+    90 00000FC2 43726561746520444F- <1>     db "Create DOS Partition",LF,LF,CR
+    90 00000FCB 532050617274697469- <1>
+    90 00000FD4 6F6E0A0A0D          <1>
+    91 00000FD9 446F20796F75207769- <1>     db "Do you wish to use the entire fixed disk for DOS? Y/N",CR,LF,"$"
+    91 00000FE2 736820746F20757365- <1>
+    91 00000FEB 2074686520656E7469- <1>
+    91 00000FF4 726520666978656420- <1>
+    91 00000FFD 6469736B20666F7220- <1>
+    91 00001006 444F533F20592F4E0D- <1>
+    91 0000100F 0A24                <1>
+    92                              <1> createPage2Msg:
+    93 00001011 537065636966792068- <1>     db "Specify how much of the fixed disk you wish to use (1%-99%) or"
+    93 0000101A 6F77206D756368206F- <1>
+    93 00001023 662074686520666978- <1>
+    93 0000102C 6564206469736B2079- <1>
+    93 00001035 6F7520776973682074- <1>
+    93 0000103E 6F2075736520283125- <1>
+    93 00001047 2D39392529206F72    <1>
+    94 0000104F 0D0A24              <1>     db CR,LF,"$"    ;Followed by the retMsg
+    95                              <1> createPromptMsg: 
+    96 00001052 547970652061206E75- <1>     db "Type a number between 1 and 99] $"
+    96 0000105B 6D6265722062657477- <1>
+    96 00001064 65656E203120616E64- <1>
+    96 0000106D 2039395D2024        <1>
+    97                              <1> createDoneMsg:
+    98 00001073 5072696D6172792070- <1>     db "Primary partition created", CR,LF,"$"
+    98 0000107C 6172746974696F6E20- <1>
+    98 00001085 637265617465640D0A- <1>
+    98 0000108E 24                  <1>
+    99                              <1> 
+   100                              <1> ;CHANGE ACTIVE PARTITION ON DISK PAGE
+   101                              <1> activeSinglePtnMsg:
+   102 0000108F 0D0A50617274697469- <1>     db CR,LF,"Partition"
+   102 00001098 6F6E                <1>
+   103                              <1> .number:
+   104 0000109A 3120697320616C7265- <1>     db "1 is already active",CR,LF,"$"
+   104 000010A3 616479206163746976- <1>
+   104 000010AC 650D0A24            <1>
+   105                              <1> 
+   106                              <1> activePromptMsg:
+   107 000010B0 0D0A506C6561736520- <1>     db CR,LF,"Please select a partition to mark as active (1-4): $"
+   107 000010B9 73656C656374206120- <1>
+   107 000010C2 706172746974696F6E- <1>
+   107 000010CB 20746F206D61726B20- <1>
+   107 000010D4 617320616374697665- <1>
+   107 000010DD 2028312D34293A2024  <1>
+   108                              <1> activePartitionSetMsg:
+   109 000010E6 0D0A50617274697469- <1>     db CR,LF,"Partition"
+   109 000010EF 6F6E                <1>
+   110                              <1> .number:
+   111 000010F1 31206E6F7720736574- <1>     db "1 now set active",CR,LF,"$"
+   111 000010FA 206163746976650D0A- <1>
+   111 00001103 24                  <1>
+   112                              <1> 
+   113                              <1> ;DELETE PARTITION PAGE
+   114                              <1> deleteNukeMsg:
+   115 00001104 0D0A                <1>     db CR,LF,
+   116 00001106 44656C657465207468- <1>     db "Delete the whole Partition Table? Y/N: $"
+   116 0000110F 652077686F6C652050- <1>
+   116 00001118 6172746974696F6E20- <1>
+   116 00001121 5461626C653F20592F- <1>
+   116 0000112A 4E3A2024            <1>
+   117                              <1> deleteNukeCompleteMsg:
+   118 0000112E 0D0A50617274697469- <1>     db CR,LF,"Partition Table Deleted",CR,LF,"$"
+   118 00001137 6F6E205461626C6520- <1>
+   118 00001140 44656C657465640D0A- <1>
+   118 00001149 24                  <1>
+   119                              <1> deleteSelectMsg:
+   120 0000114A 0D0A506C6561736520- <1>     db CR,LF, "Please select a partition to delete (1-4): $"
+   120 00001153 73656C656374206120- <1>
+   120 0000115C 706172746974696F6E- <1>
+   120 00001165 20746F2064656C6574- <1>
+   120 0000116E 652028312D34293A20- <1>
+   120 00001177 24                  <1>
+   121                              <1> deleteCannotMsg:
+   122 00001178 0D0A43616E6E6F7420- <1>     db CR,LF, "Cannot delete an active partition",CR,LF,"$"
+   122 00001181 64656C65746520616E- <1>
+   122 0000118A 206163746976652070- <1>
+   122 00001193 6172746974696F6E0D- <1>
+   122 0000119C 0A24                <1>
+   123                              <1> deleteBadFoundMsg:
+   124 0000119E 0D0A42616420506172- <1>     db CR,LF, "Bad Partition Table detected.",CR,LF,"$"
+   124 000011A7 746974696F6E205461- <1>
+   124 000011B0 626C65206465746563- <1>
+   124 000011B9 7465642E0D0A24      <1>
+   125                              <1> deleteOkMsg:
+   126 000011C0 0D0A50617274697469- <1>     db CR,LF, "Partition"
+   126 000011C9 6F6E                <1>
+   127                              <1> .number:
+   128 000011CB 312064656C65746564- <1>     db "1 deleted",CR,LF,"$"
+   128 000011D4 0D0A24              <1>
+   129                              <1> 
+   130                              <1> ;SELECT FIXED DISK PAGE 
+   131                              <1> selectNumber:
+   132 000011D7 0D0A464449534B2068- <1>     db CR,LF,"FDISK has detected"
+   132 000011E0 617320646574656374- <1>
+   132 000011E9 6564                <1>
+   133                              <1> .number:
+   134 000011EB 302046697865642044- <1>     db "0 Fixed Disk Drives",CR,LF,"$"
+   134 000011F4 69736B204472697665- <1>
+   134 000011FD 730D0A24            <1>
+   135                              <1> selectPrompt:
+   136 00001201 0D0A506C6561736520- <1>     db CR,LF,"Please select a Fixed Disk (1-"
+   136 0000120A 73656C656374206120- <1>
+   136 00001213 466978656420446973- <1>
+   136 0000121C 6B2028312D          <1>
+   137                              <1> .number:
+   138 00001221 31293A2024          <1>     db "1): $"
+   139                              <1> ;Partition status table
+   140                              <1> partTitle:
+   141 00001226 2D2D2D2D2D2D2D2D2D- <1>     db "-------------------------------------------------",CR,LF
+   141 0000122F 2D2D2D2D2D2D2D2D2D- <1>
+   141 00001238 2D2D2D2D2D2D2D2D2D- <1>
+   141 00001241 2D2D2D2D2D2D2D2D2D- <1>
+   141 0000124A 2D2D2D2D2D2D2D2D2D- <1>
+   141 00001253 2D2D2D2D0D0A        <1>
+   142 00001259 506172746974696F6E- <1>     db "Partition Status Type  Start    End      Size    ",CR,LF,"$"
+   142 00001262 205374617475732054- <1>
+   142 0000126B 797065202053746172- <1>
+   142 00001274 7420202020456E6420- <1>
+   142 0000127D 202020202053697A65- <1>
+   142 00001286 202020200D0A24      <1>
+   143                              <1> ;Partition status table string, this gets edited... a lot
+   144                              <1> partString:
+   145 0000128D 20202020            <1>     db "    "
+   146                              <1> .ptnNum:
+   147 00001291 312020202020202020  <1>     db "1", "    ", " ", "   "
+   148                              <1> .ptnSts:
+   149 0000129A 41202020            <1>     db "A","  "," " 
+   150                              <1> .ptnFS:
+   151 0000129E 2020202020          <1>     db "     "  ;This is 5 chars, either FAT12, FAT16, FAT32 or a 2 digit num 
+   152 000012A3 20                  <1>     db " "
+   153                              <1> .ptnStart:
+   154 000012A4 2020202020202020    <1>     db "        "   ;8 digits for the LBA of the first sector of the partition
+   155 000012AC 20                  <1>     db " "
+   156                              <1> .ptnEnd:
+   157 000012AD 2020202020202020    <1>     db "        "   ;8 digits for the LBA of the last sector of the partition
+   158 000012B5 20                  <1>     db " "
+   159                              <1> .ptnSize:
+   160 000012B6 2020202020202020    <1>     db "        "   ;8 digits for the number of sectors in the partition
+   161                              <1> partStringL equ $ - partString  ;Use this to clean the string with spaces
+   162 000012BE 0D0A24              <1>     db CR,LF,"$"
+   163                              <1> 
+   164                              <1> totalSpaceMsg:
+   165 000012C1 0D0A                <1>     db CR,LF
+   166 000012C3 2D2D2D2D2D2D2D2D2D- <1>     db "-------------------------------------------------",CR,LF
+   166 000012CC 2D2D2D2D2D2D2D2D2D- <1>
+   166 000012D5 2D2D2D2D2D2D2D2D2D- <1>
+   166 000012DE 2D2D2D2D2D2D2D2D2D- <1>
+   166 000012E7 2D2D2D2D2D2D2D2D2D- <1>
+   166 000012F0 2D2D2D2D0D0A        <1>
+   167 000012F6 546F74616C20446973- <1>     db "Total Disk Space is ", 
+   167 000012FF 6B2053706163652069- <1>
+   167 00001308 7320                <1>
+   168                              <1> .sizeCount:
+   169 0000130A 2020202020202020    <1>     db "        ",
+   170 00001312 20536563746F72730D- <1>     db " Sectors",CR,LF
+   170 0000131B 0A                  <1>
+   171 0000131C 536563746F72205369- <1>     db "Sector Size: "
+   171 00001325 7A653A20            <1>
+   172                              <1> .sectorCount:
+   173 00001329 20202020            <1>     db "    "
+   174 0000132D 2042797465730D0A    <1>     db " Bytes",CR,LF
+   175 00001335 2D2D2D2D2D2D2D2D2D- <1>     db "-------------------------------------------------",CR,LF,"$"
+   175 0000133E 2D2D2D2D2D2D2D2D2D- <1>
+   175 00001347 2D2D2D2D2D2D2D2D2D- <1>
+   175 00001350 2D2D2D2D2D2D2D2D2D- <1>
+   175 00001359 2D2D2D2D2D2D2D2D2D- <1>
+   175 00001362 2D2D2D2D0D0A24      <1>
+   176                              <1> 
+   177                              <1> 
+   178 00001369 4641543132          <1> fat12String:    db "FAT12"
+   179 0000136E 4641543136          <1> fat16String:    db "FAT16"
+   180 00001373 4641543332          <1> fat32String:    db "FAT32"
+   181                              <1> 
+   182                              <1> ;Error Messages
+   183                              <1> badVerStr:
+   184 00001378 496E636F7272656374- <1>     db "Incorrect DOS version",CR,LF,"$"
+   184 00001381 20444F532076657273- <1>
+   184 0000138A 696F6E0D0A24        <1>
+   185                              <1> noDisks:
+   186 00001390 4E6F20666978656420- <1>     db "No fixed disks present",CR,LF,"$"
+   186 00001399 6469736B7320707265- <1>
+   186 000013A2 73656E740D0A24      <1>
+   187                              <1> noMemoryMsg:
+   188 000013A9 4E6F7420656E6F7567- <1>     db "Not enough free memory in system",CR,LF,"$"
+   188 000013B2 682066726565206D65- <1>
+   188 000013BB 6D6F727920696E2073- <1>
+   188 000013C4 797374656D0D0A24    <1>
+   189                              <1> invalidMBRMsg:
+   190 000013CC 496E76616C6964206F- <1>     db "Invalid or Missing Master Boot Record",CR,LF
+   190 000013D5 72204D697373696E67- <1>
+   190 000013DE 204D61737465722042- <1>
+   190 000013E7 6F6F74205265636F72- <1>
+   190 000013F0 640D0A              <1>
+   191 000013F3 506C65617365204372- <1>     db "Please Create a new Master Boot Record",CR,LF,"$"
+   191 000013FC 656174652061206E65- <1>
+   191 00001405 77204D617374657220- <1>
+   191 0000140E 426F6F74205265636F- <1>
+   191 00001417 72640D0A24          <1>
+   192                              <1> badSectorMsg:
+   193 0000141C 42616420536563746F- <1>     db "Bad Sector Size Detected",CR,LF,"$"
+   193 00001425 722053697A65204465- <1>
+   193 0000142E 7465637465640D0A24  <1>
+   194                              <1> badReadMsg:
+   195 00001437 4572726F7220726561- <1>     db "Error reading Fixed Disk",CR,LF,"$"
+   195 00001440 64696E672046697865- <1>
+   195 00001449 64204469736B0D0A24  <1>
+   196                              <1> badWriteMsg:
+   197 00001452 4572726F7220777269- <1>     db "Error writing Fixed Disk",CR,LF,"$"
+   197 0000145B 74696E672046697865- <1>
+   197 00001464 64204469736B0D0A24  <1>
+   198                              <1> 
+    37                                  
+    38                                  ;Place the partial VBR here.
+    39                                  ;All uninitialised values are set to 0
+    40                                  ;If total sectors is bigger than 16 bits, set totSec16 to 0
+    41                                  ;Else set totSec32 to 0
+    42                                  partialVBR:
+    43                                      istruc bpb
+    44 0000146D EB0090                      at bpb.jmpBoot,     db 0EBh, 00h, 90h   ;Needed start signtature
+    45 00001470 534350444F537631            at bpb.oemName,     db 'SCPDOSv1'
+    46 00001478 0002                        at bpb.bytsPerSec,  dw 0200h        ;512 bytes per sector always
+    47 0000147A 00                          at bpb.secPerClus,  db 0            ;Unset by FDISK
+    48 0000147B 0000                        at bpb.revdSecCnt,  dw 0            ;Unset by FDISK
+    49 0000147D 00                          at bpb.numFATs,     db 0            ;Unset by FDISK
+    50 0000147E 0000                        at bpb.rootEntCnt,  dw 0            ;Unset by FDISK
+    51 00001480 FFFF                        at bpb.totSec16,    dw -1           ;Total number of sectors on disk
+    52 00001482 F8                          at bpb.media,       db 0F8h         ;Hard Disk Media byte
+    53 00001483 0000                        at bpb.FATsz16,     dw 0            ;Unset by FDISK
+    54 00001485 3F00                        at bpb.secPerTrk,   dw 003Fh        ;Fake Hard disk geometry 64 sec/trk
+    55 00001487 FF00                        at bpb.numHeads,    dw 00FFh        ;255 Heads
+    56 00001489 FFFFFFFF                    at bpb.hiddSec,     dd -1           ;Set this field
+    57 0000148D FFFFFFFF                    at bpb.totSec32,    dd -1           ;Set total sec if bigger than 16 bits 
+    58 00001491 00<rep 1Ah>                 iend
+    59                                  partialVBRL equ $ - partialVBR
+    60                                  freshMBRcopy:   ;Symbol pointing to the MBR copy appended
+    60          ------------------       info: assembly required 1+2+2 passes
+

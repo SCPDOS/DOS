@@ -159,6 +159,9 @@ ctrlBreakHdlr:
     mov byte [vConDrvSwp],  0   ;Set to 0
 ;Handles a control break, juggles stacks and enters int 41h 
 .exceptEP:
+;If return via RET/RET 8 with CF set, DOS will abort program with errorlevel 0
+;Else (RET/RET 8 with CF clear or IRET with CF ignored)
+;   interrupted DOS call is restarted
 	cli
 	mov rsp, qword [oldRSP]	;Get registers frame
 	call dosPopRegs ;Get user state back

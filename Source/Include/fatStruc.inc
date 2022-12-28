@@ -89,7 +89,7 @@ endstruc
 struc mbrEntry
     .ptnAtrib   resb 1  ;80h = active
     .chsStart   resb 3  ;Ignore practically
-    .ptnType    resb 1
+    .ptnType    resb 1  ;This being 00 means free
     .chsEnd     resb 3  ;Ignore
     .lbaStart   resb 4  ;Start of partition in 32 bit LBA
     .numSectors resb 4  ;Number of sectors in partition

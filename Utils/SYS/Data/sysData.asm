@@ -15,6 +15,10 @@ dosPair:
 dosHdlSrc   dw -1
 dosHdlDst   dw -1
 
+cmdPair:
+cmdHdlSrc   dw -1
+cmdHdlDst   dw -1
+
 biosNamePair:
 biosFile    db "A:\SCPBIOS.SYS",0   ;A should be overwritten with current drive
 biosNameL   equ $ - biosFile
@@ -23,7 +27,10 @@ dosNamePair:
 dosFile     db "A:\SCPDOS.SYS",0
 dosNameL   equ $ - dosFile
 dosDest     db "A:\SCPDOS.SYS",0
-
+cmdNamePair:
+cmdFile     db "A:\COMMAND.COM",0
+cmdNameL   equ $ - cmdFile
+cmdDest     db "A:\COMMAND.COM",0
 ;Data for Boot Sector
 biosSector  dq 0
 biosSize    dw 0
