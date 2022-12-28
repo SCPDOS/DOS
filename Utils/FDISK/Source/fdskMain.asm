@@ -139,19 +139,15 @@ createPtnMain:
     je .fatPtnDetected
     cmp al, 0Eh
     je .fatPtnDetected
-    ;Here we have space available, take the data from the table
-    ; put it into the variables and jump
-    ;Since the ptn size isnt changing, CHS values can remain in situ
-    mov byte [ptnType], al
-    mov eax, dword [rbx + mbr.mbrEntry1 + mbrEntry.lbaStart]
-    mov dword [ptnStart], eax
-    mov eax, dword [rbx + mbr.mbrEntry1 + mbrEntry.numSectors]
-    mov dword [ptnSize], eax
-    jmp .installPartition
+    lea rdx, createForeignBad
+    jmp short .fpDCommon
 .fatPtnDetected:
-    call printcrlf
-    call printcrlf
     lea rdx, createPageBadMsg
+.fpDCommon:
+    push rdx
+    call printcrlf
+    call printcrlf
+    pop rdx
     call print
     jmp mainLoop
 .createNewMBR:

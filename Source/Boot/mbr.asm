@@ -32,6 +32,7 @@ badExit:
     int 16h
     int 18h
 activeFound:
+    mov bp, si
     xor ax, ax
     mov cx, 8
     mov di, pktptr
@@ -75,6 +76,7 @@ activeFound:
     cmp word [07DFEh], 0AA55h
     jne badExit
 .okOS:
+    mov si, bp
     jmp 0:7C00h
     
 print:

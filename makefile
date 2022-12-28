@@ -56,7 +56,8 @@ sys:
 fdisk:
 	nasm ./Utils/FDISK/fdisk.asm -o ./Utils/FDISK/Binaries/FDISK.COM -f bin -l ./Utils/FDISK/Listings/fdisk.lst -O0v
 	cat ./Binaries/mbr.bin >> ./Utils/FDISK/Binaries/FDISK.COM
-
+rdebug:
+	nasm ./Utils/RDEBUG/rdebug.asm -o ./Utils/RDEBUG/Binaries/RDEBUG.COM -f bin -l ./Utils/RDEBUG/Listings/rdebug.lst -O0v
 # Temp, to test Executable files
 tst:
 	nasm ./Utils/EXETEST/tst.asm -o ./Utils/EXETEST/Binaries/tst.obj -f win64 -l ./Utils/EXETEST/Listings/tst.lst -O0v

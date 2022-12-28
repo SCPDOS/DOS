@@ -58,6 +58,8 @@ createPromptMsg:
     db "Type a number between 1 and 99] $"
 createDoneMsg:
     db CR,LF,LF,"Primary partition created", CR,LF,"$"
+createForeignBad:
+    db CR,LF,"Non-DOS primary partition detected",CR,LF,"$"
 
 ;CHANGE ACTIVE PARTITION ON DISK PAGE
 activeSinglePtnMsg:

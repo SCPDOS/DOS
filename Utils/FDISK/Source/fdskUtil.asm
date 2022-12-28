@@ -345,7 +345,7 @@ printPartitionStatusTable:
     stosb
     mov al, ah
     stosb
-    mov ah, "h"
+    mov al, "h"
     stosb
     jmp short .fatCont
 .fat12:
