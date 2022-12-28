@@ -104,7 +104,8 @@ biosGetHardDiskParameters:
     ;Int 33h/8800h returns
     ;rbx = Sector size in bytes
     ;rcx = Last LBA block
-    sub rcx, 2
+    sub rcx, 2  ;Convert from last sector to last ok sector
+    inc ecx ;Turn into a count of sectors
     mov qword [curDiskSize], rcx
     mov word [sectorSize], bx
     pop rdx

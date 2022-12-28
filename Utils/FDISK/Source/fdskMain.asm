@@ -41,7 +41,7 @@ notMultitasking:
 ;Print Start message
     lea rdx, strtMsg
     call print
-    call printVersion.noCRLF
+    call printVersion
     lea rdx, cpyrtMsg
     call print
     ;Allocate 512 bytes now
@@ -164,9 +164,7 @@ createPtnMain:
     ;If here, start from "cylinder 1"
     mov dword [ptnStart], 40h
     mov eax, dword [curDiskSize]
-    mov ebx, eax
-    and ebx, 03Fh   ;Get the remainder over one cylinder size
-    sub eax, ebx    ;And round eax down
+    sub eax, dword [ptnStart]    ;Remove the sectors from the start of the disk
     mov dword [ptnSize], eax
     ;Always produce ptn types 0Ch - FAT with LBA (technically FAT32)
     call getPtnType
@@ -174,30 +172,30 @@ createPtnMain:
 .partialAllocation:
     lea rdx, createPage2Msg
     call print
-    call printReturn
 .paLp:
     lea rdx, createPromptMsg
     call print
     mov bl, 3
     call takeInput
-    cmp byte [charsTyped], 1    ;Repeat prompt if no chars typed (somehow)
+    cmp byte [charsTyped], 0    ;Repeat prompt if no chars typed (somehow)
     je .paLp 
     cmp byte [inputString], "x"
     je mainLoop
     cmp byte [inputString], "X"
     je mainLoop
-    movzx ecx, byte [charsTyped]    ;Get the chars types + 1
-    dec ecx
-    mov ah, [inputString]
-    dec ecx
-    jz .gotDigits
-    mov al, [inputString + 1]
+    mov ax,"00"
+    cmp byte [charsTyped], 1
+    ja .twoDigits
+    mov al, byte [inputString]
+    jmp short .gotDigits
+.twoDigits:
+    mov ah, byte [inputString]
+    mov al, byte [inputString + 1]
 .gotDigits:
 ;Now check the digits are ok
 ;ah contains high digit, al contains low digit
     call getValue
     jc .paLp
-    breakpoint
     ;eax has the percentage of the disk to use
     mov ebx, dword [curDiskSize]    ;Get the disk size
     mul ebx
@@ -205,6 +203,7 @@ createPtnMain:
     xor edx, edx
     div ebx ;Get in eax the number of sectors to allocate rounded down
     mov dword [ptnStart], 64
+    sub eax, dword [ptnStart]
     mov dword [ptnSize], eax
     call getPtnType
 .copyMBR:
@@ -389,7 +388,6 @@ deletePtnMain:
     ;Here we have a single partition, do we want to delete
 .nukeMBR:
     lea rdx, deleteNukeMsg
-    call print
     call getYNresponse  ;ZF = ZE => Y, ZF = NZ => N
     jnz mainLoop
     ;Nuke the whole partition table
@@ -401,6 +399,7 @@ deletePtnMain:
     xor edx, edx
     call sectorWrite
     jc badWriteExit
+    stosw   ;Clear the bootable signature too
     lea rdx, deleteNukeCompleteMsg
     call print
     jmp mainLoop

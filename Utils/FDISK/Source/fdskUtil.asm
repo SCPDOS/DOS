@@ -14,6 +14,8 @@ getValue:
     cmp ah, "0"
     jb .bad
 ;Digits are valid, now proceed
+    sub ah, "0"
+    sub al, "0"
     movzx ecx, al
     movzx eax, ah
     mov bl, 10
@@ -210,7 +212,7 @@ takeInput:
     mov byte [cmdLine + 4], al
     lea rdx, cmdLine
     mov byte [rdx], bl   ;Read 1 char (plus CR)
-    mov eax, 0A00h  ;Buffered Input
+    mov eax, 0C0Ah  ;Flush Input buffer and do Buffered Input
     int 41h
     return
 
@@ -219,14 +221,8 @@ takeInput:
 printBadMBR:
     lea rdx, invalidMBRMsg
     jmp short print
-printReturn:
-    lea rdx, retMsg
-    jmp short print
 printExit:
     lea rdx, exitMsg
-    jmp short print
-printHelp:
-    lea rdx, helpMsg
     jmp short print
 printcrlf:
     lea rdx, crlf
@@ -244,19 +240,17 @@ printPrompt:
     jmp short print
 
 printVersion:
-    call printcrlf
-.noCRLF:
     mov ah, 30h ;Get version numbers, al = Major, ah = Minor
     int 41h
     push rax
     movzx eax, al
-    call printDecimalWord
+    call printDecimalWordAtCursor
     mov dl, "."
     mov ah, 02h
     int 41h
     pop rax
     movzx eax, ah
-    call printDecimalWord
+    call printDecimalWordAtCursor
     return
 
 printPartitionStatusTable:
@@ -298,7 +292,6 @@ printPartitionStatusTable:
     stosq
     pop rdi
     mov eax, dword [curDiskSize]    ;Get the current disk size
-    inc eax
     call printDecimalWord
 
     lea rdi, totalSpaceMsg.sectorCount
@@ -378,7 +371,7 @@ printPartitionStatusTable:
     pop rax
     mov ebx, dword [rsi + mbrEntry.numSectors]
     add eax, ebx
-    dec eax ;Account for sector 0
+    dec eax ;Get the address of the last sector (one less than extant)
     lea rdi, partString.ptnEnd
     push rbx
     call printDecimalWord
@@ -392,6 +385,59 @@ printPartitionStatusTable:
     return
 
 
+
+printDecimalWordAtCursor:
+;Takes the qword in eax and prints its decimal representation
+    xor ecx, ecx
+    xor ebx, ebx    ;Store upper 8 nybbles here
+    test eax, eax
+    jnz .notZero
+    mov ecx, "0"
+    mov ebp, 1  ;Print one digit
+    jmp short .dpfb2
+.notZero:
+    xor ebp, ebp  ;Use bp as #of digits counter
+    mov esi, 0Ah  ;Divide by 10
+.dpfb0:
+    inc ebp
+    cmp ebp, 8
+    jb .dpfb00
+    shl rbx, 8    ;Space for next nybble
+    jmp short .dpfb01
+.dpfb00:
+    shl rcx, 8    ;Space for next nybble
+.dpfb01:
+    xor edx, edx
+    div rsi
+    add dl, '0'
+    cmp dl, '9'
+    jbe .dpfb1
+    add dl, 'A'-'0'-10
+.dpfb1:
+    cmp ebp, 8
+    jb .dpfb10
+    mov bl, dl ;Add the bottom bits
+    jmp short .dpfb11
+.dpfb10:
+    mov cl, dl    ;Save remainder byte
+.dpfb11:
+    test rax, rax
+    jnz .dpfb0
+.dpfb2:
+    cmp ebp, 8
+    jb .dpfb20
+    mov dl, bl
+    shr rbx, 8
+    jmp short .dpfb21
+.dpfb20:
+    mov dl, cl    ;Get most sig digit into al
+    shr rcx, 8    ;Get next digit down
+.dpfb21:
+    mov ah, 02h
+    int 41h
+    dec ebp
+    jnz .dpfb2
+    return
 
 printDecimalWord:
 ;Takes the qword in eax and prints its decimal representation

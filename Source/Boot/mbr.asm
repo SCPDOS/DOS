@@ -34,7 +34,11 @@ badExit:
 activeFound:
     xor ax, ax
     mov cx, 8
+    mov di, pktptr
+    push di ;Put pointer to the xfer packet on stack
     rep stosw   ;Store 8 zero words
+    lea di, [si + 8]  ;Get ptr to the lbaStart field in di 
+    pop si  ;Pop the xfer packet into si
     mov ch, 03h
 .tryAgain:
     mov cl, 03h
@@ -43,6 +47,14 @@ activeFound:
     mov word [si + 2], 1   ;Number of sectors to transfer
     mov word [si + 4], 07C00h ;Offset of buffer
     mov word [si + 6], 0      ;Segment of buffer
+    push si
+    push di
+    xchg si, di
+    add di, 8
+    movsw   ;Copy over the DWORD from the MBR entry
+    movsw
+    pop di
+    pop si
     mov ah, 42h
     int 13h
     jnc .readOk

@@ -11,10 +11,12 @@ strtMsg:
     db CR,LF
     db "Scientific Control Program / Disk Operating System",LF,CR
     db "Fixed Disk Setup Program Version $"
+
 cpyrtMsg:
     db LF,CR,"(C) Copyright Scientific Computer Research. 2022", LF,CR,"$"
 
 exitMsg:
+    db CR,LF,LF
     db "System will now restart",LF,CR
     db "Insert bootable DOS medium in drive A:",LF,CR
     db "Press any key when ready...",LF,CR,"$"
@@ -22,13 +24,8 @@ exitMsg:
 prompt: db "Fixed Disk "
 drvNum  db "1] $"
 
-helpMsg:
-    db "?) Display Available Options",LF,CR,"$"
-
 exitOptionMsg:
     db "Press X to exit",LF,CR,"$"
-retMsg:
-    db "Press X to return to FDISK options",CR,LF,"$"
 
 selectValidOption:
     db CR,LF,LF,LF,
@@ -52,25 +49,26 @@ createPageBadMsg:
     db "Primary DOS partition already exists",LF,CR,"$"
 createPageMsg:
     db "Create DOS Partition",LF,LF,CR
-    db "Do you wish to use the entire fixed disk for DOS? Y/N",CR,LF,"$"
+    db "Do you wish to use the entire fixed disk for DOS? Y/N: $"
 createPage2Msg:
     db "Specify how much of the fixed disk you wish to use (1%-99%) or"
-    db CR,LF,"$"    ;Followed by the retMsg
+    db CR,LF,
+    db "Press X to return to FDISK options",CR,LF,"$"
 createPromptMsg: 
     db "Type a number between 1 and 99] $"
 createDoneMsg:
-    db "Primary partition created", CR,LF,"$"
+    db CR,LF,LF,"Primary partition created", CR,LF,"$"
 
 ;CHANGE ACTIVE PARTITION ON DISK PAGE
 activeSinglePtnMsg:
-    db CR,LF,"Partition"
+    db CR,LF,"Partition "
 .number:
     db "1 is already active",CR,LF,"$"
 
 activePromptMsg:
     db CR,LF,"Please select a partition to mark as active (1-4): $"
 activePartitionSetMsg:
-    db CR,LF,"Partition"
+    db CR,LF,"Partition "
 .number:
     db "1 now set active",CR,LF,"$"
 
@@ -79,7 +77,7 @@ deleteNukeMsg:
     db CR,LF,
     db "Delete the whole Partition Table? Y/N: $"
 deleteNukeCompleteMsg:
-    db CR,LF,"Partition Table Deleted",CR,LF,"$"
+    db CR,LF,LF,"Partition Table Deleted",CR,LF,"$"
 deleteSelectMsg:
     db CR,LF, "Please select a partition to delete (1-4): $"
 deleteCannotMsg:
@@ -87,13 +85,13 @@ deleteCannotMsg:
 deleteBadFoundMsg:
     db CR,LF, "Bad Partition Table detected.",CR,LF,"$"
 deleteOkMsg:
-    db CR,LF, "Partition"
+    db CR,LF, "Partition "
 .number:
     db "1 deleted",CR,LF,"$"
 
 ;SELECT FIXED DISK PAGE 
 selectNumber:
-    db CR,LF,"FDISK has detected"
+    db CR,LF,"FDISK has detected "
 .number:
     db "0 Fixed Disk Drives",CR,LF,"$"
 selectPrompt:
@@ -151,12 +149,16 @@ noDisks:
 noMemoryMsg:
     db "Not enough free memory in system",CR,LF,"$"
 invalidMBRMsg:
+    db CR,LF
     db "Invalid or Missing Master Boot Record",CR,LF
     db "Please Create a new Master Boot Record",CR,LF,"$"
 badSectorMsg:
+    db CR,LF
     db "Bad Sector Size Detected",CR,LF,"$"
 badReadMsg:
+    db CR,LF
     db "Error reading Fixed Disk",CR,LF,"$"
 badWriteMsg:
+    db CR,LF
     db "Error writing Fixed Disk",CR,LF,"$"
 

@@ -1813,7 +1813,6 @@ diskInit:
     jmp short .checkPrimary
 .primaryFound:
     ;Copy the first sector of this partition into memory
-    breakpoint
     push rcx
     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
     call .initReadSector

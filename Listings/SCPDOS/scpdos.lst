@@ -3626,25 +3626,25 @@
   1788 00001541 488DBD[AF7A0000]    <1>     lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
   1789 00001548 64803C25[12C00300]- <1>     cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
   1789 00001550 00                  <1>
-  1790 00001551 0F84D1000000        <1>     jz .remInit ;No? Go to removables
+  1790 00001551 0F84CE000000        <1>     jz .remInit ;No? Go to removables
   1791 00001557 49B802000000000000- <1>     mov r8, 2   ;Device number 2 = C:
   1791 00001560 00                  <1>
   1792 00001561 B280                <1>     mov dl, 80h ;Start with HDD 0
   1793                              <1> .primary:
   1794 00001563 64803C25[7DC00300]- <1>     cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
   1794 0000156B 03                  <1>
-  1795 0000156C 0F84B6000000        <1>     je .remInit
+  1795 0000156C 0F84B3000000        <1>     je .remInit
   1796 00001572 31C9                <1>     xor ecx, ecx    ;Sector 0
-  1797 00001574 E87C010000          <1>     call .initReadSector ;Sets rbx to msdtempbuffer
-  1798 00001579 0F8294000000        <1>     jc .primaryEpilog
+  1797 00001574 E879010000          <1>     call .initReadSector ;Sets rbx to msdtempbuffer
+  1798 00001579 0F8291000000        <1>     jc .primaryEpilog
   1799                              <1>     ;Here, check MBR or BPB
   1800 0000157F 6681BBFE01000055AA  <1>     cmp word [rbx + 1FEh], 0AA55h
-  1801 00001588 0F8585000000        <1>     jne .primaryEpilog  ;Not a valid MBR or BPB, skip disk
+  1801 00001588 0F8582000000        <1>     jne .primaryEpilog  ;Not a valid MBR or BPB, skip disk
   1802                              <1>     ;Now check if BPB or MBR
   1803 0000158E 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
   1804 00001590 8A6302              <1>     mov ah, byte [rbx + 2]
   1805 00001593 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-  1806 00001597 747A                <1>     je .primaryEpilog ;Will process these during Extended Ptn search
+  1806 00001597 7477                <1>     je .primaryEpilog ;Will process these during Extended Ptn search
   1807                              <1>     ;Here with a MBR. Search the MBR for the first Primary Partition
   1808                              <1>     ;Look for CHS/LBA types (01h/04h/06h/0Bh/0Ch/0Eh) for primary ptns
   1809 00001599 4881C3BE010000      <1>     add rbx, mbr.mbrEntry1 ;Point rbx to mbrEntry1
@@ -3665,128 +3665,126 @@
   1824 000015BB 740D                <1>     je .primaryFound
   1825 000015BD 4881C310000000      <1>     add rbx, mbrEntry_size  ;Goto next entry byte
   1826 000015C4 FEC9                <1>     dec cl
-  1827 000015C6 744B                <1>     jz .primaryEpilog
+  1827 000015C6 7448                <1>     jz .primaryEpilog
   1828 000015C8 EBD8                <1>     jmp short .checkPrimary
   1829                              <1> .primaryFound:
   1830                              <1>     ;Copy the first sector of this partition into memory
-  1831                              <1>     breakpoint
-    86 000015CA 6687DB              <2> xchg bx, bx
-  1832 000015CD 51                  <1>     push rcx
-  1833 000015CE 8B4B08              <1>     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
-  1834 000015D1 E81F010000          <1>     call .initReadSector
-  1835 000015D6 59                  <1>     pop rcx
-  1836 000015D7 723A                <1>     jc .primaryEpilog
-  1837                              <1>     ;Now verify this is a BPB
-  1838 000015D9 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-  1839 000015DB 8A6302              <1>     mov ah, byte [rbx + 2]
-  1840 000015DE 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-  1841 000015E2 752F                <1>     jne .primaryEpilog   ;If not, skip
-  1842                              <1>     ;Now copy data to internal tables
-  1843 000015E4 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
-  1844 000015E7 51                  <1>     push rcx
-  1845 000015E8 B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
-  1846 000015ED 57                  <1>     push rdi
-  1847 000015EE F348A5              <1>     rep movsq   ;Copy the BPB
-  1848 000015F1 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
-  1849 000015F2 59                  <1>     pop rcx
-  1850                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
-  1851 000015F3 4A8D9C05[7D7A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
-  1852                              <1>     ;Add device count to rbx to point to correct entry
-  1853 000015FB 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
-  1854 000015FD 4A8D9CC5[877A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
-  1855 00001605 488933              <1>     mov qword [rbx], rsi
-  1856 00001608 49FFC0              <1>     inc r8  ;Goto next logical drive
-  1857 0000160B 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
-  1858                              <1> .primaryEpilog:
-  1859 00001613 FEC2                <1>     inc dl  ;Goto next BIOS drive
-  1860 00001615 88D6                <1>     mov dh, dl
-  1861 00001617 80E67F              <1>     and dh, 7Fh ;Clear bit 7
-  1862 0000161A 643A3425[12C00300]  <1>     cmp dh, byte fs:[numFixDrv]    ;Have we gone thru all hard drives?
-  1863 00001622 0F853BFFFFFF        <1>     jne .primary    ;Whilst we have fewer, go back
-  1864                              <1> .extended:
-  1865                              <1> ;We have gone through all the devices once
-  1866                              <1>     ;cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
-  1867                              <1>     ;je .remInit ;If yes, get removable devices
-  1868                              <1>     ;mov dl, 80h ;Go back to hard drive 80h
-  1869                              <1>     ;xor ecx, ecx    ;Get MBR back
-  1870                              <1>     ;call .initReadSector
-  1871                              <1>     ;Now we eventually search MBR for a FAT extended partition
-  1872                              <1> .remInit:
-  1873                              <1> ;Start by linking the default BPB's in the pointers table in the event that
-  1874                              <1> ; for some reason the removable drives stop working or dont exist.
-  1875                              <1> ;This forces the hard drives to start at C:
-  1876 00001628 53                  <1>     push rbx
-  1877 00001629 488D9D[AF7A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBblks] ;Get default drive A block ptr
-  1878 00001630 48899D[877A0000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl], rbx  ;Store in ptrs table
-  1879 00001637 4881C378000000      <1>     add rbx, bpbEx_size ;Goto next ptr
-  1880 0000163E 48899D[8F7A0000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl + 8], rbx  ;Store next pointer
-  1881 00001645 5B                  <1>     pop rbx
-  1882                              <1> ;Now handle removable devices, at least 2 rem. devs.
-  1883 00001646 4D89C1              <1>     mov r9, r8  ;Save number of next device in r9b
-  1884 00001649 30D2                <1>     xor dl, dl  ;Start with removable device 0
-  1885 0000164B 4188D0              <1>     mov r8b, dl ;Once r8b becomes 2, go past the disk drives
-  1886                              <1>     ;rdi points to the space for the subsequent bpb's
-  1887 0000164E 64803C25[11C00300]- <1>     cmp byte fs:[numRemDrv], 0  ;Just skip removable init if no rem drives
-  1887 00001656 00                  <1>
-  1888 00001657 750A                <1>     jnz .removables
-  1889 00001659 64800425[7DC00300]- <1>     add byte fs:[numPhysVol], 2 ;Pretend we have two more drives (A: and B:)
-  1889 00001661 02                  <1>
-  1890 00001662 C3                  <1>     ret ;and return!
-  1891                              <1> .removables:
-  1892 00001663 31C9                <1>     xor ecx, ecx    ;Read sector 0
-  1893 00001665 E88B000000          <1>     call .initReadSector
-  1894 0000166A 7238                <1>     jc .removableEpilogue   ;Goto next device
-  1895                              <1>     ;Now verify this is a BPB
-  1896 0000166C 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-  1897 0000166E 8A6302              <1>     mov ah, byte [rbx + 2]
-  1898 00001671 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-  1899 00001675 752D                <1>     jne .removableEpilogue   ;If not, skip
-  1900                              <1>     ;Now copy data to internal tables
-  1901 00001677 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
-  1902 0000167A B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
-  1903 0000167F 57                  <1>     push rdi
-  1904 00001680 F348A5              <1>     rep movsq   ;Copy the BPB
-  1905 00001683 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
-  1906                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
-  1907 00001684 4A8D9C05[7D7A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
-  1908                              <1>     ;Add device count to rbx to point to correct entry
-  1909 0000168C 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
-  1910 0000168E 4A8D9CC5[877A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
-  1911 00001696 488933              <1>     mov qword [rbx], rsi
-  1912 00001699 49FFC0              <1>     inc r8  ;Goto next logical drive
-  1913 0000169C 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
-  1914                              <1> .removableEpilogue:
-  1915 000016A4 FEC2                <1>     inc dl  ;Goto next BIOS device now
-  1916 000016A6 643A1425[11C00300]  <1>     cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
-  1917 000016AE 7412                <1>     je .end
-  1918 000016B0 4981F802000000      <1>     cmp r8, 2 ;Are we back at drive C: ?
-  1919 000016B7 7403                <1>     je .re0
-  1920 000016B9 4500C8              <1>     add r8b, r9b    ;Add the number of fixed disk volumes
-  1921                              <1> .re0:
-  1922 000016BC 4180F805            <1>     cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
-  1923 000016C0 72A1                <1>     jb .removables
-  1924                              <1> .end:
-  1925 000016C2 64803C25[11C00300]- <1>     cmp byte fs:[numRemDrv], 1  ;Do we have only 1 removable device?
-  1925 000016CA 01                  <1>
-  1926 000016CB 7401                <1>     je .singleRemDev
-  1927 000016CD C3                  <1>     ret
-  1928                              <1> .singleRemDev:
-  1929                              <1>     ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
-  1930 000016CE 488D9D[7D7A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap]
-  1931 000016D5 8A95[7D7A0000]      <1>     mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
-  1932 000016DB 885301              <1>     mov byte [rbx + 1], dl  ;Store in byte for Drive B:
-  1933 000016DE 488D9D[877A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
-  1934 000016E5 488B13              <1>     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
-  1935 000016E8 48895308            <1>     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
-  1936 000016EC 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
-  1937 000016F4 C3                  <1>     ret
-  1938                              <1> .initReadSector:
-  1939                              <1> ;Called with sector number in rcx and BIOS device number in dl
-  1940 000016F5 B482                <1>     mov ah, 82h ;Read
-  1941 000016F7 B001                <1>     mov al, 1   ;One sector
-  1942 000016F9 488D9D[10030000]    <1>     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
-  1943 00001700 CD33                <1>     int 33h
-  1944 00001702 C3                  <1>     ret
+  1831 000015CA 51                  <1>     push rcx
+  1832 000015CB 8B4B08              <1>     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
+  1833 000015CE E81F010000          <1>     call .initReadSector
+  1834 000015D3 59                  <1>     pop rcx
+  1835 000015D4 723A                <1>     jc .primaryEpilog
+  1836                              <1>     ;Now verify this is a BPB
+  1837 000015D6 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+  1838 000015D8 8A6302              <1>     mov ah, byte [rbx + 2]
+  1839 000015DB 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+  1840 000015DF 752F                <1>     jne .primaryEpilog   ;If not, skip
+  1841                              <1>     ;Now copy data to internal tables
+  1842 000015E1 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
+  1843 000015E4 51                  <1>     push rcx
+  1844 000015E5 B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
+  1845 000015EA 57                  <1>     push rdi
+  1846 000015EB F348A5              <1>     rep movsq   ;Copy the BPB
+  1847 000015EE 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
+  1848 000015EF 59                  <1>     pop rcx
+  1849                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
+  1850 000015F0 4A8D9C05[7D7A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+  1851                              <1>     ;Add device count to rbx to point to correct entry
+  1852 000015F8 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
+  1853 000015FA 4A8D9CC5[877A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+  1854 00001602 488933              <1>     mov qword [rbx], rsi
+  1855 00001605 49FFC0              <1>     inc r8  ;Goto next logical drive
+  1856 00001608 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
+  1857                              <1> .primaryEpilog:
+  1858 00001610 FEC2                <1>     inc dl  ;Goto next BIOS drive
+  1859 00001612 88D6                <1>     mov dh, dl
+  1860 00001614 80E67F              <1>     and dh, 7Fh ;Clear bit 7
+  1861 00001617 643A3425[12C00300]  <1>     cmp dh, byte fs:[numFixDrv]    ;Have we gone thru all hard drives?
+  1862 0000161F 0F853EFFFFFF        <1>     jne .primary    ;Whilst we have fewer, go back
+  1863                              <1> .extended:
+  1864                              <1> ;We have gone through all the devices once
+  1865                              <1>     ;cmp byte fs:[numPhysVol], 3  ;Are we at maximum devices (A: B: reserved)?
+  1866                              <1>     ;je .remInit ;If yes, get removable devices
+  1867                              <1>     ;mov dl, 80h ;Go back to hard drive 80h
+  1868                              <1>     ;xor ecx, ecx    ;Get MBR back
+  1869                              <1>     ;call .initReadSector
+  1870                              <1>     ;Now we eventually search MBR for a FAT extended partition
+  1871                              <1> .remInit:
+  1872                              <1> ;Start by linking the default BPB's in the pointers table in the event that
+  1873                              <1> ; for some reason the removable drives stop working or dont exist.
+  1874                              <1> ;This forces the hard drives to start at C:
+  1875 00001625 53                  <1>     push rbx
+  1876 00001626 488D9D[AF7A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBblks] ;Get default drive A block ptr
+  1877 0000162D 48899D[877A0000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl], rbx  ;Store in ptrs table
+  1878 00001634 4881C378000000      <1>     add rbx, bpbEx_size ;Goto next ptr
+  1879 0000163B 48899D[8F7A0000]    <1>     mov qword [rbp + msdDriver.msdBPBTbl + 8], rbx  ;Store next pointer
+  1880 00001642 5B                  <1>     pop rbx
+  1881                              <1> ;Now handle removable devices, at least 2 rem. devs.
+  1882 00001643 4D89C1              <1>     mov r9, r8  ;Save number of next device in r9b
+  1883 00001646 30D2                <1>     xor dl, dl  ;Start with removable device 0
+  1884 00001648 4188D0              <1>     mov r8b, dl ;Once r8b becomes 2, go past the disk drives
+  1885                              <1>     ;rdi points to the space for the subsequent bpb's
+  1886 0000164B 64803C25[11C00300]- <1>     cmp byte fs:[numRemDrv], 0  ;Just skip removable init if no rem drives
+  1886 00001653 00                  <1>
+  1887 00001654 750A                <1>     jnz .removables
+  1888 00001656 64800425[7DC00300]- <1>     add byte fs:[numPhysVol], 2 ;Pretend we have two more drives (A: and B:)
+  1888 0000165E 02                  <1>
+  1889 0000165F C3                  <1>     ret ;and return!
+  1890                              <1> .removables:
+  1891 00001660 31C9                <1>     xor ecx, ecx    ;Read sector 0
+  1892 00001662 E88B000000          <1>     call .initReadSector
+  1893 00001667 7238                <1>     jc .removableEpilogue   ;Goto next device
+  1894                              <1>     ;Now verify this is a BPB
+  1895 00001669 8A03                <1>     mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+  1896 0000166B 8A6302              <1>     mov ah, byte [rbx + 2]
+  1897 0000166E 663DEB90            <1>     cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+  1898 00001672 752D                <1>     jne .removableEpilogue   ;If not, skip
+  1899                              <1>     ;Now copy data to internal tables
+  1900 00001674 4889DE              <1>     mov rsi, rbx    ;Point rsi to the temp buffer
+  1901 00001677 B90F000000          <1>     mov ecx, bpbEx_size/8   ;Copy BPB
+  1902 0000167C 57                  <1>     push rdi
+  1903 0000167D F348A5              <1>     rep movsq   ;Copy the BPB
+  1904 00001680 5E                  <1>     pop rsi ;Get the pointer to the copied bpb into rsi
+  1905                              <1>     ;Store BIOS map value and BPBblk pointer in bpbTbl
+  1906 00001681 4A8D9C05[7D7A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+  1907                              <1>     ;Add device count to rbx to point to correct entry
+  1908 00001689 8813                <1>     mov byte [rbx], dl  ;Store BIOS map value 
+  1909 0000168B 4A8D9CC5[877A0000]  <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+  1910 00001693 488933              <1>     mov qword [rbx], rsi
+  1911 00001696 49FFC0              <1>     inc r8  ;Goto next logical drive
+  1912 00001699 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
+  1913                              <1> .removableEpilogue:
+  1914 000016A1 FEC2                <1>     inc dl  ;Goto next BIOS device now
+  1915 000016A3 643A1425[11C00300]  <1>     cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
+  1916 000016AB 7412                <1>     je .end
+  1917 000016AD 4981F802000000      <1>     cmp r8, 2 ;Are we back at drive C: ?
+  1918 000016B4 7403                <1>     je .re0
+  1919 000016B6 4500C8              <1>     add r8b, r9b    ;Add the number of fixed disk volumes
+  1920                              <1> .re0:
+  1921 000016B9 4180F805            <1>     cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
+  1922 000016BD 72A1                <1>     jb .removables
+  1923                              <1> .end:
+  1924 000016BF 64803C25[11C00300]- <1>     cmp byte fs:[numRemDrv], 1  ;Do we have only 1 removable device?
+  1924 000016C7 01                  <1>
+  1925 000016C8 7401                <1>     je .singleRemDev
+  1926 000016CA C3                  <1>     ret
+  1927                              <1> .singleRemDev:
+  1928                              <1>     ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
+  1929 000016CB 488D9D[7D7A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBIOSmap]
+  1930 000016D2 8A95[7D7A0000]      <1>     mov dl, byte [rbp + msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
+  1931 000016D8 885301              <1>     mov byte [rbx + 1], dl  ;Store in byte for Drive B:
+  1932 000016DB 488D9D[877A0000]    <1>     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
+  1933 000016E2 488B13              <1>     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
+  1934 000016E5 48895308            <1>     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
+  1935 000016E9 64FE0425[7DC00300]  <1>     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
+  1936 000016F1 C3                  <1>     ret
+  1937                              <1> .initReadSector:
+  1938                              <1> ;Called with sector number in rcx and BIOS device number in dl
+  1939 000016F2 B482                <1>     mov ah, 82h ;Read
+  1940 000016F4 B001                <1>     mov al, 1   ;One sector
+  1941 000016F6 488D9D[10030000]    <1>     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
+  1942 000016FD CD33                <1>     int 33h
+  1943 000016FF C3                  <1>     ret
     16                                  Segment dSeg nobits align=1 start=0     ;BSS data segment
     17                                  %include "./Source/BSS/dosSeg.asm"
     18                              <1> ;This file contains the main DOS data segment

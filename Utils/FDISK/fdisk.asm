@@ -46,7 +46,7 @@ partialVBR:
     at bpb.bytsPerSec,  dw 0200h        ;512 bytes per sector always
     at bpb.secPerClus,  db 0            ;Unset by FDISK
     at bpb.revdSecCnt,  dw 0            ;Unset by FDISK
-    at bpb.numFATs,     db 0            ;Unset by FDISK
+    at bpb.numFATs,     db 1            ;Unset by FDISK, set to 1
     at bpb.rootEntCnt,  dw 0            ;Unset by FDISK
     at bpb.totSec16,    dw -1           ;Total number of sectors on disk
     at bpb.media,       db 0F8h         ;Hard Disk Media byte
