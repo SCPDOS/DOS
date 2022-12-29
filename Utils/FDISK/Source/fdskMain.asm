@@ -513,10 +513,10 @@ exit:
     int 41h
 .badInstruction:
     lidt [.resetIDT] ;Triple fault the machine
-    lgdt [.resetIDT]
-    xor eax, eax
-    mov cs, ax
+    jmp short .toHell
+.toHell:
     int 00h ;Call div by 0 to trigger reboot if not somehow failed yet
+    jmp short .toHell
 .resetIDT:
     dw 0
     dq 0
