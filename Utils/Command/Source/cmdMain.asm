@@ -26,6 +26,8 @@ applicationReturn:  ;Return point from a task, all regs preserved
     mov qword [r8 + psp.oldInt42h], rdx
     mov eax, 2542h
     int 41h
+    test byte [pipeNumber], -1
+    jnz commandMain.pipeProceed ;Skip the handle closing when pipe active
 ;Close all handles from 5->MAX
     movzx ecx, word [numHdls]
     mov ebx, 5
@@ -35,6 +37,7 @@ applicationReturn:  ;Return point from a task, all regs preserved
     inc ebx ;Goto next file
     cmp ebx, ecx
     jbe .handleClose    ;Keep looping whilst below or equal
+    call cleanUpRedir   ;Clean up redirection once we are done
 commandMain:
 ;Setup Commandline
     cli
@@ -64,9 +67,15 @@ commandMain:
     rep movsb
     xor eax, eax
     mov word [cmdStartOff], ax  ;Clear start and end Off positions
+.pipeLoop:
     call parseInput
     call doCommandLine
-    jmp short .inputMain
+.pipeProceed:
+    call cleanUpRedir
+    test byte [pipeNumber], -1  ;If we have any pipes active, we proceed here
+    jz .inputMain
+    call clearCommandState  ;Else, clear the command state and start again
+    jmp short .pipeLoop
 .dfltErrExit:
     lea rdx, badCmd
     mov ah, 09h
@@ -148,6 +157,7 @@ parseInput:
     sub rsi, rbx    ;Get the offset into the command line
     mov ebx, esi
     mov byte [cmdEndOff], bl    ;Store the offset to the terminating char
+    inc byte [cmdEndOff] ;Goto  first char past terminating char for next bit
     mov al, CR
     stosb   ;Store the terminating CR in the psp command line
     ;Now compute the command line length 
@@ -341,6 +351,160 @@ checkExtensionExec:
     stc
     return
 
+redirFailure:
+    lea rdx, redirErrMsg
+    mov ecx, redirErrMsgL
+    jmp short redirPipeFailureCommon
+pipeFailure:
+    lea rdx, pipeErrMsg
+    mov ecx, pipeErrMsgL
+redirPipeFailureCommon:
+;This routine is called if any problems happen during 
+;This routine tries to close whatever handles are not -1 and delete
+; pipe files if the pipe count is not 0
+;It resets all variables and proceeds.
+    mov eax, 4000h  ;Write handle
+    mov ebx, 2  ;Write to STDERR
+    int 41h
+    xor ebx, ebx    ;Select STDIN
+    call .closeHandle
+    inc ebx         ;Select STDOUT
+    call .closeHandle
+    mov eax, 3D02h  ;Open read/write
+    lea rdx, conName
+    int 41h
+    mov ebx, eax    ;Move file handle to ebx
+    mov eax, 4500h  ;DUP
+    int 41h
+    mov word [redirIn], 0  ;Clear both flags
+    movzx ebx, word [redirSTDIN]
+    call .closeHandle
+    ;Close and zero both STDIN and STDOUT handle vars
+    mov word [redirSTDIN], -1
+    movzx ebx, word [redirSTDOUT]
+    call .closeHandle
+    mov word [redirSTDOUT], -1
+    movzx ebx, word [pipeSTDIN]
+    call .closeHandle
+    mov word [pipeSTDIN], -1
+    movzx ebx, word [pipeSTDOUT]
+    call .closeHandle
+    mov word [pipeSTDOUT], -1
+    mov word [newPipeFlag], 0  ;Cover the pipe number too
+    lea rdx, qword [pipe1Filespec]
+    cmp byte [rdx], 0
+    jz .checkOld
+    mov eax, 4100h  ;Del File pointed to by rdx
+    int 41h
+.checkOld:
+    lea rdx, qword [pipe2Filespec]
+    cmp byte [rdx],0
+    jz .pipeNamesComplete
+    mov eax, 4100h  ;Del File pointed to by dl
+    int 41h
+.pipeNamesComplete:
+    xor eax, eax
+    ;Invalidate the pointers and the paths too
+    mov qword [newPipe], rax
+    mov qword [oldPipe], rax
+    mov dword [pipe1Filespec], eax
+    mov dword [pipe2Filespec], eax
+    stc
+    return
+.closeHandle:
+    cmp ebx, -1
+    rete
+    mov eax, 3E00h
+    int 41h
+    return
+
+cleanUpRedir:
+;Cleans up the redir stuff after we are done.
+    test byte [redirIn], -1
+    jnz .redirInClear
+    test byte [redirOut], -1
+    jnz .redirOutClear
+    test byte [newPipeFlag], -1 ;New pipe active flag set?
+    jnz .newPipe
+    test byte [pipeNumber], -1
+    retz
+;Here for final pipe cleanup
+    mov rdx, [oldPipe]
+    mov eax, 4100h
+    int 41h
+    jc pipeFailure
+    mov byte [rdx], 0   ;Invalidate the path too
+;Now place STDIN handle back where it belongs
+    xor ecx, ecx    ;Close STDIN and duplicate ebx in it
+    movzx ebx, word [pipeSTDIN]
+    mov eax, 4600h
+    int 41h
+    jc pipeFailure
+    mov eax, 3E00h  ;Now close the duplicate in ebx
+    int 41h
+    jc pipeFailure
+    mov word [pipeSTDIN], -1
+    mov byte [pipeNumber], 0   ;Make the pipe number 0
+    return
+.newPipe:
+    cmp byte [pipeNumber], 2 ;Do we have two pipes active?
+    jne .noClose    ;If not, skip deleting old pipe
+    ;Here to delete the old pipe file
+    mov rdx, [oldPipe]
+    mov eax, 4100h
+    int 41h
+    jc pipeFailure
+    mov byte [rdx], 0   ;Overwrite the first byte of pathname with a zero
+    dec byte [pipeNumber]   ;Decrement the number of active pipes
+.noClose:
+    mov rax, qword [newPipe]   ;Transfer the name pointer
+    mov qword [oldPipe], rax
+    mov ebx, 1  ;Now move STDOUT to STDIN
+    xor ecx, ecx
+    mov eax, 4600h
+    int 41h
+    jc pipeFailure
+    mov eax, 3E00h  ;And CLOSE STDOUT as it stands
+    int 41h
+;Now we reset STDOUT back to what it was initially.
+    movzx ebx, word [pipeSTDOUT]
+    mov ecx, 1
+    mov eax, 4600h
+    int 41h
+    jc pipeFailure
+;And now close the copy
+    mov eax, 3E00h
+    int 41h
+    jc pipeFailure
+    mov byte [newPipeFlag], 0  ;Indicate we are done with pipe command
+    mov word [pipeSTDOUT], -1
+    return
+
+.redirInClear:
+    movzx ebx, word [redirSTDIN]    ;Put this file back to STDIN
+    xor ecx, ecx    ;Duplicate original STDIN into CX (into STDIN position)
+    mov eax, 4600h  ;This closes the redir file in the process
+    int 41h
+    jc redirFailure
+    mov eax, 3E00h  ;Now close BX in the process too remove duplicates.
+    int 41h
+    jc redirFailure
+    mov word [redirSTDIN], -1  ;Replace the file handle with -1
+    mov byte [redirIn], 0   ;Clear the flag
+    return
+.redirOutClear:
+    movzx ebx, word [redirSTDOUT]    ;Put this file back to STDOUT
+    mov ecx, 1    ;Duplicate original STDOUT into CX (into STDOUT position)
+    mov eax, 4600h  ;This closes the redir file in the process
+    int 41h
+    jc redirFailure
+    mov eax, 3E00h  ;Now close BX in the process too remove duplicates.
+    int 41h
+    jc redirFailure
+    mov word [redirSTDOUT], -1  ;Replace the file handle with -1
+    mov byte [redirOut], 0   ;Clear the flag
+    return
+
 checkAndSetupRedir:
 ;Checks and sets up redir as appropriate
 ;Input: al = First char to check, if al < > >> or |, handled appropriately
@@ -365,8 +529,27 @@ checkAndSetupRedir:
     lea rdi, rdrInFilespec
     call skipSpaces ;Skip spaces between < and the filespec
     call copyCommandTailItem
-    jc .redirExit
+    ;jc .redirExit
+    dec rsi ;Ensure rsi points to the terminating char
     call skipSpaces
+    ;Setup the redir here for STDIN
+    xor ebx, ebx    ;DUP STDIN
+    mov eax, 4500h
+    int 41h
+    jc .redirError
+    mov word [redirSTDIN], ax   ;Save the handle in variable
+    lea rdx, rdrInFilespec
+    mov eax, 3D02h  ;Open file for read write access
+    int 41h
+    jc .redirError
+    xor ecx, ecx    ;Close STDIN and duplicate bx into it
+    movzx ebx, ax   ;Move the handle into bx to duplicate into cx (STDIN)
+    mov eax, 4600h
+    int 41h
+    jc .redirError
+    mov eax, 3E00h  ;Now close the original copy of the handle
+    int 41h
+    jc .redirError
     xor al, al
     jmp short .redirExit
 .outputRedir:
@@ -374,20 +557,98 @@ checkAndSetupRedir:
     cmp byte [rsi], ">" ;Was this a > or a >>
     jne .notDouble
     inc byte [redirOut] ;Inc to make it 2
+    inc rsi ;Go past it too
 .notDouble:
     lea rdi, rdrOutFilespec
     call skipSpaces
     call copyCommandTailItem
-    jc .redirExit
+    ;jc .redirExit
+    dec rsi ;Ensure rsi points to the terminating char
     call skipSpaces
+    ;Setup the redir here for STDOUT
+    mov ebx, 1    ;DUP STDOUT
+    mov eax, 4500h
+    int 41h
+    jc .redirError
+    mov word [redirSTDOUT], ax   ;Save the handle in variable
+    lea rdx, rdrOutFilespec
+    mov eax, 3D02h  ;Open file for read write access
+    int 41h
+    jnc .fileExists
+    mov eax, 3C00h
+    mov ecx, 0  ;Make the file with no attributes
+    int 41h
+    jc .redirError
+.fileExists:
+    mov ecx, 1    ;Close STDOUT and duplicate bx into it
+    movzx ebx, ax   ;AX has the new handle for output
+    mov eax, 4600h  ;DUP2
+    int 41h
+    jc .redirError
+    mov eax, 3E00h  ;Now close the original copy of the handle (in bx)
+    int 41h
+    jc .redirError
+    cmp byte [redirOut], 1
+    je .dontAppend
+    ;Here we move the file pointer to the end of the file
+    xor edx, edx    ;Low order 32 bits
+    xor ecx, ecx    ;High order 32 bits
+    mov ebx, 1  ;We seek STDOUT to the end
+    mov eax, 4202h  ;Seek from end of file
+    int 41h
+    jc .redirError
+.dontAppend:
+    mov byte [redirOut], -1
     xor al, al
-    jmp short .redirExit
+    jmp .redirExit
 .pipeSetup:
-    mov byte [pipeFlag], -1
+    lea rdx, pipe1Filespec
+    cmp byte [rdx], 0
+    jz .pathFound
+    lea rdx, pipe2Filespec
+    cmp byte [rdx], 0
+    jnz .pipeError
+.pathFound:
+    mov qword [newPipe], rdx    ;Use this as the newPipe path
+    call getCurrentDrive    ;Get current drive in al (0 based number)
+    add al, "A"
+    mov ebx, 005C3A00h  ;0,"\:",0
+    mov bl, al  ;Move the drive letter into low byte of ebx
+    mov ecx, dirHidden  ;Hidden attributes
+    mov eax, 5A00h  ;Create a temporary file
+    int 41h
+    jc .pipeError
+    ;AX has the handle for this file now, this will become STDOUT
+    ;If this is the first pipe, we want to save a copy of this handle
+    test byte [pipeNumber], -1
+    jnz .notFirstPipe
+    movzx edx, ax    ;Save this handle for a minute in dx
+    ;Now DUP STDOUT to save for later
+    mov eax, 4500h
+    mov ebx, 1  ;Duplicate STDOUT
+    int 41h
+    jc .pipeError
+    ;Save this handle in the variable
+    mov word [pipeSTDOUT], ax   ;Save this pipe number
+    mov eax, edx    ;Get the temp file handle back in eax
+.notFirstPipe:
+    movzx ebx, ax
+    mov ecx, 1  ;Close STDOUT and move bx into it
+    mov eax, 4600h  ;DUPlicate temp file handle into STDOUT
+    int 41h
+    jc .pipeError
+    mov byte [newPipeFlag], -1  ;Mark we have a new pipe active
+    inc byte [pipeNumber]   ;Start a new pipe
     xor al, al
     stc
     pop rdi
     return
+.pipeError:
+    pop rdi 
+    jmp pipeFailure
+.redirError:
+    pop rdi 
+    jmp pipeFailure
 
 copyCommandTailItemProgram:
 ;Copies a program name from the command tail until a terminator is found.

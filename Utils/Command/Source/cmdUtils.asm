@@ -471,6 +471,7 @@ clearCommandState:
     mov ecx, cmdStateL
     xor eax, eax
     rep stosb
+    mov dword [redirSTDIN], -1
     return
 
 clearCommandLineState:
@@ -479,6 +480,8 @@ clearCommandLineState:
     mov ecx, cmdLineStateL
     xor eax, eax
     rep stosb
+    mov dword [pipeSTDIN], -1
+    mov dword [redirSTDIN], -1
     return
 
 asciiToFCB:

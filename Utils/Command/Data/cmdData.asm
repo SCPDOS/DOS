@@ -20,9 +20,10 @@ currDirStr  db fullDirPathZL dup (0) ;Current Directory String
 cmdLineStatePtr:
 cmdStartOff db 0    ;Offset to the first char for this command (may be a space)
 cmdEndOff   db 0    ;Offset to the terminating char for this command (0Dh or |)
-pipeFlag    db 0    ;If set, we are piping across a command
-pipeHndl    dw 0    ;If pipeFlag set, this var has the handle to the pipe file
-pipeName    db 13 dup 0, ;Space for name of the pipe file we created.
+newPipeFlag db 0    ;If set, we fired up a new pipe for this command
+pipeNumber  db 0    ;Count of active pipes (1 if a | b or 2 if a | b | c ...)
+pipeSTDIN   dw -1   ;The handle to replace STDIN with once all piping complete
+pipeSTDOUT  dw -1   ;The handle to replace STDOUT with once all piping complete
 
 cmdStatePtr:   ;Symbol to use for clearing command state variables
 ;These variables are valid for a SINGLE command in a command line
@@ -30,7 +31,9 @@ cmdDrvSpec  dw 0    ;Read the first word in to see if the pathspec has drivespec
 redirIn     db 0    ;If set, we are redirecting input from a file
 redirOut    db 0    ;If 1, we are redirecting output to a file, destructively
 ;                    If 2, we are redirecting output to a file, by appending
-;FLG and SWCH are read as a word when checking if argX is a switch
+redirSTDIN  dw -1   ;The handle to replace STDIN with once redir complete
+redirSTDOUT dw -1   ;The handle to replace STDOUT with once all redir complete
+
 arg1Flg     db 0    ;Set if there was a first argument
 arg1Off     db 0    ;Offset into cmdBuffer to the argument
 arg1FCBret  db 0    ;AL on return from parse filename for argument 1
@@ -59,6 +62,13 @@ cmdName     db cmdNameL dup (0) ;Command name string prefixed by length of word
 
 rdrInFilespec   db fileSpecZL dup (0)   ;Space for the redir in filespec
 rdrOutFilespec  db fileSpecZL dup (0)   ;Space for the redir out filespec
+
+;Once we are done with a pathname, we override the first byte with a NULL.
+pipe1Filespec   db fileSpecZL dup (0)   ;Space for the pipe file filespec
+pipe2Filespec   db fileSpecZL dup (0)   ;Space for the pipe file filespec
+
+newPipe dq 0    ;Pointer to the new pathspec (STDOUT)
+oldPipe dq 0    ;Pointer to the old pathspec (STDIN)
 
 searchSpec  db cmdBufferL dup (0)   ;Contains the pathspec for the search file
 ;The above is larger than is needed/supported by DOS to allow for 

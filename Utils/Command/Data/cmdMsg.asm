@@ -78,7 +78,10 @@ memBad2 db CR,LF,"Memory Error$"
 memBad3 db CR,LF,"System halted$"
 
 touchErr db "Unable to create file",CR,LF,"$"
-
+pipeErrMsg  db "Unable to create pipe",CR,LF
+pipeErrMsgL equ $ - pipeErrMsg
+redirErrMsg db "Redirection error",CR,LF
+redirErrMsgL   equ $ - redirErrMsg
 
 ansiCls  db 01BH,"[2J" ;ANSI CLS sequence, 4 chars long
 fourSpc  db "    $"
@@ -88,3 +91,7 @@ twoSpc   db "  $"
 badOnOff db "Must specify ON or OFF",CR,LF,"$"
 pathEVar db "PATH="
 promptEVar  db "PROMPT="
+
+;If anything goes wrong with piping or redirecting just close first two 
+; handles and reopen CON
+conName db "CON",0      
