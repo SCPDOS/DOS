@@ -31,6 +31,7 @@ badCmn:
     return
 
 dir:
+    ;breakpoint
     mov byte [dirPrnType], 0    ;Clear DIR flags
     mov byte [dirLineCtr], 0
     mov byte [dirFileCtr], 0
@@ -50,7 +51,6 @@ dir:
 .switchScan:
     repne scasb ;Scan for a switchchar
     jecxz .switchScanDone
-    mov al, byte [rdi]  ;Get the byte pointed to by rdi
     and al, 0DFh    ;UC it
     cmp al, "W" ;Wide print mode?
     jne .notWideSw
@@ -68,17 +68,21 @@ dir:
     lea rsi, cmdBuffer + 2
     call skipSpaces ;Skip leading spaces
     add rsi, 3  ;Go past the DIR (always three chars)
-.loop:
+.lp:
     call skipSpaces ;Skip spaces after
     lodsb   ;Get first non space char
     call isALEndOfCommand   ;If this is the end char CR or "|", exit
     jz .eocNoNull
+    cmp al, ">"
+    je .eocNoNull
+    cmp al, "<"
+    je .eocNoNull
     cmp al, byte [switchChar]  ;Is al a switch char?
     jne .notSwitch
     ;Now we skip the switch if it was a switch
     call findTerminatorOrEOC    ;Go past the switch
     jc .eocNoNull  ;If we reach the EOC, exit,
-    jmp short .loop
+    jmp short .lp
 .notSwitch:
     ;If not a switch, should be a path. Copy to buffer and keep searching
     cmp byte [dirPathArg], 0    ;If a second path provided, error
@@ -96,7 +100,7 @@ dir:
 .terminateCopy:
     xor eax, eax
     stosb   ;Store a terminating null here if a terminator found.
-    jmp short .loop ;Now search if another 
+    jmp short .lp ;Now search if another 
 .eocReached:
     xor eax, eax
     stosb   ;Store a terminating null here if a terminator found.
