@@ -45,26 +45,20 @@ charOut_B:       ;ah = 02h
     push rsi
     mov ebx, 1  ;STDOUT handle 
     call getCharDevSFT  ;Get SFT handle in rsi or exit if CF=CY
-    jc .exitPrintEcho
+    jc auxOutCmn.exit
     ;Ensure we only echo if STDOUT is a char device!!
     movzx ebx, word [rsi + sft.wDeviceInfo]
     test ebx, devRedirDev
-    jnz .exitPrintEcho  ;Exit if STDOUT is redir
+    jnz auxOutCmn.exit  ;Exit if STDOUT is redir
     test ebx, devCharDev
-    jz .exitPrintEcho
+    jz auxOutCmn.exit
     mov ebx, 4  ;STDPRN handle
     call getCharDevSFT  ;Get printer sft in rsi
-    jc .exitPrintEcho   ;Exit if handle closed
+    jc auxOutCmn.exit   ;Exit if handle closed
     test word [rsi + sft.wDeviceInfo], charDevNetSpool  ;Network printer?
-    jz .netSpool
-    call outputOnSFT
-    jmp short .exitPrintEcho
-.netSpool:
+    jz auxOutCmn.diskFileEP
     mov byte [printEcho], 0 ;Stop echoing
-.exitPrintEcho:
-    pop rsi
-    pop rbx
-    return
+    jmp auxOutCmn.netFileEP
 .control:
     cmp al, CR
     je .newline
@@ -123,7 +117,10 @@ auxOutCmn: ;Auxilliary output device common
     call vConCtrlCheck  ;Check if STDIN has a ^C pending
     pop rax
     push rsi
+.diskFileEP:
     call outputToHandle ;bx has handle, convert to sft ptr and output char!
+.netFileEP:
+.exit:
     pop rsi
     pop rbx
     return

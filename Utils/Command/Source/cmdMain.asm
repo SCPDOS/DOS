@@ -28,6 +28,7 @@ applicationReturn:  ;Return point from a task, all regs preserved
     int 41h
     test byte [pipeNumber], -1
     jnz commandMain.pipeProceed ;Skip the handle closing when pipe active
+    call cleanUpRedir   ;Clean up redirection once we are done
 ;Close all handles from 5->MAX
     movzx ecx, word [numHdls]
     mov ebx, 5
@@ -37,7 +38,6 @@ applicationReturn:  ;Return point from a task, all regs preserved
     inc ebx ;Goto next file
     cmp ebx, ecx
     jbe .handleClose    ;Keep looping whilst below or equal
-    call cleanUpRedir   ;Clean up redirection once we are done
 commandMain:
 ;Setup Commandline
     cli
@@ -648,7 +648,7 @@ checkAndSetupRedir:
     jmp pipeFailure
 .redirError:
     pop rdi 
-    jmp pipeFailure
+    jmp redirFailure
 
 copyCommandTailItemProgram:
 ;Copies a program name from the command tail until a terminator is found.

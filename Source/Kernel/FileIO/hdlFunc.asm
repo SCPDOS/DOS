@@ -321,57 +321,36 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 duplicateHandle:   ;ah = 45h, handle function
 ;Input: bx = Handle to duplicate
 ;Output: If ok then ax = New handle
-    push rbx
-    call findFreeJFTEntry    ;First find a free space in the JFT
-    pop rbx
-    jc extErrExit   ;Exit if no space
-    mov rsi, rdi    ;Points rsi to the free space
+    movzx eax, bx    ;Move handle to ax
+    call findFreeJFTEntry    ;First find a free space in the JFT in rdi
 .duplicateCommon:
-    call getJFTPtr  ;Get a pointer to the JFT entry in rdi for bx
-    xchg rsi, rdi
-    lodsb   ;Move over the SFT ndx from the old to the new position
-    stosb
-    dec rsi
-    dec rdi
-    ;rdi now points to new position
-    ;rsi points to old position
-    ;al has SFT ndx
-    mov rsi, rdi    ;Move rsi to point to the new position jft position
-    movzx ebx, al   ;Move SFTndx into ebx
+    jc extErrExit   ;Exit if no space
+    mov rsi, rdi    ;Save the free space in rsi
+    xchg eax, ebx
     call getSFTPtr    ;Get the pointer to the SFT in rdi
+    jc extErrExit
     inc word [rdi + sft.wNumHandles]    ;Increase the number of handles in SFT
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jnz .netFile
     call openDriverWrapper
 .netFile:
-    ;Now we must return in ax the entry in the JFT 
-    mov rdi, qword [currentPSP]
-    lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to head of table
-    sub rsi, rdi    ;Get the difference of the two in si
-    mov eax, esi    ;Get the difference as the return code
-    jmp extGoodExit
+    call getJFTPtr
+    mov bl, byte [rdi]
+    mov byte [rsi], bl
+    jmp extGoodExit     ;Return handle in ax the entry in the JFT 
 
 forceDuplicateHdl: ;ah = 46h, handle function
 ;Input: bx = Handle to duplicate
 ;       cx = Handle to close and replace with a duplicate of bx
     ;First we close cx if it exists
-    xchg ebx, ecx ;Swap cx and bx
+    movzx ecx, cx
     push rbx
     push rcx
+    mov ebx, ecx
     call closeFileHdl   ;Close handle 
-    pop rcx
     pop rbx
-    jnc .hdlClosed
-    cmp eax, errBadHdl  ;If the handle didnt first exist, just proceed!
-    je .hdlClosed
-    stc
-    return    ;The error code is set by errExtExit and CF is set on callerFrame
-.hdlClosed:
-    ;Else, close was ok, lets duplicate now
+    pop rax
     call getJFTPtr  ;Get a pointer to bx in rdi, destination for copy
-    jc extErrExit   ;Return bad with error code in al
-    xchg ebx, ecx   ;Now get source to duplicate in ebx
-    mov rsi, rdi    ;Put the free space ptr in rsi
     jmp short duplicateHandle.duplicateCommon
 
 findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
@@ -1114,6 +1093,7 @@ deleteMain:
     retnc
 .exitBad:
     call cancelWriteThroughBuffers
+    stc
     return
 
 openMain:
@@ -1468,14 +1448,14 @@ buildSFTEntry:
     call goDriver   ;Make request
     pop rbx
 .exit:
-    call writeThroughBuffers
+    call writeThroughBuffersForHandle
     jc .bad2
     pop rbp
     return
 .bad:   ;Set Access Denied
     mov eax, errAccDen
 .bad2:  ;Error propagating error code
-    call cancelWriteThroughBuffers
+    call cancelWriteThroughBuffersForHandle
     stc
     pop rbp
     return
@@ -1543,17 +1523,18 @@ closeMain: ;Int 4Fh AX=1201h
     ;and if the device is a disk device, cl will have the unit number
     ;We first check if the driver supports oper/close requests
     test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
-    jnz .exit  ;If not, immediately jump to exit, all is well
+    jz .exitOk  ;If not, immediately jump to exit, all is well
     ;rsi has device driver ptr for device, make request
     call primReqCloseSetup  ;rbx gets header ptr, rsi has driver ptr
     call goDriver   ;Make request
     ;Don't check the status here, as we are simply informing the driver 
     ; of an operation. Nothing should be able to go wrong. 
     ;Functionally, an ignore if anything does go wrong.
-    call writeThroughBuffers
+    call writeThroughBuffersForHandle
     jnc short .exitOk
 .exit:
-    call cancelWriteThroughBuffers
+    call cancelWriteThroughBuffersForHandle
+    stc
 .exitOk:
     pop rsi
     pop rbx
@@ -2478,4 +2459,39 @@ decrementOpenCount: ;Int 4Fh AX = 1208h
 .exit:
     popfq
     xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
+    return
+
+;Buffer Wrappers
+writeThroughBuffersForHandle:
+;Input: qword [currentSFT] = Current SFT pointer
+    push rdi
+    push rbp
+    mov rdi, qword [currentSFT]
+    test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
+    jnz .exit
+    push qword [workingDPB]
+    mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
+    mov qword [workingDPB], rbp
+    call writeThroughBuffers
+    pop qword [workingDPB]
+.exit:
+    pop rbp
+    pop rdi
+    return
+
+cancelWriteThroughBuffersForHandle:
+;Input: qword [currentSFT] = Current SFT pointer
+    push rdi
+    push rbp
+    mov rdi, qword [currentSFT]
+    test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
+    jnz .exit
+    push qword [workingDPB]
+    mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
+    mov qword [workingDPB], rbp
+    call cancelWriteThroughBuffers
+    pop qword [workingDPB]
+.exit:
+    pop rbp
+    pop rdi
     return

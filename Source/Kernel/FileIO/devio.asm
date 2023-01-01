@@ -109,12 +109,52 @@ mainCharIO:
     and byte [secdReqHdr + drvReqHdr.status + 1], ~(drvBsyStatus >> 8)
     jmp short .ignoreRet
 .notChar:
-;Just return with ZF=NZ for now
-    push rax
-    xor eax, eax
-    inc al
-    pop rax
+;rsi -> SFT to read/write to
+    test ah, ah ;If ah = 0, read 1 byte
+    jz .makeDiskNetReadReq
+    dec ah
+    jz .makeDiskNetNonDestReq
+    dec ah
+    jz .makeDiskNetWriteReq
+    ;Else just return with ZF=NZ
     return
+.makeDiskNetReadReq:
+    call .prepDiskNetIO
+    call readBytes
+    test ecx, ecx   ;Set flags for how many bytes we read, ZF=ZE => No read
+    call .cleanDiskNetIO
+    mov al, byte [singleIObyt]
+    retnz
+    mov al, EOF ;Else return an EOF
+    return
+.makeDiskNetNonDestReq:
+    ;Save the SFT file pointer position and read a char
+    push qword [rsi + sft.dCurntOff]
+    call .makeDiskNetReadReq
+    pop  qword [rsi + sft.dCurntOff]
+    return
+.makeDiskNetWriteReq:
+    call .prepDiskNetIO
+    call writeBytes
+    call .cleanDiskNetIO
+    return
+.prepDiskNetIO:
+;Set up the currentDTA to the internal buffer
+;We use this here only so we can tweak it for this purpose
+    pop qword [altRet]
+    call dosPushRegs
+    push qword [currentDTA]
+    lea rcx, singleIObyt   ;Get the buffer ptr
+    mov qword [currentDTA], rcx ;and use it as the current DTA
+    xor ecx, ecx
+    inc ecx ;IO 1 byte only
+.cleanDNIOReturn:
+    jmp qword [altRet]
+.cleanDiskNetIO:
+    pop qword [altRet]
+    pop qword [currentDTA]
+    call dosPopRegs
+    jmp short .cleanDNIOReturn
 
 openSFT:
 ;Signals an open to a file (e.g. when printer echo is to begin)

@@ -199,6 +199,7 @@ sdaMainSwap:
 ;ioReqPkt is the largest possible packet
     secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
     primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
+    altRet: ;Accessed as a qword
     critReqHdr  resb ioReqPkt_size  ;Used for ^C detection!
     pspCopyFlg  resb 1  ;Set to -1 for child process PSP, 0 for simple PSP copy
 ;Swappable Buffers
