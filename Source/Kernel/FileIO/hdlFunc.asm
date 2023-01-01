@@ -332,7 +332,7 @@ duplicateHandle:   ;ah = 45h, handle function
     inc word [rdi + sft.wNumHandles]    ;Increase the number of handles in SFT
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jnz .netFile
-    call openDriverWrapper
+    call openDriverMux
 .netFile:
     call getJFTPtr
     mov bl, byte [rdi]
@@ -1102,7 +1102,7 @@ openMain:
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
 ;Ouput: CF=CY => Error, eax has error code
-    call .setOpenMode
+    call setOpenMode
     retc    ;Error Exit 
     mov rdi, qword [currentSFT]
     mov rsi, qword [workingCDS]
@@ -1146,11 +1146,18 @@ openMain:
     call getCurrentSFT  ;Get SFT ptr in rdi
     call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
     call dosCrit1Exit
+openDriverMux:  ;Int 4Fh, AX=120Ch, jumped to by Create
+    mov rdi, qword [currentSFT]
+    call openSFT
     test word [rdi + sft.wOpenMode], FCBopenedFile
-    retz
-    stc ;FCB opened files are not allowed anymore, this shouldnt exist anymore
+    jnz .netOpen
     return
-.setOpenMode:
+.netOpen:
+    mov rax, qword [currentPSP]
+    mov qword [rdi + sft.qPSPOwner], rax
+    return
+
+setOpenMode:
 ;Input: al = Open mode for the file open
     mov byte [fileOpenMd], al
     push rbx
@@ -1176,6 +1183,7 @@ openMain:
     mov eax, errAccCde
     stc
     return
+
 createNewMain:
 ;Input: ax (formally al) = File attributes
 ;       [currentSFT] = SFT we are building
@@ -1237,7 +1245,8 @@ createMain:
     jc .errorExit
     mov eax, 2
     call qword [updateDirShare]
-    clc ;Always clear the CF flag here updateDir defaults to CF=CY
+    call dosCrit1Exit
+    jmp openDriverMux
 .errorExit:
     call dosCrit1Exit
     return
@@ -1349,8 +1358,8 @@ buildSFTEntry:
     movsq   ;Copy over the space padded name to the sft
     movsw
     movsb
-    ;SFT filled, now we open on the driver if it supports it
-    jmp .openDriver
+    ;SFT filled
+    jmp .exit
 .createFile:
     ;Create a dummy dir entry in the SDA to swap into the disk buffer
     ;rsi points to current sda entry
@@ -1432,21 +1441,6 @@ buildSFTEntry:
     mov eax, "    "
     mov word [rsi + sft.sFileName + 8], ax
     mov byte [rsi + sft.sFileName + 10], al
-.openDriver:
-    mov rdi, qword [currentSFT]
-    mov rsi, qword [rdi + sft.qPtr] ;Get the ptr here
-    test word [rdi + sft.wDeviceInfo], devCharDev
-    jnz .charDevOpen
-    movzx eax, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
-    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
-.charDevOpen:
-    test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
-    jz .exit  ;If not, immediately jump to exit, all is well
-    ;rsi has device driver ptr for device, make request
-    push rbx
-    call primReqOpenSetup  ;rbx gets header ptr, rsi has driver ptr
-    call goDriver   ;Make request
-    pop rbx
 .exit:
     call writeThroughBuffersForHandle
     jc .bad2
@@ -1458,16 +1452,6 @@ buildSFTEntry:
     call cancelWriteThroughBuffersForHandle
     stc
     pop rbp
-    return
-
-openDriverWrapper:  ;Int 4Fh, AX=120Ch
-    push rsi    ;Preserve rsi
-    lea rsi, .returnAddress
-    push rsi    ;Push the return address on the stack, popped on Return
-    push rbp    ;Push rbp on the stack, popped just before return
-    jmp buildSFTEntry.openDriver ;JUMP, don't call
-.returnAddress:
-    pop rsi ;Get back preserved rsi
     return
 
 closeMain: ;Int 4Fh AX=1201h
@@ -1521,15 +1505,9 @@ closeMain: ;Int 4Fh AX=1201h
     pop rax
     xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
     ;and if the device is a disk device, cl will have the unit number
-    ;We first check if the driver supports oper/close requests
-    test word [rsi + drvHdr.attrib], devDrvHdlCTL   ;Support Close?
-    jz .exitOk  ;If not, immediately jump to exit, all is well
-    ;rsi has device driver ptr for device, make request
-    call primReqCloseSetup  ;rbx gets header ptr, rsi has driver ptr
-    call goDriver   ;Make request
-    ;Don't check the status here, as we are simply informing the driver 
-    ; of an operation. Nothing should be able to go wrong. 
-    ;Functionally, an ignore if anything does go wrong.
+    pushfq
+    call closeSFT   ;Called with rdi -> Current SFT
+    popfq
     call writeThroughBuffersForHandle
     jnc short .exitOk
 .exit:
