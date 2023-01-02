@@ -425,24 +425,6 @@ isALEndOfCommand:
     cmp al, CR
     return
 
-scanForRedir:
-;Returns: AL = 0 => No redirection, terminate with CR
-;         AL = 1 => Redirection, type <
-;         AL = 10 => Redir, type >
-;         AL = 20 => Redir, type >>
-;If multiple redirs found, the last one of that type counts.
-    push rsi
-    push rbp
-    xor ah, ah
-.lp:
-    lodsb
-    cmp al, ">"
-.exit:
-    pop rbp
-    pop rsi
-    return
-
-
 skipSpaces:
 ;Also skips tabs
 ;Input: rsi must point to the start of the data string

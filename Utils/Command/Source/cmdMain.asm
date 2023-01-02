@@ -689,6 +689,10 @@ copyCommandTailItem:
     je .endOfInput
     call isALterminator
     jz .exit
+    cmp al, "<"
+    jz .exit
+    cmp al, ">"
+    jz .exit
     cmp al, byte [pathSep]
     je .pathSep
     cmp al, byte [switchChar]
