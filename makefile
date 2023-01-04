@@ -43,7 +43,7 @@ copy:
 	cp ./Images/MyDiskDOS.ima ./Images/MyDiskDOSMSD.ima
 #Build COMMAND.COM
 command:
-	nasm ./Utils/COMMAND/command.asm -o ./Utils/COMMAND/Binaries/command.com -f bin -l ./Utils/COMMAND/Listings/command.lst -O0v
+	nasm ./Utils/COMMAND/command.asm -o ./Utils/COMMAND/Binaries/COMMAND.COM -f bin -l ./Utils/COMMAND/Listings/command.lst -O0v
 
 format:
 	nasm ./Utils/FORMAT/format.asm -o ./Utils/FORMAT/Binaries/FORMAT.COM -f bin -l ./Utils/FORMAT/Listings/format.lst -O0v

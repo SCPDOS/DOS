@@ -128,11 +128,10 @@ partStringL equ $ - partString  ;Use this to clean the string with spaces
 totalSpaceMsg:
     db CR,LF
     db "-------------------------------------------------",CR,LF
-    db "Total Disk Space is ", 
+    db "    Total disk size, in sectors: ", 
 .sizeCount:
-    db "        ",
-    db " Sectors",CR,LF
-    db "Sector Size: "
+    db "                    ",CR,LF
+    db "            Sector Size: "
 .sectorCount:
     db "    "
     db " Bytes",CR,LF
