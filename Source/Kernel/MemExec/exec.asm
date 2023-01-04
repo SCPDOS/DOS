@@ -258,6 +258,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .notDefaultStackAlloc:
     add ebx, eax    ;Add stack allocation
     add ebx, psp_size   ;Add space for the PSP to the allocation too
+    ;Add also one section alignment as it is likely that our arena won't be 
+    ; section aligned and so we will need to align before reading, to 
+    ; guaranee that we will have space for the EXE header to be read in later.
+    add ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
     mov dword [rbp - execFrame.dProgSize], ebx  ;Save the program size
     add ebx, 11h
     shr ebx, 4  ;Turn into paragraphs
@@ -338,6 +342,29 @@ loadExecChild:     ;ah = 4Bh, EXEC
 
     push rcx
     push rdi    ;Save current buffer offset
+    xor edi, edi
+    mov edi, dword [sectHdr + imageSectionHdr.dVirtualAddress]  ;Get where it should go in memory, offset from image base
+    add rdi, qword [rbp - execFrame.pProgBase]  ;Turn into offset from progbase
+    ;If a section has a virtual address outside of the allocation arena
+    ; refuse to load it IF it contains no BSS, Data or Code and skip to the 
+    ; next section.
+    mov rdx, qword [rbp - execFrame.pPSPBase]
+    sub rdx, mcb_size   ;Go back a unit of mcb
+    xor ecx, ecx
+    mov ecx, dword [rdx + mcb.blockSize]
+    shl rcx, 4  ;Convert to bytes (multiply by 16)
+    add rdx, mcb_size   ;Go to the first byte of the mcb
+    add rdx, rcx    ;Now rdx points to the first byte outside the arena
+    cmp rdx, rdi    ;If rdx > rdi, we are ok
+    ja .okToLoad
+    ;Now check if this is a useless section. If so, we don't load it at all
+    test dword [sectHdr + imageSectionHdr.dCharacteristics], imgScnCntBSS | imgScnCntCode | imgScnCntData
+    jnz .badFmtErr  ;If any of these bits set, error out
+    ;Else, just skip this section, goto next section
+    pop rdi
+    pop rcx
+    jmp short .gotoNextSection
+.okToLoad:
     mov ecx, dword [sectHdr + imageSectionHdr.dSizeOfRawData]   ;Get # of bytes
     mov rdx, rdi    ;Get ptr to buffer in rdx
     call .readDataFromHdl
@@ -373,6 +400,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor eax, eax
     rep stosb
     pop rcx
+.gotoNextSection:
     dec ecx ;Decrement our section counter
     jz .doExeFixups
     ;Read next section header in here
@@ -454,7 +482,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .exeComplete:
     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
     add rax, qword [rbp - execFrame.pProgBase]
-    mov rax, qword [rbp - execFrame.pProgBase]
     mov qword [rbp - execFrame.pProgEP], rax
     ;Now we copy the header into the memory space to pspPtr+psp_size
     xor ecx, ecx
@@ -636,6 +663,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov r9, rdi
     movzx eax, bx   ;ax must contain validity of the two FCB drives
     return  ;Return to child task
+;r8 is guaranteed to have a copy of the PSP.
+;ax is guaranteed to have the validity signatures in AH and AL.
+;Everything else is optional and potentially changable at a later stage
 
 .badFmtErr:
     mov eax, errBadFmt  ;Fall thru with bad resource format error

@@ -21,11 +21,11 @@ struc execFrame
     .pPSPBase   resq 1  ;Ptr to new PSP base address
     .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
     .dProgSize  resq 1  ;Program size is saved here, PSP included.
-.pProgEP:   ;Program EP, recycle this qword
     .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
+.pProgEP:   ;Program EP, recycle this qword
     .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
-.qRelocVal:  ;Used when computing relocations, Rebasing factor
     .dFilePtr   resq 1  ;Keep of track of where in file we are
+.qRelocVal:  ;Used when computing relocations, Rebasing factor
 endstruc
 
 ;Possible blocks to be pointed to by rbx

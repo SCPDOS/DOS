@@ -289,11 +289,13 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     renameFFBlk resb ffBlock_size   ;Source file "find first" block
     renameDir   resb fatDirEntry_size   ;Build new file dir entry here
 ;Stacks and scratch SFT
+    alignb  8
     critStack   resq 165
     critStakTop resq 1
 
     scratchSFT  resb sft_size   ;Used in FCB calls to emulate a SFT
-
+    
+    alignb  8
     AuxStack    resq 199
     AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)
     DiskStack   resq 199
