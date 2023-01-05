@@ -330,7 +330,7 @@ changeActivePtnMain:
     mov bl, 2
     call takeInput
     cmp byte [charsTyped], 1
-    je .manyValid
+    jne .manyValid
     movzx eax, byte [inputString]  ;Get the first byte
     cmp al, "1"
     jb .manyValid
@@ -421,7 +421,7 @@ deletePtnMain:
     mov bl, 2
     call takeInput
     cmp byte [charsTyped], 1
-    je .multiplePartitions
+    jne .multiplePartitions
     movzx eax, byte [inputString]  ;Get the first byte
     cmp al, "1"
     jb .multiplePartitions
@@ -482,7 +482,7 @@ selectDiskMain:
     mov bl, 2
     call takeInput
     cmp byte [charsTyped], 1
-    je .promptLoop
+    jne .promptLoop
     movzx eax, byte [inputString]  ;Get the first byte
     cmp al, "1"
     jb .promptLoop
