@@ -22,6 +22,7 @@ struc execFrame
     .pProgBase  resq 1  ;Ptr to Prog. Base addr., ALIGNED FOR FIRST EXE SECTION
     .dProgSize  resq 1  ;Program size is saved here, PSP included.
     .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
+    .wCOFFChars resq 1  ;Save the COFF characteristics in here
 .pProgEP:   ;Program EP, recycle this qword
     .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
     .dFilePtr   resq 1  ;Keep of track of where in file we are
@@ -86,7 +87,7 @@ imageOS2Signature   equ 0454Eh      ; NE, REJECT
 imageOS2SignatureLE equ 0454Ch      ; LE, REJECT
 imagePESignature    equ 00004550h   ; PE00, ACCEPT
 
-;COFF File header, immadiately follows the signature so @ [e_lfanew + 4]
+;COFF File header @ [e_lfanew]
 
 struc imageFileHeader
     .dPESignature        resd 1  ;PESignature, must be PE00

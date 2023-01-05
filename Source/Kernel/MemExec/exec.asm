@@ -215,7 +215,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor al, al  ;Set file pointer from start of file
     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get handle
     call lseekHdl   ;Move to that position in the file
-
     pop rdx ;Get exeHdrSpace address back
     mov ecx, imageFileHeader_size
     call .readDataFromHdl       ;Now read the COFF header
@@ -229,8 +228,11 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp word [rdx + imageFileHeader.wMachineType], imageFileMachineAMD64
     jne .badFmtErr
     ;Check the binary is executable
-    test word [rdx + imageFileHeader.wCharacteristics], imageFileExecutable
+    movzx eax, word [rdx + imageFileHeader.wCharacteristics]
+    test ax, imageFileExecutable
     jz .badFmtErr
+    mov word [rbp - execFrame.wCOFFChars], ax   ;Save this for later!
+
     cmp word [rdx + imageFileHeader.wSizeOfOptionalHdr], imageFileOptionalHeader_size
     jb .badFmtErr   ;We need the full optional header (as normal)
     ;Now save the number of sections in the the file
@@ -238,7 +240,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     test eax, eax   ;If this is 0, what?
     jz .badFmtErr
     mov word [rbp - execFrame.wNumSeg], ax  ;Save this value for later!
-
     ;Now load Optional header, file ptr points to it so all good!
     mov ecx, imageFileOptionalHeader_size
     ;rdx points to exeHdrSpace
@@ -417,26 +418,26 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jmp .loadLp
 .doExeFixups:
 ;Here we fixup addresses if needed
-;Program Entrypoint is saved in the header structure in the SDA
-;Move File pointer to COFF header Coff + optional header sizes
-;We look only for .reloc segment. We have it in memory too so use it to make 
-; fixups. Zero the in memory image of reloc segment once we are done with it. 
-;We checked that .reloc exists so all ok
+;If the program is loaded at its desired location never need to relocate.
+;Else we need to have a .reloc section to see if we need to do relocations. 
+;   If the program has had it's .reloc section stripped by the linker
+;       or has no .reloc directory, we fail
+;   Else, we read the .reloc directory in. It most likely will have no 
+;       relocations anyway.
 
-;First we check if relocations were stripped
-    test word [rdx + imageFileHeader.wCharacteristics], imageFileRelocsStripped
-    jz .relocNotStripped
-    ;Now check that the program start address = desired load. If neq, fail.
-    push rdx
+;If program base = desired load, skip relocs
     mov rdx, qword [rbp - execFrame.pProgBase]
     cmp rdx, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
-    pop rdx
-    jne .badFmtErr
-    jmp .exeComplete
-.relocNotStripped:
+    je .exeComplete
+;If program has had relocs stripped, fail
+    movzx eax, word [rbp - execFrame.wCOFFChars]
+    test ax, imageFileRelocsStripped
+    jnz .badFmtErr
+;If program has no .reloc section, fail
     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
     cmp edx, 6  ;Does .reloc exist (6th directory entry)
-    jb .exeComplete ;If not, exe load complete as no relocations were necessary!
+    jb .badFmtErr ;Need relocs but no .reloc directory exists
+;Now we get the reloc section
     mov edx, dword [rbp - execFrame.dCOFFhdr]
     add edx, imageFileHeader_size + imageFileOptionalHeader_size + 5*8
     ;eax now points to position in file of directory entry for reloc
