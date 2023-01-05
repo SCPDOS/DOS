@@ -104,7 +104,7 @@ genericBPB32:
     at bpb32.secPerClus,  db -1           ;Sectors per cluster
     at bpb32.revdSecCnt,  dw 0001h        ;1 Reserved Sector
     at bpb32.numFATs,     db 02h          ;2 FAT tables
-    at bpb32.rootEntCnt,  dw 0200h        ;512 root entries
+    at bpb32.rootEntCnt,  dw 0000h        ;Invalid field for FAT32
     at bpb32.totSec16,    dw 0            ;Not a FAT 12/16 BPB
     at bpb32.media,       db 0F0h         ;Media byte
     at bpb32.FATsz16,     dw 0            ;Not a FAT 12/16 BPB
