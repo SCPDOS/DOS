@@ -163,6 +163,7 @@ startNewChain:
     mov ebx, eax
     call writeFAT   ;Propagate the CF 
     mov eax, ebx
+    call decrementFreeClusterCount
 .exit:
     pop rsi
     pop rbx
@@ -194,6 +195,7 @@ allocateClusters:
     call writeFAT   ;Allocate this cluster first
     pop rax
     jc .exit    ;Errors don't get flushed to disk so this is safe
+    call decrementFreeClusterCount
     ;eax points to this allocated cluster
     ;ebx points to the previous last cluster
     mov esi, eax    ;New cluster as "value"
@@ -247,7 +249,8 @@ findFreeCluster:
 findFreeClusterData:
 ;Walks the FAT to find a free cluster and returns the 
 ;   zero extended cluster number in eax (-1 means no free cluster)
-;Also finds NumberOfFreeCLusters. Both fields get filled in the workingDPB
+; Also finds NumberOfFreeCLusters, if it is unknown. 
+; Both fields get filled in the workingDPB
 ;Works on the workingDPB
 ;If returns with CF=CY => Fail set, return immediately to caller
     push rbx
@@ -255,11 +258,8 @@ findFreeClusterData:
     push rbp
     mov rbp, qword [workingDPB]
     movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
-    ;Mark dFirstFreeCluster as -1 and dNumberOfFreeClusters as 0
-    xor edx, edx
-    mov dword [rbp + dpb.dNumberOfFreeClusters], edx ;Zero this field
-    dec edx
-    mov dword [rbp + dpb.dFirstFreeCluster], edx ;Set to -1, unknown (i.e. none)
+    ;Mark dFirstFreeCluster as -1, unknown
+    mov dword [rbp + dpb.dFirstFreeCluster], -1
     ;Use readFAT
     ;Starting with cluster number 2, goto to the MAX cluster
     ;If readFAT returns 0 then its a free cluster
@@ -271,9 +271,9 @@ findFreeClusterData:
     jc .exitFail   ;If something goes wrong, just return
     test eax, eax   ;Is this cluster free?
     jne .fatProceed
-    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
     cmp dword [rbp + dpb.dFirstFreeCluster], -1 ;Have we found the first clust?
     je .fatFirst
+    inc dword [rbp + dpb.dNumberOfFreeClusters] ;Add 1 to # of free clusters
 .fatProceed:
     lea eax, dword [ebx + 1]    ;Add one to ebx and save in eax
     cmp eax, edx
@@ -287,8 +287,11 @@ findFreeClusterData:
     pop rbx
     return
 .fatFirst:
+;Set the first free cluster value in the DPB and check if we need to get a count
     mov dword [rbp + dpb.dFirstFreeCluster], ebx
-    jmp short .fatProceed
+    cmp dword [rbp + dpb.dNumberOfFreeClusters], -1 ;If unknown, get count
+    je .fatProceed
+    jmp short .exit ;Else, we have valid count so just exit
 
 getNextSectorOfFile:
 ;This function will read the next sector for a file into a buffer.
@@ -343,8 +346,12 @@ unlinkFAT:
     push rax    ;Save the cluster number to start unlinking at
     push rsi
     call truncateFAT    ;Preserved eax
+    jc .exit
     xor esi, esi  ;Free first cluster too
     call writeFAT
+    jc .exit
+    call incrementFreeClusterCount  ;One more cluster freed
+.exit:
     pop rsi
     pop rax
     return
@@ -372,6 +379,7 @@ truncateFAT:
     xor esi, esi   ;Free cluster at eax (write a 0)
     call writeFAT
     jc .exit    ;Error exit
+    call incrementFreeClusterCount  ;Successfully freed the cluster
     cmp ecx, -1 ;End of chain?
     je .exit
     mov eax, ebx    ;Move next cluster into eax
@@ -547,3 +555,22 @@ writeFAT:
     or eax, esi     ;Add the new entry bits
     mov word [rbx + bufferHdr.dataarea + rdx], ax   ;Replace the entry
     jmp .exit
+
+incrementFreeClusterCount:
+;Cluster Deallocated Function
+    pushfq
+    cmp dword [rbp + dpb.dNumberOfFreeClusters], -1
+    je .exit
+    inc dword [rbp + dpb.dNumberOfFreeClusters]
+.exit:
+    popfq
+    return
+decrementFreeClusterCount:
+;Cluster Allocated Function
+    pushfq
+    cmp dword [rbp + dpb.dNumberOfFreeClusters], -1
+    je .exit
+    dec dword [rbp + dpb.dNumberOfFreeClusters]
+.exit:
+    popfq
+    return
