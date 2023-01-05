@@ -19,7 +19,7 @@ struc execFrame
 
     .pEnvBase   resq 1  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
     .pPSPBase   resq 1  ;Ptr to new PSP base address
-    .pProgBase  resq 1  ;Ptr to new Program Base address (consider removing)
+    .pProgBase  resq 1  ;Ptr to Prog. Base addr., ALIGNED FOR FIRST EXE SECTION
     .dProgSize  resq 1  ;Program size is saved here, PSP included.
     .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
 .pProgEP:   ;Program EP, recycle this qword
@@ -103,6 +103,10 @@ endstruc
 
 imageFileMachineUnknown equ 0
 imageFileMachineAMD64   equ 08664h 
+
+;Characteristics to check for
+imageFileRelocsStripped equ 0001h   ;If set, base addr MUST equal load addr
+imageFileExecutable     equ 0002h   ;Must always be set else badfmterr
 
 ;Optional header, immediately follows COFF header
 

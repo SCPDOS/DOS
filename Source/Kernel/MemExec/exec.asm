@@ -228,6 +228,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jne .badFmtErr
     cmp word [rdx + imageFileHeader.wMachineType], imageFileMachineAMD64
     jne .badFmtErr
+    ;Check the binary is executable
+    test word [rdx + imageFileHeader.wCharacteristics], imageFileExecutable
+    jz .badFmtErr
     cmp word [rdx + imageFileHeader.wSizeOfOptionalHdr], imageFileOptionalHeader_size
     jb .badFmtErr   ;We need the full optional header (as normal)
     ;Now save the number of sections in the the file
@@ -300,9 +303,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;So now copy one section at a time, read section header in
     ;File pointer points to the directory table, so skip that
     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
-    cmp edx, 6  ;Does .reloc exist (6th directory entry)
-    jb .badFmtErr
-    ;dec edx ;Decrement by 1 to make into a 0 based offset
+    ;Load however many directories we have into place
     ;Each directory is 8 bytes, so multiply edx by 8
     shl edx, 3  ;edx has number of bytes to move file pointer forwards by
     xor ecx, ecx
@@ -415,16 +416,30 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rcx
     jmp .loadLp
 .doExeFixups:
-;Here we fixup addresses as needed
+;Here we fixup addresses if needed
 ;Program Entrypoint is saved in the header structure in the SDA
 ;Move File pointer to COFF header Coff + optional header sizes
 ;We look only for .reloc segment. We have it in memory too so use it to make 
 ; fixups. Zero the in memory image of reloc segment once we are done with it. 
 ;We checked that .reloc exists so all ok
+
+;First we check if relocations were stripped
+    test word [rdx + imageFileHeader.wCharacteristics], imageFileRelocsStripped
+    jz .relocNotStripped
+    ;Now check that the program start address = desired load. If neq, fail.
+    push rdx
+    mov rdx, qword [rbp - execFrame.pProgBase]
+    cmp rdx, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
+    pop rdx
+    jne .badFmtErr
+    jmp .exeComplete
+.relocNotStripped:
     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+    cmp edx, 6  ;Does .reloc exist (6th directory entry)
+    jb .exeComplete ;If not, exe load complete as no relocations were necessary!
     mov edx, dword [rbp - execFrame.dCOFFhdr]
     add edx, imageFileHeader_size + imageFileOptionalHeader_size + 5*8
-    ;eax now points to position in file of direcotry entry for reloc
+    ;eax now points to position in file of directory entry for reloc
     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get handle in bx
     xor eax, eax
     call lseekHdl   ;Move handle there in file
@@ -433,9 +448,13 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Read 8 bytes into sectHdr space
     lea rdx, sectHdr
     call .readDataFromHdl   ;Read this directory entry in
+    test eax, eax
+    jz .badFmtErr
+    cmp eax, ecx
+    jne .badFmtErr
     ;Now we have the offset in memory if the file was loaded at imageBase
-    cmp byte [rbp - execFrame.bSubFunc], execOverlay    ;If overlay, skip this
-    jz .exeComplete
+    ;cmp byte [rbp - execFrame.bSubFunc], execOverlay    ;If overlay, skip this
+    ;jz .exeComplete
     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
     test esi, esi   ;If there are no relocations, skip this...
     jz .exeComplete   ;... including if overlay
@@ -456,13 +475,13 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
     test ecx, ecx    ;If no relocations, skip
     jz .exeComplete
-    mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
     ;rsi points to the first base relocation block. The relocations begin
     ; after the first block
     ;ecx has the number of base relocation blocks to process.
 .nextBlock:
     push rcx    ;Reuse rcx as a counter for the current page
     mov eax, dword [rsi + baseRelocBlock.pageRVA]   ;Get the page rva
+    mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
     add rdi, rax    ;Add this page offset to rdi to goto correct page for reloc
     mov ecx, dword [rsi + baseRelocBlock.size]  ;Get number of bytes
     shr ecx, 1  ;Divide by 2 to get number of words = # of relocs to do
@@ -498,7 +517,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jz .badFmtErr
     cmp ecx, eax
     jnz .badFmtErr
-    call qword [registerDLL]    ;Now we register the DLL
+    call qword [registerDLL]    ;Now we register the DLL and any import/exports
     jc .badFmtErr   ;If this errors out for some reason, quit loading EXE
     jmp .buildChildPSP
 .loadCom:
