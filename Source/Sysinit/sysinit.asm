@@ -554,8 +554,8 @@ storageInits:
     mov qword [rbp + dpb.qDriverHeaderPtr], rax
     pop rax
     inc cl
-    cmp cl, al  ;When above, we are have finished
-    ja .si1
+    cmp byte fs:[numPhysVol], cl  ;When equal, we are have finished
+    je .si1
     push rax
     lea rax, qword [rbp + dpb_size] ;Load address of next dpb to rax
     mov qword [rbp + dpb.qNextDPBPtr], rax  ;Save pointer
