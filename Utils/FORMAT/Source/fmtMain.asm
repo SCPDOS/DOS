@@ -198,7 +198,12 @@ selectFATtype:
     call getVolumeID
     mov dword [rdi + bpb.volID], eax
     mov byte [bpbSize], 62  ;62 bytes to copy
-    jmp short .bpbReady
+    lea rbx, qword [bootloader + bpb_size]
+    mov qword [loaderPtr], rbx 
+    movzx ecx, word [sectorSize]
+    sub ecx, bpb_size
+    mov word [loaderBytes], cx
+    jmp .bpbReady
 .fat32:
     lea rdi, genericBPB32
     mov al, byte [media]
@@ -228,6 +233,11 @@ selectFATtype:
     call getVolumeID
     mov dword [rdi + bpb32.volID], eax
     mov byte [bpbSize], 90  ;90 bytes to copy
+    lea rbx, qword [bootloader + 200h + bpb32_size]
+    mov qword [loaderPtr], rbx 
+    movzx ecx, word [sectorSize]
+    sub ecx, bpb32_size
+    mov word [loaderBytes], cx
 .bpbReady:
 ;Now the BPB is ready, save the pointer and now setup bootsector for writing
     mov qword [bpbPointer], rdi
@@ -248,10 +258,9 @@ selectFATtype:
     mov rsi, qword [bpbPointer]
     movzx ecx, byte [bpbSize]
     rep movsb
-;The attached bootloader has a FAT12 BPB, skip it
-    lea rsi, qword [bootloader + 62]    ;Go past the BPB of the bootloader
-    movzx ecx, word [sectorSize]
-    sub ecx, 62 ;That many fewer bytes
+;The attached bootloader has a FAT12 or FAT32 BPB, skip em
+    mov rsi, qword [loaderPtr]
+    movzx ecx, word [loaderBytes]
     rep movsb   ;Copy the bootsector over
     mov rbx, qword [bufferArea] ;rbx = Memory Buffer address to read from
     mov byte [rbx + 509], 0 ;Make the disk not bootable

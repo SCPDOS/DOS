@@ -54,6 +54,7 @@ format:
 	nasm ./Utils/FORMAT/format.asm -o ./Utils/FORMAT/Binaries/FORMAT.COM -f bin -l ./Utils/FORMAT/Listings/format.lst -O0v
 # Now stick the generic bootloader to the end of the file
 	cat ./Binaries/loader.bin >> ./Utils/FORMAT/Binaries/FORMAT.COM
+	cat ./Binaries/loader32.bin >> ./Utils/FORMAT/Binaries/FORMAT.COM
 
 sys:
 	nasm ./Utils/SYS/sys.asm -o ./Utils/SYS/Binaries/SYS.COM -f bin -l ./Utils/SYS/Listings/sys.lst -O0v

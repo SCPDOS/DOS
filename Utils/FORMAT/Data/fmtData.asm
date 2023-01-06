@@ -19,6 +19,9 @@ bpbPointer  dq 0        ;Pointer to the BPB we will use
 bpbSize     db 0        ;Size of the BPB
 hiddSector  dd 0        ;Only used for Fixed Disks, offset to add
 
+loaderPtr   dq 0        ;Point to the bootloader to use
+loaderBytes dw 0        ;Number of bytes to copy
+
 ;Tables
 ;Each row is 5 bytes, {DWORD, BYTE} with DWORD = diskSize, BYTE=secPerClusVal
 ;This table assumes a 512 byte sector (fair assumption) but we do a byte size
@@ -50,7 +53,7 @@ fat32ClusterTable:
 ;Fields with a preset value should NOT be touched.
 genericBPB12:
     istruc bpb
-    at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;60 bytes, jump forward by that 
+    at bpb.jmpBoot,     db 0EBh, 46h, 90h   ;Jump forward by 46h bytes
     at bpb.oemName,     db 'SCPDOSv1'
     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb.secPerClus,  db -1           ;1 sector per cluster, normally
@@ -71,10 +74,11 @@ genericBPB12:
     at bpb.volLab,      db 'NO NAME    '
     at bpb.filSysType,  db 'FAT12   '
     iend
+    ;Extra 10 bytes at the end
 
 genericBPB16:
     istruc bpb
-    at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;Jump forward by 60 bytes
+    at bpb.jmpBoot,     db 0EBh, 46h, 90h   ;Jump forward by 46h bytes
     at bpb.oemName,     db 'SCPDOSv1'
     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb.secPerClus,  db -1           ;Sectors per cluster
@@ -95,10 +99,11 @@ genericBPB16:
     at bpb.volLab,      db 'NO NAME    '
     at bpb.filSysType,  db 'FAT16   '
     iend
+    ;Extra 10 bytes at the end
 
 genericBPB32:
     istruc bpb32
-    at bpb32.jmpBoot,     db 0EBh, 58h, 90h   ;Jump forward by 88 bytes
+    at bpb32.jmpBoot,     db 0EBh, 62h, 90h   ;Jump forward by 62h bytes
     at bpb32.oemName,     db 'SCPDOSv1'
     at bpb32.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb32.secPerClus,  db -1           ;Sectors per cluster
@@ -128,3 +133,4 @@ genericBPB32:
     at bpb32.volLab,      db 'NO NAME    '
     at bpb32.filSysType,  db 'FAT32   '
     iend    
+    ;Extra 10 bytes at the end
