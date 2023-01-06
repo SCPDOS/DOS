@@ -172,8 +172,8 @@ startSys:
     movzx ebx, word [sectorSize]    ;Get the sector size
     div ebx
     test edx, edx   ;If no remainder, eax has number of sectors for file
-    jnz .skipPlusSector1
-    inc eax
+    jz .skipPlusSector1
+    inc eax ;Else add the final sector over
 .skipPlusSector1:
     mov word [biosSize], ax
     add rsi, fatDirEntry_size   ;Goto next entry
