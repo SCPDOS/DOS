@@ -221,6 +221,8 @@ selectFATtype:
     ; check to see if we can actually use cluster 2. If yes, 
     ; we allocate it on the FAT. If not, we reassign the root 
     ; dir location
+    mov word [rdi + bpb32.secPerTrk], 03Fh
+    mov word [rdi + bpb32.numHeads],  0FFh
     mov dword [rdi + bpb32.RootClus], 2
     call getVolumeID
     mov dword [rdi + bpb32.volID], eax

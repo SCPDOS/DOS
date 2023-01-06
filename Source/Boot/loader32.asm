@@ -19,8 +19,8 @@ loadAddress equ 800h
     nosect: dw 0000h     ;number of sectors  
     medesc: db 0F0h      ;media descriptor (f0=Removable)                    
     FATsec: dw 0000h     ;number of sectors per FAT                    
-    sectrc: dw 0020h     ;number of sectors/tracks                     
-    numhed: dw 0040h     ;number of read/write heads                   
+    sectrc: dw 003Fh     ;number of sectors/tracks                     
+    numhed: dw 00FFh     ;number of read/write heads                   
     numhid: dd 00000000h ;number of hidden sectors                     
     nsecfs: dd 01903A00h ;number of "huge" sectors in the FS (FAT)     
 

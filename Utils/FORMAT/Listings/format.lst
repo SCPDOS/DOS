@@ -781,7 +781,7 @@
     62 0000000A 3A05F2FFFFFF        <1>     cmp al, byte [.vNum] ;Version 1
     63 00000010 760E                <1>     jbe .okVersion
     64 00000012 58                  <1>     pop rax
-    65 00000013 488D15E3070000      <1>     lea rdx, badVerStr
+    65 00000013 488D15EF070000      <1>     lea rdx, badVerStr
     66                              <1> .printExit:
     67 0000001A B409                <1>     mov ah, 09h
     68 0000001C CD41                <1>     int 41h
@@ -792,27 +792,27 @@
     73 00000021 3CFF                <1>     cmp al, -1
     74 00000023 7509                <1>     jnz .driveOk
     75                              <1> .badDrive:
-    76 00000025 488D15E7070000      <1>     lea rdx, badDrvLtr
+    76 00000025 488D15F3070000      <1>     lea rdx, badDrvLtr
     77 0000002C EBEC                <1>     jmp short .printExit
     78                              <1> .driveOk:
     79                              <1> ; Here we now hook ^C so that if the user calls ^C we restore DOS state
     80                              <1> ; (i.e. default drive and reactivate the drive if it is deactivated)
-    81 0000002E 488D1539060000      <1>     lea rdx, breakRoutine
+    81 0000002E 488D1545060000      <1>     lea rdx, breakRoutine
     82 00000035 B843250000          <1>     mov eax, 2543h
     83 0000003A CD41                <1>     int 41h
     84                              <1> ;Now fetch the drive we are working on
     85 0000003C 418A505C            <1>     mov dl, byte [r8 + psp.fcb1] ;Get the fcb 1 based drvNum
     86 00000040 FECA                <1>     dec dl  ;Turn it into a 0 based number
-    87 00000042 881569060000        <1>     mov byte [fmtDrive], dl
-    88 00000048 881551080000        <1>     mov byte [driveLetter], dl  ;Store for error message
+    87 00000042 881575060000        <1>     mov byte [fmtDrive], dl
+    88 00000048 88155D080000        <1>     mov byte [driveLetter], dl  ;Store for error message
     89                              <1> .driveSelected:
     90                              <1> ;Now check that drive we want to fmt is not current drv
     91 0000004E B800190000          <1>     mov eax, 1900h  ;Get current drive 
     92 00000053 CD41                <1>     int 41h
-    93 00000055 3A0556060000        <1>     cmp al, byte [fmtDrive]
+    93 00000055 3A0562060000        <1>     cmp al, byte [fmtDrive]
     94 0000005B 750C                <1>     jne .notCurrentDrive
-    95 0000005D 488D15BE080000      <1>     lea rdx, currentFmt
-    96 00000064 E9CE050000          <1>     jmp badExit
+    95 0000005D 488D15CA080000      <1>     lea rdx, currentFmt
+    96 00000064 E9DA050000          <1>     jmp badExit
     97                              <1> .notCurrentDrive:
     98                              <1> ;Now we check that the associate drive is not a network, subst or join.
     99                              <1> ; If it is, fail. Else, we deactivate
@@ -820,28 +820,28 @@
    101 0000006B CD41                <1>     int 41h ;Get in rbx a ptr to list of lists
    102 0000006D 4881C322000000      <1>     add rbx, 22h    ;Point rbx to bufHeadPtr
    103 00000074 488B2B              <1>     mov rbp, qword [rbx]    ;Get the ptr to the buffer header array
-   104 00000077 48892D3D060000      <1>     mov qword [dosBuffPtr], rbp
+   104 00000077 48892D49060000      <1>     mov qword [dosBuffPtr], rbp
    105 0000007E 4881C308000000      <1>     add rbx, 8h     ;Point rbx to cdsHeadPtr
    106 00000085 488B33              <1>     mov rsi, qword [rbx]    ;Get the ptr to the CDS array
-   107 00000088 0FB60D22060000      <1>     movzx ecx, byte [fmtDrive]
+   107 00000088 0FB60D2E060000      <1>     movzx ecx, byte [fmtDrive]
    108 0000008F 67E30B              <1>     jecxz .atCurrentCDS
    109                              <1> .walkCDSArray:
    110 00000092 4881C65B000000      <1>     add rsi, cds_size
    111 00000099 FFC9                <1>     dec ecx
    112 0000009B 75F5                <1>     jnz .walkCDSArray
    113                              <1> .atCurrentCDS: 
-   114 0000009D 4889350F060000      <1>     mov qword [cdsPtr], rsi ;Save a ptr to the current CDS
+   114 0000009D 4889351B060000      <1>     mov qword [cdsPtr], rsi ;Save a ptr to the current CDS
    115 000000A4 66F7464300B0        <1>     test word [rsi + cds.wFlags], cdsJoinDrive | cdsSubstDrive | cdsRedirDrive
    116 000000AA 7512                <1>     jnz .badRedir   ;Cannot format a Join/Subst/Redir drive
    117                              <1>     ;Now attempt to ascertain if removable or not.
-   118 000000AC 0FB61DFE050000      <1>     movzx ebx, byte [fmtDrive]    ;0 based number
+   118 000000AC 0FB61D0A060000      <1>     movzx ebx, byte [fmtDrive]    ;0 based number
    119 000000B3 FFC3                <1>     inc ebx  ;Turn it into a 1 based number
    120 000000B5 B808440000          <1>     mov eax, 4408h  ;IOCTL, Get if removable or not
    121 000000BA CD41                <1>     int 41h
    122 000000BC 730C                <1>     jnc .gotRemStatus
    123                              <1> .badRedir:
-   124 000000BE 488D1568070000      <1>     lea rdx, badRedir
-   125 000000C5 E96D050000          <1>     jmp badExit
+   124 000000BE 488D1574070000      <1>     lea rdx, badRedir
+   125 000000C5 E979050000          <1>     jmp badExit
    126                              <1> .gotRemStatus:
    127 000000CA 84C0                <1>     test al, al
    128 000000CC 7543                <1>     jnz .fixedDisk
@@ -849,61 +849,61 @@
    130 000000CE B508                <1>     mov ch, 08h ;Disk drive type IOCTL
    131 000000D0 B1E0                <1>     mov cl, 80h | 60h   ;Use undocumented LBA get parameters
    132 000000D2 B80D440000          <1>     mov eax, 440Dh  ;Generic IOCTL 
-   133 000000D7 488D15BB050000      <1>     lea rdx, reqTable   ;Point to the table to fill in, bl has drive number 
+   133 000000D7 488D15C7050000      <1>     lea rdx, reqTable   ;Point to the table to fill in, bl has drive number 
    134 000000DE CD41                <1>     int 41h
-   135 000000E0 0F824A050000        <1>     jc badExitGenericString
+   135 000000E0 0F8256050000        <1>     jc badExitGenericString
    136 000000E6 488B4208            <1>     mov rax, qword [rdx + genioctlGetParamsTable.sectorSize]    ;Get sector size
-   137 000000EA 668905DC050000      <1>     mov word [sectorSize], ax
+   137 000000EA 668905E8050000      <1>     mov word [sectorSize], ax
    138 000000F1 488B4210            <1>     mov rax, qword [rdx + genioctlGetParamsTable.numSectors]    ;Get num sectors
    139 000000F5 482D02000000        <1>     sub rax, 2 ;Sub 2 to ensure no edge issues and round clusters down
-   140 000000FB C605DA050000F0      <1>     mov byte [media], 0F0h
-   141 00000102 C705DA050000000000- <1>     mov dword [hiddSector], 0   ;Make sure we initialise this to 0
+   140 000000FB C605E6050000F0      <1>     mov byte [media], 0F0h
+   141 00000102 C705E6050000000000- <1>     mov dword [hiddSector], 0   ;Make sure we initialise this to 0
    141 0000010B 00                  <1>
    142 0000010C E997000000          <1>     jmp selectFATtype
    143                              <1> .fixedDisk:
-   144 00000111 C605B3050000FF      <1>     mov byte [remDev], -1   ;Set flag for fixed disk
+   144 00000111 C605BF050000FF      <1>     mov byte [remDev], -1   ;Set flag for fixed disk
    145                              <1>     ;Read VBR for volume, request a buffer of 1000h bytes (max sector size 4k)
    146 00000118 BB00010000          <1>     mov ebx, 100h   ;Request 100 paragraphs
    147 0000011D B800480000          <1>     mov eax, 4800h
    148 00000122 CD41                <1>     int 41h
-   149 00000124 0F8206050000        <1>     jc badExitGenericString
-   150 0000012A 48890592050000      <1>     mov qword [bufferArea], rax ;Use this as the buffer
+   149 00000124 0F8212050000        <1>     jc badExitGenericString
+   150 0000012A 4889059E050000      <1>     mov qword [bufferArea], rax ;Use this as the buffer
    151 00000131 B901000000          <1>     mov ecx, 1
    152 00000136 31D2                <1>     xor edx, edx    ;Read sector 0 of the volume
-   153 00000138 E81D050000          <1>     call dosCrit1Enter
-   154 0000013D C6056E050000FF      <1>     mov byte [inCrit], -1   ;Entered a critical section
-   155 00000144 E8C5040000          <1>     call readSector
-   156 00000149 C6056205000000      <1>     mov byte [inCrit], 0    ;Exited critical section
-   157 00000150 E80F050000          <1>     call dosCrit1Exit
-   158 00000155 0F82D5040000        <1>     jc badExitGenericString
-   159 0000015B 488B1D61050000      <1>     mov rbx, qword [bufferArea]
+   153 00000138 E829050000          <1>     call dosCrit1Enter
+   154 0000013D C6057A050000FF      <1>     mov byte [inCrit], -1   ;Entered a critical section
+   155 00000144 E8D1040000          <1>     call readSector
+   156 00000149 C6056E05000000      <1>     mov byte [inCrit], 0    ;Exited critical section
+   157 00000150 E81B050000          <1>     call dosCrit1Exit
+   158 00000155 0F82E1040000        <1>     jc badExitGenericString
+   159 0000015B 488B1D6D050000      <1>     mov rbx, qword [bufferArea]
    160 00000162 0FB7430B            <1>     movzx eax, word [rbx + bpb.bytsPerSec]  ;Get sector size
-   161 00000166 66890560050000      <1>     mov word [sectorSize], ax
+   161 00000166 6689056C050000      <1>     mov word [sectorSize], ax
    162 0000016D 8B431C              <1>     mov eax, dword [rbx + bpb.hiddSec]  ;Get the number of hidden sectors
-   163 00000170 890570050000        <1>     mov dword [hiddSector], eax
+   163 00000170 89057C050000        <1>     mov dword [hiddSector], eax
    164 00000176 0FB74B13            <1>     movzx ecx, word [rbx + bpb.totSec16]
    165 0000017A 8B4320              <1>     mov eax, dword [rbx + bpb.totSec32]
    166 0000017D 39C8                <1>     cmp eax, ecx
    167 0000017F 0F42C1              <1>     cmovb eax, ecx
    168 00000182 50                  <1>     push rax
    169 00000183 4150                <1>     push r8
-   170 00000185 4C8B0537050000      <1>     mov r8, qword [bufferArea]
+   170 00000185 4C8B0543050000      <1>     mov r8, qword [bufferArea]
    171 0000018C B800490000          <1>     mov eax, 4900h  ;Free the block now
    172 00000191 CD41                <1>     int 41h
    173 00000193 4158                <1>     pop r8
    174 00000195 58                  <1>     pop rax
-   175 00000196 48C705220500000000- <1>     mov qword [bufferArea], 0   ;Clear the ptr
+   175 00000196 48C7052E0500000000- <1>     mov qword [bufferArea], 0   ;Clear the ptr
    175 0000019F 0000                <1>
-   176 000001A1 C60534050000F8      <1>     mov byte [media], 0F8h
+   176 000001A1 C60540050000F8      <1>     mov byte [media], 0F8h
    177                              <1> selectFATtype:
    178                              <1> ;Arrive here with rax = Number of sectors in volume
-   179 000001A8 48890520050000      <1>     mov qword [numSectors], rax
+   179 000001A8 4889052C050000      <1>     mov qword [numSectors], rax
    180 000001AF 0FB7154DFEFFFF      <1>     movzx edx, word [startFormat.sectorSize]  ;Get the start var
-   181 000001B6 66391510050000      <1>     cmp word [sectorSize], dx ;Only allow for sector size 200h for now
-   182 000001BD 488D152F070000      <1>     lea rdx, badSecSize
-   183 000001C4 0F856D040000        <1>     jne badExit
+   181 000001B6 6639151C050000      <1>     cmp word [sectorSize], dx ;Only allow for sector size 200h for now
+   182 000001BD 488D153B070000      <1>     lea rdx, badSecSize
+   183 000001C4 0F8579040000        <1>     jne badExit
    184                              <1>     ;Now we select the FAT based on the size of the volume
-   185 000001CA 0FB71DFC040000      <1>     movzx ebx, word [sectorSize]    ;Get the sector size
+   185 000001CA 0FB71D08050000      <1>     movzx ebx, word [sectorSize]    ;Get the sector size
    186 000001D1 48F7E3              <1>     mul rbx ;Multiply rax with rbx
    187                              <1>     ;rax has the number of bytes on the volume
    188 000001D4 48BB00FEFFFFFF0100- <1>     mov rbx, 1FFFFFFFE00h ;If our volume is above 2Tb in size, abort
@@ -911,16 +911,16 @@
    189 000001DE 4839D8              <1>     cmp rax, rbx
    190 000001E1 720C                <1>     jb .okSize
    191                              <1> .badSize:
-   192 000001E3 488D15EC060000      <1>     lea rdx, badVolBig
-   193 000001EA E948040000          <1>     jmp badExit
+   192 000001E3 488D15F8060000      <1>     lea rdx, badVolBig
+   193 000001EA E954040000          <1>     jmp badExit
    194                              <1> .okSize:
    195 000001EF 31DB                <1>     xor ebx, ebx
-   196 000001F1 C605D404000000      <1>     mov byte [fatType], 0   ;Start by saying it must be FAT12
+   196 000001F1 C605E004000000      <1>     mov byte [fatType], 0   ;Start by saying it must be FAT12
    197 000001F8 B904000000          <1>     mov ecx, 4  ;4 entries in the fat16table without the first entry
-   198 000001FD 488D35E6040000      <1>     lea rsi, fat16ClusterTable
+   198 000001FD 488D35F2040000      <1>     lea rsi, fat16ClusterTable
    199 00000204 3B06                <1>     cmp eax, dword [rsi]
    200 00000206 7635                <1>     jbe .medFound   ;Here we need to build a custom BPB for this device. 
-   201 00000208 FE05BE040000        <1>     inc byte [fatType]  ;Make now FAT 16
+   201 00000208 FE05CA040000        <1>     inc byte [fatType]  ;Make now FAT 16
    202 0000020E 4881C605000000      <1>     add rsi, 5  ;Goto next entry    
    203                              <1> .fat16Lp:
    204 00000215 8B1E                <1>     mov ebx, dword [rsi]    ;Clears upper 32 bytes of ebx
@@ -929,7 +929,7 @@
    207 0000021C 4881C605000000      <1>     add rsi, 5
    208 00000223 FFC9                <1>     dec ecx
    209 00000225 75EE                <1>     jnz .fat16Lp
-   210 00000227 FE059F040000        <1>     inc byte [fatType]
+   210 00000227 FE05AB040000        <1>     inc byte [fatType]
    211 0000022D B904000000          <1>     mov ecx, 4
    212                              <1> .fat32Lp:
    213 00000232 483B06              <1>     cmp rax, qword [rsi]
@@ -940,50 +940,50 @@
    218                              <1> .medFound:
    219                              <1> ;Called with rsi pointing to the table entry
    220 0000023D 8A4604              <1>     mov al, byte [rsi + 4]  ;Get the sector per cluster value in al
-   221 00000240 880591040000        <1>     mov byte [secPerClust], al
-   222 00000246 803D7F04000002      <1>     cmp byte [fatType], 2
+   221 00000240 88059D040000        <1>     mov byte [secPerClust], al
+   222 00000246 803D8B04000002      <1>     cmp byte [fatType], 2
    223 0000024D 7478                <1>     je .fat32
-   224 0000024F 488D3DD1040000      <1>     lea rdi, genericBPB12
-   225 00000256 488D3508050000      <1>     lea rsi, genericBPB16
-   226 0000025D 803D6804000001      <1>     cmp byte [fatType], 1
+   224 0000024F 488D3DDD040000      <1>     lea rdi, genericBPB12
+   225 00000256 488D3514050000      <1>     lea rsi, genericBPB16
+   226 0000025D 803D7404000001      <1>     cmp byte [fatType], 1
    227 00000264 480F44FE            <1>     cmove rdi, rsi  ;Use FAT16 BPB if FAT16 volume
-   228 00000268 8A056E040000        <1>     mov al, byte [media]
+   228 00000268 8A057A040000        <1>     mov al, byte [media]
    229 0000026E 884715              <1>     mov byte [rdi + bpb.media], al
-   230 00000271 8B056F040000        <1>     mov eax, dword [hiddSector]
+   230 00000271 8B057B040000        <1>     mov eax, dword [hiddSector]
    231 00000277 89471C              <1>     mov dword [rdi + bpb.hiddSec], eax
-   232 0000027A 668B054C040000      <1>     mov ax, word [sectorSize]
+   232 0000027A 668B0558040000      <1>     mov ax, word [sectorSize]
    233 00000281 6689470B            <1>     mov word [rdi + bpb.bytsPerSec], ax
-   234 00000285 8A054C040000        <1>     mov al, byte [secPerClust]
+   234 00000285 8A0558040000        <1>     mov al, byte [secPerClust]
    235 0000028B 88470D              <1>     mov byte [rdi + bpb.secPerClus], al
-   236 0000028E 668B053A040000      <1>     mov ax, word [numSectors]
+   236 0000028E 668B0546040000      <1>     mov ax, word [numSectors]
    237 00000295 66894713            <1>     mov word [rdi + bpb.totSec16], ax
-   238 00000299 E816030000          <1>     call computeFATSize
+   238 00000299 E822030000          <1>     call computeFATSize
    239 0000029E 66894716            <1>     mov word [rdi + bpb.FATsz16], ax
    240 000002A2 0FB7C0              <1>     movzx eax, ax
-   241 000002A5 89052D040000        <1>     mov dword [fatSize], eax
-   242 000002AB 8A051A040000        <1>     mov al, byte [remDev]
+   241 000002A5 890539040000        <1>     mov dword [fatSize], eax
+   242 000002AB 8A0526040000        <1>     mov al, byte [remDev]
    243 000002B1 2480                <1>     and al, 80h ;Save only bit 7
    244 000002B3 884724              <1>     mov byte [rdi + bpb.drvNum], al
-   245 000002B6 E8E6020000          <1>     call getVolumeID
+   245 000002B6 E8F2020000          <1>     call getVolumeID
    246 000002BB 894727              <1>     mov dword [rdi + bpb.volID], eax
-   247 000002BE C605200400003E      <1>     mov byte [bpbSize], 62  ;62 bytes to copy
-   248 000002C5 EB6B                <1>     jmp short .bpbReady
+   247 000002BE C6052C0400003E      <1>     mov byte [bpbSize], 62  ;62 bytes to copy
+   248 000002C5 EB77                <1>     jmp short .bpbReady
    249                              <1> .fat32:
-   250 000002C7 488D3DD5040000      <1>     lea rdi, genericBPB32
-   251 000002CE 8A0508040000        <1>     mov al, byte [media]
+   250 000002C7 488D3DE1040000      <1>     lea rdi, genericBPB32
+   251 000002CE 8A0514040000        <1>     mov al, byte [media]
    252 000002D4 884715              <1>     mov byte [rdi + bpb32.media], al
-   253 000002D7 8B0509040000        <1>     mov eax, dword [hiddSector]
+   253 000002D7 8B0515040000        <1>     mov eax, dword [hiddSector]
    254 000002DD 89471C              <1>     mov dword [rdi + bpb.hiddSec], eax
-   255 000002E0 668B05E6030000      <1>     mov ax, word [sectorSize]
+   255 000002E0 668B05F2030000      <1>     mov ax, word [sectorSize]
    256 000002E7 6689470B            <1>     mov word [rdi + bpb32.bytsPerSec], ax
-   257 000002EB 8A05E6030000        <1>     mov al, byte [secPerClust]
+   257 000002EB 8A05F2030000        <1>     mov al, byte [secPerClust]
    258 000002F1 88470D              <1>     mov byte [rdi + bpb32.secPerClus], al
-   259 000002F4 8B05D5030000        <1>     mov eax, dword [numSectors]
+   259 000002F4 8B05E1030000        <1>     mov eax, dword [numSectors]
    260 000002FA 894720              <1>     mov dword [rdi + bpb32.totSec32], eax
-   261 000002FD E8B2020000          <1>     call computeFATSize
+   261 000002FD E8BE020000          <1>     call computeFATSize
    262 00000302 894724              <1>     mov dword [rdi + bpb32.FATsz32], eax
-   263 00000305 8905CD030000        <1>     mov dword [fatSize], eax
-   264 0000030B 8A05BA030000        <1>     mov al, byte [remDev]
+   263 00000305 8905D9030000        <1>     mov dword [fatSize], eax
+   264 0000030B 8A05C6030000        <1>     mov al, byte [remDev]
    265 00000311 2480                <1>     and al, 80h ;Save only bit 7
    266 00000313 884740              <1>     mov byte [rdi + bpb32.drvNum], al
    267 00000316 66C747280000        <1>     mov word [rdi + bpb32.extFlags], 0  ;FAT mirroring active
@@ -991,182 +991,184 @@
    269                              <1>     ; check to see if we can actually use cluster 2. If yes, 
    270                              <1>     ; we allocate it on the FAT. If not, we reassign the root 
    271                              <1>     ; dir location
-   272 0000031C C7472C02000000      <1>     mov dword [rdi + bpb32.RootClus], 2
-   273 00000323 E879020000          <1>     call getVolumeID
-   274 00000328 894743              <1>     mov dword [rdi + bpb32.volID], eax
-   275 0000032B C605B30300005A      <1>     mov byte [bpbSize], 90  ;90 bytes to copy
-   276                              <1> .bpbReady:
-   277                              <1> ;Now the BPB is ready, save the pointer and now setup bootsector for writing
-   278 00000332 48893DA4030000      <1>     mov qword [bpbPointer], rdi
-   279 00000339 0FB71D8D030000      <1>     movzx ebx, word [sectorSize] ;Get the sector size
-   280 00000340 C1EB04              <1>     shr ebx, 4  ;Divide by 4 to get number of paragraphs
-   281 00000343 B800480000          <1>     mov eax, 4800h  ;Allocate
-   282 00000348 CD41                <1>     int 41h
-   283 0000034A 0F82E0020000        <1>     jc badExitGenericString
-   284 00000350 4889056C030000      <1>     mov qword [bufferArea], rax ;Use this as the buffer
-   285 00000357 FC                  <1>     cld ;Ensure string ops are done the right way
-   286 00000358 4889C7              <1>     mov rdi, rax
-   287 0000035B 31C0                <1>     xor eax, eax
-   288 0000035D 0FB70D69030000      <1>     movzx ecx, word [sectorSize]    ;Get num of bytes and div by 8 for qwords
-   289 00000364 C1E903              <1>     shr ecx, 3
-   290 00000367 57                  <1>     push rdi
-   291 00000368 F348AB              <1>     rep stosq   ;Zero the data area
-   292 0000036B 5F                  <1>     pop rdi
-   293 0000036C 488B356A030000      <1>     mov rsi, qword [bpbPointer]
-   294 00000373 0FB60D6B030000      <1>     movzx ecx, byte [bpbSize]
-   295 0000037A F3A4                <1>     rep movsb
-   296                              <1> ;The attached bootloader has a FAT12 BPB, skip it
-   297 0000037C 488D35FB050000      <1>     lea rsi, qword [bootloader + 62]    ;Go past the BPB of the bootloader
-   298 00000383 0FB70D43030000      <1>     movzx ecx, word [sectorSize]
-   299 0000038A 81E93E000000        <1>     sub ecx, 62 ;That many fewer bytes
-   300 00000390 F3A4                <1>     rep movsb   ;Copy the bootsector over
-   301 00000392 488B1D2A030000      <1>     mov rbx, qword [bufferArea] ;rbx = Memory Buffer address to read from
-   302 00000399 C683FD01000000      <1>     mov byte [rbx + 509], 0 ;Make the disk not bootable
-   303 000003A0 66C783FE01000055AA  <1>     mov word [rbx + 510], 0AA55h
-   304 000003A9 B901000000          <1>     mov ecx, 1      ;ecx = Number of sectors to write
-   305 000003AE 31D2                <1>     xor edx, edx    ;rdx = Start LBA to write to
-   306 000003B0 E8A5020000          <1>     call dosCrit1Enter
-   307 000003B5 C605F6020000FF      <1>     mov byte [inCrit], -1   ;Entering a DOS level 1 critical section
-   308 000003BC E883010000          <1>     call freeAllDriveBuffers    ;Now we begin formatting, free all buffers
-   309 000003C1 E859020000          <1>     call writeSector
-   310 000003C6 0F8264020000        <1>     jc badExitGenericString
-   311                              <1> createDPB:
-   312                              <1>     ;Here we now create a DPB for this BPB
-   313                              <1>     ;First we find the current DPB for this device
-   314 000003CC 488B2DE0020000      <1>     mov rbp, qword [cdsPtr] ;Get CDS ptr
-   315 000003D3 488B6D45            <1>     mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the CDS's DPB ptr
-   316 000003D7 488B35FF020000      <1>     mov rsi, qword [bpbPointer]
-   317 000003DE B800530000          <1>     mov eax, 5300h  ;Now we update the DPB with this new information
-   318 000003E3 CD41                <1>     int 41h 
-   319                              <1> createFAT:
-   320                              <1>     ;Now we create the FAT sectors.
-   321                              <1>     ;We write both copies one sector at a time interleaving them.
-   322 000003E5 8B35ED020000        <1>     mov esi, dword [fatSize]    ;Get the number of sectors to write, as counter
-   323 000003EB 488B3DD1020000      <1>     mov rdi, qword [bufferArea] ;Get the buffer area
-   324 000003F2 4889FB              <1>     mov rbx, rdi    ;Save the pointer in rbx
-   325 000003F5 31C0                <1>     xor eax, eax
-   326 000003F7 0FB70DCF020000      <1>     movzx ecx, word [sectorSize]
-   327 000003FE C1E903              <1>     shr ecx, 3  ;Divide by 8
-   328 00000401 F348AB              <1>     rep stosq   ;Store that many 0 qwords
-   329 00000404 4889DF              <1>     mov rdi, rbx    ;Return rdi back to the start of the sector
-   330 00000407 E861010000          <1>     call writeFATStartSig   ;Write the first two clusters in the map
-   331 0000040C B901000000          <1>     mov ecx, 1  ;ecx = Number of sectors to write
-   332 00000411 488B3DC5020000      <1>     mov rdi, qword [bpbPointer] ;Get the ptr to the BPB
-   333 00000418 0FB7570E            <1>     movzx edx, word [rdi + bpb.revdSecCnt]  ;Get the first sector past reserved
-   334 0000041C 52                  <1>     push rdx
-   335 0000041D 56                  <1>     push rsi
-   336 0000041E E8FC010000          <1>     call writeSector
-   337 00000423 5E                  <1>     pop rsi
-   338 00000424 5A                  <1>     pop rdx
-   339 00000425 0F8205020000        <1>     jc badExitGenericString
-   340 0000042B 8B05A7020000        <1>     mov eax, dword [fatSize]
-   341 00000431 01C2                <1>     add edx, eax    ;Go to second fat copy
-   342 00000433 B901000000          <1>     mov ecx, 1
-   343 00000438 50                  <1>     push rax
-   344 00000439 52                  <1>     push rdx
-   345 0000043A 56                  <1>     push rsi
-   346 0000043B E8DF010000          <1>     call writeSector
-   347 00000440 5E                  <1>     pop rsi
-   348 00000441 5A                  <1>     pop rdx
-   349 00000442 58                  <1>     pop rax
-   350 00000443 0F82E7010000        <1>     jc badExitGenericString
-   351 00000449 488B3D73020000      <1>     mov rdi, qword [bufferArea]
-   352 00000450 48C70700000000      <1>     mov qword [rdi], 0  ;Overwrite the FAT reserved cluster markers
-   353 00000457 C7470800000000      <1>     mov dword [rdi + 8], 0  ;Overwrite potential additional FAT32 data
-   354 0000045E FFCE                <1>     dec esi ;Decrement the number of fat sectors left to count
-   355                              <1> .fatFillLoop:
-   356 00000460 29C2                <1>     sub edx, eax    ;Come back to the first FAT copy
-   357 00000462 FFC2                <1>     inc edx ;Goto next sector
-   358 00000464 B901000000          <1>     mov ecx, 1
-   359 00000469 52                  <1>     push rdx
-   360 0000046A 56                  <1>     push rsi
-   361 0000046B E8AF010000          <1>     call writeSector
-   362 00000470 5E                  <1>     pop rsi
-   363 00000471 5A                  <1>     pop rdx
-   364 00000472 0F82B8010000        <1>     jc badExitGenericString
-   365 00000478 8B055A020000        <1>     mov eax, dword [fatSize]
-   366 0000047E 01C2                <1>     add edx, eax    ;Go to second fat copy
-   367 00000480 B901000000          <1>     mov ecx, 1
-   368 00000485 50                  <1>     push rax
-   369 00000486 52                  <1>     push rdx
-   370 00000487 56                  <1>     push rsi
-   371 00000488 E892010000          <1>     call writeSector
-   372 0000048D 5E                  <1>     pop rsi
-   373 0000048E 5A                  <1>     pop rdx
-   374 0000048F 58                  <1>     pop rax
-   375 00000490 0F829A010000        <1>     jc badExitGenericString
-   376 00000496 FFCE                <1>     dec esi
-   377 00000498 75C6                <1>     jnz .fatFillLoop
-   378                              <1>     ;Fall through once done with FAT
-   379                              <1> rootDirectory:
-   380                              <1>     ;FAT12 and 16 are simple, FAT32 is a bit more complex
-   381 0000049A 803D2B02000002      <1>     cmp byte [fatType], 2
-   382 000004A1 743F                <1>     je .fat32
-   383                              <1>     ;Here we compute the number of Root Dir sectors and sanitise them
-   384                              <1>     ;rdx should point to that sector now (since it works on FAT copy 2 last)
-   385 000004A3 488B1D33020000      <1>     mov rbx, qword [bpbPointer]
-   386 000004AA 0FB77311            <1>     movzx esi, word [rbx + bpb.rootEntCnt]  ;Get the number of 32 byte entries
-   387 000004AE C1E605              <1>     shl esi, 5  ;Convert into the number of bytes in root directory
-   388 000004B1 0FB70515020000      <1>     movzx eax, word [sectorSize]    ;Get the sector size
-   389 000004B8 96                  <1>     xchg esi, eax
-   390 000004B9 52                  <1>     push rdx
-   391 000004BA 31D2                <1>     xor edx, edx
-   392 000004BC F7F6                <1>     div esi ;Divide to get number of sectors in eax, preserve edx
-   393 000004BE 5A                  <1>     pop rdx ;Save edx
-   394 000004BF 89C6                <1>     mov esi, eax    ;Number of sectors in esi
-   395 000004C1 B901000000          <1>     mov ecx, 1  ;Write one sector
-   396                              <1> .fatLoop:
-   397 000004C6 FFC2                <1>     inc edx ;Go to next sector now
-   398 000004C8 51                  <1>     push rcx
-   399 000004C9 52                  <1>     push rdx
-   400 000004CA 56                  <1>     push rsi
-   401 000004CB E84F010000          <1>     call writeSector
-   402 000004D0 5E                  <1>     pop rsi
-   403 000004D1 5A                  <1>     pop rdx
-   404 000004D2 59                  <1>     pop rcx
-   405 000004D3 0F8257010000        <1>     jc badExitGenericString
-   406 000004D9 FFCE                <1>     dec esi
-   407 000004DB 75E9                <1>     jnz .fatLoop
-   408 000004DD E927000000          <1>     jmp exitFormat
-   409                              <1> .fat32:
-   410                              <1>     ;Now we have to allocate one cluster to the root directory.
-   411                              <1>     ;Allocate cluster 2, as this is a quick and dirty program
-   412                              <1>     ; Later come back and make this proper with bad cluster tags etc
-   413                              <1>     ;We do this by writing our zero sectors to the cluster
-   414                              <1>     ;edx should have the sector number for the first sector of cluster 2 at 
-   415                              <1>     ; this point.
-   416 000004E2 488B1DF4010000      <1>     mov rbx, qword [bpbPointer] ;Get the bpbPointer
-   417 000004E9 0FB6730D            <1>     movzx esi, byte [rbx + bpb32.secPerClus]
-   418 000004ED B901000000          <1>     mov ecx, 1  ;Write one sector at a time
-   419                              <1> .fat32Loop:
-   420 000004F2 FFC2                <1>     inc edx ;Go to next sector now
-   421 000004F4 51                  <1>     push rcx
-   422 000004F5 52                  <1>     push rdx
-   423 000004F6 56                  <1>     push rsi
-   424 000004F7 E823010000          <1>     call writeSector
-   425 000004FC 5E                  <1>     pop rsi
-   426 000004FD 5A                  <1>     pop rdx
-   427 000004FE 59                  <1>     pop rcx
-   428 000004FF 0F822B010000        <1>     jc badExitGenericString
-   429 00000505 FFCE                <1>     dec esi
-   430 00000507 75E9                <1>     jnz .fat32Loop
-   431                              <1> 
-   432                              <1> exitFormat:
-   433 00000509 C605A201000000      <1>     mov byte [inCrit], 0    ;Out of the critical section now
-   434 00000510 E84F010000          <1>     call dosCrit1Exit
-   435 00000515 E815000000          <1>     call freeMemoryBlock
-   436 0000051A 488D15EF030000      <1>     lea rdx, okFormat
-   437 00000521 B800090000          <1>     mov eax, 0900h
-   438 00000526 CD41                <1>     int 41h
-   439 00000528 B8004C0000          <1>     mov eax, 4C00h  ;Return with 0 as error code
-   440 0000052D CD41                <1>     int 41h
-   441                              <1> 
-   442                              <1> 
-   443                              <1> ;Utility functions below
-   444                              <1> freeMemoryBlock:
-   445 0000052F 4C8B058D010000      <1>     mov r8, qword [bufferArea]
-   446 00000536 4D85C0              <1>     test r8, r8
-   447                              <1>     retz
+   272 0000031C 66C747183F00        <1>     mov word [rdi + bpb32.secPerTrk], 03Fh
+   273 00000322 66C7471AFF00        <1>     mov word [rdi + bpb32.numHeads],  0FFh
+   274 00000328 C7472C02000000      <1>     mov dword [rdi + bpb32.RootClus], 2
+   275 0000032F E879020000          <1>     call getVolumeID
+   276 00000334 894743              <1>     mov dword [rdi + bpb32.volID], eax
+   277 00000337 C605B30300005A      <1>     mov byte [bpbSize], 90  ;90 bytes to copy
+   278                              <1> .bpbReady:
+   279                              <1> ;Now the BPB is ready, save the pointer and now setup bootsector for writing
+   280 0000033E 48893DA4030000      <1>     mov qword [bpbPointer], rdi
+   281 00000345 0FB71D8D030000      <1>     movzx ebx, word [sectorSize] ;Get the sector size
+   282 0000034C C1EB04              <1>     shr ebx, 4  ;Divide by 4 to get number of paragraphs
+   283 0000034F B800480000          <1>     mov eax, 4800h  ;Allocate
+   284 00000354 CD41                <1>     int 41h
+   285 00000356 0F82E0020000        <1>     jc badExitGenericString
+   286 0000035C 4889056C030000      <1>     mov qword [bufferArea], rax ;Use this as the buffer
+   287 00000363 FC                  <1>     cld ;Ensure string ops are done the right way
+   288 00000364 4889C7              <1>     mov rdi, rax
+   289 00000367 31C0                <1>     xor eax, eax
+   290 00000369 0FB70D69030000      <1>     movzx ecx, word [sectorSize]    ;Get num of bytes and div by 8 for qwords
+   291 00000370 C1E903              <1>     shr ecx, 3
+   292 00000373 57                  <1>     push rdi
+   293 00000374 F348AB              <1>     rep stosq   ;Zero the data area
+   294 00000377 5F                  <1>     pop rdi
+   295 00000378 488B356A030000      <1>     mov rsi, qword [bpbPointer]
+   296 0000037F 0FB60D6B030000      <1>     movzx ecx, byte [bpbSize]
+   297 00000386 F3A4                <1>     rep movsb
+   298                              <1> ;The attached bootloader has a FAT12 BPB, skip it
+   299 00000388 488D35FB050000      <1>     lea rsi, qword [bootloader + 62]    ;Go past the BPB of the bootloader
+   300 0000038F 0FB70D43030000      <1>     movzx ecx, word [sectorSize]
+   301 00000396 81E93E000000        <1>     sub ecx, 62 ;That many fewer bytes
+   302 0000039C F3A4                <1>     rep movsb   ;Copy the bootsector over
+   303 0000039E 488B1D2A030000      <1>     mov rbx, qword [bufferArea] ;rbx = Memory Buffer address to read from
+   304 000003A5 C683FD01000000      <1>     mov byte [rbx + 509], 0 ;Make the disk not bootable
+   305 000003AC 66C783FE01000055AA  <1>     mov word [rbx + 510], 0AA55h
+   306 000003B5 B901000000          <1>     mov ecx, 1      ;ecx = Number of sectors to write
+   307 000003BA 31D2                <1>     xor edx, edx    ;rdx = Start LBA to write to
+   308 000003BC E8A5020000          <1>     call dosCrit1Enter
+   309 000003C1 C605F6020000FF      <1>     mov byte [inCrit], -1   ;Entering a DOS level 1 critical section
+   310 000003C8 E883010000          <1>     call freeAllDriveBuffers    ;Now we begin formatting, free all buffers
+   311 000003CD E859020000          <1>     call writeSector
+   312 000003D2 0F8264020000        <1>     jc badExitGenericString
+   313                              <1> createDPB:
+   314                              <1>     ;Here we now create a DPB for this BPB
+   315                              <1>     ;First we find the current DPB for this device
+   316 000003D8 488B2DE0020000      <1>     mov rbp, qword [cdsPtr] ;Get CDS ptr
+   317 000003DF 488B6D45            <1>     mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the CDS's DPB ptr
+   318 000003E3 488B35FF020000      <1>     mov rsi, qword [bpbPointer]
+   319 000003EA B800530000          <1>     mov eax, 5300h  ;Now we update the DPB with this new information
+   320 000003EF CD41                <1>     int 41h 
+   321                              <1> createFAT:
+   322                              <1>     ;Now we create the FAT sectors.
+   323                              <1>     ;We write both copies one sector at a time interleaving them.
+   324 000003F1 8B35ED020000        <1>     mov esi, dword [fatSize]    ;Get the number of sectors to write, as counter
+   325 000003F7 488B3DD1020000      <1>     mov rdi, qword [bufferArea] ;Get the buffer area
+   326 000003FE 4889FB              <1>     mov rbx, rdi    ;Save the pointer in rbx
+   327 00000401 31C0                <1>     xor eax, eax
+   328 00000403 0FB70DCF020000      <1>     movzx ecx, word [sectorSize]
+   329 0000040A C1E903              <1>     shr ecx, 3  ;Divide by 8
+   330 0000040D F348AB              <1>     rep stosq   ;Store that many 0 qwords
+   331 00000410 4889DF              <1>     mov rdi, rbx    ;Return rdi back to the start of the sector
+   332 00000413 E861010000          <1>     call writeFATStartSig   ;Write the first two clusters in the map
+   333 00000418 B901000000          <1>     mov ecx, 1  ;ecx = Number of sectors to write
+   334 0000041D 488B3DC5020000      <1>     mov rdi, qword [bpbPointer] ;Get the ptr to the BPB
+   335 00000424 0FB7570E            <1>     movzx edx, word [rdi + bpb.revdSecCnt]  ;Get the first sector past reserved
+   336 00000428 52                  <1>     push rdx
+   337 00000429 56                  <1>     push rsi
+   338 0000042A E8FC010000          <1>     call writeSector
+   339 0000042F 5E                  <1>     pop rsi
+   340 00000430 5A                  <1>     pop rdx
+   341 00000431 0F8205020000        <1>     jc badExitGenericString
+   342 00000437 8B05A7020000        <1>     mov eax, dword [fatSize]
+   343 0000043D 01C2                <1>     add edx, eax    ;Go to second fat copy
+   344 0000043F B901000000          <1>     mov ecx, 1
+   345 00000444 50                  <1>     push rax
+   346 00000445 52                  <1>     push rdx
+   347 00000446 56                  <1>     push rsi
+   348 00000447 E8DF010000          <1>     call writeSector
+   349 0000044C 5E                  <1>     pop rsi
+   350 0000044D 5A                  <1>     pop rdx
+   351 0000044E 58                  <1>     pop rax
+   352 0000044F 0F82E7010000        <1>     jc badExitGenericString
+   353 00000455 488B3D73020000      <1>     mov rdi, qword [bufferArea]
+   354 0000045C 48C70700000000      <1>     mov qword [rdi], 0  ;Overwrite the FAT reserved cluster markers
+   355 00000463 C7470800000000      <1>     mov dword [rdi + 8], 0  ;Overwrite potential additional FAT32 data
+   356 0000046A FFCE                <1>     dec esi ;Decrement the number of fat sectors left to count
+   357                              <1> .fatFillLoop:
+   358 0000046C 29C2                <1>     sub edx, eax    ;Come back to the first FAT copy
+   359 0000046E FFC2                <1>     inc edx ;Goto next sector
+   360 00000470 B901000000          <1>     mov ecx, 1
+   361 00000475 52                  <1>     push rdx
+   362 00000476 56                  <1>     push rsi
+   363 00000477 E8AF010000          <1>     call writeSector
+   364 0000047C 5E                  <1>     pop rsi
+   365 0000047D 5A                  <1>     pop rdx
+   366 0000047E 0F82B8010000        <1>     jc badExitGenericString
+   367 00000484 8B055A020000        <1>     mov eax, dword [fatSize]
+   368 0000048A 01C2                <1>     add edx, eax    ;Go to second fat copy
+   369 0000048C B901000000          <1>     mov ecx, 1
+   370 00000491 50                  <1>     push rax
+   371 00000492 52                  <1>     push rdx
+   372 00000493 56                  <1>     push rsi
+   373 00000494 E892010000          <1>     call writeSector
+   374 00000499 5E                  <1>     pop rsi
+   375 0000049A 5A                  <1>     pop rdx
+   376 0000049B 58                  <1>     pop rax
+   377 0000049C 0F829A010000        <1>     jc badExitGenericString
+   378 000004A2 FFCE                <1>     dec esi
+   379 000004A4 75C6                <1>     jnz .fatFillLoop
+   380                              <1>     ;Fall through once done with FAT
+   381                              <1> rootDirectory:
+   382                              <1>     ;FAT12 and 16 are simple, FAT32 is a bit more complex
+   383 000004A6 803D2B02000002      <1>     cmp byte [fatType], 2
+   384 000004AD 743F                <1>     je .fat32
+   385                              <1>     ;Here we compute the number of Root Dir sectors and sanitise them
+   386                              <1>     ;rdx should point to that sector now (since it works on FAT copy 2 last)
+   387 000004AF 488B1D33020000      <1>     mov rbx, qword [bpbPointer]
+   388 000004B6 0FB77311            <1>     movzx esi, word [rbx + bpb.rootEntCnt]  ;Get the number of 32 byte entries
+   389 000004BA C1E605              <1>     shl esi, 5  ;Convert into the number of bytes in root directory
+   390 000004BD 0FB70515020000      <1>     movzx eax, word [sectorSize]    ;Get the sector size
+   391 000004C4 96                  <1>     xchg esi, eax
+   392 000004C5 52                  <1>     push rdx
+   393 000004C6 31D2                <1>     xor edx, edx
+   394 000004C8 F7F6                <1>     div esi ;Divide to get number of sectors in eax, preserve edx
+   395 000004CA 5A                  <1>     pop rdx ;Save edx
+   396 000004CB 89C6                <1>     mov esi, eax    ;Number of sectors in esi
+   397 000004CD B901000000          <1>     mov ecx, 1  ;Write one sector
+   398                              <1> .fatLoop:
+   399 000004D2 FFC2                <1>     inc edx ;Go to next sector now
+   400 000004D4 51                  <1>     push rcx
+   401 000004D5 52                  <1>     push rdx
+   402 000004D6 56                  <1>     push rsi
+   403 000004D7 E84F010000          <1>     call writeSector
+   404 000004DC 5E                  <1>     pop rsi
+   405 000004DD 5A                  <1>     pop rdx
+   406 000004DE 59                  <1>     pop rcx
+   407 000004DF 0F8257010000        <1>     jc badExitGenericString
+   408 000004E5 FFCE                <1>     dec esi
+   409 000004E7 75E9                <1>     jnz .fatLoop
+   410 000004E9 E927000000          <1>     jmp exitFormat
+   411                              <1> .fat32:
+   412                              <1>     ;Now we have to allocate one cluster to the root directory.
+   413                              <1>     ;Allocate cluster 2, as this is a quick and dirty program
+   414                              <1>     ; Later come back and make this proper with bad cluster tags etc
+   415                              <1>     ;We do this by writing our zero sectors to the cluster
+   416                              <1>     ;edx should have the sector number for the first sector of cluster 2 at 
+   417                              <1>     ; this point.
+   418 000004EE 488B1DF4010000      <1>     mov rbx, qword [bpbPointer] ;Get the bpbPointer
+   419 000004F5 0FB6730D            <1>     movzx esi, byte [rbx + bpb32.secPerClus]
+   420 000004F9 B901000000          <1>     mov ecx, 1  ;Write one sector at a time
+   421                              <1> .fat32Loop:
+   422 000004FE FFC2                <1>     inc edx ;Go to next sector now
+   423 00000500 51                  <1>     push rcx
+   424 00000501 52                  <1>     push rdx
+   425 00000502 56                  <1>     push rsi
+   426 00000503 E823010000          <1>     call writeSector
+   427 00000508 5E                  <1>     pop rsi
+   428 00000509 5A                  <1>     pop rdx
+   429 0000050A 59                  <1>     pop rcx
+   430 0000050B 0F822B010000        <1>     jc badExitGenericString
+   431 00000511 FFCE                <1>     dec esi
+   432 00000513 75E9                <1>     jnz .fat32Loop
+   433                              <1> 
+   434                              <1> exitFormat:
+   435 00000515 C605A201000000      <1>     mov byte [inCrit], 0    ;Out of the critical section now
+   436 0000051C E84F010000          <1>     call dosCrit1Exit
+   437 00000521 E815000000          <1>     call freeMemoryBlock
+   438 00000526 488D15EF030000      <1>     lea rdx, okFormat
+   439 0000052D B800090000          <1>     mov eax, 0900h
+   440 00000532 CD41                <1>     int 41h
+   441 00000534 B8004C0000          <1>     mov eax, 4C00h  ;Return with 0 as error code
+   442 00000539 CD41                <1>     int 41h
+   443                              <1> 
+   444                              <1> 
+   445                              <1> ;Utility functions below
+   446                              <1> freeMemoryBlock:
+   447 0000053B 4C8B058D010000      <1>     mov r8, qword [bufferArea]
+   448 00000542 4D85C0              <1>     test r8, r8
+   449                              <1>     retz
     78                              <2> cret z
     56                              <3> %%_base:
     57                              <3> %assign baseVar %%_base-$$
@@ -1183,407 +1185,407 @@
     68                              <3> %%a:
     69                              <3>  %endif
     70                              <3>  %else
-    71 00000539 7501                <3>  j%-1 short %%a
+    71 00000545 7501                <3>  j%-1 short %%a
     72                              <3>  return
     50                              <4> %%_ret:
-    51 0000053B C3                  <4>  ret
+    51 00000547 C3                  <4>  ret
     52                              <4> %assign retOff %%_ret-$$
     73                              <3> %%a:
     74                              <3>  %endif
-   448 0000053C B800490000          <1>     mov eax, 4900h
-   449 00000541 CD41                <1>     int 41h
-   450                              <1>     return
+   450 00000548 B800490000          <1>     mov eax, 4900h
+   451 0000054D CD41                <1>     int 41h
+   452                              <1>     return
     50                              <2> %%_ret:
-    51 00000543 C3                  <2>  ret
+    51 0000054F C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   451                              <1> 
-   452                              <1> freeAllDriveBuffers:
-   453                              <1> ;Frees all buffers that belong to the drive being formatted
-   454                              <1> ;Called once in the critical section
-   455 00000544 50                  <1>     push rax
-   456 00000545 57                  <1>     push rdi
-   457 00000546 8A0565010000        <1>     mov al, byte [fmtDrive]
-   458 0000054C 488B3D68010000      <1>     mov rdi, qword [dosBuffPtr]
-   459                              <1> .mainLp:
-   460 00000553 384708              <1>     cmp byte [rdi + bufferHdr.driveNumber], al
-   461 00000556 7506                <1>     jne .gotoNextBuffer
-   462 00000558 66C747080000        <1>     mov word [rdi + bufferHdr.driveNumber], 0   ;Clears the flags too
-   463                              <1> .gotoNextBuffer:
-   464 0000055E 488B3F              <1>     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-   465 00000561 4881FFFFFFFFFF      <1>     cmp rdi, -1
-   466 00000568 75E9                <1>     jne .mainLp
-   467 0000056A 5F                  <1>     pop rdi
-   468 0000056B 58                  <1>     pop rax
-   469                              <1>     return
+   453                              <1> 
+   454                              <1> freeAllDriveBuffers:
+   455                              <1> ;Frees all buffers that belong to the drive being formatted
+   456                              <1> ;Called once in the critical section
+   457 00000550 50                  <1>     push rax
+   458 00000551 57                  <1>     push rdi
+   459 00000552 8A0565010000        <1>     mov al, byte [fmtDrive]
+   460 00000558 488B3D68010000      <1>     mov rdi, qword [dosBuffPtr]
+   461                              <1> .mainLp:
+   462 0000055F 384708              <1>     cmp byte [rdi + bufferHdr.driveNumber], al
+   463 00000562 7506                <1>     jne .gotoNextBuffer
+   464 00000564 66C747080000        <1>     mov word [rdi + bufferHdr.driveNumber], 0   ;Clears the flags too
+   465                              <1> .gotoNextBuffer:
+   466 0000056A 488B3F              <1>     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+   467 0000056D 4881FFFFFFFFFF      <1>     cmp rdi, -1
+   468 00000574 75E9                <1>     jne .mainLp
+   469 00000576 5F                  <1>     pop rdi
+   470 00000577 58                  <1>     pop rax
+   471                              <1>     return
     50                              <2> %%_ret:
-    51 0000056C C3                  <2>  ret
+    51 00000578 C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   470                              <1> 
-   471                              <1> writeFATStartSig:
-   472                              <1> ;Writes the first two cluster blocks with the necessary signature
-   473                              <1> ;Input: rdi -> Start of the FAT sector
-   474 0000056D 50                  <1>     push rax
-   475 0000056E 53                  <1>     push rbx
-   476 0000056F 488B1D67010000      <1>     mov rbx, qword [bpbPointer]
-   477 00000576 0FBE4315            <1>     movsx eax, byte [rbx + bpb.media]   ;Get the media byte, sign extend
-   478 0000057A 803D4B01000001      <1>     cmp byte [fatType], 1
-   479 00000581 7407                <1>     je .fat16
-   480 00000583 7709                <1>     ja .fat32
-   481                              <1> ;Fat 12 here
-   482 00000585 25FFFFFF00          <1>     and eax, 00FFFFFFh  ;Save only low three bytes
-   483                              <1> .fat16:
-   484 0000058A 8907                <1>     mov dword [rdi], eax
-   485 0000058C EB10                <1>     jmp short .exit
-   486                              <1> .fat32:
-   487 0000058E 8907                <1>     mov dword [rdi], eax
-   488 00000590 48B8FFFFFFFFFFFFFF- <1>     mov rax, -1
-   488 00000599 FF                  <1>
-   489 0000059A 48894704            <1>     mov qword [rdi + 4], rax    ;Write a qword to allocate cluster 2 too
-   490                              <1> .exit:
-   491 0000059E 5B                  <1>     pop rbx
-   492 0000059F 58                  <1>     pop rax
-   493                              <1>     return
+   472                              <1> 
+   473                              <1> writeFATStartSig:
+   474                              <1> ;Writes the first two cluster blocks with the necessary signature
+   475                              <1> ;Input: rdi -> Start of the FAT sector
+   476 00000579 50                  <1>     push rax
+   477 0000057A 53                  <1>     push rbx
+   478 0000057B 488B1D67010000      <1>     mov rbx, qword [bpbPointer]
+   479 00000582 0FBE4315            <1>     movsx eax, byte [rbx + bpb.media]   ;Get the media byte, sign extend
+   480 00000586 803D4B01000001      <1>     cmp byte [fatType], 1
+   481 0000058D 7407                <1>     je .fat16
+   482 0000058F 7709                <1>     ja .fat32
+   483                              <1> ;Fat 12 here
+   484 00000591 25FFFFFF00          <1>     and eax, 00FFFFFFh  ;Save only low three bytes
+   485                              <1> .fat16:
+   486 00000596 8907                <1>     mov dword [rdi], eax
+   487 00000598 EB10                <1>     jmp short .exit
+   488                              <1> .fat32:
+   489 0000059A 8907                <1>     mov dword [rdi], eax
+   490 0000059C 48B8FFFFFFFFFFFFFF- <1>     mov rax, -1
+   490 000005A5 FF                  <1>
+   491 000005A6 48894704            <1>     mov qword [rdi + 4], rax    ;Write a qword to allocate cluster 2 too
+   492                              <1> .exit:
+   493 000005AA 5B                  <1>     pop rbx
+   494 000005AB 58                  <1>     pop rax
+   495                              <1>     return
     50                              <2> %%_ret:
-    51 000005A0 C3                  <2>  ret
+    51 000005AC C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   494                              <1> getVolumeID:
-   495                              <1> ;Uses the time to set a volume ID
-   496                              <1> ;Output: eax = VolumeID
-   497 000005A1 B8002C0000          <1>     mov eax, 2C00h     ;Get Time in cx:dx
-   498 000005A6 CD41                <1>     int 41h
-   499 000005A8 0FB7DA              <1>     movzx ebx, dx
-   500 000005AB 0FB7C1              <1>     movzx eax, cx
-   501 000005AE C1E310              <1>     shl ebx, 10h
-   502 000005B1 09D8                <1>     or eax, ebx
-   503                              <1>     return
+   496                              <1> getVolumeID:
+   497                              <1> ;Uses the time to set a volume ID
+   498                              <1> ;Output: eax = VolumeID
+   499 000005AD B8002C0000          <1>     mov eax, 2C00h     ;Get Time in cx:dx
+   500 000005B2 CD41                <1>     int 41h
+   501 000005B4 0FB7DA              <1>     movzx ebx, dx
+   502 000005B7 0FB7C1              <1>     movzx eax, cx
+   503 000005BA C1E310              <1>     shl ebx, 10h
+   504 000005BD 09D8                <1>     or eax, ebx
+   505                              <1>     return
     50                              <2> %%_ret:
-    51 000005B3 C3                  <2>  ret
+    51 000005BF C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   504                              <1> computeFATSize:
-   505                              <1> ; ;Works on the genericBPB in memory. Applies the following algorithm
-   506                              <1> ; RootDirSectors = ((BPB_RootEntCnt * 32) + (BPB_BytsPerSec – 1)) / BPB_BytsPerSec;
-   507                              <1> ; TmpVal1 = DskSize – (BPB_ResvdSecCnt + RootDirSectors);
-   508                              <1> ; TmpVal2 = (256 * BPB_SecPerClus) + BPB_NumFATs;
-   509                              <1> ; If(FATType == FAT32)
-   510                              <1> ;   TmpVal2 = TmpVal2 / 2;
-   511                              <1> ; FATSz = (TMPVal1 + (TmpVal2 – 1)) / TmpVal2;
-   512                              <1> ;Input:
-   513                              <1> ;   rdi = Pointer to the head of the BPB we are using
-   514                              <1> ;Returns: 
-   515                              <1> ;   eax = Number of sectors per FAT needed. Low word only valid for FAT12/16
-   516 000005B4 53                  <1>     push rbx
-   517 000005B5 51                  <1>     push rcx
-   518 000005B6 52                  <1>     push rdx
-   519 000005B7 57                  <1>     push rdi
-   520                              <1>     
-   521 000005B8 0FB74711            <1>     movzx eax, word [rdi + bpb.rootEntCnt]
-   522 000005BC C1E005              <1>     shl eax, 5  ;Multiply by 32
-   523 000005BF 0FB75F0B            <1>     movzx ebx, word [rdi + bpb.bytsPerSec]
-   524 000005C3 FFCB                <1>     dec ebx
-   525 000005C5 01D8                <1>     add eax, ebx
-   526 000005C7 FFC3                <1>     inc ebx
-   527 000005C9 31D2                <1>     xor edx, edx
-   528 000005CB F7F3                <1>     div ebx
-   529 000005CD 89C2                <1>     mov edx, eax    ;edx = RootDirSectors
-   530                              <1> 
-   531 000005CF 0FB74713            <1>     movzx eax, word [rdi + bpb.totSec16]
-   532 000005D3 8B5F20              <1>     mov ebx, dword [rdi + bpb.totSec32]
-   533 000005D6 85C0                <1>     test eax, eax   ;If totSec16 is 0, move totSec32 into eax
-   534 000005D8 0F44C3              <1>     cmovz eax, ebx
-   535 000005DB 0FB75F0E            <1>     movzx ebx, word [rdi + bpb.revdSecCnt]
-   536 000005DF 01D3                <1>     add ebx, edx    ;Add RootDirSectors
-   537 000005E1 29D8                <1>     sub eax, ebx
-   538 000005E3 89C1                <1>     mov ecx, eax    ;ecx = TmpVal1
-   539                              <1> 
-   540 000005E5 0FB6470D            <1>     movzx eax, byte [rdi + bpb.secPerClus]
-   541 000005E9 C1E008              <1>     shl eax, 8  ;multiply by 256
-   542 000005EC 0FB65F10            <1>     movzx ebx, byte [rdi + bpb.numFATs]
-   543 000005F0 01C3                <1>     add ebx, eax    ;ebx = TmpVal2
-   544                              <1> 
-   545 000005F2 803DD300000002      <1>     cmp byte [fatType], 2
-   546 000005F9 7502                <1>     jne .notFat32
-   547 000005FB D1EB                <1>     shr ebx, 1  ;Divide by 2
-   548                              <1> .notFat32: 
-   549 000005FD 89C8                <1>     mov eax, ecx    ;TmpVal1
-   550 000005FF FFCB                <1>     dec ebx
-   551 00000601 01D8                <1>     add eax, ebx    ;TmpVal1 + (TmpVal2 - 1)
-   552 00000603 FFC3                <1>     inc ebx
-   553 00000605 31D2                <1>     xor edx, edx
-   554 00000607 F7F3                <1>     div ebx ;Exit with eax = number of sectors needed per FAT
-   555                              <1> .exit:
-   556 00000609 5F                  <1>     pop rdi
-   557 0000060A 5A                  <1>     pop rdx
-   558 0000060B 59                  <1>     pop rcx
-   559 0000060C 5B                  <1>     pop rbx
-   560                              <1>     return
+   506                              <1> computeFATSize:
+   507                              <1> ; ;Works on the genericBPB in memory. Applies the following algorithm
+   508                              <1> ; RootDirSectors = ((BPB_RootEntCnt * 32) + (BPB_BytsPerSec – 1)) / BPB_BytsPerSec;
+   509                              <1> ; TmpVal1 = DskSize – (BPB_ResvdSecCnt + RootDirSectors);
+   510                              <1> ; TmpVal2 = (256 * BPB_SecPerClus) + BPB_NumFATs;
+   511                              <1> ; If(FATType == FAT32)
+   512                              <1> ;   TmpVal2 = TmpVal2 / 2;
+   513                              <1> ; FATSz = (TMPVal1 + (TmpVal2 – 1)) / TmpVal2;
+   514                              <1> ;Input:
+   515                              <1> ;   rdi = Pointer to the head of the BPB we are using
+   516                              <1> ;Returns: 
+   517                              <1> ;   eax = Number of sectors per FAT needed. Low word only valid for FAT12/16
+   518 000005C0 53                  <1>     push rbx
+   519 000005C1 51                  <1>     push rcx
+   520 000005C2 52                  <1>     push rdx
+   521 000005C3 57                  <1>     push rdi
+   522                              <1>     
+   523 000005C4 0FB74711            <1>     movzx eax, word [rdi + bpb.rootEntCnt]
+   524 000005C8 C1E005              <1>     shl eax, 5  ;Multiply by 32
+   525 000005CB 0FB75F0B            <1>     movzx ebx, word [rdi + bpb.bytsPerSec]
+   526 000005CF FFCB                <1>     dec ebx
+   527 000005D1 01D8                <1>     add eax, ebx
+   528 000005D3 FFC3                <1>     inc ebx
+   529 000005D5 31D2                <1>     xor edx, edx
+   530 000005D7 F7F3                <1>     div ebx
+   531 000005D9 89C2                <1>     mov edx, eax    ;edx = RootDirSectors
+   532                              <1> 
+   533 000005DB 0FB74713            <1>     movzx eax, word [rdi + bpb.totSec16]
+   534 000005DF 8B5F20              <1>     mov ebx, dword [rdi + bpb.totSec32]
+   535 000005E2 85C0                <1>     test eax, eax   ;If totSec16 is 0, move totSec32 into eax
+   536 000005E4 0F44C3              <1>     cmovz eax, ebx
+   537 000005E7 0FB75F0E            <1>     movzx ebx, word [rdi + bpb.revdSecCnt]
+   538 000005EB 01D3                <1>     add ebx, edx    ;Add RootDirSectors
+   539 000005ED 29D8                <1>     sub eax, ebx
+   540 000005EF 89C1                <1>     mov ecx, eax    ;ecx = TmpVal1
+   541                              <1> 
+   542 000005F1 0FB6470D            <1>     movzx eax, byte [rdi + bpb.secPerClus]
+   543 000005F5 C1E008              <1>     shl eax, 8  ;multiply by 256
+   544 000005F8 0FB65F10            <1>     movzx ebx, byte [rdi + bpb.numFATs]
+   545 000005FC 01C3                <1>     add ebx, eax    ;ebx = TmpVal2
+   546                              <1> 
+   547 000005FE 803DD300000002      <1>     cmp byte [fatType], 2
+   548 00000605 7502                <1>     jne .notFat32
+   549 00000607 D1EB                <1>     shr ebx, 1  ;Divide by 2
+   550                              <1> .notFat32: 
+   551 00000609 89C8                <1>     mov eax, ecx    ;TmpVal1
+   552 0000060B FFCB                <1>     dec ebx
+   553 0000060D 01D8                <1>     add eax, ebx    ;TmpVal1 + (TmpVal2 - 1)
+   554 0000060F FFC3                <1>     inc ebx
+   555 00000611 31D2                <1>     xor edx, edx
+   556 00000613 F7F3                <1>     div ebx ;Exit with eax = number of sectors needed per FAT
+   557                              <1> .exit:
+   558 00000615 5F                  <1>     pop rdi
+   559 00000616 5A                  <1>     pop rdx
+   560 00000617 59                  <1>     pop rcx
+   561 00000618 5B                  <1>     pop rbx
+   562                              <1>     return
     50                              <2> %%_ret:
-    51 0000060D C3                  <2>  ret
+    51 00000619 C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   561                              <1> 
-   562                              <1> readSector:
-   563                              <1> ;Input:
-   564                              <1> ;rbx = Memory Buffer address to write to
-   565                              <1> ;ecx = Number of sectors to read
-   566                              <1> ;rdx = Start LBA to read from
-   567 0000060E 8A059D000000        <1>     mov al, byte [fmtDrive]     ; Always read from fmtDrive
-   568 00000614 488B1DA8000000      <1>     mov rbx, qword [bufferArea] ; Memory Buffer address to read from
-   569 0000061B CD45                <1>     int 45h
-   570 0000061D 58                  <1>     pop rax ;Pop old flags into rax
-   571                              <1>     return
+   563                              <1> 
+   564                              <1> readSector:
+   565                              <1> ;Input:
+   566                              <1> ;rbx = Memory Buffer address to write to
+   567                              <1> ;ecx = Number of sectors to read
+   568                              <1> ;rdx = Start LBA to read from
+   569 0000061A 8A059D000000        <1>     mov al, byte [fmtDrive]     ; Always read from fmtDrive
+   570 00000620 488B1DA8000000      <1>     mov rbx, qword [bufferArea] ; Memory Buffer address to read from
+   571 00000627 CD45                <1>     int 45h
+   572 00000629 58                  <1>     pop rax ;Pop old flags into rax
+   573                              <1>     return
     50                              <2> %%_ret:
-    51 0000061E C3                  <2>  ret
+    51 0000062A C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   572                              <1> writeSector:
-   573                              <1> ;Input:
-   574                              <1> ;al = Drive number
-   575                              <1> ;rbx = Memory Buffer address to read from
-   576                              <1> ;ecx = Number of sectors to write
-   577                              <1> ;rdx = Start LBA to write to
-   578 0000061F 8A058C000000        <1>     mov al, byte [fmtDrive]     ; Always write to fmtDrive
-   579 00000625 488B1D97000000      <1>     mov rbx, qword [bufferArea] ; Memory Buffer address to read from
-   580 0000062C CD46                <1>     int 46h
-   581 0000062E 58                  <1>     pop rax ;Pop old flags into rax
-   582                              <1>     return
+   574                              <1> writeSector:
+   575                              <1> ;Input:
+   576                              <1> ;al = Drive number
+   577                              <1> ;rbx = Memory Buffer address to read from
+   578                              <1> ;ecx = Number of sectors to write
+   579                              <1> ;rdx = Start LBA to write to
+   580 0000062B 8A058C000000        <1>     mov al, byte [fmtDrive]     ; Always write to fmtDrive
+   581 00000631 488B1D97000000      <1>     mov rbx, qword [bufferArea] ; Memory Buffer address to read from
+   582 00000638 CD46                <1>     int 46h
+   583 0000063A 58                  <1>     pop rax ;Pop old flags into rax
+   584                              <1>     return
     50                              <2> %%_ret:
-    51 0000062F C3                  <2>  ret
+    51 0000063B C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   583                              <1> badExitGenericString:
-   584 00000630 488D1522020000      <1>     lea rdx, badGeneric
-   585                              <1> badExit:
-   586                              <1> ;Jumped to with rdx = Error message or 0 if no message
-   587 00000637 F60574000000FF      <1>     test byte [inCrit], -1
-   588 0000063E 7405                <1>     jz .noCrit
-   589 00000640 E81F000000          <1>     call dosCrit1Exit
-   590                              <1> .noCrit:
-   591 00000645 4885D2              <1>     test rdx, rdx
-   592 00000648 7404                <1>     jz .noPrint
-   593 0000064A B409                <1>     mov ah, 09h
-   594 0000064C CD41                <1>     int 41h
-   595                              <1> .noPrint:
-   596 0000064E E8DCFEFFFF          <1>     call freeMemoryBlock    ;Free the memory block if it needs freeing
-   597 00000653 B8FF4C0000          <1>     mov eax, 4CFFh  ;Return with -1 as error code
-   598 00000658 CD41                <1>     int 41h
-   599                              <1> 
-   600                              <1> dosCrit1Enter:
-   601 0000065A 50                  <1>     push rax 
-   602 0000065B B801800000          <1>     mov eax, 8001h
-   603 00000660 CD4A                <1>     int 4ah
-   604 00000662 58                  <1>     pop rax
-   605                              <1>     return
+   585                              <1> badExitGenericString:
+   586 0000063C 488D1522020000      <1>     lea rdx, badGeneric
+   587                              <1> badExit:
+   588                              <1> ;Jumped to with rdx = Error message or 0 if no message
+   589 00000643 F60574000000FF      <1>     test byte [inCrit], -1
+   590 0000064A 7405                <1>     jz .noCrit
+   591 0000064C E81F000000          <1>     call dosCrit1Exit
+   592                              <1> .noCrit:
+   593 00000651 4885D2              <1>     test rdx, rdx
+   594 00000654 7404                <1>     jz .noPrint
+   595 00000656 B409                <1>     mov ah, 09h
+   596 00000658 CD41                <1>     int 41h
+   597                              <1> .noPrint:
+   598 0000065A E8DCFEFFFF          <1>     call freeMemoryBlock    ;Free the memory block if it needs freeing
+   599 0000065F B8FF4C0000          <1>     mov eax, 4CFFh  ;Return with -1 as error code
+   600 00000664 CD41                <1>     int 41h
+   601                              <1> 
+   602                              <1> dosCrit1Enter:
+   603 00000666 50                  <1>     push rax 
+   604 00000667 B801800000          <1>     mov eax, 8001h
+   605 0000066C CD4A                <1>     int 4ah
+   606 0000066E 58                  <1>     pop rax
+   607                              <1>     return
     50                              <2> %%_ret:
-    51 00000663 C3                  <2>  ret
+    51 0000066F C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   606                              <1> dosCrit1Exit:
-   607 00000664 50                  <1>     push rax 
-   608 00000665 B801810000          <1>     mov eax, 8101h
-   609 0000066A CD4A                <1>     int 4ah
-   610 0000066C 58                  <1>     pop rax
-   611                              <1>     return
+   608                              <1> dosCrit1Exit:
+   609 00000670 50                  <1>     push rax 
+   610 00000671 B801810000          <1>     mov eax, 8101h
+   611 00000676 CD4A                <1>     int 4ah
+   612 00000678 58                  <1>     pop rax
+   613                              <1>     return
     50                              <2> %%_ret:
-    51 0000066D C3                  <2>  ret
+    51 00000679 C3                  <2>  ret
     52                              <2> %assign retOff %%_ret-$$
-   612                              <1> 
-   613                              <1> breakRoutine:
-   614                              <1> ;This subroutine is called by ^C
-   615                              <1> ;Prompts the user for what they want to do.
-   616 0000066E 488D15FA010000      <1>     lea rdx, cancel
-   617 00000675 B409                <1>     mov ah, 09h
-   618 00000677 CD41                <1>     int 41h
-   619 00000679 B401                <1>     mov ah, 01h ;Get a char
-   620 0000067B CD41                <1>     int 41h
-   621 0000067D 3C79                <1>     cmp al, "y"
-   622 0000067F 740C                <1>     je short .breakReturnExit
-   623 00000681 3C59                <1>     cmp al, "Y"
-   624 00000683 7408                <1>     je short .breakReturnExit
-   625 00000685 3C6E                <1>     cmp al, "n"
-   626 00000687 740E                <1>     je short .breakReturnNoExit
-   627 00000689 3C4E                <1>     cmp al, "N"
-   628 0000068B EBE1                <1>     jmp short breakRoutine 
-   629                              <1> .breakReturnExit:
-   630 0000068D 804C241001          <1>     or byte [rsp + 8*2], 1  ;Set CF on the stack flags
-   631 00000692 E8CDFFFFFF          <1>     call dosCrit1Exit   ;Exit the critical section since we are quitting
-   632                              <1> .breakReturnNoExit:
-   633 00000697 48CF                <1>     iretq   ;Redo the operation
+   614                              <1> 
+   615                              <1> breakRoutine:
+   616                              <1> ;This subroutine is called by ^C
+   617                              <1> ;Prompts the user for what they want to do.
+   618 0000067A 488D15FA010000      <1>     lea rdx, cancel
+   619 00000681 B409                <1>     mov ah, 09h
+   620 00000683 CD41                <1>     int 41h
+   621 00000685 B401                <1>     mov ah, 01h ;Get a char
+   622 00000687 CD41                <1>     int 41h
+   623 00000689 3C79                <1>     cmp al, "y"
+   624 0000068B 740C                <1>     je short .breakReturnExit
+   625 0000068D 3C59                <1>     cmp al, "Y"
+   626 0000068F 7408                <1>     je short .breakReturnExit
+   627 00000691 3C6E                <1>     cmp al, "n"
+   628 00000693 740E                <1>     je short .breakReturnNoExit
+   629 00000695 3C4E                <1>     cmp al, "N"
+   630 00000697 EBE1                <1>     jmp short breakRoutine 
+   631                              <1> .breakReturnExit:
+   632 00000699 804C241001          <1>     or byte [rsp + 8*2], 1  ;Set CF on the stack flags
+   633 0000069E E8CDFFFFFF          <1>     call dosCrit1Exit   ;Exit the critical section since we are quitting
+   634                              <1> .breakReturnNoExit:
+   635 000006A3 48CF                <1>     iretq   ;Redo the operation
     49                                  %include "./Utils/FORMAT/Data/fmtData.asm"
     50                              <1> ;IOCTL request header
-    51 00000699 000000000000000000- <1> reqTable    db genioctlGetParamsTable_size dup (0)
-    51 000006A2 000000000000000000- <1>
-    51 000006AB 000000000000        <1>
+    51 000006A5 000000000000000000- <1> reqTable    db genioctlGetParamsTable_size dup (0)
+    51 000006AE 000000000000000000- <1>
+    51 000006B7 000000000000        <1>
     52                              <1> 
     53                              <1> ;Data area here
-    54 000006B1 FF                  <1> fmtDrive    db -1       ;Drive we are operating on (0 based)
-    55 000006B2 00                  <1> inCrit      db 0        ;If not 0, in a critical section, must exit
-    56 000006B3 0000000000000000    <1> cdsPtr      dq 0        ;CDS ptr here
-    57 000006BB 0000000000000000    <1> dosBuffPtr  dq 0        ;Ptr to the DOS buffer chain
-    58 000006C3 0000000000000000    <1> bufferArea  dq 0        ;Ptr to the buffer area
+    54 000006BD FF                  <1> fmtDrive    db -1       ;Drive we are operating on (0 based)
+    55 000006BE 00                  <1> inCrit      db 0        ;If not 0, in a critical section, must exit
+    56 000006BF 0000000000000000    <1> cdsPtr      dq 0        ;CDS ptr here
+    57 000006C7 0000000000000000    <1> dosBuffPtr  dq 0        ;Ptr to the DOS buffer chain
+    58 000006CF 0000000000000000    <1> bufferArea  dq 0        ;Ptr to the buffer area
     59                              <1> ;Format Data here
-    60 000006CB 00                  <1> remDev      db 0        ;0 = Removable, -1 = Fixed
-    61 000006CC FF                  <1> fatType     db -1       ;0 = FAT12, 1 = FAT16, 2 = FAT32, -1 = No FAT
-    62 000006CD 0000                <1> sectorSize  dw 0        ;Sector size in bytes
-    63 000006CF 0000000000000000    <1> numSectors  dq 0        ;Number of sectors in volume
-    64 000006D7 00                  <1> secPerClust db 0        ;Copy the sectors per cluster over
-    65 000006D8 00000000            <1> fatSize     dd 0        ;FAT size (number of sectors per FAT)
-    66 000006DC 00                  <1> media       db 0        ;Media type (F0h or F8h)
-    67 000006DD 0000000000000000    <1> bpbPointer  dq 0        ;Pointer to the BPB we will use
-    68 000006E5 00                  <1> bpbSize     db 0        ;Size of the BPB
-    69 000006E6 00000000            <1> hiddSector  dd 0        ;Only used for Fixed Disks, offset to add
+    60 000006D7 00                  <1> remDev      db 0        ;0 = Removable, -1 = Fixed
+    61 000006D8 FF                  <1> fatType     db -1       ;0 = FAT12, 1 = FAT16, 2 = FAT32, -1 = No FAT
+    62 000006D9 0000                <1> sectorSize  dw 0        ;Sector size in bytes
+    63 000006DB 0000000000000000    <1> numSectors  dq 0        ;Number of sectors in volume
+    64 000006E3 00                  <1> secPerClust db 0        ;Copy the sectors per cluster over
+    65 000006E4 00000000            <1> fatSize     dd 0        ;FAT size (number of sectors per FAT)
+    66 000006E8 00                  <1> media       db 0        ;Media type (F0h or F8h)
+    67 000006E9 0000000000000000    <1> bpbPointer  dq 0        ;Pointer to the BPB we will use
+    68 000006F1 00                  <1> bpbSize     db 0        ;Size of the BPB
+    69 000006F2 00000000            <1> hiddSector  dd 0        ;Only used for Fixed Disks, offset to add
     70                              <1> 
     71                              <1> ;Tables
     72                              <1> ;Each row is 5 bytes, {DWORD, BYTE} with DWORD = diskSize, BYTE=secPerClusVal
     73                              <1> ;This table assumes a 512 byte sector (fair assumption) but we do a byte size
     74                              <1> ; comparison in format to eventually allow for other sized sectors
     75                              <1> fat16ClusterTable:
-    76 000006EA 00A04100            <1>     dd 8400*512 ;Disks up to 4.1MB, must use FAT12 with 0.5 K clusters
-    77 000006EE 01                  <1>     db 1    ;ALL FAT12 uses 1, unless it is a preexisting meddesc type medium
-    78 000006EF 0050FF00            <1>     dd 32680*512    ; Disk up to 16MB, 1K clusters
-    79 000006F3 02                  <1>     db 2
-    80 000006F4 00000008            <1>     dd 262144*512   ; Disk up to 128MB, 2K clusters
-    81 000006F8 04                  <1>     db 4
-    82 000006F9 00000010            <1>     dd 524288*512   ; Disk up to 256MB, 4K clusters
-    83 000006FD 08                  <1>     db 8
-    84 000006FE 00000020            <1>     dd 1048576*512  ; Disk up to 512Mb, 8K clusters
-    85 00000702 10                  <1>     db 16
+    76 000006F6 00A04100            <1>     dd 8400*512 ;Disks up to 4.1MB, must use FAT12 with 0.5 K clusters
+    77 000006FA 01                  <1>     db 1    ;ALL FAT12 uses 1, unless it is a preexisting meddesc type medium
+    78 000006FB 0050FF00            <1>     dd 32680*512    ; Disk up to 16MB, 1K clusters
+    79 000006FF 02                  <1>     db 2
+    80 00000700 00000008            <1>     dd 262144*512   ; Disk up to 128MB, 2K clusters
+    81 00000704 04                  <1>     db 4
+    82 00000705 00000010            <1>     dd 524288*512   ; Disk up to 256MB, 4K clusters
+    83 00000709 08                  <1>     db 8
+    84 0000070A 00000020            <1>     dd 1048576*512  ; Disk up to 512Mb, 8K clusters
+    85 0000070E 10                  <1>     db 16
     86                              <1> 
     87                              <1> ;Here DWORD becomes QWORD
     88                              <1> fat32ClusterTable:
-    89 00000703 0000000002000000    <1>     dq 16777216*512 ; Disk up to 8GB, 4K clusters
-    90 0000070B 08                  <1>     db 8        
-    91 0000070C 0000000004000000    <1>     dq 33554432*512 ; Disk up to 16GB, 8K clusters
-    92 00000714 10                  <1>     db 16
-    93 00000715 0000000008000000    <1>     dq 67108864*512 ; Disk up to 32Gb, 16K clusters
-    94 0000071D 20                  <1>     db 32
-    95 0000071E FFFFFFFFFFFFFFFF    <1>     dq -1       ; Disk up to 2TB, 32K clusters
-    96 00000726 40                  <1>     db 64
+    89 0000070F 0000000002000000    <1>     dq 16777216*512 ; Disk up to 8GB, 4K clusters
+    90 00000717 08                  <1>     db 8        
+    91 00000718 0000000004000000    <1>     dq 33554432*512 ; Disk up to 16GB, 8K clusters
+    92 00000720 10                  <1>     db 16
+    93 00000721 0000000008000000    <1>     dq 67108864*512 ; Disk up to 32Gb, 16K clusters
+    94 00000729 20                  <1>     db 32
+    95 0000072A FFFFFFFFFFFFFFFF    <1>     dq -1       ; Disk up to 2TB, 32K clusters
+    96 00000732 40                  <1>     db 64
     97                              <1> 
     98                              <1> ;Static BPBs here, fields set to -1 must be edited.
     99                              <1> ;Fields with a preset value should NOT be touched.
    100                              <1> genericBPB12:
    101                              <1>     istruc bpb
-   102 00000727 EB3C90              <1>     at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;60 bytes, jump forward by that 
-   103 0000072A 534350444F537631    <1>     at bpb.oemName,     db 'SCPDOSv1'
-   104 00000732 FFFF                <1>     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
-   105 00000734 FF                  <1>     at bpb.secPerClus,  db -1           ;1 sector per cluster, normally
-   106 00000735 0100                <1>     at bpb.revdSecCnt,  dw 0001h        ;1 Reserved Sector
-   107 00000737 02                  <1>     at bpb.numFATs,     db 02h          ;2 FAT tables
-   108 00000738 E000                <1>     at bpb.rootEntCnt,  dw 00E0h        ;224 root entries
-   109 0000073A FFFF                <1>     at bpb.totSec16,    dw -1           ;Total number of sectors on disk
-   110 0000073C F0                  <1>     at bpb.media,       db 0F0h         ;Media byte
-   111 0000073D FFFF                <1>     at bpb.FATsz16,     dw -1           ;9 FAT sectors, normally
-   112 0000073F 1200                <1>     at bpb.secPerTrk,   dw 0012h        ;18 Sectors per track
-   113 00000741 0200                <1>     at bpb.numHeads,    dw 0002h        ;2 Heads
-   114 00000743 FFFFFFFF            <1>     at bpb.hiddSec,     dd -1           ;No hidden sectors on removable
-   115 00000747 00000000            <1>     at bpb.totSec32,    dd 0            ;Not a FAT32 BPB
-   116 0000074B FF                  <1>     at bpb.drvNum,      db -1           ;Set to 80h if fixed
-   117 0000074C 00                  <1>     at bpb.reserved1,   db 00h
-   118 0000074D 29                  <1>     at bpb.bootSig,     db 29h          ;Extended BPB
-   119 0000074E FFFFFFFF            <1>     at bpb.volID,       dd -1           ;Set volume ID to time
-   120 00000752 4E4F204E414D452020- <1>     at bpb.volLab,      db 'NO NAME    '
-   120 0000075B 2020                <1>
-   121 0000075D 4641543132202020    <1>     at bpb.filSysType,  db 'FAT12   '
+   102 00000733 EB3C90              <1>     at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;60 bytes, jump forward by that 
+   103 00000736 534350444F537631    <1>     at bpb.oemName,     db 'SCPDOSv1'
+   104 0000073E FFFF                <1>     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
+   105 00000740 FF                  <1>     at bpb.secPerClus,  db -1           ;1 sector per cluster, normally
+   106 00000741 0100                <1>     at bpb.revdSecCnt,  dw 0001h        ;1 Reserved Sector
+   107 00000743 02                  <1>     at bpb.numFATs,     db 02h          ;2 FAT tables
+   108 00000744 E000                <1>     at bpb.rootEntCnt,  dw 00E0h        ;224 root entries
+   109 00000746 FFFF                <1>     at bpb.totSec16,    dw -1           ;Total number of sectors on disk
+   110 00000748 F0                  <1>     at bpb.media,       db 0F0h         ;Media byte
+   111 00000749 FFFF                <1>     at bpb.FATsz16,     dw -1           ;9 FAT sectors, normally
+   112 0000074B 1200                <1>     at bpb.secPerTrk,   dw 0012h        ;18 Sectors per track
+   113 0000074D 0200                <1>     at bpb.numHeads,    dw 0002h        ;2 Heads
+   114 0000074F FFFFFFFF            <1>     at bpb.hiddSec,     dd -1           ;No hidden sectors on removable
+   115 00000753 00000000            <1>     at bpb.totSec32,    dd 0            ;Not a FAT32 BPB
+   116 00000757 FF                  <1>     at bpb.drvNum,      db -1           ;Set to 80h if fixed
+   117 00000758 00                  <1>     at bpb.reserved1,   db 00h
+   118 00000759 29                  <1>     at bpb.bootSig,     db 29h          ;Extended BPB
+   119 0000075A FFFFFFFF            <1>     at bpb.volID,       dd -1           ;Set volume ID to time
+   120 0000075E 4E4F204E414D452020- <1>     at bpb.volLab,      db 'NO NAME    '
+   120 00000767 2020                <1>
+   121 00000769 4641543132202020    <1>     at bpb.filSysType,  db 'FAT12   '
    122                              <1>     iend
    123                              <1> 
    124                              <1> genericBPB16:
    125                              <1>     istruc bpb
-   126 00000765 EB3C90              <1>     at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;Jump forward by 60 bytes
-   127 00000768 534350444F537631    <1>     at bpb.oemName,     db 'SCPDOSv1'
-   128 00000770 FFFF                <1>     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
-   129 00000772 FF                  <1>     at bpb.secPerClus,  db -1           ;Sectors per cluster
-   130 00000773 0100                <1>     at bpb.revdSecCnt,  dw 0001h        ;1 Reserved Sector
-   131 00000775 02                  <1>     at bpb.numFATs,     db 02h          ;2 FAT tables
-   132 00000776 0002                <1>     at bpb.rootEntCnt,  dw 0200h        ;512 root entries
-   133 00000778 FFFF                <1>     at bpb.totSec16,    dw -1           ;Total number of sectors on disk
-   134 0000077A F0                  <1>     at bpb.media,       db 0F0h         ;Media byte
-   135 0000077B FFFF                <1>     at bpb.FATsz16,     dw -1           ;Number of sectors per FAT
-   136 0000077D 3F00                <1>     at bpb.secPerTrk,   dw 003Fh        ;FAT16 and 32 have Hard disk geometry 
-   137 0000077F FF00                <1>     at bpb.numHeads,    dw 00FFh        ;255 Heads
-   138 00000781 FFFFFFFF            <1>     at bpb.hiddSec,     dd -1           ;No hidden sectors on removable
-   139 00000785 00000000            <1>     at bpb.totSec32,    dd 0            ;Not a FAT32 BPB
-   140 00000789 FF                  <1>     at bpb.drvNum,      db -1           ;Set to 80h if fixed
-   141 0000078A 00                  <1>     at bpb.reserved1,   db 00h
-   142 0000078B 29                  <1>     at bpb.bootSig,     db 29h          ;Extended BPB
-   143 0000078C FFFFFFFF            <1>     at bpb.volID,       dd -1           ;Set volume ID to time
-   144 00000790 4E4F204E414D452020- <1>     at bpb.volLab,      db 'NO NAME    '
-   144 00000799 2020                <1>
-   145 0000079B 4641543136202020    <1>     at bpb.filSysType,  db 'FAT16   '
+   126 00000771 EB3C90              <1>     at bpb.jmpBoot,     db 0EBh, 3Ch, 90h   ;Jump forward by 60 bytes
+   127 00000774 534350444F537631    <1>     at bpb.oemName,     db 'SCPDOSv1'
+   128 0000077C FFFF                <1>     at bpb.bytsPerSec,  dw -1           ;512 bytes per sector, normally
+   129 0000077E FF                  <1>     at bpb.secPerClus,  db -1           ;Sectors per cluster
+   130 0000077F 0100                <1>     at bpb.revdSecCnt,  dw 0001h        ;1 Reserved Sector
+   131 00000781 02                  <1>     at bpb.numFATs,     db 02h          ;2 FAT tables
+   132 00000782 0002                <1>     at bpb.rootEntCnt,  dw 0200h        ;512 root entries
+   133 00000784 FFFF                <1>     at bpb.totSec16,    dw -1           ;Total number of sectors on disk
+   134 00000786 F0                  <1>     at bpb.media,       db 0F0h         ;Media byte
+   135 00000787 FFFF                <1>     at bpb.FATsz16,     dw -1           ;Number of sectors per FAT
+   136 00000789 3F00                <1>     at bpb.secPerTrk,   dw 003Fh        ;FAT16 and 32 have Hard disk geometry 
+   137 0000078B FF00                <1>     at bpb.numHeads,    dw 00FFh        ;255 Heads
+   138 0000078D FFFFFFFF            <1>     at bpb.hiddSec,     dd -1           ;No hidden sectors on removable
+   139 00000791 00000000            <1>     at bpb.totSec32,    dd 0            ;Not a FAT32 BPB
+   140 00000795 FF                  <1>     at bpb.drvNum,      db -1           ;Set to 80h if fixed
+   141 00000796 00                  <1>     at bpb.reserved1,   db 00h
+   142 00000797 29                  <1>     at bpb.bootSig,     db 29h          ;Extended BPB
+   143 00000798 FFFFFFFF            <1>     at bpb.volID,       dd -1           ;Set volume ID to time
+   144 0000079C 4E4F204E414D452020- <1>     at bpb.volLab,      db 'NO NAME    '
+   144 000007A5 2020                <1>
+   145 000007A7 4641543136202020    <1>     at bpb.filSysType,  db 'FAT16   '
    146                              <1>     iend
    147                              <1> 
    148                              <1> genericBPB32:
    149                              <1>     istruc bpb32
-   150 000007A3 EB5890              <1>     at bpb32.jmpBoot,     db 0EBh, 58h, 90h   ;Jump forward by 88 bytes
-   151 000007A6 534350444F537631    <1>     at bpb32.oemName,     db 'SCPDOSv1'
-   152 000007AE FFFF                <1>     at bpb32.bytsPerSec,  dw -1           ;512 bytes per sector, normally
-   153 000007B0 FF                  <1>     at bpb32.secPerClus,  db -1           ;Sectors per cluster
-   154 000007B1 0100                <1>     at bpb32.revdSecCnt,  dw 0001h        ;1 Reserved Sector
-   155 000007B3 02                  <1>     at bpb32.numFATs,     db 02h          ;2 FAT tables
-   156 000007B4 0000                <1>     at bpb32.rootEntCnt,  dw 0000h        ;Invalid field for FAT32
-   157 000007B6 0000                <1>     at bpb32.totSec16,    dw 0            ;Not a FAT 12/16 BPB
-   158 000007B8 F0                  <1>     at bpb32.media,       db 0F0h         ;Media byte
-   159 000007B9 0000                <1>     at bpb32.FATsz16,     dw 0            ;Not a FAT 12/16 BPB
-   160 000007BB 3F00                <1>     at bpb32.secPerTrk,   dw 003Fh        ;FAT16 and 32 have Hard disk geometry 
-   161 000007BD FF00                <1>     at bpb32.numHeads,    dw 00FFh        ;255 Heads
-   162 000007BF FFFFFFFF            <1>     at bpb32.hiddSec,     dd -1           ;No hidden sectors on removable
-   163 000007C3 FFFFFFFF            <1>     at bpb32.totSec32,    dd -1           ;Total number of sectors on disk
+   150 000007AF EB5890              <1>     at bpb32.jmpBoot,     db 0EBh, 58h, 90h   ;Jump forward by 88 bytes
+   151 000007B2 534350444F537631    <1>     at bpb32.oemName,     db 'SCPDOSv1'
+   152 000007BA FFFF                <1>     at bpb32.bytsPerSec,  dw -1           ;512 bytes per sector, normally
+   153 000007BC FF                  <1>     at bpb32.secPerClus,  db -1           ;Sectors per cluster
+   154 000007BD 0100                <1>     at bpb32.revdSecCnt,  dw 0001h        ;1 Reserved Sector
+   155 000007BF 02                  <1>     at bpb32.numFATs,     db 02h          ;2 FAT tables
+   156 000007C0 0000                <1>     at bpb32.rootEntCnt,  dw 0000h        ;Invalid field for FAT32
+   157 000007C2 0000                <1>     at bpb32.totSec16,    dw 0            ;Not a FAT 12/16 BPB
+   158 000007C4 F0                  <1>     at bpb32.media,       db 0F0h         ;Media byte
+   159 000007C5 0000                <1>     at bpb32.FATsz16,     dw 0            ;Not a FAT 12/16 BPB
+   160 000007C7 3F00                <1>     at bpb32.secPerTrk,   dw 003Fh        ;FAT16 and 32 have Hard disk geometry 
+   161 000007C9 FF00                <1>     at bpb32.numHeads,    dw 00FFh        ;255 Heads
+   162 000007CB FFFFFFFF            <1>     at bpb32.hiddSec,     dd -1           ;No hidden sectors on removable
+   163 000007CF FFFFFFFF            <1>     at bpb32.totSec32,    dd -1           ;Total number of sectors on disk
    164                              <1> 
-   165 000007C7 FFFFFFFF            <1>     at bpb32.FATsz32,     dd -1  ;Number of sectors per FAT
-   166 000007CB FFFF                <1>     at bpb32.extFlags,    dw -1  ;Extended Flags word
-   167 000007CD 0000                <1>     at bpb32.FSver,       dw 0   ;File system version word, must be 0
-   168 000007CF FFFFFFFF            <1>     at bpb32.RootClus,    dd -1  ;First Cluster of Root Directory
-   169 000007D3 0100                <1>     at bpb32.FSinfo,      dw 1   ;Sector number of FSINFO structure, usually 1
-   170 000007D5 0600                <1>     at bpb32.BkBootSec,   dw 6   ;Backup Boot sector, either 0 or 6
-   171 000007D7 000000000000000000- <1>     at bpb32.reserved,    db 12 dup (0) ;Reserved 12 bytes
-   171 000007E0 000000              <1>
+   165 000007D3 FFFFFFFF            <1>     at bpb32.FATsz32,     dd -1  ;Number of sectors per FAT
+   166 000007D7 FFFF                <1>     at bpb32.extFlags,    dw -1  ;Extended Flags word
+   167 000007D9 0000                <1>     at bpb32.FSver,       dw 0   ;File system version word, must be 0
+   168 000007DB FFFFFFFF            <1>     at bpb32.RootClus,    dd -1  ;First Cluster of Root Directory
+   169 000007DF 0100                <1>     at bpb32.FSinfo,      dw 1   ;Sector number of FSINFO structure, usually 1
+   170 000007E1 0600                <1>     at bpb32.BkBootSec,   dw 6   ;Backup Boot sector, either 0 or 6
+   171 000007E3 000000000000000000- <1>     at bpb32.reserved,    db 12 dup (0) ;Reserved 12 bytes
+   171 000007EC 000000              <1>
    172                              <1> 
-   173 000007E3 FF                  <1>     at bpb32.drvNum,      db -1           ;Set to 80h if fixed
-   174 000007E4 00                  <1>     at bpb32.reserved1,   db 00h
-   175 000007E5 29                  <1>     at bpb32.bootSig,     db 29h          ;Extended BPB
-   176 000007E6 FFFFFFFF            <1>     at bpb32.volID,       dd -1           ;Set volume ID to time
-   177 000007EA 4E4F204E414D452020- <1>     at bpb32.volLab,      db 'NO NAME    '
-   177 000007F3 2020                <1>
-   178 000007F5 4641543332202020    <1>     at bpb32.filSysType,  db 'FAT32   '
+   173 000007EF FF                  <1>     at bpb32.drvNum,      db -1           ;Set to 80h if fixed
+   174 000007F0 00                  <1>     at bpb32.reserved1,   db 00h
+   175 000007F1 29                  <1>     at bpb32.bootSig,     db 29h          ;Extended BPB
+   176 000007F2 FFFFFFFF            <1>     at bpb32.volID,       dd -1           ;Set volume ID to time
+   177 000007F6 4E4F204E414D452020- <1>     at bpb32.volLab,      db 'NO NAME    '
+   177 000007FF 2020                <1>
+   178 00000801 4641543332202020    <1>     at bpb32.filSysType,  db 'FAT32   '
    179                              <1>     iend    
     50                                  %include "./Utils/FORMAT/Data/fmtMsg.asm"
     51                              <1> ;Messages go here
-    52 000007FD 496E76616C69642044- <1> badVerStr   db "Invalid DOS Version",0Ah,0Dh,"$"
-    52 00000806 4F532056657273696F- <1>
-    52 0000080F 6E0A0D24            <1>
-    53 00000813 496E76616C69642044- <1> badDrvLtr   db "Invalid Drive Specified",0Ah,0Dh,"$"
-    53 0000081C 726976652053706563- <1>
-    53 00000825 69666965640A0D24    <1>
-    54 0000082D 43616E6E6F7420466F- <1> badRedir    db "Cannot Format Redir, Subst or Join Drives",0Ah,0Dh,"$"
-    54 00000836 726D61742052656469- <1>
-    54 0000083F 722C20537562737420- <1>
-    54 00000848 6F72204A6F696E2044- <1>
-    54 00000851 72697665730A0D24    <1>
-    55 00000859 43616E6E6F7420466F- <1> badGeneric  db "Cannot Format Drive",0Ah,0Dh,"$"
-    55 00000862 726D61742044726976- <1>
-    55 0000086B 650A0D24            <1>
-    56 0000086F 41726520796F752073- <1> cancel      db "Are you sure you wish to abort formatting drive "
-    56 00000878 75726520796F752077- <1>
-    56 00000881 69736820746F206162- <1>
-    56 0000088A 6F727420666F726D61- <1>
-    56 00000893 7474696E6720647269- <1>
-    56 0000089C 766520              <1>
-    57 0000089F 413F0A0D            <1> driveLetter db "A?", 0Ah,0Dh
-    58 000008A3 446F696E6720736F20- <1>             db "Doing so will result in an unusable volume. Y/N?",0Ah,0Dh,"$"
-    58 000008AC 77696C6C2072657375- <1>
-    58 000008B5 6C7420696E20616E20- <1>
-    58 000008BE 756E757361626C6520- <1>
-    58 000008C7 766F6C756D652E2059- <1>
-    58 000008D0 2F4E3F0A0D24        <1>
-    59 000008D6 566F6C756D6520746F- <1> badVolBig   db "Volume too large to format",0Ah,0Dh,"$"
-    59 000008DF 6F206C617267652074- <1>
-    59 000008E8 6F20666F726D61740A- <1>
-    59 000008F1 0D24                <1>
-    60 000008F3 496E76616C6964204D- <1> badSecSize  db "Invalid Medium Sector Size",0Ah,0Dh,"$"
-    60 000008FC 656469756D20536563- <1>
-    60 00000905 746F722053697A650A- <1>
-    60 0000090E 0D24                <1>
-    61 00000910 466F726D617420636F- <1> okFormat    db "Format complete",0Ah,0Dh,"$"
-    61 00000919 6D706C6574650A0D24  <1>
-    62 00000922 43616E6E6F7420666F- <1> currentFmt  db "Cannot format current drive",0Ah,0Dh,"$"
-    62 0000092B 726D61742063757272- <1>
-    62 00000934 656E74206472697665- <1>
-    62 0000093D 0A0D24              <1>
+    52 00000809 496E76616C69642044- <1> badVerStr   db "Invalid DOS Version",0Ah,0Dh,"$"
+    52 00000812 4F532056657273696F- <1>
+    52 0000081B 6E0A0D24            <1>
+    53 0000081F 496E76616C69642044- <1> badDrvLtr   db "Invalid Drive Specified",0Ah,0Dh,"$"
+    53 00000828 726976652053706563- <1>
+    53 00000831 69666965640A0D24    <1>
+    54 00000839 43616E6E6F7420466F- <1> badRedir    db "Cannot Format Redir, Subst or Join Drives",0Ah,0Dh,"$"
+    54 00000842 726D61742052656469- <1>
+    54 0000084B 722C20537562737420- <1>
+    54 00000854 6F72204A6F696E2044- <1>
+    54 0000085D 72697665730A0D24    <1>
+    55 00000865 43616E6E6F7420466F- <1> badGeneric  db "Cannot Format Drive",0Ah,0Dh,"$"
+    55 0000086E 726D61742044726976- <1>
+    55 00000877 650A0D24            <1>
+    56 0000087B 41726520796F752073- <1> cancel      db "Are you sure you wish to abort formatting drive "
+    56 00000884 75726520796F752077- <1>
+    56 0000088D 69736820746F206162- <1>
+    56 00000896 6F727420666F726D61- <1>
+    56 0000089F 7474696E6720647269- <1>
+    56 000008A8 766520              <1>
+    57 000008AB 413F0A0D            <1> driveLetter db "A?", 0Ah,0Dh
+    58 000008AF 446F696E6720736F20- <1>             db "Doing so will result in an unusable volume. Y/N?",0Ah,0Dh,"$"
+    58 000008B8 77696C6C2072657375- <1>
+    58 000008C1 6C7420696E20616E20- <1>
+    58 000008CA 756E757361626C6520- <1>
+    58 000008D3 766F6C756D652E2059- <1>
+    58 000008DC 2F4E3F0A0D24        <1>
+    59 000008E2 566F6C756D6520746F- <1> badVolBig   db "Volume too large to format",0Ah,0Dh,"$"
+    59 000008EB 6F206C617267652074- <1>
+    59 000008F4 6F20666F726D61740A- <1>
+    59 000008FD 0D24                <1>
+    60 000008FF 496E76616C6964204D- <1> badSecSize  db "Invalid Medium Sector Size",0Ah,0Dh,"$"
+    60 00000908 656469756D20536563- <1>
+    60 00000911 746F722053697A650A- <1>
+    60 0000091A 0D24                <1>
+    61 0000091C 466F726D617420636F- <1> okFormat    db "Format complete",0Ah,0Dh,"$"
+    61 00000925 6D706C6574650A0D24  <1>
+    62 0000092E 43616E6E6F7420666F- <1> currentFmt  db "Cannot format current drive",0Ah,0Dh,"$"
+    62 00000937 726D61742063757272- <1>
+    62 00000940 656E74206472697665- <1>
+    62 00000949 0A0D24              <1>
     51                                  bootloader:
     52                                  ;Symbol pointing to the bootloader
     53                                  ;When building the COM for format, we append the loader binary here
