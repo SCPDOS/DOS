@@ -102,7 +102,7 @@ genericBPB32:
     at bpb32.oemName,     db 'SCPDOSv1'
     at bpb32.bytsPerSec,  dw -1           ;512 bytes per sector, normally
     at bpb32.secPerClus,  db -1           ;Sectors per cluster
-    at bpb32.revdSecCnt,  dw 0001h        ;1 Reserved Sector
+    at bpb32.revdSecCnt,  dw 0010h        ;16 Reserved Sectors
     at bpb32.numFATs,     db 02h          ;2 FAT tables
     at bpb32.rootEntCnt,  dw 0000h        ;Invalid field for FAT32
     at bpb32.totSec16,    dw 0            ;Not a FAT 12/16 BPB

@@ -259,7 +259,18 @@ selectFATtype:
     xor edx, edx    ;rdx = Start LBA to write to
     call dosCrit1Enter
     mov byte [inCrit], -1   ;Entering a DOS level 1 critical section
+    push rcx
+    push rdx
     call freeAllDriveBuffers    ;Now we begin formatting, free all buffers
+    call writeSector
+    pop rdx
+    pop rcx
+    jc badExitGenericString
+    cmp byte [bpbSize], 90  ;If 90 bytes, must be FAT32
+    jne createDPB
+    ;Now we write the backup BPB too at sector 6
+    mov ecx, 1  ;1 Sector to write
+    mov edx, 6  ;At sector 6
     call writeSector
     jc badExitGenericString
 createDPB:
@@ -382,7 +393,27 @@ rootDirectory:
     jc badExitGenericString
     dec esi
     jnz .fat32Loop
-
+;Now we are done with the common bit, last thing for FAT32, create the
+; FSInfo (with no useful info, for now as DOS will not sync this)
+    mov rbx, qword [bufferArea]
+    mov rdi, rbx
+    xor eax, eax
+    movzx ecx, word [sectorSize]
+    rep stosb   ;Clean the Sector buffer
+    mov dword [rbx], 41615252h  ;Initial signature
+    mov dword [rbx + 484], 61417272h    ;Intermediate signature
+    mov dword [rbx + 488], -1
+    mov dword [rbx + 492], -1
+    mov dword [rbx + 508], 0AA550000h
+    mov ecx, 1
+    mov edx, 1
+    push rcx
+    call writeSector
+    pop rcx
+    jc badExitGenericString
+    mov edx, 7
+    call writeSector
+    jc badExitGenericString
 exitFormat:
     mov byte [inCrit], 0    ;Out of the critical section now
     call dosCrit1Exit

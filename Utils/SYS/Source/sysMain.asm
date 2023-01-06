@@ -213,12 +213,20 @@ startSys:
     lea rsi, qword [rbx + rax - 14] ;Point to the start of the packet
     mov rax, qword [dosSector]
     add rax, rcx
+    mov byte [rsi + sysInitTableStruc.length], sysInitTableStruc_size - 1
+    mov byte [rsi + sysInitTableStruc.numSec], 1
+    mov word [rsi + sysInitTableStruc.resWord], 0
     mov qword [rsi + sysInitTableStruc.firstLba], rax
     mov byte [rsi + sysInitTableStruc.bootable], -1
     call writeWrapper
     jc badPrint
-;Now copy COMMAND.COM
-
+    call getFATtype
+    cmp ecx, 2
+    jne exit
+    mov rbx, qword [memoryBlock]
+    movzx rax, byte [rbx + bpb32.BkBootSec]
+    mov qword [xfrSector], rax    ;Backup structure as well 
+    call writeWrapper   ;Write the back up too
 exit:
     call dosCrit1Exit
     call freeResources
