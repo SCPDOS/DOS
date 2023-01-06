@@ -689,6 +689,7 @@ createDPB:         ;generates a DPB from a given BPB
     jnz .cd51
 .cd5:
     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
+    mov byte [rbp + dpb.bAccessFlag], -1    ;Denote not yet accessed
 ;Exit epilogue
     mov rbx, qword [oldRSP]
     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 

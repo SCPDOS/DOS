@@ -532,7 +532,9 @@ storageInits:
     lea rbx, qword [rbp + firstDPB]
     mov qword fs:[dpbHeadPtr], rbx
 ;Open Mass Storage
+    push rbp
     call diskInit
+    pop rbp
     mov rdi, rbp ;Save rbp in rdi temporarily
     mov al, byte fs:[numPhysVol]
     test al, al ;If no media with valid filesystems were detected, stop boot
@@ -552,8 +554,8 @@ storageInits:
     mov qword [rbp + dpb.qDriverHeaderPtr], rax
     pop rax
     inc cl
-    cmp cl, al  ;When equal, we are have finished
-    je .si1
+    cmp cl, al  ;When above, we are have finished
+    ja .si1
     push rax
     lea rax, qword [rbp + dpb_size] ;Load address of next dpb to rax
     mov qword [rbp + dpb.qNextDPBPtr], rax  ;Save pointer
@@ -1763,14 +1765,9 @@ diskInit:
     ;   Add each other primary or logical ptn (until max)
     ;Then finish with removable devices. First two devs become A: and B: resp.
     ;Use r8 as device counter
+    ;Use r15 as the pointer to the next free BPB entry
     ;First set up the two default BPB's if no removable drives
-    lea rsi, qword [rbp + msdDriver.msdBPBblks]
-    lea rdi, qword [rbp + msdDriver.msdBPBTbl]  ;point to the bpbtable
-    mov qword [rdi], rsi  ;Save this as the first bpbptr
-    add rsi, bpbEx_size
-    mov qword [rdi + 8], rsi
-
-    lea rdi, [rbp + msdDriver.msdBPBblks]    ;Prepare to write BPBs
+    lea r15, [rbp + msdDriver.msdBPBblks]    ;Point to the BPB storage place
     cmp byte fs:[numFixDrv], 0 ;Do we have any fixed drives?
     jz .remInit ;No? Go to removables
     mov r8, 2   ;Device number 2 = C:
@@ -1813,32 +1810,8 @@ diskInit:
     jmp short .checkPrimary
 .primaryFound:
     ;Copy the first sector of this partition into memory
-    push rcx
     mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
-    call .initReadSector
-    pop rcx
-    jc .primaryEpilog
-    ;Now verify this is a BPB
-    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-    mov ah, byte [rbx + 2]
-    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-    jne .primaryEpilog   ;If not, skip
-    ;Now copy data to internal tables
-    mov rsi, rbx    ;Point rsi to the temp buffer
-    push rcx
-    mov ecx, bpbEx_size/8   ;Copy BPB
-    push rdi
-    rep movsq   ;Copy the BPB
-    pop rsi ;Get the pointer to the copied bpb into rsi
-    pop rcx
-    ;Store BIOS map value and BPBblk pointer in bpbTbl
-    lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
-    ;Add device count to rbx to point to correct entry
-    mov byte [rbx], dl  ;Store BIOS map value 
-    lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
-    mov qword [rbx], rsi
-    inc r8  ;Goto next logical drive
-    inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
+    call .readSectorAndAddDataToTables
 .primaryEpilog:
     inc dl  ;Goto next BIOS drive
     mov dh, dl
@@ -1856,15 +1829,12 @@ diskInit:
 .remInit:
 ;Start by linking the default BPB's in the pointers table in the event that
 ; for some reason the removable drives stop working or dont exist.
+    lea rsi, qword [rbp + msdDriver.dfltBPB]  ;Point to the default BPB
+    lea rdi, qword [rbp + msdDriver.msdBPBTbl]  ;Point to the BPB ptr table
+    mov qword [rdi], rsi    ;Store the pointer in the first two entries
+    mov qword [rdi + 8], rsi
 ;This forces the hard drives to start at C:
-    push rbx
-    lea rbx, qword [rbp + msdDriver.msdBPBblks] ;Get default drive A block ptr
-    mov qword [rbp + msdDriver.msdBPBTbl], rbx  ;Store in ptrs table
-    add rbx, bpbEx_size ;Goto next ptr
-    mov qword [rbp + msdDriver.msdBPBTbl + 8], rbx  ;Store next pointer
-    pop rbx
-;Now handle removable devices, at least 2 rem. devs.
-    mov r9, r8  ;Save number of next device in r9b
+    mov r9, r8  ;Save number of next device after fixed drive in r9
     xor dl, dl  ;Start with removable device 0
     mov r8b, dl ;Once r8b becomes 2, go past the disk drives
     ;rdi points to the space for the subsequent bpb's
@@ -1874,34 +1844,14 @@ diskInit:
     ret ;and return!
 .removables:
     xor ecx, ecx    ;Read sector 0
-    call .initReadSector
-    jc .removableEpilogue   ;Goto next device
-    ;Now verify this is a BPB
-    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-    mov ah, byte [rbx + 2]
-    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-    jne .removableEpilogue   ;If not, skip
-    ;Now copy data to internal tables
-    mov rsi, rbx    ;Point rsi to the temp buffer
-    mov ecx, bpbEx_size/8   ;Copy BPB
-    push rdi
-    rep movsq   ;Copy the BPB
-    pop rsi ;Get the pointer to the copied bpb into rsi
-    ;Store BIOS map value and BPBblk pointer in bpbTbl
-    lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
-    ;Add device count to rbx to point to correct entry
-    mov byte [rbx], dl  ;Store BIOS map value 
-    lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
-    mov qword [rbx], rsi
-    inc r8  ;Goto next logical drive
-    inc byte fs:[numPhysVol] ;Increment the number of valid drives we have    
+    call .readSectorAndAddDataToTables
 .removableEpilogue:
     inc dl  ;Goto next BIOS device now
     cmp dl, byte fs:[numRemDrv] ;Are we past last rem dev?
     je .end
     cmp r8, 2 ;Are we back at drive C: ?
-    je .re0
-    add r8b, r9b    ;Add the number of fixed disk volumes
+    jne .re0
+    mov r8b, r9b    ;Return to this drive number
 .re0:
     cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
     jb .removables
@@ -1926,3 +1876,33 @@ diskInit:
     lea rbx, qword [rbp + msdTempBuffer]  ;Into temporary buffer
     int 33h
     ret
+
+.readSectorAndAddDataToTables:
+;Input:
+;ecx = Sector number to read
+;r15 -> bpb array entry for the BPB
+;r8 = Logical Drive number (offset into arrays)
+    call .initReadSector
+    retc   ;Goto next device
+    ;Now verify this is a BPB
+    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
+    mov ah, byte [rbx + 2]
+    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
+    retne   ;If not, skip
+    ;Now copy data to internal tables
+    mov rsi, rbx    ;Point rsi to the temp buffer
+    push rcx
+    mov ecx, bpbEx_size/8   ;Copy BPB
+    mov rdi, r15
+    rep movsq   ;Copy the BPB
+    pop rcx
+    ;Store BIOS map value and BPBblk pointer in bpbTbl
+    lea rbx, qword [rbp + msdDriver.msdBIOSmap + r8]
+    ;Add device count to rbx to point to correct entry
+    mov byte [rbx], dl  ;Store BIOS map value 
+    lea rbx, qword [rbp + msdDriver.msdBPBTbl + 8*r8]
+    mov qword [rbx], r15
+    inc r8  ;Goto next logical drive
+    inc byte fs:[numPhysVol] ;Increment the number of valid drives we have
+    add r15, bpbEx_size  ;Goto next table entry
+    return

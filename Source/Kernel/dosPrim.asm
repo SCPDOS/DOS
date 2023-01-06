@@ -234,6 +234,7 @@ ensureDiskValid:
     xor ah, ah
     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
     or byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
+    breakpoint
     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
@@ -260,7 +261,7 @@ ensureDiskValid:
     ;Now rebuild the dpb fields for this drive
     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
     push rbx
-    call createDPB  ;Modifies rbx
+    call createDPB  ;Modifies rbx and clears the free cluster count
     pop rbx
     ;Adjust the buffer header information
     mov eax, dword [rbp + dpb.dFATlength]
@@ -268,6 +269,7 @@ ensureDiskValid:
     mov al, byte [rbp + dpb.bNumberOfFATs]
     mov byte [rbx + bufferHdr.bufFATsize], al
     xor ah, ah
+    mov byte [rbp + dpb.bAccessFlag], ah
     mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
     return
 .diskDrvCritErrMedChk:

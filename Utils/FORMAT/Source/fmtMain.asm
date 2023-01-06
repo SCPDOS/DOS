@@ -164,6 +164,7 @@ selectFATtype:
 .fat32Lp:
     cmp rax, qword [rsi]
     jbe .medFound
+    add rsi, 9
     dec ecx
     jnz .fat32Lp
     jmp short .badSize

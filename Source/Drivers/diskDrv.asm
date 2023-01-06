@@ -482,7 +482,6 @@ msdDriver:
 .msdBIOSmap  db 0, 1, -1, -1, -1 ;Translates DOS drive number to BIOS number
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
-.msdBPBblks  defaultBPB ;Add two default BPB's. If no remdrv, these are used
-             defaultBPB ;If remdrvs found, these are overridden
-             db 3*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
+.msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
+.dfltBPB     defaultBPB ;If no removable devices, A and B point here
 endptr equ $
