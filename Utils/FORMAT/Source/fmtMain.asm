@@ -252,6 +252,7 @@ selectFATtype:
     rep movsb   ;Copy the bootsector over
     mov rbx, qword [bufferArea] ;rbx = Memory Buffer address to read from
     mov byte [rbx + 509], 0 ;Make the disk not bootable
+    mov word [rbx + 510], 0AA55h
     mov ecx, 1      ;ecx = Number of sectors to write
     xor edx, edx    ;rdx = Start LBA to write to
     call dosCrit1Enter
