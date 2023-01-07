@@ -238,17 +238,19 @@ ensureDiskValid:
     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
     cmc ;Compliment CF to ensure we return CF=NC if dirty buffer found
-    jc .invalidateBuffers   ;Exit ONLY if a dirty buffer found!
+    jc .resetDPB   ;Exit ONLY if a dirty buffer found!
     ;ZF=NZ from test for dirty buffers
 .exit:
     return
 .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
-    mov byte [diskChange], -1   ;In disk Change!
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
+.resetDPB:    ;If no buffers found, skip freeing them as theres nothing to free!
+    mov byte [rbp + dpb.bAccessFlag], -1    ;Invalidate DPB now as it is inaccurate
+    mov byte [diskChange], -1   ;In disk Change!
     ;Get a buffer to read BPB into in rdi
     xor eax, eax   ;Dummy read sector 0 in
     call getBufForDOS ;Get a disk buffer for DOS
-    jc .exit    ;Immediately exit with the carry flag set
+    jc .exitBad    ;Immediately exit with the carry flag set
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .repeatEP:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
@@ -267,9 +269,10 @@ ensureDiskValid:
     mov dword [rbx + bufferHdr.bufFATsize], eax
     mov al, byte [rbp + dpb.bNumberOfFATs]
     mov byte [rbx + bufferHdr.bufFATsize], al
-    xor ah, ah
-    mov byte [rbp + dpb.bAccessFlag], ah
-    mov byte [diskChange], ah   ;Clear Disk Change flag and Set ZF and clear CF
+    xor ah, ah    ;Set ZF and clear CF
+    mov byte [rbp + dpb.bAccessFlag], ah :DPB now ready to be used
+.exitBad:
+    mov byte [diskChange], 0   ;Clear Disk Change flag
     return
 .diskDrvCritErrMedChk:
 ;Critical Errors fall through here
@@ -292,13 +295,15 @@ ensureDiskValid:
 .diskDrvCritErrBPB:
     ;eax has status word, rbp has dpb ptr
     ;rdi has buffer header pointer, rsi points to the driver
+    mov byte [diskChange], 0   ;Clear Disk Change flag (to prevent abort issues)
     mov byte [Int44bitfld], critRead | critDOS | critFailOK | critRetryOK
+    mov byte [diskChange], -1  ;Set Disk Change flag again as we are back in
     call diskDevErr
     cmp al, critRetry
     je .repeatEP
     ;Else we fail (Ignore=Fail here)
     stc ;Set error flag to indicate fail
-    return ;And exit from function with CF set
+    jmp short .exitBad ;And exit from function with CF set
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
