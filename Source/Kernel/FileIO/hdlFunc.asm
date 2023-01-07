@@ -1190,6 +1190,7 @@ createNewMain:
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
     movzx eax, al
+    mov ah, 1    ;Tell redir to create new file
     test byte [fileExist], -1
     jz createMain.createNewEP    ;Create only if the file doesnt exist!
     mov eax, errFilExist    ;Else, return a file exists error!
