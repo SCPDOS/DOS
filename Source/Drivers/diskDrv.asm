@@ -464,9 +464,11 @@ msdDriver:
     xor eax, eax
     int 36h ;Blocking wait at the keyboard for a keystroke
 .msdCDTexit:
+    call .msdCDTexitOk  ;Set unit number and clear ZF
+    ret
+.msdCDTexitOk:
     call .msdInternalSetUnitNumber  ;Set unit number internally
     xor eax, eax
-    inc eax ;Clear ZF flag (ZF=NZ)
     ret
 
 .msdStrike db 0Dh,0Ah,"Insert for drive "
