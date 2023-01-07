@@ -236,39 +236,39 @@ parseFilenameFCB:  ;ah = 29h, Always can be used
     pop qword [rsi + callerFrame.rsi]
     return  ;al now contains dl, the signature, special unique return type
 
+createFileFCB:     ;ah = 16h
+;rdx -> Extended FCB
+;       MUST BE EXTENDED. 
+;       MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
+    cmp byte [rdx + exFcb.extSig], -1
+    jne .exit
+    cmp byte [rdx + exFcb.attribute], dirVolumeID
+    jne .exit
+    ;Here we search for a volume ID in the root directory.
+    ; If one exists, we replace the dir entry name field,
+    ; sync the BPB field and invalidate the DPB (to rebuid the BPB).
+    ; Else, we build a dir entry for it, sync the BPB and invalidate the DPB.
+.exit:
+    mov eax, errAccDen
+    jmp fcbErrExit
+
 ;=================================================================
 ;=================================================================
-;These functions CHECK the Volume type and fail if the volume is 
-; not compatible.
+;These functions will be marked as reserved for future expansion.
+; One idea will be to create a handle based record IO interface.
+; We will be able to do IO on records of predefined length 
+; on a file handle, thus removing the need for an FCB but still
+; maintaining the usefulness of record based IO.
 ;=================================================================
 ;=================================================================
 openFileFCB:       ;ah = 0Fh
-    mov eax, errAccDen
-    jmp fcbErrExit
 closeFileFCB:      ;ah = 10h
-    mov eax, errAccDen
-    jmp fcbErrExit
 sequentialReadFCB: ;ah = 14h
-    mov eax, errAccDen
-    jmp fcbErrExit
 sequentialWriteFCB:;ah = 15h
-    mov eax, errAccDen
-    jmp fcbErrExit
-createFileFCB:     ;ah = 16h
-    mov eax, errAccDen
-    jmp fcbErrExit
 randomReadFCB:     ;ah = 21h
-    mov eax, errAccDen
-    jmp fcbErrExit
 randomWriteFCB:    ;ah = 22h
-    mov eax, errAccDen
-    jmp fcbErrExit
 setRelRecordFCB:   ;ah = 24h
-    mov eax, errAccDen
-    jmp fcbErrExit
 randBlockReadFCB:  ;ah = 27h
-    mov eax, errAccDen
-    jmp fcbErrExit
 randBlockWriteFCB: ;ah = 28h
     mov eax, errAccDen
     jmp fcbErrExit

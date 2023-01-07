@@ -232,7 +232,7 @@ ensureDiskValid:
 .medChkIgnore:
     mov al, byte [workingDrv]   ;Get the drive number for test
     xor ah, ah
-    xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old access flag
+    xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old flag
     or byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
     js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
     jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
@@ -245,7 +245,7 @@ ensureDiskValid:
 .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
 .resetDPB:    ;If no buffers found, skip freeing them as theres nothing to free!
-    mov byte [rbp + dpb.bAccessFlag], -1    ;Invalidate DPB now as it is inaccurate
+    mov byte [rbp + dpb.bAccessFlag], -1 ;Mark DPB as inaccurate now
     mov byte [diskChange], -1   ;In disk Change!
     ;Get a buffer to read BPB into in rdi
     xor eax, eax   ;Dummy read sector 0 in
@@ -270,7 +270,7 @@ ensureDiskValid:
     mov al, byte [rbp + dpb.bNumberOfFATs]
     mov byte [rbx + bufferHdr.bufFATsize], al
     xor ah, ah    ;Set ZF and clear CF
-    mov byte [rbp + dpb.bAccessFlag], ah :DPB now ready to be used
+    mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
 .exitBad:
     mov byte [diskChange], 0   ;Clear Disk Change flag
     return
