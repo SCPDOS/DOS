@@ -248,6 +248,7 @@ createFileFCB:     ;ah = 16h
     ; If one exists, we replace the dir entry name field,
     ; sync the BPB field and invalidate the DPB (to rebuid the BPB).
     ; Else, we build a dir entry for it, sync the BPB and invalidate the DPB.
+    ;If ANY bits other than ValidCDS are set in the CDS, fail the operation.
 .exit:
     mov eax, errAccDen
     jmp fcbErrExit
