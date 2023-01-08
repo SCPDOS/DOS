@@ -15378,105 +15378,107 @@
    700 000059EB 48B8F8FFFFFFFFFFFF- <1>     mov rax, ~7     ;Clear the bottom 3 bits
    700 000059F4 FF                  <1>
    701 000059F5 4821C6              <1>     and rsi, rax    ;To align downwards
-   702 000059F8 807DF800            <1>     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
-   703 000059FC 741C                <1>     je .xfrProgram
-   704 000059FE 488B4598            <1>     mov rax, qword [rbp - execFrame.pProgEP]
-   705 00005A02 488B55D8            <1>     mov rdx, qword [rbp - execFrame.pParam]
-   706 00005A06 48894228            <1>     mov qword [rdx + loadProg.initRIP], rax
-   707 00005A0A 48897220            <1>     mov qword [rdx + loadProg.initRSP], rsi
-   708 00005A0E 0FB7C3              <1>     movzx eax, bx   ;Return fcb drive status
-   709                              <1> .overlayExit:
-   710 00005A11 4889EC              <1>     mov rsp, rbp    ;Reset the stack to its position
-   711 00005A14 5D                  <1>     pop rbp ;Point rsp to the return address
-   712 00005A15 E9280F0000          <1>     jmp extGoodExit ;And return!
-   713                              <1> .xfrProgram:
-   714 00005A1A FA                  <1>     cli
-   715 00005A1B 4889F4              <1>     mov rsp, rsi    ;Set rsp to initRSP value
-   716 00005A1E C605(FDC30300)00    <1>     mov byte [inDOS], 0 ;Clear all inDosnessness
-   717 00005A25 FB                  <1>     sti
-   718 00005A26 FF7598              <1>     push qword [rbp - execFrame.pProgEP]
-   719 00005A29 4989F8              <1>     mov r8, rdi ;Move psp base into r8 and r9
-   720 00005A2C 4989F9              <1>     mov r9, rdi
-   721 00005A2F 0FB7C3              <1>     movzx eax, bx   ;ax must contain validity of the two FCB drives
-   722                              <1>     return  ;Return to child task
+   702                              <1>     ;We align stack to qword. x64 ABI requires paragraph alignment.
+   703                              <1>     ;That is the job of the runtime to handle.
+   704 000059F8 807DF800            <1>     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
+   705 000059FC 741C                <1>     je .xfrProgram
+   706 000059FE 488B4598            <1>     mov rax, qword [rbp - execFrame.pProgEP]
+   707 00005A02 488B55D8            <1>     mov rdx, qword [rbp - execFrame.pParam]
+   708 00005A06 48894228            <1>     mov qword [rdx + loadProg.initRIP], rax
+   709 00005A0A 48897220            <1>     mov qword [rdx + loadProg.initRSP], rsi
+   710 00005A0E 0FB7C3              <1>     movzx eax, bx   ;Return fcb drive status
+   711                              <1> .overlayExit:
+   712 00005A11 4889EC              <1>     mov rsp, rbp    ;Reset the stack to its position
+   713 00005A14 5D                  <1>     pop rbp ;Point rsp to the return address
+   714 00005A15 E9280F0000          <1>     jmp extGoodExit ;And return!
+   715                              <1> .xfrProgram:
+   716 00005A1A FA                  <1>     cli
+   717 00005A1B 4889F4              <1>     mov rsp, rsi    ;Set rsp to initRSP value
+   718 00005A1E C605(FDC30300)00    <1>     mov byte [inDOS], 0 ;Clear all inDosnessness
+   719 00005A25 FB                  <1>     sti
+   720 00005A26 FF7598              <1>     push qword [rbp - execFrame.pProgEP]
+   721 00005A29 4989F8              <1>     mov r8, rdi ;Move psp base into r8 and r9
+   722 00005A2C 4989F9              <1>     mov r9, rdi
+   723 00005A2F 0FB7C3              <1>     movzx eax, bx   ;ax must contain validity of the two FCB drives
+   724                              <1>     return  ;Return to child task
     18                              <2> %%_ret:
     19 00005A32 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   723                              <1> ;r8 is guaranteed to have a copy of the PSP.
-   724                              <1> ;ax is guaranteed to have the validity signatures in AH and AL.
-   725                              <1> ;Everything else is optional and potentially changable at a later stage
-   726                              <1> 
-   727                              <1> .badFmtErr:
-   728 00005A33 B80B000000          <1>     mov eax, errBadFmt  ;Fall thru with bad resource format error
-   729                              <1> .cleanAndFail:
-   730                              <1> ;Close the open file and any open resources and fail
-   731 00005A38 E82F000000          <1>     call .clearArenaOwner   ;Enters level 1 critical section
-   732 00005A3D E8CD0E0000          <1>     call dosCrit1Exit
-   733 00005A42 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   734 00005A46 50                  <1>     push rax    ;Save error code
-   735 00005A47 55                  <1>     push rbp
-   736 00005A48 E8B1D3FFFF          <1>     call closeFileHdl
-   737 00005A4D 5D                  <1>     pop rbp
-   738 00005A4E 58                  <1>     pop rax
-   739 00005A4F E97EF9FFFF          <1>     jmp .badExit
-   740                              <1> 
-   741                              <1> .readDataFromHdl:
-   742                              <1> ;Input: ecx = Number of bytes to transfer
-   743                              <1> ;       rdx = Ptr to the buffer to use
-   744 00005A54 52                  <1>     push rdx
-   745 00005A55 E812000000          <1>     call .clearArenaOwner   ;Entering critical section!
-   746 00005A5A 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   747 00005A5E 55                  <1>     push rbp
-   748 00005A5F E8D9D3FFFF          <1>     call readFileHdl
-   749 00005A64 5D                  <1>     pop rbp
-   750 00005A65 E811000000          <1>     call .setPSPArenaOwner  ;Exiting critical section!
-   751 00005A6A 5A                  <1>     pop rdx
-   752                              <1>     return
+   725                              <1> ;r8 is guaranteed to have a copy of the PSP.
+   726                              <1> ;ax is guaranteed to have the validity signatures in AH and AL.
+   727                              <1> ;Everything else is optional and potentially changable at a later stage
+   728                              <1> 
+   729                              <1> .badFmtErr:
+   730 00005A33 B80B000000          <1>     mov eax, errBadFmt  ;Fall thru with bad resource format error
+   731                              <1> .cleanAndFail:
+   732                              <1> ;Close the open file and any open resources and fail
+   733 00005A38 E82F000000          <1>     call .clearArenaOwner   ;Enters level 1 critical section
+   734 00005A3D E8CD0E0000          <1>     call dosCrit1Exit
+   735 00005A42 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   736 00005A46 50                  <1>     push rax    ;Save error code
+   737 00005A47 55                  <1>     push rbp
+   738 00005A48 E8B1D3FFFF          <1>     call closeFileHdl
+   739 00005A4D 5D                  <1>     pop rbp
+   740 00005A4E 58                  <1>     pop rax
+   741 00005A4F E97EF9FFFF          <1>     jmp .badExit
+   742                              <1> 
+   743                              <1> .readDataFromHdl:
+   744                              <1> ;Input: ecx = Number of bytes to transfer
+   745                              <1> ;       rdx = Ptr to the buffer to use
+   746 00005A54 52                  <1>     push rdx
+   747 00005A55 E812000000          <1>     call .clearArenaOwner   ;Entering critical section!
+   748 00005A5A 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   749 00005A5E 55                  <1>     push rbp
+   750 00005A5F E8D9D3FFFF          <1>     call readFileHdl
+   751 00005A64 5D                  <1>     pop rbp
+   752 00005A65 E811000000          <1>     call .setPSPArenaOwner  ;Exiting critical section!
+   753 00005A6A 5A                  <1>     pop rdx
+   754                              <1>     return
     18                              <2> %%_ret:
     19 00005A6B C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   753                              <1> .clearArenaOwner:
-   754 00005A6C 53                  <1>     push rbx
-   755 00005A6D 31DB                <1>     xor ebx, ebx    ;Make owner null, ok to trash flags here
-   756 00005A6F E8910E0000          <1>     call dosCrit1Enter
-   757 00005A74 E816000000          <1>     call .setProgOrEnvArenaOwnerToRBX
-   758 00005A79 5B                  <1>     pop rbx
-   759                              <1>     return
+   755                              <1> .clearArenaOwner:
+   756 00005A6C 53                  <1>     push rbx
+   757 00005A6D 31DB                <1>     xor ebx, ebx    ;Make owner null, ok to trash flags here
+   758 00005A6F E8910E0000          <1>     call dosCrit1Enter
+   759 00005A74 E816000000          <1>     call .setProgOrEnvArenaOwnerToRBX
+   760 00005A79 5B                  <1>     pop rbx
+   761                              <1>     return
     18                              <2> %%_ret:
     19 00005A7A C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   760                              <1> .setPSPArenaOwner:
-   761                              <1> ;Sets the current PSP as the arena owner
-   762 00005A7B 53                  <1>     push rbx
-   763 00005A7C 488B1D(14C40300)    <1>     mov rbx, qword [currentPSP]
-   764 00005A83 E807000000          <1>     call .setProgOrEnvArenaOwnerToRBX
-   765 00005A88 E8820E0000          <1>     call dosCrit1Exit
-   766 00005A8D 5B                  <1>     pop rbx
-   767                              <1>     return
+   762                              <1> .setPSPArenaOwner:
+   763                              <1> ;Sets the current PSP as the arena owner
+   764 00005A7B 53                  <1>     push rbx
+   765 00005A7C 488B1D(14C40300)    <1>     mov rbx, qword [currentPSP]
+   766 00005A83 E807000000          <1>     call .setProgOrEnvArenaOwnerToRBX
+   767 00005A88 E8820E0000          <1>     call dosCrit1Exit
+   768 00005A8D 5B                  <1>     pop rbx
+   769                              <1>     return
     18                              <2> %%_ret:
     19 00005A8E C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   768                              <1> .setProgOrEnvArenaOwnerToRBX:
-   769                              <1> ;Input: rbx = Owner ID  (Start of PSP address)
-   770 00005A8F 9C                  <1>     pushfq
-   771 00005A90 50                  <1>     push rax
-   772                              <1>     ;Only one of the two below addresses may be non zero at any one time!
-   773                              <1>     ;This is because they are set up at separate points in the routine!
-   774 00005A91 488B45C0            <1>     mov rax, qword [rbp - execFrame.pPSPBase]
-   775 00005A95 E80C000000          <1>     call .writeArenaHeaderOwner
-   776 00005A9A 488B45C8            <1>     mov rax, qword [rbp - execFrame.pEnvBase]
-   777 00005A9E E803000000          <1>     call .writeArenaHeaderOwner
-   778 00005AA3 58                  <1>     pop rax
-   779 00005AA4 9D                  <1>     popfq
-   780                              <1>     return
+   770                              <1> .setProgOrEnvArenaOwnerToRBX:
+   771                              <1> ;Input: rbx = Owner ID  (Start of PSP address)
+   772 00005A8F 9C                  <1>     pushfq
+   773 00005A90 50                  <1>     push rax
+   774                              <1>     ;Only one of the two below addresses may be non zero at any one time!
+   775                              <1>     ;This is because they are set up at separate points in the routine!
+   776 00005A91 488B45C0            <1>     mov rax, qword [rbp - execFrame.pPSPBase]
+   777 00005A95 E80C000000          <1>     call .writeArenaHeaderOwner
+   778 00005A9A 488B45C8            <1>     mov rax, qword [rbp - execFrame.pEnvBase]
+   779 00005A9E E803000000          <1>     call .writeArenaHeaderOwner
+   780 00005AA3 58                  <1>     pop rax
+   781 00005AA4 9D                  <1>     popfq
+   782                              <1>     return
     18                              <2> %%_ret:
     19 00005AA5 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$
-   781                              <1> .writeArenaHeaderOwner:
-   782                              <1> ;Input: rax = Ptr to arena (NOT HEADER)
-   783                              <1> ;       rbx = Owner ID
-   784 00005AA6 4885C0              <1>     test rax, rax   ;Don't write if arena header null
-   785                              <1>     retz
+   783                              <1> .writeArenaHeaderOwner:
+   784                              <1> ;Input: rax = Ptr to arena (NOT HEADER)
+   785                              <1> ;       rbx = Owner ID
+   786 00005AA6 4885C0              <1>     test rax, rax   ;Don't write if arena header null
+   787                              <1>     retz
     46                              <2> cret z
     24                              <3> %%_base:
     25                              <3> %assign baseVar %%_base-$$
@@ -15497,9 +15499,9 @@
     40                              <3>  return
     41                              <3> %%a:
     42                              <3>  %endif
-   786 00005AAB 482D10000000        <1>     sub rax, mcb.program    ;Go to start of arena header
-   787 00005AB1 48895801            <1>     mov qword [rax + 1], rbx
-   788                              <1>     return
+   788 00005AAB 482D10000000        <1>     sub rax, mcb.program    ;Go to start of arena header
+   789 00005AB1 48895801            <1>     mov qword [rax + 1], rbx
+   790                              <1>     return
     18                              <2> %%_ret:
     19 00005AB5 C3                  <2>  ret
     20                              <2> %assign retOff %%_ret-$$

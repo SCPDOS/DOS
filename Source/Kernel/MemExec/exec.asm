@@ -662,6 +662,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     lea rsi, qword [rsi + rdi - 8]    ;Get new rsp in rsi (last qword of alloc)
     mov rax, ~7     ;Clear the bottom 3 bits
     and rsi, rax    ;To align downwards
+    ;We align stack to qword. x64 ABI requires paragraph alignment.
+    ;That is the job of the runtime to handle.
     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
     je .xfrProgram
     mov rax, qword [rbp - execFrame.pProgEP]
