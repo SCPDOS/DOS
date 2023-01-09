@@ -5,5 +5,5 @@
 void main(){
 	LPCSTR outString = "\n\rThis is a test string\n\r$";
     WriteString(outString);
-    Exit(0);    /*Return with a return code of zero, always*/
+    ExitProcess(0);    /*Return with a return code of zero, always*/
 }
