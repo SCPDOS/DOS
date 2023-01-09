@@ -29,13 +29,6 @@ typedef union _return_code{
     };
 } RETURN_CODE, *PRETURN_CODE, *LPRETURN_CODE;
 
-typedef struct _extended_error_info{
-    WORD wExtendedError;
-    BYTE bErrorClass;
-    BYTE bSuggestedAction;
-    BYTE bErrorLocus;
-} EXT_ERROR, *PEXT_ERROR, *LPEXT_ERROR;
-
 typedef struct _exec_program_block {
     LPCSTR lpEnvironmentBlock;
     LPCSTR lpCommandLine;
@@ -73,13 +66,8 @@ typedef struct _load_overlay_block {
 
 VOID ExitProcessAndStayResidentB(DWORD dwBytesToReserve);
 VOID ExitProcessAndStayResidentP(BYTE bExitCode, DWORD dwParagraphsToReserve);
-BOOL ExecuteProcess(LPCSTR lpProcessName, LPEPB lpExecuteParameterBlock);
+BOOL ExecProcess(LPCSTR lpProcessName, LPEPB lpExecuteParameterBlock);
 BOOL LoadProcess(LPCSTR lpProcessName, LPLPB lpLoadParameterBlock);
 BOOL LoadOverlay(LPCSTR lpOverlayName, LPLOB lpLoadOverlayBlock);
 VOID ExitProcess(BYTE bExitCode);
-RETURN_CODE GetTerminatedProcessReturnCode();
-VOID GetExtendedErrorInformation(LPEXT_ERROR lpExtendedError);
-WORD GetExtendedErrorCode();
-//Need to include the two TSR return codes
-
-
+RETURN_CODE GetExitCodeProcess();

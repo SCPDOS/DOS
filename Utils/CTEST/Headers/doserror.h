@@ -1,3 +1,4 @@
+#include "basetsd.h"
 //
 // Define the severity codes
 //
@@ -768,5 +769,14 @@
 // 
 #define ERROR_CLASS_UNKNOWN    13L
 
+typedef struct _extended_error_info{
+    WORD wExtendedError;
+    BYTE bErrorClass;
+    BYTE bSuggestedAction;
+    BYTE bErrorLocus;
+} EXT_ERROR, *PEXT_ERROR, *LPEXT_ERROR;
 
 #endif
+
+VOID GetExtendedLastError(LPEXT_ERROR lpExtendedError);
+WORD GetLastError();
