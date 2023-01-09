@@ -71,7 +71,7 @@ typedef struct _load_overlay_block {
 
 #endif
 
-VOID ExitProcessAndStayResidentB(BYTE bExitCode, DWORD dwBytesToReserve);
+VOID ExitProcessAndStayResidentB(DWORD dwBytesToReserve);
 VOID ExitProcessAndStayResidentP(BYTE bExitCode, DWORD dwParagraphsToReserve);
 BOOL ExecuteProcess(LPCSTR lpProcessName, LPEPB lpExecuteParameterBlock);
 BOOL LoadProcess(LPCSTR lpProcessName, LPLPB lpLoadParameterBlock);

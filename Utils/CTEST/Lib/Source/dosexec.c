@@ -60,10 +60,11 @@ VOID ExitProcessAndStayResidentP(BYTE bExitCode, DWORD dwParagraphsToReserve){
     );
 }
 
-VOID ExitProcessAndStayResidentB(BYTE bExitCode, DWORD dwBytesToReserve){
-    dwBytesToReserve = dwBytesToReserve & 0xFFFFFFF0;
-    DWORD dwParagraphsToReserve = (dwBytesToReserve >> 4) + 1;
-    ExitProcessAndStayResidentP(bExitCode, dwParagraphsToReserve);
+VOID ExitProcessAndStayResidentB(DWORD dwBytesToReserve){
+    __asm__ __volatile__(
+        "mov edx, ecx\n\t"
+        "int 0x47"
+    );
 }
 
 
