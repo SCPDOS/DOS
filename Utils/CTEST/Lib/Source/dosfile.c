@@ -9,7 +9,7 @@
  *           Nonvolatile registers: rbx, rsp, rbp, r12, r13, r14, r15, rdi, rsi
  */
 
-#include "../../Headers/dos.h"
+#include "../../Headers/scpdos.h"
 
 BOOL CreateDirectory(LPCSTR lpDirectoryName){
     __asm__ __volatile__(

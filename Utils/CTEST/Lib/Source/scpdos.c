@@ -1,4 +1,4 @@
-#include "../../Headers/dos.h"
+#include "../../Headers/scpdos.h"
 #include "internal.c"
 #include "dosfcb.c"
 #include "dosfile.c"

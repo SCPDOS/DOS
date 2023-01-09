@@ -1,6 +1,6 @@
 /* A test C program using our own libraries for OS interaction */
 
-#include "./Headers/Dos.h"
+#include "./Headers/scpdos.h"
 
 void main(){
 	LPCSTR outString = "\n\rThis is a test string\n\r$";

@@ -1,5 +1,5 @@
 
-#include "../../Headers/dos.h"
+#include "../../Headers/scpdos.h"
 
 //If this returns True, you can get the task return code
 BOOL ExecuteProcess(LPCSTR lpProcessName, LPEPB lpExecuteParameterBlock){

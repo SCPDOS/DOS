@@ -1,4 +1,4 @@
-#include "../../Headers/dos.h"
+#include "../../Headers/scpdos.h"
 
 BOOL GetDPBPointer(DRIVE_NUMBER bNumber, LPDPB lpDPB){
     __asm__ __volatile__(

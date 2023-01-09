@@ -1,4 +1,4 @@
-#include "../../Headers/dos.h"
+#include "../../Headers/scpdos.h"
 
 VOID WriteString(LPCSTR lpString){
     __asm__ __volatile__ (

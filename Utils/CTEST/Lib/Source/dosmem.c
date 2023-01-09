@@ -1,4 +1,4 @@
-#include "../../Headers/dos.h"
+#include "../../Headers/scpdos.h"
 
 //Internal common Allocation function
 LPVOID __AllocateMemory(SIZE_T dwNumberOfParagraphs){
