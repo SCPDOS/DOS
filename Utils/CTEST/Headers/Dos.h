@@ -19,5 +19,6 @@
 #include "doscon.h"
 #include "dosnet.h"
 
-
 #endif
+
+BYTE GetDiskReadVerifyFlag();
