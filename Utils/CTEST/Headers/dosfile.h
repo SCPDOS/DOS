@@ -1,7 +1,7 @@
 // File related macros and file headers go here
 
 #include "basetsd.h"
-#include "dosdrive.h"
+#include "dosdisk.h"
 
 #ifndef DOSFILE_H
 #define DOSFILE_H
@@ -137,8 +137,10 @@ BOOL DuplicateHandle(HANDLE hSourceHandle, LPHANDLE lpDestinationHandle);
 BOOL ForceDuplicateHandle(HANDLE hSourceHandle, \
     HANDLE hDesiredDestinationHandle);
 BOOL GetCurrentDirectory(DRIVE_LETTER dlDriveLetter, LPSTR lpDirectoryBuffer);
-BOOL FindFirstFile(LPCSTR lpfileName, FILE_ATTRIBUTES dwFileAttributes);
-BOOL FindNextFile();
+BOOL FindFirstFile(LPCSTR lpfileName, FILE_ATTRIBUTES dwFileAttributes, \
+    LPFFBlock lpFindFileBlock);
+BOOL FindNextFile(LPFFBlock lpFindFileBlock);
+BOOL FindClose(LPFFBlock lpFindFileBlock);
 BOOL RenameFile(LPCSTR lpOldFileName, LPCSTR lpNewFileName);
 HANDLE CreateTemporaryFile(LPSTR lpFileNameBuffer, \
     FILE_ATTRIBUTES dwFileAttributes);

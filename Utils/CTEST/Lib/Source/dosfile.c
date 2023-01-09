@@ -246,11 +246,8 @@ BOOL GetCurrentDirectory(DRIVE_LETTER dlDriveLetter, LPSTR lpDirectoryBuffer){
     );
 }
 
-//Set the DTA before this is called!
-//Be aware that "no more files" is a special error condition. Make sure to
-// get the error code after this call!
-BOOL FindFirstFile(LPCSTR lpfileName, FILE_ATTRIBUTES dwFileAttributes){
-    __asm__ __volatile__(
+BOOL __FindFirst(LPCSTR lpfileName, FILE_ATTRIBUTES dwFileAttributes){
+        __asm__ __volatile__(
         "xchg rcx, rdx\n\t"
         "and ecx, 0xFFFF\n\t"
         "mov eax, 0x4E00\n\t"
@@ -261,8 +258,19 @@ BOOL FindFirstFile(LPCSTR lpfileName, FILE_ATTRIBUTES dwFileAttributes){
     );
 }
 
-//Continues the search based on the FF Block returned in the DTA
-BOOL FindNextFile(){
+
+//Be aware that "no more files" is a special error condition. Make sure to
+// get the error code after this call!
+BOOL FindFirstFile(LPCSTR lpfileName, FILE_ATTRIBUTES dwFileAttributes, \
+    LPFFBlock lpFindFileBlock){
+        LPVOID oldDTA = __getDTA();
+        __setDTA(lpFindFileBlock);
+        BOOL retVal = __FindFirst(lpfileName, dwFileAttributes);
+        __setDTA(oldDTA);
+        return retVal;
+}
+
+BOOL __FindNext(){
     __asm__ __volatile__(
         "mov eax, 0x4F00\n\t"
         "xor ecx, ecx\n\t"
@@ -270,6 +278,20 @@ BOOL FindNextFile(){
         "mov eax, 1\n\t"
         "cmovc eax, ecx"
     );
+}
+
+//Continues the search based on the FF Block returned in the DTA
+BOOL FindNextFile(LPFFBlock lpFindFileBlock){
+        LPVOID oldDTA = __getDTA();
+        __setDTA(lpFindFileBlock);
+        BOOL retVal = __FindNext();
+        __setDTA(oldDTA);
+        return retVal;
+}
+
+//Closes the FindFirstBlock in the DTA. 
+BOOL FindClose(LPFFBlock lpFindFileBlock){
+    return TRUE;
 }
 
 BOOL RenameFile(LPCSTR lpOldFileName, LPCSTR lpNewFileName){

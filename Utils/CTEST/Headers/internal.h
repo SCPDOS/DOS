@@ -5,7 +5,7 @@
 #define INTERNAL_H
 
 #include "basetsd.h"
-#include "dosdrive.h"
+#include "dosdisk.h"
 #include "dosdrvr.h"
 
 typedef QWORD PROCESS_ID;
@@ -35,3 +35,11 @@ typedef struct _drive_parameter_block{
 
 
 #endif
+BOOL GetDefaultDiskDPBPointer(LPDPB lpDPB);
+BOOL GetDPBPointer(DRIVE_NUMBER bNumber, LPDPB lpDPB);
+VOID SetCurrentProcessId(PROCESS_ID pid);
+PROCESS_ID GetCurrentProcessId();
+LPVOID GetPointerToDosSysVars();
+VOID GenerateDPB(LPVOID lpBPB, LPDPB lpDPB);
+VOID GeneratePartialPSP(LPVOID lpPSPAddress);
+VOID GenerateNewPSP(LPVOID lpPSPAddress, DWORD dwSizeOfPSPAllocation);

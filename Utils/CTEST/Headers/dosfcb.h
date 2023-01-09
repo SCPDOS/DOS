@@ -1,7 +1,7 @@
 
 #include "basetsd.h"
 #include "dosfile.h"
-#include "dosdrive.h"
+#include "dosdisk.h"
 
 #ifndef DOSFCB_H
 #define DOSFCB_H
@@ -23,5 +23,7 @@ typedef struct _extended_fcb{
     PBYTE reserved[23];
 } EXTENDED_FCB, *PEXTENDED_FCB, *LPEXTENDED_FCB;
 
-
 #endif
+
+VOID __setDTA(LPVOID lpDTA);
+LPVOID __getDTA();

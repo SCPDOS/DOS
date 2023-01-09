@@ -1,5 +1,19 @@
 #include "../../Headers/scpdos.h"
 
+BOOL GetDefaultDiskDPBPointer(LPDPB lpDPB){
+    __asm__ __volatile__(
+        "push rbx\n\t"
+        "mov eax, 0x1F00\n\t"
+        "int 0x41\n\t"
+        "not al\n\t"
+        "jz gdddpExit\n\t"
+        "mov qword [rcx], rbx\n\t"
+        "mov eax, 1\n"
+        "gdddpExit:\n\t"
+        "pop rbx"
+    );
+}
+
 BOOL GetDPBPointer(DRIVE_NUMBER bNumber, LPDPB lpDPB){
     __asm__ __volatile__(
         "push rbx\n\t"
@@ -61,6 +75,13 @@ VOID GenerateDPB(LPVOID lpBPB, LPDPB lpDPB){
     );
 }
 
+VOID GeneratePartialPSP(LPVOID lpPSPAddress){
+    __asm__ __volatile__(
+        "mov rdx, rcx\n\t"
+        "mov eax, 0x2600\n\t"
+        "int 0x41\n\t"
+    );
+}
 VOID GenerateNewPSP(LPVOID lpPSPAddress, DWORD dwSizeOfPSPAllocation){
     __asm__ __volatile__(
         "push rsi\n\t"

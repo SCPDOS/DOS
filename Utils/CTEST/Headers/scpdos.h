@@ -8,7 +8,7 @@
 #pragma pack(1) //Ensure all structs are aligned to 1 byte boundaries
 
 #include "basetsd.h"
-#include "dosdrive.h"
+#include "dosdisk.h"
 #include "doserror.h"
 #include "internal.h"
 #include "dosdrvr.h"
@@ -21,4 +21,5 @@
 
 #endif
 
-BYTE GetDiskReadVerifyFlag();
+VOID SetInterruptVector(DWORD dwInterruptVector, LPVOID lpInterruptHandler);
+LPVOID GetInterruptVector(DWORD dwInterruptVector);

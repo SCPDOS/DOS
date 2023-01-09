@@ -1,5 +1,5 @@
-#ifndef DOSDRIVE_H
-#define DOSDRIVE_H
+#ifndef DOSDISK_H
+#define DOSDISK_H
 #include "basetsd.h"
 
 //An ASCII Char in the range A-Z inclusive
@@ -22,3 +22,19 @@ typedef struct _fat_date{
 } FAT_DATE, *PFAT_DATE, *LPFAT_DATE;
 
 #endif
+
+VOID DiskReset();
+VOID SetDefaultDrive(DRIVE_INDEX bDiskIndex);
+DRIVE_INDEX GetDefaultDrive();
+BOOL GetDiskFATInfo(DRIVE_NUMBER bDriveNumber, LPDWORD lpBytesPerSector, \
+    LPDWORD lpSectorsPerCluster, LPDWORD lpTotalNumberOfClusters, \
+    LPVOID *lpMediaDescriptor);
+BOOL GetDefaultDiskFATInfo(LPDWORD lpBytesPerSector, \
+    LPDWORD lpSectorsPerCluster, LPDWORD lpTotalNumberOfClusters, \
+    LPVOID *lpMediaDescriptor);
+BOOL GetDiskFreeSpace(DRIVE_NUMBER bDriveNumber, LPDWORD lpSectorsPerCluster, \
+    LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, \
+    LPDWORD lpTotalNumberOfFreeClusters);
+
+
+BYTE GetDiskReadVerifyFlag();
