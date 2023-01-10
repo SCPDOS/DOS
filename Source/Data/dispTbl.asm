@@ -98,7 +98,7 @@ kDispTbl:
     dw netServices - kDispTbl     ;AH = 5EH, RESERVED NETWORK FUNCTION
     dw netRedir - kDispTbl  ;AH = 5FH, RESERVED NETWORK FUNCTION
     dw trueName - kDispTbl            ;AH = 60H, RESERVED INTERNAL, GET TRUE NAME
-    dw noOp - kDispTbl                ;AH = 61H, RESERVED
+    dw systemServices - kDispTbl      ;AH = 61H, PROCESS MANAGEMENT, NEW
     dw getPSPaddr - kDispTbl          ;AH = 62H, PROCESS MANAGEMENT
     dw noOp - kDispTbl                ;AH = 63H, RESERVED
     dw setDriverLookahead - kDispTbl  ;AH = 64H, RESERVED INTERNAL, DRIVER LOOKAHEAD
