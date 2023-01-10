@@ -323,26 +323,37 @@ endstruc
 struc psp
     .return     resb 2  ;Should always be CDh 40h, same place as DOS
     .allocSize  resd 1  ;Number of paras in init alloc or when exiting as TSR.
-                resd 1  ;Reserved 4 bytes (for now, may recycle later)
+                resd 1  ;Reserved 4 bytes
     .oldInt42h  resq 1  ;Int 42h pointer on overlay load
     .oldInt43h  resq 1  ;Int 43h pointer on overlay load
     .oldInt44h  resq 1  ;Int 44h pointer on overlay load
     .parentPtr  resq 1  ;Pointer to parent process PSP
+    .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
     .jobFileTbl resb 20 ;Main File handle array, JFT
     .envPtr     resq 1  ;Pointer to the environment
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
-    .xtraHdlSz  resw 1  ;Additional File Handle array size, 0 by default
+    .jftSize    resw 1  ;JFT array size, 20 => PSP JFT in use
     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
-    .xtraHdlNum resb 1  ;Lookup number of extra handle array, -1 = unused
-;Extra handle arrays are grouped into a linked list
-;The below are in the same place as in DOS
-    .fcb1       resb 16  ;First FCB
-    .fcb2       resb 20  ;Second FCB
+                resb 1  ;Reserved byte
+;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer
+; to the actual in use JFT and the other 12 bytes are left undefined.
+;If xtraHdlSz < 20 (DOS will never set it so), then it is considered as 20
+;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
+; always used and xtraHdlSz.
+;Will need to add two SYSCALLS for future expansion:
+;       1) Get Program Environment Pointer
+;       2) Get Command Line arguments pointer
+;The below are in the same place as in DOS.
+    .cmdLineArgPtr: ;Symbol for future use
+    .fcb1       resb 16  ;First FCB,    argument 1 
+    .fcb2       resb 20  ;Second FCB,   argument 2
     .dta:   ;Pointer to the default DTA in the PSP
     .parmList   resb 1   ;Number of characters in command tail
     .progTail   resb 127 ;Default DTA/Program tail
 endstruc
+
+dfltJFTsize equ 20  ;Default size of PSP JFT
 
 struc clkStruc
     .dateWord   resw 1

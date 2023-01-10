@@ -2327,14 +2327,24 @@ getJFTPtr:    ;Int 4Fh AX=1220h
 ;Output: CF=NC => rdi = Points to an SFT ndx or -1 => free space
 ;        CF=CY => al = Error code, Fail
     movzx ebx, bx   ;Ensure we zero extended
-    cmp bx, word [maxHndls] ;0-19 acceptable ONLY!
+    mov rdi, qword [currentPSP]
+    cmp bx, word [rdi + psp.jftSize] ;jftSize is the size of the JFT array
     jb .ok
     mov al, errBadHdl
     stc
     return
 .ok:
-    mov rdi, qword [currentPSP]
+    cmp word [rdi + psp.jftSize], dfltJFTsize   ;Are we in PSP JFT or external?
+    je .pspJftOk    ;If dfltJFTsize, its a good PSP JFT.
+    jb .pspJftBelow ;If < dfltJFTsize, in PSP and needs to be corrected
+    mov rdi, qword [rdi + psp.externalJFTPtr]   ;Get the ptr to the external JFT
+    lea rdi, qword [rdi + rbx]  ;Get pointer into JFT
+    jmp short .pspOkExit
+.pspJftBelow:
+    mov word [rdi + psp.jftSize], dfltJFTsize  ;Reset to dfltJFTsize if needed!
+.pspJftOk:
     lea rdi, qword [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
+.pspOkExit:
     clc
     return
 findFreeJFTEntry:
