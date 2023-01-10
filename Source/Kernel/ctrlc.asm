@@ -337,12 +337,40 @@ cpu_exception:
     jmp functionDispatch    ;Call Int 41h politely
 .fatalStop:
 ;This is called if inDOS > 1 or NMI occured
-;Permanently locks up the system by turning off interrupts and infinite looping.
+;Reboots the machine
+    call dosCrit1Enter  ;Wait on getting the lock to a DOS critical section
+    mov ebx, crlfL
+    lea rsi, .crlf
+    call .writeExceptionMessage    
+
+    mov ebx, rebootL
+    lea rsi, .reboot
+    call .writeExceptionMessage
+
+    call .readInputChar
     call dosCrit2Enter  ;Suspend multitasking now
-.fatalLp:
-    cli
-    hlt
-    jmp short .fatalLp
+    ;We are technically entering a "driver", the debugger.
+    ;Or we are rebooting. Either way, no more multitasking.
+
+    mov al, byte [singleIObyt]
+    cmp al, ESC ;Keep this undocumented!!!
+    je .checkForDebugger
+.fatalDie:
+    lidt [.resetIDT]    ;Triple fault the machine
+    jmp short .toHell
+.toHell:
+    int 00h ;Call div by 0 to trigger reboot if not somehow failed yet
+    jmp short .toHell
+.resetIDT:
+    dw 0
+    dq 0
+.checkForDebugger:
+;Kernel Debuggers must hook a DOS global var
+;They cannot return through DOS
+    mov rax, qword [krndbgCritHook]
+    test rax, rax   ;If this is a null pointer, ignore it
+    jz .fatalDie
+    jmp rax
 
 .cpuextendederror:
     pop rdx
@@ -448,5 +476,7 @@ fatal2L    equ $ - .fatal2
 ;The below error is displayed is inDOS > 1 or NMI occured
 .fatalHalt: db "    SCP/DOS SYSTEM STOP: "
 fatalHaltL equ $ - .fatalHalt
+.reboot:    db "    Press any key to reboot the machine..."
+rebootL equ $ - .reboot
 .crlf:  db CR,LF,LF
 crlfL  equ $ - .crlf

@@ -41,6 +41,13 @@ sysVarsPtr:
 ;Additional internal variables
     numFiles    resb 1    ;FILES=5 default, max 255
 
+    ;Kernel debugger hooks here. Can be connected dynamically.
+    ;Any pointer left as null is ignored.
+    ;Currently only 1 hook, for hooking on a critical kernel error.
+    ; Allows for the investigation of internal data structures.
+    ; Must not be used to try and rekindle the system back to life.
+krnDbgHooks:
+    krndbgCritHook  resq 1  ;Kernel Debugger Critical Error hook
     ;DLL Manager hook functions here
     ;All DLLMGR hooks are 8 byte pointers and are new to the DOS kernel.
     ;They allow for the installation of a DLL manager program, which hooks
@@ -64,7 +71,7 @@ sysVarsPtr:
     ;Furthermore, if register fails (due to memory or namespace constraints),
     ; it must return CF=CY.
 dllHooks:
-    registerDLL   resq 1    ;Entered with rbp = execFrame
+    registerDLL     resq 1  ;Entered with rbp = execFrame
     unloadDLLHook   resq 1  ;
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before

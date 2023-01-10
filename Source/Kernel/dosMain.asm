@@ -32,6 +32,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     je getPSPaddr          ;Calls the above function
     cmp ah, 50h
     je setCurrProcessID
+    ;cmp ah, 61h           ;New service, Process Services, reentrant
+    ;je systemServices
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
