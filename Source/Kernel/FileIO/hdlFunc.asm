@@ -630,15 +630,53 @@ lockUnlockFile:    ;ah = 5Ch
     jmp extErrExit
 ;STUB FUNCTIONS
 setHandleCount:    ;ah = 67h
+;Input: bx = Size of new file handle table for process
+;Output: CF=NC -> Ok to make more handles
+;        CF=CY -> ax = Error code
 ;Five cases to consider:
 ;       1) Allocating a new block of memory, copying PSP JFT to it, inc hdl cnt
 ;       2) Freeing a block and returning to the PSP JFT, dec hdl cnt
 ;       3) Extending an external block, inc hdl cnt. If realloc fails, goto 5)
-;       4) Reducing an external block, dec hdl cnt
+;       4) Reducing an external block, dec hdl cnt, no realloc.
 ;   Special case below, cannot be enacted directly by caller.
 ;       5) Freeing an external block for a bigger external block, inc hdl cnt
-    jmp extErrExit
+    movzx ebx, bx   ;Zero extend to use ebx/rbx
+    mov rsi, qword [currentPSP] ;Get a ptr to the currentPSP
+    cmp bx, dfltJFTsize
+    ja .moreHdlsReq
+    ;Here if 20 handles or less requested
+    cmp byte [rsi + psp.jftSize], dfltJFTsize   ;If this is 20 or less, exit
+    ja .reduceFree
+    rete    ;Just return if they are equal
+    ;Else, replace the number with 20
+    mov byte [rsi + psp.jftSize], dfltJFTsize
+    return
+.reduceFree:    ;Case 2
+    
+.moreHdlsReq:
 
+    jmp extErrExit
+.getBlockSize:
+;Converts the number of handles into a number of paragraphs to allocate
+;Input: bx = Number of handles (rbx is safe to use)
+;Output: r8 = Number of Paragraphs to allocate
+    mov r8, rbx    ;Zero extend the whole thing
+    add r8, 11h ;Now round up
+    shr r8, 4
+    return
+.freeBlock:
+
+.reallocBlock:
+;Input: r8 = address of the block to be realloc'ed
+;       ebx = How many paras this block should contain after realloc. 
+.allocBlock:
+;Input: rbx = Number of paragraphs to allocate
+;Output: CF=NC -> Allocated successfully, ptr in rax
+;        CF=CY -> Fail, ax has error code
+    push rbx
+    call allocateMemory
+    pop rbx
+    return
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
