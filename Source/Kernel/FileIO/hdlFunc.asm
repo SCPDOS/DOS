@@ -660,25 +660,24 @@ setHandleCount:    ;ah = 67h
     jmp short .exitGood
 .reduceFree:    ;Case 2
 ;Entered once we know that we have an external block
-    lea rdi, qword [rbp + psp.externalJFTPtr]   ;Get destination
-    mov rsi, qword [rdi]    ;Get source 
+
     ;Now we close all handles above JFT size
     mov ecx, dfltJFTsize
-    push rcx
+    push rcx    ;Save the defaultJFT size on the stack
 .closeHandles:
     mov ebx, ecx
-    push rsi
-    push rdi
     push rcx
+    push rbp
     call closeFileHdl
+    pop rbp
     pop rcx
-    pop rdi
-    pop rsi
     inc ecx
     cmp cx, word [rbp + psp.jftSize]
     jne .closeHandles
     pop rcx
 ;All extra handles closed, now we copy the first 20 handles over
+    lea rdi, qword [rbp + psp.externalJFTPtr]   ;Get destination
+    mov rsi, qword [rdi]    ;Get source 
     call .copyBlock
     mov word [rbp + psp.jftSize], dfltJFTsize   ;Now we have dflt number of hdls
     ;Now we can free the old block
@@ -692,10 +691,12 @@ setHandleCount:    ;ah = 67h
 ;   If we are, do we have enough space or do we need to realloc?
     cmp word [rbp + psp.jftSize], dfltJFTsize   ;Are we in JFT?
     jbe .moreFromJFT
-;Does the MCB have enough space to reallocate or do we need to free and allocate
+;Does the MCB with the JFT have enough space to
+;  reallocate or do we need to free and allocate?
+
 .moreFromJFT:
     call .getBlockSize  ;Get how many paragraphs we need
-    push rbx
+    push rbx    ;bx has the number of handles we want
     push rbp
     mov rbx, r8
     call allocateMemory ;Allocate, memory 
@@ -703,7 +704,18 @@ setHandleCount:    ;ah = 67h
     pop rbx
     jc extErrExit
     mov rdi, rax    ;Move the ptr of the new block to rdi
-    jmp extErrExit
+    call .setBlock  ;Setup the new memory block with all -1's
+    lea rsi, qword [rbp + psp.jobFileTbl]   ;Get the ptr to the current JFT
+    mov ecx, ebx    ;Get the new number of handles to copy over
+    call .copyBlock ;Copy all the handles over
+    xchg rdi, rsi   ;Swap
+    mov ecx, dfltJFTsize    ;Set the default JFT to all -1's
+    call .setBlock
+    xchg rdi, rsi   ;Swap the pointers back
+    mov word [rbp + psp.jftSize], bx    ;Set the new count
+    mov qword [rbp + psp.externalJFTPtr], rdi
+    xor eax, eax
+    jmp .exitGood
 .getBlockSize:
 ;Converts the number of handles into a number of paragraphs to allocate
 ;Input: bx = Number of handles (rbx is safe to use)
@@ -727,9 +739,15 @@ setHandleCount:    ;ah = 67h
 .setBlock:
 ;Input: rdi -> Pointer to the block to set
 ;       ecx = Number of handles in the block
+    push rax
+    push rcx
+    push rdi
     xor eax, eax
     dec eax
     rep stosb
+    pop rdi
+    pop rcx
+    pop rax
     return
 ;-----------------------------------:
 ;       Main File IO Routines       :
