@@ -630,6 +630,13 @@ lockUnlockFile:    ;ah = 5Ch
     jmp extErrExit
 ;STUB FUNCTIONS
 setHandleCount:    ;ah = 67h
+;Five cases to consider:
+;       1) Allocating a new block of memory, copying PSP JFT to it, inc hdl cnt
+;       2) Freeing a block and returning to the PSP JFT, dec hdl cnt
+;       3) Extending an external block, inc hdl cnt. If realloc fails, goto 5)
+;       4) Reducing an external block, dec hdl cnt
+;   Special case below, cannot be enacted directly by caller.
+;       5) Freeing an external block for a bigger external block, inc hdl cnt
     jmp extErrExit
 
 ;-----------------------------------:
