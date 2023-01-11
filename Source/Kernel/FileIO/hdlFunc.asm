@@ -628,54 +628,108 @@ lockUnlockFile:    ;ah = 5Ch
     mov eax, errInvFnc
     mov word [errorExCde], ax
     jmp extErrExit
-;STUB FUNCTIONS
+
 setHandleCount:    ;ah = 67h
 ;Input: bx = Size of new file handle table for process
 ;Output: CF=NC -> Ok to make more handles
 ;        CF=CY -> ax = Error code
 ;Five cases to consider:
 ;       1) Allocating a new block of memory, copying PSP JFT to it, inc hdl cnt
-;       2) Freeing a block and returning to the PSP JFT, dec hdl cnt
+;       2) Freeing a block and returning to the PSP JFT, dec hdl cnt x
 ;       3) Extending an external block, inc hdl cnt. If realloc fails, goto 5)
 ;       4) Reducing an external block, dec hdl cnt, no realloc.
 ;   Special case below, cannot be enacted directly by caller.
 ;       5) Freeing an external block for a bigger external block, inc hdl cnt
     movzx ebx, bx   ;Zero extend to use ebx/rbx
-    mov rsi, qword [currentPSP] ;Get a ptr to the currentPSP
-    cmp bx, dfltJFTsize
+    mov rbp, qword [currentPSP] ;Get a ptr to the currentPSP
+    cmp bx, word [rbp + psp.jftSize]    ;Requesting more handles than we have?
     ja .moreHdlsReq
-    ;Here if 20 handles or less requested
-    cmp byte [rsi + psp.jftSize], dfltJFTsize   ;If this is 20 or less, exit
-    ja .reduceFree
-    rete    ;Just return if they are equal
-    ;Else, replace the number with 20
-    mov byte [rsi + psp.jftSize], dfltJFTsize
-    return
+    cmp bx, dfltJFTsize ;Requesting more than the default JFT amount?
+    ja .reduceExternal
+    ;Here if 20 handles or less requested and already in the PSP
+    cmp word [rbp + psp.jftSize], dfltJFTsize   ;If this is 20 or less, exit
+    ja .reduceFree  ;Copying back to the JFT
+    je .exitGood    ;Just return if they are equal
+    mov word [rbp + psp.jftSize], dfltJFTsize   ;Else, replace with dflt
+.exitGood:
+    jmp extGoodExit
+.reduceExternal:
+;Here we simply reduce the number of handles in the JFT,
+; we don't do a reallocate. 
+    mov word [rbp + psp.jftSize], bx
+    jmp short .exitGood
 .reduceFree:    ;Case 2
-    
+;Entered once we know that we have an external block
+    lea rdi, qword [rbp + psp.externalJFTPtr]   ;Get destination
+    mov rsi, qword [rdi]    ;Get source 
+    ;Now we close all handles above JFT size
+    mov ecx, dfltJFTsize
+    push rcx
+.closeHandles:
+    mov ebx, ecx
+    push rsi
+    push rdi
+    push rcx
+    call closeFileHdl
+    pop rcx
+    pop rdi
+    pop rsi
+    inc ecx
+    cmp cx, word [rbp + psp.jftSize]
+    jne .closeHandles
+    pop rcx
+;All extra handles closed, now we copy the first 20 handles over
+    call .copyBlock
+    mov word [rbp + psp.jftSize], dfltJFTsize   ;Now we have dflt number of hdls
+    ;Now we can free the old block
+    mov r8, rsi
+    call freeMemory
+    jc extErrExit
+    xor eax, eax
+    jmp extGoodExit
 .moreHdlsReq:
-
+;Need to check if we are external and reallocating. 
+;   If we are, do we have enough space or do we need to realloc?
+    cmp word [rbp + psp.jftSize], dfltJFTsize   ;Are we in JFT?
+    jbe .moreFromJFT
+;Does the MCB have enough space to reallocate or do we need to free and allocate
+.moreFromJFT:
+    call .getBlockSize  ;Get how many paragraphs we need
+    push rbx
+    push rbp
+    mov rbx, r8
+    call allocateMemory ;Allocate, memory 
+    pop rbp
+    pop rbx
+    jc extErrExit
+    mov rdi, rax    ;Move the ptr of the new block to rdi
     jmp extErrExit
 .getBlockSize:
 ;Converts the number of handles into a number of paragraphs to allocate
 ;Input: bx = Number of handles (rbx is safe to use)
 ;Output: r8 = Number of Paragraphs to allocate
-    mov r8, rbx    ;Zero extend the whole thing
-    add r8, 11h ;Now round up
+    mov r8, rbx     ;Zero extend the whole thing
+    add r8, 11h     ;Now round up
     shr r8, 4
     return
-.freeBlock:
-
-.reallocBlock:
-;Input: r8 = address of the block to be realloc'ed
-;       ebx = How many paras this block should contain after realloc. 
-.allocBlock:
-;Input: rbx = Number of paragraphs to allocate
-;Output: CF=NC -> Allocated successfully, ptr in rax
-;        CF=CY -> Fail, ax has error code
-    push rbx
-    call allocateMemory
-    pop rbx
+.copyBlock:
+;Input: rsi -> Source block
+;       rdi -> Destination block
+;       ecx = Number of handles to copy
+    push rsi
+    push rdi
+    push rcx
+    rep movsb
+    pop rcx
+    pop rdi
+    pop rsi
+    return
+.setBlock:
+;Input: rdi -> Pointer to the block to set
+;       ecx = Number of handles in the block
+    xor eax, eax
+    dec eax
+    rep stosb
     return
 ;-----------------------------------:
 ;       Main File IO Routines       :
