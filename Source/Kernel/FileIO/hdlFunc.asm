@@ -691,38 +691,64 @@ setHandleCount:    ;ah = 67h
 ;   If we are, do we have enough space or do we need to realloc?
     cmp word [rbp + psp.jftSize], dfltJFTsize   ;Are we in JFT?
     jbe .moreFromJFT
-;Does the MCB with the JFT have enough space to
-;  reallocate or do we need to free and allocate?
-
-.moreFromJFT:
-    call .getBlockSize  ;Get how many paragraphs we need
-    push rbx    ;bx has the number of handles we want
-    push rbp
-    mov rbx, r8
-    call allocateMemory ;Allocate, memory 
-    pop rbp
-    pop rbx
+;Always will create a new block and free the old block.
+;Please do not do this too often because memory fragmentation will occur!!
+;Benefits of checking, gives at most an extra 15 handles which is not
+; worth checking for in my opinion as most users will probably be asking for
+; more than 100 handles when using such a program, which is 7 paragraphs
+; of memory.
+    mov rsi, qword [rbp + psp.externalJFTPtr]   ;Get xtrnal pointer
+    call .getBlock  ;rsi is preserved across the call
     jc extErrExit
-    mov rdi, rax    ;Move the ptr of the new block to rdi
-    call .setBlock  ;Setup the new memory block with all -1's
+    mov r8, rsi ;Free the source block
+    push rbx
+    push rdi    ;Save the new pointer here
+    call freeMemory
+    pop rdi
+    pop rbx
+    jnc .freeOk ;Free'd the original block
+    push rax
+    mov r8, rdi ;Free the new block
+    call freeMemory
+    pop rax
+    jmp extErrExit
+.moreFromJFT:
     lea rsi, qword [rbp + psp.jobFileTbl]   ;Get the ptr to the current JFT
-    mov ecx, ebx    ;Get the new number of handles to copy over
-    call .copyBlock ;Copy all the handles over
-    xchg rdi, rsi   ;Swap
-    mov ecx, dfltJFTsize    ;Set the default JFT to all -1's
-    call .setBlock
-    xchg rdi, rsi   ;Swap the pointers back
+    call .getBlock
+    jc extErrExit
+.freeOk:
     mov word [rbp + psp.jftSize], bx    ;Set the new count
     mov qword [rbp + psp.externalJFTPtr], rdi
     xor eax, eax
     jmp .exitGood
-.getBlockSize:
-;Converts the number of handles into a number of paragraphs to allocate
-;Input: bx = Number of handles (rbx is safe to use)
-;Output: r8 = Number of Paragraphs to allocate
-    mov r8, rbx     ;Zero extend the whole thing
-    add r8, 11h     ;Now round up
-    shr r8, 4
+.getBlock:
+;rsi -> Source block for copy 
+;ebx = Number of new handles
+;Output: rsi and ebx as before
+;        rdi -> New block
+;IF CF=CY, bad exit
+    push rbx    ;bx has the number of handles we want
+    push rsi
+    push rbp
+    add ebx, 11h    ;Round up into next paragraph
+    shr ebx, 4      ;Get number of paragraphs
+    mov ecx, ebx
+    shl ecx, 4  ;Get bytes being allocated
+    push rcx    ;Save the actual number of bytes in the alloc
+    call allocateMemory ;Allocate memory 
+    pop rcx ;Get back actual number allocated
+    pop rbp ;Get the PSP pointer back
+    pop rsi ;Get the source pointer back
+    pop rbx ;Get the number of handles to allocate back
+    retc
+    mov rdi, rax    ;Move the ptr of the new block to rdi
+    push rdi
+    xor eax, eax
+    dec eax
+    rep stosb   ;Setup the new memory block with all -1's
+    pop rdi
+    mov ecx, ebx    ;Get the new number of handles to copy over
+    call .copyBlock ;Copy all the handles over
     return
 .copyBlock:
 ;Input: rsi -> Source block
@@ -735,19 +761,6 @@ setHandleCount:    ;ah = 67h
     pop rcx
     pop rdi
     pop rsi
-    return
-.setBlock:
-;Input: rdi -> Pointer to the block to set
-;       ecx = Number of handles in the block
-    push rax
-    push rcx
-    push rdi
-    xor eax, eax
-    dec eax
-    rep stosb
-    pop rdi
-    pop rcx
-    pop rax
     return
 ;-----------------------------------:
 ;       Main File IO Routines       :
