@@ -32,6 +32,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     je getPSPaddr          ;Calls the above function
     cmp ah, 50h
     je setCurrProcessID
+    cmp ah, 61h           ;New service, Process Services, reentrant
+    je systemServices
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
@@ -367,6 +369,30 @@ getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
 setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
     mov byte [lookahead], al    
     iretq
+
+systemServices: ;ah = 61h
+    test al, al ;Get Environment pointer
+    jz .getEnvPtr
+    cmp al, 1
+    je .getCmdLineArgs  ;Get ptr to cmdline and fcb's 
+    ;Later add two more to get environment and cmdline ptr for 
+    ;   any process
+    mov eax, errInvFnc
+.exitBad:
+    or byte [rsp + 2*8], 1  ;Set CF on
+    iretq
+.getEnvPtr:
+    ;Gets the environment pointer in rdx
+    mov rdx, qword [currentPSP]
+    mov rdx, qword [rdx + psp.envPtr]   ;Get the environement pointer
+    jmp short .exitOk
+.getCmdLineArgs:
+    mov rdx, qword [currentPSP]
+    lea rdx, qword [rdx + psp.cmdLineArgPtr]   ;Get the cmdargs pointer
+.exitOk:
+    and byte [rsp + 2*8], ~1    ;Clear CF
+    iretq
+
 
 ;========================================:
 ;            Kernel Functions            :

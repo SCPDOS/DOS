@@ -332,17 +332,48 @@ cpu_exception:
     test byte [haltDOS], -1
     jnz .fatalStop
     call .readInputChar
-    mov eax, 4c00h
+    ;Set error code to General Failure
+    mov word [errorExCde], errGF
+    mov byte [errorAction], eActAbt
+    mov byte [errorClass], eClsAppFlt
+    mov byte [errorLocus], eLocUnk
+    mov eax, 4cFFh
     mov byte [ctrlCExit], -1
-    jmp functionDispatch    ;Call Int 41h politely
+    ;If a -1 error code and ctrlC exit and the extended error
+    ; setup as above, chances are it was a CPU error
+    jmp functionDispatch    ;Call Int 41h politely, clean up resources
 .fatalStop:
 ;This is called if inDOS > 1 or NMI occured
-;Permanently locks up the system by turning off interrupts and infinite looping.
-    call dosCrit2Enter  ;Suspend multitasking now
-.fatalLp:
-    cli
-    hlt
-    jmp short .fatalLp
+;Waits 1 minute then reboots
+    mov eax, 8200h  ;Exit all critical sections
+    int 4Ah
+    call dosCrit1Enter  ;Get the lock to internal DOS structures
+    call dosCrit2Enter  ;Get the lock to end all multitasking
+    call getDateAndTimeOld  ;Get time packed in edx (edx[0:4] = Seconds/2)
+    mov ebx, edx
+    and ebx, 1Fh    ;Save the relevent bits
+.loopForNextSecond:
+    call .getTimeDateCompare
+    je .loopForNextSecond
+.loopTillTimeElapsed:
+    call .getTimeDateCompare
+    jne .loopTillTimeElapsed
+    ;Now we triple fault
+    lidt [.resetIDT] ;Triple fault the machine
+    jmp short .toHell
+.toHell:
+    int 00h ;Call div by 0 to trigger reboot if not somehow failed yet
+    jmp short .toHell
+.resetIDT:
+    dw 0
+    dq 0
+.getTimeDateCompare:
+    push rbx
+    call getDateAndTimeOld
+    pop rbx
+    and edx, 1Fh
+    cmp edx, ebx
+    return
 
 .cpuextendederror:
     pop rdx

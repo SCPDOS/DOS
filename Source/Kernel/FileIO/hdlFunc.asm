@@ -567,20 +567,6 @@ createNewFile:     ;ah = 5Bh
     mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
     jmp openFileHdl.openCommon
 
-commitFile:        ;ah = 68h, flushes buffers for handle to disk 
-    ;Input: bx = File to flush
-    call getSFTPtr  ;Get sft pointer in rdi
-    jc extErrExit
-    call setCurrentSFT  ;Set as current SFT to ensure it is committed
-    ;Now we check if the device is a char, disk or net file and commit
-    call commitMain
-    jc extErrExit   ;If an error occured, exit with error code in al
-.exitOk:
-    xor al, al
-    call getUserRegs
-    and byte [rsi + callerFrame], ~1    ;Clear CF
-    return
-
 lockUnlockFile:    ;ah = 5Ch
 ;ah = 5Ch
 ;al = subfunction
@@ -628,9 +614,187 @@ lockUnlockFile:    ;ah = 5Ch
     mov eax, errInvFnc
     mov word [errorExCde], ax
     jmp extErrExit
-;STUB FUNCTIONS
+
 setHandleCount:    ;ah = 67h
+;Input: bx = Size of new file handle table for process
+;Output: CF=NC -> Ok to make more handles
+;        CF=CY -> ax = Error code
+;Five cases to consider:
+;       1) Allocating a new block of memory, copying PSP JFT to it, inc hdl cnt
+;       2) Freeing a block and returning to the PSP JFT, dec hdl cnt x
+;       3) Extending an external block, inc hdl cnt. If realloc fails, goto 5)
+;       4) Reducing an external block, dec hdl cnt, no realloc.
+;   Special case below, cannot be enacted directly by caller.
+;       5) Freeing an external block for a bigger external block, inc hdl cnt
+    movzx ebx, bx   ;Zero extend to use ebx/rbx
+    mov rbp, qword [currentPSP] ;Get a ptr to the currentPSP
+    cmp bx, word [rbp + psp.jftSize]    ;Requesting more handles than we have?
+    ja short .moreHdlsReq
+    cmp bx, dfltJFTsize ;Requesting more than the default JFT amount?
+    ja short .reduceExternal
+    ;Here if 20 handles or less requested
+    cmp word [rbp + psp.jftSize], dfltJFTsize   ;If this is 20 or less, exit
+    ja short .reduceFree  ;Copying back to the JFT
+    je short .exitGood    ;Else we are already in the PSP
+    mov word [rbp + psp.jftSize], dfltJFTsize   ;Else, replace with dflt
+.exitGood:
+    jmp extGoodExit
+.exitBad:
     jmp extErrExit
+.reduceExternal:
+;We try to reallocate the block to be more appropriate for the new maxhdls.
+;If it fails, no big deal since we manually prevent the user from using more
+; files. If we then grow this block again, realloc will try to grow it again
+; and failing that, it will free it and then allocate a new block.
+    mov ecx, ebx    ;Starting from new count 
+    call .closeExtraHandles
+    mov rsi, qword [rbp + psp.externalJFTPtr]   ;Get xtrnal pointer
+    call .reallocBlock  ;Try realloc size to be more ok. If it fails, no biggie
+    mov word [rbp + psp.jftSize], bx    ;Store new handle cnt
+    jmp short .exitGood
+.reduceFree:
+;Entered once we know that we have an external block
+;Now we close all handles above JFT size
+    mov ebx, dfltJFTsize
+    mov ecx, ebx
+    push rcx    ;Save this count for block copy below
+    call .closeExtraHandles
+    pop rcx
+;All extra handles closed, now we copy the first 20 handles over
+    lea rdi, qword [rbp + psp.externalJFTPtr]   ;Get destination
+    mov rsi, qword [rdi]    ;Get source 
+    call .copyBlock
+    ;Now we can free the old block
+    mov r8, rsi
+    push rbx
+    call freeMemory
+    pop rbx
+    jc short .exitBad
+    mov word [rbp + psp.jftSize], bx   ;Now we have dflt number of hdls
+    xor eax, eax
+.exitGood2:
+    jmp short .exitGood
+.moreHdlsReq:
+;Need to check if we are external and reallocating. 
+;   If we are, can we realloc or do we need to free and save?
+    cmp word [rbp + psp.jftSize], dfltJFTsize   ;Are we in JFT?
+    jbe short .moreFromJFT
+    mov rsi, qword [rbp + psp.externalJFTPtr]   ;Get xtrnal pointer
+    call .reallocBlock
+    jnc short .exitGood
+    call .getBlock  ;rsi is preserved across the call
+    jc short .exitBad
+    mov r8, rsi ;Free the source block
+    push rbx
+    push rdi    ;Save the new pointer here
+    push rbp
+    call freeMemory
+    pop rbp
+    pop rdi
+    pop rbx
+    jnc short .freeOk ;Free'd the original block
+    push rax    ;Save error code on stack
+    mov r8, rdi ;Free the new block
+    call freeMemory
+    pop rax
+.exitBad2:
+    jmp short .exitBad
+.moreFromJFT:
+    lea rsi, qword [rbp + psp.jobFileTbl]   ;Get the ptr to the current JFT
+    call .getBlock
+    jc short .exitBad2
+.freeOk:
+    mov word [rbp + psp.jftSize], bx    ;Set the new count
+    mov qword [rbp + psp.externalJFTPtr], rdi
+    xor eax, eax
+    jmp short .exitGood2
+.reallocBlock:
+;rsi -> Source block to reallocate
+;ebx = Number of handles
+;rbp -> Current PSP
+;Output: CF=NC => rsi -> Source block reallocated in size
+;                 ebx = Number of handles
+;        CF=CY => Error, EAX has error code
+    push rsi ;Save external pointer on stack
+    push rbx    ;Save number of handles on stack
+    push rbp
+    add ebx, 11h    ;Round up into next paragraph
+    shr ebx, 4      ;Get number of paragraphs
+    mov r8, rsi
+    call reallocMemory
+    pop rbp
+    pop rbx
+    pop rsi ;Get external pointer back in rsi
+    return
+.getBlock:
+;rsi -> Source block for copy 
+;ebx = Number of new handles
+;Output: rsi and ebx as before
+;        rdi -> New block
+;IF CF=CY, bad exit
+    push rbx    ;bx has the number of handles we want
+    push rsi
+    push rbp
+    add ebx, 11h    ;Round up into next paragraph
+    shr ebx, 4      ;Get number of paragraphs
+    mov ecx, ebx
+    shl ecx, 4  ;Get bytes being allocated
+    push rcx    ;Save the actual number of bytes in the alloc
+    call allocateMemory ;Allocate memory 
+    pop rcx ;Get back actual number of bytes allocated
+    pop rbp ;Get the PSP pointer back
+    pop rsi ;Get the source pointer back
+    pop rbx ;Get the number of handles to allocate back
+    retc
+    mov rdi, rax    ;Move the ptr of the new block to rdi
+    push rdi
+    xor eax, eax
+    dec eax
+    rep stosb   ;Setup the new memory block with all -1's
+    pop rdi
+    mov ecx, ebx    ;Get the new number of handles to copy over
+    call .copyBlock ;Copy all the handles over
+    return
+.copyBlock:
+;Input: rsi -> Source block
+;       rdi -> Destination block
+;       ecx = Number of handles to copy
+    push rsi
+    push rdi
+    push rcx
+    rep movsb
+    pop rcx
+    pop rdi
+    pop rsi
+    return
+.closeExtraHandles:
+;Closes all handles past the new last value on frees
+;Input: ecx = Starting handle to close
+    push rbx
+    push rcx
+    push rbp
+    call closeFileHdl
+    pop rbp
+    pop rcx
+    pop rbx
+    inc ecx
+    cmp cx, word [rbp + psp.jftSize]
+    jne .closeExtraHandles
+    return
+
+commitFile:        ;ah = 68h, flushes buffers for handle to disk 
+    ;Input: bx = File to flush
+    call getSFTPtr  ;Get sft pointer in rdi
+    jc extErrExit
+    call setCurrentSFT  ;Set as current SFT to ensure it is committed
+    ;Now we check if the device is a char, disk or net file and commit
+    call commitMain
+    jc extErrExit   ;If an error occured, exit with error code in al
+.exitOk:
+    xor al, al
+    call getUserRegs
+    and byte [rsi + callerFrame], ~1    ;Clear CF
+    return
 
 ;-----------------------------------:
 ;       Main File IO Routines       :
@@ -2324,17 +2488,27 @@ getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
 getJFTPtr:    ;Int 4Fh AX=1220h
 ;Return a zero extended value in rdi for the SFT entry
 ;Input: bx = JFT handle (we zero extend)
-;Output: CF=NC => rdi = Points to an SFT ndx or -1 => free space
+;Output: CF=NC => rdi = Points to first SFT ndx or -1 => free space
 ;        CF=CY => al = Error code, Fail
     movzx ebx, bx   ;Ensure we zero extended
-    cmp bx, word [maxHndls] ;0-19 acceptable ONLY!
+    mov rdi, qword [currentPSP]
+    cmp bx, word [rdi + psp.jftSize] ;jftSize is the size of the JFT array
     jb .ok
     mov al, errBadHdl
     stc
     return
 .ok:
-    mov rdi, qword [currentPSP]
+    cmp word [rdi + psp.jftSize], dfltJFTsize   ;Are we in PSP JFT or external?
+    je .pspJftOk    ;If dfltJFTsize, its a good PSP JFT.
+    jb .pspJftBelow ;If < dfltJFTsize, in PSP and needs to be corrected
+    mov rdi, qword [rdi + psp.externalJFTPtr]   ;Get the ptr to the external JFT
+    lea rdi, qword [rdi + rbx]  ;Get pointer into JFT
+    jmp short .pspOkExit
+.pspJftBelow:
+    mov word [rdi + psp.jftSize], dfltJFTsize  ;Reset to dfltJFTsize if needed!
+.pspJftOk:
     lea rdi, qword [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
+.pspOkExit:
     clc
     return
 findFreeJFTEntry:

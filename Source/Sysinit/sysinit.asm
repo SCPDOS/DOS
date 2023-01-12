@@ -670,9 +670,8 @@ initialCDSWritten:
     stosq   ;16 bytes
     stosd   ;20 bytes
     pop rax ;Get 0 back
-    mov qword [rbx + psp.envPtr], rax    ;No environment
-    mov word [rbx + psp.xtraHdlSz], ax  ;No size
-    mov byte [rbx + psp.xtraHdlNum], -1 ;Unused
+    mov qword [rbx + psp.envPtr], rax   ;No environment
+    mov word [rbx + psp.jftSize], 20  ;PSP JFT array size
     mov rdx, rbx
     mov eax, 3542h  ;Get pointer for Int 42h in rbx
     int 41h

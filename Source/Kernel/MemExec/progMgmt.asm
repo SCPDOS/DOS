@@ -21,6 +21,14 @@ createPSP:         ;ah = 55h, creates a PSP for a program
 ;   Will be rounded up to next paragraph if not paragraph aligned.
 ;   Officially document that this MUST be paragraph aligned.
 ;rsi = alloc size for new psp block
+;
+;----------------!!!! HANDLE COPY CAVEAT !!!!----------------
+; Note, only the first 20 handles will be copied 
+; from wherever the JFT is into the PSP JFT of the new task. 
+; If any of these handles are non-inheritable or closed, then 
+; they will be copied as -1 (if closed) or set to -1 during 
+; the inheritence check.
+;----------------!!!! HANDLE COPY CAVEAT !!!!----------------
     mov byte [pspCopyFlg], -1   ;We are making a child process
     mov r8, qword [currentPSP]
     or esi, esi ;Zero upper dword of rsi
@@ -52,13 +60,18 @@ copyPSP:      ;ah = 26h
     mov qword [rdx + psp.parentPtr], r8 ;Replace the parent with the currnt
     ;Now reset the copied jobFileTable
     lea rdi, qword [rdx + psp.jobFileTbl]
-    movzx ecx, word [maxHndls]  ;Get the max handles in JFT
+    xor ecx, ecx
+    mov ecx, dfltJFTsize  ;Store dfltJFTsize free handles in new child PSP
+    mov word [rdx + psp.jftSize], cx ;Set the size of JFT in new PSP to dflt 20
     mov al, -1
-    rep stosb   ;Store maxHndls many -1's 
+    rep stosb   ;Store 20 many -1's indicating 20 free handles
     ;Here we now proceed to copy all inheritable hdls and nullify other hdls
-    lea rsi, qword [r8 + psp.jobFileTbl]    ;Source
-    lea rdi, qword [rdx + psp.jobFileTbl]
-    movzx ecx, word [maxHndls]  ;Get the max handles in JFT
+    ;lea rsi, qword [r8 + psp.jobFileTbl]    ;Source
+    xor ebx, ebx    ;Get the pointer to jft[0] of source JFT
+    call getJFTPtr  ;Get JFT pointer to parent process JFT in rdi
+    mov rsi, rdi    ;Store it in rsi
+    lea rdi, qword [rdx + psp.jobFileTbl]   ;Get the new processes' JFT ptr
+    movzx ecx, word [rdx + psp.jftSize]   ;Copy over first dfltJFTsize handles only
 .xfrJFT:
     jecxz .copy
     dec ecx
@@ -164,7 +177,6 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rdx, rdi    ;Save in rdx
     mov rbx, qword [rdi + psp.parentPtr]
     cmp rbx, rdi    ;Check if the application is it's own parent
-    ;rete            ;If it is, simply return (al has errorLevel)
     je .exit
 ; Step 3
     call vConRetDriver  ;Always reset the driver flag
@@ -179,9 +191,10 @@ terminateClean:    ;ah = 4Ch, EXIT
 .skipAbortNetClose:
     call qword [closeTaskShare] ;Close all shared files for this task
     call qword [unloadDLLHook]  ;Now free exported function for this task
-    add rdi, psp.jobFileTbl ;Move rdi to point to the start of the JFT
+    xor ebx, ebx    ;Cannot go wrong as all JFTs have a 0th entry!
+    call getJFTPtr  ;Point rdi to jft[0]
     mov rsi, rdi    ;Point rsi to jft too
-    movzx ecx, word [maxHndls] ;Number of entries in JFT
+    movzx ecx, word [rdi + psp.jftSize] ;Number of entries in current JFT
 .s4lp:
     lodsb   ;Inc rsi, get the SFT number in al
     cmp al, -1  ;End of open JFT entries?

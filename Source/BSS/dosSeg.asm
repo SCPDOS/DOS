@@ -64,7 +64,7 @@ sysVarsPtr:
     ;Furthermore, if register fails (due to memory or namespace constraints),
     ; it must return CF=CY.
 dllHooks:
-    registerDLL   resq 1    ;Entered with rbp = execFrame
+    registerDLL     resq 1  ;Entered with rbp = execFrame
     unloadDLLHook   resq 1  ;
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
