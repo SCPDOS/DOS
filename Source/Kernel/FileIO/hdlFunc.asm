@@ -643,84 +643,103 @@ setHandleCount:    ;ah = 67h
     movzx ebx, bx   ;Zero extend to use ebx/rbx
     mov rbp, qword [currentPSP] ;Get a ptr to the currentPSP
     cmp bx, word [rbp + psp.jftSize]    ;Requesting more handles than we have?
-    ja .moreHdlsReq
+    ja short .moreHdlsReq
     cmp bx, dfltJFTsize ;Requesting more than the default JFT amount?
-    ja .reduceExternal
-    ;Here if 20 handles or less requested and already in the PSP
+    ja short .reduceExternal
+    ;Here if 20 handles or less requested
     cmp word [rbp + psp.jftSize], dfltJFTsize   ;If this is 20 or less, exit
-    ja .reduceFree  ;Copying back to the JFT
-    je .exitGood    ;Just return if they are equal
+    ja short .reduceFree  ;Copying back to the JFT
+    je short .exitGood    ;Else we are already in the PSP
     mov word [rbp + psp.jftSize], dfltJFTsize   ;Else, replace with dflt
 .exitGood:
     jmp extGoodExit
+.exitBad:
+    jmp extErrExit
 .reduceExternal:
-;Here we simply reduce the number of handles in the JFT,
-; we don't do a reallocate. 
-    mov word [rbp + psp.jftSize], bx
+;We try to reallocate the block to be more appropriate for the new maxhdls.
+;If it fails, no big deal since we manually prevent the user from using more
+; files. If we then grow this block again, realloc will try to grow it again
+; and failing that, it will free it and then allocate a new block.
+    mov ecx, ebx    ;Starting from new count 
+    call .closeExtraHandles
+    mov rsi, qword [rbp + psp.externalJFTPtr]   ;Get xtrnal pointer
+    call .reallocBlock  ;Try realloc size to be more ok. If it fails, no biggie
+    mov word [rbp + psp.jftSize], bx    ;Store new handle cnt
     jmp short .exitGood
-.reduceFree:    ;Case 2
+.reduceFree:
 ;Entered once we know that we have an external block
-
-    ;Now we close all handles above JFT size
-    mov ecx, dfltJFTsize
-    push rcx    ;Save the defaultJFT size on the stack
-.closeHandles:
-    mov ebx, ecx
-    push rcx
-    push rbp
-    call closeFileHdl
-    pop rbp
-    pop rcx
-    inc ecx
-    cmp cx, word [rbp + psp.jftSize]
-    jne .closeHandles
+;Now we close all handles above JFT size
+    mov ebx, dfltJFTsize
+    mov ecx, ebx
+    push rcx    ;Save this count for block copy below
+    call .closeExtraHandles
     pop rcx
 ;All extra handles closed, now we copy the first 20 handles over
     lea rdi, qword [rbp + psp.externalJFTPtr]   ;Get destination
     mov rsi, qword [rdi]    ;Get source 
     call .copyBlock
-    mov word [rbp + psp.jftSize], dfltJFTsize   ;Now we have dflt number of hdls
     ;Now we can free the old block
     mov r8, rsi
+    push rbx
     call freeMemory
-    jc extErrExit
+    pop rbx
+    jc short .exitBad
+    mov word [rbp + psp.jftSize], bx   ;Now we have dflt number of hdls
     xor eax, eax
-    jmp extGoodExit
+.exitGood2:
+    jmp short .exitGood
 .moreHdlsReq:
 ;Need to check if we are external and reallocating. 
-;   If we are, do we have enough space or do we need to realloc?
+;   If we are, can we realloc or do we need to free and save?
     cmp word [rbp + psp.jftSize], dfltJFTsize   ;Are we in JFT?
-    jbe .moreFromJFT
-;Always will create a new block and free the old block.
-;Please do not do this too often because memory fragmentation will occur!!
-;Benefits of checking, gives at most an extra 15 handles which is not
-; worth checking for in my opinion as most users will probably be asking for
-; more than 100 handles when using such a program, which is 7 paragraphs
-; of memory.
+    jbe short .moreFromJFT
     mov rsi, qword [rbp + psp.externalJFTPtr]   ;Get xtrnal pointer
+    call .reallocBlock
+    jnc short .exitGood
     call .getBlock  ;rsi is preserved across the call
-    jc extErrExit
+    jc short .exitBad
     mov r8, rsi ;Free the source block
     push rbx
     push rdi    ;Save the new pointer here
+    push rbp
     call freeMemory
+    pop rbp
     pop rdi
     pop rbx
-    jnc .freeOk ;Free'd the original block
-    push rax
+    jnc short .freeOk ;Free'd the original block
+    push rax    ;Save error code on stack
     mov r8, rdi ;Free the new block
     call freeMemory
     pop rax
-    jmp extErrExit
+.exitBad2:
+    jmp short .exitBad
 .moreFromJFT:
     lea rsi, qword [rbp + psp.jobFileTbl]   ;Get the ptr to the current JFT
     call .getBlock
-    jc extErrExit
+    jc short .exitBad2
 .freeOk:
     mov word [rbp + psp.jftSize], bx    ;Set the new count
     mov qword [rbp + psp.externalJFTPtr], rdi
     xor eax, eax
-    jmp .exitGood
+    jmp short .exitGood2
+.reallocBlock:
+;rsi -> Source block to reallocate
+;ebx = Number of handles
+;rbp -> Current PSP
+;Output: CF=NC => rsi -> Source block reallocated in size
+;                 ebx = Number of handles
+;        CF=CY => Error, EAX has error code
+    push rsi ;Save external pointer on stack
+    push rbx    ;Save number of handles on stack
+    push rbp
+    add ebx, 11h    ;Round up into next paragraph
+    shr ebx, 4      ;Get number of paragraphs
+    mov r8, rsi
+    call reallocMemory
+    pop rbp
+    pop rbx
+    pop rsi ;Get external pointer back in rsi
+    return
 .getBlock:
 ;rsi -> Source block for copy 
 ;ebx = Number of new handles
@@ -736,7 +755,7 @@ setHandleCount:    ;ah = 67h
     shl ecx, 4  ;Get bytes being allocated
     push rcx    ;Save the actual number of bytes in the alloc
     call allocateMemory ;Allocate memory 
-    pop rcx ;Get back actual number allocated
+    pop rcx ;Get back actual number of bytes allocated
     pop rbp ;Get the PSP pointer back
     pop rsi ;Get the source pointer back
     pop rbx ;Get the number of handles to allocate back
@@ -761,6 +780,20 @@ setHandleCount:    ;ah = 67h
     pop rcx
     pop rdi
     pop rsi
+    return
+.closeExtraHandles:
+;Closes all handles past the new last value on frees
+;Input: ecx = Starting handle to close
+    push rbx
+    push rcx
+    push rbp
+    call closeFileHdl
+    pop rbp
+    pop rcx
+    pop rbx
+    inc ecx
+    cmp cx, word [rbp + psp.jftSize]
+    jne .closeExtraHandles
     return
 ;-----------------------------------:
 ;       Main File IO Routines       :
