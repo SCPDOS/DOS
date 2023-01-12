@@ -3,7 +3,7 @@
 ;       Static Data Variables       :
 ;-----------------------------------:
 dosMajor    db 00h      ;Version 0
-dosMinor    db 94      ;.94
+dosMinor    db 95      ;.95
 dosBIOSName db "SCPBIOS .SYS"
 dosKernName db "SCPDOS  .SYS"
 ;-----------------------------------:
@@ -39,7 +39,7 @@ ioRqCmdErrTbl:
 
 
 
-;Keyboard vCon static data taht can be edited and replaced by a user if they
+;Keyboard vCon static data that can be edited and replaced by a user if they
 ; wish to install their own custom logic.
 extKeyFunc  dq 0 ;The editing keys can be replaced by replacing this ptr
 extESC      db 00h  ;NULL char is our Escape char
@@ -125,8 +125,8 @@ errXlatTbl:
     db 5Ch, 04h, errBadHdl, errInvFnc, errShrFul, errLokVio ;Lock/Unlock File
     db 65h, 02h, errInvFnc, errFnf                      ;Get Ext. Count. Info
     db 66h, 02h, errInvFnc, errFnf                      ;Get/Set Global Codepage
-    db 68h, 01h, errBadHdl                              ;Commit File
     db 67h, 03h, errNhl, errNoMem, errInvFnc            ;Set Handle Count
+    db 68h, 01h, errBadHdl                              ;Commit File
     db -1   ;End Of Table marker
 
 
