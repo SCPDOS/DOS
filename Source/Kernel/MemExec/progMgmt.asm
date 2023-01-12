@@ -21,6 +21,14 @@ createPSP:         ;ah = 55h, creates a PSP for a program
 ;   Will be rounded up to next paragraph if not paragraph aligned.
 ;   Officially document that this MUST be paragraph aligned.
 ;rsi = alloc size for new psp block
+;
+;----------------!!!! HANDLE COPY CAVEAT !!!!----------------
+; Note, only the first 20 handles will be copied 
+; from wherever the JFT is into the PSP JFT of the new task. 
+; If any of these handles are non-inheritable or closed, then 
+; they will be copied as -1 (if closed) or set to -1 during 
+; the inheritence check.
+;----------------!!!! HANDLE COPY CAVEAT !!!!----------------
     mov byte [pspCopyFlg], -1   ;We are making a child process
     mov r8, qword [currentPSP]
     or esi, esi ;Zero upper dword of rsi

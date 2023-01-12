@@ -795,7 +795,7 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
     call getUserRegs
     and byte [rsi + callerFrame], ~1    ;Clear CF
     return
-    
+
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
@@ -2488,7 +2488,7 @@ getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
 getJFTPtr:    ;Int 4Fh AX=1220h
 ;Return a zero extended value in rdi for the SFT entry
 ;Input: bx = JFT handle (we zero extend)
-;Output: CF=NC => rdi = Points to an SFT ndx or -1 => free space
+;Output: CF=NC => rdi = Points to first SFT ndx or -1 => free space
 ;        CF=CY => al = Error code, Fail
     movzx ebx, bx   ;Ensure we zero extended
     mov rdi, qword [currentPSP]
