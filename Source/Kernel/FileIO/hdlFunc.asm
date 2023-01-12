@@ -567,20 +567,6 @@ createNewFile:     ;ah = 5Bh
     mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
     jmp openFileHdl.openCommon
 
-commitFile:        ;ah = 68h, flushes buffers for handle to disk 
-    ;Input: bx = File to flush
-    call getSFTPtr  ;Get sft pointer in rdi
-    jc extErrExit
-    call setCurrentSFT  ;Set as current SFT to ensure it is committed
-    ;Now we check if the device is a char, disk or net file and commit
-    call commitMain
-    jc extErrExit   ;If an error occured, exit with error code in al
-.exitOk:
-    xor al, al
-    call getUserRegs
-    and byte [rsi + callerFrame], ~1    ;Clear CF
-    return
-
 lockUnlockFile:    ;ah = 5Ch
 ;ah = 5Ch
 ;al = subfunction
@@ -795,6 +781,21 @@ setHandleCount:    ;ah = 67h
     cmp cx, word [rbp + psp.jftSize]
     jne .closeExtraHandles
     return
+
+commitFile:        ;ah = 68h, flushes buffers for handle to disk 
+    ;Input: bx = File to flush
+    call getSFTPtr  ;Get sft pointer in rdi
+    jc extErrExit
+    call setCurrentSFT  ;Set as current SFT to ensure it is committed
+    ;Now we check if the device is a char, disk or net file and commit
+    call commitMain
+    jc extErrExit   ;If an error occured, exit with error code in al
+.exitOk:
+    xor al, al
+    call getUserRegs
+    and byte [rsi + callerFrame], ~1    ;Clear CF
+    return
+    
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
