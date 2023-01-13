@@ -46,28 +46,9 @@ bios:
 #Simply copies MyDiskDOS to the USB image
 copy:
 	cp ./Images/MyDiskDOS.ima ./Images/MyDiskDOSMSD.ima
-#Build COMMAND.COM
-command:
-	nasm ./Utils/COMMAND/command.asm -o ./Utils/COMMAND/Binaries/COMMAND.COM -f bin -l ./Utils/COMMAND/Listings/command.lst -O0v
 
-format:
-	nasm ./Utils/FORMAT/format.asm -o ./Utils/FORMAT/Binaries/FORMAT.COM -f bin -l ./Utils/FORMAT/Listings/format.lst -O0v
-# Now stick the generic bootloader to the end of the file
-	cat ./Binaries/loader.bin >> ./Utils/FORMAT/Binaries/FORMAT.COM
-	cat ./Binaries/loader32.bin >> ./Utils/FORMAT/Binaries/FORMAT.COM
-
-sys:
-	nasm ./Utils/SYS/sys.asm -o ./Utils/SYS/Binaries/SYS.COM -f bin -l ./Utils/SYS/Listings/sys.lst -O0v
-
-fdisk:
-	nasm ./Utils/FDISK/fdisk.asm -o ./Utils/FDISK/Binaries/FDISK.COM -f bin -l ./Utils/FDISK/Listings/fdisk.lst -O0v
-	cat ./Binaries/mbr.bin >> ./Utils/FDISK/Binaries/FDISK.COM
-rdebug:
-	nasm ./Utils/RDEBUG/rdebug.asm -o ./Utils/RDEBUG/Binaries/RDEBUG.COM -f bin -l ./Utils/RDEBUG/Listings/rdebug.lst -O0v
 # Temp, to test Executable files
 tst:
 	nasm ./Utils/EXETEST/tst.asm -o ./Utils/EXETEST/Binaries/tst.obj -f win64 -l ./Utils/EXETEST/Listings/tst.lst -O0v
 #Link using VS Dev Console using good old MASM/VC LINK with 
 #link tst.obj /entry:main /machine:x64
-
-#New repo test
