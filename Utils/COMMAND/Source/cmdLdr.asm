@@ -96,7 +96,7 @@ cmdLdr:
     jne .noSwitches
     mov byte [permaSwitch], -1  ;Set the permanently resident switch on
 .noSwitches:
-    lea rbx, masterEnv  ;This is the base address to jettison
+    lea rbx, endOfAllocNoMaster  ;This is the base address to jettison
 .printInit:
 ;Finish by printing INIT string.
     push rbx
@@ -108,7 +108,13 @@ cmdLdr:
     mov ah, 09h
     int 41h ;Print init string
     pop rbx
-    mov qword [stackBottom], rsp    ;Use this to save where to reset rsp to
+    ;Now we add the stack to the alloc and paragraph align
+    add rbx, stackSize
+    add rbx, 11h    ;Go one para up
+    shr rbx, 4      ;Round to this new para boundary
+    shl rbx, 4
+    mov rsp, rbx    ;Move the stack pointer to this address
+    mov qword [stackTop], rbx   ;Save this value of the stack ptr in var
     jmp commandStart    ;We jump with rbx = base address to jettison
 ;Loader Data here
 initString: 

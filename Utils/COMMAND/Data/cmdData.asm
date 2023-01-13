@@ -1,7 +1,7 @@
 ;Static Data Area for COMMAND.COM    
 startLbl:   ;Start symbol, this is the entry point
     jmp cmdLdr
-stackBottom dq 0    ;Pointer to the top of the stack as allocated by DOS
+stackTop    dq 0    ;Pointer to the top of the stack as allocated by DOS
 returnCode  dw 0    ;Return Code from a child process
 pspPtr      dq 0    ;Internal pointer to the task PSP
 realParent  dq -1   ;Only the first Copy of COMMAND.COM sets itself here

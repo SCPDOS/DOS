@@ -3,7 +3,7 @@ commandStart:
     ;Ideally would have this jettisoned too but cannot guarantee
     ; that the jump to safety won't be gobbled up when multitasking
     neg r8  ;Convert r8 to -r8
-    lea rbx, qword [rbx + r8 + 11h]    ;Get # of bytes for COMMAND.COM
+    lea rbx, qword [rbx + r8]    ;Get # of bytes for COMMAND.COM and stack
     shr ebx, 4  ;Convert to paragraphs
     mov ah, 4Ah ;Realloc
     neg r8  ;Convert -r8 to r8
@@ -40,9 +40,7 @@ applicationReturn:  ;Return point from a task, all regs preserved
     jbe .handleClose    ;Keep looping whilst below or equal
 commandMain:
 ;Setup Commandline
-    cli
-    mov rsp, qword [stackBottom]    ;Reset internal stack pointer pos
-    sti
+    mov rsp, qword [stackTop]    ;Reset internal stack pointer pos
     cld ;Ensure stringops are done the right way
     mov byte [inBuffer], 80h    ;Reset the buffer length
 .inputMain:
