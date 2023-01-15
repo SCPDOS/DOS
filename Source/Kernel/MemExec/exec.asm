@@ -334,6 +334,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Section header read, now we load section into memory
     ;Move file ptr to data location
     mov edx, dword [sectHdr + imageSectionHdr.dPointerToRawData] ;Data File ptr
+    test edx, edx
+    jz .skipRawPtrMove
     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get the handle
     xor eax, eax    ;Seek from start of file
     push rcx
@@ -342,8 +344,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rdi
     pop rcx
 
+.skipRawPtrMove:
     push rcx
-    push rdi    ;Save current buffer offset
     xor edi, edi
     mov edi, dword [sectHdr + imageSectionHdr.dVirtualAddress]  ;Get where it should go in memory, offset from image base
     add rdi, qword [rbp - execFrame.pProgBase]  ;Turn into offset from progbase
@@ -363,33 +365,22 @@ loadExecChild:     ;ah = 4Bh, EXEC
     test dword [sectHdr + imageSectionHdr.dCharacteristics], imgScnCntBSS | imgScnCntCode | imgScnCntData
     jnz .badFmtErr  ;If any of these bits set, error out
     ;Else, just skip this section, goto next section
-    pop rdi
     pop rcx
     jmp short .gotoNextSection
 .okToLoad:
-    mov ecx, dword [sectHdr + imageSectionHdr.dSizeOfRawData]   ;Get # of bytes
+    mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]   ;Get # of bytes to read
     mov rdx, rdi    ;Get ptr to buffer in rdx
+    push rdi
     call .readDataFromHdl
     pop rdi
     pop rcx
     jc .badFmtErr
-    test eax, eax
-    jz .badFmtErr
-    cmp eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
+    ;Don't check for a zero section read as empty sections may be present!
+    cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
     jne .badFmtErr
     ;Data read ok, now fill in any zeros needed
-    mov eax, dword [sectHdr + imageSectionHdr.dSizeOfRawData]
     add rdi, rax    ;Move rdi forwards by that amount at least
-    cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
-    jae .skipInnerPadding
-    push rcx
-    mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]
-    sub ecx, eax    ;Get number of bytes to pad with in ecx
-    ;rdi points to pad space
-    xor eax, eax
-    rep stosb   ;Pad that many zeros
-    pop rcx
-.skipInnerPadding:
+
     push rcx
     ;Here do section padding
     mov rax, rdi    ;Get the current address
@@ -454,17 +445,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp eax, ecx
     jne .badFmtErr
     ;Now we have the offset in memory if the file was loaded at imageBase
-    ;cmp byte [rbp - execFrame.bSubFunc], execOverlay    ;If overlay, skip this
-    ;jz .exeComplete
     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
     test esi, esi   ;If there are no relocations, skip this...
     jz .exeComplete   ;... including if overlay
     add rsi, qword [rbp - execFrame.pProgBase]
     ;Now rsi points to where in memory the relocation data table is
-    ;Now compute the relocation factor 
-    mov rax, qword [rbp - execFrame.pProgBase]
-    sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
-    ;The value in rax gives how much to subtract by
+    ;Now compute the relocation factor =
+    ;   Difference from the load address and prefered
+    xor eax, eax
+    mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint] 
+    sub rax, qword [rbp - execFrame.pProgBase]  
     cmp byte [rbp - execFrame.bSubFunc], execOverlay
     jne .notOverlayReloc
     mov rbx, qword [rbp - execFrame.pParam]
@@ -484,15 +474,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov eax, dword [rsi + baseRelocBlock.pageRVA]   ;Get the page rva
     mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
     add rdi, rax    ;Add this page offset to rdi to goto correct page for reloc
-    mov ecx, dword [rsi + baseRelocBlock.size]  ;Get number of bytes
-    shr ecx, 1  ;Divide by 2 to get number of words = # of relocs to do
-    jecxz .blockDone
+    mov ecx, dword [rsi + baseRelocBlock.size]  ;Get number of bytes in block
+    jecxz .blockDone    
+    sub ecx, 8
+    add rsi, 8  ;Go to the start of the directory data
+    shr ecx, 1  ;Get number of directories = # of relocs to do
 .blockNotDone:
     lodsw   ;Get the next page offset word
     and eax, 00000FFFh  ;Save bottom 12 bits
-    add rdi, rax    ;Add this offset to rdi, the pointer to program image
-    ;rdi points to qword to rebase
-    add qword [rdi], rbx    ;Relocation factor was saved in rbx
+    ;rdi points to base, rax give offset into 4Kb page
+    add qword [rdi + rax], rbx    ;Relocation factor was saved in rbx
     dec ecx
     jnz .blockNotDone
 .blockDone:
