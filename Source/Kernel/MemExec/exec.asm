@@ -370,7 +370,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .okToLoad:
     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]   ;Get # of bytes to read
     mov rdx, rdi    ;Get ptr to buffer in rdx
-    push rdi
+    push rdi    ;Save section in memory locally
     call .readDataFromHdl
     pop rdi
     pop rcx
@@ -389,7 +389,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     and rax, rcx    ;Compute ptr modulo mask
     inc ecx
     sub rcx, rax
-    ;mov rcx, rax    ;Thats the number of bytes to pad by
     xor eax, eax
     rep stosb
     pop rcx
