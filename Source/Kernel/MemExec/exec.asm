@@ -451,9 +451,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Now rsi points to where in memory the relocation data table is
     ;Now compute the relocation factor =
     ;   Difference from the load address and prefered
-    xor eax, eax
-    mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint] 
-    sub rax, qword [rbp - execFrame.pProgBase]  
+    mov rax, qword [rbp - execFrame.pProgBase]
+    sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase] 
     cmp byte [rbp - execFrame.bSubFunc], execOverlay
     jne .notOverlayReloc
     mov rbx, qword [rbp - execFrame.pParam]
