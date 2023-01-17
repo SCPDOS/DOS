@@ -2248,19 +2248,28 @@ writeDiskFile:
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rdi, rbx    ;Shift rdi by that amount into the sector
     ;Now we read the smallest of the following from the sector buffer:
-    ; 1) Sector size, 2) Bytes left to read from Request
+    ; 1) Sector size, 2) Bytes left to read from Request, 
+    ; 3) Number of bytes left free in the sector
+    xor eax, eax
     movzx ebx, word [rbp + dpb.wBytesPerSector]
+    mov eax, ebx
+    sub ax, word [currByteS]   ;Get # of bytes in sector we are in
     mov ecx, dword [tfrCntr]
+
     cmp ecx, ebx    ;If tfrCntr - wBytesPerSector < 0
     cmova ecx, ebx
+    cmp ecx, eax    ;If small - #bytesleft < 0 
+    cmova ecx, eax
+
     push rsi
     mov rsi, qword [currentDTA]
     push rcx
     rep movsb
     pop rcx
+
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
-    mov qword [currentDTA], rdi ;rdi has been shifted by ecx on entry amount
+    mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
     pop rsi
     call markBufferDirty
     call writeThroughBuffers ;Write thru the disk buffers for this sector
