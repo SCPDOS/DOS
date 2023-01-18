@@ -2266,19 +2266,20 @@ writeDiskFile:
     push rcx
     rep movsb
     pop rcx
+    call markBufferDirty   ;Preserves all CPU state 
 
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
 
     mov rsi, qword [currBuff]    ;Get current disk buffer
-    mov rsi, qword [rsi + bufferHdr.dataarea]   ;Shift the ptr to the first data byte
+    lea rsi, qword [rsi + bufferHdr.dataarea]   ;Shift the ptr to the first data byte
     movzx ebx, word [rbp + dpb.wBytesPerSector] 
     add rsi, rbx    ;Point rsi to the end of the disk buffer
     cmp rdi, rsi    ;If current pos - end < 0, jump
     pop rsi
-    call markBufferDirty    ;Preserves flags!
     jb short .skipWritethrough
+    breakpoint
     call writeThroughBuffer ;Write thru this disk buffer now it is full
     jc .exitPrepHardErr
 .skipWritethrough:
