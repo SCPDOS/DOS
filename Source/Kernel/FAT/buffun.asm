@@ -186,7 +186,22 @@ freeBuffersForDPB:  ;External Linkage (Before Get BPB in medchk)
     pop rbx
     return
 
-writeThroughBuffers: ;External linkage
+;******* NEW BUFFER HANDLING *******
+writeThroughBuffer: ;External linkage
+; Flushes the current disk buffer to disk.
+; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
+;          CF=CY => Buffer failed to flush, marked as dirty and return 
+    push rdi
+    mov rdi, qword [currBuff]
+    call flushBuffer
+    jc short .exit
+    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
+.exit:
+    pop rdi
+    return
+;******* NEW BUFFER HANDLING *******
+
+writeThroughBuffers:    ;External linkage
 ; Flushes and resets the dirty bit for all dirty bufs for working drive
 ; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
 ;          CF=CY => Buffer failed to flush, marked as dirty and return

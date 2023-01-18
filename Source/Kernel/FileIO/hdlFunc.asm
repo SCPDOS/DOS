@@ -1949,7 +1949,7 @@ readDiskFile:
     call checkBreak
     pop rax
 .mainReadNoBreak:
-    call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
+    call getBufForData  ;Get bufHdr ptr in rbx and currBuff var for sector in rax
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
@@ -2242,7 +2242,7 @@ writeDiskFile:
     call checkBreak
     pop rax
 .mainWriteNoBreak:
-    call getBufForData  ;Get bufHdr ptr in rbx and currBuf var for sector in rax
+    call getBufForData  ;Get bufHdr ptr in rbx and currBuff var for sector in rax
     jc .badExit
     lea rdi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rdi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
@@ -2270,10 +2270,18 @@ writeDiskFile:
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
+
+    mov rsi, qword [currBuff]    ;Get current disk buffer
+    mov rsi, qword [rsi + bufferHdr.dataarea]   ;Shift the ptr to the first data byte
+    movzx ebx, word [rbp + dpb.wBytesPerSector] 
+    add rsi, rbx    ;Point rsi to the end of the disk buffer
+    cmp rdi, rsi    ;If current pos - end < 0, jump
     pop rsi
-    call markBufferDirty
-    call writeThroughBuffers ;Write thru the disk buffers for this sector
+    call markBufferDirty    ;Preserves flags!
+    jb short .skipWritethrough
+    call writeThroughBuffer ;Write thru this disk buffer now it is full
     jc .exitPrepHardErr
+.skipWritethrough:
     mov eax, dword [tfrLen] ;Get total length
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
