@@ -2279,7 +2279,6 @@ writeDiskFile:
     cmp rdi, rsi    ;If current pos - end < 0, jump
     pop rsi
     jb short .skipWritethrough
-    breakpoint
     call writeThroughBuffer ;Write thru this disk buffer now it is full
     jc .exitPrepHardErr
 .skipWritethrough:
