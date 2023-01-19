@@ -497,7 +497,7 @@ createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
     mov ecx, 64-13  ;First null must be at furthest, this many chars from rdx
     xor eax, eax
     mov rdi, rdx
-    rep scasb
+    repne scasb
     test ecx, ecx
     jnz .nullFnd
     ;Bad path
