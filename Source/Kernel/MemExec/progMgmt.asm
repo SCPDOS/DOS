@@ -170,7 +170,6 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov eax, 1122h  ;Net redir, Process Termination Hook
     mov r8, qword [currentPSP]  ;Use r8 instead of DS
     int 4Fh
-
 ; Step 2
 .step1:
     mov rdi, qword [currentPSP] ;Get the current psp
@@ -191,31 +190,19 @@ terminateClean:    ;ah = 4Ch, EXIT
 .skipAbortNetClose:
     call qword [closeTaskShare] ;Close all shared files for this task
     call qword [unloadDLLHook]  ;Now free exported function for this task
-    xor ebx, ebx    ;Cannot go wrong as all JFTs have a 0th entry!
-    call getJFTPtr  ;Point rdi to jft[0]
-    mov rsi, rdi    ;Point rsi to jft too
+
+    mov rdi, qword [currentPSP]
     movzx ecx, word [rdi + psp.jftSize] ;Number of entries in current JFT
+    xor ebx, ebx    ;Start from handle 0
 .s4lp:
-    lodsb   ;Inc rsi, get the SFT number in al
-    cmp al, -1  ;End of open JFT entries?
-    je .step5
-    movzx ebx, al   ;Move the file handle number into ebx
-    ;Replace with a call to close the handle eventually
-    push rdi
-    call derefSFTPtr    ;Ret in rdi the SFT pointer
-    jc .badHdl  ;If a bad handle, skip the decrementing of the handle count
-    push qword [currentSFT]
-    call setCurrentSFT  ;Set rdi to currentSFT
-    call closeMain  ;Close all files opened by this program. Decrement ref ONLY
-    ;closeMain also flushes all sectors associated to the file
-    ;Ignore errors, simply keep closing files
-    pop qword [currentSFT]
-.badHdl:
-    pop rdi
-    mov al, -1
-    stosb   ;Store a -1 in it's place (not strictly necessary)
-    dec ecx ;Zoom Zoom \mu-op!
-    jnz .s4lp   ;Keep looping for all entries in the JFT 
+    push rbx
+    push rcx
+    call closeFileHdl
+    pop rcx
+    pop rbx
+    inc ebx ;Goto next handle to close
+    cmp ebx, ecx
+    jne .s4lp   ;Keep looping for all entries in the JFT 
 ;Step 5
 .step5:
     mov rbx, qword [currentPSP] ;Get back the current psp
