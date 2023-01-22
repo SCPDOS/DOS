@@ -1955,15 +1955,18 @@ readDiskFile:
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rsi, rbx    ;Shift rsi by that amount into the sector
     ;Now we read the smallest of the following from the sector buffer:
-    ; 1) Sector size, 2) Bytes left in File, 3) Bytes left to read from Request
+    ; 1) Sector size, 2) Bytes left in File, 
+    ; 3) Bytes left to read from Request, 4) Bytes left in sector
+
     mov ecx, dword [rdi + sft.dFileSize]
-    sub ecx, dword [rdi + sft.dCurntOff] ;Get bytes left to read in file in ecx
+    sub ecx, dword [currByteF]  ;Get bytes left to read in file in ecx
     mov ebx, dword [tfrCntr]
     cmp ecx, ebx    ;Is bytes left to read in file > bytes user has left?
     cmova ecx, ebx  ;Move ebx into ecx if so
     movzx ebx, word [rbp + dpb.wBytesPerSector]  ;Compare to sector size
     cmp ecx, ebx  ;ecx > sector size?
     cmova ecx, ebx  ;Move it into ecx if so
+    
     push rdi
     mov rdi, qword [currentDTA]
     push rcx
