@@ -160,6 +160,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     xchg ah, byte [exitType]    ;Set type to zero
     test byte [ctrlCExit], -1   ;Is ^C flag set?
     jz .storeELvl   ;Jump if we are here due to normal exit
+    xchg ah, byte [ctrlCExit]   ;Zero the flag
     mov byte [exitType], 1   ;Set the return type to 1 => Ctrl-C exit
 .altEP: ;EP for Abort and TSR. exitType must be set beforehand
     mov ah, byte [exitType] ;Get the exitType
