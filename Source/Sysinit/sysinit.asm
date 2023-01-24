@@ -567,13 +567,19 @@ storageInits:
 ;Remember to now place a -1 in the qNextDPBPtr field 
     mov qword [rbp + dpb.qNextDPBPtr], -1
     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
-
+;----------------------------------------:
+;           End of MSD driver init.
+;----------------------------------------:
+;
 ;----------------------------------------:
 ;END OF IMPLEMENTERS SYSINIT PORTION ^^^ :
-;========================================:
+;      So called the OEM BIOS INIT       :
+;----------------------------------------:
+;
+;----------------------------------------:
 ;START OF COMMON DOS SYSINIT PORTION VVV :
 ;----------------------------------------:
-
+;
 ;------------------------------------------------;
 ;          Find largest sector size              ;
 ;------------------------------------------------;
