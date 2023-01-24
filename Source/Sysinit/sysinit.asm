@@ -579,9 +579,8 @@ storageInits:
 ;------------------------------------------------;
 sectorSizeSearch:
 ;Done by reading DPB's for each drive
-    ;lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
     xor eax, eax
-    mov rbx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
+    mov rdx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
     ;Go thru each block individually
 .findLargest:
     cmp ax, word [rdx + dpb.wBytesPerSector]    ;Is current bigger than max?
