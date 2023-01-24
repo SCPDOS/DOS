@@ -567,23 +567,28 @@ storageInits:
 ;Remember to now place a -1 in the qNextDPBPtr field 
     mov qword [rbp + dpb.qNextDPBPtr], -1
     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
+
+;----------------------------------------:
+;END OF IMPLEMENTERS SYSINIT PORTION ^^^ :
+;========================================:
+;START OF COMMON DOS SYSINIT PORTION VVV :
+;----------------------------------------:
+
 ;------------------------------------------------;
 ;          Find largest sector size              ;
 ;------------------------------------------------;
 sectorSizeSearch:
-;Done by reading BPB's for each drive
-    lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
-    
-    ;Go thru each block individually
+;Done by reading DPB's for each drive
+    ;lea rbx, qword [rbp + msdDriver.msdBPBTbl] ;Get first pointer to BPB
     xor eax, eax
-    mov rdx, qword [rbx]    ;Get bpb pointer into rdx
+    mov rbx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
+    ;Go thru each block individually
 .findLargest:
-    cmp ax, word [rdx + bpb.bytsPerSec]
-    cmovb ax, word [rdx + bpb.bytsPerSec] ;Only replace ax if the word is above ax
-    add rbx, 8 ;Goto next entry
-    mov rdx, qword [rbx]    ;Get next bpb pointer into rdx
-    test rdx, rdx   ;Are we at the end?
-    jnz .findLargest    ;Nope, keep checking!
+    cmp ax, word [rdx + dpb.wBytesPerSector]    ;Is current bigger than max?
+    cmovb ax, word [rdx + dpb.wBytesPerSector]  ;Move if so
+    mov rdx, qword [rdx + dpb.qNextDPBPtr]  ;Goto next DPB
+    cmp rdx, -1 ;We at the end?
+    jne short .findLargest  ;If not, keep checking
     mov word fs:[maxBytesSec], ax
 ;------------------------------------------------;
 ;                CDS array inits                 ;
@@ -683,6 +688,7 @@ initialCDSWritten:
     int 41h
     mov qword [rdx + psp.oldInt44h], rbx
 
+    xor eax, eax
     mov ecx, (psp_size - psp.fcb1)/4    ;Clear the dta and fcb space
     lea rdi, qword [rdx + psp.fcb1] ;Point to fcb1
     rep stosd   ;Efficiently Clear DTA and FCBs
