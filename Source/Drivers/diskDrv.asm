@@ -436,22 +436,23 @@ msdDriver:
     return
 
 .msdCheckDeviceType:
-;If the device numbers dont match but the bpb numbers do, print the message
-;!!!WARNING!!! THIS USES THE CONSOLE BIOS!!! VIOLATES HARDWARE ABSTRACTION!!!!
+;Checks a new device is being transacted on. Sets the internal var if so.
+;If additionally in single drive mode, and a different drive (either A or B)
+; is being transacted on, prompts the user. Else, 
 ;Returns ZF=NZ if media number changed!
+;!!!WARNING!!! THIS USES THE CONSOLE BIOS!!! VIOLATES HARDWARE ABSTRACTION!!!!
     movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the now unit number
     cmp al, byte [.msdCurDev]    ;Compare against the last transacted device
     rete    ;Exit if equal (ZF=ZE)
-;If not equal, check they use different BPB's before continuing
-    push rax
-    movzx eax, byte [.msdCurDev]  ;Compare current BPB ptr to previous
-    lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
-    shl eax, 3
-    mov rdx, qword [rsi + rax]  ;Get the bpbptr of this device too
-    pop rax
-    cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
-    jne .msdCDTexitOk ;Exit by setting the new unit number, keep ZF=ZE
-    ;Here, device numbers are neq but bpb's are eq. Thus print message
+;If not equal, check new drive is not A or B
+    cmp al, 2
+    jae .msdCDTexitOk ;Exit by setting the new unit number, keep ZF=ZE
+    ;Check if we are in single drive mode or not
+    test byte [.msdSingleFlag], -1
+    jz .msdCDTexitOk    ;If not in single drive mode, exit ok
+    cmp al, byte [.msdSingleDrv]    ;Is this single drive the same as the old?
+    je .msdCDTexitOk    ;Exit if so
+    mov byte [.msdSingleDrv], al    ;Else, replace this number
     add al, "A" ;Convert to a letter
     mov byte [.msdStrikeLetter], al
     lea rsi, .msdStrike
@@ -480,6 +481,8 @@ msdDriver:
 ;LASTDRIVE default is 5
 ;This driver can only handle a maximum of 5 drives. Any more and 
 ; more MSD drivers must be loaded from CONFIG.SYS
+.msdSingleFlag  db 0    ;Single removable drive only
+.msdSingleDrv   db 0    ;Keeps track of the last single drive used. 
 .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
 ; Except when single drive in use, in which case Drive A and B refer to device 0
 .msdBIOSmap  db 0, 1, -1, -1, -1 ;Translates DOS drive number to BIOS number

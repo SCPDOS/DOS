@@ -1877,6 +1877,8 @@ diskInit:
     lea rbx, qword [rbp + msdDriver.msdBPBTbl] 
     mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
     mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
+    mov byte [rbp + msdDriver.msdSingleFlag], -1   ;Set this mode on
+    mov byte [rbp + msdDriver.msdSingleDrv], 0 ;Start on drive A
     inc byte fs:[numPhysVol] ;Gotta register the phantom drive!
     ret
 .initReadSector:
