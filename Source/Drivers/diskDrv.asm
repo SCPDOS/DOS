@@ -450,7 +450,7 @@ msdDriver:
     mov rdx, qword [rsi + rax]  ;Get the bpbptr of this device too
     pop rax
     cmp rbp, rdx    ;Is the bpb of the transacting device the same as before?
-    jne .msdCDTexit ;Exit by setting the new unit number
+    jne .msdCDTexitOk ;Exit by setting the new unit number, keep ZF=ZE
     ;Here, device numbers are neq but bpb's are eq. Thus print message
     add al, "A" ;Convert to a letter
     mov byte [.msdStrikeLetter], al

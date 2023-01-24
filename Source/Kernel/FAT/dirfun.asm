@@ -362,8 +362,6 @@ getCurrentDIR:     ;ah = 47h
     jne .writePathInBuffer
     inc eax
     mov dword [rsi + cds.dStartCluster], eax    ;Set to root dir
-    cmp word [rsi + cds.wFlags], 0  ;Is this a newly deactivated drive?
-    je .badExit ;TEMP, ERROR IF SO (WAS A SUBST DRIVE)
     ;Here we now add a terminating null at wBackslashOffset
     movzx eax, word [rsi + cds.wBackslashOffset]
     mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash

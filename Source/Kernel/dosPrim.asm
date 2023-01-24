@@ -198,10 +198,8 @@ getDiskDPB:
 ;Subst, Redir and Join are skipped as the
     test word [rdi + cds.wFlags], cdsRedirDrive | cdsSubstDrive | cdsJoinDrive
     jnz .next
-    cmp qword [rdi + cds.qDPBPtr], rsi
-    jne .next
-    test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
-    jz .next    ;IF yes, skip it
+    cmp qword [rdi + cds.qDPBPtr], rsi  ;If the dpb ptr matches, reset
+    jne .next   ;Else, goto next
     mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
 .next:
     add rdi, cds_size
