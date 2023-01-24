@@ -195,18 +195,14 @@ getDiskDPB:
     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
 .checkCDS:
-    test word [rdi + cds.wFlags], cdsRedirDrive
+;Subst, Redir and Join are skipped as the
+    test word [rdi + cds.wFlags], cdsRedirDrive | cdsSubstDrive | cdsJoinDrive
     jnz .next
     cmp qword [rdi + cds.qDPBPtr], rsi
     jne .next
     test qword [rdi + cds.qDPBPtr], rax ;Is this DPB entry empty?
     jz .next    ;IF yes, skip it
     mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
-    ;Subst drives should just fail if the subdir doesnt exist.
-    ;TEMP TEMP: subst will become deactivated and their StartingClust=-1
-    test word [rdi + cds.wFlags], cdsSubstDrive
-    jz .next    ;If bit not set, skip this next bit
-    mov word [rdi + cds.wFlags], 0  ;Clear the flags rendering this drv dead
 .next:
     add rdi, cds_size
     dec ecx

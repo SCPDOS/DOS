@@ -464,7 +464,8 @@ msdDriver:
     xor eax, eax
     int 36h ;Blocking wait at the keyboard for a keystroke
 .msdCDTexit:
-    call .msdCDTexitOk  ;Set unit number and clear ZF
+    call .msdCDTexitOk  ;Set unit number and Set ZF
+    inc eax ;Clear ZF
     ret
 .msdCDTexitOk:
     call .msdInternalSetUnitNumber  ;Set unit number internally
