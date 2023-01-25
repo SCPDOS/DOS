@@ -109,6 +109,6 @@ MUST, MAY and SHOULD can be defined as usual.
 	You may reallocate your allocation, and if you do not wish to keep the assigned block in memory, please free the 
 	block before you return to DOS.
 	You MUST NOT use the following DOS functions to terminate excution: Int 40h, Int 41h/AH=00h/31h/44h/4Ch, Int 47h.
-	To return to DOS, simply return from the called routine.	
+	To return to DOS, simply return from the called routine. On return, ALL REGISTERS MUST BE PRESERVED!
 	If you wish to HALT DOS's init for some reason, please return with the carry flag set, i.e. CF=CY.
 
