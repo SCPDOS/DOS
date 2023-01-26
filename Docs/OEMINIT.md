@@ -28,7 +28,7 @@ MUST, MAY and SHOULD can be defined as usual.
 	load location.
 
 	When jumping to SYSINT from OEMINIT, you MUST pass the base address of the DOS data area 
-	in the variable QWORD [INITBASE]. You MUAT also pass the end address of the DOS allocation 
+	in the variable QWORD [INITBASE]. You MUST also pass the end address of the DOS allocation 
 	in the variable QWORD [INITEND]. This value MUST point to the first byte of the a memory 
 	control block's memory arena. This memory control block MAY be the anchor MCB.
 
