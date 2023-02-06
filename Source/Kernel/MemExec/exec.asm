@@ -16,7 +16,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ; If not EXE, we read the filename extension. If it is RFS, we assign maximum 
 ; memory. If it is COM, we assign only 64Kb to the application.
 
-;If AL = 0 :
+;If AL = 0 and 4 (if DOSMGR present):
 ;            Load Child Program and Xfr control to it
 ; rbx ------>   |-------------------------------|
 ;               |   Ptr to Environment Block    |
@@ -92,8 +92,12 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov qword [rbp - execFrame.pPSPBase], rax
     mov qword [rbp - execFrame.pProgEP], rax
 
-
-    cmp al, execOverlay
+    mov ah, execOverlay
+    test byte [dosMgrPresent], -1 ;If bits set, change max to execBkgrnd
+    jz short .noMulti
+    mov ah, execBkgrnd
+.noMulti:
+    cmp al, ah
     jbe .validSubfunction
 .badSubFunction:
     mov eax, errInvFnc
@@ -589,13 +593,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     call createPSP
     pop rbp
     pop rdx
-    ;Now set Current PSP to our PSP and set current DTA to command line
-    mov qword [currentPSP], rdx
-    call dosCrit1Enter
-    call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
 
-    lea rdi, qword [rdx + psp.dta] ;Point to default dta...
-    mov qword [currentDTA], rdi ;and set it!
+;ORIGINAL PSP SETTING POSITION
+    ;Now set Current PSP to our PSP and set current DTA to command line
+    ;mov qword [currentPSP], rdx
+    ;call dosCrit1Enter
+    ;call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
+
+    ;lea rdi, qword [rdx + psp.dta] ;Point to default dta...
+    ;mov qword [currentDTA], rdi ;and set it!
+;ORIGINAL PSP SETTING POSITION
     ;Now We need to copy over the command line and fcbs to the PSP
     ; and set FS to point to the PSP
     mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
@@ -653,8 +660,35 @@ loadExecChild:     ;ah = 4Bh, EXEC
     and rsi, rax    ;To align downwards
     ;We align stack to qword. x64 ABI requires paragraph alignment.
     ;That is the job of the runtime to handle.
+;Registers carrying data at this point:
+;bx = FCB drive statuses
+;rsi = Stack Base
+;rbp = execFrame
+    cmp byte [rbp - execFrame.bSubFunc], execBkgrnd
+    jne short .noBg
+    ;Get termination mode in ecx before xfring control to dosmgr
+    push rsi
+    call getUserRegs
+    mov rcx, qword [rsi + callerFrame.rcx]  ;Get termination mode
+    pop rsi
+.noBg:
+    call qword [launchTask]
+    jc short .cleanAndFail
+;Finally set Current PSP to our PSP and set current DTA to command line
+    push rdx
+    mov rdx, qword [rbp - execFrame.pPSPBase]
+    mov qword [currentPSP], rdx
+    call dosCrit1Enter
+    call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
+    lea rdx, qword [rdx + psp.dta] ;Point to default dta...
+    mov qword [currentDTA], rdx ;and set it!
+    pop rdx
+
+;Final step: Transfer control
     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
     je .xfrProgram
+    cmp byte [rbp - execFrame.bSubFunc], execBkgrnd
+    je .overlayExit ;Skip the below for background tasks
     mov rax, qword [rbp - execFrame.pProgEP]
     mov rdx, qword [rbp - execFrame.pParam]
     mov qword [rdx + loadProg.initRIP], rax

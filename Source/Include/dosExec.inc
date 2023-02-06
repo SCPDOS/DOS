@@ -7,6 +7,7 @@ execLoadGo  equ 0
 execLoad    equ 1
 execInvld   equ 2
 execOverlay equ 3
+execBkgrnd  equ 4
 
 struc execFrame
     .oldRBP     resq 1  

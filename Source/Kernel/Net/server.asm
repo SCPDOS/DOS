@@ -122,7 +122,7 @@ getSDAData:                 ;AX=5D06h
 ;   rdx = size in bytes of area which must always be swapped
     lea rdi, sda
     mov rcx, sdaLen
-    mov rdx, sdaMSLen
+    mov rdx, sdaLen - sdaDOSLen ;Get the difference
     call getUserRegs
     mov qword [rsi + callerFrame.rsi], rdi
     mov qword [rsi + callerFrame.rdx], rdx

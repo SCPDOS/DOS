@@ -777,13 +777,21 @@ defaultFileHandles:
     mov dword [rbx + sft.wNumHandles], eax
     add rbx, sft_size   ;Goto SFT 5
     mov dword [rbx + sft.wNumHandles], eax
+
+;------------------------------------------------;
+;              Setup DOSMGR Hooks                ;
+;------------------------------------------------;   
+    lea rdi, qword [rbp + dosMgrHooks + 1]  ;Skip the present flag
+    lea rax, qword [rbp + goodDfltShareHook]    ;Return CF = NC
+    stosq   ;Store ptr for LaunchTask
+    stosq   ;Store ptr for TerminateTask
 ;------------------------------------------------;
 ;              Setup DLLMGR Hooks                ;
 ;------------------------------------------------;   
     lea rdi, qword [rbp + dllHooks]
-    lea rax, qword [rbp + goodDfltShareHook]    ;Return CF = CY
-    stosq
-    stosq
+    lea rax, qword [rbp + goodDfltShareHook]    ;Return CF = NC
+    stosq   ;Store ptr for RegisterDLL
+    stosq   ;Store ptr for UnloadDLLHook
 ;------------------------------------------------;
 ;               Setup Share Hooks                ;
 ;------------------------------------------------;

@@ -239,6 +239,8 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;Step 6
 .step6:
 
+    call qword [terminateTask]  ;Registers task terminating, no retval
+
     mov rax, qword [rbx + psp.parentPtr]    ;Get the parent PSP pointer
     mov qword [currentPSP], rax ;and set it to be the current PSP
 ;Step 7

@@ -11,7 +11,7 @@ dosDataArea:
     hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
     longMem     resq 1    ;Num bytes in long memory arena
 ;Above is the system stats
-;Below is the DOS vars, DO NOT TOUCH FROM SHARE TO NUMJOINDRV
+;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
 ;Both below variables can be edited with Int 41h AX=440Bh
     validNetNam resw 1    ;Flag if machinename valid, deflt no=0
     shareCount  resw 1    ;Share Retry Count, number of repeats before fail.
@@ -40,6 +40,52 @@ sysVarsPtr:
     numJoinDrv  resb 1    ;Number of Joined Drives
 ;Additional internal variables
     numFiles    resb 1    ;FILES=5 default, max 255
+    ;DOSMGR hook functions and variable here
+    ;All DOSMGR hooks are 8 byte pointers and have been introduced to allow
+    ; an external application to install itself as a multitasker into the
+    ; DOS kernel. DOS's behaviour changes accordingly when a multitasker 
+    ; is installed. It is recommended that a multitasker NOT be installed
+    ; when a file sharing broker is not installed but that is up to the 
+    ; implementer to decide.  
+    ;Three function hooks are provided. NOTE, all functions must preserve
+    ; ALL registers used.
+    ;
+    ;launchTask:
+    ;This allows for a multitasker to install its handling routine for 
+    ; launching tasks. Note this is called after all setup
+    ; for the EXE has been done except for setting the PSP.
+    ; If the mode bSuFunc = 4, then we have we have the following:
+    ;       ecx = mode of termination
+    ;           = 00 -> Upon terminating, leave task in Zombie mode
+    ;                   awaiting for a task to read it's return code
+    ;           = 01 -> Upon terminating, discard all resources allocated
+    ;                   to the task.
+    ;           > 01 -> Error code, unknown function (01h).
+    ;This function must return to the caller via DOS with CF=CY if an error 
+    ;   and eax = Error code or CF=NC if all ok. DOS will then return to
+    ;   the parent task, with the background task hopefully scheduled to run
+    ;   in the DOSMGR.
+    ;Either before or on initial run, DOSMGR must set currentDTA in a bgTasks'
+    ; SDA to psp+80h. This can be done in launchBgTask.
+    ;
+    ;terminateTask:
+    ;This allows for a multitasker to install its handling routine for
+    ; cleaning up resources allocated to a task. 
+    ;
+    ;Specific function definitions:
+    ;
+    ;If we enter
+    ;   Input:  bx = FCB drive statuses
+    ;           ecx = Termination mode setting
+    ;           rsi = RSP value to start with
+    ;           rbp = execFrame. Use this to get parentPSP data et al.
+    ;           qword [rbp - execFrame.pProgEP] = RIP value to launch from
+    ;   Output: CF=NC -> Proceed with launch of bg task
+    ;           CF=CY -> Error exit, errorcode in eax
+dosMgrHooks:
+    dosMgrPresent   db ?    ;Clear if no mgr, else set to -1
+    launchTask      dq ?    ;Registers a new task, with specifics based on bSubfunc
+    terminateTask   dq ?    ;Called to tell the MGR that this task is ending
 
     ;DLL Manager hook functions here
     ;All DLLMGR hooks are 8 byte pointers and are new to the DOS kernel.
@@ -157,7 +203,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currentDrv  resb 1  ;Default drive x
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
 ;SDA, needs to be replaced between processes
-sdaMainSwap:
+sdaDOSSwap:
     oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
     serverPSP   resq 1  ;PSP of prog making server request, used by net & share
     machineNum  resw 1  ;for sharing/networking 00h = default number (us)
@@ -310,7 +356,7 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
     haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
     sdaLen      equ     $ - sda 
-    sdaMSLen    equ     $ - sdaMainSwap
+    sdaDOSLen   equ     $ - sdaDOSSwap
 
 ;Additional variables NOT in the SDA
     serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
