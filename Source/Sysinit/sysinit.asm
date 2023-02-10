@@ -1197,6 +1197,11 @@ configParse:
     movzx eax, byte fs:[numPhysVol]
     dec eax ;Get a 0 based count
     mov byte [rbx + initReqPkt.drvnum], al
+    ;Gotta relocate the two pointers to make them 
+    ;relative to DOS
+    mov rax, qword fs:[dosSegPtr]   ;Get DOS ptr back
+    add qword [rsi + drvHdr.strPtr], rax    ;Reloc drvrs rel. DOS
+    add qword [rsi + drvHdr.intPtr], rax
     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
     call qword [rsi + drvHdr.intPtr]
     test word [rbx + initReqPkt.status], drvDonStatus
