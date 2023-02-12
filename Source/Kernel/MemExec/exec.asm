@@ -594,15 +594,14 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rbp
     pop rdx
 
-;ORIGINAL PSP SETTING POSITION
     ;Now set Current PSP to our PSP and set current DTA to command line
-    ;mov qword [currentPSP], rdx
-    ;call dosCrit1Enter
-    ;call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
+    mov qword [currentPSP], rdx
+    call dosCrit1Enter
+    call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
 
-    ;lea rdi, qword [rdx + psp.dta] ;Point to default dta...
-    ;mov qword [currentDTA], rdi ;and set it!
-;ORIGINAL PSP SETTING POSITION
+    lea rdi, qword [rdx + psp.dta] ;Point to default dta...
+    mov qword [currentDTA], rdi ;and set it!
+
     ;Now We need to copy over the command line and fcbs to the PSP
     ; and set FS to point to the PSP
     mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
@@ -674,16 +673,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .noBg:
     call qword [launchTask]
     jc short .cleanAndFail
-;Finally set Current PSP to our PSP and set current DTA to command line
-    push rdx
-    mov rdx, qword [rbp - execFrame.pPSPBase]
-    mov qword [currentPSP], rdx
-    call dosCrit1Enter
-    call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
-    lea rdx, qword [rdx + psp.dta] ;Point to default dta...
-    mov qword [currentDTA], rdx ;and set it!
-    pop rdx
-
 ;Final step: Transfer control
     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
     je .xfrProgram
