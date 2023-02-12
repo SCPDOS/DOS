@@ -158,13 +158,14 @@ serverFunctionSelect:
     mov rbx, qword [rbp + 3*8]  ;Get table ptr
     movzx ebx, byte [rbx]   ;Get the table length
     cmp bl, byte [rbp + 2*8]    ;Is subfunction number less than bl?
-    jnb .argumentTooBig
-    movzx ebx, byte [rbp + 2*8] ;Get subfunction into ebx zeroextended
-    shl ebx, 2  ;Convert to word offset
+    jbe short .argumentTooBig
+    movzx ebx, byte [rbp + 2*8] ;Get subfunction into ebx
+    shl ebx, 1  ;Convert to word offset
     inc ebx ;Go past the initial byte of the table
+    add rbx, qword [rbp + 3*8]  ;Add the table base address to the offset
     movzx ebx, word [rbx]   ;Get the offset of the function from the tbl head
     add rbx, qword [rbp + 3*8]  ;Add the table base address to the offset
-    mov qword [rbp + 2*8], rbx  ;Store this address as the return address
+    mov qword [rbp + 4*8], rbx  ;Store this address as the return address
     pop rbx
     pop rbp
     add rsp, 3*8    ;Go past old return and old subfunction value

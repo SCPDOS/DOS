@@ -637,8 +637,8 @@ initialCDSWritten:
     mov qword fs:[ctryTbl + countryStruc.mapaddr], rdi ;Store in country table
 
 ;Server Table setup
-    lea rdi, serverDispTbl  ;Get pointer to table
-    mov qword [serverDispTblPtr], rdi   ;Store to use
+    lea rdi, qword [rbp + serverDispTbl]  ;Get pointer to table
+    mov qword fs:[serverDispTblPtr], rdi   ;Store to use
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]

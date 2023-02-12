@@ -358,11 +358,11 @@ setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
     iretq
 
 getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
-    mov rdx, qword [currentPSP]
+    mov rbx, qword [currentPSP]
     iretq
 
 getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
-    mov rdx, qword [currentPSP]
+    mov rbx, qword [currentPSP]
     iretq
 
 setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
