@@ -462,6 +462,7 @@ getDrvLetterFromPath:   ;Int 4Fh, AX=121Ah
     retnz ;If the number is non-zero, then a potentially valid drive number
     mov al, -1  ;Else not a valid drive number
     return
+
 canonicaliseFileName:
 ;Always trying to build and qualify a full pathname
 ;Does getPath without hitting the disk
@@ -483,6 +484,7 @@ canonicaliseFileName:
     retz
     mov byte [rdi], 0   ;Store a terminating zero if necessary
     return
+
 getDirPathNoCanon:
     xor eax, eax
     mov rsi, rdi
@@ -545,7 +547,7 @@ getPath:
     ;We do not scan for this criteria but the client program must adhere to 
     ; these requirements.
     ;When a server request is made, the request can ONLY be for a file on
-    ; a CDS drive.
+    ; a CDS drive to avoid multiple server hops.
     inc al  ;Turn back into a 1 based drive number
     mov rdi, qword [workingCDS]
     push rax
