@@ -692,6 +692,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rsp, rsi    ;Set rsp to initRSP value
     mov byte [inDOS], 0 ;Clear all inDosnessness
     sti
+
+    push rdi    ;Push &psp[0] onto the stack to allow for ret exit
     push qword [rbp - execFrame.pProgEP]
     mov r8, rdi ;Move psp base into r8 and r9
     mov r9, rdi
