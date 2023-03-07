@@ -6655,17 +6655,18 @@
     13                              <2> %%_ret:
     14 00000FB9 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   465                              <1> canonicaliseFileName:
-   466                              <1> ;Always trying to build and qualify a full pathname
-   467                              <1> ;Does getPath without hitting the disk
-   468 00000FBA B0FF                <1>     mov al, -1
-   469 00000FBC 8805(6EC40300)      <1>     mov byte [fileDirFlag], al  
-   470 00000FC2 8805(02C70300)      <1>     mov byte [spliceFlag], al   ;Set splice for Full path by default
-   471 00000FC8 48893D(23C60300)    <1>     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
-   472 00000FCF FEC0                <1>     inc al  ;make al = 0
-   473 00000FD1 8805(33C60300)      <1>     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
-   474 00000FD7 E854000000          <1>     call getPath.epAlt
-   475                              <1>     retc    ;Return if an error
+   465                              <1> 
+   466                              <1> canonicaliseFileName:
+   467                              <1> ;Always trying to build and qualify a full pathname
+   468                              <1> ;Does getPath without hitting the disk
+   469 00000FBA B0FF                <1>     mov al, -1
+   470 00000FBC 8805(6EC40300)      <1>     mov byte [fileDirFlag], al  
+   471 00000FC2 8805(02C70300)      <1>     mov byte [spliceFlag], al   ;Set splice for Full path by default
+   472 00000FC8 48893D(23C60300)    <1>     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
+   473 00000FCF FEC0                <1>     inc al  ;make al = 0
+   474 00000FD1 8805(33C60300)      <1>     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
+   475 00000FD7 E854000000          <1>     call getPath.epAlt
+   476                              <1>     retc    ;Return if an error
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -6686,14 +6687,14 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-   476 00000FDE 48FFCF              <1>     dec rdi ;Point to what should be the null char
-   477 00000FE1 807FFF3A            <1>     cmp byte [rdi - 1], ":" ;Was the prev char a drive sep?
-   478 00000FE5 7503                <1>     jne .storeNull
-   479 00000FE7 B05C                <1>     mov al, "\"
-   480 00000FE9 AA                  <1>     stosb   ;Store the pathsep and increment rdi
-   481                              <1> .storeNull:
-   482 00000FEA 803F00              <1>     cmp byte [rdi], 0   ;Ensure path is null terminated (and clear CF)
-   483                              <1>     retz
+   477 00000FDE 48FFCF              <1>     dec rdi ;Point to what should be the null char
+   478 00000FE1 807FFF3A            <1>     cmp byte [rdi - 1], ":" ;Was the prev char a drive sep?
+   479 00000FE5 7503                <1>     jne .storeNull
+   480 00000FE7 B05C                <1>     mov al, "\"
+   481 00000FE9 AA                  <1>     stosb   ;Store the pathsep and increment rdi
+   482                              <1> .storeNull:
+   483 00000FEA 803F00              <1>     cmp byte [rdi], 0   ;Ensure path is null terminated (and clear CF)
+   484                              <1>     retz
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -6714,52 +6715,53 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-   484 00000FEF C60700              <1>     mov byte [rdi], 0   ;Store a terminating zero if necessary
-   485                              <1>     return
+   485 00000FEF C60700              <1>     mov byte [rdi], 0   ;Store a terminating zero if necessary
+   486                              <1>     return
     13                              <2> %%_ret:
     14 00000FF2 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   486                              <1> getDirPathNoCanon:
-   487 00000FF3 31C0                <1>     xor eax, eax
-   488 00000FF5 4889FE              <1>     mov rsi, rdi
-   489 00000FF8 EB1B                <1>     jmp short getPath.noCanon
-   490                              <1> getFilePathNoCanon:
-   491                              <1> ;Used when the path is constructed internally (as for FCB functions)
-   492                              <1> ;Input: rdi -> Buffer with qualified pathname for search
-   493 00000FFA B0FF                <1>     mov al, -1
-   494 00000FFC 4889FE              <1>     mov rsi, rdi
-   495 00000FFF EB14                <1>     jmp short getPath.noCanon
-   496                              <1> getDirPath:
-   497 00001001 30C0                <1>     xor al, al   ;Set to Directory
-   498 00001003 EB02                <1>     jmp short getPath
-   499                              <1> getFilePath:
-   500 00001005 B0FF                <1>     mov al, -1  ;Set to File
-   501                              <1> getPath:
-   502                              <1> ;Determines whether the path is spliced or not and transfers the chars
-   503                              <1> ; from the user buffer into an internal buffer, normalising them.
-   504                              <1> ; Single and double dot entries are left as is, but the wildcard * is converted
-   505                              <1> ; to ?. Wildcards can only be present in the LAST portion of the given path.
-   506                              <1> ; If the portion with wildcards does not end with an ASCII null, we fail the 
-   507                              <1> ; request with pnf. If there is a redirector which needs to normalise the path, 
-   508                              <1> ; we let it do its thing and return.
-   509                              <1> ;If the user requests data from a remote server (i.e. a pathspec starting with
-   510                              <1> ; \\) then wildcards, the colon and dots are forbidden.
-   511                              <1> ;If a remote user requests data (dosInvoke = -1), then the pathspec must be an
-   512                              <1> ; absolute path (no wildcards or dots) and must begin with a drive letter 
-   513                              <1> ; (converted from using machine name by the net client program).
-   514                              <1> ;We check if we are a net invoke to ensure that the pathspec that was recieved
-   515                              <1> ; was good.
-   516                              <1> ;Called with:
-   517                              <1> ; rdi = SDA Buffer for filename
-   518                              <1> ; rsi = Potentially unqualified filename
-   519                              <1> ; al = 0 => Search for Dir only. al != 0 => Search for File (or dir)
-   520 00001007 50                  <1>     push rax
-   521 00001008 57                  <1>     push rdi
-   522 00001009 E8ACFFFFFF          <1>     call canonicaliseFileName   ;First canonicalise the pathspec presented
-   523 0000100E 5F                  <1>     pop rdi
-   524 0000100F 58                  <1>     pop rax
-   525 00001010 4889FE              <1>     mov rsi, rdi    ;Use the newly built path as the source
-   526                              <1>     retc
+   487                              <1> 
+   488                              <1> getDirPathNoCanon:
+   489 00000FF3 31C0                <1>     xor eax, eax
+   490 00000FF5 4889FE              <1>     mov rsi, rdi
+   491 00000FF8 EB1B                <1>     jmp short getPath.noCanon
+   492                              <1> getFilePathNoCanon:
+   493                              <1> ;Used when the path is constructed internally (as for FCB functions)
+   494                              <1> ;Input: rdi -> Buffer with qualified pathname for search
+   495 00000FFA B0FF                <1>     mov al, -1
+   496 00000FFC 4889FE              <1>     mov rsi, rdi
+   497 00000FFF EB14                <1>     jmp short getPath.noCanon
+   498                              <1> getDirPath:
+   499 00001001 30C0                <1>     xor al, al   ;Set to Directory
+   500 00001003 EB02                <1>     jmp short getPath
+   501                              <1> getFilePath:
+   502 00001005 B0FF                <1>     mov al, -1  ;Set to File
+   503                              <1> getPath:
+   504                              <1> ;Determines whether the path is spliced or not and transfers the chars
+   505                              <1> ; from the user buffer into an internal buffer, normalising them.
+   506                              <1> ; Single and double dot entries are left as is, but the wildcard * is converted
+   507                              <1> ; to ?. Wildcards can only be present in the LAST portion of the given path.
+   508                              <1> ; If the portion with wildcards does not end with an ASCII null, we fail the 
+   509                              <1> ; request with pnf. If there is a redirector which needs to normalise the path, 
+   510                              <1> ; we let it do its thing and return.
+   511                              <1> ;If the user requests data from a remote server (i.e. a pathspec starting with
+   512                              <1> ; \\) then wildcards, the colon and dots are forbidden.
+   513                              <1> ;If a remote user requests data (dosInvoke = -1), then the pathspec must be an
+   514                              <1> ; absolute path (no wildcards or dots) and must begin with a drive letter 
+   515                              <1> ; (converted from using machine name by the net client program).
+   516                              <1> ;We check if we are a net invoke to ensure that the pathspec that was recieved
+   517                              <1> ; was good.
+   518                              <1> ;Called with:
+   519                              <1> ; rdi = SDA Buffer for filename
+   520                              <1> ; rsi = Potentially unqualified filename
+   521                              <1> ; al = 0 => Search for Dir only. al != 0 => Search for File (or dir)
+   522 00001007 50                  <1>     push rax
+   523 00001008 57                  <1>     push rdi
+   524 00001009 E8ACFFFFFF          <1>     call canonicaliseFileName   ;First canonicalise the pathspec presented
+   525 0000100E 5F                  <1>     pop rdi
+   526 0000100F 58                  <1>     pop rax
+   527 00001010 4889FE              <1>     mov rsi, rdi    ;Use the newly built path as the source
+   528                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -6804,9 +6806,9 @@
    549 0000104C FEC0                <1>     inc al  ;Turn back into a 1 based drive number
    550 0000104E 488B3D(13C70300)    <1>     mov rdi, qword [workingCDS]
    551 00001055 50                  <1>     push rax
-   552 00001056 E88E5A0000          <1>     call dosCrit1Enter
-   553 0000105B E886530000          <1>     call getDiskDPB ;Force an initial update of the disk dpb. Get ptr in rbp
-   554 00001060 E88E5A0000          <1>     call dosCrit1Exit
+   552 00001056 E88D5A0000          <1>     call dosCrit1Enter
+   553 0000105B E885530000          <1>     call getDiskDPB ;Force an initial update of the disk dpb. Get ptr in rbp
+   554 00001060 E88D5A0000          <1>     call dosCrit1Exit
    555 00001065 58                  <1>     pop rax
    556 00001066 0F8382000000        <1>     jnc .driveOk
    557                              <1> .serverExit:
@@ -6815,13 +6817,13 @@
     13                              <2> %%_ret:
     14 0000106E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   560                              <1> .notServer:
-   561                              <1>     ;Make Redir request to qualify the filename if NOT invoked by server call
-   562 0000106F 48C705(13C70300)FF- <1>     mov qword [workingCDS], -1  ;Set workingCDS to unknown
-   562 00001077 FFFFFF              <1>
-   563 0000107A B823110000          <1>     mov eax, 1123h
-   564 0000107F CD4F                <1>     int 4fh ;CF=CY if not resolved. CF=NC if resolved
-   565                              <1>     retnc  ;Return if resolved
+   562                              <1> .notServer:
+   563                              <1>     ;Make Redir request to qualify the filename if NOT invoked by server call
+   564 0000106F 48C705(13C70300)FF- <1>     mov qword [workingCDS], -1  ;Set workingCDS to unknown
+   564 00001077 FFFFFF              <1>
+   565 0000107A B823110000          <1>     mov eax, 1123h
+   566 0000107F CD4F                <1>     int 4fh ;CF=CY if not resolved. CF=NC if resolved
+   567                              <1>     retnc  ;Return if resolved
     61                              <2> cret nc
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -6846,9 +6848,9 @@
    567 00001088 9C                  <1>     pushfq  ;Save the flag state on stack
    568 00001089 50                  <1>     push rax    ;Save whether rsi is incremented by 2
    569 0000108A 668B06              <1>     mov ax, word [rsi]   ;Get the word pointed to by rsi
-   570 0000108D E814570000          <1>     call swapPathSeparator  ;Convert al if it is a path separator
+   570 0000108D E813570000          <1>     call swapPathSeparator  ;Convert al if it is a path separator
    571 00001092 86E0                <1>     xchg ah, al ;Now swap al into ah to check if we on a network path (i.e. \\)
-   572 00001094 E80D570000          <1>     call swapPathSeparator  ;Returns ZF=ZE if al = "/" or "\"
+   572 00001094 E80C570000          <1>     call swapPathSeparator  ;Returns ZF=ZE if al = "/" or "\"
    573 00001099 7543                <1>     jnz .notNet
    574 0000109B 38C4                <1>     cmp ah, al  ;If they are equal, we have a net path
    575 0000109D 753F                <1>     jne .notNet
@@ -6866,10 +6868,10 @@
    587 000010B6 53                  <1>     push rbx
    588                              <1> .moveNetChars:
    589 000010B7 AC                  <1>     lodsb   ;Get the third char into al and inc rsi
-   590 000010B8 E8F5560000          <1>     call uppercaseChar  ;Make char in al uppercase
+   590 000010B8 E8F4560000          <1>     call uppercaseChar  ;Make char in al uppercase
    591 000010BD 84C0                <1>     test al, al
    592 000010BF 740F                <1>     jz .netEnd
-   593 000010C1 E8E0560000          <1>     call swapPathSeparator  ;If path sep, swap it
+   593 000010C1 E8DF560000          <1>     call swapPathSeparator  ;If path sep, swap it
    594 000010C6 AA                  <1>     stosb
    595 000010C7 75EE                <1>     jnz .moveNetChars  ;If not a path separating char in al, keep looking
    596 000010C9 E85C000000          <1>     call pathWalk.netEp     ;Now expand the pathspec portion
@@ -6899,30 +6901,30 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-   603 000010D6 B819110000          <1>     mov eax, 1119h  ;Find First Without CDS
-   604 000010DB CD4F                <1>     int 4Fh
-   605                              <1>     return
+   605 000010D6 B819110000          <1>     mov eax, 1119h  ;Find First Without CDS
+   606 000010DB CD4F                <1>     int 4Fh
+   607                              <1>     return
     13                              <2> %%_ret:
     14 000010DD C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   606                              <1> .notNet:
-   607                              <1> ;This is the normal case; paths can be relative, or absolute.
-   608 000010DE 58                  <1>     pop rax ;Get the drive letter back
-   609 000010DF 9D                  <1>     popfq   ;Get the flag state back
-   610 000010E0 7504                <1>     jnz .notNull    ;If ZF=ZE, the path is a null path, errExit
-   611                              <1> .pnfErr:
-   612 000010E2 B003                <1>     mov al, errPnf  ;Null path error
-   613 000010E4 F9                  <1>     stc
-   614                              <1>     return
+   608                              <1> .notNet:
+   609                              <1> ;This is the normal case; paths can be relative, or absolute.
+   610 000010DE 58                  <1>     pop rax ;Get the drive letter back
+   611 000010DF 9D                  <1>     popfq   ;Get the flag state back
+   612 000010E0 7504                <1>     jnz .notNull    ;If ZF=ZE, the path is a null path, errExit
+   613                              <1> .pnfErr:
+   614 000010E2 B003                <1>     mov al, errPnf  ;Null path error
+   615 000010E4 F9                  <1>     stc
+   616                              <1>     return
     13                              <2> %%_ret:
     14 000010E5 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   615                              <1> .notNull:
-   616 000010E6 3CFF                <1>     cmp al, -1  ;Bad drive letter?
-   617 000010E8 7504                <1>     jne .driveOk    ;Jump if ok drive letter
-   618 000010EA B00F                <1>     mov al, errBadDrv   ;Bad drive letter specified
-   619 000010EC F9                  <1>     stc
-   620                              <1>     return
+   617                              <1> .notNull:
+   618 000010E6 3CFF                <1>     cmp al, -1  ;Bad drive letter?
+   619 000010E8 7504                <1>     jne .driveOk    ;Jump if ok drive letter
+   620 000010EA B00F                <1>     mov al, errBadDrv   ;Bad drive letter specified
+   621 000010EC F9                  <1>     stc
+   622                              <1>     return
     13                              <2> %%_ret:
     14 000010ED C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
@@ -6935,7 +6937,7 @@
    627 000010F7 50                  <1>     push rax    ;Save the drive letter
    628 000010F8 AC                  <1>     lodsb   ;Move rsi to the third char, get char in al
    629 000010F9 48FFCE              <1>     dec rsi ;Move rsi back to point to the previous char
-   630 000010FC E8A5560000          <1>     call swapPathSeparator  ;ZF=ZE if path separator
+   630 000010FC E8A4560000          <1>     call swapPathSeparator  ;ZF=ZE if path separator
    631                              <1>     ;If al is a path separator, then this path is absolute.
    632 00001101 58                  <1>     pop rax ;Get back the drive letter
    633 00001102 7518                <1>     jnz .relMain ;If relative, rsi points to first char in path
@@ -6951,7 +6953,7 @@
    643 0000110F FEC0                <1>     inc al  ;Turn it into a 1 based drive number
    644 00001111 50                  <1>     push rax    ;Save the current drive number
    645 00001112 8A06                <1>     mov al, byte [rsi]  ;Get the first char w/o moving rsi ...
-   646 00001114 E88D560000          <1>     call swapPathSeparator ;... to ensure rsi points at first char of string
+   646 00001114 E88C560000          <1>     call swapPathSeparator ;... to ensure rsi points at first char of string
    647 00001119 58                  <1>     pop rax ;Get back the current drive number
    648 0000111A 74E8                <1>     jz .absoPath    ;If first char was pathsep, it is abs. path for curr. drv
    649                              <1> .relMain:
@@ -7014,10 +7016,10 @@
     13                              <2> %%_ret:
     14 000011AB C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   706                              <1> .exitGood:
-   707 000011AC C605(05C70300)FF    <1>     mov byte [fileExist], -1 ;If the file exists, set to -1
-   708                              <1> .exit:
-   709                              <1>     return
+   708                              <1> .exitGood:
+   709 000011AC C605(05C70300)FF    <1>     mov byte [fileExist], -1 ;If the file exists, set to -1
+   710                              <1> .exit:
+   711                              <1>     return
     13                              <2> %%_ret:
     14 000011B3 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
@@ -7050,14 +7052,14 @@
    736                              <1> ;Output: rdi = Pointing at where to place chars from source string
    737                              <1> ;   If CF=CY => Drive invalid or drive letter too great
    738 000011DD 56                  <1>     push rsi
-   739 000011DE E806590000          <1>     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
-   740 000011E3 E8C8540000          <1>     call setDrive   ;Set internal variables, working CDS etc etc
+   739 000011DE E805590000          <1>     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
+   740 000011E3 E8C7540000          <1>     call setDrive   ;Set internal variables, working CDS etc etc
    741 000011E8 720D                <1>     jc .critExit    ;If the drive number in al is too great or drive invalid
    742 000011EA 488B3D(13C70300)    <1>     mov rdi, qword [workingCDS] 
    743 000011F1 57                  <1>     push rdi    ;Push CDS pointer on stack...
-   744 000011F2 E8EF510000          <1>     call getDiskDPB  ;Update working DPB and drv before searching, dpbptr in rbp
+   744 000011F2 E8EE510000          <1>     call getDiskDPB  ;Update working DPB and drv before searching, dpbptr in rbp
    745                              <1> .critExit:
-   746 000011F7 E8F7580000          <1>     call dosCrit1Exit
+   746 000011F7 E8F6580000          <1>     call dosCrit1Exit
    747 000011FC 5E                  <1>     pop rsi     ; ...and get CDS pointer in rsi
    748 000011FD 724A                <1>     jc .badDriveExit 
    749 000011FF 488B3D(23C60300)    <1>     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
@@ -7112,7 +7114,7 @@
    795 00001259 AC                  <1>     lodsb   ;Get the char
    796 0000125A 84C0                <1>     test al, al ;Null char?
    797 0000125C 740B                <1>     jz .prepDirJoin2
-   798 0000125E E843550000          <1>     call swapPathSeparator
+   798 0000125E E842550000          <1>     call swapPathSeparator
    799 00001263 7404                <1>     jz .prepDirJoin2
    800 00001265 FFC1                <1>     inc ecx ;Accrue length to copy
    801 00001267 EBF0                <1>     jmp short .prepDirJoin1
@@ -7195,7 +7197,7 @@
    875 000012E7 AC                  <1>     lodsb   ;Get the char in al and advance rsi
    876 000012E8 84C0                <1>     test al, al ;Is it the null char?
    877 000012EA 7471                <1>     jz .cpsStore  ;If so, terminate immediately
-   878 000012EC E8B5540000          <1>     call swapPathSeparator  ;And if it is a pathsep, skip any bunched pathseps
+   878 000012EC E8B4540000          <1>     call swapPathSeparator  ;And if it is a pathsep, skip any bunched pathseps
    879 000012F1 746A                <1>     jz .cpsStore ; and then exit with the final converted pathsep in al
    880 000012F3 3C2E                <1>     cmp al, "." ;Filename extension separator
    881 000012F5 7420                <1>     je .cpsExtension
@@ -7204,8 +7206,8 @@
    884 000012F9 7430                <1>     je .cpsWildcard
    885 000012FB 3C3F                <1>     cmp al, "?" ;Good wildcard?
    886 000012FD 740C                <1>     je .store
-   887 000012FF E8AE540000          <1>     call uppercaseChar  ;Uppercase the char if it needs to be...
-   888 00001304 E8EA550000          <1>     call checkCharValid ; and check it is a valid char
+   887 000012FF E8AD540000          <1>     call uppercaseChar  ;Uppercase the char if it needs to be...
+   888 00001304 E8E9550000          <1>     call checkCharValid ; and check it is a valid char
    889 00001309 7408                <1>     je .cpsInvalidChar  ;If it is not valid, replace with 0 and exit
    890                              <1> .store:
    891 0000130B 4839DF              <1>     cmp rdi, rbx
@@ -7243,15 +7245,15 @@
    923                              <1> ;Store the final char in the 12 space in the FCB name field, if it valid
    924 0000133D 84C0                <1>     test al, al 
    925 0000133F 741C                <1>     jz .cpsStore
-   926 00001341 E860540000          <1>     call swapPathSeparator
+   926 00001341 E85F540000          <1>     call swapPathSeparator
    927 00001346 7415                <1>     jz .cpsStore
    928                              <1> .cpsFindTerminator:
    929 00001348 AC                  <1>     lodsb
    930 00001349 84C0                <1>     test al, al 
    931 0000134B 7410                <1>     jz .cpsStore
-   932 0000134D E854540000          <1>     call swapPathSeparator
+   932 0000134D E853540000          <1>     call swapPathSeparator
    933 00001352 7409                <1>     jz .cpsStore
-   934 00001354 E89A550000          <1>     call checkCharValid ;If this is ZF=ZE => Terminator
+   934 00001354 E899550000          <1>     call checkCharValid ;If this is ZF=ZE => Terminator
    935 00001359 75ED                <1>     jnz short .cpsFindTerminator   ;Ensure we skip any extra chars
    936                              <1>     ;If we encounter a terminator, convert to 0
    937 0000135B 30C0                <1>     xor al, al
@@ -7263,82 +7265,82 @@
     13                              <2> %%_ret:
     14 00001366 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   943                              <1> .oneDotResolve:
-   944 00001367 488D3D(E5C60300)    <1>     lea rdi, fcbName+11
-   945 0000136E AA                  <1>     stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
-   946 0000136F 5F                  <1>     pop rdi ;rdi points to fresh space
-   947 00001370 48FFCF              <1>     dec rdi ;Point to the previous path separator
-   948 00001373 AA                  <1>     stosb   ;Store this separator as if it is what we had before
-   949                              <1>     return
+   945                              <1> .oneDotResolve:
+   946 00001367 488D3D(E5C60300)    <1>     lea rdi, fcbName+11
+   947 0000136E AA                  <1>     stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
+   948 0000136F 5F                  <1>     pop rdi ;rdi points to fresh space
+   949 00001370 48FFCF              <1>     dec rdi ;Point to the previous path separator
+   950 00001373 AA                  <1>     stosb   ;Store this separator as if it is what we had before
+   951                              <1>     return
     13                              <2> %%_ret:
     14 00001374 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   950                              <1> .cpsBadChar:
-   951 00001375 30C0                <1>     xor al, al  ;Convert the char to a terminator
-   952                              <1>     return
+   952                              <1> .cpsBadChar:
+   953 00001375 30C0                <1>     xor al, al  ;Convert the char to a terminator
+   954                              <1>     return
     13                              <2> %%_ret:
     14 00001377 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   953                              <1> 
-   954                              <1> searchForPathspec:
-   955                              <1>     ;Now search the current directory for this filename
-   956                              <1>     ;Find first using SDA ffBlock
-   957                              <1>     ;If al = 0, we have final file name or directory name
-   958                              <1>     ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF PATHSEP
-   959                              <1>     ;Output: CF=CY => Error occured
-   960                              <1>     ;        CF=NC => Disk File in fcbName found with selected attributes
-   961                              <1>     ;                 FF block somewhat setup
-   962                              <1>     ;Preserves rax, rbx, rsi,  rdi
-   963 00001378 50                  <1>     push rax
-   964 00001379 53                  <1>     push rbx
-   965 0000137A 56                  <1>     push rsi    ;Save the current position of the pointer in the user buffer
-   966 0000137B 57                  <1>     push rdi    ;Save current position to store filename in internal buffer
-   967 0000137C 0FB61D(6EC40300)    <1>     movzx ebx, byte [fileDirFlag]   ;Save the old flag that was set on entry
-   968 00001383 53                  <1>     push rbx    ;and push it onto the stack
-   969                              <1> ;Evaluate whether we are searching for a file for a directory
-   970 00001384 84C0                <1>     test al, al
-   971 00001386 741D                <1>     jz .sfpPNfile
-   972                              <1>     ;Fall if subdir
-   973 00001388 488D3D(DAC60300)    <1>     lea rdi, fcbName
-   974 0000138F B03F                <1>     mov al, "?" ;Search for wildcard
-   975 00001391 B90B000000          <1>     mov ecx, 11
-   976 00001396 F2AE                <1>     repne scasb
-   977 00001398 742C                <1>     je .sfpPnf  ;Path not found if a ? found in the name
-   978 0000139A B010                <1>     mov al, dirDirectory    ;We want a directory only search.
-   979 0000139C C605(6EC40300)00    <1>     mov byte [fileDirFlag], 0   ;Override setting to search exclusively for dir
-   980 000013A3 EB07                <1>     jmp short .sfpPNMain
-   981                              <1> .sfpPNfile:
-   982                              <1>     ;Here if we are searching for a file or directory as setup by search init
-   983 000013A5 0FB605(FDC60300)    <1>     movzx eax, byte [searchAttr]    ;Get the search attributes
-   984                              <1> .sfpPNMain:
-   985 000013AC 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
-   986 000013B3 7405                <1>     je .sfpPNNoDisk
-   987 000013B5 E81EF9FFFF          <1>     call searchDir
-   988                              <1> .sfpPNNoDisk:
-   989 000013BA 5B                  <1>     pop rbx
-   990 000013BB 881D(6EC40300)      <1>     mov byte [fileDirFlag], bl  ;Return the original flag
-   991 000013C1 5F                  <1>     pop rdi ;rdi points to free space in internal filename buffer
-   992 000013C2 5E                  <1>     pop rsi
-   993 000013C3 5B                  <1>     pop rbx
-   994 000013C4 58                  <1>     pop rax
-   995                              <1>     return
+   955                              <1> 
+   956                              <1> searchForPathspec:
+   957                              <1>     ;Now search the current directory for this filename
+   958                              <1>     ;Find first using SDA ffBlock
+   959                              <1>     ;If al = 0, we have final file name or directory name
+   960                              <1>     ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF PATHSEP
+   961                              <1>     ;Output: CF=CY => Error occured
+   962                              <1>     ;        CF=NC => Disk File in fcbName found with selected attributes
+   963                              <1>     ;                 FF block somewhat setup
+   964                              <1>     ;Preserves rax, rbx, rsi,  rdi
+   965 00001378 50                  <1>     push rax
+   966 00001379 53                  <1>     push rbx
+   967 0000137A 56                  <1>     push rsi    ;Save the current position of the pointer in the user buffer
+   968 0000137B 57                  <1>     push rdi    ;Save current position to store filename in internal buffer
+   969 0000137C 0FB61D(6EC40300)    <1>     movzx ebx, byte [fileDirFlag]   ;Save the old flag that was set on entry
+   970 00001383 53                  <1>     push rbx    ;and push it onto the stack
+   971                              <1> ;Evaluate whether we are searching for a file for a directory
+   972 00001384 84C0                <1>     test al, al
+   973 00001386 741D                <1>     jz .sfpPNfile
+   974                              <1>     ;Fall if subdir
+   975 00001388 488D3D(DAC60300)    <1>     lea rdi, fcbName
+   976 0000138F B03F                <1>     mov al, "?" ;Search for wildcard
+   977 00001391 B90B000000          <1>     mov ecx, 11
+   978 00001396 F2AE                <1>     repne scasb
+   979 00001398 742C                <1>     je .sfpPnf  ;Path not found if a ? found in the name
+   980 0000139A B010                <1>     mov al, dirDirectory    ;We want a directory only search.
+   981 0000139C C605(6EC40300)00    <1>     mov byte [fileDirFlag], 0   ;Override setting to search exclusively for dir
+   982 000013A3 EB07                <1>     jmp short .sfpPNMain
+   983                              <1> .sfpPNfile:
+   984                              <1>     ;Here if we are searching for a file or directory as setup by search init
+   985 000013A5 0FB605(FDC60300)    <1>     movzx eax, byte [searchAttr]    ;Get the search attributes
+   986                              <1> .sfpPNMain:
+   987 000013AC 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
+   988 000013B3 7405                <1>     je .sfpPNNoDisk
+   989 000013B5 E81EF9FFFF          <1>     call searchDir
+   990                              <1> .sfpPNNoDisk:
+   991 000013BA 5B                  <1>     pop rbx
+   992 000013BB 881D(6EC40300)      <1>     mov byte [fileDirFlag], bl  ;Return the original flag
+   993 000013C1 5F                  <1>     pop rdi ;rdi points to free space in internal filename buffer
+   994 000013C2 5E                  <1>     pop rsi
+   995 000013C3 5B                  <1>     pop rbx
+   996 000013C4 58                  <1>     pop rax
+   997                              <1>     return
     13                              <2> %%_ret:
     14 000013C5 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   996                              <1> .sfpPnf:
-   997 000013C6 B803000000          <1>     mov eax, errPnf
-   998                              <1> .sfpErrExit:
-   999 000013CB F9                  <1>     stc ;Set carry
-  1000 000013CC EBEC                <1>     jmp short .sfpPNNoDisk
-  1001                              <1> 
-  1002                              <1> addPathspecToBuffer:
-  1003                              <1> ;Input: fcbName = Qualified pathname portion
-  1004                              <1> ;Output: CF=NC -> al = Last char in name (either Null or \) 
-  1005                              <1> ;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
-  1006                              <1> ;rdi is advanced to the NEXT space for the next level of the filename
-  1007                              <1> ;rbx points to the "head of the path"
-  1008 000013CE F605(33C60300)FF    <1>     test byte [skipDisk], -1
-  1009                              <1>     retnz   ;Only add if in truename mode (also clears CF)
+   998                              <1> .sfpPnf:
+   999 000013C6 B803000000          <1>     mov eax, errPnf
+  1000                              <1> .sfpErrExit:
+  1001 000013CB F9                  <1>     stc ;Set carry
+  1002 000013CC EBEC                <1>     jmp short .sfpPNNoDisk
+  1003                              <1> 
+  1004                              <1> addPathspecToBuffer:
+  1005                              <1> ;Input: fcbName = Qualified pathname portion
+  1006                              <1> ;Output: CF=NC -> al = Last char in name (either Null or \) 
+  1007                              <1> ;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
+  1008                              <1> ;rdi is advanced to the NEXT space for the next level of the filename
+  1009                              <1> ;rbx points to the "head of the path"
+  1010 000013CE F605(33C60300)FF    <1>     test byte [skipDisk], -1
+  1011                              <1>     retnz   ;Only add if in truename mode (also clears CF)
     45                              <2> cret nz
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -7369,7 +7371,7 @@
   1017 000013F0 5E                  <1>     pop rsi ;Get back src ptr which points to first char in next pathspec
   1018                              <1> .aptbOkExit:
   1019 000013F1 8A46FF              <1>     mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
-  1020 000013F4 E8AD530000          <1>     call swapPathSeparator
+  1020 000013F4 E8AC530000          <1>     call swapPathSeparator
   1021 000013F9 7402                <1>     jz .aptbPNexit
   1022 000013FB 30C0                <1>     xor al, al  ;Set al to 0 else (all other chars are terminators)
   1023                              <1> .aptbPNexit:
@@ -7378,13 +7380,13 @@
     13                              <2> %%_ret:
     14 000013FE C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1026                              <1> .aptbPNDots:
-  1027                              <1> ;For one dot, we leave rdi where it is
-  1028                              <1> ;For two dots, we search backwards for the previous "\"
-  1029 000013FF 803D(DBC60300)2E    <1>     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
-  1030 00001406 F8                  <1>     clc ;Ensure we clear CF if we return via here
-  1031 00001407 8A46FF              <1>     mov al, byte [rsi - 1]  ;Get the previous char in al if we return
-  1032                              <1>     retne   ;Return with rdi untouched and rsi advanced.
+  1028                              <1> .aptbPNDots:
+  1029                              <1> ;For one dot, we leave rdi where it is
+  1030                              <1> ;For two dots, we search backwards for the previous "\"
+  1031 000013FF 803D(DBC60300)2E    <1>     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
+  1032 00001406 F8                  <1>     clc ;Ensure we clear CF if we return via here
+  1033 00001407 8A46FF              <1>     mov al, byte [rsi - 1]  ;Get the previous char in al if we return
+  1034                              <1>     retne   ;Return with rdi untouched and rsi advanced.
     53                              <2> cret ne
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -7405,47 +7407,47 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1033                              <1>     ;Here we have two dots
-  1034                              <1>     ;Walk rdi backwards until a \ is found
-  1035 0000140C 48FFCF              <1>     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
-  1036 0000140F 66817FFF3A5C        <1>     cmp word [rdi - 1], ":\" ;IF the char preceeding \ is :, then error out
-  1037 00001415 7420                <1>     je .aptbPnf
-  1038 00001417 66817FFF5C5C        <1>     cmp word [rdi - 1], "\\" ;Similar net name check
-  1039 0000141D 7418                <1>     je .aptbPnf
-  1040                              <1> .aptbPNDotsLp:
-  1041 0000141F 48FFCF              <1>     dec rdi
-  1042 00001422 803F5C              <1>     cmp byte [rdi], "\"
-  1043 00001425 75F8                <1>     jne .aptbPNDotsLp  ;Keep looping around until it is a "\"
-  1044                              <1>     ;Don't go past the pathsep, since we may need to replace it with a null
-  1045 00001427 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;Are we in name resolution mode?
-  1046 0000142E 74C1                <1>     je .aptbOkExit    ;If clear, we are, so just return
-  1047 00001430 4839DF              <1>     cmp rdi, rbx    ;Are we before the start of the path? (i.e in subst?)
-  1048 00001433 7202                <1>     jb .aptbPnf
-  1049 00001435 EBBA                <1>     jmp short .aptbOkExit
-  1050                              <1> ;.aptbSearchError:
-  1051                              <1> ;    mov eax, errFnf
-  1052                              <1> ;    jmp short .aptbErrExit
-  1053                              <1> .aptbPnf:
-  1054 00001437 B803000000          <1>     mov eax, errPnf
-  1055                              <1> .aptbErrExit:
-  1056 0000143C F9                  <1>     stc ;Set carry
-  1057                              <1>     return
+  1035                              <1>     ;Here we have two dots
+  1036                              <1>     ;Walk rdi backwards until a \ is found
+  1037 0000140C 48FFCF              <1>     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
+  1038 0000140F 66817FFF3A5C        <1>     cmp word [rdi - 1], ":\" ;IF the char preceeding \ is :, then error out
+  1039 00001415 7420                <1>     je .aptbPnf
+  1040 00001417 66817FFF5C5C        <1>     cmp word [rdi - 1], "\\" ;Similar net name check
+  1041 0000141D 7418                <1>     je .aptbPnf
+  1042                              <1> .aptbPNDotsLp:
+  1043 0000141F 48FFCF              <1>     dec rdi
+  1044 00001422 803F5C              <1>     cmp byte [rdi], "\"
+  1045 00001425 75F8                <1>     jne .aptbPNDotsLp  ;Keep looping around until it is a "\"
+  1046                              <1>     ;Don't go past the pathsep, since we may need to replace it with a null
+  1047 00001427 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;Are we in name resolution mode?
+  1048 0000142E 74C1                <1>     je .aptbOkExit    ;If clear, we are, so just return
+  1049 00001430 4839DF              <1>     cmp rdi, rbx    ;Are we before the start of the path? (i.e in subst?)
+  1050 00001433 7202                <1>     jb .aptbPnf
+  1051 00001435 EBBA                <1>     jmp short .aptbOkExit
+  1052                              <1> ;.aptbSearchError:
+  1053                              <1> ;    mov eax, errFnf
+  1054                              <1> ;    jmp short .aptbErrExit
+  1055                              <1> .aptbPnf:
+  1056 00001437 B803000000          <1>     mov eax, errPnf
+  1057                              <1> .aptbErrExit:
+  1058 0000143C F9                  <1>     stc ;Set carry
+  1059                              <1>     return
     13                              <2> %%_ret:
     14 0000143D C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1058                              <1> 
-  1059                              <1> checkDevPath:
-  1060                              <1> ;Called only if the file/directory was not found on disk.
-  1061                              <1> ;Checks if the current fcbname field is "DEV        \" (for the DEV 
-  1062                              <1> ; pseudo-directory). If it is, then we parse the next filename in to fcbName
-  1063                              <1> ; and check to see if it is a char device. If it is, build a directory
-  1064                              <1> ; If it is not, proceed with the request fail.
-  1065                              <1> ;
-  1066                              <1> ;Input: rsi = Pointer to the next path spec
-  1067                              <1> ;Output: CF=NC => Char device found, directory built
-  1068                              <1> ;        CF=CY => Char device not found or not searching for dev. Exit.
-  1069 0000143E 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
-  1070                              <1>     rete
+  1060                              <1> 
+  1061                              <1> checkDevPath:
+  1062                              <1> ;Called only if the file/directory was not found on disk.
+  1063                              <1> ;Checks if the current fcbname field is "DEV        \" (for the DEV 
+  1064                              <1> ; pseudo-directory). If it is, then we parse the next filename in to fcbName
+  1065                              <1> ; and check to see if it is a char device. If it is, build a directory
+  1066                              <1> ; If it is not, proceed with the request fail.
+  1067                              <1> ;
+  1068                              <1> ;Input: rsi = Pointer to the next path spec
+  1069                              <1> ;Output: CF=NC => Char device found, directory built
+  1070                              <1> ;        CF=CY => Char device not found or not searching for dev. Exit.
+  1071 0000143E 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
+  1072                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -7489,7 +7491,7 @@
   1089                              <1>     ;Returns in al the terminating char of the source string
   1090 00001484 5F                  <1>     pop rdi
   1091                              <1>     ;If al is a pathsep, fail
-  1092 00001485 E81C530000          <1>     call swapPathSeparator
+  1092 00001485 E81B530000          <1>     call swapPathSeparator
   1093 0000148A 741D                <1>     jz .notOk   ;Device names cannot be terminated with a \ or /
   1094 0000148C 30C0                <1>     xor al, al
   1095 0000148E 8805(E5C60300)      <1>     mov byte [fcbName + 11], al ;Store terminator in fcbName field
@@ -7509,72 +7511,72 @@
     13                              <2> %%_ret:
     14 000014A8 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1109                              <1> .notOk:
-  1110 000014A9 B802000000          <1>     mov eax, errFnf
-  1111 000014AE F9                  <1>     stc
-  1112                              <1>     return
+  1111                              <1> .notOk:
+  1112 000014A9 B802000000          <1>     mov eax, errFnf
+  1113 000014AE F9                  <1>     stc
+  1114                              <1>     return
     13                              <2> %%_ret:
     14 000014AF C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1113                              <1> .charDevSearch:
-  1114 000014B0 53                  <1>     push rbx
-  1115 000014B1 E828000000          <1>     call checkIfCharDevice
-  1116 000014B6 5B                  <1>     pop rbx ;Dont need bh yet
-  1117 000014B7 72F0                <1>     jc .notOk
-  1118 000014B9 E857000000          <1>     call buildCharDir
-  1119 000014BE 803D(E5C60300)00    <1>     cmp byte [fcbName+11], 0    ;If this is NOT null terminated, skip replacing
-  1120 000014C5 750C                <1>     jne .cds2
-  1121 000014C7 807FFE3A            <1>     cmp byte [rdi - 2], ":"
-  1122 000014CB 7506                <1>     jne .cds2 ;IF not at root, then skip replacing pathsep
-  1123 000014CD 48FFCF              <1>     dec rdi
-  1124 000014D0 B02F                <1>     mov al, "/" ;Replace \ with "/"
-  1125 000014D2 AA                  <1>     stosb   ;Store that and let the dir write the filename
-  1126                              <1> .cds2:
-  1127 000014D3 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If NOT in DISK search, we exit now with CF=CY
-  1128 000014DA 75C6                <1>     jne .copyName    ;Now jump if in disk search
-  1129 000014DC F9                  <1>     stc ;Else set CF=CY to pretend not found to write as normal
-  1130                              <1>     return
+  1115                              <1> .charDevSearch:
+  1116 000014B0 53                  <1>     push rbx
+  1117 000014B1 E828000000          <1>     call checkIfCharDevice
+  1118 000014B6 5B                  <1>     pop rbx ;Dont need bh yet
+  1119 000014B7 72F0                <1>     jc .notOk
+  1120 000014B9 E857000000          <1>     call buildCharDir
+  1121 000014BE 803D(E5C60300)00    <1>     cmp byte [fcbName+11], 0    ;If this is NOT null terminated, skip replacing
+  1122 000014C5 750C                <1>     jne .cds2
+  1123 000014C7 807FFE3A            <1>     cmp byte [rdi - 2], ":"
+  1124 000014CB 7506                <1>     jne .cds2 ;IF not at root, then skip replacing pathsep
+  1125 000014CD 48FFCF              <1>     dec rdi
+  1126 000014D0 B02F                <1>     mov al, "/" ;Replace \ with "/"
+  1127 000014D2 AA                  <1>     stosb   ;Store that and let the dir write the filename
+  1128                              <1> .cds2:
+  1129 000014D3 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If NOT in DISK search, we exit now with CF=CY
+  1130 000014DA 75C6                <1>     jne .copyName    ;Now jump if in disk search
+  1131 000014DC F9                  <1>     stc ;Else set CF=CY to pretend not found to write as normal
+  1132                              <1>     return
     13                              <2> %%_ret:
     14 000014DD C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1131                              <1> 
-  1132                              <1> checkIfCharDevice:  ;Int 4Fh AX=1223h
-  1133                              <1> ;Compares the first 8 chars of the FCB field to each device name in the
-  1134                              <1> ; device driver chain. 
-  1135                              <1> ;Output: CF=CY if not found
-  1136                              <1> ;        CF=NC if found
-  1137                              <1> ;           BH = Low byte of the device attribute word
-  1138 000014DE 50                  <1>     push rax
-  1139 000014DF 57                  <1>     push rdi
-  1140 000014E0 488B05(DAC60300)    <1>     mov rax, qword [fcbName]    ;Get the 8 char name (space padded)
-  1141 000014E7 488D3D(80C00300)    <1>     lea rdi, nulDevHdr    ;Get a ptr to the start driver header
-  1142                              <1> .checkName:
-  1143 000014EE 668B5F08            <1>     mov bx, word [rdi + drvHdr.attrib]
-  1144 000014F2 86FB                <1>     xchg bh, bl ;Swap lo and hi bytes
-  1145 000014F4 F6C380              <1>     test bl, 80h  ;Is the driver for disk drive?
-  1146 000014F7 740C                <1>     jz .walkList ;Jump to skip ANY and ALL Disk Drives
-  1147 000014F9 80CF20              <1>     or bh, 20h  ;RBIL says Bit 5 set and Bits 6-7 clear if Char dev
-  1148 000014FC 80E73F              <1>     and bh, ~(80h|40h) ;Clear the upper two bits
-  1149 000014FF 483B471A            <1>     cmp rax, qword [rdi + drvHdr.drvNam]
-  1150 00001503 740D                <1>     je .exit    ;If equal, CF=NC is already cleared
-  1151                              <1> .walkList:
-  1152 00001505 488B3F              <1>     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto the next device
-  1153 00001508 4881FFFFFFFFFF      <1>     cmp rdi, -1 ;Is rdi at End of Chain?
-  1154 0000150F 75DD                <1>     jne .checkName  ;If no, rdi points to char device
-  1155 00001511 F9                  <1>     stc
-  1156                              <1> .exit:
-  1157 00001512 5F                  <1>     pop rdi
-  1158 00001513 58                  <1>     pop rax
-  1159                              <1>     return
+  1133                              <1> 
+  1134                              <1> checkIfCharDevice:  ;Int 4Fh AX=1223h
+  1135                              <1> ;Compares the first 8 chars of the FCB field to each device name in the
+  1136                              <1> ; device driver chain. 
+  1137                              <1> ;Output: CF=CY if not found
+  1138                              <1> ;        CF=NC if found
+  1139                              <1> ;           BH = Low byte of the device attribute word
+  1140 000014DE 50                  <1>     push rax
+  1141 000014DF 57                  <1>     push rdi
+  1142 000014E0 488B05(DAC60300)    <1>     mov rax, qword [fcbName]    ;Get the 8 char name (space padded)
+  1143 000014E7 488D3D(80C00300)    <1>     lea rdi, nulDevHdr    ;Get a ptr to the start driver header
+  1144                              <1> .checkName:
+  1145 000014EE 668B5F08            <1>     mov bx, word [rdi + drvHdr.attrib]
+  1146 000014F2 86FB                <1>     xchg bh, bl ;Swap lo and hi bytes
+  1147 000014F4 F6C380              <1>     test bl, 80h  ;Is the driver for disk drive?
+  1148 000014F7 740C                <1>     jz .walkList ;Jump to skip ANY and ALL Disk Drives
+  1149 000014F9 80CF20              <1>     or bh, 20h  ;RBIL says Bit 5 set and Bits 6-7 clear if Char dev
+  1150 000014FC 80E73F              <1>     and bh, ~(80h|40h) ;Clear the upper two bits
+  1151 000014FF 483B471A            <1>     cmp rax, qword [rdi + drvHdr.drvNam]
+  1152 00001503 740D                <1>     je .exit    ;If equal, CF=NC is already cleared
+  1153                              <1> .walkList:
+  1154 00001505 488B3F              <1>     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto the next device
+  1155 00001508 4881FFFFFFFFFF      <1>     cmp rdi, -1 ;Is rdi at End of Chain?
+  1156 0000150F 75DD                <1>     jne .checkName  ;If no, rdi points to char device
+  1157 00001511 F9                  <1>     stc
+  1158                              <1> .exit:
+  1159 00001512 5F                  <1>     pop rdi
+  1160 00001513 58                  <1>     pop rax
+  1161                              <1>     return
     13                              <2> %%_ret:
     14 00001514 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1160                              <1> 
-  1161                              <1> buildCharDir:
-  1162                              <1> ;Build a dummy directory entry for the char device in FCBName
-  1163                              <1> ; Unless we are in disk skip mode (just evaluating the name)
-  1164 00001515 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
-  1165                              <1>     rete
+  1162                              <1> 
+  1163                              <1> buildCharDir:
+  1164                              <1> ;Build a dummy directory entry for the char device in FCBName
+  1165                              <1> ; Unless we are in disk skip mode (just evaluating the name)
+  1166 00001515 803D(33C60300)00    <1>     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
+  1167                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -7595,47 +7597,47 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1166 0000151E 50                  <1>     push rax
-  1167 0000151F 57                  <1>     push rdi
-  1168 00001520 C605(E5C60300)00    <1>     mov byte [fcbName+11], 0    ;Override and null terminate the fcbName field
-  1169 00001527 488D3D(5FC60300)    <1>     lea rdi, curDirCopy
-  1170                              <1>     ;Zero the directory copy (32 bytes)
-  1171 0000152E 50                  <1>     push rax
-  1172 0000152F 51                  <1>     push rcx
-  1173 00001530 57                  <1>     push rdi
-  1174 00001531 31C0                <1>     xor eax, eax    ;Zero rax
-  1175 00001533 B904000000          <1>     mov ecx, 4
-  1176 00001538 F348AB              <1>     rep stosq   ;Store 4 qwords of 0 to fill directory entry with zeros
-  1177 0000153B 5F                  <1>     pop rdi
-  1178 0000153C 59                  <1>     pop rcx
-  1179 0000153D 58                  <1>     pop rax
-  1180 0000153E 488B05(DAC60300)    <1>     mov rax, qword [fcbName]
-  1181 00001545 488907              <1>     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
-  1182 00001548 B820202020          <1>     mov eax, "    "    ;Four spaces, overwrite the attribute field
-  1183 0000154D 894708              <1>     mov dword [rdi + fatDirEntry.name + filename.fExt], eax
-  1184 00001550 C6470B40            <1>     mov byte [rdi + fatDirEntry.attribute], dirCharDev ;Mimic DOS, set to 40h
-  1185                              <1>     ;Get date and time and set the write time in the directory entry
-  1186 00001554 E8C1110000          <1>     call readDateTimeRecord ;Update DOS internal Time/Date variables
-  1187 00001559 E8A7120000          <1>     call getDirDTwords  ;Get date time words packed in eax
-  1188 0000155E 894716              <1>     mov dword [rdi + fatDirEntry.wrtTime], eax      ;Write as a packed dword
-  1189 00001561 31C0                <1>     xor eax, eax
-  1190 00001563 5F                  <1>     pop rdi
-  1191 00001564 58                  <1>     pop rax
-  1192                              <1>     return
+  1168 0000151E 50                  <1>     push rax
+  1169 0000151F 57                  <1>     push rdi
+  1170 00001520 C605(E5C60300)00    <1>     mov byte [fcbName+11], 0    ;Override and null terminate the fcbName field
+  1171 00001527 488D3D(5FC60300)    <1>     lea rdi, curDirCopy
+  1172                              <1>     ;Zero the directory copy (32 bytes)
+  1173 0000152E 50                  <1>     push rax
+  1174 0000152F 51                  <1>     push rcx
+  1175 00001530 57                  <1>     push rdi
+  1176 00001531 31C0                <1>     xor eax, eax    ;Zero rax
+  1177 00001533 B904000000          <1>     mov ecx, 4
+  1178 00001538 F348AB              <1>     rep stosq   ;Store 4 qwords of 0 to fill directory entry with zeros
+  1179 0000153B 5F                  <1>     pop rdi
+  1180 0000153C 59                  <1>     pop rcx
+  1181 0000153D 58                  <1>     pop rax
+  1182 0000153E 488B05(DAC60300)    <1>     mov rax, qword [fcbName]
+  1183 00001545 488907              <1>     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
+  1184 00001548 B820202020          <1>     mov eax, "    "    ;Four spaces, overwrite the attribute field
+  1185 0000154D 894708              <1>     mov dword [rdi + fatDirEntry.name + filename.fExt], eax
+  1186 00001550 C6470B40            <1>     mov byte [rdi + fatDirEntry.attribute], dirCharDev ;Mimic DOS, set to 40h
+  1187                              <1>     ;Get date and time and set the write time in the directory entry
+  1188 00001554 E8C1110000          <1>     call readDateTimeRecord ;Update DOS internal Time/Date variables
+  1189 00001559 E8A7120000          <1>     call getDirDTwords  ;Get date time words packed in eax
+  1190 0000155E 894716              <1>     mov dword [rdi + fatDirEntry.wrtTime], eax      ;Write as a packed dword
+  1191 00001561 31C0                <1>     xor eax, eax
+  1192 00001563 5F                  <1>     pop rdi
+  1193 00001564 58                  <1>     pop rax
+  1194                              <1>     return
     13                              <2> %%_ret:
     14 00001565 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1193                              <1> 
-  1194                              <1> checkFailingComp:
-  1195                              <1> ;Returns if the failing part of the path was the LAST entry of the path,
-  1196                              <1> ; i.e. the part we may be creating or checking for the existance of.
-  1197                              <1> ;Returns: ZF=ZE => Last path componant
-  1198                              <1> ;         ZF=NZ => Not last path componant
-  1199 00001566 50                  <1>     push rax
-  1200 00001567 8A05(E5C60300)      <1>     mov al, byte [fcbName + 11]
-  1201 0000156D 84C0                <1>     test al, al
-  1202 0000156F 58                  <1>     pop rax
-  1203                              <1>     return
+  1195                              <1> 
+  1196                              <1> checkFailingComp:
+  1197                              <1> ;Returns if the failing part of the path was the LAST entry of the path,
+  1198                              <1> ; i.e. the part we may be creating or checking for the existance of.
+  1199                              <1> ;Returns: ZF=ZE => Last path componant
+  1200                              <1> ;         ZF=NZ => Not last path componant
+  1201 00001566 50                  <1>     push rax
+  1202 00001567 8A05(E5C60300)      <1>     mov al, byte [fcbName + 11]
+  1203 0000156D 84C0                <1>     test al, al
+  1204 0000156F 58                  <1>     pop rax
+  1205                              <1>     return
     13                              <2> %%_ret:
     14 00001570 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
