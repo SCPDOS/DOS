@@ -8,7 +8,6 @@
 %define DPBINFO false
 %define REGS false
 %define ENDSTATUS false
-%define ALLOCTEST false
 
 
 ;Use this space as the debug stack

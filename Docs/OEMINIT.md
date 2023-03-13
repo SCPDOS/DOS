@@ -113,3 +113,39 @@ MUST, MAY and SHOULD can be defined as usual.
 	To return to DOS, simply return from the called routine. On return, ALL REGISTERS MUST BE PRESERVED!
 	If you wish to HALT DOS's init for some reason, please return with the carry flag set, i.e. CF=CY.
 
+If any of the following functions are unnecessary, they must be returned
+All OEM variables are visible across OEMinit.
+
+- OEMBTLDR -> Second stage OEM bootloader. Loads/relocates DOS
+to its final resting place. Must fill in:
+QWORD [OEMLODPTR] -> Load address of DOS.
+
+- OEMDOSAPT -> Setup additional paging tables if necessary. Can access
+CR3 as is necessary. Must be 1:1 mapped memory. If you choose to 
+use the allocated space to put your tables at (dosAPT), you SHOULD
+also adjust the symbol dosAPTsize to the number of bytes necessary for 
+the full table size.
+
+- OEMMCBINIT -> Setup the MCB chain for the memory layout as indicated.
+Must fill in:
+QWORD [OEMANCHOR] -> Address of the Anchor MCB.
+QWORD [OEMALLOC] -> Address of a 10Kb block that can be used by 
+DOS for the rest of SYSINIT. Will be discarded before loading 
+the command interpreter.
+
+- OEMDRIVER	-> Return the driver chain with adjusted pointer addresses
+Fill in the following variable:
+QWORD [INITDEVDRV] = A pointer to the device driver chain. All pointers
+have to have been adjusted relative to the DOS base address in 
+QWORD [INITBASE].
+
+- OEMSTATS -> Returns a few values in standard form for DOS
+Fill the follwing variables:
+BYTE [INITFILE]	= Default number of FILES
+BYTE [INITBUF]  = Default number of Buffers
+BYTE [INITDEFAULT] = Start drive for the boot
+QWORD [INITMEMSZ] = Number of bytes usable by DOS
+BYTE [OEMBIOS] = Set means using non SCP name for BIOS (IO.SYS)
+
+- OEMCALLBK -> Access to initialised DOSSEG and SDA. Can make final 
+modifications to the way that DOS initialised the system.

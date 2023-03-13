@@ -568,7 +568,7 @@ storageInits:
     mov qword [rbp + dpb.qNextDPBPtr], -1
     mov rbp, rdi    ;Now return to rbp a pointer to the head of dos segment
 ;----------------------------------------:
-;           End of MSD driver init.
+;           End of MSD driver init.      :
 ;----------------------------------------:
 ;
 ;----------------------------------------:
@@ -1538,25 +1538,6 @@ closeHandlesLoop:
     mov eax, 3D02h
     int 41h       ;Open file
 
-    
-    %if DEBUG && ALLOCTEST
-;Test Allocation, Growth and Deallocation
-    mov r15, qword fs:[currentPSP]
-    mov qword fs:[currentPSP], 5A5Ah ;5A5Ah is a reserved addr
-    mov ebx, 10 ;Allocate 10 paragraphs pls
-    mov ah, 48h ;Allocate
-    int 41h
-
-    mov byte [rax - 10h], 0 ;Trash chain
-    mov r8, rax ;Move the pointer to r8
-    mov ebx, 20 ;Increase allocation to 20 paragraphs
-    mov ah, 4Ah
-    int 41h
-
-    mov ah, 49h ;Free r8
-    int 41h
-    mov qword fs:[currentPSP], r15
-    %endif
 
     %if ENDSTATUS
 debugFinal:
