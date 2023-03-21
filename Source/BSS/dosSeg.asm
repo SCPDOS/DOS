@@ -1,15 +1,6 @@
 ;This file contains the main DOS data segment
-dosAPT: ;Additional Page tables
-    resb dosAPTsize    ;60kb of space for the page tables
 dosDataArea:
-    dosSegPtr   resq 1    ;Pointer to the data Segment itself x
-    biosUBase   resq 1    ;Ptr to the BIOS userbase
-    bootDrive   resb 1    ;The Int 33h device we booted from x
-    numRemDrv   resb 1    ;Number of physical removable MSDs in system x
-    numFixDrv   resb 1    ;Number of physical fixed drives in system
-    loProtMem   resd 1    ;Num bytes free in (lo) protected from userbase
-    hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
-    longMem     resq 1    ;Num bytes in long memory arena
+    bootDrive   resb 1    ;The logical drive we booted from
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
 ;Both below variables can be edited with Int 41h AX=440Bh
@@ -32,7 +23,6 @@ sysVarsPtr:
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
     fcbsHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
-    ;Old numLogicalDrives is now numPhysical volumes
     numPhysVol  resb 1    ;Number of physical volumes in the system x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     numBuffers  resb 1    ;Buffers=30 default
@@ -355,6 +345,9 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Exception handler vars in SDA now 
     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
     haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
+    IDTpointer:         ;41h/25h will always read a new copy of IDT here
+        .Limit  dw ?
+        .Base   dq ?
     sdaLen      equ     $ - sda 
     sdaDOSLen   equ     $ - sdaDOSSwap
 

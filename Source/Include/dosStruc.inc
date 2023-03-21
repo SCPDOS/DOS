@@ -386,11 +386,6 @@ struc countryStruc
     .resv      resb 10  ;Reserve 10 bytes
 endstruc
 
-;60 4kb pages, giving a total of 264kb of space allocated to paging
-;for a space of 64Gb
-dosAPTsize  equ 60*4096 ;(APT = Additional Page Tables)
-dosLowBase  equ 600h    ;Low load address
-
 ;Critical Error AH bitfield equates
 critRead    equ 0h
 critWrite   equ 1h
