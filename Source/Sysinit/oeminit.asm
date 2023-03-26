@@ -45,7 +45,7 @@ pdtLoop:
     pop rax ;Get the pointer back to the top of the memory area in rax
 ;Now we add every 4kb page to the page directory pointer table
 ;15 4kb pages to consider
-    mov qword [FINALDOSPTR], rdi ;rdi now points to where dosseg will go
+    mov qword [FINALDOSPTR], rdi ;rdi now points to where dSeg will go
     push rdi
     mov rdi, cr3    ;Get Page level 4 table pointer
     mov rdi, qword [rdi] ;Go to next level

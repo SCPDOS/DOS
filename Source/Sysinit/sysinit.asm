@@ -16,11 +16,12 @@ sysinit:    ;Control is passed here from OEMINIT
 ;------------------------------------------------;
 ;      Copy DOS to it's final resting ground     ;
 ;------------------------------------------------;  
-    lea rsi, section.resSeg.start   ;Get pointer to file start
-    mov rdi, qword [FINALDOSPTR]
-    cmp rdi, rsi
-    je short skipDOSReloc
-    add rdi, dSegLen ;Move destination past end of data area
+dosReloc:
+    lea rsi, section.resSeg.start   ;Get pointer to the start of resSeg
+    mov rdi, qword [FINALDOSPTR]    ;Get ptr to where dSeg goes
+    add rdi, dSegLen                ;Make this a pointer to the start of resSeg
+    cmp rdi, rsi 
+    je short skipDOSReloc   ;Skip relocating if DOS is at correct address
     mov ecx, (dosLen + 7)/8
     rep movsq
 skipDOSReloc:
@@ -40,11 +41,10 @@ skipDOSReloc:
 ; need to be initialised with a 0 value, are     ;
 ; initialised for free.                          ;
 ;------------------------------------------------;
+    mov rdi, qword [FINALDOSPTR]    ;Go back to the data area
     mov ecx, dSegLen
     xor al, al
-    push rdi    ;rdi points to the data area
     rep stosb   ;and sanitise away!
-    pop rdi
 ;------------------------------------------------;
 ;          Kernel inits and adjustments          ;
 ;------------------------------------------------;
@@ -104,7 +104,6 @@ adjDrivers:
 ;------------------------------------------------;
 kernDrvInit:
     ;rbp and fs point to DOSSEG
-    mov qword fs:[dpbHeadPtr], 0    ;Explicitly set this to 0?
     lea rbx, initDrvBlk
     mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
 .init:
@@ -220,16 +219,17 @@ makeMCBChain:
     mov ebx, buffersDefault
     test eax, eax
     cmovz eax, ebx
-    mov byte [rbp + numBuffers], al
+    mov byte [BUFFERS], al
 
     movzx eax, byte [LASTDRIVE]
     mov ebx, lastDriveDeflt
-    cmp eax, 5
+    cmp eax, ebx
     cmovb eax, ebx
-    mov byte [rbp + lastdrvNum], al
+    mov byte [LASTDRIVE], al
+    mov byte [rbp + lastdrvNum], al     ;Set for DOS to be usable
 
-    mov word [rbp + shareCount], 3    ;Retry the repeat 3 times before failing
-    mov word [rbp + shareDelay], 1    ;Go through one multiple of countdown loop
+    mov word [rbp + shareCount], 3      ;Retry the repeat 3 times before failing
+    mov word [rbp + shareDelay], 1      ;Go through one multiple of countdown loop
 ;------------------------------------------------;
 ;          Find largest sector size              ;
 ;------------------------------------------------;
@@ -595,12 +595,15 @@ configParse:
     lea rdx, .speLine
     mov eax, 0900h
     int 41h
-    ;Reset all values to default
-    mov qword [rbp - cfgFrame.newBuffers], buffersDefault
-    mov qword [rbp - cfgFrame.newSFTVal], filesDefault
+    ;Reset all values to OEM defaults
+    movzx eax, byte [BUFFERS]
+    mov qword [rbp - cfgFrame.newBuffers], rax
+    movzx eax, byte [FILES]
+    mov qword [rbp - cfgFrame.newSFTVal], rax
     mov qword [rbp - cfgFrame.newFCBSVal], fcbsDefault
     mov qword [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
-    mov qword [rbp - cfgFrame.newLastdrive], lastDriveDeflt
+    movzx eax, byte [LASTDRIVE]
+    mov qword [rbp - cfgFrame.newLastdrive], rax
     jmp .cfgExit
 .speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
 .keyTbl: 
@@ -1074,7 +1077,6 @@ noCfg:
     mov byte fs:[lastdrvNum], cl ;Save this value
     call makeCDSArray
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
-    breakpoint
 ;Computation of new space is complete, now work out how many bytes this is
     mov rbx, qword fs:[mcbChainPtr]
     add rbx, mcb_size
@@ -1115,12 +1117,6 @@ l1:
     mov qword [rbx + execProg.pfcb2], rax
     lea rdx, cmdLine
     mov qword [rbx + execProg.pCmdLine], rdx    ;Store command line here
-    mov r8, qword fs:[dpbHeadPtr]
-    mov r9, qword fs:[sftHeadPtr]
-    mov r10, qword fs:[cdsHeadPtr]
-    mov r11, qword fs:[bufHeadPtr]
-    mov r12, qword fs:[mcbChainPtr]
-    breakpoint
     mov eax, 4B00h  ;Exec Prog
     int 41h
     lea rdx, badCom
@@ -1369,7 +1365,7 @@ localIDTpointer: ;Local IDT pointer
     .Limit  dw 0
     .Base   dq 0
 
-FINALDOSPTR dq 0    ;Pointer to the DOS data segment
+FINALDOSPTR dq 0    ;Pointer to where dSeg should be loaded
 DOSENDPTR   dq 0    ;Pointer to the first free byte AFTER DOS
 OEMMCBANCHR dq 0    ;Pointer to the Anchor MCB
 
@@ -1380,7 +1376,6 @@ DFLTDRIVE   db 0    ;Default drive number (0-25), this is the boot drive
 LASTDRIVE   db 0    ;Default last drive number (0-25)
 OEMBIOS     db 0    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
 OEMDRVCHAIN dq 0    ;Pointer to the uninitialised device drivers
-;OEMMEMSZ    dq 0    ;Total number of bytes useable by DOS
 
 initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
 tempPSP: ;Points to a 256 byte space that is set up appropriately

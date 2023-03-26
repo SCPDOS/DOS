@@ -142,6 +142,7 @@ msdInit:
     mov ax, r8w
     mov byte [remDrv], ah    ;Save num of phys int 33h rem drives
     mov byte [fixDrv], al    ;Save number of physical hard drives
+    mov byte [physVol], 0    ;Initialise this byte to 0
 
     lea r15, [msdDriver.msdBPBblks]    ;Point to the BPB storage place
     cmp byte [fixDrv], 0 ;Do we have any fixed drives?
