@@ -104,6 +104,7 @@ adjDrivers:
 ;------------------------------------------------;
 kernDrvInit:
     ;rbp and fs point to DOSSEG
+    mov qword fs:[dpbHeadPtr], 0    ;Explicitly set this to 0?
     lea rbx, initDrvBlk
     mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
 .init:
@@ -404,39 +405,7 @@ defaultFileHandles:
     mov qword [rdx + sfth.qNextSFTPtr], -1
     mov word [rdx + sfth.wNumFiles], 5  ;This SFTH has space for 5 SFTs
 
-    lea rdx, auxName
-    mov eax, 3D02h  ;R/W handles
-    int 41h
-    jc short .localError
-
-    movzx ebx, ax   
-    mov ecx, 3  ;Copy the handle to STDAUX
-    mov eax, 4600h
-    int 41h
-    jc short .localError
-
-    mov eax, 3E00h  ;Close the original handle (freeing STDIN)
-    int 41h
-    jc short .localError
-
-    lea rdx, conName
-    mov eax, 3D02h  ;R/W handles
-    int 41h
-    jc short .localError
-
-    movzx ebx, ax   ;Copy STDIN to STDOUT
-    mov eax, 4500h
-    int 41h
-    jc short .localError
-
-    mov eax, 4500h  ;Copy STDIN to STDERR
-    int 41h
-    jc short .localError
-
-    lea rdx, prnName
-    mov eax, 3D02h  ;R/W handles
-    int 41h
-.localError:
+    call openStreams
     jc OEMHALT
 ;------------------------------------------------;
 ;             Print Welcome Message              ;
@@ -449,8 +418,8 @@ defaultFileHandles:
 ;------------------------------------------------;
 ;Setup stackframe, workout base 
 setupFrame:
-    ;breakpoint
-    mov rdi, qword [DOSENDPTR]
+    mov rdi, qword fs:[mcbChainPtr]
+    add rdi, mcb_size   ;Go to the alloc space, recycle the previous data structure space
     push rbp
     mov rbp, rsp
     sub rsp, cfgFrame_size
@@ -1029,11 +998,17 @@ configParse:
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
 ;------------------------------------------------;
-;Add additional buffers. Start from tmpBufHdr
-;Add additional SFT entries. By default, 1 new SFT header, with 15 SFT entries
+;Add additional buffers.
+;Add additional SFT entries.
 ;Add additional FCBS.
 ;Create a larger CDS if needed.
 noCfg:
+;Begin by aligning the endPtr on a paragraph boundary
+    mov rdi, qword [rbp - cfgFrame.endPtr]
+    shr rdi, 4
+    shl rdi, 4
+    add rdi, 10h
+    mov qword [rbp - cfgFrame.endPtr], rdi
 ;Start with buffers:
     mov rcx, qword [rbp - cfgFrame.newBuffers]    ;Get new buffers size
     mov byte fs:[numBuffers], cl    ;Store this value in var
@@ -1041,7 +1016,7 @@ noCfg:
     movzx ebx, word fs:[maxBytesSec]    ;Get buffer sector size
     add ebx, bufferHdr_size ;rbx has the size to add
     ;Each buffer has no flags, drive number must be -1
-    mov rdi, qword [rbp - cfgFrame.endPtr]  ;Get current allocation end pointer
+    ;rdi has the current allocation end pointer
     mov qword fs:[bufHeadPtr], rdi  ;Reset the var here
     mov rsi, rdi    ;Points rsi to first new buffer space
     xor eax, eax    ;Use for sanitising buffer headers
@@ -1098,24 +1073,23 @@ noCfg:
 ;And CDS now
     mov rcx, qword [rbp - cfgFrame.newLastdrive]
     mov byte fs:[lastdrvNum], cl ;Save this value
-    mov qword fs:[cdsHeadPtr], rdi  ;Point cdsHeadPtr here
     call makeCDSArray
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
-
+    breakpoint
 ;Computation of new space is complete, now work out how many bytes this is
     mov rsp, rbp    ;Return stack pointer to original position
     pop rbp
-    mov rbx, qword [DOSENDPTR]
+    mov rbx, qword fs:[mcbChainPtr]
+    add rbx, mcb_size
     sub rdi, rbx    ;Gives difference now
-    lea ebx, dword [edi + 11h]  ;Add 11 to round up a paragraph
-    shr ebx, 4  ;Convert to paragraphs
+    lea rbx, dword [rdi + 11h]  ;Add 11 to round up a paragraph
+    shr rbx, 4  ;Convert to paragraphs
 ;Resize DOS allocation before loading COMMAND.COM
     mov r8, qword fs:[mcbChainPtr] ;Get ptr
     add r8, mcb.program
     mov ah, 4Ah
     int 41h
 ;Now we close all five default handles and open AUX, CON and PRN.
-    mov r8, qword fs:[currentPSP]
     xor ebx, ebx
 closeHandlesLoop:
     mov eax, 3e00h  ;Close
@@ -1123,27 +1097,7 @@ closeHandlesLoop:
     inc ebx ;Goto next handle
     cmp ebx, 6
     jne closeHandlesLoop
-    lea rdx, auxName
-    mov eax, 3D02h   ;Open read/write
-    int 41h
-    mov ebx, eax
-    mov ecx, 3  ;
-    mov eax, 4600h  ;DUP2
-    int 41h
-    mov eax, 3e00h
-    int 41h ;Close the original handle
-    mov eax, 3D02h  ;Open read/write
-    lea rdx, conName
-    int 41h
-    mov ebx, eax    ;Move file handle to ebx
-    mov eax, 4500h  ;DUP
-    int 41h
-    mov eax, 4500h  ;DUP
-    int 41h
-    lea rdx, prnName
-    mov eax, 3D02h
-    int 41h       ;Open file
-
+    call openStreams
 l1:
     ;Load COMMAND.COM
     ;Get currentPSP ptr
@@ -1153,6 +1107,7 @@ l1:
     int 41h
     add al, "A"
     mov byte [cmdLine], al  ;Store drive letter at start of command line
+
     lea rbx, cmdBlock
     lea rax, qword [rdx + psp.fcb1]
     mov qword [rbx + execProg.pfcb1], rax
@@ -1164,6 +1119,7 @@ l1:
     mov r9, qword fs:[sftHeadPtr]
     mov r10, qword fs:[cdsHeadPtr]
     mov r11, qword fs:[bufHeadPtr]
+    mov r12, qword fs:[mcbChainPtr]
     breakpoint
     mov eax, 4B00h  ;Exec Prog
     int 41h
@@ -1179,7 +1135,6 @@ hltLbl:
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
 strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
-mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
 conName db "CON",0
 auxName db "AUX",0
@@ -1242,6 +1197,36 @@ nData:
     dq nulIntr
     db "NUL     " ;Default NUL data
 
+openStreams:
+;If this returns with CF=CY, an error occured. Halt boot if initial set of streams
+    lea rdx, auxName
+    mov eax, 3D02h   ;Open read/write
+    int 41h
+    retc
+    mov ebx, eax
+    mov ecx, 3  ;
+    mov eax, 4600h  ;DUP2
+    int 41h
+    retc
+    mov eax, 3e00h
+    int 41h ;Close the original handle
+    retc
+    mov eax, 3D02h  ;Open read/write
+    lea rdx, conName
+    int 41h
+    retc
+    mov ebx, eax    ;Move file handle to ebx
+    mov eax, 4500h  ;DUP
+    int 41h
+    retc
+    mov eax, 4500h  ;DUP
+    int 41h
+    retc
+    lea rdx, prnName
+    mov eax, 3D02h
+    int 41h       ;Open file
+    return
+
 convertBPBArray:
 ;rsi -> BPB array
 ;rbp -> Space for cl consecutive DPB's
@@ -1251,7 +1236,6 @@ convertBPBArray:
     call .findLastDPB
     movzx ecx, cl   ;Use ch as the unit number counter
 .buildNext:
-    breakpoint
     push rsi
     mov rsi, qword [rsi]    ;Get the BPB pointer from the BPB array
     mov ah, 53h ;Build DPB

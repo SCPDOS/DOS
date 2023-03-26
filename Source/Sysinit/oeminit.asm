@@ -171,6 +171,7 @@ OEMMCBINIT PROC NEAR
     mov eax, 1304h
     int 30h
     jmp OEMHALT
+mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 
 mcbBuild:
 ;Actually build the MCB chain here
