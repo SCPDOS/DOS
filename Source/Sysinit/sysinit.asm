@@ -418,8 +418,7 @@ defaultFileHandles:
 ;------------------------------------------------;
 ;Setup stackframe, workout base 
 setupFrame:
-    mov rdi, qword fs:[mcbChainPtr]
-    add rdi, mcb_size   ;Go to the alloc space, recycle the previous data structure space
+    mov rdi, qword [DOSENDPTR]
     push rbp
     mov rbp, rsp
     sub rsp, cfgFrame_size
@@ -1077,8 +1076,6 @@ noCfg:
     mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
     breakpoint
 ;Computation of new space is complete, now work out how many bytes this is
-    mov rsp, rbp    ;Return stack pointer to original position
-    pop rbp
     mov rbx, qword fs:[mcbChainPtr]
     add rbx, mcb_size
     sub rdi, rbx    ;Gives difference now
@@ -1089,6 +1086,9 @@ noCfg:
     add r8, mcb.program
     mov ah, 4Ah
     int 41h
+
+    mov rsp, rbp    ;Return stack pointer to original position
+    pop rbp ;Stack frame no longer needed
 ;Now we close all five default handles and open AUX, CON and PRN.
     xor ebx, ebx
 closeHandlesLoop:
