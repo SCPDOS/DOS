@@ -136,11 +136,11 @@ readDateTimeRecord:
 
     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
     lea rbx, CLOCKrecrd ;Read into clock record
-    mov ecx, 6
+    mov ecx, 6      ;Number of bytes to xfr
     xor rbp, rbp    ;Tell it we are a chardev
 ; rbp = DPB ptr | NullPtr if a char dev
 ; rbx = Data storage buffer ptr
-; ecx = Number of sectors to transfer
+; ecx = Number of sectors to transfer | Number of bytes to xfr, if char dev
 ; rdx = Starting sector to read/write from/to | Undefined if a char dev
     call primReqReadSetup   ;rbx now points to request header
     mov rsi, qword [clockPtr]   ;Get clock driver pointer

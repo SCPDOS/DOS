@@ -169,8 +169,8 @@ clkDriver:
     ja .clkWriteErrorCode ;If yes, error!
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
-    ;test al, al
-    ;jz .clkInit
+    test al, al
+    jz .clkInit
     cmp al, 04h
     jz .clkRead
     cmp al, 06h
@@ -197,8 +197,13 @@ clkDriver:
     pop rax
     ret
 .clkInit:           ;Function 0
+    mov al, errGF - drvErrShft ;General Error code (0Ch)
+    test byte [.clkInitDone], -1
+    jnz short .clkExit
     call clockInit
+    mov byte [.clkInitDone], -1 ;Set initialised
     jmp short .clkExit
+.clkInitDone:   db 0
 
 .clkRead:           ;Function 4
     mov al, 05h ;Bad request structure length?

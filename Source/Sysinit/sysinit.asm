@@ -104,8 +104,30 @@ adjDrivers:
 ;------------------------------------------------;
 kernDrvInit:
     ;rbp and fs point to DOSSEG
-    lea rbx, initDrvBlk
+    ;Scan the OEM device chain. Set the CON pointer and the CLOCK pointer 
+    ; when encountering those drivers.
+    ;This is to allow the drivers to use DOS CHAR functions and 
+    ;GET/SET TIME and GET/SET DATE
     mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
+    push rsi
+.scanLp:
+    mov ax, word [rsi + drvHdr.attrib]
+    and ax, devDrvConIn | devDrvConOut
+    jz short .scanClock    ;If neither one of these bits are set, jmp
+    cmp ax, devDrvConIn | devDrvConOut
+    jne short .scanClock
+    mov qword [rbp + vConPtr], rsi  ;Store the header ptr here
+.scanClock:
+    test word [rsi + drvHdr.attrib], devDrvClockDev
+    jz short .scanNext
+    mov qword [rbp + clockPtr], rsi
+.scanNext:
+    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto next driver
+    cmp rsi, -1
+    jne short .scanLp
+
+    pop rsi     ;Point rsi back to head of device chain
+    lea rbx, initDrvBlk
 .init:
     call initDriver
     jc OEMHALT
@@ -1293,6 +1315,7 @@ initDriver:
     pop rbp
     pop rsi
     pop rbx
+    ;Check if a driver wants to not load.
     ;If a kernel driver wants to stop, halt boot.
     cmp byte [rbx + initReqPkt.numunt], 0
     jne short .notHalt
@@ -1301,7 +1324,7 @@ initDriver:
     stc
     ret
 .notHalt:
-    ;Now check if the drivers were con/clock/msd before exiting
+    ;Now check if the drivers were con/clock before exiting
     mov ax, word [rsi + drvHdr.attrib]
     and ax, devDrvConIn | devDrvConOut
     jz short .checkClock    ;If neither one of these bits are set, jmp
@@ -1313,12 +1336,6 @@ initDriver:
     jz short .notClock
     mov qword [rbp + clockPtr], rsi
 .notClock:
-    test word [rsi + drvHdr.attrib], devDrvChar
-    jnz short .initComplete
-    ;Here we get the data from the request block
-    ;mov al, byte [rbx + initReqPkt.numunt]  ;Get the number of units here
-    ;add byte [rbp + numPhysVol], al     ;Add the number of volumes here
-.initComplete:
     ret
 
 
