@@ -15,3 +15,9 @@ Int 4Fh AX=12xxh = Internal DOS Interface (IDI)
 - Current (Standard DOS API functions. Will be supported. If ever depreciated, then they return an error code and their function numbers are NOT recycled)
 - Obsolete (Use an alternative function for everything EXCEPT ensuring compatibility. The FCB functions fall here)
 - Removed (This function henceforth will only ever return an error)
+
+## NOTES:
+- Driver loads (initial kernel drivers and CONFIG.SYS loads) allow for DOS CHAR functions, version check and get/set date/time!
+- Kernel drivers should have only one type of each driver in the chain but we can handle more! At the very start DOS will scan this chain and set the 
+first drivers with the CLOCK$ and CON bits set to take control of the devices BEFORE init. Therefore an implementer MUST have these two drivers be the first
+two drivers in the chain, if ANY of the other drivers are going to use CHAR functions or get/set date/time! More detail in the OEM init guide.
