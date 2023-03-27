@@ -345,9 +345,6 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Exception handler vars in SDA now 
     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
     haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
-    IDTpointer:         ;41h/25h will always read a new copy of IDT here
-        .Limit  dw ?
-        .Base   dq ?
     sdaLen      equ     $ - sda 
     sdaDOSLen   equ     $ - sdaDOSSwap
 
@@ -365,5 +362,11 @@ inExtASCII:
     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
     ;Every time this overflows, we read the clock and update the DOS internal
     ; copy of the date/time record
-
+    ;The idt doesnt need to be in the SDA as we will halt interrupts
+    ; until we get/set the address. Thus the IDT entry returned is the 
+    ; correct one AT the time of calling up to "the time it takes to get
+    ; to the read IDT routine".
+    dosIdtPtr:          ;41h/25h will always read a new copy of IDT here
+        .limit  dw ?
+        .base   dq ?
     dSegLen     equ     $
