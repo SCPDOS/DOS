@@ -110,6 +110,7 @@ kDispTbl:
 kDispTblL  equ $ - kDispTbl 
 
 mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
+    db mDispTblL/2  ;Number of entries in table
     dw multiplexTest - mDispTbl ;Installation check, return FFh
     dw closeMain - mDispTbl     ;AX=1201h, Close File handle
     dw muxGetIntVector - mDispTbl   ;AX=1202h, Get interrupt Vector
@@ -151,7 +152,7 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
 mDispTblL   equ     $ - mDispTbl
 
 serverDispTbl:  ;Server Dispatch functions
-    db 0Bh  ;Number of entries
+    db serverDispTblL/2                         ;Number of entries
     dw serverDispatch - serverDispTbl           ;AX=5D00h
     dw commitAllFilesForProcess - serverDispTbl ;AX=5D01h
     dw closeFilesByName - serverDispTbl         ;AX=5D02h
@@ -163,3 +164,4 @@ serverDispTbl:  ;Server Dispatch functions
     dw printerRedir - serverDispTbl             ;AX=5D08h
     dw printerRedir - serverDispTbl             ;AX=5D09h
     dw setExtendedErrorInfo - serverDispTbl     ;AX=5D0Ah
+serverDispTblL   equ     $ - serverDispTbl

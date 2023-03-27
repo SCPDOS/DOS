@@ -27,7 +27,7 @@ msdDriver:
     add rax, rcx    ;Else, add table address to the distance from the table
     call rax ;Goto function, rbp = devBPBPtr, rbx = reqBlkPtr
 .msdDriverExit:
-    or word [rbx + drvReqHdr.status], 0100h ;Set done bit
+    or word [rbx + drvReqHdr.status], drvDonStatus ;Set done bit
     pop r8
     pop rbp
     pop rdi
@@ -102,7 +102,7 @@ msdDriver:
     mov word [rbx + drvReqHdr.status], ax
     ret ;Return to set done bit
 .msdTable:
-    dw 0                            ;Function 0
+    dw .msdInitShim - .msdTable     ;Function 0
     dw .msdMedChk - .msdTable       ;Function 1
     dw .msdBuildBPB - .msdTable     ;Function 2
     dw .msdIOCTLRead - .msdTable    ;Function 3
@@ -127,7 +127,14 @@ msdDriver:
     dw 0                            ;Function 22
     dw .msdGetLogicalDev - .msdTable    ;Function 23
     dw .msdSetLogicalDev - .msdTable    ;Function 24
-
+.msdInitShim:
+    push rbx
+    push r15
+    call msdInit
+    pop r15
+    pop rbx
+    mov word [.msdTable], 0 ;Now prevent init from firing again
+    ret
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .msdMedChk:          ;Function 1
     mov al, 05h ;Bad request structure length

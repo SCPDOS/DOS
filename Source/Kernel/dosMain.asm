@@ -474,31 +474,17 @@ setIntVector:      ;ah = 25h
 ;Called with:
 ;   rdx = Pointer to interrupt handler
 ;   al = Interrupt number
-    push rax    ;Preserve all registers in call
-    push rbx
-    push rcx
-    push rdx
-    push rsi
-    push rbp
-    mov ebp, eax ;al has interrupt number which we need to save
-    and ebp, 0FFh   ;Zero everything but the bottom byte
-;First call to get default BIOS segement selector and attribute word
-    mov bl, al  ;Set interrupt number 
-    mov eax, 0F007h ;Get the descriptor
-    int 35h
-    call getUserRegs
-    mov rbx, qword [rsi + callerFrame.rdx]  ;Pointer passed in rdx
-    mov esi, eax    ;Move segment selector info to esi
-    mov ecx, ebp    ;Get the interrupt number into cl
-;dx preserves the attribute word
-    mov eax, 0F008h ;Set descriptor
-    int 35h
-    pop rbp
-    pop rsi
-    pop rdx
-    pop rcx
-    pop rbx
-    pop rax
+    cli ;Halt interrupts
+    sidt [dosIdtPtr]    ;Get the current IDT base pointer
+    movzx eax, al
+    shl rax, 4h     ;Multiply IDT entry number by 16 (Size of IDT entry)
+    add rax, qword [dosIdtPtr.base]    
+    mov word [rax], dx  ;Get low word into offset 15...0
+    shr rdx, 10h    ;Bring next word low
+    mov word [rax + 6], dx  ;Get low word into offset 31...16
+    shr rdx, 10h    ;Bring last dword low
+    mov dword [rax + 8], edx
+    sti
     return
 
 setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
@@ -552,7 +538,6 @@ getIntVector:      ;ah = 35h
     call muxGetIntVector    ;Get int vector in rbx, all other regs preserved
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
-    mov al, byte [rsi + callerFrame.rax]    ;Get the low byte in al
     return
 
 getDiskFreeSpace:  ;ah = 36h

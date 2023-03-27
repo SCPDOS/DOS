@@ -1,15 +1,6 @@
 ;This file contains the main DOS data segment
-dosAPT: ;Additional Page tables
-    resb dosAPTsize    ;60kb of space for the page tables
 dosDataArea:
-    dosSegPtr   resq 1    ;Pointer to the data Segment itself x
-    biosUBase   resq 1    ;Ptr to the BIOS userbase
-    bootDrive   resb 1    ;The Int 33h device we booted from x
-    numRemDrv   resb 1    ;Number of physical removable MSDs in system x
-    numFixDrv   resb 1    ;Number of physical fixed drives in system
-    loProtMem   resd 1    ;Num bytes free in (lo) protected from userbase
-    hiProtMem   resd 1    ;Num bytes in hi protec. arena (or 0 if no ISA hole)
-    longMem     resq 1    ;Num bytes in long memory arena
+    bootDrive   resb 1    ;The logical drive we booted from
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
 ;Both below variables can be edited with Int 41h AX=440Bh
@@ -32,7 +23,6 @@ sysVarsPtr:
     cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
     fcbsHeadPtr resq 1    ;Pointer to the head of the System FCB chain
     numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
-    ;Old numLogicalDrives is now numPhysical volumes
     numPhysVol  resb 1    ;Number of physical volumes in the system x
     lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
     numBuffers  resb 1    ;Buffers=30 default
@@ -372,5 +362,11 @@ inExtASCII:
     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
     ;Every time this overflows, we read the clock and update the DOS internal
     ; copy of the date/time record
-
+    ;The idt doesnt need to be in the SDA as we will halt interrupts
+    ; until we get/set the address. Thus the IDT entry returned is the 
+    ; correct one AT the time of calling up to "the time it takes to get
+    ; to the read IDT routine".
+    dosIdtPtr:          ;41h/25h will always read a new copy of IDT here
+        .limit  dw ?
+        .base   dq ?
     dSegLen     equ     $

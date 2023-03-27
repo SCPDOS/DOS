@@ -89,7 +89,7 @@ endstruc
     .unitnm resb 1  ;Unit number, meaningless for character devs
     .cmdcde resb 1  ;Command code
     .status resw 1  ;Status word
-    .devptr resq 1  ;Device queue pointer field
+    .devptr resq 1  ;Device queue pointer field, reserved for future use
 
 %endmacro
 
@@ -102,8 +102,8 @@ struc initReqPkt  ;Init Request Packet
     drvReqHdrM   ;Common Driver Header Macro
     .numunt resb 1  ;Number of logical units (Block only, 0 for char)
     .endptr resq 1  ;Pointer to first free byte after driver
-    .optptr resq 1  ;Pointer to the BPB array (block) or optional args (char)
-    .drvnum resb 1  ;Drive number
+    .optptr resq 1  ;Ptr to BPB array (blkdev) or cmdline args
+    .drvnum resb 1  ;First Drive number
 
 endstruc
 

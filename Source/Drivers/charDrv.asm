@@ -15,6 +15,8 @@ conDriver:
     ja .conWriteErrorCode ;If yes, error!
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
+    test al, al
+    jz .conInit
     cmp al, 4
     jz .conRead
     cmp al, 5
@@ -34,10 +36,13 @@ conDriver:
     mov ah, 80h ;Set error bit
     mov word [rbx + drvReqHdr.status], ax
 .conExit:
-    or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+    or word [rbx + drvReqHdr.status], drvDonStatus    ;Merge done bit
     pop rbx
     pop rax
     ret
+.conInit:    ;Function 0 wrapper
+    call conInit
+    jmp short .conExit
 .conRead:    ;Function 4
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
@@ -164,6 +169,8 @@ clkDriver:
     ja .clkWriteErrorCode ;If yes, error!
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
+    test al, al
+    jz .clkInit
     cmp al, 04h
     jz .clkRead
     cmp al, 06h
@@ -181,7 +188,7 @@ clkDriver:
     mov ah, 80h ;Set error bit
     mov word [rbx + drvReqHdr.status], ax
 .clkExit:
-    or word [rbx + drvReqHdr.status], 0100h ;Merge done bit
+    or word [rbx + drvReqHdr.status], drvDonStatus ;Merge done bit
     pop rbp
     pop rsi
     pop rdx
@@ -189,6 +196,14 @@ clkDriver:
     pop rbx
     pop rax
     ret
+.clkInit:           ;Function 0
+    mov al, errGF - drvErrShft ;General Error code (0Ch)
+    test byte [.clkInitDone], -1
+    jnz short .clkExit
+    call clockInit
+    mov byte [.clkInitDone], -1 ;Set initialised
+    jmp short .clkExit
+.clkInitDone:   db 0
 
 .clkRead:           ;Function 4
     mov al, 05h ;Bad request structure length?
@@ -338,6 +353,8 @@ comIntr:
     ja .comWriteErrorCode ;If yes, error!
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
+    test al, al
+    jz .comInit
     cmp al, 4   ;Read Character(s)
     jz .comRead
     cmp al, 5   ;Non-destructive read, acts like fast read 1 char if available
@@ -371,7 +388,7 @@ comIntr:
     mov ah, 80h ;Set error bit
     mov word [rbx + drvReqHdr.status], ax
 .comExit:
-    or word [rbx + drvReqHdr.status], 0100h    ;Merge done bit
+    or word [rbx + drvReqHdr.status], drvDonStatus    ;Merge done bit
     pop rdi
     pop rsi
     pop rdx
@@ -379,6 +396,9 @@ comIntr:
     pop rbx
     pop rax
     ret
+.comInit:
+    call auxInit
+    jmp short .comExit
 
 .comRead:
     mov al, 05h ;Bad request structure length?

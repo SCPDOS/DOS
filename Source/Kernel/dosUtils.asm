@@ -65,12 +65,19 @@ getDiskData:
 muxGetIntVector:    ;Int 4Fh AX=1202h
 ;Input: al = Interrupt number
 ;Output: rbx = Interrupt Vector
-    push rax    ;Preserve rax, segment selector returned by call
-    push rdx    ;Preserve rdx, Attribute Word returned by call
-    mov bl, al  ;Get the interrupt vector number into bl
-    mov eax, 0F007h
-    int 35h
-    pop rdx
+    push rax    ;Preserve rax
+    cli ;Halt interrupts
+    sidt [dosIdtPtr]    ;Get the current IDT base pointer
+    movzx eax, al
+    shl rax, 4h     ;Multiply IDT entry number by 16 (Size of IDT entry)
+    add rax, qword [dosIdtPtr.base]    
+    xor ebx, ebx
+    mov ebx, dword [rax + 8]    ;Get bits 63...32
+    shl rbx, 10h    ;Push the high dword high
+    mov bx, word [rax + 6]      ;Get bits 31...16
+    shl rbx, 10h    ;Push word 2 into posiiton
+    mov bx, word [rax]          ;Get bits 15...0
+    sti
     pop rax
     return
 
