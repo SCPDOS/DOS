@@ -10,19 +10,17 @@ multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
     cmp al, mDispTblL / 2
     jae .exitBad   ;If above or equal, exit
     ;Rejiggle stack! 
-    ;Think about how to change this to use IRETQ to make CPU happier!
-    push rbx
-    mov rbx, qword [rsp + 8]    ;Move old return address up
-    mov qword [rsp + 5*8], rbx
-    pop rbx
-    add rsp, 3*8    ;Go so that return gives us return address
+    push rbx    ;Storage for return from DOS ret addr
+    push rbx    ;Storage for DOS function
+    push rbx    ;Stores rbx value
+    lea rbx, .retAddr
+    mov qword [rsp + 2*8], rbx    ;Store ret addr from DOS routine
 
-    push rbx
     push rcx
     lea rbx, qword mDispTbl   ;Get mplx displacement tbl
     push rbx
     movzx ecx, al   ;Get the subfunction number into ecx
-    mov rax, qword [rsp + 5*8]  ;Pick the word pushed on the stack before call 
+    mov rax, qword [rsp + 10*8]  ;Pick the word pushed on the stack before call 
     shl ecx, 1   ;multiply by 2
     inc rbx         ;Go past the first byte (length count)
     movzx ebx, word [rbx + rcx] ;Get the word at this address
@@ -32,6 +30,14 @@ multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
     mov qword [rsp + 8], rbx
     pop rbx
     return
+
+.retAddr:
+    push rbx
+    pushfq
+    pop rbx
+    mov qword [rsp + 3*8], rbx
+    pop rbx
+    iretq
 
 .exitBad:
     mov eax, errInvFnc
