@@ -506,7 +506,6 @@ setupFrame:
 ; If driver a Block Device Driver, build all the DPB's for it (up until max)
 ;   directly after the driver pointer as returned by the driver. Then, 
 ;   adjust the memory pointer and start loading next line.
-;   The space marked as "endPtr" can be used as a buffer by the disk buffers.
 ; Once EOF has been reached, we jmp to noCfg which configures the other
 ;   data structures according to the values on the stack frame.
 ;-------------------------------------------------------------------------;
@@ -1301,6 +1300,8 @@ initDriver:
 ;Initialises one driver and adjusts the DOS data appropriately
 ;If on return CF=CY then the driver didnt want to be loaded
 ;Preserves rbx (initReqPkt), rbp (DOSSEG ptr), rsi (driver pointer)
+;initReqPkt.optptr must be set before calling this function if cmdline
+; arguments are to be passed to the driver
     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
     mov byte [rbx + initReqPkt.cmdcde], drvINIT
     mov word [rbx + initReqPkt.status], 0
