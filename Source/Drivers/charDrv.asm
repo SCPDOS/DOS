@@ -41,8 +41,14 @@ conDriver:
     pop rax
     ret
 .conInit:    ;Function 0 wrapper
+    mov al, errGF - drvErrShft ;General Error code (0Ch)
+    test byte [.conInitDone], -1
+    jnz short .conExit
     call conInit
+    mov byte [.conInitDone], -1 ;Set initialised
     jmp short .conExit
+.conInitDone:   db 0
+
 .conRead:    ;Function 4
     mov al, 05h ;Bad request structure length?
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
@@ -354,7 +360,7 @@ comIntr:
 
     mov al, byte [rbx + drvReqHdr.cmdcde]
     test al, al
-    jz .comInit
+    jz short .comExit
     cmp al, 4   ;Read Character(s)
     jz .comRead
     cmp al, 5   ;Non-destructive read, acts like fast read 1 char if available
@@ -396,9 +402,6 @@ comIntr:
     pop rbx
     pop rax
     ret
-.comInit:
-    call auxInit
-    jmp short .comExit
 
 .comRead:
     mov al, 05h ;Bad request structure length?

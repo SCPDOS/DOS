@@ -60,10 +60,6 @@ devDrvExit:
     pop rax
     return
 
-auxInit:    ;Both of these devices are set by SCP/BIOS ok if they exist
-prnInit:
-    jmp short devDrvExit
-
 clockInit:
     push rbx    ;Push the pointer to the request header here
 ;CH - Hours, in BCD
