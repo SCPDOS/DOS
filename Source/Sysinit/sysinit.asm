@@ -1122,6 +1122,29 @@ closeHandlesLoop:
     jne closeHandlesLoop
     call openStreams
 l1:
+    mov ebx, 0FFFh  ;Get a 64Kb block
+    mov eax, 4800h  ;Allocate the memory block
+    int 41h         ;Malloc and get pointer in rbx
+    jc badMem
+    mov rbx, rax    ;Get pointer to block header to set owner to DOS
+    sub rbx, mcb_size
+    mov qword [rbx + mcb.owner], mcbOwnerDOS
+    mov qword [OEMMEMPTR], rax   ;Save the pointer here
+    lea r8, tempPSP ;Get the DOS PSP pointer to r8
+    mov r9, rax  ;Copy the Memory arena pointer to r9
+    ;Input: r8 = PSP
+    ;       r9 = Memory Arena Pointer
+    ;All regs must be preserved (including r9, even if you free. Dont free!)
+    call OEMCALLBK  ;Return CF=CY if they want to keep the memory block
+    mov r8, qword [OEMMEMPTR]
+    jc short l2 
+    mov rax, r8    ;Get pointer to block header to set owner to DOS
+    sub rax, mcb_size
+    lea rbx, tempPSP
+    mov qword [rax + mcb.owner], rbx
+    mov eax, 4900h  ;Free the memory block
+    int 41h
+l2:
     ;Load COMMAND.COM
     ;Get currentPSP ptr
     mov ah, 62h ;Get current PSP ptr in rdx
@@ -1132,12 +1155,14 @@ l1:
     mov byte [cmdLine], al  ;Store drive letter at start of command line
 
     lea rbx, cmdBlock
-    lea rax, qword [rdx + psp.fcb1]
+    lea rsi, tempPSP
+    lea rax, qword [rsi + psp.fcb1]
     mov qword [rbx + execProg.pfcb1], rax
-    lea rax, qword [rdx + psp.fcb2]
+    lea rax, qword [rsi + psp.fcb2]
     mov qword [rbx + execProg.pfcb2], rax
+    lea rax, qword [rsi + psp.dta]  ;Get the dummy command line ptr
+    mov qword [rbx + execProg.pCmdLine], rax    ;Store dummy command line here
     lea rdx, cmdLine
-    mov qword [rbx + execProg.pCmdLine], rdx    ;Store command line here
     mov eax, 4B00h  ;Exec Prog
     int 41h
     lea rdx, badCom
@@ -1147,7 +1172,12 @@ hltLbl:
     hlt
     pause
     jmp short hltLbl
-    
+badMem:
+    lea rdx, memErr
+    mov eax, 0900h
+    int 41h
+    jmp short hltLbl
+memErr  db "System Memory Error",0Ah,0Dh,"$"
 ;--------------------------------
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
@@ -1158,11 +1188,12 @@ auxName db "AUX",0
 prnName db "PRN",0
 
 cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
-cmdLine db "_:\COMMAND.COM",0
+cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
+
 cmdBlock:
     istruc execProg
-    at execProg.pEnv,       dq 0    ;Keep at 0 to "copy" DOS's environment ptr
-    at execProg.pCmdLine,   dq 0
+    at execProg.pEnv,       dq 0    ;Is set to point at the above line
+    at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
     at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
     at execProg.pfcb2,      dq 0
     iend
@@ -1393,6 +1424,7 @@ BUFFERS     db 0    ;Default number of BUFFERS
 DFLTDRIVE   db 0    ;Default drive number (0-25), this is the boot drive
 LASTDRIVE   db 0    ;Default last drive number (0-25)
 OEMBIOS     db 0    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
+OEMMEMPTR:  ;Used to save the allocated 64k block for OEMCALLBK
 OEMDRVCHAIN dq 0    ;Pointer to the uninitialised device drivers
 
 initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
@@ -1412,5 +1444,5 @@ tempPSP: ;Points to a 256 byte space that is set up appropriately
     at psp.prevPSP,     dq 0
     at psp.fcb1,        db 16 dup (0)
     at psp.fcb2,        db 20 dup (0)
-    at psp.dta,         db 128 dup (0)
+    at psp.dta,         db 0, CR, 126 dup (0)   ;Dummy empty command line
     iend
