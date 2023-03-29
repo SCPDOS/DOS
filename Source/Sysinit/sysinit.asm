@@ -1136,12 +1136,8 @@ l1:
     ;       r9 = Memory Arena Pointer
     ;All regs must be preserved (including r9, even if you free. Dont free!)
     call OEMCALLBK  ;Return CF=CY if they want to keep the memory block
-    mov r8, qword [OEMMEMPTR]
     jc short l2 
-    mov rax, r8    ;Get pointer to block header to set owner to DOS
-    sub rax, mcb_size
-    lea rbx, tempPSP
-    mov qword [rax + mcb.owner], rbx
+    mov r8, qword [OEMMEMPTR]
     mov eax, 4900h  ;Free the memory block
     int 41h
 l2:
