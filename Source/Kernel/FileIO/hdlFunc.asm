@@ -1083,7 +1083,7 @@ renameMain:
     repne scasb
     jne .exit  ;If source name has no wildcards, exit
     mov ecx, 11
-    lea edi, wcdFcbName
+    lea rdi, wcdFcbName
     repne scasb
     jne .exit
     ;Here we gotta do a find next now!
