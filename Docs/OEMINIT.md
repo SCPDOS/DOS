@@ -66,10 +66,10 @@ MUST, MAY and SHOULD can be defined as usual.
 	Finally, when jumping to SYSINIT from OEMINIT, you MUST pass a pointer to the Anchor MCB in QWORD [INITMCB].
 
 3) Device Init.
-	An implementation of OEMINIT MUST implement a minimum of three devices: CON (The Console Device), CLOCK$ (The Clock
-	Device) and one Block Device Driver capable of supporting between 2 and 5 block devices. 
+	An implementation of OEMINIT MUST implement a minimum of five devices: CON (The Console Device), AUX (The Auxilliary IO Device), PRN (The main Printing Device), CLOCK$ (The Clock Device) and one Block Device Driver capable of supporting between 2 and 5 block devices. 
+	The kernel driver chain must be in the following order:
+	CON->AUX->PRN->CLOCK$->Any block or additional character devices.
 	CLOCK$ MUST NOT fail in an implementation of SCP/DOS and requests to it will not be checked for failure.
-	Other optional devices that MAY be implemented are AUX (The Auxilliary I/O Device), and PRN (The Printer Device)
 	DOS itself defines a device called NUL (The Null device) which can be used as a bit bucket and OEM Implementers
 	need not implement such a device. Additionally, it MAY be useful to define additional Serial and Parallel devices 
 	such as COM1-4 and PRN1-3 and perhaps more block devices. An implementer MAY additionally implement devices such 
@@ -189,6 +189,9 @@ S2) Driver init - SYSINIT will initialise the Kernel drivers, giving
 
 				Kernel drivers shall halt boot by indicating that
 				they failed to initialise.
+
+				The kernel driver chain must be in the following order:
+				CON->AUX->PRN->CLOCK$->Any block or additional character devices.
 				
 
 O3) MCB init - OEM's must implement the MCB CHAIN starting from the 

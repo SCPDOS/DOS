@@ -10,6 +10,7 @@ struc drvHdr  ;Device Driver Header for character and block devices
     .attrib resw 1  ;Attribute Word
     .strPtr resq 1  ;Strategy Entry Pointer
     .intPtr resq 1  ;Interrupt Entry Pointer
+    .drvUnt:        ;Number of units pointer
     .drvNam resb 8  ;Driver name (Char) or Number of units byte (Block)
 
 endstruc

@@ -104,28 +104,18 @@ adjDrivers:
 ;------------------------------------------------;
 kernDrvInit:
     ;rbp and fs point to DOSSEG
-    ;Scan the OEM device chain. Set the CON pointer and the CLOCK pointer 
-    ; when encountering those drivers.
-    ;This is to allow the drivers to use DOS CHAR functions and 
+    ;Set the CON pointer and the CLOCK pointers.
+    ;The standard defines that kernel drivers are such that the 
+    ;first driver MUST be CON and the fourth MUST be CLOCK$.
+    ;This is done to allow the drivers to use DOS CHAR functions and 
     ;GET/SET TIME and GET/SET DATE
     mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
     push rsi
-.scanLp:
-    mov ax, word [rsi + drvHdr.attrib]
-    and ax, devDrvConIn | devDrvConOut
-    jz short .scanClock    ;If neither one of these bits are set, jmp
-    cmp ax, devDrvConIn | devDrvConOut
-    jne short .scanClock
-    mov qword [rbp + vConPtr], rsi  ;Store the header ptr here
-.scanClock:
-    test word [rsi + drvHdr.attrib], devDrvClockDev
-    jz short .scanNext
-    mov qword [rbp + clockPtr], rsi
-.scanNext:
-    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto next driver
-    cmp rsi, -1
-    jne short .scanLp
-
+    mov qword [rbp + vConPtr], rsi  ;Store default CON ptr
+    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto AUX
+    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto PRN
+    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto CLOCK$
+    mov qword [rbp + clockPtr], rsi ;Store default CLOCK$ ptr
     pop rsi     ;Point rsi back to head of device chain
     lea rbx, initDrvBlk
 .init:
@@ -138,7 +128,7 @@ kernDrvInit:
     push rsi
     push rdi
     mov rdi, rsi    ;SAVE THE DRIVER HEADER!
-    mov cl, byte [rbx + initReqPkt.numunt]
+    movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
     mov rsi, qword [rbx + initReqPkt.optptr]
     mov rbp, qword [DOSENDPTR]  ;Get the current end pointer
     ;rsi -> Ptr to BPB
@@ -610,7 +600,6 @@ configParse:
     cmp al, TAB
     rete
     cmp al, ";"
-    rete
     return
 .stopProcessError:
     lea rdx, .speLine
@@ -1334,7 +1323,7 @@ initDriver:
     mov word [rbx + initReqPkt.status], 0
     mov al, byte [rbp + numPhysVol]    ;Get current num of physical volumes
     mov byte [rbx + initReqPkt.drvnum], al
-    ;Protect the two important registers. All others trashable
+    ;Protect the important registers. All others trashable
     push rbx
     push rsi
     push rbp
@@ -1345,10 +1334,13 @@ initDriver:
     pop rbx
     ;Check if a driver wants to not load.
     ;If a kernel driver wants to stop, halt boot.
+    test word [rbx + initReqPkt.status], drvErrStatus
+    jnz short .errExit
     cmp byte [rbx + initReqPkt.numunt], 0
     jne short .notHalt
     cmp qword [rbx + initReqPkt.endptr], 0
     jne short .notHalt
+.errExit:
     stc
     ret
 .notHalt:
@@ -1364,6 +1356,12 @@ initDriver:
     jz short .notClock
     mov qword [rbp + clockPtr], rsi
 .notClock:
+;Now test if MSD driver. If so, store the number of units in the name field
+    test word [rsi + drvHdr.attrib], devDrvChar
+    retnz   ;Return if this is a char device
+    ;Else, store the number of units as reported live by driver
+    movzx eax, byte [rbx + initReqPkt.numunt] ;Get # units reported by driver
+    mov byte [rsi + drvHdr.drvUnt], al ;Store this byte permanently here
     ret
 
 
