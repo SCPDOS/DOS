@@ -64,18 +64,33 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ; rbx ------>   |-------------------------------|
 ;               |  Pointer to the byte in the   |
 ;               |  prog space to start writing  |
-;               |        the overlay at         |
+;               |        the overlay at.        |
 ;               |-------------------------------|
-;               | DWORD offset from the base of |
-;               |  the program to the location  |
-;               |  the overlay is being loaded  |
-;               |              in               |
+;               | QWORD value used as the base  |
+;               |   address for relocation      |
+;               |   computations. In most cases |
+;               |   should be the same as the   |
+;               |   load pointer. The desired   |
+;               |   load address is subtracted  |
+;               |   from this value to generate |
+;               |   a valid relocation factor,  |
+;               |   much like for normal load   |
+;               |   but here we are controlling |
+;               |    precisely the factor by    |
+;               |     which we relocate the     |
+;               |           symbols.            |
 ;               |  (Called a Relocation Factor) |
-;               |     Only FOR EXE Overlays     |
-;               |        for CODE fixups        |
-;               |  For COM, Current PSP + 100h  |
-;               |      assumed to suffice       |
+;               |     Only FOR EXE Overlays.    |
+;               |    For COM, 0 is sufficient.  |
 ;               |-------------------------------|
+; For AL = 3: Both pointers must be aligned to section alignment.
+;   If this is not the case, DOS will round UP both pointers to the 
+;   section alignment for the file being loaded. 
+; The overlay will be loaded so that the first byte at the start of the memory
+; block is the first byte of the first section of the executable. No header
+; information will be retained. Thus, (for now) overlays cannot be used to export 
+; functions or import functions from DLLs. Furthermore, it is HIGHLY recommended
+; that you compile any .EXE overlays to have a section alignment of 1 byte.
 ;
 ; All three will setup both COM and EXE files for whatever purpose. 
 ;           AL = 3 DOES NOT BUILD THE PROGRAM A PSP.
@@ -279,7 +294,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jc .insufficientMemory  ;Unless not enough, sorry buddy!
     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
     add rax, psp_size
-    mov qword [rbp - execFrame.pProgBase], rax  ;First byte of code goes here
+    mov qword [rbp - execFrame.pProgBase], rax  ;First byte of exe hdr goes here
     ;Finally, just check that we have some code to execute. 
     ;Empty code sections are NOT allowed if executing. Only for overlays
     cmp dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfCode], 0
@@ -289,7 +304,11 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rbx, qword [rbp - execFrame.pParam]
     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
     mov qword [rbp - execFrame.pProgBase], rax
-    mov qword [rbp - execFrame.pPSPBase], rax   ;Pretend this is the case
+    mov qword [rbp - execFrame.pPSPBase], rax
+    ;Because later, we will take pPSPBase and add psp_size to start reading 
+    ; the exe header into, since overlays have no PSP's we simply
+    ; prepare by subtracting a psp_size from the address now
+    sub qword [rbp - execFrame.pPSPBase], psp_size
 .exeProceed1:
     ;Now we align the progBase to full header size aligned to the next page
     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
@@ -458,9 +477,13 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rax, qword [rbp - execFrame.pProgBase]
     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase] 
     cmp byte [rbp - execFrame.bSubFunc], execOverlay
-    jne .notOverlayReloc
+    jne short .notOverlayReloc
+    ;For overlays, we use the relocation factor as the base of computation.
+    ;This should, under most circumstances be the same as ProgBase 
+    ; in the case of Overlay loading.
     mov rbx, qword [rbp - execFrame.pParam]
-    add eax, dword [rbx + loadOvly.dRelocFct]   ;Add the overlay reloc factor
+    mov rax, qword [rbx + loadOvly.qRelocFct]   ;Get the overlay reloc factor
+    sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase] 
 .notOverlayReloc:
     mov qword [rbp - execFrame.qRelocVal], rax  ;Save relocation value
     mov rbx, rax    ;Save this relocation factor in rbx

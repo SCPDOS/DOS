@@ -50,7 +50,7 @@ endstruc
 
 struc loadOvly
     .pLoadLoc   resq 1  ;Address in memory to load the overlay
-    .dRelocFct  resd 1  ;Relocation factor for 
+    .qRelocFct  resq 1  ;Relocation address for relocatable items (0 for COM files)
 endstruc
 
 ;----------------------------
