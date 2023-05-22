@@ -195,11 +195,10 @@ S2) Driver init - SYSINIT will initialise the Kernel drivers, giving
 				
 
 O3) MCB init - OEM's must implement the MCB CHAIN starting from the 
-				address provided by DOS to the MCB INIT routine. This 
-				is to account for the kernel drivers required space.
-				The Anchor MCB must come after DOS i.e after any 
-				allocated space for the kernel drivers. Please
-				only allocate space as either FREE or MEMORY_HOLE 
+				address provided by DOS to the MCB INIT routine in MCBANCHOR.
+				The MCB INIT routine recieves the first MCB already filled in
+				by DOS, which accounts for DOS and builds the chain from there.
+				Please only allocate space as either FREE or MEMORY_HOLE 
 				respectively.
 
 S3) PSP init - SYSINIT will setup the default Kernel PSP and 

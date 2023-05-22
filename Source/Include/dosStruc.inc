@@ -230,15 +230,30 @@ struc mcb
     .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
     .owner      resq 1  ;Owning application PSP (para aligned) or 0 for free
     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
-    .reserved   resb 3  ;Reserved three bytes
+    ;The following byte is reserved outside of sysinit
+    .subSysMark resb 1  ;Marks the optional DOS subsystem of the MCB
+    .reserved   resb 2  
     .program:
 endstruc
 ;MCB equates
 mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
 mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
 mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
+mcbOwnerNewDOS  equ 9   ;Owner = 9 => New Kernel driver alloc. Needs setting to 8.
 mcbMarkCtn      equ "M"
 mcbMarkEnd      equ "Z"
+;The following are used on MCB's that belong to DOS, that are not part of the
+; main kernel (i.e. the CONFIG.SYS optional parts).
+mcbSubDriver    equ "D" ;Any memory allocated for a device driver's code.
+mcbSubDrvExtra  equ "L" ;Any memory allocated by a device driver.
+mcbSubDrvDPB    equ "P" ;Blocks used for DPB's are marked so.
+mcbSubIFS       equ "I" ;Unused for now
+mcbSubFiles     equ "F" ;Any memory allocated for Files.
+mcbSubFCBS      equ "X" ;Unused for now
+mcbSubBuffers   equ "B" ;Any memory allocated for Buffers.
+mcbSubCDS       equ "L" ;Any memory allocated to store a CDS.
+mcbSubStacks    equ "S" ;Unused for now
+
 
 memFirstFit     equ 0   ;First free block goes to application
 memBestFit      equ 1   ;Block whos size closest matches requirement

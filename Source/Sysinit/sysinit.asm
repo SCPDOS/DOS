@@ -10,9 +10,6 @@ sysinit:    ;Control is passed here from OEMINIT
     shr rdx, 20h
     wrmsr   ;Write the new value to FS MSR
     mov rbp, rdi    ;Move the pointer into rbp as well
-
-    lea rax, qword [rbp + dosEnd] ;Get the end of the file
-    mov qword [DOSENDPTR], rax ;Store the current end of memory here
 ;------------------------------------------------;
 ;      Copy DOS to it's final resting ground     ;
 ;------------------------------------------------;  
@@ -78,7 +75,7 @@ adjInts:
 ;Modify the pointers in nData before putting them in the data area
     add qword [nData + drvHdr.strPtr], rbp
     add qword [nData + drvHdr.intPtr], rbp
-;Copy the Null driver to its location in Sysvars
+;Copy the Null driver header to its location in Sysvars
     mov ecx, drvHdr_size
     lea rsi, qword [nData]
     lea rdi, qword [rbp + nulDevHdr]
@@ -100,6 +97,28 @@ adjDrivers:
     jmp short adjDrivers
 .exit:
 ;------------------------------------------------;
+;                   MCB inits                    ;
+;------------------------------------------------;
+makeMCBChain:
+;Fill in Anchor MCB first
+    lea rax, qword [rbp + anchorMcb + mcb.program]    ;Get first allocated byte
+    lea rbx, qword [rbp + dosEnd] ;Get the end of the file
+    sub rbx, rax    ;Number of bytes in rbx (ebx bzw.)
+    add ebx, 0Fh    ;Round up if not para aligned
+    shr ebx, 4      ;Get number of paragraphs
+    mov dword [rbp + anchorMcb + mcb.blockSize], ebx
+    mov qword [rbp + anchorMcb + mcb.owner], mcbOwnerDOS
+    mov byte [rbp + anchorMcb + mcb.marker], mcbMarkEnd
+
+    lea rax, qword [rbp + anchorMcb]    ;Now store the anchor pointer in var
+    mov qword [MCBANCHOR], rax          ;Save in external var...
+    mov qword fs:[mcbChainPtr], rax     ; and in internal DOS var 
+
+    push rbp    ;Save the pointer to DOSSEG on the stack temporarily
+    call OEMMCBINIT ;Build MCB chain
+    pop rbp
+    jc OEMHALT
+;------------------------------------------------;
 ;              Kernel Driver inits               ;
 ;------------------------------------------------;
 kernDrvInit:
@@ -110,17 +129,20 @@ kernDrvInit:
     ;This is done to allow the drivers to use DOS CHAR functions and 
     ;GET/SET TIME and GET/SET DATE
     mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
-    push rsi
+    mov rbx, rsi
     mov qword [rbp + vConPtr], rsi  ;Store default CON ptr
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto AUX
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto PRN
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto CLOCK$
     mov qword [rbp + clockPtr], rsi ;Store default CLOCK$ ptr
-    pop rsi     ;Point rsi back to head of device chain
+    mov rsi, rbx     ;Point rsi back to head of device chain
     lea rbx, initDrvBlk
+    ;The following is to mark all kernel driver allocs as new DOS
+    mov qword fs:[currentPSP], mcbOwnerNewDOS
 .init:
     call initDriver
     jc OEMHALT
+    call addDriverMarkers   ;Preserves all registers
     test word [rsi + drvHdr.attrib], devDrvChar
     jnz .notMSD
     ;Here we specially handle MSD drivers, building DPBs
@@ -130,12 +152,21 @@ kernDrvInit:
     mov rdi, rsi    ;SAVE THE DRIVER HEADER!
     movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
     mov rsi, qword [rbx + initReqPkt.optptr]
-    mov rbp, qword [DOSENDPTR]  ;Get the current end pointer
+    mov eax, dpb_size
+    mul ecx         ;Get the number of bytes for all the dpb's into eax
+    add eax, 0Fh    ;Round up if not precisely on para boundry
+    shr eax, 4      ;Convert to paragraphs
+    mov ebx, eax
+    mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
+    int 41h
+    jc OEMHALT
+    mov rbp, rax    
+    mov qword [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
     ;rsi -> Ptr to BPB
 	;rbp -> Ptr to buffer to hold first DPB
     ;rdi -> Ptr to the driver header
     call convertBPBArray    ;Returns rbp -> past last DPB
-    mov qword [DOSENDPTR], rbp  ;Now point to the new space
     pop rdi
     pop rsi
     pop rbp
@@ -143,63 +174,34 @@ kernDrvInit:
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Now point rsi to that header
     cmp rsi, -1     ;We at the end of the chain?
     jne short .init ;If not, goto next driver
-;------------------------------------------------;
-;                   DPB Reloc                    ;
-;------------------------------------------------;    
-;We relocate the DPB chain to the space provided 
-; by the drivers "eject" vector. If the eject
-; vector is 0, -1 or equal to the end of the 
-; driver file (i.e. no ejection at all) skip 
-; this. If the address is above the current 
-; DOSEND also ignore.
-;------------------------------------------------;
-dpbReloc:
-    lea rbx, initDrvBlk ;Get the init drive block
+;Finally, Eject the init routine if so desired by the implementers
+ejectKernelInit:
+    lea rbx, initDrvBlk
     mov rax, qword [rbx + initReqPkt.endptr]
-    test rax, rax   ;Is it zero?
-    jz short .exit
-    inc rax         ;Is it zero now (i.e. was -1)?
-    jz short .exit
-    dec rax
-    cmp qword [DOSENDPTR], rax
-    jbe short .exit     ;If we relocating, gotta be below the current addr
-    ;Here we relocate 
-    mov rsi, qword fs:[dpbHeadPtr]
-    mov rdi, rax
-    mov qword fs:[dpbHeadPtr], rdi   ;This is the new DPB head pointer
-    xor ecx, ecx
-    jmp short .lpstart
-.lp:
-    mov qword [rbx + dpb.qNextDPBPtr], rdi  ;Set the new next DPB
-.lpstart:
-    mov rbx, rdi    ;Save a pointer to where the DPB will be
-    mov ecx, dpb_size    ;Set the counter
-    rep movsb   ;Move the DPB over
-    cmp qword [rbx + dpb.qNextDPBPtr], -1   ;Are we at the last DPB?
-    jne short .lp   ;If not, jump again!
-.exit1:
-    mov qword [DOSENDPTR], rdi  ;Now rdi points to the new end of alloc
-.exit:
-    mov rax, qword [DOSENDPTR]  ;Round now to nearest paragraph
+    ;If this endptr is zero or -1 ignore it. 
+    ;If this endptr is greater than the end of alloc, ignore it.
+    test rax, rax
+    jz short .end
+    inc rax ;Carry over to 0 if this is -1
+    jz short .end
+    dec rax ;Return to original value
+    add rax, 0Fh    ;Paragraph align the endptr
     shr rax, 4
     shl rax, 4
-    add rax, 10h
-    mov qword [DOSENDPTR], rax   ;Put it back now
-;------------------------------------------------;
-;                   MCB inits                    ;
-;------------------------------------------------;
-makeMCBChain:
-    push rbp    ;Save the pointer to DOSSEG on the stack temporarily
-    call OEMMCBINIT
-    pop rbp
+    lea rbx, qword [rbp + dosEnd]   ;Get the original alloc end pointer (para aligned)
+    sub rbx, rax    ;If this is above zero then rbx > rax, which is valid
+    jbe short .end
+    lea r8, qword [rbp + anchorMcb + mcb.program]   ;Get pointer to mcb
+    mov eax, dword [rbp + anchorMcb + mcb.blockSize]    ;Get alloc size
+    shr ebx, 4  ;Now convert the difference into number of paragraphs
+    sub eax, ebx
+    mov ebx, eax
+    mov eax, 4A00h
+    int 41h
     jc OEMHALT
-    mov rax, qword [DOSENDPTR]
-    cmp rax, qword [OEMMCBANCHR]  ;If the ptrs are equal, shift to 
-    jne short .end  ; make space for the MCB itself
-    add qword [DOSENDPTR], mcb_size ;Shift this pointer to make space
 .end:
 ;----------------------------------------:
-;           End of MSD driver init.      :
+;           End of driver inits.         :
 ;----------------------------------------:
 ;
 ;----------------------------------------:
@@ -212,9 +214,6 @@ makeMCBChain:
 ;----------------------------------------:
 ;
 ;Setup internal DOS vars from OEM passed arguments.
-    mov rax, qword [OEMMCBANCHR]
-    mov qword fs:[mcbChainPtr], rax
-
     movzx eax, byte [DFLTDRIVE]
     xor ebx, ebx
     cmp eax, 25
@@ -261,14 +260,26 @@ sectorSizeSearch:
 ;                CDS array inits                 ;
 ;------------------------------------------------;
     movzx ecx, byte [rbp + lastdrvNum]     ;Use as a counter
-    mov rdi, qword [DOSENDPTR]      ;Setup array
-    call makeCDSArray   ;Sets the CDS head pointer
-    mov qword [DOSENDPTR], rdi      ;Push the pointer further past
-    jmp short initialCDSWritten ;Go past the function
+    call makeCDSArray   ;Sets the CDS head pointer to rdi
+    jmp initialCDSWritten ;Go past the function
 makeCDSArray:
-;Input: ecx = Size of array
-;       rdi = Pointer to the start of the CDS array
-;Ouput: rdi = first byte past the end of the table
+;Builds a new CDS array for ya and sets the sysvars var to point to it!
+;Input: ecx = Size of array (number of CDS's in the array)
+;Ouput: CF=CY: Abort operation. CF=NC: CDS Array allocated ok!
+    mov eax, cds_size
+    mul ecx ;eax has the size of the CDS array to make
+    add eax, 0Fh    ;Round up if not on a para boundary
+    shr eax, 4      ;Convert to paragraphs
+    xor ebx, ebx
+    mov ebx, eax
+    mov eax, 4800h  ;ALLOC  (current owner is mcbOwnerNewDOS)
+    int 41h
+    retc    ;Return if Carry set
+    mov rdi, rax            ;Save pointer to MCB in rdi
+    sub rax, mcb_size       ;Move rax to point to MCB
+    mov byte [rax + mcb.subSysMark], mcbSubCDS  ;Mark as a CDS array
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Mark as owned by DOS
+
     mov qword fs:[cdsHeadPtr], rdi
     push rdi
     push rcx
@@ -396,24 +407,27 @@ initialCDSWritten:
 ;------------------------------------------------;
 ;        Create a Default Temporary Buffer       ;
 ;------------------------------------------------;
-    mov rdi, qword [DOSENDPTR]
-    mov qword fs:[bufHeadPtr], rdi
-    movzx eax, word fs:[maxBytesSec] ;Get the buffer size
-    lea rbx, qword [rdi + bufferHdr_size + rax] 
-    mov qword [DOSENDPTR], rbx  ;New end pointer goes here
-    mov qword [rdi + bufferHdr.nextBufPtr], -1 ;Point to no buffer
-    mov word [rdi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
-    
+    movzx ebx, word fs:[maxBytesSec]    ;Get buffer size
+    add ebx, bufferHdr_size             ;add header size for allocation size
+    add ebx, 0Fh
+    shr ebx, 4  ;Convert to number of paragraphs
+    mov eax, 4800h
+    int 41h
+    jc OEMHALT
+    mov qword fs:[bufHeadPtr], rax      ;Save pointer to buffer
+    mov qword [rax + bufferHdr.nextBufPtr], -1 ;Point to no buffer
+    mov word [rax + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags    
+    sub rax, mcb_size   ;Now go back to the mcb itself
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS as owner of Buffer
+    mov byte [rax + mcb.subSysMark], mcbSubBuffers  ;Set this arena as a buffer
 ;------------------------------------------------;
 ;          Default File Handle Creation          ;
 ;                                                ;
 ;   Note: Devices are opened AUX, CON then PRN   ;
 ;------------------------------------------------;
 defaultFileHandles:
-
     lea rdx, qword [rbp + firstSftHeader]
     mov qword fs:[sftHeadPtr], rdx  ;Start from this SFT header
-    mov rsi, rdx
     mov qword [rdx + sfth.qNextSFTPtr], -1
     mov word [rdx + sfth.wNumFiles], 5  ;This SFTH has space for 5 SFTs
 
@@ -430,11 +444,9 @@ defaultFileHandles:
 ;------------------------------------------------;
 ;Setup stackframe, workout base 
 setupFrame:
-    mov rdi, qword [DOSENDPTR]
     push rbp
     mov rbp, rsp
     sub rsp, cfgFrame_size
-    mov qword [rbp - cfgFrame.endPtr], rdi  ;Store the end pointer here
     movzx eax, byte [BUFFERS]
     mov qword [rbp - cfgFrame.newBuffers], rax
     movzx eax, byte [FILES]
@@ -1015,23 +1027,35 @@ configParse:
 ;Add additional FCBS.
 ;Create a larger CDS if needed.
 noCfg:
-;Begin by aligning the endPtr on a paragraph boundary
-    mov rdi, qword [rbp - cfgFrame.endPtr]
-    shr rdi, 4
-    shl rdi, 4
-    add rdi, 10h
-    mov qword [rbp - cfgFrame.endPtr], rdi
 ;Start with buffers:
-    mov rcx, qword [rbp - cfgFrame.newBuffers]    ;Get new buffers size
+    mov rcx, qword [rbp - cfgFrame.newBuffers]    ;Get new number of buffers
+    cmp ecx, 1   ;If its only one buffer, skip as we have one already
+    je .skipBuffers
+    dec ecx  ;Minus one now
     mov byte fs:[numBuffers], cl    ;Store this value in var
     ;Now do the allocation at rdi. Each buffer = maxSectorSize + bufferHdr_size
-    movzx ebx, word fs:[maxBytesSec]    ;Get buffer sector size
-    add ebx, bufferHdr_size ;rbx has the size to add
+    movzx eax, word fs:[maxBytesSec]    ;Get buffer sector size
+    add eax, bufferHdr_size ;eax has the size to add
+    push rax    ;Save the total number of bytes for a buffer and its header
+    mul ecx ;Get total size to allocate in eax
+    pop rdx     ;and get the total value back in rdx
+    mov ebx, eax    ;Move the total number of bytes into ebx
+    add ebx, 0Fh
+    shr ebx, 4      ;And convert it to paragraphs
+    mov eax, 4800h  ;ALLOC
+    int 41h
+    jc short .skipBuffers   ;If it fails to allocate, default to one buffer
     ;Each buffer has no flags, drive number must be -1
-    ;rdi has the current allocation end pointer
-    mov qword fs:[bufHeadPtr], rdi  ;Reset the var here
+    mov rbx, rdx    ;Put the total number of bytes per buffer in rbx
+    mov rdi, rax    ;Point rdi to the new area 
+    sub rax, mcb.program    ;Point rax to the head of the mcb
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Mark as owned by DOS
+    mov byte [rax + mcb.subSysMark], mcbSubBuffers  ;Buffer buffer (funny)
+    mov rax, qword fs:[bufHeadPtr]  ;Get the pointer to the first buffer
+    mov qword [rax + bufferHdr.nextBufPtr], rdi ;And set the new next buffer to point to it
     mov rsi, rdi    ;Points rsi to first new buffer space
     xor eax, eax    ;Use for sanitising buffer headers
+    dec ecx         ;Reduce to convert from 1 based count to 0 based
     jecxz .lastBuffer
 .bufferLoop:
     add rdi, rbx    ;Goto next buffer space
@@ -1054,54 +1078,65 @@ noCfg:
     mov dword [rsi + bufferHdr.bufFATsize], eax
     mov qword [rsi + bufferHdr.driveDPBPtr], rax
     mov qword [rsi + bufferHdr.owningFile], rax
-    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
-
+.skipBuffers:
 ;Now build a new SFT header for the number of files specified by user
     mov rcx, qword [rbp - cfgFrame.newSFTVal]
     cmp ecx, 5  ;If we are not adding anything, skip building SFT
-    je .skipSFT
-    mov rsi, qword fs:[sftHeadPtr]  ;Get the current only SFT head pointer
-    mov qword [rsi + sfth.qNextSFTPtr], rdi ;Move rdi as new SFT pointer
-    sub cx, word [rsi + sfth.wNumFiles] ;Remove the number of files we already have
-    mov word [rdi + sfth.wNumFiles], cx ;Move remaining files here
-    mov qword [rdi + sfth.qNextSFTPtr], -1  ;Last table in chain
-    add rdi, sfth_size  ;Goto sft area, now need to compute size
+    jbe short .skipSFT
+    ;First compute how big this new arena needs to be
+    sub ecx, 5   ;Remove the default five files that are *always* present!
     mov eax, sft_size
-    mul ecx ;Multiply number of sft with their size to get allocation
-    add rdi, rax    ;Add that many bytes to rdi
-    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
+    mul ecx ;Get number of files*size of file in bytes in eax
+    add eax, sfth_size  ;Add the size of one SFT header
+    mov ebx, eax        ;And move into ebx for the syscall
+    add ebx, 0Fh        ;Round up to nearest paragraph...
+    shr ebx, 4          ;And convert to paragraphs
+    mov eax, 4800h
+    int 41h
+    jc short .skipSFT   ;Skip adding files if this fails. Sorry end user!
+    mov rsi, qword fs:[sftHeadPtr]
+    mov qword [rsi + sfth.qNextSFTPtr], rax ;RAX points to the next sfth
+    mov word [rax + sfth.wNumFiles], cx ;Move remaining files here
+    mov qword [rax + sfth.qNextSFTPtr], -1  ;Last table in chain    
+    sub rax, mcb.program    ;Point to MCB now
+    mov qword [rax + mcb.owner], mcbOwnerDOS
+    mov byte [rax + mcb.subSysMark], mcbSubFiles
 .skipSFT:
-;FCBS at rdi
-    mov qword fs:[fcbsHeadPtr], rdi ;Setup the fcbs var here
-    mov qword [rdi + sfth.qNextSFTPtr], -1  ;No more FCBS headers for now
+;FCBS now
     mov rcx, qword [rbp - cfgFrame.newFCBSVal]
-    mov word [rdi + sfth.wNumFiles], cx ;Move this value here
+    jecxz .skipFCBS ;Skip if no FCBS requested
     mov eax, sft_size
-    mul ecx ;Multiply number of sft with their size to get allocation
-    add rdi, rax    ;Add that many bytes to rdi
-    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
-    mov rcx, qword [rbp - cfgFrame.newProtFCBSVal] ;Get number of safe FCBs
-    mov word fs:[numSafeSFCB], cx   ;And save that there
+    mul ecx ;Get number of files*size of file in bytes in eax
+    add eax, sfth_size  ;Add the size of one SFT header
+    mov ebx, eax        ;And move into ebx for the syscall
+    add ebx, 0Fh        ;Round up to nearest paragraph...
+    shr ebx, 4          ;And convert to paragraphs
+    mov eax, 4800h
+    int 41h
+    jc short .skipFCBS   ;Skip adding files if this fails. Sorry end user!
+    mov qword fs:[fcbsHeadPtr], rax ;This is the FCBS head now
+    mov word [rax + sfth.wNumFiles], cx ;Move FCBS here
+    mov qword [rax + sfth.qNextSFTPtr], -1  ;Last table in chain  
+    sub rax, mcb.program    ;Point to MCB now
+    mov qword [rax + mcb.owner], mcbOwnerDOS
+    mov byte [rax + mcb.subSysMark], mcbSubFCBS
+.skipFCBS:
 ;And CDS now
     mov rcx, qword [rbp - cfgFrame.newLastdrive]
+    cmp byte fs:[lastdrvNum], cl
+    jae .skipCDS    ;If user specifies less than 5 drives, dont reallocate
+    ;Else, we first free the old CDS and then reallocate
+    mov r8, qword fs:[cdsHeadPtr]
+    mov eax, 4900h  ;FREE the old allocation.
+    int 41h
+    jc short .skipCDS
     mov byte fs:[lastdrvNum], cl ;Save this value
     call makeCDSArray
-    mov qword [rbp - cfgFrame.endPtr], rdi  ;Save this new position here
-;Computation of new space is complete, now work out how many bytes this is
-    mov rbx, qword fs:[mcbChainPtr]
-    add rbx, mcb_size
-    sub rdi, rbx    ;Gives difference now
-    lea rbx, dword [rdi + 11h]  ;Add 11 to round up a paragraph
-    shr rbx, 4  ;Convert to paragraphs
-;Resize DOS allocation before loading COMMAND.COM
-    mov r8, qword fs:[mcbChainPtr] ;Get ptr
-    add r8, mcb.program
-    mov ah, 4Ah
-    int 41h
-
+.skipCDS:
     mov rsp, rbp    ;Return stack pointer to original position
     pop rbp ;Stack frame no longer needed
-;Now we close all five default handles and open AUX, CON and PRN.
+;Now we close all five default handles and open AUX, CON and PRN
+; and reopen the handles as user may have loaded new CON/AUX/PRN etc drivers
     xor ebx, ebx
 closeHandlesLoop:
     mov eax, 3e00h  ;Close
@@ -1111,7 +1146,8 @@ closeHandlesLoop:
     jne closeHandlesLoop
     call openStreams
 l1:
-    mov ebx, 0FFFh  ;Get a 64Kb block
+    ;breakpoint
+    mov ebx, 1000h  ;Get a 64Kb block
     mov eax, 4800h  ;Allocate the memory block
     int 41h         ;Malloc and get pointer in rbx
     jc badMem
@@ -1124,7 +1160,7 @@ l1:
     ;Input: r8 = PSP
     ;       r9 = Memory Arena Pointer
     ;All regs must be preserved (including r9, even if you free. Dont free!)
-    call OEMCALLBK  ;Return CF=CY if they want to keep the memory block
+    call OEMCALLBK  ;Return CF=CY if OEM wants to keep the memory block
     jc short l2 
     mov r8, qword [OEMMEMPTR]
     mov eax, 4900h  ;Free the memory block
@@ -1260,6 +1296,54 @@ openStreams:
     int 41h       ;Open file
     return
 
+addDriverMarkers:
+;Traverses the MCB chain after a driver init to add the correct subsytem 
+; information and owner to each memory block. Used for drivers that allocate
+; their own memory using ALLOC.
+;Input: qword [currentPSP] = Signature to search for (8 means kernel driver).
+;       fs -> Dos Data Area
+;Output: Sets the first occurrence to Driver, the rest to driver appendage,
+;           unless the signature is 9 in which case, it is set to DOS owner.
+;           In the event of a kernel driver then only mcbSubDrvExtra is used.
+    push rax
+    push rbx
+    push rcx
+    push rsi
+    push rdi
+    mov rdi, qword fs:[currentPSP]
+    mov rsi, qword fs:[mcbChainPtr] ;Points to the kernel allocation
+    mov eax, mcbSubDriver
+    mov ebx, mcbSubDrvExtra
+    cmp rdi, 9  ;If the owner is 8, skip setting driver, only extra!
+    cmove eax, ebx
+    jmp short .gotoNextBlock    ;Skip the first alloc (the kernel)
+.checkSubsystem:
+    cmp qword [rsi + mcb.owner], rdi
+    jne short .gotoNextBlock
+    mov byte [rsi + mcb.subSysMark], al
+    cmp eax, ebx
+    cmovne eax, ebx
+    cmp byte [rsi + mcb.owner], mcbOwnerNewDOS
+    jne short .gotoNextBlock
+    mov byte [rsi + mcb.owner], mcbOwnerDOS
+.gotoNextBlock:
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    je short .exit
+    xor ecx, ecx
+    mov ecx, dword [rsi + mcb.blockSize]
+    shl rcx, 4
+    add rsi, mcb.program    
+    add rsi, rcx
+    jmp short .checkSubsystem
+.exit:
+    pop rdi
+    pop rsi
+    pop rcx
+    pop rbx
+    pop rax
+    return
+
+
 convertBPBArray:
 ;rsi -> BPB array
 ;rbp -> Space for cl consecutive DPB's
@@ -1338,7 +1422,7 @@ initDriver:
     jnz short .errExit
     cmp byte [rbx + initReqPkt.numunt], 0
     jne short .notHalt
-    cmp qword [rbx + initReqPkt.endptr], 0
+    cmp qword [rbx + initReqPkt.endptr], rsi    ;If endptr -> header, abort
     jne short .notHalt
 .errExit:
     stc
@@ -1410,7 +1494,7 @@ localIDTpointer: ;Local IDT pointer
 
 FINALDOSPTR dq 0    ;Pointer to where dSeg should be loaded
 DOSENDPTR   dq 0    ;Pointer to the first free byte AFTER DOS
-OEMMCBANCHR dq 0    ;Pointer to the Anchor MCB
+MCBANCHOR   dq 0    ;Pointer to the Anchor MCB
 
 ;DOS Data given by OEM
 FILES       db 0    ;Default number of FILES

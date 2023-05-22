@@ -53,5 +53,5 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 dosLen  equ ($-$$)  ;Get the length of the Segment
 Segment drvbss follows=resSeg align=1 nobits
 %include "./Source/Drivers/drvBuf.asm"
-    alignb 10h
-dosEnd: ;Temporary pointer, used before we pullback the DPB's
+    alignb 10h  ;Ensure paragraph alignment
+dosEnd: ;Used to compute the size of resident DOS

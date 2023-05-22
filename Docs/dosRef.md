@@ -12,7 +12,7 @@ Installable drivers must NOT free or attempt to change their base allocation add
 
 Note that installable drivers may NOT allocate additional memory during system runtime. Please try to allocate as much memory as you need during installation!
 
-Finally, installable drivers during INIT may use DOS functions 1-12, 25h, 2Ah-2Dh, 35h 48h, 49h and 4Ah only. If in doubt about the use of a DOS function during init of an installable driver, please contact a member of the DOS kernel development team.
+Finally, installable drivers during INIT may use DOS functions 1-12, 25h, 2Ah-2Dh, 30h, 35h 48h, 49h and 4Ah only. If in doubt about the use of a DOS function during init of an installable driver, please contact a member of the DOS kernel development team.
 
 Kernel drivers:
 Kernel drivers are initialised in a more restricted way when comparison to installable drivers due to the fact that they are installed before DOS is completely initialised. As such, they are subject to more restrictions. 
@@ -20,7 +20,7 @@ Kernel drivers are initialised in a more restricted way when comparison to insta
 2) Kernel drivers MUST present at least 5 devices with the driver chain linked as follows:
     CON->AUX->PRN->CLOCK$->Any block or additional character devices.
 3) Kernel drivers MUST be compiled with all their data allocated in the binary.
-4) Kernel drivers MUST NOT make any DOS calls except for 25h and 35h for interrupt installation and 2Ah-2Dh for Date/Time adjustment. 
+4) Kernel drivers MUST NOT make any DOS calls except for 25h and 35h for interrupt installation, 30h for version checking and 2Ah-2Dh for Date/Time adjustment.
 5) Kernel drivers MUST indicate the amount of memory they wish to eject using the endptr field of initReqPkt to indicate the first free byte after each driver. If there are many drivers in a single linked list, they should all point to the same address; the highest address of all the drivers. Returning a value larger than the end of the device driver module is not permitted.
 6) Kernel drivers MUST NOT attempt to allocate more memory than what is linked into the object file. No uninitialised data sections may be present in a kernel driver.
 7) Kernel drivers have no command line parameters passed to them. They must
