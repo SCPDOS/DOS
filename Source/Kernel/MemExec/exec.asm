@@ -305,29 +305,36 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
     mov qword [rbp - execFrame.pProgBase], rax
     mov qword [rbp - execFrame.pPSPBase], rax
-    ;=======================================================================
-    ;Because later, we will take pPSPBase and add psp_size to start reading 
-    ; the exe header into, since overlays have no PSP's we simply
-    ; prepare by subtracting a psp_size from the address now
-    ;sub qword [rbp - execFrame.pPSPBase], psp_size
-    ;=======================================================================
 .exeProceed1:
+    ;The below blocks are being kept because they can be turned on later
+    ; to change this exe loader to force section alignment of the 
+    ; base load address. It appears there is no need to enforce that the 
+    ; base load address be section aligned, but individual sections need
+    ; to adhere to the section alignment requirements thereafter. 
+    ;Finally, the pProgBase gets rescaled so that the first byte of the 
+    ; first section gets places at the load address and not at some
+    ; offset from it (as is usually the case, offset 1000h).
     ;=======================================================================
     ;Now we align the progBase to full header size aligned to the next page
     ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
     ;add rax, rbx    ;Add this offset where the header should go in future
     ;=======================================================================
+    ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+    ;It appears that the load address does NOT need to be aligned at all xD
+    ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
     ;Now we section pad. Once aligned, that is the program base address!
-    push rax
-    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
-    dec ecx ;Turn into a mask
-    and rax, rcx    ;Compute ptr modulo mask
-    inc ecx
-    sub rcx, rax
-    pop rdi
-    xor eax, eax
-    rep stosb
-    mov qword [rbp - execFrame.pProgBase], rdi
+    ;push rax
+    ;mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+    ;dec ecx ;Turn into a mask
+    ;and rax, rcx    ;Compute ptr modulo mask
+    ;inc ecx
+    ;sub rcx, rax
+    ;pop rdi
+    ;xor eax, eax
+    ;rep stosb
+    ;mov qword [rbp - execFrame.pProgBase], rdi
+    ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+
     ;So now copy one section at a time, read section header in
     ;File pointer points to the directory table, so skip that
     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
@@ -344,6 +351,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;USE ECX AS COUNTER FOR HEADERS LEFT TO PROCESS
     mov rdi, qword [rbp - execFrame.pProgBase]  ;Move prog base in rdi
     movzx ecx, word [rbp - execFrame.wNumSeg]   ;Get number of segments in ecx
+    xor esi, esi    ;Use as an indicator for the first data segment. 
+    mov qword [rbp - execFrame.bSegCount], rsi  ;Clear the segment counter
 .loadLp:
     push rcx    ;Save # of segments left on stack
     push rdi    ;Save the current buffer ptr here
@@ -370,27 +379,26 @@ loadExecChild:     ;ah = 4Bh, EXEC
     call lseekHdl
     pop rdi
     pop rcx
-
-.skipRawPtrMove:
+    ;Is this is the first segment with data being read into memory?
+    inc qword [rbp - execFrame.bSegCount]
+    cmp qword [rbp - execFrame.bSegCount], 1 
+    jne short .skipRawPtrMove   ;If not, skip
     breakpoint
+    ;Now rebase the program to point the first byte of the first
+    ; section at the pProgBase
+    push rcx
+    push rdi
+    mov rdi, qword [rbp - execFrame.pProgBase]
+    mov ecx, dword [sectHdr + imageSectionHdr.dVirtualAddress]
+    sub rdi, rcx    ;Rebase by offset of the first section
+    mov qword [rbp - execFrame.pProgBase], rdi 
+    pop rdi
+    pop rcx
+.skipRawPtrMove:
     push rcx
     xor edi, edi
-    ;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-    ;Dont do this as this code gets looped. Move before the loop
-    ;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-    ;xor ecx, ecx
-    ;mov rdi, qword [rbp - execFrame.pProgBase]
-    ;mov ecx, dword [sectHdr + imageSectionHdr.dVirtualAddress]
-    ;sub rdi, rcx    ;Rebase by offset of the first section
-    ;mov qword [rbp - execFrame.pProgBase], rdi
-    ;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-    ;============================================================
-    ;The below bit should be removed when we implement the above
-    ;   properly.
-    ;============================================================
     mov edi, dword [sectHdr + imageSectionHdr.dVirtualAddress]  ;Get where it should go in memory, offset from image base
     add rdi, qword [rbp - execFrame.pProgBase]  ;Turn into offset from progbase
-    ;============================================================
     ;If a section has a virtual address outside of the allocation arena
     ; refuse to load it IF it contains no BSS, Data or Code and skip to the 
     ; next section.
