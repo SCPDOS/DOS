@@ -317,7 +317,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
     ;add rax, rbx    ;Add this offset where the header should go in future
     ;=======================================================================
-    ;Now we section pad
+    ;Now we section pad. Once aligned, that is the program base address!
     push rax
     mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
     dec ecx ;Turn into a mask
@@ -372,10 +372,25 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rcx
 
 .skipRawPtrMove:
+    breakpoint
     push rcx
     xor edi, edi
+    ;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ;Dont do this as this code gets looped. Move before the loop
+    ;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ;xor ecx, ecx
+    ;mov rdi, qword [rbp - execFrame.pProgBase]
+    ;mov ecx, dword [sectHdr + imageSectionHdr.dVirtualAddress]
+    ;sub rdi, rcx    ;Rebase by offset of the first section
+    ;mov qword [rbp - execFrame.pProgBase], rdi
+    ;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ;============================================================
+    ;The below bit should be removed when we implement the above
+    ;   properly.
+    ;============================================================
     mov edi, dword [sectHdr + imageSectionHdr.dVirtualAddress]  ;Get where it should go in memory, offset from image base
     add rdi, qword [rbp - execFrame.pProgBase]  ;Turn into offset from progbase
+    ;============================================================
     ;If a section has a virtual address outside of the allocation arena
     ; refuse to load it IF it contains no BSS, Data or Code and skip to the 
     ; next section.
@@ -443,6 +458,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ;       relocations anyway.
 
 ;If program base = desired load, skip relocs
+    breakpoint
     mov rdx, qword [rbp - execFrame.pProgBase]
     cmp rdx, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
     je .exeComplete
