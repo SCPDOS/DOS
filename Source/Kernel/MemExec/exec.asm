@@ -306,6 +306,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov qword [rbp - execFrame.pProgBase], rax
     mov qword [rbp - execFrame.pPSPBase], rax
 .exeProceed1:
+;===========================================================================
     ;The below blocks are being kept because they can be turned on later
     ; to change this exe loader to force section alignment of the 
     ; base load address. It appears there is no need to enforce that the 
@@ -314,6 +315,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Finally, the pProgBase gets rescaled so that the first byte of the 
     ; first section gets places at the load address and not at some
     ; offset from it (as is usually the case, offset 1000h).
+;===========================================================================
     ;=======================================================================
     ;Now we align the progBase to full header size aligned to the next page
     ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
