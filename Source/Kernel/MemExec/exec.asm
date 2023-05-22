@@ -305,14 +305,18 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
     mov qword [rbp - execFrame.pProgBase], rax
     mov qword [rbp - execFrame.pPSPBase], rax
+    ;=======================================================================
     ;Because later, we will take pPSPBase and add psp_size to start reading 
     ; the exe header into, since overlays have no PSP's we simply
     ; prepare by subtracting a psp_size from the address now
-    sub qword [rbp - execFrame.pPSPBase], psp_size
+    ;sub qword [rbp - execFrame.pPSPBase], psp_size
+    ;=======================================================================
 .exeProceed1:
+    ;=======================================================================
     ;Now we align the progBase to full header size aligned to the next page
-    mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
-    add rax, rbx    ;Add this offset where the header should go in future
+    ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
+    ;add rax, rbx    ;Add this offset where the header should go in future
+    ;=======================================================================
     ;Now we section pad
     push rax
     mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
@@ -519,21 +523,23 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
     add rax, qword [rbp - execFrame.pProgBase]
     mov qword [rbp - execFrame.pProgEP], rax
+    ;=======================================================================
     ;Now we copy the header into the memory space to pspPtr+psp_size
-    xor ecx, ecx
-    xor edx, edx
-    movzx ebx, word [rbp - execFrame.wProgHdl]    ;Get the handle
-    xor eax, eax
-    call lseekHdl
-    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
-    mov rdx, qword [rbp - execFrame.pPSPBase] 
-    add rdx, psp_size
-    call .readDataFromHdl
-    jc .badFmtErr
-    test eax, eax
-    jz .badFmtErr
-    cmp ecx, eax
-    jnz .badFmtErr
+    ;xor ecx, ecx
+    ;xor edx, edx
+    ;movzx ebx, word [rbp - execFrame.wProgHdl]    ;Get the handle
+    ;xor eax, eax
+    ;call lseekHdl
+    ;mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
+    ;mov rdx, qword [rbp - execFrame.pPSPBase] 
+    ;add rdx, psp_size
+    ;call .readDataFromHdl
+    ;jc .badFmtErr
+    ;test eax, eax
+    ;jz .badFmtErr
+    ;cmp ecx, eax
+    ;jnz .badFmtErr
+    ;=======================================================================
     call qword [registerDLL]    ;Now we register the DLL and any import/exports
     jc .badFmtErr   ;If this errors out for some reason, quit loading EXE
     jmp .buildChildPSP
