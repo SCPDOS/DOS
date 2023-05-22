@@ -385,7 +385,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     inc qword [rbp - execFrame.bSegCount]
     cmp qword [rbp - execFrame.bSegCount], 1 
     jne short .skipRawPtrMove   ;If not, skip
-    breakpoint
     ;Now rebase the program to point the first byte of the first
     ; section at the pProgBase
     push rcx
@@ -468,7 +467,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ;       relocations anyway.
 
 ;If program base = desired load, skip relocs
-    breakpoint
     mov rdx, qword [rbp - execFrame.pProgBase]
     cmp rdx, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
     je .exeComplete
