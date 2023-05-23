@@ -27,7 +27,7 @@ struc execFrame
 .pProgEP:   ;Program EP, recycle this qword
     .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
     .dFilePtr   resq 1  ;Keep of track of where in file we are
-.qRelocVal:  ;Used when computing relocations, Rebasing factor
+    .qRelocVal  resq 1  ;Used when computing relocations, Rebasing factor
 endstruc
 
 ;Possible blocks to be pointed to by rbx
