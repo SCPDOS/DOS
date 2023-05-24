@@ -309,11 +309,11 @@ struc cfgFrame  ;Frame used for config.sys parsing
     .newLastdrive   resq 1
     .newStacks      resq 1  ;Ignored for now
     .newStackSize   resq 1  ;Ignored for now
-    .newAllocSize   resq 1  ;Used to keep track of reallocation size
     .cfgHandle      resq 1  ;CONFIG.SYS handle
     .lastLine       resq 1  ;Set if the last line is current
-    .endPtr         resq 1  ;Pointer to the end of the allocation space
-    .linePtr        resq 1  ;Ptr to line being processed by CONFIG.SYS
+    .linePtr        resq 1  ;Ptr to line buffer of line being processed
+    .driverBreak    resq 1  ;Ptr to the null terminator in the driver to 
+                            ;be replaced by a space
 endstruc
 
 struc filename

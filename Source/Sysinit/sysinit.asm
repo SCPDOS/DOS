@@ -515,10 +515,16 @@ setupFrame:
 configParse:
     mov qword [rbp - cfgFrame.cfgHandle], rax
     mov qword [rbp - cfgFrame.lastLine], 0
-.newLine:
-;Keeps the new line unless a DEVICE= command read it, which adjusts endPtr
-    mov rdx, qword [rbp - cfgFrame.endPtr]  ;Start reading into here
-    mov qword [rbp - cfgFrame.linePtr], rdx	;Use var for start of line ptr
+    mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
+    mov eax, 4800h
+    mov ebx, 10h    ;Request 16 paragraphs (256 bytes)
+    int 41h
+    jc .stopProcessError
+    mov qword [rbp - cfgFrame.linePtr], rax
+    mov rdx, rax    ;Move the pointer to rdx
+    sub rax, mcb_size 
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set owner to DOS
+    xor eax, eax
 .nextChar:
     mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into ebx
     cmp bx, -1
@@ -528,21 +534,16 @@ configParse:
     int 41h
     jc .stopProcessError
     test ecx, ecx	;If this is zero, EOF reached
-    jnz .notEOF
+    jnz short .notEOF
     mov qword [rbp - cfgFrame.lastLine], -1	;Note we are at EOF
 .notEOF:
-    inc qword [rbp - cfgFrame.endPtr]	;Goto next byte
     movzx eax, byte [rdx]
     cmp al, CR
-    je .endOfLine
+    je short .endOfLine
     cmp al, LF
-    je .endOfLine
-    cmp al, "a"
-    jb .notChar
-    cmp al, "z"
-    ja .notChar
+    je short .endOfLine
     push rax    ;Push rax on stack as the argument to normalise
-    mov eax, 1213h  ;Uppercase the char
+    mov eax, 1213h  ;Uppercase the char if it is uppercasable
     int 4fh
     mov byte [rdx], al  ;Replace the char with the capitalised form
     pop rax ;Pop into rax to renormalise the stack
@@ -556,10 +557,10 @@ configParse:
 .cmdNameLenGet:
     lodsb
     call .isCharTerminal
-    jz .endOfCommandFound
+    jz short .endOfCommandFound
     inc ecx
     cmp ecx, 10 ;If shorter than longest command, keep looping
-    jb .cmdNameLenGet
+    jb short .cmdNameLenGet
 ;Else, fall through in error
 .endOfCommandFound:
 ;ecx has the length of the command
@@ -570,7 +571,7 @@ configParse:
     cmp byte [rdi], -1
     je .stopProcessError
     cmp byte [rdi], cl
-    jne .gotoNextCmd
+    jne short .gotoNextCmd
     ;Candidate command found, check said command is the command we want
     mov rsi, qword [rbp - cfgFrame.linePtr]
     cmp rsi, -1 ;Error?
@@ -581,7 +582,7 @@ configParse:
     repe cmpsb  ;Compare whilst the strings are equal
     pop rcx
     pop rdi
-    jne .gotoNextCmd    ;If not equal, just goto next command
+    jne short .gotoNextCmd    ;If not equal, just goto next command
     ;Else, rdi + rcx points to the word ptr of the function
     ;rdx points to the terminating char of the line 
     push rdx    ;This is to know whether we continue processing or end now
@@ -595,7 +596,7 @@ configParse:
     jc .stopProcessError    ;If the function returns CF=CY, error exit
     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
     jnz .cfgExit
-    jmp .newLine
+    jmp .nextChar
 .gotoNextCmd:
     movzx eax, byte [rdi]
     add eax, 3
@@ -637,7 +638,7 @@ configParse:
 	dw .countryScan - .keyTbl
 	db 6, "DEVICE"          ;DONE
 	dw .drvLoader - .keyTbl
-	db 4, "FCBS"            ;DONE (to be ignored for a while now)
+	db 4, "FCBS"            ;Ignored for now
 	dw .fcbHandler - .keyTbl
 	db 5, "FILES"           ;DONE
 	dw .sftHandler - .keyTbl
@@ -729,21 +730,11 @@ configParse:
     cmp al, LF
     rete
     return
-.countryScan:
-    return
+
+;===============================
+;   Device Driver Loader here  :
+;===============================
 .drvLoader:
-;We first try to read the driver into the byte after rdx.
-;If we cannot open the file, or we can open but not read the whole file
-; we error with Bad or missing filename msg, and proceed as if nothing happened 
-; (CF=NC). 
-; Thus we DO NOT adjust .endPtr or .linePtr and recycle that space for the 
-; next line.
-;If the open succeeded and we were able to read the whole driver into memory, 
-; we pass the lineptr to the driver and call init for the driver.
-; Once the driver returns, if the DONE bit is set, we read the offset of 
-; free memory above the driver and add that to the endPtr. If the driver
-; is a block driver, we add to the endPtr the space for "Units supported" 
-; number of DPBs.
     mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
     mov rdi, qword [rbp - cfgFrame.linePtr]
     add rdi, 7  ;Go past DEVICE= to the pathname
@@ -759,155 +750,136 @@ configParse:
     je .drvBad
     jmp short .drvFindEndOfFileName
 .fileNameFound:
-    mov byte [rdi - 1], 0   ;Null terminate the path to the file
+    dec rdi ;Point rdi to the space itself
+    mov qword [rbp - cfgFrame.driverBreak], rdi
+    mov byte [rdi], 0   ;Null terminate the path to the file
     mov eax, 3D00h  ;Read only file
     int 41h
     jc .drvBad
-    mov byte [rdi - 1], " " ;Replace the null with a space now again
     movzx ebx, ax   ;Get the handle in ebx
-    mov word [.drvHandle], ax   ;Save the handle in variable
     xor edx, edx    ;Move the handle to the end of the file
     mov eax, 4202h  ;LSEEK to SEEK_END
     int 41h
-    mov ecx, eax    ;Get the file size in ecx
+    mov esi, eax    ;Save the file size in esi
     xor edx, edx    ;Move the handle to the start of the file
     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
     int 41h
-    ;Now we read ecx bytes to rsi as rsi points to first byte past the end
-    ; of the DEVICE= line 
-    mov rdx, rsi    ;Point to first byte past the end of DEVICE= line
-    mov esi, ecx    ;Save the number of bytes to read in esi
-    mov eax, 3F00h  ;Read handle    
+    push rbx        ;Push the file handle on the stack
+    mov ebx, 6
+    mov eax, 4800h  ;Allocate this block of memory
     int 41h
-    jc .drvBadClose
-    cmp esi, ecx    ;Were all bytes read in?
-    jne .drvBadClose
-    ;Ok, full file read in, now prepare to call driver init routine
-    mov rsi, rdx    ;Move ptr to driver header to rsi
-    lea rbx, .drvInitStruc
-    mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-    mov byte [rbx + initReqPkt.cmdcde], drvINIT
-    mov word [rbx + initReqPkt.status], 0
-    mov byte [rbx + initReqPkt.numunt], 0
-    mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
-    add rax, 7  ;Goto the first byte past DEVICE=
-    mov qword [rbx + initReqPkt.endptr], rax
-    mov qword [rbx + initReqPkt.optptr], 0
-    movzx eax, byte fs:[numPhysVol]
-    dec eax ;Get a 0 based count
-    mov byte [rbx + initReqPkt.drvnum], al
-    ;Gotta relocate the two pointers to make them 
-    ;relative to DOS
-    lea rax, dosDataArea   ;Get DOS ptr back
-    add qword [rsi + drvHdr.strPtr], rax    ;Reloc drvrs rel. DOS
-    add qword [rsi + drvHdr.intPtr], rax
-    call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
-    call qword [rsi + drvHdr.intPtr]
-    test word [rbx + initReqPkt.status], drvDonStatus
-    jz .drvBadClose
-    test word [rbx + initReqPkt.status], drvErrStatus
-    jnz .drvBadClose
-    ;Now check that the driver wants to be installed
-    cmp rsi, qword [rbx + initReqPkt.endptr]    ;This is for char and blk devs
-    je .drvWantsClose
-    test word [rsi + drvHdr.attrib], devDrvChar
-    jnz .drvChar
-    cmp byte [rbx + initReqPkt.numunt], 0
-    je .drvWantsClose
-.drvChar:
-    ;Otherwise, this init passed, now build the structures we need.
-    ;First adjust .endPtr
-    mov rax, qword [rbx + initReqPkt.endptr]    ;Get the end pointer
-    mov qword [rbp - cfgFrame.endPtr], rax  ;Move it here
-    ;Now we link the driver into the driver chain
-    mov rdi, qword [nulDevHdr + drvHdr.nxtPtr]  ;Get next ptr from nul drvr
-    mov qword [rsi + drvHdr.nxtPtr], rdi    ;And store it here
-    mov qword [nulDevHdr + drvHdr.nxtPtr], rsi  ;And link nul to this driver
-    ;Now if we are a char device, we are done so check here
-    test word [rsi + drvHdr.attrib], devDrvChar
-    jnz .drvWantsCloseChar  ;We are complete
-    ;Now for block devices, we get the BPB ptr array and numUnits supported
-    movzx ecx, byte [rbx + initReqPkt.numunt]
-    mov rbx, qword [rbx + initReqPkt.optptr]    ;Get the BPB array pointer
-
-    mov rdx, rsi    ;Move the driver pointer to rdx
-    mov rsi, qword [rbp - cfgFrame.endPtr]  ;Build DPB array here
-    mov rdi, rsi    ;Move rdi here too, to point to first new DPB later
-    push rcx
-    push rdx
-    xor edx, edx
-    mov eax, dpb_size
-    mul ecx ;Multiply the number of DPB's needed with the size of a dpb
-    add qword [rbp - cfgFrame.endPtr], rax  ;Add this value to endPtr
-    pop rdx ;Get back the driver ptr in rdx
-    pop rcx ;Get back the number of units count
-    
-    xchg rbp, rbx   ;Swap stack frame ptr and BPB array ptr
-    xchg rsi, rbp   ;Swap BPB array and DPB space ptrs
-.drvBuildDPB:
-    mov eax, 5300h
+    pop rbx         ;Get the handle back in rbx
+    jc .drvMemClose
+    mov rdx, rax    ;Get pointer to memory in rdx
+    mov ecx, imageDosHdr_size
+    mov eax, 3F00h  ;READ
     int 41h
-    add rsi, bpbEx_size ;Goto next bpb in array
-    ;Adjust fields in DPB
-    inc byte fs:[numPhysVol] 
-    mov al, byte fs:[numPhysVol]
-    mov byte [rbp + dpb.bDriveNumber], al
-    mov byte [rbp + dpb.bUnitNumber], ch
-    mov qword [rbp + dpb.qDriverHeaderPtr], rdx
-    lea rax, qword [rbp + dpb_size] ;Point to next DPB
-    mov qword [rbp + dpb.qNextDPBPtr], rax
-    inc ch  ;Increment unit number 
-    cmp cl, ch  ;Are we done?
-    je .dpbInitDone
-    add rbp, dpb_size   ;Go to space for next DPB
-    jmp short .drvBuildDPB
-.dpbInitDone:
-;Make sure we now make the last qNextDPBPtr = -1
-    mov qword [rbp + dpb.qNextDPBPtr], -1
-    ;Now we set the old last dpb to point to the first one
-    mov rsi, qword fs:[dpbHeadPtr]
-.drvDPBLp:
-    cmp byte [rsi + dpb.qNextDPBPtr], -1
-    je .drvLastDPBFound
-    mov rsi, qword [rsi + dpb.qNextDPBPtr]  ;Goto next DPB
-    jmp short .drvDPBLp
-.drvLastDPBFound:
-    mov qword [rsi], rdi    ;Chain this dpb now to the first new dpb
-    mov rbp, rbx    ;Return the stack frame ptr to rbp
-;And we are done!
-.drvWantsClose:
-;If the driver wants to not install silently, it can here
-    movzx ebx, word [.drvHandle] ;Get the handle back, close it and proceed
-    mov eax, 3E00h  
-    int 41h 
-    clc ;Never return with CF=CY
-    return  
-.drvBadClose:
-    movzx ebx, word [.drvHandle]    ;Get back handle to close
+    jnc short .headerReadOK
+    mov rdi, rdx    ;Get pointer into rdi properly
+.badHeaderRead:
+    mov r8, rdi ;r8 has the pointer to the block to free
+    mov eax, 4900h  ;Free the block first!
+    int 41h
+    jmp .drvBadClose
+.headerReadOK:
+    mov rdi, rdx    ;Save the pointer in rdi
+    ;First check this file is MZ. If this is not, we assume its a .COM driver
+    cmp word [rdi], imageDosSignature
+    jne short .comDriver
+    ;Get the file pointer for file header
+    mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
+    xor ecx, ecx
+    mov eax, 4200h  ;LSEEK from the start of the file
+    int 41h
+    cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
+    jne short .badHeaderRead
+    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
+    jb short .comDriver
+    mov esi, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
+.comDriver:
+    mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
+    mov r8, rdi ;r8 has the pointer to the block to free
+    int 41h
+    mov ecx, esi    ;Get back the file size into ecx
+    cmp ecx, 20000000h  ;Drivers cannot be more than 2Gb in size.
+    jae .drvBadClose
+    ;Round up to the nearest 4K
+    and ecx, ~0FFFh ;Clear the bottom 12 bits
+    add ecx, 1000h  ;... and round up!
+    shr ecx, 4      ;Convert to paragraphs
+    ;Now close the file
     mov eax, 3E00h  ;Close handle in ebx
     int 41h
-.drvBad:
+    mov ebx, ecx    ;Put the number of paragraphs in ebx
+    mov eax, 4800h  ;Allocate this block of memory
+    int 41h
+    jc .drvMemClose
+    ;rax has the pointer to load the program into
+    ;Build the overlay command block
+    lea rbx, cmdBlock
+    mov qword [rbx + loadOvly.pLoadLoc], rax
+    mov qword [rbx + loadOvly.qRelocFct], rax
+    mov rdx, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
+    add rdx, 7  ;Go past DEVICE= to the null terminated pathname
+    mov eax, 4B03h  ;Load overlay!
+    int 41h
+    jnc short .loadOk
+.badDriverLoad:
+    mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
+    mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
+    int 41h
+    lea rdx, .drvMemMsg
+    jmp .drvBad
+.loadOk:
+    ;Use driver load routine. If it fails, free memory. Else, if block
+    ; driver, build DPB's (use routine). Then return to main loop.
+    mov rsi, qword [rbx + loadOvly.pLoadLoc] 
+    mov rax, rsi
+    ;Now set the subsystem marker and the owner to DOS
+    sub rax, mcb_size
+    mov byte [rax + mcb.subSysMark], mcbSubDriver
+    mov qword [rax + mcb.owner], mcbOwnerDOS
+    ;Reset the command line to have a space at the null terminator
+    mov rax, qword [rbp - cfgFrame.driverBreak]
+    mov byte [rax], SPC 
+    ;Remember, the first byte of the overlay is the driver header. 
+    ;Hence, rsi points to that byte!
+    lea rbx, initDrvBlk
+    ;Ensure we save the old clock and con pointers so that if a driver init
+    ; fails in a file with multiple drivers, we can restore the pointers if
+    ; they were changed.
+    mov r8, qword fs:[vConPtr]
+    mov r9, qword fs:[clockPtr]
+.loadNextDriver:
+    push qword fs:[currentPSP] ;Save this address on the stack
+    mov qword fs:[currentPSP], mcbOwnerNewDOS
+    call initDriver
+    pop qword fs:[currentPSP]
+    jnc short .driverLoadOk
+    mov qword fs:[vConPtr], r8
+    mov qword fs:[clockPtr], r9
+    jmp short .badDriverLoad
+.driverLoadOk:
+    ;Finally link the driver header into the main DOS driver chain
+    call addDriverMarkers   ;Preserves all registers
+.drvBadClose:
+    mov eax, 3E00h  ;Close handle in ebx
+    int 41h
     lea rdx, .drvBadMsg
+.drvBad:
     mov eax, 0900h
     int 41h
     clc ;Never return with CF=CY
     return
-.drvWantsCloseChar:
-;Final checks, to see if we are CLOCK$ or CON
-    test word [rsi + drvHdr.attrib], devDrvConIn
-    jz .dwccClock
-    mov qword [vConPtr], rsi
-.dwccClock:
-    test word [rsi + drvHdr.attrib], devDrvClockDev
-    jz .drvWantsClose
-    mov qword [clockPtr], rsi
-    jmp short .drvWantsClose
-.drvBadMsg: db "Bad or missing filename",CR,LF,"$"
-.drvInitStruc: db initReqPkt_size dup (0)  
-.drvHandle: dw -1
+.drvMemClose:
+    mov eax, 3E00h  ;Close handle in ebx
+    int 41h
+    lea rdx, .drvMemMsg
+    jmp short .drvBad
 
-.fcbHandler:
-    return
+.drvBadMsg: db "Bad or missing filename",CR,LF,"$"
+.drvMemMsg: db "Not enough memory for driver",CR,LF,"$" 
+
 .sftHandler:
 ;This reads the line to set the number of FILE to between 1 and 254
     mov rsi, qword [rbp - cfgFrame.linePtr]
@@ -974,6 +946,7 @@ configParse:
     cmp al, LF
     rete
     return
+
 .lastdriveHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 10  ;Go past LASTDRIVE=
@@ -1006,11 +979,10 @@ configParse:
     return
 .ldBad:
     stc
-    return
+.countryScan:
+.fcbHandler:
 .shellHandler:
-    return
 .stacksHandler:
-    return
 .drivParm:
     return
 
@@ -1018,6 +990,9 @@ configParse:
     mov rbx, qword [rbp - cfgFrame.cfgHandle] ;Get the handle back
     mov eax, 3E00h    ;Close the handle
     int 41h ;bx already has the handle
+    mov r8, qword [rbp - cfgFrame.linePtr]   ;Get the line buffer ptr back
+    mov eax, 4900h  ;FREE
+    int 41h
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
@@ -1211,7 +1186,7 @@ prnName db "PRN",0
 cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
 cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
 
-cmdBlock:
+cmdBlock:   ;Used also for overlay block
     istruc execProg
     at execProg.pEnv,       dq 0    ;Is set to point at the above line
     at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
@@ -1300,7 +1275,7 @@ addDriverMarkers:
 ;Traverses the MCB chain after a driver init to add the correct subsytem 
 ; information and owner to each memory block. Used for drivers that allocate
 ; their own memory using ALLOC.
-;Input: qword [currentPSP] = Signature to search for (8 means kernel driver).
+;Input: qword [currentPSP] = Signature to search for (9 means kernel driver).
 ;       fs -> Dos Data Area
 ;Output: Sets the first occurrence to Driver, the rest to driver appendage,
 ;           unless the signature is 9 in which case, it is set to DOS owner.
@@ -1314,7 +1289,7 @@ addDriverMarkers:
     mov rsi, qword fs:[mcbChainPtr] ;Points to the kernel allocation
     mov eax, mcbSubDriver
     mov ebx, mcbSubDrvExtra
-    cmp rdi, 9  ;If the owner is 8, skip setting driver, only extra!
+    cmp rdi, mcbOwnerNewDOS  ;If so, skip setting driver, only extra!
     cmove eax, ebx
     jmp short .gotoNextBlock    ;Skip the first alloc (the kernel)
 .checkSubsystem:
