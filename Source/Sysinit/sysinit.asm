@@ -782,6 +782,8 @@ configParse:
     int 41h
     jmp .drvBadClose
 .headerReadOK:
+;Use register r10 as the indicator for .COM or .EXE. Set if COM.
+    xor r10, r10    ;Clear r10 i.e. EXE format
     mov rdi, rdx    ;Save the pointer in rdi
     ;First check this file is MZ. If this is not, we assume its a .COM driver
     cmp word [rdi], imageDosSignature
@@ -794,9 +796,11 @@ configParse:
     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
     jne short .badHeaderRead
     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
-    jb short .comDriver
+    jb short .shortExe
     mov esi, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
 .comDriver:
+    dec r10 ;Set r10 to -1 i.e. COM format. Driver pointers need adjusting.
+.shortExe:
     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
     mov r8, rdi ;r8 has the pointer to the block to free
     int 41h

@@ -399,7 +399,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov qword [rbp - execFrame.pProgBase], rdi 
     mov rdi, qword [rbp - execFrame.pParam]
     mov rdi, qword [rdi + loadOvly.qRelocFct]   ;Get the reload factor
-    sub rdi, rcx    ;Now rescale the relocation factor
+    sub rdi, rcx    ;Now rescale the relocation factor by the same amount
     mov qword [rbp - execFrame.qRelocVal], rdi  ;Now store this value for later
     pop rdi
     pop rcx
