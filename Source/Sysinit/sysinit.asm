@@ -93,7 +93,8 @@ adjDrivers:
     cmp qword [rsi + drvHdr.nxtPtr], -1 ;End of chain?
     je short .exit
     add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
-    add rsi, drvHdr_size
+    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Dont "demand" ctguos headers... 
+    ;add rsi, drvHdr_size   ;... but definitely suggest it for kernel drivers
     jmp short adjDrivers
 .exit:
 ;------------------------------------------------;
@@ -138,68 +139,24 @@ kernDrvInit:
     mov rsi, rbx     ;Point rsi back to head of device chain
     lea rbx, initDrvBlk
     ;The following is to mark all kernel driver allocs as new DOS
-    mov qword fs:[currentPSP], mcbOwnerNewDOS
+    mov qword [rbp + currentPSP], mcbOwnerNewDOS
 .init:
-    call initDriver
+    call initDriver         ;Importantly preserves rbp, rsi and rbx
     jc OEMHALT
     call addDriverMarkers   ;Preserves all registers
     test word [rsi + drvHdr.attrib], devDrvChar
-    jnz .notMSD
-    ;Here we specially handle MSD drivers, building DPBs
-    push rbp
-    push rsi
-    push rdi
-    mov rdi, rsi    ;SAVE THE DRIVER HEADER!
-    movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
-    mov rsi, qword [rbx + initReqPkt.optptr]
-    mov eax, dpb_size
-    mul ecx         ;Get the number of bytes for all the dpb's into eax
-    add eax, 0Fh    ;Round up if not precisely on para boundry
-    shr eax, 4      ;Convert to paragraphs
-    mov ebx, eax
-    mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
-    int 41h
+    jnz short .notMSD
+    call buildDPBs          ;Preserves rbp, rsi and rbx
     jc OEMHALT
-    mov rbp, rax    
-    mov qword [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
-    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
-    ;rsi -> Ptr to BPB
-	;rbp -> Ptr to buffer to hold first DPB
-    ;rdi -> Ptr to the driver header
-    call convertBPBArray    ;Returns rbp -> past last DPB
-    pop rdi
-    pop rsi
-    pop rbp
 .notMSD:
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Now point rsi to that header
     cmp rsi, -1     ;We at the end of the chain?
     jne short .init ;If not, goto next driver
 ;Finally, Eject the init routine if so desired by the implementers
-ejectKernelInit:
-    lea rbx, initDrvBlk
-    mov rax, qword [rbx + initReqPkt.endptr]
-    ;If this endptr is zero or -1 ignore it. 
-    ;If this endptr is greater than the end of alloc, ignore it.
-    test rax, rax
-    jz short .end
-    inc rax ;Carry over to 0 if this is -1
-    jz short .end
-    dec rax ;Return to original value
-    add rax, 0Fh    ;Paragraph align the endptr
-    shr rax, 4
-    shl rax, 4
     lea rbx, qword [rbp + dosEnd]   ;Get the original alloc end pointer (para aligned)
-    sub rbx, rax    ;If this is above zero then rbx > rax, which is valid
-    jbe short .end
-    lea r8, qword [rbp + anchorMcb + mcb.program]   ;Get pointer to mcb
-    mov eax, dword [rbp + anchorMcb + mcb.blockSize]    ;Get alloc size
-    shr ebx, 4  ;Now convert the difference into number of paragraphs
-    sub eax, ebx
-    mov ebx, eax
-    mov eax, 4A00h
-    int 41h
+    lea r8, qword [rbp + anchorMcb]   ;Get pointer to mcb
+    call ejectKernelInit
     jc OEMHALT
-.end:
 ;----------------------------------------:
 ;           End of driver inits.         :
 ;----------------------------------------:
@@ -753,6 +710,13 @@ configParse:
     dec rdi ;Point rdi to the space itself
     mov qword [rbp - cfgFrame.driverBreak], rdi
     mov byte [rdi], 0   ;Null terminate the path to the file
+    ;rdx -> Filename
+    ;Here open the file to attempt to see how much space to 
+    ; allocate to the file for loading. 
+    ;Consider using the 4B01h loading mode instead and swapping back
+    ; the current DTA and PSP to DOS default? This gives each driver a PSP
+    ; which would allow for opening of files independently of calling programs'
+    ; file table... maybe try it after getting 4B03h load to work first!
     mov eax, 3D00h  ;Read only file
     int 41h
     jc .drvBad
@@ -765,7 +729,7 @@ configParse:
     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
     int 41h
     push rbx        ;Push the file handle on the stack
-    mov ebx, 6
+    mov ebx, 6      ;6 paragraphs (96 bytes)
     mov eax, 4800h  ;Allocate this block of memory
     int 41h
     pop rbx         ;Get the handle back in rbx
@@ -774,10 +738,11 @@ configParse:
     mov ecx, imageDosHdr_size
     mov eax, 3F00h  ;READ
     int 41h
+    mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
+    mov rdi, rdx    ;Get pointer to the EXE header
     jnc short .headerReadOK
-    mov rdi, rdx    ;Get pointer into rdi properly
 .badHeaderRead:
-    mov r8, rdi ;r8 has the pointer to the block to free
+    ;r8 must point to the block to free
     mov eax, 4900h  ;Free the block first!
     int 41h
     jmp .drvBadClose
@@ -785,40 +750,81 @@ configParse:
 ;Use register r10 as the indicator for .COM or .EXE. Set if COM.
     xor r10, r10    ;Clear r10 i.e. EXE format
     mov rdi, rdx    ;Save the pointer in rdi
-    ;First check this file is MZ. If this is not, we assume its a .COM driver
-    cmp word [rdi], imageDosSignature
-    jne short .comDriver
+    ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
+    cmp word [rdi], dosMagicSignature
+    je short .exeDrivers
+    cmp word [rdi], dosMagicSignature2
+    je short .exeDrivers
+;.COM drivers come down here
+    dec r10 ;Set r10 to -1 i.e. COM format. Driver pointers need adjusting.
+    ;Get File Image Allocation Size in ecx here.
+    ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
+    xor ecx, ecx
+    xor edx, edx
+    mov eax, 4202h  ;LSEEK from the end of the file
+    int 41h
+    ;edx:eax now has the filesize. 
+    test edx, edx   ;edx must be 0
+    jnz .drvBadClose
+    mov ecx, eax
+    and ecx, ~0Fh   ;Clear lower byte
+    add ecx, 1h     ;... and round up!
+    shr ecx, 4      ;Convert to paragraphs
+    cmp ecx, 10000h ;Is it greater than 64k?
+    jae .drvBadClose
+    jmp .loadCont
+.exeDrivers:
     ;Get the file pointer for file header
     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
     xor ecx, ecx
     mov eax, 4200h  ;LSEEK from the start of the file
     int 41h
-    cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
-    jne short .badHeaderRead
-    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
-    jb short .shortExe
-    mov esi, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
-.comDriver:
-    dec r10 ;Set r10 to -1 i.e. COM format. Driver pointers need adjusting.
-.shortExe:
-    mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
-    mov r8, rdi ;r8 has the pointer to the block to free
+    ;Now read in imageFileHeader here
+    mov rdx, rdi    ;Overwrite the 16-bit header
+    mov ecx, imageFileHeader_size   ;Read the header
+    mov eax, 3F00h  ;READ
     int 41h
-    mov ecx, esi    ;Get back the file size into ecx
+    jc short .badHeaderRead
+    cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
+    jb short .badHeaderRead
+    cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
+    jne .badHeaderRead
+    cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
+    jne .badHeaderRead
+    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
+    jb .badHeaderRead ;We need section alignment info if a .EXE!
+    ;Now read the first 56 bytes of the optional header here
+    mov rdx, rdi    ;Overwrite the 16-bit header
+    mov ecx, 56     ;Read only 56 bytes
+    mov eax, 3F00h  ;READ
+    int 41h
+    jc .badHeaderRead   ;If something goes wrong, skip
+    cmp eax, 56
+    jb .badHeaderRead   ;If fewer than 56 bytes read, skip
+    ;Round up size requirement.
+    ;If .EXE, round up to nearest section alignment
+    mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
+    mov eax, dword [rdi + imageFileOptionalHeader.dSectionAlignment]
+    mov esi, eax    ;Save in esi the alignment requirement
+    dec eax         ;Set bits to strip, clear all other bits
+    not eax         ;Flip the set and clear bits
+    and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
+    add ecx, esi    ;Now round upwards!
+    shr ecx, 4      ;Convert to number of paragraphs.
     cmp ecx, 20000000h  ;Drivers cannot be more than 2Gb in size.
     jae .drvBadClose
-    ;Round up to the nearest 4K
-    and ecx, ~0FFFh ;Clear the bottom 12 bits
-    add ecx, 1000h  ;... and round up!
-    shr ecx, 4      ;Convert to paragraphs
+.loadCont:
+    mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
+    int 41h ;r8 has the pointer to the block for freeing
     ;Now close the file
     mov eax, 3E00h  ;Close handle in ebx
     int 41h
     mov ebx, ecx    ;Put the number of paragraphs in ebx
     mov eax, 4800h  ;Allocate this block of memory
-    int 41h
+    int 41h         ;rax gets the pointer to load the program into
     jc .drvMemClose
-    ;rax has the pointer to load the program into
+    ;Now set the subsystem marker and the owner to DOS
+    mov qword [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
     ;Build the overlay command block
     lea rbx, cmdBlock
     mov qword [rbx + loadOvly.pLoadLoc], rax
@@ -827,50 +833,97 @@ configParse:
     add rdx, 7  ;Go past DEVICE= to the null terminated pathname
     mov eax, 4B03h  ;Load overlay!
     int 41h
-    jnc short .loadOk
+    jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
 .badDriverLoad:
     mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
     mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
     int 41h
     lea rdx, .drvMemMsg
-    jmp .drvBad
+    mov eax, 0900h
+    int 41h
+    return
+.drvMemMsg: db "Not enough memory for driver",CR,LF,"$" 
 .loadOk:
-    ;Use driver load routine. If it fails, free memory. Else, if block
-    ; driver, build DPB's (use routine). Then return to main loop.
-    mov rsi, qword [rbx + loadOvly.pLoadLoc] 
-    mov rax, rsi
-    ;Now set the subsystem marker and the owner to DOS
-    sub rax, mcb_size
-    mov byte [rax + mcb.subSysMark], mcbSubDriver
-    mov qword [rax + mcb.owner], mcbOwnerDOS
+    ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
+    mov rsi, qword [rbx + loadOvly.pLoadLoc]
+    mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
     ;Reset the command line to have a space at the null terminator
     mov rax, qword [rbp - cfgFrame.driverBreak]
     mov byte [rax], SPC 
     ;Remember, the first byte of the overlay is the driver header. 
     ;Hence, rsi points to that byte!
-    lea rbx, initDrvBlk
-    ;Ensure we save the old clock and con pointers so that if a driver init
-    ; fails in a file with multiple drivers, we can restore the pointers if
-    ; they were changed.
-    mov r8, qword fs:[vConPtr]
-    mov r9, qword fs:[clockPtr]
-.loadNextDriver:
-    push qword fs:[currentPSP] ;Save this address on the stack
+    ;Pointers of each header need adjustment relative to their load address,
+    ; and linking into the main driver chain after NUL.
+    ;r11 = Local var, if no drivers in file passed init, free allocation.
+    ;                 Else, free using kernel eject routine.
+    push rsi    ;Save the pointer to the first pointer to adjust
+.driverPtrAdjustment:
+    add qword [rsi + drvHdr.strPtr], rsi
+    add qword [rsi + drvHdr.intPtr], rsi
+    je short .driverPtrAdjustmentDone
+    add qword [rsi + drvHdr.nxtPtr], rsi
+    mov rsi, qword [rsi + drvHdr.nxtPtr]
+    jmp short .driverPtrAdjustment
+.driverPtrAdjustmentDone:
+    pop rsi     ;Get back the pointer to the first driver header
+    ;Prepare for initialising the drivers in the arena
+    push rbp    ;Save the config frame pointer
+    push qword fs:[currentPSP]  ;Set DOS as the owner of these allocations
     mov qword fs:[currentPSP], mcbOwnerNewDOS
+    lea rbx, initDrvBlk
+    mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
+    mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
+.driverInit:
     call initDriver
+    jc short .driverBad
+    call addDriverMarkers
+    test word [rsi + drvHdr.attrib], devDrvChar
+    jnz short .driverInitialised
+    call buildDPBs          ;Preserves rbp, rsi and rbx
+    jc short .driverBad
+.driverInitialised:
+    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Now point rsi to that header
+    cmp rsi, -1     ;We at the end of the chain?
+    jne short .driverInit ;If not, goto next driver
+;Now we eject the init routines for the driver
+;r8 points to the MCB already
+    xor ebx, ebx
+    mov ebx, dword [r8 + mcb.blockSize] ;Get the size of the arena in paragraphs
+    shl rbx, 4  ;Turn into number of bytes
+    lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
+    call ejectKernelInit    ;Ignore any errors in ejection.
+.driverExit:
+;Exit the init routine if it all works out, WOO!
     pop qword fs:[currentPSP]
-    jnc short .driverLoadOk
-    mov qword fs:[vConPtr], r8
-    mov qword fs:[clockPtr], r9
-    jmp short .badDriverLoad
-.driverLoadOk:
-    ;Finally link the driver header into the main DOS driver chain
-    call addDriverMarkers   ;Preserves all registers
+    pop rbp     ;Get back the config frame pointer
+    return
+
+.driverBad:
+    ;Form the string to print
+    lea rdi, .driverBad2    ;Store the name here
+    test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
+    jnz short .driverCharBad    ;If not, exit
+    ;MSD devices need to have something placed in there
+    mov rax, "MSD dev "
+    stosq   ;Store the 8 chars here
+.driverCharBad:
+    lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
+    movsq   ;Move all 8 chars over from device driver name
+.driverBadPrint:
+    lea rdx, .driverBad1
+    mov eax, 0900h  ;Print the string!
+    int 41h
+    jmp short .driverExit
+.driverBad1 db "Error initialising driver: "
+.driverBad2 db "        ",CR,LF,"$"
+;------------------
+;Bad exit cases
+;------------------
 .drvBadClose:
     mov eax, 3E00h  ;Close handle in ebx
     int 41h
-    lea rdx, .drvBadMsg
 .drvBad:
+    lea rdx, .drvBadMsg
     mov eax, 0900h
     int 41h
     clc ;Never return with CF=CY
@@ -882,7 +935,6 @@ configParse:
     jmp short .drvBad
 
 .drvBadMsg: db "Bad or missing filename",CR,LF,"$"
-.drvMemMsg: db "Not enough memory for driver",CR,LF,"$" 
 
 .sftHandler:
 ;This reads the line to set the number of FILE to between 1 and 254
@@ -1289,8 +1341,8 @@ addDriverMarkers:
     push rcx
     push rsi
     push rdi
-    mov rdi, qword fs:[currentPSP]
-    mov rsi, qword fs:[mcbChainPtr] ;Points to the kernel allocation
+    mov rdi, qword [rbp + currentPSP]
+    mov rsi, qword [rbp + mcbChainPtr] ;Points to the kernel allocation
     mov eax, mcbSubDriver
     mov ebx, mcbSubDrvExtra
     cmp rdi, mcbOwnerNewDOS  ;If so, skip setting driver, only extra!
@@ -1375,12 +1427,53 @@ convertBPBArray:
     mov qword fs:[dpbHeadPtr], rbp
     ret
 
+ejectKernelInit:
+;Reallocates the space allocated to the driver file after 
+; init was called.
+;Input: rbx -> Pointer to the original end of the allocation (para aligned)
+;       r8 -> Points to the mcb for reallocation
+;Uses the sysinit init drive block. 
+;rax, rbx, rflags trashed
+;If returns CF=CY, error in reallocation.
+    push rbx
+    lea rbx, initDrvBlk
+    mov rax, qword [rbx + initReqPkt.endptr]
+    pop rbx
+    ;If this endptr is zero or -1 ignore it. 
+    ;If this endptr is greater than the end of alloc, ignore it.
+    test rax, rax
+    retz
+    inc rax ;Carry over to 0 if this is -1
+    retz
+    dec rax ;Return to original value
+    add rax, 0Fh    ;Paragraph align the endptr
+    shr rax, 4
+    shl rax, 4
+    sub rbx, rax    ;If this is above zero then rbx > rax, which is valid
+    jbe short .exit   ;If equal or below zero, dont reallocate
+    mov eax, dword [r8 + anchorMcb + mcb.blockSize]    ;Get alloc size
+    push r8 ;Save the pointer to the mcb before using syscall
+    add r8, mcb.program ;Goto program
+    shr ebx, 4  ;Now convert the difference into number of paragraphs
+    sub eax, ebx
+    mov ebx, eax
+    mov eax, 4A00h  ;Reallocate space
+    int 41h
+    pop r8
+    return
+.exit:
+    clc ;Make sure to clear the CF flag before returning
+    return
+
 initDriver:
 ;Initialises one driver and adjusts the DOS data appropriately
 ;If on return CF=CY then the driver didnt want to be loaded
 ;Preserves rbx (initReqPkt), rbp (DOSSEG ptr), rsi (driver pointer)
 ;initReqPkt.optptr must be set before calling this function if cmdline
 ; arguments are to be passed to the driver
+;Input: rsi -> driver pointer
+;       rbx -> sysinit request pointer
+;       rbp -> DOSSEG pointer
     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
     mov byte [rbx + initReqPkt.cmdcde], drvINIT
     mov word [rbx + initReqPkt.status], 0
@@ -1427,6 +1520,44 @@ initDriver:
     mov byte [rsi + drvHdr.drvUnt], al ;Store this byte permanently here
     ret
 
+buildDPBs:
+    ;Here we specially handle MSD drivers, building DPBs
+    ;If return with CF=CY, fail. Else, all done and setup
+    ;Input: rbx -> Points to sysinit request packet
+    ;       rsi -> Driver header
+    ;       rbp -> DOSSEG pointer
+    ;Preserves those registers
+    push rbx
+    push rbp
+    push rsi
+    push rdi
+    mov rdi, rsi    ;SAVE THE DRIVER HEADER!
+    movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
+    mov rsi, qword [rbx + initReqPkt.optptr]
+    mov eax, dpb_size
+    mul ecx         ;Get the number of bytes for all the dpb's into eax
+    add eax, 0Fh    ;Round up if not precisely on para boundry
+    shr eax, 4      ;Convert to paragraphs
+    mov ebx, eax
+    mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
+    int 41h
+    jc short .badExit
+    mov rbp, rax    
+    mov qword [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
+    ;rsi -> Ptr to BPB
+	;rbp -> Ptr to buffer to hold first DPB
+    ;rdi -> Ptr to the driver header
+    call convertBPBArray    ;Returns rbp -> past last DPB
+.exit:
+    pop rdi
+    pop rsi
+    pop rbp
+    pop rbx
+    return
+.badExit:
+    stc
+    jmp short .exit
 
 setupInterruptBlock:
 ;Sets up a block of interrupts with pointers provided in a table
