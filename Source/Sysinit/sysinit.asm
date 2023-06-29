@@ -924,6 +924,7 @@ configParse:
     int 41h
 .drvBad:
     lea rdx, .drvBadMsg
+.drvBad2:
     mov eax, 0900h
     int 41h
     clc ;Never return with CF=CY
@@ -932,7 +933,7 @@ configParse:
     mov eax, 3E00h  ;Close handle in ebx
     int 41h
     lea rdx, .drvMemMsg
-    jmp short .drvBad
+    jmp short .drvBad2
 
 .drvBadMsg: db "Bad or missing filename",CR,LF,"$"
 
