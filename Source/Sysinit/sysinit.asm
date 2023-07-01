@@ -741,7 +741,7 @@ configParse:
     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
     mov rdi, rdx    ;Get pointer to the EXE header
     jnc short .headerReadOK
-.badHeaderRead:
+.drvFreeMemAndHdl: ;Frees the block and then handle
     ;r8 must point to the block to free
     mov eax, 4900h  ;Free the block first!
     int 41h
@@ -765,13 +765,13 @@ configParse:
     int 41h
     ;edx:eax now has the filesize. 
     test edx, edx   ;edx must be 0
-    jnz .drvBadClose
+    jnz .drvFreeMemAndHdl
     mov ecx, eax
     and ecx, ~0Fh   ;Clear lower byte
     add ecx, 1h     ;... and round up!
     shr ecx, 4      ;Convert to paragraphs
     cmp ecx, 10000h ;Is it greater than 64k?
-    jae .drvBadClose
+    jae .drvFreeMemAndHdl
     jmp .loadCont
 .exeDrivers:
     ;Get the file pointer for file header
@@ -784,23 +784,23 @@ configParse:
     mov ecx, imageFileHeader_size   ;Read the header
     mov eax, 3F00h  ;READ
     int 41h
-    jc short .badHeaderRead
+    jc short .drvFreeMemAndHdl
     cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
-    jb short .badHeaderRead
+    jb short .drvFreeMemAndHdl
     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
-    jne .badHeaderRead
+    jne .drvFreeMemAndHdl
     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
-    jne .badHeaderRead
+    jne .drvFreeMemAndHdl
     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
-    jb .badHeaderRead ;We need section alignment info if a .EXE!
+    jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
     ;Now read the first 56 bytes of the optional header here
     mov rdx, rdi    ;Overwrite the 16-bit header
     mov ecx, 56     ;Read only 56 bytes
     mov eax, 3F00h  ;READ
     int 41h
-    jc .badHeaderRead   ;If something goes wrong, skip
+    jc .drvFreeMemAndHdl   ;If something goes wrong, skip
     cmp eax, 56
-    jb .badHeaderRead   ;If fewer than 56 bytes read, skip
+    jb .drvFreeMemAndHdl   ;If fewer than 56 bytes read, skip
     ;Round up size requirement.
     ;If .EXE, round up to nearest section alignment
     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
@@ -812,7 +812,7 @@ configParse:
     add ecx, esi    ;Now round upwards!
     shr ecx, 4      ;Convert to number of paragraphs.
     cmp ecx, 20000000h  ;Drivers cannot be more than 2Gb in size.
-    jae .drvBadClose
+    jae .drvFreeMemAndHdl
 .loadCont:
     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
     int 41h ;r8 has the pointer to the block for freeing
