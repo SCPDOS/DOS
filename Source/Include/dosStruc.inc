@@ -301,7 +301,7 @@ struc dpl
 endstruc
 
 struc cfgFrame  ;Frame used for config.sys parsing
-                    resq 1  ;Alignment qword
+    .oldRBP         resq 1  ;Ptr to DOSSEG
     .newBuffers     resq 1  ;New buffers value
     .newSFTVal      resq 1
     .newFCBSVal     resq 1

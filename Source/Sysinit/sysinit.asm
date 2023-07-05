@@ -867,9 +867,11 @@ configParse:
 .driverPtrAdjustmentDone:
     pop rsi     ;Get back the pointer to the first driver header
     ;Prepare for initialising the drivers in the arena
-    push rbp    ;Save the config frame pointer
-    push qword fs:[currentPSP]  ;Set DOS as the owner of these allocations
-    mov qword fs:[currentPSP], mcbOwnerNewDOS
+    ;EXPERIMENT: USING R9-R11 UNTIL THE END OF THE FUNCTION
+    mov r9, rsi     ;Save a copy of the driver pointer in r9
+    mov r10, rbp    ;Save a copy of the cfg frame pointer
+    mov r11, mcbOwnerNewDOS ;Set currentPSP for new dos object
+    xchg r11, qword fs:[currentPSP] ;Save in r11 old owner
     lea rbx, initDrvBlk
     mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
     mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
@@ -882,8 +884,8 @@ configParse:
     call buildDPBs          ;Preserves rbp, rsi and rbx
     jc short .driverBad
 .driverInitialised:
-    mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Now point rsi to that header
     cmp rsi, -1     ;We at the end of the chain?
+    cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
     jne short .driverInit ;If not, goto next driver
 ;Now we eject the init routines for the driver
 ;r8 points to the MCB already
@@ -892,10 +894,19 @@ configParse:
     shl rbx, 4  ;Turn into number of bytes
     lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
     call ejectKernelInit    ;Ignore any errors in ejection.
+    ;Link into main driver chain, 
+    ;r9 points to first driver in block
+    ;rsi points to last driver in block
+    mov rdi, qword [r10 - cfgFrame.oldRBP]  ;Get DOSSEG ptr
+    lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
+    mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
+    mov qword [rdi + drvHdr.nxtPtr], r9     ;Link new drivers in
+    mov qword [rsi + drvHdr.nxtPtr], rax    ;Link end to old chain
 .driverExit:
 ;Exit the init routine if it all works out, WOO!
-    pop qword fs:[currentPSP]
-    pop rbp     ;Get back the config frame pointer
+;Return values to original registers/memory locations
+    mov qword fs:[currentPSP], r11
+    mov rbp, r10    ;Return rbp to original cfg frame
     return
 
 .driverBad:
@@ -912,6 +923,8 @@ configParse:
 .driverBadPrint:
     lea rdx, .driverBad1
     mov eax, 0900h  ;Print the string!
+    int 41h
+    mov eax, 4900h  ;Attempt to deallocate the driver now
     int 41h
     jmp short .driverExit
 .driverBad1 db "Error initialising driver: "
