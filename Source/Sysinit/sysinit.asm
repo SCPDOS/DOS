@@ -470,6 +470,7 @@ setupFrame:
 ;-------------------------------------------------------------------------;
 ;Start CONFIG.SYS parsing here
 configParse:
+    breakpoint
     mov qword [rbp - cfgFrame.cfgHandle], rax
     mov qword [rbp - cfgFrame.lastLine], 0
     mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
@@ -510,6 +511,7 @@ configParse:
 .endOfLine:
 ;rdx points to terminating char
 ;First find the length of the instruction word
+    mov rsi, qword [rbp - cfgFrame.linePtr]
     xor ecx, ecx
 .cmdNameLenGet:
     lodsb
