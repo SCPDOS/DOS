@@ -176,21 +176,27 @@ mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
 mcbBuild:
 ;Actually build the MCB chain here
 ;Start by computing the difference between userbase and DOS area
-;This value needs to be subtracted from loProtMem to get free memory
-;DOSENDPTR is R/O in this function!
     mov rbx, qword [biosUBase]
-    mov rsi, qword [DOSENDPTR]  ;Use the current end of DOS space
-    push rsi    ;Save ptr
-    add rsi, mcb.program    ;Point to free space
-    sub rsi, rbx    ;Get difference from userbase and first byte after DOS
-    sub dword [loProtMem], esi  ;Hide DOS data and code segs
-    pop rbx
+    mov rsi, qword [MCBANCHOR]  
+    mov eax, dword [rsi + mcb.blockSize]    ;Get the size of the block
+    shl rax, 4      ;Convert to number of allocated bytes
+    add rax, mcb_size   ;Add the mcb itself to the count
+    add rax, rsi    ;Add the pointer to the mcb to get pointer to free space
+    mov rdi, rax    ;Save this value as the pointer to the next MCB
+    sub rax, rbx    ;Get difference from userbase and first byte after DOS
+    sub dword [loProtMem], eax  ;Remove difference from the free bytes count
+    jc OEMHALT                  ;If this carries, fail
+    cmp dword [loProtMem], 8000h   ;Need a minimum of 32Kb free space.
+    jb OEMHALT
+    mov byte [rsi + mcb.marker], mcbMarkCtn ;Now mark anchor as not end
+    mov rbx, rdi    ;Get the pointer to the free space back
     mov byte [rbx + mcb.marker], mcbMarkEnd  ;Mark as end of chain
-    mov qword [rbx + mcb.owner], mcbOwnerDOS
+    mov qword [rbx + mcb.owner], mcbOwnerFree
+    xor esi, esi
     mov esi, dword [loProtMem]
+    sub esi, mcb_size   ;Now remove one mcb's worth of space
     shr esi, 4  ;Shift down by a nybble to get paragraphs
     mov dword [rbx + mcb.blockSize], esi
-    mov qword [OEMMCBANCHR], rbx ;Save pointer
 
     ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
     cmp dword [hiProtMem], 0
@@ -255,8 +261,6 @@ mcbBuild:
     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
     mov dword [rbx + mcb.blockSize], ecx
 .exit:
-    ;The last arena doesn't need to reserve space for one more MCB
-    add dword [rbx + mcb.blockSize], (mcb_size>>4)
     ret
 OEMMCBINIT ENDP
 

@@ -1,5 +1,6 @@
 ;This file contains the main DOS data segment
 dosDataArea:
+    anchorMcb   resb mcb_size   ;This is space for the anchor MCB
     bootDrive   resb 1    ;The logical drive we booted from
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV

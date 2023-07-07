@@ -230,15 +230,30 @@ struc mcb
     .marker     resb 1  ;M = Member of the MCB chain. Z = Last member
     .owner      resq 1  ;Owning application PSP (para aligned) or 0 for free
     .blockSize  resd 1  ;Number of contiguous paragraphs owned by this block
-    .reserved   resb 3  ;Reserved three bytes
+    ;The following byte is reserved outside of sysinit
+    .subSysMark resb 1  ;Marks the optional DOS subsystem of the MCB
+    .reserved   resb 2  
     .program:
 endstruc
 ;MCB equates
 mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
 mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
 mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
+mcbOwnerNewDOS  equ 9   ;Owner = 9 => New Kernel driver alloc. Needs setting to 8.
 mcbMarkCtn      equ "M"
 mcbMarkEnd      equ "Z"
+;The following are used on MCB's that belong to DOS, that are not part of the
+; main kernel (i.e. the CONFIG.SYS optional parts).
+mcbSubDriver    equ "D" ;Any memory allocated for a device driver's code.
+mcbSubDrvExtra  equ "L" ;Any memory allocated by a device driver.
+mcbSubDrvDPB    equ "P" ;Blocks used for DPB's are marked so.
+mcbSubIFS       equ "I" ;Unused for now
+mcbSubFiles     equ "F" ;Any memory allocated for Files.
+mcbSubFCBS      equ "X" ;Unused for now
+mcbSubBuffers   equ "B" ;Any memory allocated for Buffers.
+mcbSubCDS       equ "L" ;Any memory allocated to store a CDS.
+mcbSubStacks    equ "S" ;Unused for now
+
 
 memFirstFit     equ 0   ;First free block goes to application
 memBestFit      equ 1   ;Block whos size closest matches requirement
@@ -286,7 +301,7 @@ struc dpl
 endstruc
 
 struc cfgFrame  ;Frame used for config.sys parsing
-                    resq 1  ;Alignment qword
+    .oldRBP         resq 1  ;Ptr to DOSSEG
     .newBuffers     resq 1  ;New buffers value
     .newSFTVal      resq 1
     .newFCBSVal     resq 1
@@ -294,11 +309,11 @@ struc cfgFrame  ;Frame used for config.sys parsing
     .newLastdrive   resq 1
     .newStacks      resq 1  ;Ignored for now
     .newStackSize   resq 1  ;Ignored for now
-    .newAllocSize   resq 1  ;Used to keep track of reallocation size
     .cfgHandle      resq 1  ;CONFIG.SYS handle
     .lastLine       resq 1  ;Set if the last line is current
-    .endPtr         resq 1  ;Pointer to the end of the allocation space
-    .linePtr        resq 1  ;Ptr to line being processed by CONFIG.SYS
+    .linePtr        resq 1  ;Ptr to line buffer of line being processed
+    .driverBreak    resq 1  ;Ptr to the null terminator in the driver to 
+                            ;be replaced by a space
 endstruc
 
 struc filename

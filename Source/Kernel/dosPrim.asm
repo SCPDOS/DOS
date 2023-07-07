@@ -18,6 +18,12 @@ goDriver:   ;Executes the driver packet pointed to by rbx
     call dosCrit2Exit
     return
 
+;The NUL driver lives here as it is implemented by the Kernel by default!
+nulStrat:
+    mov word [rbx + drvReqHdr.status], drvDonStatus    ;Set done bit directly
+nulIntr:
+    return
+
 setupPhysicalDiskRequest:
 ;Ensure that al has valid disk number
 ;Prepares working vars with data (Drv, DPB and CDS)

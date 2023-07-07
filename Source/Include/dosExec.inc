@@ -13,7 +13,6 @@ struc execFrame
     .oldRBP     resq 1  
     .bSubFunc   resq 1  ;Subfunction number
     .wProgHdl   resq 1  ;File handle number for executable file
-    .wEnvSize   resq 1  ;Size of the environment block
     .wNameLen   resq 1  ;Needs to be less than 64 but welp
     .pParam     resq 1  ;Parameter list pointer
     .pProgname  resq 1  ;Ptr to ASCIIZ program name
@@ -23,11 +22,12 @@ struc execFrame
     .pProgBase  resq 1  ;Ptr to Prog. Base addr., ALIGNED FOR FIRST EXE SECTION
     .dProgSize  resq 1  ;Program size is saved here, PSP included.
     .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
+    .bSegCount  resq 1  ;Count of segments loaded into memory
     .wCOFFChars resq 1  ;Save the COFF characteristics in here
 .pProgEP:   ;Program EP, recycle this qword
     .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
     .dFilePtr   resq 1  ;Keep of track of where in file we are
-.qRelocVal:  ;Used when computing relocations, Rebasing factor
+    .qRelocVal  resq 1  ;Used when computing relocations, Rebasing factor
 endstruc
 
 ;Possible blocks to be pointed to by rbx
@@ -50,7 +50,7 @@ endstruc
 
 struc loadOvly
     .pLoadLoc   resq 1  ;Address in memory to load the overlay
-    .dRelocFct  resd 1  ;Relocation factor for 
+    .qRelocFct  resq 1  ;Relocation address for relocatable items (0 for COM files)
 endstruc
 
 ;----------------------------

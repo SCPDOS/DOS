@@ -2,10 +2,6 @@ commonStrat:
 ;DOS calls this function with rbx=Ptr to request header
     mov qword [reqHdrPtr], rbx
     ret
-nulStrat:
-    mov word [rbx + drvReqHdr.status], drvDonStatus    ;Set done bit directly
-nulIntr:
-    ret
 conDriver:
     push rax
     push rbx

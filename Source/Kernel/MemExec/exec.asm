@@ -64,18 +64,33 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ; rbx ------>   |-------------------------------|
 ;               |  Pointer to the byte in the   |
 ;               |  prog space to start writing  |
-;               |        the overlay at         |
+;               |        the overlay at.        |
 ;               |-------------------------------|
-;               | DWORD offset from the base of |
-;               |  the program to the location  |
-;               |  the overlay is being loaded  |
-;               |              in               |
+;               | QWORD value used as the base  |
+;               |   address for relocation      |
+;               |   computations. In most cases |
+;               |   should be the same as the   |
+;               |   load pointer. The desired   |
+;               |   load address is subtracted  |
+;               |   from this value to generate |
+;               |   a valid relocation factor,  |
+;               |   much like for normal load   |
+;               |   but here we are controlling |
+;               |    precisely the factor by    |
+;               |     which we relocate the     |
+;               |           symbols.            |
 ;               |  (Called a Relocation Factor) |
-;               |     Only FOR EXE Overlays     |
-;               |        for CODE fixups        |
-;               |  For COM, Current PSP + 100h  |
-;               |      assumed to suffice       |
+;               |     Only FOR EXE Overlays.    |
+;               |    For COM, 0 is sufficient.  |
 ;               |-------------------------------|
+; For AL = 3: Both pointers must be aligned to section alignment.
+;   If this is not the case, DOS will round UP both pointers to the 
+;   section alignment for the file being loaded. 
+; The overlay will be loaded so that the first byte at the start of the memory
+; block is the first byte of the first section of the executable. No header
+; information will be retained. Thus, (for now) overlays cannot be used to export 
+; functions or import functions from DLLs. Furthermore, it is HIGHLY recommended
+; that you compile any .EXE overlays to have a section alignment of 1 byte.
 ;
 ; All three will setup both COM and EXE files for whatever purpose. 
 ;           AL = 3 DOES NOT BUILD THE PROGRAM A PSP.
@@ -137,7 +152,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor eax, eax
     mov qword [rbp - execFrame.pEnvBase], rax   ;Clear pEnv and pProg Bases
     mov qword [rbp - execFrame.pProgBase], rax
-    cmp byte [rbp - execFrame.bSubFunc], execOverlay
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .loadProgram ;If overlay, skip making an environment block
     mov rdi, qword [rbp - execFrame.pParam] ;Get params ptr in rdi
     mov rax, qword [rdi + execProg.pEnv]
@@ -256,7 +271,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     add dword [rbp - execFrame.dFilePtr], imageFileOptionalHeader_size
     ;We load the program in, one section at a time, reading section headers in
     ; one at a time to the section header internal buffer.
-    cmp byte [rbp - execFrame.bSubFunc], execOverlay
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
     mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackReserve]
@@ -279,7 +294,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jc .insufficientMemory  ;Unless not enough, sorry buddy!
     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
     add rax, psp_size
-    mov qword [rbp - execFrame.pProgBase], rax  ;First byte of code goes here
+    mov qword [rbp - execFrame.pProgBase], rax  ;First byte of exe hdr goes here
     ;Finally, just check that we have some code to execute. 
     ;Empty code sections are NOT allowed if executing. Only for overlays
     cmp dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfCode], 0
@@ -289,22 +304,38 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rbx, qword [rbp - execFrame.pParam]
     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
     mov qword [rbp - execFrame.pProgBase], rax
-    mov qword [rbp - execFrame.pPSPBase], rax   ;Pretend this is the case
 .exeProceed1:
+;===========================================================================
+    ;The below blocks are being kept because they can be turned on later
+    ; to change this exe loader to force section alignment of the 
+    ; base load address. It appears there is no need to enforce that the 
+    ; base load address be section aligned, but individual sections need
+    ; to adhere to the section alignment requirements thereafter. 
+    ;Finally, the pProgBase gets rescaled so that the first byte of the 
+    ; first section gets places at the load address and not at some
+    ; offset from it (as is usually the case, offset 1000h).
+;===========================================================================
+    ;=======================================================================
     ;Now we align the progBase to full header size aligned to the next page
-    mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
-    add rax, rbx    ;Add this offset where the header should go in future
-    ;Now we section pad
-    push rax
-    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
-    dec ecx ;Turn into a mask
-    and rax, rcx    ;Compute ptr modulo mask
-    inc ecx
-    sub rcx, rax
-    pop rdi
-    xor eax, eax
-    rep stosb
-    mov qword [rbp - execFrame.pProgBase], rdi
+    ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
+    ;add rax, rbx    ;Add this offset where the header should go in future
+    ;=======================================================================
+    ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+    ;It appears that the load address does NOT need to be aligned at all xD
+    ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+    ;Now we section pad. Once aligned, that is the program base address!
+    ;push rax
+    ;mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+    ;dec ecx ;Turn into a mask
+    ;and rax, rcx    ;Compute ptr modulo mask
+    ;inc ecx
+    ;sub rcx, rax
+    ;pop rdi
+    ;xor eax, eax
+    ;rep stosb
+    ;mov qword [rbp - execFrame.pProgBase], rdi
+    ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+
     ;So now copy one section at a time, read section header in
     ;File pointer points to the directory table, so skip that
     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
@@ -321,6 +352,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;USE ECX AS COUNTER FOR HEADERS LEFT TO PROCESS
     mov rdi, qword [rbp - execFrame.pProgBase]  ;Move prog base in rdi
     movzx ecx, word [rbp - execFrame.wNumSeg]   ;Get number of segments in ecx
+    xor esi, esi    ;Use as an indicator for the first data segment. 
+    mov qword [rbp - execFrame.bSegCount], rsi  ;Clear the segment counter
 .loadLp:
     push rcx    ;Save # of segments left on stack
     push rdi    ;Save the current buffer ptr here
@@ -339,7 +372,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Move file ptr to data location
     mov edx, dword [sectHdr + imageSectionHdr.dPointerToRawData] ;Data File ptr
     test edx, edx
-    jz .skipRawPtrMove
+    jz short .skipRawPtrMove
     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get the handle
     xor eax, eax    ;Seek from start of file
     push rcx
@@ -347,7 +380,29 @@ loadExecChild:     ;ah = 4Bh, EXEC
     call lseekHdl
     pop rdi
     pop rcx
-
+    ;Is this a overlay load?
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
+    jne short .skipRawPtrMove
+    ;Here we rescale to put the first byte at pLoadLoc and use the 
+    ; rescale value against RelocFct to compute the qRelocVal for later
+    ;Is this is the first segment with data being read into memory?
+    inc qword [rbp - execFrame.bSegCount]
+    cmp qword [rbp - execFrame.bSegCount], 1 
+    jne short .skipRawPtrMove   ;If not, skip
+    ;Now rebase the program to point the first byte of the first
+    ; section at the ProgBase.
+    push rcx
+    push rdi
+    mov rdi, qword [rbp - execFrame.pProgBase]  ;Get the load address
+    mov ecx, dword [sectHdr + imageSectionHdr.dVirtualAddress]
+    sub rdi, rcx    ;Rebase by offset of the first section
+    mov qword [rbp - execFrame.pProgBase], rdi 
+    mov rdi, qword [rbp - execFrame.pParam]
+    mov rdi, qword [rdi + loadOvly.qRelocFct]   ;Get the reload factor
+    sub rdi, rcx    ;Now rescale the relocation factor by the same amount
+    mov qword [rbp - execFrame.qRelocVal], rdi  ;Now store this value for later
+    pop rdi
+    pop rcx
 .skipRawPtrMove:
     push rcx
     xor edi, edi
@@ -364,7 +419,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     add rdx, mcb_size   ;Go to the first byte of the mcb
     add rdx, rcx    ;Now rdx points to the first byte outside the arena
     cmp rdx, rdi    ;If rdx > rdi, we are ok
-    ja .okToLoad
+    ja short .okToLoad
     ;Now check if this is a useless section. If so, we don't load it at all
     test dword [sectHdr + imageSectionHdr.dCharacteristics], imgScnCntBSS | imgScnCntCode | imgScnCntData
     jnz .badFmtErr  ;If any of these bits set, error out
@@ -398,7 +453,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rcx
 .gotoNextSection:
     dec ecx ;Decrement our section counter
-    jz .doExeFixups
+    jz short .doExeFixups
     ;Read next section header in here
     push rcx
     push rdi
@@ -457,12 +512,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;   Difference from the load address and prefered
     mov rax, qword [rbp - execFrame.pProgBase]
     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase] 
-    cmp byte [rbp - execFrame.bSubFunc], execOverlay
-    jne .notOverlayReloc
-    mov rbx, qword [rbp - execFrame.pParam]
-    add eax, dword [rbx + loadOvly.dRelocFct]   ;Add the overlay reloc factor
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
+    jne short .notOverlayReloc
+    ;For overlays, we use the relocation factor as the base of computation.
+    ;Thus now the relocation factor becomes the ProgBase.
+    ;This should be the same as ProgBase anyway for overlays.
+    mov rax, qword [rbp - execFrame.qRelocVal]   ;Get the overlay reloc factor
+    sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
+    ;Store this as the overlay program base
+    mov qword [rbp - execFrame.pProgBase], rax
 .notOverlayReloc:
-    mov qword [rbp - execFrame.qRelocVal], rax  ;Save relocation value
     mov rbx, rax    ;Save this relocation factor in rbx
     ;rsi points to relocation data table in memory
     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
@@ -494,23 +553,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jnz .nextBlock
 .exeComplete:
     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
+    ;Now get EP relative to the (rescaled) load address.
     add rax, qword [rbp - execFrame.pProgBase]
     mov qword [rbp - execFrame.pProgEP], rax
-    ;Now we copy the header into the memory space to pspPtr+psp_size
-    xor ecx, ecx
-    xor edx, edx
-    movzx ebx, word [rbp - execFrame.wProgHdl]    ;Get the handle
-    xor eax, eax
-    call lseekHdl
-    mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
-    mov rdx, qword [rbp - execFrame.pPSPBase] 
-    add rdx, psp_size
-    call .readDataFromHdl
-    jc .badFmtErr
-    test eax, eax
-    jz .badFmtErr
-    cmp ecx, eax
-    jnz .badFmtErr
     call qword [registerDLL]    ;Now we register the DLL and any import/exports
     jc .badFmtErr   ;If this errors out for some reason, quit loading EXE
     jmp .buildChildPSP
@@ -518,7 +563,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;File is open here, so just read the file into memory. 
     ;The file cannot exceed 64Kb in size. COM ONLY for small files!!!!
     ;Allocate 64Kb of memory, or as much as we can
-    cmp byte [rbp - execFrame.bSubFunc], execOverlay
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .comOverlay
     mov ebx, 0FFFFh ;64Kb pls
     mov dword [rbp - execFrame.dProgSize], ebx
@@ -583,7 +628,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rbp
 
     ;Only build a PSP if not in overlay mode. If in overlay mode skip
-    cmp byte [rbp - execFrame.bSubFunc], execOverlay
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .overlayExit
     ;Now build the PSP
     mov esi, dword [rbp - execFrame.dProgSize]
