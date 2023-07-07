@@ -470,7 +470,6 @@ setupFrame:
 ;-------------------------------------------------------------------------;
 ;Start CONFIG.SYS parsing here
 configParse:
-    breakpoint
     mov qword [rbp - cfgFrame.cfgHandle], rax
     mov qword [rbp - cfgFrame.lastLine], 0
     mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
@@ -500,6 +499,8 @@ configParse:
     je short .endOfLine
     cmp al, LF
     je short .endOfLine
+    cmp al, EOF
+    je short .endOfFileChar
     push rax    ;Push rax on stack as the argument to normalise
     mov eax, 1213h  ;Uppercase the char if it is uppercasable
     int 4fh
@@ -508,6 +509,8 @@ configParse:
 .notChar:
     inc rdx ;Now move our local pointer to the next byte
     jmp short .nextChar
+.endOfFileChar:
+    mov qword [rbp - cfgFrame.lastLine], -1	;Mark EOF and End of line
 .endOfLine:
 ;rdx points to terminating char
 ;First find the length of the instruction word
@@ -542,19 +545,22 @@ configParse:
     pop rcx
     pop rdi
     jne short .gotoNextCmd    ;If not equal, just goto next command
-    ;Else, rdi + rcx points to the word ptr of the function
+    ;Else, rdi points to the table entry from the head of the table
+    ;      rcx has the length of the name field
     ;rdx points to the terminating char of the line 
-    push rdx    ;This is to know whether we continue processing or end now
+    breakpoint
     lea rsi, .keyTbl
     mov rax, rsi    ;Keep a copy in rax
-    add rsi, qword [rdi + rcx + 1]  ;This is the offset from .keyTbl
+    movzx rsi, word [rdi + rcx + 1]
     add rsi, rax    ;So add the EA of the head of the tbl before calling
-    clc ;Esure flags are happy before entering
+    clc ;Ensure flags are happy before entering
+    push rbp
     call rsi    ;Call this function
-    pop rdx
+    pop rbp
     jc .stopProcessError    ;If the function returns CF=CY, error exit
     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
     jnz .cfgExit
+    mov rdx, qword [rbp - cfgFrame.linePtr] ;Start reading afresh
     jmp .nextChar
 .gotoNextCmd:
     movzx eax, byte [rdi]
@@ -694,6 +700,7 @@ configParse:
 ;   Device Driver Loader here  :
 ;===============================
 .drvLoader:
+    breakpoint
     mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
     mov rdi, qword [rbp - cfgFrame.linePtr]
     add rdi, 7  ;Go past DEVICE= to the pathname
@@ -975,6 +982,7 @@ configParse:
     inc ecx ;Increment char counter
     lodsb   ;Get third char
     call .sftHandlerTermCheck
+    je .sftHandlerProcess   ;If it is a terminating char, exit
     cmp al, "0"
     jb .sftHandlerErr
     cmp al, "2" ;Max BUFFERS=254 soooo, sorry buddy!
@@ -982,14 +990,15 @@ configParse:
     lodsb   ;Check no more chars!
     call .sftHandlerTermCheck
     jne .sftHandlerErr
+    inc ecx ;Increment char counter
 .sftHandlerProcess:
     xor edx, edx    ;Accumulate value in edx
     mov rsi, rdi    ;Go back to the first number
 .sftHandlerLp:
+    dec ecx
     lodsb   ;Get the digit
     call .sftHandlerMul
     jecxz .sftHandlerPrepExit
-    dec ecx
     jmp short .sftHandlerLp 
 .sftHandlerPrepExit:
 ;edx has the value now, so place it in stack
@@ -1000,10 +1009,28 @@ configParse:
     clc
     return
 .sftHandlerMul:
-    sub al, "0" ;Convert to a binary value
-    mul cl  ;Multiply al by cl, answer in ax
-    movzx eax, ax
-    add edx, eax
+;Input:
+;al = digit to add to result (ASCII digit)
+;ecx = whether al is a unit (0), ten (1) or hundred (2)
+;rdx = Accumulated sum
+;Output:
+;rdx = Accumulated sum with al added
+;eax is destroyed
+;All other registers preserved
+    push rcx
+    push rdx
+    movzx eax, al
+    sub eax, '0' ;Convert to a binary digit
+    mov edx, 1    ;Get 1 in edx (multiplicative unit)
+    cmp ecx, edx  ;Was cl a ten?
+    mov ebx, 10     ;Default base offset to 10
+    mov ecx, 100
+    cmovb ebx, edx  ;If below, it was a unit
+    cmova ebx, ecx  ;If above, it was a hundred
+    mul ebx    ;Multiply the base offset to eax
+    pop rdx ;Get the accumulated value back
+    add edx, eax    ;Add this result over
+    pop rcx
     return
 .sftHandlerErr:
     stc
@@ -1193,7 +1220,6 @@ closeHandlesLoop:
     jne closeHandlesLoop
     call openStreams
 l1:
-    ;breakpoint
     mov ebx, 1000h  ;Get a 64Kb block
     mov eax, 4800h  ;Allocate the memory block
     int 41h         ;Malloc and get pointer in rbx
