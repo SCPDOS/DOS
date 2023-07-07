@@ -561,6 +561,11 @@ configParse:
     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
     jnz .cfgExit
     mov rdx, qword [rbp - cfgFrame.linePtr] ;Start reading afresh
+    ;Read chars into rdx until an alphanumerical char,
+    ; at which point we increase rdx by one and jump to .notEOF
+    ; OR ecx returns 0 bytes read (EOF) 
+    ; OR an explicit EOF char reached. 
+    ;In the last two cases, we jmp to cfgExit
     jmp .nextChar
 .gotoNextCmd:
     movzx eax, byte [rdi]
