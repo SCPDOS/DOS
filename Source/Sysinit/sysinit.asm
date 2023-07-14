@@ -561,17 +561,31 @@ configParse:
     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
     jnz .cfgExit
     mov rdx, qword [rbp - cfgFrame.linePtr] ;Start reading afresh
-    ;Read chars into rdx until an alphanumerical char,
-    ; at which point we increase rdx by one and jump to .notEOF
-    ; OR ecx returns 0 bytes read (EOF) 
-    ; OR an explicit EOF char reached. 
-    ;In the last two cases, we jmp to cfgExit
-    jmp .nextChar
+    ;Read the next char. 
+    ;If EOF, exit.
+    ;Else if, LF, proceed to read line routine.
+    ;Else, advance ptr by one and proceed to process char
+.endCommandClear:
+    mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into rbx
+    mov eax, 3F00h  ;Read handle
+    mov ecx, 1  ;Read one byte to clear the LF from the file
+    int 41h
+    jc .stopProcessError
+    test ecx, ecx   ;If no chars were read, exit!
+    jz .cfgExit
+    ;Do a trash check
+    mov al, byte [rdx]
+    cmp al, EOF
+    jmp .cfgExit
+    cmp al, LF
+    je .nextChar
+    jmp .notEOF
+;CONFIG.SYS utility functions
 .gotoNextCmd:
     movzx eax, byte [rdi]
     add eax, 3
     add rdi, rax
-    jmp short .cmdSearch
+    jmp .cmdSearch
 .isCharTerminal:
 ;Input: AL = Char to check
 ;Output: ZF=ZE -> Char terminal
