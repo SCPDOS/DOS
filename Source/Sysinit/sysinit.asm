@@ -1260,7 +1260,7 @@ l1:
 l2:
     ;Load COMMAND.COM
     ;Get currentPSP ptr
-    mov ah, 62h ;Get current PSP ptr in rdx
+    mov ah, 62h ;Get current PSP ptr in rbx
     int 41h
     mov ah, 19h ;Get current Drive letter in al
     int 41h
