@@ -470,7 +470,6 @@ setupFrame:
 ;-------------------------------------------------------------------------;
 ;Start CONFIG.SYS parsing here
 configParse:
-    breakpoint
     mov qword [rbp - cfgFrame.cfgHandle], rax
     mov qword [rbp - cfgFrame.lastLine], 0
     mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
@@ -572,7 +571,7 @@ configParse:
     mov ecx, 1  ;Read one byte to clear the LF from the file
     int 41h
     jc .stopProcessError
-    test ecx, ecx   ;If no chars were read, exit!
+    test eax, eax   ;If no chars were read, exit!
     jz .cfgExit
     ;Do a trash check
     mov al, byte [rdx]
