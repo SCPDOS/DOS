@@ -470,6 +470,7 @@ setupFrame:
 ;-------------------------------------------------------------------------;
 ;Start CONFIG.SYS parsing here
 configParse:
+    breakpoint
     mov qword [rbp - cfgFrame.cfgHandle], rax
     mov qword [rbp - cfgFrame.lastLine], 0
     mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
@@ -576,7 +577,7 @@ configParse:
     ;Do a trash check
     mov al, byte [rdx]
     cmp al, EOF
-    jmp .cfgExit
+    je .cfgExit
     cmp al, LF
     je .nextChar
     jmp .notEOF
@@ -725,18 +726,28 @@ configParse:
     add rdi, 7  ;Go past DEVICE= to the pathname
     mov rdx, rdi    ;Prepare rdx for the open
     mov eax, SPC
+    push rcx
+    xor ecx, ecx
+    dec ecx
+    repe scasb      ;Skip leading spaces for name (between = and first char)
+    pop rcx
+;Now search for the first char after pathname. 
 .drvFindEndOfFileName:
-    scasb  ;Is this char the space?
-    je .fileNameFound
-    ;Was the char terminal?
-    cmp byte [rdi - 1], CR
-    je .drvBad
-    cmp byte [rdi - 1], LF
-    je .drvBad
-    jmp short .drvFindEndOfFileName
+    lodsb ;Get char from string name
+    ;Was the char a primitive string terminator?
+    cmp al, SPC
+    je short .fileNameFound
+    cmp al, EOF
+    je short .fileNameFound
+    cmp al, CR
+    je short .fileNameFound
+    cmp al, LF
+    jne short .drvFindEndOfFileName
 .fileNameFound:
     dec rdi ;Point rdi to the space itself
     mov qword [rbp - cfgFrame.driverBreak], rdi
+    movzx eax, byte [rdi]   ;Get the original breakchar
+    mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
     mov byte [rdi], 0   ;Null terminate the path to the file
     ;rdx -> Filename
     ;Here open the file to attempt to see how much space to 
@@ -877,7 +888,10 @@ configParse:
     mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
     ;Reset the command line to have a space at the null terminator
     mov rax, qword [rbp - cfgFrame.driverBreak]
-    mov byte [rax], SPC 
+    push rbx
+    mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
+    mov byte [rax], bl  ;and replace the null terminator
+    pop rbx
     ;Remember, the first byte of the overlay is the driver header. 
     ;Hence, rsi points to that byte!
     ;Pointers of each header need adjustment relative to their load address,

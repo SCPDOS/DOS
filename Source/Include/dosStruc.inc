@@ -312,8 +312,8 @@ struc cfgFrame  ;Frame used for config.sys parsing
     .cfgHandle      resq 1  ;CONFIG.SYS handle
     .lastLine       resq 1  ;Set if the last line is current
     .linePtr        resq 1  ;Ptr to line buffer of line being processed
-    .driverBreak    resq 1  ;Ptr to the null terminator in the driver to 
-                            ;be replaced by a space
+    .driverBreak    resq 1  ;Ptr to the pathname terminator 
+    .breakChar      resq 1  ;Char that was replaced by null for terminator
 endstruc
 
 struc filename
