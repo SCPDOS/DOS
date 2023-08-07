@@ -29,7 +29,7 @@ multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
     pop rcx
     mov qword [rsp + 8], rbx
     pop rbx
-    mov rax, qword [rsp + 8*8]  ;Get qword that may be passed on stack
+    mov rax, qword [rsp + 7*8]  ;Get qword that may be passed on stack
     return
 
 .retAddr:
