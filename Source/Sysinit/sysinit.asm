@@ -720,7 +720,7 @@ configParse:
 ;===============================
 .drvLoader:
     breakpoint
-    mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
+;    mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
     mov rdi, qword [rbp - cfgFrame.linePtr]
     add rdi, 7  ;Go past DEVICE= to the pathname
     mov rdx, rdi    ;Prepare rdx for the open
@@ -731,6 +731,7 @@ configParse:
     repe scasb      ;Skip leading spaces for name (between = and first char)
     pop rcx
 ;Now search for the first char after pathname. 
+    mov rsi, rdi
 .drvFindEndOfFileName:
     lodsb ;Get char from string name
     ;Was the char a primitive string terminator?
@@ -743,11 +744,11 @@ configParse:
     cmp al, LF
     jne short .drvFindEndOfFileName
 .fileNameFound:
-    dec rdi ;Point rdi to the space itself
-    mov qword [rbp - cfgFrame.driverBreak], rdi
-    movzx eax, byte [rdi]   ;Get the original breakchar
+    dec rsi ;Point rdi to the space itself
+    mov qword [rbp - cfgFrame.driverBreak], rsi
+    movzx eax, byte [rsi]   ;Get the original breakchar
     mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
-    mov byte [rdi], 0   ;Null terminate the path to the file
+    mov byte [rsi], 0   ;Null terminate the path to the file
     ;rdx -> Filename
     ;Here open the file to attempt to see how much space to 
     ; allocate to the file for loading. 

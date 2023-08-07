@@ -2166,7 +2166,7 @@
    571 00000853 B901000000          <1>     mov ecx, 1  ;Read one byte to clear the LF from the file
    572 00000858 CD41                <1>     int 41h
    573 0000085A 723F                <1>     jc .stopProcessError
-   574 0000085C 85C9                <1>     test ecx, ecx   ;If no chars were read, exit!
+   574 0000085C 85C0                <1>     test eax, eax   ;If no chars were read, exit!
    575 0000085E 0F84CA050000        <1>     jz .cfgExit
    576                              <1>     ;Do a trash check
    577 00000864 8A02                <1>     mov al, byte [rdx]
@@ -2485,386 +2485,387 @@
    721                              <1> .drvLoader:
    722                              <1>     breakpoint
     81 00000A04 6687DB              <2> xchg bx, bx
-   723 00000A07 4889D6              <1>     mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
-   724 00000A0A 488B7DB0            <1>     mov rdi, qword [rbp - cfgFrame.linePtr]
-   725 00000A0E 4881C707000000      <1>     add rdi, 7  ;Go past DEVICE= to the pathname
-   726 00000A15 4889FA              <1>     mov rdx, rdi    ;Prepare rdx for the open
-   727 00000A18 B820000000          <1>     mov eax, SPC
-   728 00000A1D 51                  <1>     push rcx
-   729 00000A1E 31C9                <1>     xor ecx, ecx
-   730 00000A20 FFC9                <1>     dec ecx
-   731 00000A22 F3AE                <1>     repe scasb      ;Skip leading spaces for name (between = and first char)
-   732 00000A24 59                  <1>     pop rcx
+   723                              <1> ;    mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
+   724 00000A07 488B7DB0            <1>     mov rdi, qword [rbp - cfgFrame.linePtr]
+   725 00000A0B 4881C707000000      <1>     add rdi, 7  ;Go past DEVICE= to the pathname
+   726 00000A12 4889FA              <1>     mov rdx, rdi    ;Prepare rdx for the open
+   727 00000A15 B820000000          <1>     mov eax, SPC
+   728 00000A1A 51                  <1>     push rcx
+   729 00000A1B 31C9                <1>     xor ecx, ecx
+   730 00000A1D FFC9                <1>     dec ecx
+   731 00000A1F F3AE                <1>     repe scasb      ;Skip leading spaces for name (between = and first char)
+   732 00000A21 59                  <1>     pop rcx
    733                              <1> ;Now search for the first char after pathname. 
-   734                              <1> .drvFindEndOfFileName:
-   735 00000A25 AC                  <1>     lodsb ;Get char from string name
-   736                              <1>     ;Was the char a primitive string terminator?
-   737 00000A26 3C20                <1>     cmp al, SPC
-   738 00000A28 740C                <1>     je short .fileNameFound
-   739 00000A2A 3C1A                <1>     cmp al, EOF
-   740 00000A2C 7408                <1>     je short .fileNameFound
-   741 00000A2E 3C0D                <1>     cmp al, CR
-   742 00000A30 7404                <1>     je short .fileNameFound
-   743 00000A32 3C0A                <1>     cmp al, LF
-   744 00000A34 75EF                <1>     jne short .drvFindEndOfFileName
-   745                              <1> .fileNameFound:
-   746 00000A36 48FFCF              <1>     dec rdi ;Point rdi to the space itself
-   747 00000A39 48897DA8            <1>     mov qword [rbp - cfgFrame.driverBreak], rdi
-   748 00000A3D 0FB607              <1>     movzx eax, byte [rdi]   ;Get the original breakchar
-   749 00000A40 488945A0            <1>     mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
-   750 00000A44 C60700              <1>     mov byte [rdi], 0   ;Null terminate the path to the file
-   751                              <1>     ;rdx -> Filename
-   752                              <1>     ;Here open the file to attempt to see how much space to 
-   753                              <1>     ; allocate to the file for loading. 
-   754                              <1>     ;Consider using the 4B01h loading mode instead and swapping back
-   755                              <1>     ; the current DTA and PSP to DOS default? This gives each driver a PSP
-   756                              <1>     ; which would allow for opening of files independently of calling programs'
-   757                              <1>     ; file table... maybe try it after getting 4B03h load to work first!
-   758 00000A47 B8003D0000          <1>     mov eax, 3D00h  ;Read only file
-   759 00000A4C CD41                <1>     int 41h
-   760 00000A4E 0F82A6020000        <1>     jc .drvBad
-   761 00000A54 0FB7D8              <1>     movzx ebx, ax   ;Get the handle in ebx
-   762 00000A57 31D2                <1>     xor edx, edx    ;Move the handle to the end of the file
-   763 00000A59 B802420000          <1>     mov eax, 4202h  ;LSEEK to SEEK_END
-   764 00000A5E CD41                <1>     int 41h
-   765 00000A60 89C6                <1>     mov esi, eax    ;Save the file size in esi
-   766 00000A62 31D2                <1>     xor edx, edx    ;Move the handle to the start of the file
-   767 00000A64 B800420000          <1>     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
-   768 00000A69 CD41                <1>     int 41h
-   769 00000A6B 53                  <1>     push rbx        ;Push the file handle on the stack
-   770 00000A6C BB06000000          <1>     mov ebx, 6      ;6 paragraphs (96 bytes)
-   771 00000A71 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
-   772 00000A76 CD41                <1>     int 41h
-   773 00000A78 5B                  <1>     pop rbx         ;Get the handle back in rbx
-   774 00000A79 0F828B020000        <1>     jc .drvMemClose
-   775 00000A7F 4889C2              <1>     mov rdx, rax    ;Get pointer to memory in rdx
-   776 00000A82 B940000000          <1>     mov ecx, imageDosHdr_size
-   777 00000A87 B8003F0000          <1>     mov eax, 3F00h  ;READ
-   778 00000A8C CD41                <1>     int 41h
-   779 00000A8E 4989D0              <1>     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
-   780 00000A91 4889D7              <1>     mov rdi, rdx    ;Get pointer to the EXE header
-   781 00000A94 730C                <1>     jnc short .headerReadOK
-   782                              <1> .drvFreeMemAndHdl: ;Frees the block and then handle
-   783                              <1>     ;r8 must point to the block to free
-   784 00000A96 B800490000          <1>     mov eax, 4900h  ;Free the block first!
-   785 00000A9B CD41                <1>     int 41h
-   786 00000A9D E951020000          <1>     jmp .drvBadClose
-   787                              <1> .headerReadOK:
-   788                              <1> ;Use register r10 as the indicator for .COM or .EXE. Set if COM.
-   789 00000AA2 4D31D2              <1>     xor r10, r10    ;Clear r10 i.e. EXE format
-   790 00000AA5 4889D7              <1>     mov rdi, rdx    ;Save the pointer in rdi
-   791                              <1>     ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
-   792 00000AA8 66813F4D5A          <1>     cmp word [rdi], dosMagicSignature
-   793 00000AAD 7437                <1>     je short .exeDrivers
-   794 00000AAF 66813F5A4D          <1>     cmp word [rdi], dosMagicSignature2
-   795 00000AB4 7430                <1>     je short .exeDrivers
-   796                              <1> ;.COM drivers come down here
-   797 00000AB6 49FFCA              <1>     dec r10 ;Set r10 to -1 i.e. COM format. Driver pointers need adjusting.
-   798                              <1>     ;Get File Image Allocation Size in ecx here.
-   799                              <1>     ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
-   800 00000AB9 31C9                <1>     xor ecx, ecx
-   801 00000ABB 31D2                <1>     xor edx, edx
-   802 00000ABD B802420000          <1>     mov eax, 4202h  ;LSEEK from the end of the file
-   803 00000AC2 CD41                <1>     int 41h
-   804                              <1>     ;edx:eax now has the filesize. 
-   805 00000AC4 85D2                <1>     test edx, edx   ;edx must be 0
-   806 00000AC6 75CE                <1>     jnz .drvFreeMemAndHdl
-   807 00000AC8 89C1                <1>     mov ecx, eax
-   808 00000ACA 81E1F0FFFFFF        <1>     and ecx, ~0Fh   ;Clear lower byte
-   809 00000AD0 81C101000000        <1>     add ecx, 1h     ;... and round up!
-   810 00000AD6 C1E904              <1>     shr ecx, 4      ;Convert to paragraphs
-   811 00000AD9 81F900000100        <1>     cmp ecx, 10000h ;Is it greater than 64k?
-   812 00000ADF 73B5                <1>     jae .drvFreeMemAndHdl
-   813 00000AE1 E983000000          <1>     jmp .loadCont
-   814                              <1> .exeDrivers:
-   815                              <1>     ;Get the file pointer for file header
-   816 00000AE6 8B573C              <1>     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
-   817 00000AE9 31C9                <1>     xor ecx, ecx
-   818 00000AEB B800420000          <1>     mov eax, 4200h  ;LSEEK from the start of the file
-   819 00000AF0 CD41                <1>     int 41h
-   820                              <1>     ;Now read in imageFileHeader here
-   821 00000AF2 4889FA              <1>     mov rdx, rdi    ;Overwrite the 16-bit header
-   822 00000AF5 B918000000          <1>     mov ecx, imageFileHeader_size   ;Read the header
-   823 00000AFA B8003F0000          <1>     mov eax, 3F00h  ;READ
-   824 00000AFF CD41                <1>     int 41h
-   825 00000B01 7293                <1>     jc short .drvFreeMemAndHdl
-   826 00000B03 3D18000000          <1>     cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
-   827 00000B08 728C                <1>     jb short .drvFreeMemAndHdl
-   828 00000B0A 813F50450000        <1>     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
-   829 00000B10 7584                <1>     jne .drvFreeMemAndHdl
-   830 00000B12 66817F046486        <1>     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
-   831 00000B18 0F8578FFFFFF        <1>     jne .drvFreeMemAndHdl
-   832 00000B1E 66817F143800        <1>     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
-   833 00000B24 0F826CFFFFFF        <1>     jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
-   834                              <1>     ;Now read the first 56 bytes of the optional header here
-   835 00000B2A 4889FA              <1>     mov rdx, rdi    ;Overwrite the 16-bit header
-   836 00000B2D B938000000          <1>     mov ecx, 56     ;Read only 56 bytes
-   837 00000B32 B8003F0000          <1>     mov eax, 3F00h  ;READ
-   838 00000B37 CD41                <1>     int 41h
-   839 00000B39 0F8257FFFFFF        <1>     jc .drvFreeMemAndHdl   ;If something goes wrong, skip
-   840 00000B3F 3D38000000          <1>     cmp eax, 56
-   841 00000B44 0F824CFFFFFF        <1>     jb .drvFreeMemAndHdl   ;If fewer than 56 bytes read, skip
-   842                              <1>     ;Round up size requirement.
-   843                              <1>     ;If .EXE, round up to nearest section alignment
-   844 00000B4A 8B4F38              <1>     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
-   845 00000B4D 8B4720              <1>     mov eax, dword [rdi + imageFileOptionalHeader.dSectionAlignment]
-   846 00000B50 89C6                <1>     mov esi, eax    ;Save in esi the alignment requirement
-   847 00000B52 FFC8                <1>     dec eax         ;Set bits to strip, clear all other bits
-   848 00000B54 F7D0                <1>     not eax         ;Flip the set and clear bits
-   849 00000B56 21C1                <1>     and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
-   850 00000B58 01F1                <1>     add ecx, esi    ;Now round upwards!
-   851 00000B5A C1E904              <1>     shr ecx, 4      ;Convert to number of paragraphs.
-   852 00000B5D 81F900000020        <1>     cmp ecx, 20000000h  ;Drivers cannot be more than 2Gb in size.
-   853 00000B63 0F832DFFFFFF        <1>     jae .drvFreeMemAndHdl
-   854                              <1> .loadCont:
-   855 00000B69 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
-   856 00000B6E CD41                <1>     int 41h ;r8 has the pointer to the block for freeing
-   857                              <1>     ;Now close the file
-   858 00000B70 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
-   859 00000B75 CD41                <1>     int 41h
-   860 00000B77 89CB                <1>     mov ebx, ecx    ;Put the number of paragraphs in ebx
-   861 00000B79 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
-   862 00000B7E CD41                <1>     int 41h         ;rax gets the pointer to load the program into
-   863 00000B80 0F8284010000        <1>     jc .drvMemClose
-   864                              <1>     ;Now set the subsystem marker and the owner to DOS
-   865 00000B86 48C740FD44000000    <1>     mov qword [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
-   866                              <1>     ;Build the overlay command block
-   867 00000B8E 488D1D7D050000      <1>     lea rbx, cmdBlock
-   868 00000B95 488903              <1>     mov qword [rbx + loadOvly.pLoadLoc], rax
-   869 00000B98 48894308            <1>     mov qword [rbx + loadOvly.qRelocFct], rax
-   870 00000B9C 488B55B0            <1>     mov rdx, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
-   871 00000BA0 4881C207000000      <1>     add rdx, 7  ;Go past DEVICE= to the null terminated pathname
-   872 00000BA7 B8034B0000          <1>     mov eax, 4B03h  ;Load overlay!
-   873 00000BAC CD41                <1>     int 41h
-   874 00000BAE 733C                <1>     jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
-   875                              <1> .badDriverLoad:
-   876 00000BB0 4C8B055B050000      <1>     mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
-   877 00000BB7 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
-   878 00000BBC CD41                <1>     int 41h
-   879 00000BBE 488D1508000000      <1>     lea rdx, .drvMemMsg
-   880 00000BC5 B800090000          <1>     mov eax, 0900h
-   881 00000BCA CD41                <1>     int 41h
-   882                              <1>     return
+   734 00000A22 4889FE              <1>     mov rsi, rdi
+   735                              <1> .drvFindEndOfFileName:
+   736 00000A25 AC                  <1>     lodsb ;Get char from string name
+   737                              <1>     ;Was the char a primitive string terminator?
+   738 00000A26 3C20                <1>     cmp al, SPC
+   739 00000A28 740C                <1>     je short .fileNameFound
+   740 00000A2A 3C1A                <1>     cmp al, EOF
+   741 00000A2C 7408                <1>     je short .fileNameFound
+   742 00000A2E 3C0D                <1>     cmp al, CR
+   743 00000A30 7404                <1>     je short .fileNameFound
+   744 00000A32 3C0A                <1>     cmp al, LF
+   745 00000A34 75EF                <1>     jne short .drvFindEndOfFileName
+   746                              <1> .fileNameFound:
+   747 00000A36 48FFCE              <1>     dec rsi ;Point rdi to the space itself
+   748 00000A39 488975A8            <1>     mov qword [rbp - cfgFrame.driverBreak], rsi
+   749 00000A3D 0FB606              <1>     movzx eax, byte [rsi]   ;Get the original breakchar
+   750 00000A40 488945A0            <1>     mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
+   751 00000A44 C60600              <1>     mov byte [rsi], 0   ;Null terminate the path to the file
+   752                              <1>     ;rdx -> Filename
+   753                              <1>     ;Here open the file to attempt to see how much space to 
+   754                              <1>     ; allocate to the file for loading. 
+   755                              <1>     ;Consider using the 4B01h loading mode instead and swapping back
+   756                              <1>     ; the current DTA and PSP to DOS default? This gives each driver a PSP
+   757                              <1>     ; which would allow for opening of files independently of calling programs'
+   758                              <1>     ; file table... maybe try it after getting 4B03h load to work first!
+   759 00000A47 B8003D0000          <1>     mov eax, 3D00h  ;Read only file
+   760 00000A4C CD41                <1>     int 41h
+   761 00000A4E 0F82A6020000        <1>     jc .drvBad
+   762 00000A54 0FB7D8              <1>     movzx ebx, ax   ;Get the handle in ebx
+   763 00000A57 31D2                <1>     xor edx, edx    ;Move the handle to the end of the file
+   764 00000A59 B802420000          <1>     mov eax, 4202h  ;LSEEK to SEEK_END
+   765 00000A5E CD41                <1>     int 41h
+   766 00000A60 89C6                <1>     mov esi, eax    ;Save the file size in esi
+   767 00000A62 31D2                <1>     xor edx, edx    ;Move the handle to the start of the file
+   768 00000A64 B800420000          <1>     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
+   769 00000A69 CD41                <1>     int 41h
+   770 00000A6B 53                  <1>     push rbx        ;Push the file handle on the stack
+   771 00000A6C BB06000000          <1>     mov ebx, 6      ;6 paragraphs (96 bytes)
+   772 00000A71 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
+   773 00000A76 CD41                <1>     int 41h
+   774 00000A78 5B                  <1>     pop rbx         ;Get the handle back in rbx
+   775 00000A79 0F828B020000        <1>     jc .drvMemClose
+   776 00000A7F 4889C2              <1>     mov rdx, rax    ;Get pointer to memory in rdx
+   777 00000A82 B940000000          <1>     mov ecx, imageDosHdr_size
+   778 00000A87 B8003F0000          <1>     mov eax, 3F00h  ;READ
+   779 00000A8C CD41                <1>     int 41h
+   780 00000A8E 4989D0              <1>     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
+   781 00000A91 4889D7              <1>     mov rdi, rdx    ;Get pointer to the EXE header
+   782 00000A94 730C                <1>     jnc short .headerReadOK
+   783                              <1> .drvFreeMemAndHdl: ;Frees the block and then handle
+   784                              <1>     ;r8 must point to the block to free
+   785 00000A96 B800490000          <1>     mov eax, 4900h  ;Free the block first!
+   786 00000A9B CD41                <1>     int 41h
+   787 00000A9D E951020000          <1>     jmp .drvBadClose
+   788                              <1> .headerReadOK:
+   789                              <1> ;Use register r10 as the indicator for .COM or .EXE. Set if COM.
+   790 00000AA2 4D31D2              <1>     xor r10, r10    ;Clear r10 i.e. EXE format
+   791 00000AA5 4889D7              <1>     mov rdi, rdx    ;Save the pointer in rdi
+   792                              <1>     ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
+   793 00000AA8 66813F4D5A          <1>     cmp word [rdi], dosMagicSignature
+   794 00000AAD 7437                <1>     je short .exeDrivers
+   795 00000AAF 66813F5A4D          <1>     cmp word [rdi], dosMagicSignature2
+   796 00000AB4 7430                <1>     je short .exeDrivers
+   797                              <1> ;.COM drivers come down here
+   798 00000AB6 49FFCA              <1>     dec r10 ;Set r10 to -1 i.e. COM format. Driver pointers need adjusting.
+   799                              <1>     ;Get File Image Allocation Size in ecx here.
+   800                              <1>     ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
+   801 00000AB9 31C9                <1>     xor ecx, ecx
+   802 00000ABB 31D2                <1>     xor edx, edx
+   803 00000ABD B802420000          <1>     mov eax, 4202h  ;LSEEK from the end of the file
+   804 00000AC2 CD41                <1>     int 41h
+   805                              <1>     ;edx:eax now has the filesize. 
+   806 00000AC4 85D2                <1>     test edx, edx   ;edx must be 0
+   807 00000AC6 75CE                <1>     jnz .drvFreeMemAndHdl
+   808 00000AC8 89C1                <1>     mov ecx, eax
+   809 00000ACA 81E1F0FFFFFF        <1>     and ecx, ~0Fh   ;Clear lower byte
+   810 00000AD0 81C101000000        <1>     add ecx, 1h     ;... and round up!
+   811 00000AD6 C1E904              <1>     shr ecx, 4      ;Convert to paragraphs
+   812 00000AD9 81F900000100        <1>     cmp ecx, 10000h ;Is it greater than 64k?
+   813 00000ADF 73B5                <1>     jae .drvFreeMemAndHdl
+   814 00000AE1 E983000000          <1>     jmp .loadCont
+   815                              <1> .exeDrivers:
+   816                              <1>     ;Get the file pointer for file header
+   817 00000AE6 8B573C              <1>     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
+   818 00000AE9 31C9                <1>     xor ecx, ecx
+   819 00000AEB B800420000          <1>     mov eax, 4200h  ;LSEEK from the start of the file
+   820 00000AF0 CD41                <1>     int 41h
+   821                              <1>     ;Now read in imageFileHeader here
+   822 00000AF2 4889FA              <1>     mov rdx, rdi    ;Overwrite the 16-bit header
+   823 00000AF5 B918000000          <1>     mov ecx, imageFileHeader_size   ;Read the header
+   824 00000AFA B8003F0000          <1>     mov eax, 3F00h  ;READ
+   825 00000AFF CD41                <1>     int 41h
+   826 00000B01 7293                <1>     jc short .drvFreeMemAndHdl
+   827 00000B03 3D18000000          <1>     cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
+   828 00000B08 728C                <1>     jb short .drvFreeMemAndHdl
+   829 00000B0A 813F50450000        <1>     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
+   830 00000B10 7584                <1>     jne .drvFreeMemAndHdl
+   831 00000B12 66817F046486        <1>     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
+   832 00000B18 0F8578FFFFFF        <1>     jne .drvFreeMemAndHdl
+   833 00000B1E 66817F143800        <1>     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
+   834 00000B24 0F826CFFFFFF        <1>     jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
+   835                              <1>     ;Now read the first 56 bytes of the optional header here
+   836 00000B2A 4889FA              <1>     mov rdx, rdi    ;Overwrite the 16-bit header
+   837 00000B2D B938000000          <1>     mov ecx, 56     ;Read only 56 bytes
+   838 00000B32 B8003F0000          <1>     mov eax, 3F00h  ;READ
+   839 00000B37 CD41                <1>     int 41h
+   840 00000B39 0F8257FFFFFF        <1>     jc .drvFreeMemAndHdl   ;If something goes wrong, skip
+   841 00000B3F 3D38000000          <1>     cmp eax, 56
+   842 00000B44 0F824CFFFFFF        <1>     jb .drvFreeMemAndHdl   ;If fewer than 56 bytes read, skip
+   843                              <1>     ;Round up size requirement.
+   844                              <1>     ;If .EXE, round up to nearest section alignment
+   845 00000B4A 8B4F38              <1>     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
+   846 00000B4D 8B4720              <1>     mov eax, dword [rdi + imageFileOptionalHeader.dSectionAlignment]
+   847 00000B50 89C6                <1>     mov esi, eax    ;Save in esi the alignment requirement
+   848 00000B52 FFC8                <1>     dec eax         ;Set bits to strip, clear all other bits
+   849 00000B54 F7D0                <1>     not eax         ;Flip the set and clear bits
+   850 00000B56 21C1                <1>     and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
+   851 00000B58 01F1                <1>     add ecx, esi    ;Now round upwards!
+   852 00000B5A C1E904              <1>     shr ecx, 4      ;Convert to number of paragraphs.
+   853 00000B5D 81F900000020        <1>     cmp ecx, 20000000h  ;Drivers cannot be more than 2Gb in size.
+   854 00000B63 0F832DFFFFFF        <1>     jae .drvFreeMemAndHdl
+   855                              <1> .loadCont:
+   856 00000B69 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
+   857 00000B6E CD41                <1>     int 41h ;r8 has the pointer to the block for freeing
+   858                              <1>     ;Now close the file
+   859 00000B70 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
+   860 00000B75 CD41                <1>     int 41h
+   861 00000B77 89CB                <1>     mov ebx, ecx    ;Put the number of paragraphs in ebx
+   862 00000B79 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
+   863 00000B7E CD41                <1>     int 41h         ;rax gets the pointer to load the program into
+   864 00000B80 0F8284010000        <1>     jc .drvMemClose
+   865                              <1>     ;Now set the subsystem marker and the owner to DOS
+   866 00000B86 48C740FD44000000    <1>     mov qword [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
+   867                              <1>     ;Build the overlay command block
+   868 00000B8E 488D1D7D050000      <1>     lea rbx, cmdBlock
+   869 00000B95 488903              <1>     mov qword [rbx + loadOvly.pLoadLoc], rax
+   870 00000B98 48894308            <1>     mov qword [rbx + loadOvly.qRelocFct], rax
+   871 00000B9C 488B55B0            <1>     mov rdx, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
+   872 00000BA0 4881C207000000      <1>     add rdx, 7  ;Go past DEVICE= to the null terminated pathname
+   873 00000BA7 B8034B0000          <1>     mov eax, 4B03h  ;Load overlay!
+   874 00000BAC CD41                <1>     int 41h
+   875 00000BAE 733C                <1>     jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
+   876                              <1> .badDriverLoad:
+   877 00000BB0 4C8B055B050000      <1>     mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
+   878 00000BB7 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
+   879 00000BBC CD41                <1>     int 41h
+   880 00000BBE 488D1508000000      <1>     lea rdx, .drvMemMsg
+   881 00000BC5 B800090000          <1>     mov eax, 0900h
+   882 00000BCA CD41                <1>     int 41h
+   883                              <1>     return
     13                              <2> %%_ret:
     14 00000BCC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   883 00000BCD 4E6F7420656E6F7567- <1> .drvMemMsg: db "Not enough memory for driver",CR,LF,"$" 
-   883 00000BD6 68206D656D6F727920- <1>
-   883 00000BDF 666F72206472697665- <1>
-   883 00000BE8 720D0A24            <1>
-   884                              <1> .loadOk:
-   885                              <1>     ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
-   886 00000BEC 488B33              <1>     mov rsi, qword [rbx + loadOvly.pLoadLoc]
-   887 00000BEF 4989F0              <1>     mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
-   888                              <1>     ;Reset the command line to have a space at the null terminator
-   889 00000BF2 488B45A8            <1>     mov rax, qword [rbp - cfgFrame.driverBreak]
-   890 00000BF6 53                  <1>     push rbx
-   891 00000BF7 8A5DA0              <1>     mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
-   892 00000BFA 8818                <1>     mov byte [rax], bl  ;and replace the null terminator
-   893 00000BFC 5B                  <1>     pop rbx
-   894                              <1>     ;Remember, the first byte of the overlay is the driver header. 
-   895                              <1>     ;Hence, rsi points to that byte!
-   896                              <1>     ;Pointers of each header need adjustment relative to their load address,
-   897                              <1>     ; and linking into the main driver chain after NUL.
-   898                              <1>     ;r11 = Local var, if no drivers in file passed init, free allocation.
-   899                              <1>     ;                 Else, free using kernel eject routine.
-   900 00000BFD 56                  <1>     push rsi    ;Save the pointer to the first pointer to adjust
-   901                              <1> .driverPtrAdjustment:
-   902 00000BFE 4801760A            <1>     add qword [rsi + drvHdr.strPtr], rsi
-   903 00000C02 48017612            <1>     add qword [rsi + drvHdr.intPtr], rsi
-   904 00000C06 7408                <1>     je short .driverPtrAdjustmentDone
-   905 00000C08 480136              <1>     add qword [rsi + drvHdr.nxtPtr], rsi
-   906 00000C0B 488B36              <1>     mov rsi, qword [rsi + drvHdr.nxtPtr]
-   907 00000C0E EBEE                <1>     jmp short .driverPtrAdjustment
-   908                              <1> .driverPtrAdjustmentDone:
-   909 00000C10 5E                  <1>     pop rsi     ;Get back the pointer to the first driver header
-   910                              <1>     ;Prepare for initialising the drivers in the arena
-   911                              <1>     ;EXPERIMENT: USING R9-R11 UNTIL THE END OF THE FUNCTION
-   912 00000C11 4989F1              <1>     mov r9, rsi     ;Save a copy of the driver pointer in r9
-   913 00000C14 4989EA              <1>     mov r10, rbp    ;Save a copy of the cfg frame pointer
-   914 00000C17 49BB09000000000000- <1>     mov r11, mcbOwnerNewDOS ;Set currentPSP for new dos object
-   914 00000C20 00                  <1>
-   915 00000C21 644C871C25-         <1>     xchg r11, qword fs:[currentPSP] ;Save in r11 old owner
-   915 00000C26 [13040000]          <1>
-   916 00000C2A 488D1D12090000      <1>     lea rbx, initDrvBlk
-   917 00000C31 488B45B0            <1>     mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
-   918 00000C35 48894316            <1>     mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
-   919                              <1> .driverInit:
-   920 00000C39 E8D9070000          <1>     call initDriver
-   921 00000C3E 7255                <1>     jc short .driverBad
-   922 00000C40 E89C060000          <1>     call addDriverMarkers
-   923 00000C45 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
-   924 00000C4B 7507                <1>     jnz short .driverInitialised
-   925 00000C4D E833080000          <1>     call buildDPBs          ;Preserves rbp, rsi and rbx
-   926 00000C52 7241                <1>     jc short .driverBad
-   927                              <1> .driverInitialised:
-   928 00000C54 4881FEFFFFFFFF      <1>     cmp rsi, -1     ;We at the end of the chain?
-   929 00000C5B 480F4536            <1>     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
-   930 00000C5F 75D8                <1>     jne short .driverInit ;If not, goto next driver
-   931                              <1> ;Now we eject the init routines for the driver
-   932                              <1> ;r8 points to the MCB already
-   933 00000C61 31DB                <1>     xor ebx, ebx
-   934 00000C63 418B5809            <1>     mov ebx, dword [r8 + mcb.blockSize] ;Get the size of the arena in paragraphs
-   935 00000C67 48C1E304            <1>     shl rbx, 4  ;Turn into number of bytes
-   936 00000C6B 498D5C1810          <1>     lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
-   937 00000C70 E851070000          <1>     call ejectKernelInit    ;Ignore any errors in ejection.
-   938                              <1>     ;Link into main driver chain, 
-   939                              <1>     ;r9 points to first driver in block
-   940                              <1>     ;rsi points to last driver in block
-   941 00000C75 498B3A              <1>     mov rdi, qword [r10 - cfgFrame.oldRBP]  ;Get DOSSEG ptr
-   942 00000C78 488DBF[6E000000]    <1>     lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
-   943 00000C7F 488B07              <1>     mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
-   944 00000C82 4C890F              <1>     mov qword [rdi + drvHdr.nxtPtr], r9     ;Link new drivers in
-   945 00000C85 488906              <1>     mov qword [rsi + drvHdr.nxtPtr], rax    ;Link end to old chain
-   946                              <1> .driverExit:
-   947                              <1> ;Exit the init routine if it all works out, WOO!
-   948                              <1> ;Return values to original registers/memory locations
-   949 00000C88 644C891C25-         <1>     mov qword fs:[currentPSP], r11
-   949 00000C8D [13040000]          <1>
-   950 00000C91 4C89D5              <1>     mov rbp, r10    ;Return rbp to original cfg frame
-   951                              <1>     return
+   884 00000BCD 4E6F7420656E6F7567- <1> .drvMemMsg: db "Not enough memory for driver",CR,LF,"$" 
+   884 00000BD6 68206D656D6F727920- <1>
+   884 00000BDF 666F72206472697665- <1>
+   884 00000BE8 720D0A24            <1>
+   885                              <1> .loadOk:
+   886                              <1>     ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
+   887 00000BEC 488B33              <1>     mov rsi, qword [rbx + loadOvly.pLoadLoc]
+   888 00000BEF 4989F0              <1>     mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
+   889                              <1>     ;Reset the command line to have a space at the null terminator
+   890 00000BF2 488B45A8            <1>     mov rax, qword [rbp - cfgFrame.driverBreak]
+   891 00000BF6 53                  <1>     push rbx
+   892 00000BF7 8A5DA0              <1>     mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
+   893 00000BFA 8818                <1>     mov byte [rax], bl  ;and replace the null terminator
+   894 00000BFC 5B                  <1>     pop rbx
+   895                              <1>     ;Remember, the first byte of the overlay is the driver header. 
+   896                              <1>     ;Hence, rsi points to that byte!
+   897                              <1>     ;Pointers of each header need adjustment relative to their load address,
+   898                              <1>     ; and linking into the main driver chain after NUL.
+   899                              <1>     ;r11 = Local var, if no drivers in file passed init, free allocation.
+   900                              <1>     ;                 Else, free using kernel eject routine.
+   901 00000BFD 56                  <1>     push rsi    ;Save the pointer to the first pointer to adjust
+   902                              <1> .driverPtrAdjustment:
+   903 00000BFE 4801760A            <1>     add qword [rsi + drvHdr.strPtr], rsi
+   904 00000C02 48017612            <1>     add qword [rsi + drvHdr.intPtr], rsi
+   905 00000C06 7408                <1>     je short .driverPtrAdjustmentDone
+   906 00000C08 480136              <1>     add qword [rsi + drvHdr.nxtPtr], rsi
+   907 00000C0B 488B36              <1>     mov rsi, qword [rsi + drvHdr.nxtPtr]
+   908 00000C0E EBEE                <1>     jmp short .driverPtrAdjustment
+   909                              <1> .driverPtrAdjustmentDone:
+   910 00000C10 5E                  <1>     pop rsi     ;Get back the pointer to the first driver header
+   911                              <1>     ;Prepare for initialising the drivers in the arena
+   912                              <1>     ;EXPERIMENT: USING R9-R11 UNTIL THE END OF THE FUNCTION
+   913 00000C11 4989F1              <1>     mov r9, rsi     ;Save a copy of the driver pointer in r9
+   914 00000C14 4989EA              <1>     mov r10, rbp    ;Save a copy of the cfg frame pointer
+   915 00000C17 49BB09000000000000- <1>     mov r11, mcbOwnerNewDOS ;Set currentPSP for new dos object
+   915 00000C20 00                  <1>
+   916 00000C21 644C871C25-         <1>     xchg r11, qword fs:[currentPSP] ;Save in r11 old owner
+   916 00000C26 [13040000]          <1>
+   917 00000C2A 488D1D12090000      <1>     lea rbx, initDrvBlk
+   918 00000C31 488B45B0            <1>     mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
+   919 00000C35 48894316            <1>     mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
+   920                              <1> .driverInit:
+   921 00000C39 E8D9070000          <1>     call initDriver
+   922 00000C3E 7255                <1>     jc short .driverBad
+   923 00000C40 E89C060000          <1>     call addDriverMarkers
+   924 00000C45 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
+   925 00000C4B 7507                <1>     jnz short .driverInitialised
+   926 00000C4D E833080000          <1>     call buildDPBs          ;Preserves rbp, rsi and rbx
+   927 00000C52 7241                <1>     jc short .driverBad
+   928                              <1> .driverInitialised:
+   929 00000C54 4881FEFFFFFFFF      <1>     cmp rsi, -1     ;We at the end of the chain?
+   930 00000C5B 480F4536            <1>     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
+   931 00000C5F 75D8                <1>     jne short .driverInit ;If not, goto next driver
+   932                              <1> ;Now we eject the init routines for the driver
+   933                              <1> ;r8 points to the MCB already
+   934 00000C61 31DB                <1>     xor ebx, ebx
+   935 00000C63 418B5809            <1>     mov ebx, dword [r8 + mcb.blockSize] ;Get the size of the arena in paragraphs
+   936 00000C67 48C1E304            <1>     shl rbx, 4  ;Turn into number of bytes
+   937 00000C6B 498D5C1810          <1>     lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
+   938 00000C70 E851070000          <1>     call ejectKernelInit    ;Ignore any errors in ejection.
+   939                              <1>     ;Link into main driver chain, 
+   940                              <1>     ;r9 points to first driver in block
+   941                              <1>     ;rsi points to last driver in block
+   942 00000C75 498B3A              <1>     mov rdi, qword [r10 - cfgFrame.oldRBP]  ;Get DOSSEG ptr
+   943 00000C78 488DBF[6E000000]    <1>     lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
+   944 00000C7F 488B07              <1>     mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
+   945 00000C82 4C890F              <1>     mov qword [rdi + drvHdr.nxtPtr], r9     ;Link new drivers in
+   946 00000C85 488906              <1>     mov qword [rsi + drvHdr.nxtPtr], rax    ;Link end to old chain
+   947                              <1> .driverExit:
+   948                              <1> ;Exit the init routine if it all works out, WOO!
+   949                              <1> ;Return values to original registers/memory locations
+   950 00000C88 644C891C25-         <1>     mov qword fs:[currentPSP], r11
+   950 00000C8D [13040000]          <1>
+   951 00000C91 4C89D5              <1>     mov rbp, r10    ;Return rbp to original cfg frame
+   952                              <1>     return
     13                              <2> %%_ret:
     14 00000C94 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   952                              <1> 
-   953                              <1> .driverBad:
-   954                              <1>     ;Form the string to print
-   955 00000C95 488D3D4C000000      <1>     lea rdi, .driverBad2    ;Store the name here
-   956 00000C9C 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
-   957 00000CA2 750C                <1>     jnz short .driverCharBad    ;If not, exit
-   958                              <1>     ;MSD devices need to have something placed in there
-   959 00000CA4 48B84D534420646576- <1>     mov rax, "MSD dev "
-   959 00000CAD 20                  <1>
-   960 00000CAE 48AB                <1>     stosq   ;Store the 8 chars here
-   961                              <1> .driverCharBad:
-   962 00000CB0 488D761A            <1>     lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
-   963 00000CB4 48A5                <1>     movsq   ;Move all 8 chars over from device driver name
-   964                              <1> .driverBadPrint:
-   965 00000CB6 488D1510000000      <1>     lea rdx, .driverBad1
-   966 00000CBD B800090000          <1>     mov eax, 0900h  ;Print the string!
-   967 00000CC2 CD41                <1>     int 41h
-   968 00000CC4 B800490000          <1>     mov eax, 4900h  ;Attempt to deallocate the driver now
-   969 00000CC9 CD41                <1>     int 41h
-   970 00000CCB EBBB                <1>     jmp short .driverExit
-   971 00000CCD 4572726F7220696E69- <1> .driverBad1 db "Error initialising driver: "
-   971 00000CD6 7469616C6973696E67- <1>
-   971 00000CDF 206472697665723A20  <1>
-   972 00000CE8 20202020202020200D- <1> .driverBad2 db "        ",CR,LF,"$"
-   972 00000CF1 0A24                <1>
-   973                              <1> ;------------------
-   974                              <1> ;Bad exit cases
-   975                              <1> ;------------------
-   976                              <1> .drvBadClose:
-   977 00000CF3 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
-   978 00000CF8 CD41                <1>     int 41h
-   979                              <1> .drvBad:
-   980 00000CFA 488D1519000000      <1>     lea rdx, .drvBadMsg
-   981                              <1> .drvBad2:
-   982 00000D01 B800090000          <1>     mov eax, 0900h
-   983 00000D06 CD41                <1>     int 41h
-   984 00000D08 F8                  <1>     clc ;Never return with CF=CY
-   985                              <1>     return
+   953                              <1> 
+   954                              <1> .driverBad:
+   955                              <1>     ;Form the string to print
+   956 00000C95 488D3D4C000000      <1>     lea rdi, .driverBad2    ;Store the name here
+   957 00000C9C 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
+   958 00000CA2 750C                <1>     jnz short .driverCharBad    ;If not, exit
+   959                              <1>     ;MSD devices need to have something placed in there
+   960 00000CA4 48B84D534420646576- <1>     mov rax, "MSD dev "
+   960 00000CAD 20                  <1>
+   961 00000CAE 48AB                <1>     stosq   ;Store the 8 chars here
+   962                              <1> .driverCharBad:
+   963 00000CB0 488D761A            <1>     lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
+   964 00000CB4 48A5                <1>     movsq   ;Move all 8 chars over from device driver name
+   965                              <1> .driverBadPrint:
+   966 00000CB6 488D1510000000      <1>     lea rdx, .driverBad1
+   967 00000CBD B800090000          <1>     mov eax, 0900h  ;Print the string!
+   968 00000CC2 CD41                <1>     int 41h
+   969 00000CC4 B800490000          <1>     mov eax, 4900h  ;Attempt to deallocate the driver now
+   970 00000CC9 CD41                <1>     int 41h
+   971 00000CCB EBBB                <1>     jmp short .driverExit
+   972 00000CCD 4572726F7220696E69- <1> .driverBad1 db "Error initialising driver: "
+   972 00000CD6 7469616C6973696E67- <1>
+   972 00000CDF 206472697665723A20  <1>
+   973 00000CE8 20202020202020200D- <1> .driverBad2 db "        ",CR,LF,"$"
+   973 00000CF1 0A24                <1>
+   974                              <1> ;------------------
+   975                              <1> ;Bad exit cases
+   976                              <1> ;------------------
+   977                              <1> .drvBadClose:
+   978 00000CF3 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
+   979 00000CF8 CD41                <1>     int 41h
+   980                              <1> .drvBad:
+   981 00000CFA 488D1519000000      <1>     lea rdx, .drvBadMsg
+   982                              <1> .drvBad2:
+   983 00000D01 B800090000          <1>     mov eax, 0900h
+   984 00000D06 CD41                <1>     int 41h
+   985 00000D08 F8                  <1>     clc ;Never return with CF=CY
+   986                              <1>     return
     13                              <2> %%_ret:
     14 00000D09 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   986                              <1> .drvMemClose:
-   987 00000D0A B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
-   988 00000D0F CD41                <1>     int 41h
-   989 00000D11 488D15B5FEFFFF      <1>     lea rdx, .drvMemMsg
-   990 00000D18 EBE7                <1>     jmp short .drvBad2
-   991                              <1> 
-   992 00000D1A 426164206F72206D69- <1> .drvBadMsg: db "Bad or missing filename",CR,LF,"$"
-   992 00000D23 7373696E672066696C- <1>
-   992 00000D2C 656E616D650D0A24    <1>
-   993                              <1> 
-   994                              <1> .sftHandler:
-   995                              <1> ;This reads the line to set the number of FILE to between 1 and 254
-   996 00000D34 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   997 00000D38 4881C606000000      <1>     add rsi, 6  ;Go past FILES=
-   998                              <1>     ;This must be at most three digits, anything else is a failure
-   999 00000D3F 4889F7              <1>     mov rdi, rsi    ;Save the start in rdi
-  1000 00000D42 31C9                <1>     xor ecx, ecx
-  1001 00000D44 AC                  <1>     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
-  1002 00000D45 3C30                <1>     cmp al, "0"
-  1003 00000D47 0F8280000000        <1>     jb .sftHandlerErr
-  1004 00000D4D 3C39                <1>     cmp al, "9"
-  1005 00000D4F 777C                <1>     ja .sftHandlerErr
-  1006 00000D51 FFC1                <1>     inc ecx ;Increment char counter
-  1007 00000D53 AC                  <1>     lodsb   ;Get second char
-  1008 00000D54 E876000000          <1>     call .sftHandlerTermCheck
-  1009 00000D59 7424                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
-  1010 00000D5B 3C30                <1>     cmp al, "0"
-  1011 00000D5D 726E                <1>     jb .sftHandlerErr
-  1012 00000D5F 3C39                <1>     cmp al, "9"
-  1013 00000D61 776A                <1>     ja .sftHandlerErr
-  1014 00000D63 FFC1                <1>     inc ecx ;Increment char counter
-  1015 00000D65 AC                  <1>     lodsb   ;Get third char
-  1016 00000D66 E864000000          <1>     call .sftHandlerTermCheck
-  1017 00000D6B 7412                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
-  1018 00000D6D 3C30                <1>     cmp al, "0"
-  1019 00000D6F 725C                <1>     jb .sftHandlerErr
-  1020 00000D71 3C32                <1>     cmp al, "2" ;Max BUFFERS=254 soooo, sorry buddy!
-  1021 00000D73 7758                <1>     ja .sftHandlerErr
-  1022 00000D75 AC                  <1>     lodsb   ;Check no more chars!
-  1023 00000D76 E854000000          <1>     call .sftHandlerTermCheck
-  1024 00000D7B 7550                <1>     jne .sftHandlerErr
-  1025 00000D7D FFC1                <1>     inc ecx ;Increment char counter
-  1026                              <1> .sftHandlerProcess:
-  1027 00000D7F 31D2                <1>     xor edx, edx    ;Accumulate value in edx
-  1028 00000D81 4889FE              <1>     mov rsi, rdi    ;Go back to the first number
-  1029                              <1> .sftHandlerLp:
-  1030 00000D84 FFC9                <1>     dec ecx
-  1031 00000D86 AC                  <1>     lodsb   ;Get the digit
-  1032 00000D87 E819000000          <1>     call .sftHandlerMul
-  1033 00000D8C 67E302              <1>     jecxz .sftHandlerPrepExit
-  1034 00000D8F EBF3                <1>     jmp short .sftHandlerLp 
-  1035                              <1> .sftHandlerPrepExit:
-  1036                              <1> ;edx has the value now, so place it in stack
-  1037 00000D91 B914000000          <1>     mov ecx, filesDefault  ;Get default if the user specifies less than min
-  1038 00000D96 81FA08000000        <1>     cmp edx, 8
-  1039 00000D9C 0F42D1              <1>     cmovb edx, ecx
-  1040 00000D9F 488955F0            <1>     mov qword [rbp - cfgFrame.newSFTVal], rdx
-  1041 00000DA3 F8                  <1>     clc
-  1042                              <1>     return
+   987                              <1> .drvMemClose:
+   988 00000D0A B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
+   989 00000D0F CD41                <1>     int 41h
+   990 00000D11 488D15B5FEFFFF      <1>     lea rdx, .drvMemMsg
+   991 00000D18 EBE7                <1>     jmp short .drvBad2
+   992                              <1> 
+   993 00000D1A 426164206F72206D69- <1> .drvBadMsg: db "Bad or missing filename",CR,LF,"$"
+   993 00000D23 7373696E672066696C- <1>
+   993 00000D2C 656E616D650D0A24    <1>
+   994                              <1> 
+   995                              <1> .sftHandler:
+   996                              <1> ;This reads the line to set the number of FILE to between 1 and 254
+   997 00000D34 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   998 00000D38 4881C606000000      <1>     add rsi, 6  ;Go past FILES=
+   999                              <1>     ;This must be at most three digits, anything else is a failure
+  1000 00000D3F 4889F7              <1>     mov rdi, rsi    ;Save the start in rdi
+  1001 00000D42 31C9                <1>     xor ecx, ecx
+  1002 00000D44 AC                  <1>     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
+  1003 00000D45 3C30                <1>     cmp al, "0"
+  1004 00000D47 0F8280000000        <1>     jb .sftHandlerErr
+  1005 00000D4D 3C39                <1>     cmp al, "9"
+  1006 00000D4F 777C                <1>     ja .sftHandlerErr
+  1007 00000D51 FFC1                <1>     inc ecx ;Increment char counter
+  1008 00000D53 AC                  <1>     lodsb   ;Get second char
+  1009 00000D54 E876000000          <1>     call .sftHandlerTermCheck
+  1010 00000D59 7424                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
+  1011 00000D5B 3C30                <1>     cmp al, "0"
+  1012 00000D5D 726E                <1>     jb .sftHandlerErr
+  1013 00000D5F 3C39                <1>     cmp al, "9"
+  1014 00000D61 776A                <1>     ja .sftHandlerErr
+  1015 00000D63 FFC1                <1>     inc ecx ;Increment char counter
+  1016 00000D65 AC                  <1>     lodsb   ;Get third char
+  1017 00000D66 E864000000          <1>     call .sftHandlerTermCheck
+  1018 00000D6B 7412                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
+  1019 00000D6D 3C30                <1>     cmp al, "0"
+  1020 00000D6F 725C                <1>     jb .sftHandlerErr
+  1021 00000D71 3C32                <1>     cmp al, "2" ;Max BUFFERS=254 soooo, sorry buddy!
+  1022 00000D73 7758                <1>     ja .sftHandlerErr
+  1023 00000D75 AC                  <1>     lodsb   ;Check no more chars!
+  1024 00000D76 E854000000          <1>     call .sftHandlerTermCheck
+  1025 00000D7B 7550                <1>     jne .sftHandlerErr
+  1026 00000D7D FFC1                <1>     inc ecx ;Increment char counter
+  1027                              <1> .sftHandlerProcess:
+  1028 00000D7F 31D2                <1>     xor edx, edx    ;Accumulate value in edx
+  1029 00000D81 4889FE              <1>     mov rsi, rdi    ;Go back to the first number
+  1030                              <1> .sftHandlerLp:
+  1031 00000D84 FFC9                <1>     dec ecx
+  1032 00000D86 AC                  <1>     lodsb   ;Get the digit
+  1033 00000D87 E819000000          <1>     call .sftHandlerMul
+  1034 00000D8C 67E302              <1>     jecxz .sftHandlerPrepExit
+  1035 00000D8F EBF3                <1>     jmp short .sftHandlerLp 
+  1036                              <1> .sftHandlerPrepExit:
+  1037                              <1> ;edx has the value now, so place it in stack
+  1038 00000D91 B914000000          <1>     mov ecx, filesDefault  ;Get default if the user specifies less than min
+  1039 00000D96 81FA08000000        <1>     cmp edx, 8
+  1040 00000D9C 0F42D1              <1>     cmovb edx, ecx
+  1041 00000D9F 488955F0            <1>     mov qword [rbp - cfgFrame.newSFTVal], rdx
+  1042 00000DA3 F8                  <1>     clc
+  1043                              <1>     return
     13                              <2> %%_ret:
     14 00000DA4 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1043                              <1> .sftHandlerMul:
-  1044                              <1> ;Input:
-  1045                              <1> ;al = digit to add to result (ASCII digit)
-  1046                              <1> ;ecx = whether al is a unit (0), ten (1) or hundred (2)
-  1047                              <1> ;rdx = Accumulated sum
-  1048                              <1> ;Output:
-  1049                              <1> ;rdx = Accumulated sum with al added
-  1050                              <1> ;eax is destroyed
-  1051                              <1> ;All other registers preserved
-  1052 00000DA5 51                  <1>     push rcx
-  1053 00000DA6 52                  <1>     push rdx
-  1054 00000DA7 0FB6C0              <1>     movzx eax, al
-  1055 00000DAA 2D30000000          <1>     sub eax, '0' ;Convert to a binary digit
-  1056 00000DAF BA01000000          <1>     mov edx, 1    ;Get 1 in edx (multiplicative unit)
-  1057 00000DB4 39D1                <1>     cmp ecx, edx  ;Was cl a ten?
-  1058 00000DB6 BB0A000000          <1>     mov ebx, 10     ;Default base offset to 10
-  1059 00000DBB B964000000          <1>     mov ecx, 100
-  1060 00000DC0 0F42DA              <1>     cmovb ebx, edx  ;If below, it was a unit
-  1061 00000DC3 0F47D9              <1>     cmova ebx, ecx  ;If above, it was a hundred
-  1062 00000DC6 F7E3                <1>     mul ebx    ;Multiply the base offset to eax
-  1063 00000DC8 5A                  <1>     pop rdx ;Get the accumulated value back
-  1064 00000DC9 01C2                <1>     add edx, eax    ;Add this result over
-  1065 00000DCB 59                  <1>     pop rcx
-  1066                              <1>     return
+  1044                              <1> .sftHandlerMul:
+  1045                              <1> ;Input:
+  1046                              <1> ;al = digit to add to result (ASCII digit)
+  1047                              <1> ;ecx = whether al is a unit (0), ten (1) or hundred (2)
+  1048                              <1> ;rdx = Accumulated sum
+  1049                              <1> ;Output:
+  1050                              <1> ;rdx = Accumulated sum with al added
+  1051                              <1> ;eax is destroyed
+  1052                              <1> ;All other registers preserved
+  1053 00000DA5 51                  <1>     push rcx
+  1054 00000DA6 52                  <1>     push rdx
+  1055 00000DA7 0FB6C0              <1>     movzx eax, al
+  1056 00000DAA 2D30000000          <1>     sub eax, '0' ;Convert to a binary digit
+  1057 00000DAF BA01000000          <1>     mov edx, 1    ;Get 1 in edx (multiplicative unit)
+  1058 00000DB4 39D1                <1>     cmp ecx, edx  ;Was cl a ten?
+  1059 00000DB6 BB0A000000          <1>     mov ebx, 10     ;Default base offset to 10
+  1060 00000DBB B964000000          <1>     mov ecx, 100
+  1061 00000DC0 0F42DA              <1>     cmovb ebx, edx  ;If below, it was a unit
+  1062 00000DC3 0F47D9              <1>     cmova ebx, ecx  ;If above, it was a hundred
+  1063 00000DC6 F7E3                <1>     mul ebx    ;Multiply the base offset to eax
+  1064 00000DC8 5A                  <1>     pop rdx ;Get the accumulated value back
+  1065 00000DC9 01C2                <1>     add edx, eax    ;Add this result over
+  1066 00000DCB 59                  <1>     pop rcx
+  1067                              <1>     return
     13                              <2> %%_ret:
     14 00000DCC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1067                              <1> .sftHandlerErr:
-  1068 00000DCD F9                  <1>     stc
-  1069                              <1>     return
+  1068                              <1> .sftHandlerErr:
+  1069 00000DCD F9                  <1>     stc
+  1070                              <1>     return
     13                              <2> %%_ret:
     14 00000DCE C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1070                              <1> .sftHandlerTermCheck:
-  1071 00000DCF 3C20                <1>     cmp al, SPC
-  1072                              <1>     rete
+  1071                              <1> .sftHandlerTermCheck:
+  1072 00000DCF 3C20                <1>     cmp al, SPC
+  1073                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2885,8 +2886,8 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1073 00000DD3 3C09                <1>     cmp al, TAB
-  1074                              <1>     rete
+  1074 00000DD3 3C09                <1>     cmp al, TAB
+  1075                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2907,8 +2908,8 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1075 00000DD7 3C0D                <1>     cmp al, CR
-  1076                              <1>     rete
+  1076 00000DD7 3C0D                <1>     cmp al, CR
+  1077                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2929,8 +2930,8 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1077 00000DDB 3C0A                <1>     cmp al, LF
-  1078                              <1>     rete
+  1078 00000DDB 3C0A                <1>     cmp al, LF
+  1079                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2951,331 +2952,331 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1079                              <1>     return
+  1080                              <1>     return
     13                              <2> %%_ret:
     14 00000DDF C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1080                              <1> 
-  1081                              <1> .lastdriveHandler:
-  1082 00000DE0 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-  1083 00000DE4 4881C60A000000      <1>     add rsi, 10  ;Go past LASTDRIVE=
-  1084 00000DEB AC                  <1>     lodsb   ;Get this char
-  1085 00000DEC 0FB6C0              <1>     movzx eax, al   ;Zero extend to eax
-  1086 00000DEF 50                  <1>     push rax    ;Push on stack
-  1087 00000DF0 B813120000          <1>     mov eax, 1213h  ;Uppercase the char
-  1088 00000DF5 CD4F                <1>     int 4Fh
-  1089 00000DF7 5B                  <1>     pop rbx
-  1090 00000DF8 3C5A                <1>     cmp al, "Z"
-  1091 00000DFA 77D1                <1>     ja .sftHandlerErr
-  1092 00000DFC 3C41                <1>     cmp al, "A"
-  1093 00000DFE 72CD                <1>     jb .sftHandlerErr
-  1094 00000E00 803E0D              <1>     cmp byte [rsi], CR
-  1095 00000E03 740F                <1>     je .ldProceed
-  1096 00000E05 803E0A              <1>     cmp byte [rsi], LF
-  1097 00000E08 740A                <1>     je .ldProceed
-  1098 00000E0A 803E09              <1>     cmp byte [rsi], TAB
-  1099 00000E0D 7405                <1>     je .ldProceed
-  1100 00000E0F 803E20              <1>     cmp byte [rsi], SPC
-  1101 00000E12 75B9                <1>     jne .sftHandlerErr
-  1102                              <1> .ldProceed:
-  1103 00000E14 2C41                <1>     sub al, "A" ;Convert into a number
-  1104 00000E16 0FB6C0              <1>     movzx eax, al   ;Zero extend in case DOS rets something dumb in upper bits
-  1105 00000E19 BA05000000          <1>     mov edx, lastDriveDeflt
-  1106 00000E1E 3D05000000          <1>     cmp eax, lastDriveDeflt
-  1107 00000E23 0F42C2              <1>     cmovb eax, edx
-  1108 00000E26 488945D8            <1>     mov qword [rbp - cfgFrame.newLastdrive], rax
-  1109 00000E2A F8                  <1>     clc
-  1110                              <1>     return
+  1081                              <1> 
+  1082                              <1> .lastdriveHandler:
+  1083 00000DE0 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+  1084 00000DE4 4881C60A000000      <1>     add rsi, 10  ;Go past LASTDRIVE=
+  1085 00000DEB AC                  <1>     lodsb   ;Get this char
+  1086 00000DEC 0FB6C0              <1>     movzx eax, al   ;Zero extend to eax
+  1087 00000DEF 50                  <1>     push rax    ;Push on stack
+  1088 00000DF0 B813120000          <1>     mov eax, 1213h  ;Uppercase the char
+  1089 00000DF5 CD4F                <1>     int 4Fh
+  1090 00000DF7 5B                  <1>     pop rbx
+  1091 00000DF8 3C5A                <1>     cmp al, "Z"
+  1092 00000DFA 77D1                <1>     ja .sftHandlerErr
+  1093 00000DFC 3C41                <1>     cmp al, "A"
+  1094 00000DFE 72CD                <1>     jb .sftHandlerErr
+  1095 00000E00 803E0D              <1>     cmp byte [rsi], CR
+  1096 00000E03 740F                <1>     je .ldProceed
+  1097 00000E05 803E0A              <1>     cmp byte [rsi], LF
+  1098 00000E08 740A                <1>     je .ldProceed
+  1099 00000E0A 803E09              <1>     cmp byte [rsi], TAB
+  1100 00000E0D 7405                <1>     je .ldProceed
+  1101 00000E0F 803E20              <1>     cmp byte [rsi], SPC
+  1102 00000E12 75B9                <1>     jne .sftHandlerErr
+  1103                              <1> .ldProceed:
+  1104 00000E14 2C41                <1>     sub al, "A" ;Convert into a number
+  1105 00000E16 0FB6C0              <1>     movzx eax, al   ;Zero extend in case DOS rets something dumb in upper bits
+  1106 00000E19 BA05000000          <1>     mov edx, lastDriveDeflt
+  1107 00000E1E 3D05000000          <1>     cmp eax, lastDriveDeflt
+  1108 00000E23 0F42C2              <1>     cmovb eax, edx
+  1109 00000E26 488945D8            <1>     mov qword [rbp - cfgFrame.newLastdrive], rax
+  1110 00000E2A F8                  <1>     clc
+  1111                              <1>     return
     13                              <2> %%_ret:
     14 00000E2B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1111                              <1> .ldBad:
-  1112 00000E2C F9                  <1>     stc
-  1113                              <1> .countryScan:
-  1114                              <1> .fcbHandler:
-  1115                              <1> .shellHandler:
-  1116                              <1> .stacksHandler:
-  1117                              <1> .drivParm:
-  1118                              <1>     return
+  1112                              <1> .ldBad:
+  1113 00000E2C F9                  <1>     stc
+  1114                              <1> .countryScan:
+  1115                              <1> .fcbHandler:
+  1116                              <1> .shellHandler:
+  1117                              <1> .stacksHandler:
+  1118                              <1> .drivParm:
+  1119                              <1>     return
     13                              <2> %%_ret:
     14 00000E2D C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1119                              <1> 
-  1120                              <1> .cfgExit:
-  1121 00000E2E 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle] ;Get the handle back
-  1122 00000E32 B8003E0000          <1>     mov eax, 3E00h    ;Close the handle
-  1123 00000E37 CD41                <1>     int 41h ;bx already has the handle
-  1124 00000E39 4C8B45B0            <1>     mov r8, qword [rbp - cfgFrame.linePtr]   ;Get the line buffer ptr back
-  1125 00000E3D B800490000          <1>     mov eax, 4900h  ;FREE
-  1126 00000E42 CD41                <1>     int 41h
-  1127                              <1> ;------------------------------------------------;
-  1128                              <1> ;   Setup Final Data Areas With Overrides from   ;
-  1129                              <1> ;                  CONFIG.SYS                    ;
-  1130                              <1> ;------------------------------------------------;
-  1131                              <1> ;Add additional buffers.
-  1132                              <1> ;Add additional SFT entries.
-  1133                              <1> ;Add additional FCBS.
-  1134                              <1> ;Create a larger CDS if needed.
-  1135                              <1> noCfg:
-  1136                              <1> ;Start with buffers:
-  1137 00000E44 488B4DF8            <1>     mov rcx, qword [rbp - cfgFrame.newBuffers]    ;Get new number of buffers
-  1138 00000E48 81F901000000        <1>     cmp ecx, 1   ;If its only one buffer, skip as we have one already
-  1139 00000E4E 0F84A5000000        <1>     je .skipBuffers
-  1140 00000E54 FFC9                <1>     dec ecx  ;Minus one now
-  1141 00000E56 64880C25[6D000000]  <1>     mov byte fs:[numBuffers], cl    ;Store this value in var
-  1142                              <1>     ;Now do the allocation at rdi. Each buffer = maxSectorSize + bufferHdr_size
-  1143 00000E5E 640FB70425-         <1>     movzx eax, word fs:[maxBytesSec]    ;Get buffer sector size
-  1143 00000E63 [4F000000]          <1>
-  1144 00000E67 0530000000          <1>     add eax, bufferHdr_size ;eax has the size to add
-  1145 00000E6C 50                  <1>     push rax    ;Save the total number of bytes for a buffer and its header
-  1146 00000E6D F7E1                <1>     mul ecx ;Get total size to allocate in eax
-  1147 00000E6F 5A                  <1>     pop rdx     ;and get the total value back in rdx
-  1148 00000E70 89C3                <1>     mov ebx, eax    ;Move the total number of bytes into ebx
-  1149 00000E72 81C30F000000        <1>     add ebx, 0Fh
-  1150 00000E78 C1EB04              <1>     shr ebx, 4      ;And convert it to paragraphs
-  1151 00000E7B B800480000          <1>     mov eax, 4800h  ;ALLOC
-  1152 00000E80 CD41                <1>     int 41h
-  1153 00000E82 7275                <1>     jc short .skipBuffers   ;If it fails to allocate, default to one buffer
-  1154                              <1>     ;Each buffer has no flags, drive number must be -1
-  1155 00000E84 4889D3              <1>     mov rbx, rdx    ;Put the total number of bytes per buffer in rbx
-  1156 00000E87 4889C7              <1>     mov rdi, rax    ;Point rdi to the new area 
-  1157 00000E8A 482D10000000        <1>     sub rax, mcb.program    ;Point rax to the head of the mcb
-  1158 00000E90 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Mark as owned by DOS
-  1159 00000E98 C6400D42            <1>     mov byte [rax + mcb.subSysMark], mcbSubBuffers  ;Buffer buffer (funny)
-  1160 00000E9C 64488B0425-         <1>     mov rax, qword fs:[bufHeadPtr]  ;Get the pointer to the first buffer
-  1160 00000EA1 [51000000]          <1>
-  1161 00000EA5 488938              <1>     mov qword [rax + bufferHdr.nextBufPtr], rdi ;And set the new next buffer to point to it
-  1162 00000EA8 4889FE              <1>     mov rsi, rdi    ;Points rsi to first new buffer space
-  1163 00000EAB 31C0                <1>     xor eax, eax    ;Use for sanitising buffer headers
-  1164 00000EAD FFC9                <1>     dec ecx         ;Reduce to convert from 1 based count to 0 based
-  1165 00000EAF 67E325              <1>     jecxz .lastBuffer
-  1166                              <1> .bufferLoop:
-  1167 00000EB2 4801DF              <1>     add rdi, rbx    ;Goto next buffer space
-  1168 00000EB5 48893E              <1>     mov qword [rsi + bufferHdr.nextBufPtr], rdi ;Point to next buffer
-  1169 00000EB8 66C74608FF00        <1>     mov word [rsi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
-  1170 00000EBE 4889460A            <1>     mov qword [rsi + bufferHdr.bufferLBA], rax
-  1171 00000EC2 884612              <1>     mov byte [rsi + bufferHdr.bufFATcopy], al
-  1172 00000EC5 894613              <1>     mov dword [rsi + bufferHdr.bufFATsize], eax
-  1173 00000EC8 48894617            <1>     mov qword [rsi + bufferHdr.driveDPBPtr], rax
-  1174 00000ECC 4889461F            <1>     mov qword [rsi + bufferHdr.owningFile], rax
-  1175 00000ED0 4889FE              <1>     mov rsi, rdi    ;Move rsi to next buffer position
-  1176 00000ED3 FFC9                <1>     dec ecx
-  1177 00000ED5 75DB                <1>     jnz .bufferLoop
-  1178                              <1> .lastBuffer:
-  1179 00000ED7 4801DF              <1>     add rdi, rbx    ;Goto past the last buffer
-  1180 00000EDA 48C706FFFFFFFF      <1>     mov qword [rsi + bufferHdr.nextBufPtr], -1 ;Point to no buffer
-  1181 00000EE1 66C74608FF00        <1>     mov word [rsi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
-  1182 00000EE7 4889460A            <1>     mov qword [rsi + bufferHdr.bufferLBA], rax
-  1183 00000EEB 884612              <1>     mov byte [rsi + bufferHdr.bufFATcopy], al
-  1184 00000EEE 894613              <1>     mov dword [rsi + bufferHdr.bufFATsize], eax
-  1185 00000EF1 48894617            <1>     mov qword [rsi + bufferHdr.driveDPBPtr], rax
-  1186 00000EF5 4889461F            <1>     mov qword [rsi + bufferHdr.owningFile], rax
-  1187                              <1> .skipBuffers:
-  1188                              <1> ;Now build a new SFT header for the number of files specified by user
-  1189 00000EF9 488B4DF0            <1>     mov rcx, qword [rbp - cfgFrame.newSFTVal]
-  1190 00000EFD 81F905000000        <1>     cmp ecx, 5  ;If we are not adding anything, skip building SFT
-  1191 00000F03 764F                <1>     jbe short .skipSFT
-  1192                              <1>     ;First compute how big this new arena needs to be
-  1193 00000F05 81E905000000        <1>     sub ecx, 5   ;Remove the default five files that are *always* present!
-  1194 00000F0B B84F000000          <1>     mov eax, sft_size
-  1195 00000F10 F7E1                <1>     mul ecx ;Get number of files*size of file in bytes in eax
-  1196 00000F12 050A000000          <1>     add eax, sfth_size  ;Add the size of one SFT header
-  1197 00000F17 89C3                <1>     mov ebx, eax        ;And move into ebx for the syscall
-  1198 00000F19 81C30F000000        <1>     add ebx, 0Fh        ;Round up to nearest paragraph...
-  1199 00000F1F C1EB04              <1>     shr ebx, 4          ;And convert to paragraphs
-  1200 00000F22 B800480000          <1>     mov eax, 4800h
-  1201 00000F27 CD41                <1>     int 41h
-  1202 00000F29 7229                <1>     jc short .skipSFT   ;Skip adding files if this fails. Sorry end user!
-  1203 00000F2B 64488B3425-         <1>     mov rsi, qword fs:[sftHeadPtr]
-  1203 00000F30 [37000000]          <1>
-  1204 00000F34 488906              <1>     mov qword [rsi + sfth.qNextSFTPtr], rax ;RAX points to the next sfth
-  1205 00000F37 66894808            <1>     mov word [rax + sfth.wNumFiles], cx ;Move remaining files here
-  1206 00000F3B 48C700FFFFFFFF      <1>     mov qword [rax + sfth.qNextSFTPtr], -1  ;Last table in chain    
-  1207 00000F42 482D10000000        <1>     sub rax, mcb.program    ;Point to MCB now
-  1208 00000F48 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS
-  1209 00000F50 C6400D46            <1>     mov byte [rax + mcb.subSysMark], mcbSubFiles
-  1210                              <1> .skipSFT:
-  1211                              <1> ;FCBS now
-  1212 00000F54 488B4DE8            <1>     mov rcx, qword [rbp - cfgFrame.newFCBSVal]
-  1213 00000F58 67E346              <1>     jecxz .skipFCBS ;Skip if no FCBS requested
-  1214 00000F5B B84F000000          <1>     mov eax, sft_size
-  1215 00000F60 F7E1                <1>     mul ecx ;Get number of files*size of file in bytes in eax
-  1216 00000F62 050A000000          <1>     add eax, sfth_size  ;Add the size of one SFT header
-  1217 00000F67 89C3                <1>     mov ebx, eax        ;And move into ebx for the syscall
-  1218 00000F69 81C30F000000        <1>     add ebx, 0Fh        ;Round up to nearest paragraph...
-  1219 00000F6F C1EB04              <1>     shr ebx, 4          ;And convert to paragraphs
-  1220 00000F72 B800480000          <1>     mov eax, 4800h
-  1221 00000F77 CD41                <1>     int 41h
-  1222 00000F79 7226                <1>     jc short .skipFCBS   ;Skip adding files if this fails. Sorry end user!
-  1223 00000F7B 6448890425-         <1>     mov qword fs:[fcbsHeadPtr], rax ;This is the FCBS head now
-  1223 00000F80 [61000000]          <1>
-  1224 00000F84 66894808            <1>     mov word [rax + sfth.wNumFiles], cx ;Move FCBS here
-  1225 00000F88 48C700FFFFFFFF      <1>     mov qword [rax + sfth.qNextSFTPtr], -1  ;Last table in chain  
-  1226 00000F8F 482D10000000        <1>     sub rax, mcb.program    ;Point to MCB now
-  1227 00000F95 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS
-  1228 00000F9D C6400D58            <1>     mov byte [rax + mcb.subSysMark], mcbSubFCBS
-  1229                              <1> .skipFCBS:
-  1230                              <1> ;And CDS now
-  1231 00000FA1 488B4DD8            <1>     mov rcx, qword [rbp - cfgFrame.newLastdrive]
-  1232 00000FA5 64380C25[6C000000]  <1>     cmp byte fs:[lastdrvNum], cl
-  1233 00000FAD 731F                <1>     jae .skipCDS    ;If user specifies less than 5 drives, dont reallocate
-  1234                              <1>     ;Else, we first free the old CDS and then reallocate
-  1235 00000FAF 644C8B0425-         <1>     mov r8, qword fs:[cdsHeadPtr]
-  1235 00000FB4 [59000000]          <1>
-  1236 00000FB8 B800490000          <1>     mov eax, 4900h  ;FREE the old allocation.
-  1237 00000FBD CD41                <1>     int 41h
-  1238 00000FBF 720D                <1>     jc short .skipCDS
-  1239 00000FC1 64880C25[6C000000]  <1>     mov byte fs:[lastdrvNum], cl ;Save this value
-  1240 00000FC9 E8CBF4FFFF          <1>     call makeCDSArray
-  1241                              <1> .skipCDS:
-  1242 00000FCE 4889EC              <1>     mov rsp, rbp    ;Return stack pointer to original position
-  1243 00000FD1 5D                  <1>     pop rbp ;Stack frame no longer needed
-  1244                              <1> ;Now we close all five default handles and open AUX, CON and PRN
-  1245                              <1> ; and reopen the handles as user may have loaded new CON/AUX/PRN etc drivers
-  1246 00000FD2 31DB                <1>     xor ebx, ebx
-  1247                              <1> closeHandlesLoop:
-  1248 00000FD4 B8003E0000          <1>     mov eax, 3e00h  ;Close
-  1249 00000FD9 CD41                <1>     int 41h
-  1250 00000FDB FFC3                <1>     inc ebx ;Goto next handle
-  1251 00000FDD 81FB06000000        <1>     cmp ebx, 6
-  1252 00000FE3 75EF                <1>     jne closeHandlesLoop
-  1253 00000FE5 E89A020000          <1>     call openStreams
-  1254                              <1> l1:
-  1255 00000FEA BB00100000          <1>     mov ebx, 1000h  ;Get a 64Kb block
-  1256 00000FEF B800480000          <1>     mov eax, 4800h  ;Allocate the memory block
-  1257 00000FF4 CD41                <1>     int 41h         ;Malloc and get pointer in rbx
-  1258 00000FF6 0F828F000000        <1>     jc badMem
-  1259 00000FFC 4889C3              <1>     mov rbx, rax    ;Get pointer to block header to set owner to DOS
-  1260 00000FFF 4881EB10000000      <1>     sub rbx, mcb_size
-  1261 00001006 48C7430108000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerDOS
-  1262 0000100E 48890526050000      <1>     mov qword [OEMMEMPTR], rax   ;Save the pointer here
-  1263 00001015 4C8D0546050000      <1>     lea r8, tempPSP ;Get the DOS PSP pointer to r8
-  1264 0000101C 4989C1              <1>     mov r9, rax  ;Copy the Memory arena pointer to r9
-  1265                              <1>     ;Input: r8 = PSP
-  1266                              <1>     ;       r9 = Memory Arena Pointer
-  1267                              <1>     ;All regs must be preserved (including r9, even if you free. Dont free!)
-  1268 0000101F E8EC090000          <1>     call OEMCALLBK  ;Return CF=CY if OEM wants to keep the memory block
-  1269 00001024 720E                <1>     jc short l2 
-  1270 00001026 4C8B050E050000      <1>     mov r8, qword [OEMMEMPTR]
-  1271 0000102D B800490000          <1>     mov eax, 4900h  ;Free the memory block
-  1272 00001032 CD41                <1>     int 41h
-  1273                              <1> l2:
-  1274                              <1>     ;Load COMMAND.COM
-  1275                              <1>     ;Get currentPSP ptr
-  1276 00001034 B462                <1>     mov ah, 62h ;Get current PSP ptr in rbx
-  1277 00001036 CD41                <1>     int 41h
-  1278 00001038 B419                <1>     mov ah, 19h ;Get current Drive letter in al
-  1279 0000103A CD41                <1>     int 41h
-  1280 0000103C 0441                <1>     add al, "A"
-  1281 0000103E 8805BF000000        <1>     mov byte [cmdLine], al  ;Store drive letter at start of command line
-  1282                              <1> 
-  1283 00001044 488D1DC7000000      <1>     lea rbx, cmdBlock
-  1284 0000104B 488D3510050000      <1>     lea rsi, tempPSP
-  1285 00001052 488D465C            <1>     lea rax, qword [rsi + psp.fcb1]
-  1286 00001056 48894310            <1>     mov qword [rbx + execProg.pfcb1], rax
-  1287 0000105A 488D466C            <1>     lea rax, qword [rsi + psp.fcb2]
-  1288 0000105E 48894318            <1>     mov qword [rbx + execProg.pfcb2], rax
-  1289 00001062 488D8680000000      <1>     lea rax, qword [rsi + psp.dta]  ;Get the dummy command line ptr
-  1290 00001069 48894308            <1>     mov qword [rbx + execProg.pCmdLine], rax    ;Store dummy command line here
-  1291 0000106D 488D158F000000      <1>     lea rdx, cmdLine
-  1292 00001074 B8004B0000          <1>     mov eax, 4B00h  ;Exec Prog
-  1293 00001079 CD41                <1>     int 41h
-  1294 0000107B 488D1545000000      <1>     lea rdx, badCom
-  1295 00001082 B409                <1>     mov ah, 09h ;Print message
-  1296 00001084 CD41                <1>     int 41h
-  1297                              <1> hltLbl:
-  1298 00001086 F4                  <1>     hlt
-  1299 00001087 F390                <1>     pause
-  1300 00001089 EBFB                <1>     jmp short hltLbl
-  1301                              <1> badMem:
-  1302 0000108B 488D1509000000      <1>     lea rdx, memErr
-  1303 00001092 B800090000          <1>     mov eax, 0900h
-  1304 00001097 CD41                <1>     int 41h
-  1305 00001099 EBEB                <1>     jmp short hltLbl
-  1306 0000109B 53797374656D204D65- <1> memErr  db "System Memory Error",0Ah,0Dh,"$"
-  1306 000010A4 6D6F7279204572726F- <1>
-  1306 000010AD 720A0D24            <1>
-  1307                              <1> ;--------------------------------
-  1308                              <1> ;       DATA FOR SYSINIT        :
-  1309                              <1> ;--------------------------------
-  1310 000010B1 5374617274696E6720- <1> strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
-  1310 000010BA 5343502F444F532E2E- <1>
-  1310 000010C3 2E0A0D24            <1>
-  1311 000010C7 426164206F72206D69- <1> badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
-  1311 000010D0 7373696E6720436F6D- <1>
-  1311 000010D9 6D616E6420696E7465- <1>
-  1311 000010E2 727072657465720A0D- <1>
-  1311 000010EB 24                  <1>
-  1312 000010EC 434F4E00            <1> conName db "CON",0
-  1313 000010F0 41555800            <1> auxName db "AUX",0
-  1314 000010F4 50524E00            <1> prnName db "PRN",0
-  1315                              <1> 
-  1316 000010F8 434F4E4649472E5359- <1> cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
-  1316 00001101 5300                <1>
-  1317 00001103 5F3A5C434F4D4D414E- <1> cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
-  1317 0000110C 442E434F4D00        <1>
-  1318                              <1> 
-  1319                              <1> cmdBlock:   ;Used also for overlay block
-  1320                              <1>     istruc execProg
-  1321 00001112 0000000000000000    <1>     at execProg.pEnv,       dq 0    ;Is set to point at the above line
-  1322 0000111A 0000000000000000    <1>     at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
-  1323 00001122 0000000000000000    <1>     at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
-  1324 0000112A 0000000000000000    <1>     at execProg.pfcb2,      dq 0
-  1325                              <1>     iend
-  1326                              <1> exceptData:
-  1327 00001132 [465E000000000000]  <1>     dq i0
-  1328 0000113A [4D5E000000000000]  <1>     dq i1
-  1329 00001142 [575E000000000000]  <1>     dq i2
-  1330 0000114A [615E000000000000]  <1>     dq i3
-  1331 00001152 [6B5E000000000000]  <1>     dq i4
-  1332 0000115A [755E000000000000]  <1>     dq i5
-  1333 00001162 [7C5E000000000000]  <1>     dq i6
-  1334 0000116A [835E000000000000]  <1>     dq i7
-  1335 00001172 [8A5E000000000000]  <1>     dq i8
-  1336 0000117A [915E000000000000]  <1>     dq i9
-  1337 00001182 [985E000000000000]  <1>     dq i10
-  1338 0000118A [9F5E000000000000]  <1>     dq i11
-  1339 00001192 [A65E000000000000]  <1>     dq i12
-  1340 0000119A [AD5E000000000000]  <1>     dq i13
-  1341 000011A2 [B45E000000000000]  <1>     dq i14
-  1342 000011AA [BB5E000000000000]  <1>     dq i15
-  1343 000011B2 [C25E000000000000]  <1>     dq i16
-  1344 000011BA [C95E000000000000]  <1>     dq i17
-  1345 000011C2 [D05E000000000000]  <1>     dq i18
-  1346 000011CA [D75E000000000000]  <1>     dq i19
-  1347 000011D2 [DE5E000000000000]  <1>     dq i20
-  1348 000011DA [E55E000000000000]  <1>     dq i21
-  1349                              <1> 
-  1350                              <1> intData:
-  1351 000011E2 [A252000000000000]  <1>     dq terminateProcess ;Int 40h
-  1352 000011EA [8C69000000000000]  <1>     dq functionDispatch ;Int 41h
-  1353 000011F2 [CC19000000000000]  <1>     dq OEMHALT          ;Int 42h, If sysinit terminates, halt system
-  1354 000011FA [E46A000000000000]  <1>     dq defaultIretq     ;Int 43h, ignore any CTRL+C during init
-  1355 00001202 [7A62000000000000]  <1>     dq dosDefCritErrHdlr 
-  1356 0000120A [5163000000000000]  <1>     dq absDiskRead      ;Int 45h
-  1357 00001212 [3263000000000000]  <1>     dq absDiskWrite     ;Int 46h
-  1358 0000121A [A952000000000000]  <1>     dq terminateRes     ;Int 47h
-  1359 00001222 [E46A000000000000]  <1>     dq defaultIretq     ;Int 48h
-  1360 0000122A [E46A000000000000]  <1>     dq defaultIretq     ;Int 49h
-  1361 00001232 [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Ah
-  1362 0000123A [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Bh
-  1363 00001242 [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Ch
-  1364 0000124A [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Dh
-  1365 00001252 [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Eh
-  1366 0000125A [BE71000000000000]  <1>     dq multiplexHdlr    ;Int 4Fh, multiplex default handler
-  1367                              <1> nData:
-  1368 00001262 0000000000000000    <1>     dq 0    ;We link here to the head of the OEM driver chain
-  1369 0000126A 0480                <1>     dw 08004h
-  1370 0000126C [9362000000000000]  <1>     dq nulStrat
-  1371 00001274 [9962000000000000]  <1>     dq nulIntr
-  1372 0000127C 4E554C2020202020    <1>     db "NUL     " ;Default NUL data
-  1373                              <1> 
-  1374                              <1> openStreams:
-  1375                              <1> ;If this returns with CF=CY, an error occured. Halt boot if initial set of streams
-  1376 00001284 488D1565FEFFFF      <1>     lea rdx, auxName
-  1377 0000128B B8023D0000          <1>     mov eax, 3D02h   ;Open read/write
-  1378 00001290 CD41                <1>     int 41h
-  1379                              <1>     retc
+  1120                              <1> 
+  1121                              <1> .cfgExit:
+  1122 00000E2E 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle] ;Get the handle back
+  1123 00000E32 B8003E0000          <1>     mov eax, 3E00h    ;Close the handle
+  1124 00000E37 CD41                <1>     int 41h ;bx already has the handle
+  1125 00000E39 4C8B45B0            <1>     mov r8, qword [rbp - cfgFrame.linePtr]   ;Get the line buffer ptr back
+  1126 00000E3D B800490000          <1>     mov eax, 4900h  ;FREE
+  1127 00000E42 CD41                <1>     int 41h
+  1128                              <1> ;------------------------------------------------;
+  1129                              <1> ;   Setup Final Data Areas With Overrides from   ;
+  1130                              <1> ;                  CONFIG.SYS                    ;
+  1131                              <1> ;------------------------------------------------;
+  1132                              <1> ;Add additional buffers.
+  1133                              <1> ;Add additional SFT entries.
+  1134                              <1> ;Add additional FCBS.
+  1135                              <1> ;Create a larger CDS if needed.
+  1136                              <1> noCfg:
+  1137                              <1> ;Start with buffers:
+  1138 00000E44 488B4DF8            <1>     mov rcx, qword [rbp - cfgFrame.newBuffers]    ;Get new number of buffers
+  1139 00000E48 81F901000000        <1>     cmp ecx, 1   ;If its only one buffer, skip as we have one already
+  1140 00000E4E 0F84A5000000        <1>     je .skipBuffers
+  1141 00000E54 FFC9                <1>     dec ecx  ;Minus one now
+  1142 00000E56 64880C25[6D000000]  <1>     mov byte fs:[numBuffers], cl    ;Store this value in var
+  1143                              <1>     ;Now do the allocation at rdi. Each buffer = maxSectorSize + bufferHdr_size
+  1144 00000E5E 640FB70425-         <1>     movzx eax, word fs:[maxBytesSec]    ;Get buffer sector size
+  1144 00000E63 [4F000000]          <1>
+  1145 00000E67 0530000000          <1>     add eax, bufferHdr_size ;eax has the size to add
+  1146 00000E6C 50                  <1>     push rax    ;Save the total number of bytes for a buffer and its header
+  1147 00000E6D F7E1                <1>     mul ecx ;Get total size to allocate in eax
+  1148 00000E6F 5A                  <1>     pop rdx     ;and get the total value back in rdx
+  1149 00000E70 89C3                <1>     mov ebx, eax    ;Move the total number of bytes into ebx
+  1150 00000E72 81C30F000000        <1>     add ebx, 0Fh
+  1151 00000E78 C1EB04              <1>     shr ebx, 4      ;And convert it to paragraphs
+  1152 00000E7B B800480000          <1>     mov eax, 4800h  ;ALLOC
+  1153 00000E80 CD41                <1>     int 41h
+  1154 00000E82 7275                <1>     jc short .skipBuffers   ;If it fails to allocate, default to one buffer
+  1155                              <1>     ;Each buffer has no flags, drive number must be -1
+  1156 00000E84 4889D3              <1>     mov rbx, rdx    ;Put the total number of bytes per buffer in rbx
+  1157 00000E87 4889C7              <1>     mov rdi, rax    ;Point rdi to the new area 
+  1158 00000E8A 482D10000000        <1>     sub rax, mcb.program    ;Point rax to the head of the mcb
+  1159 00000E90 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Mark as owned by DOS
+  1160 00000E98 C6400D42            <1>     mov byte [rax + mcb.subSysMark], mcbSubBuffers  ;Buffer buffer (funny)
+  1161 00000E9C 64488B0425-         <1>     mov rax, qword fs:[bufHeadPtr]  ;Get the pointer to the first buffer
+  1161 00000EA1 [51000000]          <1>
+  1162 00000EA5 488938              <1>     mov qword [rax + bufferHdr.nextBufPtr], rdi ;And set the new next buffer to point to it
+  1163 00000EA8 4889FE              <1>     mov rsi, rdi    ;Points rsi to first new buffer space
+  1164 00000EAB 31C0                <1>     xor eax, eax    ;Use for sanitising buffer headers
+  1165 00000EAD FFC9                <1>     dec ecx         ;Reduce to convert from 1 based count to 0 based
+  1166 00000EAF 67E325              <1>     jecxz .lastBuffer
+  1167                              <1> .bufferLoop:
+  1168 00000EB2 4801DF              <1>     add rdi, rbx    ;Goto next buffer space
+  1169 00000EB5 48893E              <1>     mov qword [rsi + bufferHdr.nextBufPtr], rdi ;Point to next buffer
+  1170 00000EB8 66C74608FF00        <1>     mov word [rsi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
+  1171 00000EBE 4889460A            <1>     mov qword [rsi + bufferHdr.bufferLBA], rax
+  1172 00000EC2 884612              <1>     mov byte [rsi + bufferHdr.bufFATcopy], al
+  1173 00000EC5 894613              <1>     mov dword [rsi + bufferHdr.bufFATsize], eax
+  1174 00000EC8 48894617            <1>     mov qword [rsi + bufferHdr.driveDPBPtr], rax
+  1175 00000ECC 4889461F            <1>     mov qword [rsi + bufferHdr.owningFile], rax
+  1176 00000ED0 4889FE              <1>     mov rsi, rdi    ;Move rsi to next buffer position
+  1177 00000ED3 FFC9                <1>     dec ecx
+  1178 00000ED5 75DB                <1>     jnz .bufferLoop
+  1179                              <1> .lastBuffer:
+  1180 00000ED7 4801DF              <1>     add rdi, rbx    ;Goto past the last buffer
+  1181 00000EDA 48C706FFFFFFFF      <1>     mov qword [rsi + bufferHdr.nextBufPtr], -1 ;Point to no buffer
+  1182 00000EE1 66C74608FF00        <1>     mov word [rsi + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
+  1183 00000EE7 4889460A            <1>     mov qword [rsi + bufferHdr.bufferLBA], rax
+  1184 00000EEB 884612              <1>     mov byte [rsi + bufferHdr.bufFATcopy], al
+  1185 00000EEE 894613              <1>     mov dword [rsi + bufferHdr.bufFATsize], eax
+  1186 00000EF1 48894617            <1>     mov qword [rsi + bufferHdr.driveDPBPtr], rax
+  1187 00000EF5 4889461F            <1>     mov qword [rsi + bufferHdr.owningFile], rax
+  1188                              <1> .skipBuffers:
+  1189                              <1> ;Now build a new SFT header for the number of files specified by user
+  1190 00000EF9 488B4DF0            <1>     mov rcx, qword [rbp - cfgFrame.newSFTVal]
+  1191 00000EFD 81F905000000        <1>     cmp ecx, 5  ;If we are not adding anything, skip building SFT
+  1192 00000F03 764F                <1>     jbe short .skipSFT
+  1193                              <1>     ;First compute how big this new arena needs to be
+  1194 00000F05 81E905000000        <1>     sub ecx, 5   ;Remove the default five files that are *always* present!
+  1195 00000F0B B84F000000          <1>     mov eax, sft_size
+  1196 00000F10 F7E1                <1>     mul ecx ;Get number of files*size of file in bytes in eax
+  1197 00000F12 050A000000          <1>     add eax, sfth_size  ;Add the size of one SFT header
+  1198 00000F17 89C3                <1>     mov ebx, eax        ;And move into ebx for the syscall
+  1199 00000F19 81C30F000000        <1>     add ebx, 0Fh        ;Round up to nearest paragraph...
+  1200 00000F1F C1EB04              <1>     shr ebx, 4          ;And convert to paragraphs
+  1201 00000F22 B800480000          <1>     mov eax, 4800h
+  1202 00000F27 CD41                <1>     int 41h
+  1203 00000F29 7229                <1>     jc short .skipSFT   ;Skip adding files if this fails. Sorry end user!
+  1204 00000F2B 64488B3425-         <1>     mov rsi, qword fs:[sftHeadPtr]
+  1204 00000F30 [37000000]          <1>
+  1205 00000F34 488906              <1>     mov qword [rsi + sfth.qNextSFTPtr], rax ;RAX points to the next sfth
+  1206 00000F37 66894808            <1>     mov word [rax + sfth.wNumFiles], cx ;Move remaining files here
+  1207 00000F3B 48C700FFFFFFFF      <1>     mov qword [rax + sfth.qNextSFTPtr], -1  ;Last table in chain    
+  1208 00000F42 482D10000000        <1>     sub rax, mcb.program    ;Point to MCB now
+  1209 00000F48 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS
+  1210 00000F50 C6400D46            <1>     mov byte [rax + mcb.subSysMark], mcbSubFiles
+  1211                              <1> .skipSFT:
+  1212                              <1> ;FCBS now
+  1213 00000F54 488B4DE8            <1>     mov rcx, qword [rbp - cfgFrame.newFCBSVal]
+  1214 00000F58 67E346              <1>     jecxz .skipFCBS ;Skip if no FCBS requested
+  1215 00000F5B B84F000000          <1>     mov eax, sft_size
+  1216 00000F60 F7E1                <1>     mul ecx ;Get number of files*size of file in bytes in eax
+  1217 00000F62 050A000000          <1>     add eax, sfth_size  ;Add the size of one SFT header
+  1218 00000F67 89C3                <1>     mov ebx, eax        ;And move into ebx for the syscall
+  1219 00000F69 81C30F000000        <1>     add ebx, 0Fh        ;Round up to nearest paragraph...
+  1220 00000F6F C1EB04              <1>     shr ebx, 4          ;And convert to paragraphs
+  1221 00000F72 B800480000          <1>     mov eax, 4800h
+  1222 00000F77 CD41                <1>     int 41h
+  1223 00000F79 7226                <1>     jc short .skipFCBS   ;Skip adding files if this fails. Sorry end user!
+  1224 00000F7B 6448890425-         <1>     mov qword fs:[fcbsHeadPtr], rax ;This is the FCBS head now
+  1224 00000F80 [61000000]          <1>
+  1225 00000F84 66894808            <1>     mov word [rax + sfth.wNumFiles], cx ;Move FCBS here
+  1226 00000F88 48C700FFFFFFFF      <1>     mov qword [rax + sfth.qNextSFTPtr], -1  ;Last table in chain  
+  1227 00000F8F 482D10000000        <1>     sub rax, mcb.program    ;Point to MCB now
+  1228 00000F95 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS
+  1229 00000F9D C6400D58            <1>     mov byte [rax + mcb.subSysMark], mcbSubFCBS
+  1230                              <1> .skipFCBS:
+  1231                              <1> ;And CDS now
+  1232 00000FA1 488B4DD8            <1>     mov rcx, qword [rbp - cfgFrame.newLastdrive]
+  1233 00000FA5 64380C25[6C000000]  <1>     cmp byte fs:[lastdrvNum], cl
+  1234 00000FAD 731F                <1>     jae .skipCDS    ;If user specifies less than 5 drives, dont reallocate
+  1235                              <1>     ;Else, we first free the old CDS and then reallocate
+  1236 00000FAF 644C8B0425-         <1>     mov r8, qword fs:[cdsHeadPtr]
+  1236 00000FB4 [59000000]          <1>
+  1237 00000FB8 B800490000          <1>     mov eax, 4900h  ;FREE the old allocation.
+  1238 00000FBD CD41                <1>     int 41h
+  1239 00000FBF 720D                <1>     jc short .skipCDS
+  1240 00000FC1 64880C25[6C000000]  <1>     mov byte fs:[lastdrvNum], cl ;Save this value
+  1241 00000FC9 E8CBF4FFFF          <1>     call makeCDSArray
+  1242                              <1> .skipCDS:
+  1243 00000FCE 4889EC              <1>     mov rsp, rbp    ;Return stack pointer to original position
+  1244 00000FD1 5D                  <1>     pop rbp ;Stack frame no longer needed
+  1245                              <1> ;Now we close all five default handles and open AUX, CON and PRN
+  1246                              <1> ; and reopen the handles as user may have loaded new CON/AUX/PRN etc drivers
+  1247 00000FD2 31DB                <1>     xor ebx, ebx
+  1248                              <1> closeHandlesLoop:
+  1249 00000FD4 B8003E0000          <1>     mov eax, 3e00h  ;Close
+  1250 00000FD9 CD41                <1>     int 41h
+  1251 00000FDB FFC3                <1>     inc ebx ;Goto next handle
+  1252 00000FDD 81FB06000000        <1>     cmp ebx, 6
+  1253 00000FE3 75EF                <1>     jne closeHandlesLoop
+  1254 00000FE5 E89A020000          <1>     call openStreams
+  1255                              <1> l1:
+  1256 00000FEA BB00100000          <1>     mov ebx, 1000h  ;Get a 64Kb block
+  1257 00000FEF B800480000          <1>     mov eax, 4800h  ;Allocate the memory block
+  1258 00000FF4 CD41                <1>     int 41h         ;Malloc and get pointer in rbx
+  1259 00000FF6 0F828F000000        <1>     jc badMem
+  1260 00000FFC 4889C3              <1>     mov rbx, rax    ;Get pointer to block header to set owner to DOS
+  1261 00000FFF 4881EB10000000      <1>     sub rbx, mcb_size
+  1262 00001006 48C7430108000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerDOS
+  1263 0000100E 48890526050000      <1>     mov qword [OEMMEMPTR], rax   ;Save the pointer here
+  1264 00001015 4C8D0546050000      <1>     lea r8, tempPSP ;Get the DOS PSP pointer to r8
+  1265 0000101C 4989C1              <1>     mov r9, rax  ;Copy the Memory arena pointer to r9
+  1266                              <1>     ;Input: r8 = PSP
+  1267                              <1>     ;       r9 = Memory Arena Pointer
+  1268                              <1>     ;All regs must be preserved (including r9, even if you free. Dont free!)
+  1269 0000101F E8EC090000          <1>     call OEMCALLBK  ;Return CF=CY if OEM wants to keep the memory block
+  1270 00001024 720E                <1>     jc short l2 
+  1271 00001026 4C8B050E050000      <1>     mov r8, qword [OEMMEMPTR]
+  1272 0000102D B800490000          <1>     mov eax, 4900h  ;Free the memory block
+  1273 00001032 CD41                <1>     int 41h
+  1274                              <1> l2:
+  1275                              <1>     ;Load COMMAND.COM
+  1276                              <1>     ;Get currentPSP ptr
+  1277 00001034 B462                <1>     mov ah, 62h ;Get current PSP ptr in rbx
+  1278 00001036 CD41                <1>     int 41h
+  1279 00001038 B419                <1>     mov ah, 19h ;Get current Drive letter in al
+  1280 0000103A CD41                <1>     int 41h
+  1281 0000103C 0441                <1>     add al, "A"
+  1282 0000103E 8805BF000000        <1>     mov byte [cmdLine], al  ;Store drive letter at start of command line
+  1283                              <1> 
+  1284 00001044 488D1DC7000000      <1>     lea rbx, cmdBlock
+  1285 0000104B 488D3510050000      <1>     lea rsi, tempPSP
+  1286 00001052 488D465C            <1>     lea rax, qword [rsi + psp.fcb1]
+  1287 00001056 48894310            <1>     mov qword [rbx + execProg.pfcb1], rax
+  1288 0000105A 488D466C            <1>     lea rax, qword [rsi + psp.fcb2]
+  1289 0000105E 48894318            <1>     mov qword [rbx + execProg.pfcb2], rax
+  1290 00001062 488D8680000000      <1>     lea rax, qword [rsi + psp.dta]  ;Get the dummy command line ptr
+  1291 00001069 48894308            <1>     mov qword [rbx + execProg.pCmdLine], rax    ;Store dummy command line here
+  1292 0000106D 488D158F000000      <1>     lea rdx, cmdLine
+  1293 00001074 B8004B0000          <1>     mov eax, 4B00h  ;Exec Prog
+  1294 00001079 CD41                <1>     int 41h
+  1295 0000107B 488D1545000000      <1>     lea rdx, badCom
+  1296 00001082 B409                <1>     mov ah, 09h ;Print message
+  1297 00001084 CD41                <1>     int 41h
+  1298                              <1> hltLbl:
+  1299 00001086 F4                  <1>     hlt
+  1300 00001087 F390                <1>     pause
+  1301 00001089 EBFB                <1>     jmp short hltLbl
+  1302                              <1> badMem:
+  1303 0000108B 488D1509000000      <1>     lea rdx, memErr
+  1304 00001092 B800090000          <1>     mov eax, 0900h
+  1305 00001097 CD41                <1>     int 41h
+  1306 00001099 EBEB                <1>     jmp short hltLbl
+  1307 0000109B 53797374656D204D65- <1> memErr  db "System Memory Error",0Ah,0Dh,"$"
+  1307 000010A4 6D6F7279204572726F- <1>
+  1307 000010AD 720A0D24            <1>
+  1308                              <1> ;--------------------------------
+  1309                              <1> ;       DATA FOR SYSINIT        :
+  1310                              <1> ;--------------------------------
+  1311 000010B1 5374617274696E6720- <1> strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+  1311 000010BA 5343502F444F532E2E- <1>
+  1311 000010C3 2E0A0D24            <1>
+  1312 000010C7 426164206F72206D69- <1> badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
+  1312 000010D0 7373696E6720436F6D- <1>
+  1312 000010D9 6D616E6420696E7465- <1>
+  1312 000010E2 727072657465720A0D- <1>
+  1312 000010EB 24                  <1>
+  1313 000010EC 434F4E00            <1> conName db "CON",0
+  1314 000010F0 41555800            <1> auxName db "AUX",0
+  1315 000010F4 50524E00            <1> prnName db "PRN",0
+  1316                              <1> 
+  1317 000010F8 434F4E4649472E5359- <1> cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
+  1317 00001101 5300                <1>
+  1318 00001103 5F3A5C434F4D4D414E- <1> cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
+  1318 0000110C 442E434F4D00        <1>
+  1319                              <1> 
+  1320                              <1> cmdBlock:   ;Used also for overlay block
+  1321                              <1>     istruc execProg
+  1322 00001112 0000000000000000    <1>     at execProg.pEnv,       dq 0    ;Is set to point at the above line
+  1323 0000111A 0000000000000000    <1>     at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
+  1324 00001122 0000000000000000    <1>     at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
+  1325 0000112A 0000000000000000    <1>     at execProg.pfcb2,      dq 0
+  1326                              <1>     iend
+  1327                              <1> exceptData:
+  1328 00001132 [465E000000000000]  <1>     dq i0
+  1329 0000113A [4D5E000000000000]  <1>     dq i1
+  1330 00001142 [575E000000000000]  <1>     dq i2
+  1331 0000114A [615E000000000000]  <1>     dq i3
+  1332 00001152 [6B5E000000000000]  <1>     dq i4
+  1333 0000115A [755E000000000000]  <1>     dq i5
+  1334 00001162 [7C5E000000000000]  <1>     dq i6
+  1335 0000116A [835E000000000000]  <1>     dq i7
+  1336 00001172 [8A5E000000000000]  <1>     dq i8
+  1337 0000117A [915E000000000000]  <1>     dq i9
+  1338 00001182 [985E000000000000]  <1>     dq i10
+  1339 0000118A [9F5E000000000000]  <1>     dq i11
+  1340 00001192 [A65E000000000000]  <1>     dq i12
+  1341 0000119A [AD5E000000000000]  <1>     dq i13
+  1342 000011A2 [B45E000000000000]  <1>     dq i14
+  1343 000011AA [BB5E000000000000]  <1>     dq i15
+  1344 000011B2 [C25E000000000000]  <1>     dq i16
+  1345 000011BA [C95E000000000000]  <1>     dq i17
+  1346 000011C2 [D05E000000000000]  <1>     dq i18
+  1347 000011CA [D75E000000000000]  <1>     dq i19
+  1348 000011D2 [DE5E000000000000]  <1>     dq i20
+  1349 000011DA [E55E000000000000]  <1>     dq i21
+  1350                              <1> 
+  1351                              <1> intData:
+  1352 000011E2 [A252000000000000]  <1>     dq terminateProcess ;Int 40h
+  1353 000011EA [8C69000000000000]  <1>     dq functionDispatch ;Int 41h
+  1354 000011F2 [CC19000000000000]  <1>     dq OEMHALT          ;Int 42h, If sysinit terminates, halt system
+  1355 000011FA [E46A000000000000]  <1>     dq defaultIretq     ;Int 43h, ignore any CTRL+C during init
+  1356 00001202 [7A62000000000000]  <1>     dq dosDefCritErrHdlr 
+  1357 0000120A [5163000000000000]  <1>     dq absDiskRead      ;Int 45h
+  1358 00001212 [3263000000000000]  <1>     dq absDiskWrite     ;Int 46h
+  1359 0000121A [A952000000000000]  <1>     dq terminateRes     ;Int 47h
+  1360 00001222 [E46A000000000000]  <1>     dq defaultIretq     ;Int 48h
+  1361 0000122A [E46A000000000000]  <1>     dq defaultIretq     ;Int 49h
+  1362 00001232 [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Ah
+  1363 0000123A [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Bh
+  1364 00001242 [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Ch
+  1365 0000124A [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Dh
+  1366 00001252 [E46A000000000000]  <1>     dq defaultIretq     ;Int 4Eh
+  1367 0000125A [BE71000000000000]  <1>     dq multiplexHdlr    ;Int 4Fh, multiplex default handler
+  1368                              <1> nData:
+  1369 00001262 0000000000000000    <1>     dq 0    ;We link here to the head of the OEM driver chain
+  1370 0000126A 0480                <1>     dw 08004h
+  1371 0000126C [9362000000000000]  <1>     dq nulStrat
+  1372 00001274 [9962000000000000]  <1>     dq nulIntr
+  1373 0000127C 4E554C2020202020    <1>     db "NUL     " ;Default NUL data
+  1374                              <1> 
+  1375                              <1> openStreams:
+  1376                              <1> ;If this returns with CF=CY, an error occured. Halt boot if initial set of streams
+  1377 00001284 488D1565FEFFFF      <1>     lea rdx, auxName
+  1378 0000128B B8023D0000          <1>     mov eax, 3D02h   ;Open read/write
+  1379 00001290 CD41                <1>     int 41h
+  1380                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3299,11 +3300,11 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1380 00001295 89C3                <1>     mov ebx, eax
-  1381 00001297 B903000000          <1>     mov ecx, 3  ;
-  1382 0000129C B800460000          <1>     mov eax, 4600h  ;DUP2
-  1383 000012A1 CD41                <1>     int 41h
-  1384                              <1>     retc
+  1381 00001295 89C3                <1>     mov ebx, eax
+  1382 00001297 B903000000          <1>     mov ecx, 3  ;
+  1383 0000129C B800460000          <1>     mov eax, 4600h  ;DUP2
+  1384 000012A1 CD41                <1>     int 41h
+  1385                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3324,9 +3325,9 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1385 000012A5 B8003E0000          <1>     mov eax, 3e00h
-  1386 000012AA CD41                <1>     int 41h ;Close the original handle
-  1387                              <1>     retc
+  1386 000012A5 B8003E0000          <1>     mov eax, 3e00h
+  1387 000012AA CD41                <1>     int 41h ;Close the original handle
+  1388                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3347,10 +3348,10 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1388 000012AE B8023D0000          <1>     mov eax, 3D02h  ;Open read/write
-  1389 000012B3 488D1532FEFFFF      <1>     lea rdx, conName
-  1390 000012BA CD41                <1>     int 41h
-  1391                              <1>     retc
+  1389 000012AE B8023D0000          <1>     mov eax, 3D02h  ;Open read/write
+  1390 000012B3 488D1532FEFFFF      <1>     lea rdx, conName
+  1391 000012BA CD41                <1>     int 41h
+  1392                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3371,10 +3372,10 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1392 000012BE 89C3                <1>     mov ebx, eax    ;Move file handle to ebx
-  1393 000012C0 B800450000          <1>     mov eax, 4500h  ;DUP
-  1394 000012C5 CD41                <1>     int 41h
-  1395                              <1>     retc
+  1393 000012BE 89C3                <1>     mov ebx, eax    ;Move file handle to ebx
+  1394 000012C0 B800450000          <1>     mov eax, 4500h  ;DUP
+  1395 000012C5 CD41                <1>     int 41h
+  1396                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3395,9 +3396,9 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1396 000012C9 B800450000          <1>     mov eax, 4500h  ;DUP
-  1397 000012CE CD41                <1>     int 41h
-  1398                              <1>     retc
+  1397 000012C9 B800450000          <1>     mov eax, 4500h  ;DUP
+  1398 000012CE CD41                <1>     int 41h
+  1399                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3418,136 +3419,136 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1399 000012D2 488D151BFEFFFF      <1>     lea rdx, prnName
-  1400 000012D9 B8023D0000          <1>     mov eax, 3D02h
-  1401 000012DE CD41                <1>     int 41h       ;Open file
-  1402                              <1>     return
+  1400 000012D2 488D151BFEFFFF      <1>     lea rdx, prnName
+  1401 000012D9 B8023D0000          <1>     mov eax, 3D02h
+  1402 000012DE CD41                <1>     int 41h       ;Open file
+  1403                              <1>     return
     13                              <2> %%_ret:
     14 000012E0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1403                              <1> 
-  1404                              <1> addDriverMarkers:
-  1405                              <1> ;Traverses the MCB chain after a driver init to add the correct subsytem 
-  1406                              <1> ; information and owner to each memory block. Used for drivers that allocate
-  1407                              <1> ; their own memory using ALLOC.
-  1408                              <1> ;Input: qword [currentPSP] = Signature to search for (9 means kernel driver).
-  1409                              <1> ;       fs -> Dos Data Area
-  1410                              <1> ;Output: Sets the first occurrence to Driver, the rest to driver appendage,
-  1411                              <1> ;           unless the signature is 9 in which case, it is set to DOS owner.
-  1412                              <1> ;           In the event of a kernel driver then only mcbSubDrvExtra is used.
-  1413 000012E1 50                  <1>     push rax
-  1414 000012E2 53                  <1>     push rbx
-  1415 000012E3 51                  <1>     push rcx
-  1416 000012E4 56                  <1>     push rsi
-  1417 000012E5 57                  <1>     push rdi
-  1418 000012E6 488BBD[13040000]    <1>     mov rdi, qword [rbp + currentPSP]
-  1419 000012ED 488BB5[27000000]    <1>     mov rsi, qword [rbp + mcbChainPtr] ;Points to the kernel allocation
-  1420 000012F4 B844000000          <1>     mov eax, mcbSubDriver
-  1421 000012F9 BB4C000000          <1>     mov ebx, mcbSubDrvExtra
-  1422 000012FE 4881FF09000000      <1>     cmp rdi, mcbOwnerNewDOS  ;If so, skip setting driver, only extra!
-  1423 00001305 0F44C3              <1>     cmove eax, ebx
-  1424 00001308 EB18                <1>     jmp short .gotoNextBlock    ;Skip the first alloc (the kernel)
-  1425                              <1> .checkSubsystem:
-  1426 0000130A 48397E01            <1>     cmp qword [rsi + mcb.owner], rdi
-  1427 0000130E 7512                <1>     jne short .gotoNextBlock
-  1428 00001310 88460D              <1>     mov byte [rsi + mcb.subSysMark], al
-  1429 00001313 39D8                <1>     cmp eax, ebx
-  1430 00001315 0F45C3              <1>     cmovne eax, ebx
-  1431 00001318 807E0109            <1>     cmp byte [rsi + mcb.owner], mcbOwnerNewDOS
-  1432 0000131C 7504                <1>     jne short .gotoNextBlock
-  1433 0000131E C6460108            <1>     mov byte [rsi + mcb.owner], mcbOwnerDOS
-  1434                              <1> .gotoNextBlock:
-  1435 00001322 803E5A              <1>     cmp byte [rsi + mcb.marker], mcbMarkEnd
-  1436 00001325 7415                <1>     je short .exit
-  1437 00001327 31C9                <1>     xor ecx, ecx
-  1438 00001329 8B4E09              <1>     mov ecx, dword [rsi + mcb.blockSize]
-  1439 0000132C 48C1E104            <1>     shl rcx, 4
-  1440 00001330 4881C610000000      <1>     add rsi, mcb.program    
-  1441 00001337 4801CE              <1>     add rsi, rcx
-  1442 0000133A EBCE                <1>     jmp short .checkSubsystem
-  1443                              <1> .exit:
-  1444 0000133C 5F                  <1>     pop rdi
-  1445 0000133D 5E                  <1>     pop rsi
-  1446 0000133E 59                  <1>     pop rcx
-  1447 0000133F 5B                  <1>     pop rbx
-  1448 00001340 58                  <1>     pop rax
-  1449                              <1>     return
+  1404                              <1> 
+  1405                              <1> addDriverMarkers:
+  1406                              <1> ;Traverses the MCB chain after a driver init to add the correct subsytem 
+  1407                              <1> ; information and owner to each memory block. Used for drivers that allocate
+  1408                              <1> ; their own memory using ALLOC.
+  1409                              <1> ;Input: qword [currentPSP] = Signature to search for (9 means kernel driver).
+  1410                              <1> ;       fs -> Dos Data Area
+  1411                              <1> ;Output: Sets the first occurrence to Driver, the rest to driver appendage,
+  1412                              <1> ;           unless the signature is 9 in which case, it is set to DOS owner.
+  1413                              <1> ;           In the event of a kernel driver then only mcbSubDrvExtra is used.
+  1414 000012E1 50                  <1>     push rax
+  1415 000012E2 53                  <1>     push rbx
+  1416 000012E3 51                  <1>     push rcx
+  1417 000012E4 56                  <1>     push rsi
+  1418 000012E5 57                  <1>     push rdi
+  1419 000012E6 488BBD[13040000]    <1>     mov rdi, qword [rbp + currentPSP]
+  1420 000012ED 488BB5[27000000]    <1>     mov rsi, qword [rbp + mcbChainPtr] ;Points to the kernel allocation
+  1421 000012F4 B844000000          <1>     mov eax, mcbSubDriver
+  1422 000012F9 BB4C000000          <1>     mov ebx, mcbSubDrvExtra
+  1423 000012FE 4881FF09000000      <1>     cmp rdi, mcbOwnerNewDOS  ;If so, skip setting driver, only extra!
+  1424 00001305 0F44C3              <1>     cmove eax, ebx
+  1425 00001308 EB18                <1>     jmp short .gotoNextBlock    ;Skip the first alloc (the kernel)
+  1426                              <1> .checkSubsystem:
+  1427 0000130A 48397E01            <1>     cmp qword [rsi + mcb.owner], rdi
+  1428 0000130E 7512                <1>     jne short .gotoNextBlock
+  1429 00001310 88460D              <1>     mov byte [rsi + mcb.subSysMark], al
+  1430 00001313 39D8                <1>     cmp eax, ebx
+  1431 00001315 0F45C3              <1>     cmovne eax, ebx
+  1432 00001318 807E0109            <1>     cmp byte [rsi + mcb.owner], mcbOwnerNewDOS
+  1433 0000131C 7504                <1>     jne short .gotoNextBlock
+  1434 0000131E C6460108            <1>     mov byte [rsi + mcb.owner], mcbOwnerDOS
+  1435                              <1> .gotoNextBlock:
+  1436 00001322 803E5A              <1>     cmp byte [rsi + mcb.marker], mcbMarkEnd
+  1437 00001325 7415                <1>     je short .exit
+  1438 00001327 31C9                <1>     xor ecx, ecx
+  1439 00001329 8B4E09              <1>     mov ecx, dword [rsi + mcb.blockSize]
+  1440 0000132C 48C1E104            <1>     shl rcx, 4
+  1441 00001330 4881C610000000      <1>     add rsi, mcb.program    
+  1442 00001337 4801CE              <1>     add rsi, rcx
+  1443 0000133A EBCE                <1>     jmp short .checkSubsystem
+  1444                              <1> .exit:
+  1445 0000133C 5F                  <1>     pop rdi
+  1446 0000133D 5E                  <1>     pop rsi
+  1447 0000133E 59                  <1>     pop rcx
+  1448 0000133F 5B                  <1>     pop rbx
+  1449 00001340 58                  <1>     pop rax
+  1450                              <1>     return
     13                              <2> %%_ret:
     14 00001341 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1450                              <1> 
   1451                              <1> 
-  1452                              <1> convertBPBArray:
-  1453                              <1> ;rsi -> BPB array
-  1454                              <1> ;rbp -> Space for cl consecutive DPB's
-  1455                              <1> ;rdi -> Driver header
-  1456                              <1> ;cl = Number of BPBs to process
-  1457                              <1> ;If ZF=NZ on entry, link the end of the last DPB array 
-  1458 00001342 E852000000          <1>     call .findLastDPB
-  1459 00001347 0FB6C9              <1>     movzx ecx, cl   ;Use ch as the unit number counter
-  1460                              <1> .buildNext:
-  1461 0000134A 56                  <1>     push rsi
-  1462 0000134B 488B36              <1>     mov rsi, qword [rsi]    ;Get the BPB pointer from the BPB array
-  1463 0000134E B453                <1>     mov ah, 53h ;Build DPB
-  1464 00001350 CD41                <1>     int 41h
-  1465 00001352 5E                  <1>     pop rsi
-  1466 00001353 640FB60425-         <1>     movzx eax, byte fs:[numPhysVol] ;Get current # drives
-  1466 00001358 [6B000000]          <1>
-  1467 0000135C 884500              <1>     mov byte [rbp + dpb.bDriveNumber], al   ;Set it as drvnum
-  1468 0000135F 64FE0425[6B000000]  <1>     inc byte fs:[numPhysVol]    ;One more physical volume present!
-  1469 00001367 886D01              <1>     mov byte [rbp + dpb.bUnitNumber], ch    ;Set unit number
-  1470 0000136A 48897D1B            <1>     mov qword [rbp + dpb.qDriverHeaderPtr], rdi ;Store ptr to driver
-  1471 0000136E FEC5                <1>     inc ch  ;Goto next unit number
-  1472 00001370 38E9                <1>     cmp cl, ch  ;When equal, exit!
-  1473 00001372 7414                <1>     jz short .exit
-  1474 00001374 488D4535            <1>     lea rax, qword [rbp + dpb_size]
-  1475 00001378 48894525            <1>     mov qword [rbp + dpb.qNextDPBPtr], rax
-  1476 0000137C 4889C5              <1>     mov rbp, rax    ;Advance rbp by that amount
-  1477 0000137F 4881C608000000      <1>     add rsi, 8 ;Go to the next BPB in the BPB array
-  1478 00001386 EBC2                <1>     jmp short .buildNext
-  1479                              <1> .exit:
-  1480                              <1>     ;Now set next DPB as -1 i.e end of chain!
-  1481 00001388 31C0                <1>     xor eax, eax
-  1482 0000138A 48FFC8              <1>     dec rax
-  1483 0000138D 48894525            <1>     mov qword [rbp + dpb.qNextDPBPtr], rax
-  1484 00001391 4881C535000000      <1>     add rbp, dpb_size   ;Point rbp past the next DPB
-  1485 00001398 C3                  <1>     ret
-  1486                              <1> .findLastDPB:
-  1487                              <1> ;Finds the last DPB and links the next DPB to it
-  1488 00001399 64488B0425-         <1>     mov rax, qword fs:[dpbHeadPtr]
-  1488 0000139E [2F000000]          <1>
-  1489 000013A2 4885C0              <1>     test rax, rax
-  1490 000013A5 7415                <1>     jz short .first 
-  1491                              <1> .lp:
-  1492 000013A7 48817825FFFFFFFF    <1>     cmp qword [rax + dpb.qNextDPBPtr], -1   ;End of chain?
-  1493 000013AF 7406                <1>     je short .lastFound
-  1494 000013B1 488B4025            <1>     mov rax, qword [rax + dpb.qNextDPBPtr]  ;Get this pointer in rax
-  1495 000013B5 EBF0                <1>     jmp short .lp   ;And go again
-  1496                              <1> .lastFound:
-  1497 000013B7 48896825            <1>     mov qword [rax + dpb.qNextDPBPtr], rbp  ;The next dpb will go here
-  1498 000013BB C3                  <1>     ret
-  1499                              <1> .first:
-  1500                              <1> ;If this is the first DPB array, set the dpbHeadPtr
-  1501 000013BC 6448892C25-         <1>     mov qword fs:[dpbHeadPtr], rbp
-  1501 000013C1 [2F000000]          <1>
-  1502 000013C5 C3                  <1>     ret
-  1503                              <1> 
-  1504                              <1> ejectKernelInit:
-  1505                              <1> ;Reallocates the space allocated to the driver file after 
-  1506                              <1> ; init was called.
-  1507                              <1> ;Input: rbx -> Pointer to the original end of the allocation (para aligned)
-  1508                              <1> ;       r8 -> Points to the mcb for reallocation
-  1509                              <1> ;Uses the sysinit init drive block. 
-  1510                              <1> ;rax, rbx, rflags trashed
-  1511                              <1> ;If returns CF=CY, error in reallocation.
-  1512 000013C6 53                  <1>     push rbx
-  1513 000013C7 488D1D75010000      <1>     lea rbx, initDrvBlk
-  1514 000013CE 488B430E            <1>     mov rax, qword [rbx + initReqPkt.endptr]
-  1515 000013D2 5B                  <1>     pop rbx
-  1516                              <1>     ;If this endptr is zero or -1 ignore it. 
-  1517                              <1>     ;If this endptr is greater than the end of alloc, ignore it.
-  1518 000013D3 4885C0              <1>     test rax, rax
-  1519                              <1>     retz
+  1452                              <1> 
+  1453                              <1> convertBPBArray:
+  1454                              <1> ;rsi -> BPB array
+  1455                              <1> ;rbp -> Space for cl consecutive DPB's
+  1456                              <1> ;rdi -> Driver header
+  1457                              <1> ;cl = Number of BPBs to process
+  1458                              <1> ;If ZF=NZ on entry, link the end of the last DPB array 
+  1459 00001342 E852000000          <1>     call .findLastDPB
+  1460 00001347 0FB6C9              <1>     movzx ecx, cl   ;Use ch as the unit number counter
+  1461                              <1> .buildNext:
+  1462 0000134A 56                  <1>     push rsi
+  1463 0000134B 488B36              <1>     mov rsi, qword [rsi]    ;Get the BPB pointer from the BPB array
+  1464 0000134E B453                <1>     mov ah, 53h ;Build DPB
+  1465 00001350 CD41                <1>     int 41h
+  1466 00001352 5E                  <1>     pop rsi
+  1467 00001353 640FB60425-         <1>     movzx eax, byte fs:[numPhysVol] ;Get current # drives
+  1467 00001358 [6B000000]          <1>
+  1468 0000135C 884500              <1>     mov byte [rbp + dpb.bDriveNumber], al   ;Set it as drvnum
+  1469 0000135F 64FE0425[6B000000]  <1>     inc byte fs:[numPhysVol]    ;One more physical volume present!
+  1470 00001367 886D01              <1>     mov byte [rbp + dpb.bUnitNumber], ch    ;Set unit number
+  1471 0000136A 48897D1B            <1>     mov qword [rbp + dpb.qDriverHeaderPtr], rdi ;Store ptr to driver
+  1472 0000136E FEC5                <1>     inc ch  ;Goto next unit number
+  1473 00001370 38E9                <1>     cmp cl, ch  ;When equal, exit!
+  1474 00001372 7414                <1>     jz short .exit
+  1475 00001374 488D4535            <1>     lea rax, qword [rbp + dpb_size]
+  1476 00001378 48894525            <1>     mov qword [rbp + dpb.qNextDPBPtr], rax
+  1477 0000137C 4889C5              <1>     mov rbp, rax    ;Advance rbp by that amount
+  1478 0000137F 4881C608000000      <1>     add rsi, 8 ;Go to the next BPB in the BPB array
+  1479 00001386 EBC2                <1>     jmp short .buildNext
+  1480                              <1> .exit:
+  1481                              <1>     ;Now set next DPB as -1 i.e end of chain!
+  1482 00001388 31C0                <1>     xor eax, eax
+  1483 0000138A 48FFC8              <1>     dec rax
+  1484 0000138D 48894525            <1>     mov qword [rbp + dpb.qNextDPBPtr], rax
+  1485 00001391 4881C535000000      <1>     add rbp, dpb_size   ;Point rbp past the next DPB
+  1486 00001398 C3                  <1>     ret
+  1487                              <1> .findLastDPB:
+  1488                              <1> ;Finds the last DPB and links the next DPB to it
+  1489 00001399 64488B0425-         <1>     mov rax, qword fs:[dpbHeadPtr]
+  1489 0000139E [2F000000]          <1>
+  1490 000013A2 4885C0              <1>     test rax, rax
+  1491 000013A5 7415                <1>     jz short .first 
+  1492                              <1> .lp:
+  1493 000013A7 48817825FFFFFFFF    <1>     cmp qword [rax + dpb.qNextDPBPtr], -1   ;End of chain?
+  1494 000013AF 7406                <1>     je short .lastFound
+  1495 000013B1 488B4025            <1>     mov rax, qword [rax + dpb.qNextDPBPtr]  ;Get this pointer in rax
+  1496 000013B5 EBF0                <1>     jmp short .lp   ;And go again
+  1497                              <1> .lastFound:
+  1498 000013B7 48896825            <1>     mov qword [rax + dpb.qNextDPBPtr], rbp  ;The next dpb will go here
+  1499 000013BB C3                  <1>     ret
+  1500                              <1> .first:
+  1501                              <1> ;If this is the first DPB array, set the dpbHeadPtr
+  1502 000013BC 6448892C25-         <1>     mov qword fs:[dpbHeadPtr], rbp
+  1502 000013C1 [2F000000]          <1>
+  1503 000013C5 C3                  <1>     ret
+  1504                              <1> 
+  1505                              <1> ejectKernelInit:
+  1506                              <1> ;Reallocates the space allocated to the driver file after 
+  1507                              <1> ; init was called.
+  1508                              <1> ;Input: rbx -> Pointer to the original end of the allocation (para aligned)
+  1509                              <1> ;       r8 -> Points to the mcb for reallocation
+  1510                              <1> ;Uses the sysinit init drive block. 
+  1511                              <1> ;rax, rbx, rflags trashed
+  1512                              <1> ;If returns CF=CY, error in reallocation.
+  1513 000013C6 53                  <1>     push rbx
+  1514 000013C7 488D1D75010000      <1>     lea rbx, initDrvBlk
+  1515 000013CE 488B430E            <1>     mov rax, qword [rbx + initReqPkt.endptr]
+  1516 000013D2 5B                  <1>     pop rbx
+  1517                              <1>     ;If this endptr is zero or -1 ignore it. 
+  1518                              <1>     ;If this endptr is greater than the end of alloc, ignore it.
+  1519 000013D3 4885C0              <1>     test rax, rax
+  1520                              <1>     retz
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3571,8 +3572,8 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1520 000013D9 48FFC0              <1>     inc rax ;Carry over to 0 if this is -1
-  1521                              <1>     retz
+  1521 000013D9 48FFC0              <1>     inc rax ;Carry over to 0 if this is -1
+  1522                              <1>     retz
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3593,82 +3594,82 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1522 000013DE 48FFC8              <1>     dec rax ;Return to original value
-  1523 000013E1 48050F000000        <1>     add rax, 0Fh    ;Paragraph align the endptr
-  1524 000013E7 48C1E804            <1>     shr rax, 4
-  1525 000013EB 48C1E004            <1>     shl rax, 4
-  1526 000013EF 4829C3              <1>     sub rbx, rax    ;If this is above zero then rbx > rax, which is valid
-  1527 000013F2 7621                <1>     jbe short .exit   ;If equal or below zero, dont reallocate
-  1528 000013F4 418B80[09000000]    <1>     mov eax, dword [r8 + anchorMcb + mcb.blockSize]    ;Get alloc size
-  1529 000013FB 4150                <1>     push r8 ;Save the pointer to the mcb before using syscall
-  1530 000013FD 4981C010000000      <1>     add r8, mcb.program ;Goto program
-  1531 00001404 C1EB04              <1>     shr ebx, 4  ;Now convert the difference into number of paragraphs
-  1532 00001407 29D8                <1>     sub eax, ebx
-  1533 00001409 89C3                <1>     mov ebx, eax
-  1534 0000140B B8004A0000          <1>     mov eax, 4A00h  ;Reallocate space
-  1535 00001410 CD41                <1>     int 41h
-  1536 00001412 4158                <1>     pop r8
-  1537                              <1>     return
+  1523 000013DE 48FFC8              <1>     dec rax ;Return to original value
+  1524 000013E1 48050F000000        <1>     add rax, 0Fh    ;Paragraph align the endptr
+  1525 000013E7 48C1E804            <1>     shr rax, 4
+  1526 000013EB 48C1E004            <1>     shl rax, 4
+  1527 000013EF 4829C3              <1>     sub rbx, rax    ;If this is above zero then rbx > rax, which is valid
+  1528 000013F2 7621                <1>     jbe short .exit   ;If equal or below zero, dont reallocate
+  1529 000013F4 418B80[09000000]    <1>     mov eax, dword [r8 + anchorMcb + mcb.blockSize]    ;Get alloc size
+  1530 000013FB 4150                <1>     push r8 ;Save the pointer to the mcb before using syscall
+  1531 000013FD 4981C010000000      <1>     add r8, mcb.program ;Goto program
+  1532 00001404 C1EB04              <1>     shr ebx, 4  ;Now convert the difference into number of paragraphs
+  1533 00001407 29D8                <1>     sub eax, ebx
+  1534 00001409 89C3                <1>     mov ebx, eax
+  1535 0000140B B8004A0000          <1>     mov eax, 4A00h  ;Reallocate space
+  1536 00001410 CD41                <1>     int 41h
+  1537 00001412 4158                <1>     pop r8
+  1538                              <1>     return
     13                              <2> %%_ret:
     14 00001414 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1538                              <1> .exit:
-  1539 00001415 F8                  <1>     clc ;Make sure to clear the CF flag before returning
-  1540                              <1>     return
+  1539                              <1> .exit:
+  1540 00001415 F8                  <1>     clc ;Make sure to clear the CF flag before returning
+  1541                              <1>     return
     13                              <2> %%_ret:
     14 00001416 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1541                              <1> 
-  1542                              <1> initDriver:
-  1543                              <1> ;Initialises one driver and adjusts the DOS data appropriately
-  1544                              <1> ;If on return CF=CY then the driver didnt want to be loaded
-  1545                              <1> ;Preserves rbx (initReqPkt), rbp (DOSSEG ptr), rsi (driver pointer)
-  1546                              <1> ;initReqPkt.optptr must be set before calling this function if cmdline
-  1547                              <1> ; arguments are to be passed to the driver
-  1548                              <1> ;Input: rsi -> driver pointer
-  1549                              <1> ;       rbx -> sysinit request pointer
-  1550                              <1> ;       rbp -> DOSSEG pointer
-  1551 00001417 C6031F              <1>     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
-  1552 0000141A C6430200            <1>     mov byte [rbx + initReqPkt.cmdcde], drvINIT
-  1553 0000141E 66C743030000        <1>     mov word [rbx + initReqPkt.status], 0
-  1554 00001424 8A85[6B000000]      <1>     mov al, byte [rbp + numPhysVol]    ;Get current num of physical volumes
-  1555 0000142A 88431E              <1>     mov byte [rbx + initReqPkt.drvnum], al
-  1556                              <1>     ;Protect the important registers. All others trashable
-  1557 0000142D 53                  <1>     push rbx
-  1558 0000142E 56                  <1>     push rsi
-  1559 0000142F 55                  <1>     push rbp
-  1560 00001430 FF560A              <1>     call qword [rsi + drvHdr.strPtr]
-  1561 00001433 FF5612              <1>     call qword [rsi + drvHdr.intPtr]
-  1562 00001436 5D                  <1>     pop rbp
-  1563 00001437 5E                  <1>     pop rsi
-  1564 00001438 5B                  <1>     pop rbx
-  1565                              <1>     ;Check if a driver wants to not load.
-  1566                              <1>     ;If a kernel driver wants to stop, halt boot.
-  1567 00001439 66F743030080        <1>     test word [rbx + initReqPkt.status], drvErrStatus
-  1568 0000143F 750C                <1>     jnz short .errExit
-  1569 00001441 807B0D00            <1>     cmp byte [rbx + initReqPkt.numunt], 0
-  1570 00001445 7508                <1>     jne short .notHalt
-  1571 00001447 4839730E            <1>     cmp qword [rbx + initReqPkt.endptr], rsi    ;If endptr -> header, abort
-  1572 0000144B 7502                <1>     jne short .notHalt
-  1573                              <1> .errExit:
-  1574 0000144D F9                  <1>     stc
-  1575 0000144E C3                  <1>     ret
-  1576                              <1> .notHalt:
-  1577                              <1>     ;Now check if the drivers were con/clock before exiting
-  1578 0000144F 668B4608            <1>     mov ax, word [rsi + drvHdr.attrib]
-  1579 00001453 66250300            <1>     and ax, devDrvConIn | devDrvConOut
-  1580 00001457 740D                <1>     jz short .checkClock    ;If neither one of these bits are set, jmp
-  1581 00001459 663D0300            <1>     cmp ax, devDrvConIn | devDrvConOut
-  1582 0000145D 7507                <1>     jne short .checkClock
-  1583 0000145F 4889B5[47000000]    <1>     mov qword [rbp + vConPtr], rsi  ;Store the header ptr here
-  1584                              <1> .checkClock:
-  1585 00001466 66F746080800        <1>     test word [rsi + drvHdr.attrib], devDrvClockDev
-  1586 0000146C 7407                <1>     jz short .notClock
-  1587 0000146E 4889B5[3F000000]    <1>     mov qword [rbp + clockPtr], rsi
-  1588                              <1> .notClock:
-  1589                              <1> ;Now test if MSD driver. If so, store the number of units in the name field
-  1590 00001475 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
-  1591                              <1>     retnz   ;Return if this is a char device
+  1542                              <1> 
+  1543                              <1> initDriver:
+  1544                              <1> ;Initialises one driver and adjusts the DOS data appropriately
+  1545                              <1> ;If on return CF=CY then the driver didnt want to be loaded
+  1546                              <1> ;Preserves rbx (initReqPkt), rbp (DOSSEG ptr), rsi (driver pointer)
+  1547                              <1> ;initReqPkt.optptr must be set before calling this function if cmdline
+  1548                              <1> ; arguments are to be passed to the driver
+  1549                              <1> ;Input: rsi -> driver pointer
+  1550                              <1> ;       rbx -> sysinit request pointer
+  1551                              <1> ;       rbp -> DOSSEG pointer
+  1552 00001417 C6031F              <1>     mov byte [rbx + initReqPkt.hdrlen], initReqPkt_size
+  1553 0000141A C6430200            <1>     mov byte [rbx + initReqPkt.cmdcde], drvINIT
+  1554 0000141E 66C743030000        <1>     mov word [rbx + initReqPkt.status], 0
+  1555 00001424 8A85[6B000000]      <1>     mov al, byte [rbp + numPhysVol]    ;Get current num of physical volumes
+  1556 0000142A 88431E              <1>     mov byte [rbx + initReqPkt.drvnum], al
+  1557                              <1>     ;Protect the important registers. All others trashable
+  1558 0000142D 53                  <1>     push rbx
+  1559 0000142E 56                  <1>     push rsi
+  1560 0000142F 55                  <1>     push rbp
+  1561 00001430 FF560A              <1>     call qword [rsi + drvHdr.strPtr]
+  1562 00001433 FF5612              <1>     call qword [rsi + drvHdr.intPtr]
+  1563 00001436 5D                  <1>     pop rbp
+  1564 00001437 5E                  <1>     pop rsi
+  1565 00001438 5B                  <1>     pop rbx
+  1566                              <1>     ;Check if a driver wants to not load.
+  1567                              <1>     ;If a kernel driver wants to stop, halt boot.
+  1568 00001439 66F743030080        <1>     test word [rbx + initReqPkt.status], drvErrStatus
+  1569 0000143F 750C                <1>     jnz short .errExit
+  1570 00001441 807B0D00            <1>     cmp byte [rbx + initReqPkt.numunt], 0
+  1571 00001445 7508                <1>     jne short .notHalt
+  1572 00001447 4839730E            <1>     cmp qword [rbx + initReqPkt.endptr], rsi    ;If endptr -> header, abort
+  1573 0000144B 7502                <1>     jne short .notHalt
+  1574                              <1> .errExit:
+  1575 0000144D F9                  <1>     stc
+  1576 0000144E C3                  <1>     ret
+  1577                              <1> .notHalt:
+  1578                              <1>     ;Now check if the drivers were con/clock before exiting
+  1579 0000144F 668B4608            <1>     mov ax, word [rsi + drvHdr.attrib]
+  1580 00001453 66250300            <1>     and ax, devDrvConIn | devDrvConOut
+  1581 00001457 740D                <1>     jz short .checkClock    ;If neither one of these bits are set, jmp
+  1582 00001459 663D0300            <1>     cmp ax, devDrvConIn | devDrvConOut
+  1583 0000145D 7507                <1>     jne short .checkClock
+  1584 0000145F 4889B5[47000000]    <1>     mov qword [rbp + vConPtr], rsi  ;Store the header ptr here
+  1585                              <1> .checkClock:
+  1586 00001466 66F746080800        <1>     test word [rsi + drvHdr.attrib], devDrvClockDev
+  1587 0000146C 7407                <1>     jz short .notClock
+  1588 0000146E 4889B5[3F000000]    <1>     mov qword [rbp + clockPtr], rsi
+  1589                              <1> .notClock:
+  1590                              <1> ;Now test if MSD driver. If so, store the number of units in the name field
+  1591 00001475 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
+  1592                              <1>     retnz   ;Return if this is a char device
     45                              <2> cret nz
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3689,153 +3690,153 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-  1592                              <1>     ;Else, store the number of units as reported live by driver
-  1593 0000147D 0FB6430D            <1>     movzx eax, byte [rbx + initReqPkt.numunt] ;Get # units reported by driver
-  1594 00001481 88461A              <1>     mov byte [rsi + drvHdr.drvUnt], al ;Store this byte permanently here
-  1595 00001484 C3                  <1>     ret
-  1596                              <1> 
-  1597                              <1> buildDPBs:
-  1598                              <1>     ;Here we specially handle MSD drivers, building DPBs
-  1599                              <1>     ;If return with CF=CY, fail. Else, all done and setup
-  1600                              <1>     ;Input: rbx -> Points to sysinit request packet
-  1601                              <1>     ;       rsi -> Driver header
-  1602                              <1>     ;       rbp -> DOSSEG pointer
-  1603                              <1>     ;Preserves those registers
-  1604 00001485 53                  <1>     push rbx
-  1605 00001486 55                  <1>     push rbp
-  1606 00001487 56                  <1>     push rsi
-  1607 00001488 57                  <1>     push rdi
-  1608 00001489 4889F7              <1>     mov rdi, rsi    ;SAVE THE DRIVER HEADER!
-  1609 0000148C 0FB64E1A            <1>     movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
-  1610 00001490 488B7316            <1>     mov rsi, qword [rbx + initReqPkt.optptr]
-  1611 00001494 B835000000          <1>     mov eax, dpb_size
-  1612 00001499 F7E1                <1>     mul ecx         ;Get the number of bytes for all the dpb's into eax
-  1613 0000149B 050F000000          <1>     add eax, 0Fh    ;Round up if not precisely on para boundry
-  1614 000014A0 C1E804              <1>     shr eax, 4      ;Convert to paragraphs
-  1615 000014A3 89C3                <1>     mov ebx, eax
-  1616 000014A5 B800480000          <1>     mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
-  1617 000014AA CD41                <1>     int 41h
-  1618 000014AC 721D                <1>     jc short .badExit
-  1619 000014AE 4889C5              <1>     mov rbp, rax    
-  1620 000014B1 48C7400D50000000    <1>     mov qword [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
-  1621 000014B9 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
-  1622                              <1>     ;rsi -> Ptr to BPB
-  1623                              <1> 	;rbp -> Ptr to buffer to hold first DPB
-  1624                              <1>     ;rdi -> Ptr to the driver header
-  1625 000014C1 E87CFEFFFF          <1>     call convertBPBArray    ;Returns rbp -> past last DPB
-  1626                              <1> .exit:
-  1627 000014C6 5F                  <1>     pop rdi
-  1628 000014C7 5E                  <1>     pop rsi
-  1629 000014C8 5D                  <1>     pop rbp
-  1630 000014C9 5B                  <1>     pop rbx
-  1631                              <1>     return
+  1593                              <1>     ;Else, store the number of units as reported live by driver
+  1594 0000147D 0FB6430D            <1>     movzx eax, byte [rbx + initReqPkt.numunt] ;Get # units reported by driver
+  1595 00001481 88461A              <1>     mov byte [rsi + drvHdr.drvUnt], al ;Store this byte permanently here
+  1596 00001484 C3                  <1>     ret
+  1597                              <1> 
+  1598                              <1> buildDPBs:
+  1599                              <1>     ;Here we specially handle MSD drivers, building DPBs
+  1600                              <1>     ;If return with CF=CY, fail. Else, all done and setup
+  1601                              <1>     ;Input: rbx -> Points to sysinit request packet
+  1602                              <1>     ;       rsi -> Driver header
+  1603                              <1>     ;       rbp -> DOSSEG pointer
+  1604                              <1>     ;Preserves those registers
+  1605 00001485 53                  <1>     push rbx
+  1606 00001486 55                  <1>     push rbp
+  1607 00001487 56                  <1>     push rsi
+  1608 00001488 57                  <1>     push rdi
+  1609 00001489 4889F7              <1>     mov rdi, rsi    ;SAVE THE DRIVER HEADER!
+  1610 0000148C 0FB64E1A            <1>     movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
+  1611 00001490 488B7316            <1>     mov rsi, qword [rbx + initReqPkt.optptr]
+  1612 00001494 B835000000          <1>     mov eax, dpb_size
+  1613 00001499 F7E1                <1>     mul ecx         ;Get the number of bytes for all the dpb's into eax
+  1614 0000149B 050F000000          <1>     add eax, 0Fh    ;Round up if not precisely on para boundry
+  1615 000014A0 C1E804              <1>     shr eax, 4      ;Convert to paragraphs
+  1616 000014A3 89C3                <1>     mov ebx, eax
+  1617 000014A5 B800480000          <1>     mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
+  1618 000014AA CD41                <1>     int 41h
+  1619 000014AC 721D                <1>     jc short .badExit
+  1620 000014AE 4889C5              <1>     mov rbp, rax    
+  1621 000014B1 48C7400D50000000    <1>     mov qword [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
+  1622 000014B9 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
+  1623                              <1>     ;rsi -> Ptr to BPB
+  1624                              <1> 	;rbp -> Ptr to buffer to hold first DPB
+  1625                              <1>     ;rdi -> Ptr to the driver header
+  1626 000014C1 E87CFEFFFF          <1>     call convertBPBArray    ;Returns rbp -> past last DPB
+  1627                              <1> .exit:
+  1628 000014C6 5F                  <1>     pop rdi
+  1629 000014C7 5E                  <1>     pop rsi
+  1630 000014C8 5D                  <1>     pop rbp
+  1631 000014C9 5B                  <1>     pop rbx
+  1632                              <1>     return
     13                              <2> %%_ret:
     14 000014CA C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1632                              <1> .badExit:
-  1633 000014CB F9                  <1>     stc
-  1634 000014CC EBF8                <1>     jmp short .exit
-  1635                              <1> 
-  1636                              <1> setupInterruptBlock:
-  1637                              <1> ;Sets up a block of interrupts with pointers provided in a table
-  1638                              <1> ;Input:
-  1639                              <1> ; al = Start interrupt
-  1640                              <1> ; rdi -> Start of pointer table
-  1641                              <1> ; cl = Last interrupt + 1
-  1642                              <1> ;Assumes rbp points to DOSSEG
-  1643 000014CE 0FB6C0              <1>     movzx eax, al
-  1644 000014D1 0FB6C9              <1>     movzx ecx, cl
-  1645                              <1> .lp:
-  1646 000014D4 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
-  1647 000014D7 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
-  1648 000014DA E80E000000          <1>     call writeIDTEntry
-  1649 000014DF 4881C708000000      <1>     add rdi, 8  ;Goto next interrupt handler
-  1650 000014E6 FFC0                <1>     inc eax     ;Goto next interrupt number
-  1651 000014E8 39C8                <1>     cmp eax, ecx
-  1652 000014EA 75E8                <1>     jne .lp
-  1653                              <1>     return
+  1633                              <1> .badExit:
+  1634 000014CB F9                  <1>     stc
+  1635 000014CC EBF8                <1>     jmp short .exit
+  1636                              <1> 
+  1637                              <1> setupInterruptBlock:
+  1638                              <1> ;Sets up a block of interrupts with pointers provided in a table
+  1639                              <1> ;Input:
+  1640                              <1> ; al = Start interrupt
+  1641                              <1> ; rdi -> Start of pointer table
+  1642                              <1> ; cl = Last interrupt + 1
+  1643                              <1> ;Assumes rbp points to DOSSEG
+  1644 000014CE 0FB6C0              <1>     movzx eax, al
+  1645 000014D1 0FB6C9              <1>     movzx ecx, cl
+  1646                              <1> .lp:
+  1647 000014D4 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
+  1648 000014D7 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
+  1649 000014DA E80E000000          <1>     call writeIDTEntry
+  1650 000014DF 4881C708000000      <1>     add rdi, 8  ;Goto next interrupt handler
+  1651 000014E6 FFC0                <1>     inc eax     ;Goto next interrupt number
+  1652 000014E8 39C8                <1>     cmp eax, ecx
+  1653 000014EA 75E8                <1>     jne .lp
+  1654                              <1>     return
     13                              <2> %%_ret:
     14 000014EC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1654                              <1> 
-  1655                              <1> writeIDTEntry:
-  1656                              <1> ;Writes the interrupt in the right place in the table
-  1657                              <1>     ;al = Interrupt number
-  1658                              <1>     ;rbx -> Handler to install
-  1659 000014ED 50                  <1>     push rax
-  1660 000014EE 53                  <1>     push rbx
-  1661 000014EF 0FB6C0              <1>     movzx eax, al
-  1662 000014F2 4893                <1>     xchg rbx, rax
-  1663 000014F4 48C1E304            <1>     shl rbx, 4h     ;Multiply IDT entry number by 16
-  1664 000014F8 48031D17000000      <1>     add rbx, qword [localIDTpointer.Base]    ;rsx points to IDT entry
-  1665 000014FF 668903              <1>     mov word [rbx], ax  ;Get low word into offset 15...0
-  1666 00001502 48C1E810            <1>     shr rax, 10h    ;Bring next word low
-  1667 00001506 66894306            <1>     mov word [rbx + 6], ax  ;Get low word into offset 31...16
-  1668 0000150A 48C1E810            <1>     shr rax, 10h    ;Bring last dword low
-  1669 0000150E 894308              <1>     mov dword [rbx + 8], eax
-  1670 00001511 5B                  <1>     pop rbx
-  1671 00001512 58                  <1>     pop rax
-  1672 00001513 C3                  <1>     ret
-  1673                              <1> 
-  1674                              <1> ; DATA AREA
-  1675                              <1> localIDTpointer: ;Local IDT pointer
-  1676 00001514 0000                <1>     .Limit  dw 0
-  1677 00001516 0000000000000000    <1>     .Base   dq 0
-  1678                              <1> 
-  1679 0000151E 0000000000000000    <1> FINALDOSPTR dq 0    ;Pointer to where dSeg should be loaded
-  1680 00001526 0000000000000000    <1> DOSENDPTR   dq 0    ;Pointer to the first free byte AFTER DOS
-  1681 0000152E 0000000000000000    <1> MCBANCHOR   dq 0    ;Pointer to the Anchor MCB
-  1682                              <1> 
-  1683                              <1> ;DOS Data given by OEM
-  1684 00001536 00                  <1> FILES       db 0    ;Default number of FILES
-  1685 00001537 00                  <1> BUFFERS     db 0    ;Default number of BUFFERS
-  1686 00001538 00                  <1> DFLTDRIVE   db 0    ;Default drive number (0-25), this is the boot drive
-  1687 00001539 00                  <1> LASTDRIVE   db 0    ;Default last drive number (0-25)
-  1688 0000153A 00                  <1> OEMBIOS     db 0    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
-  1689                              <1> OEMMEMPTR:  ;Used to save the allocated 64k block for OEMCALLBK
-  1690 0000153B 0000000000000000    <1> OEMDRVCHAIN dq 0    ;Pointer to the uninitialised device drivers
-  1691                              <1> 
-  1692 00001543 000000000000000000- <1> initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
-  1692 0000154C 000000000000000000- <1>
-  1692 00001555 000000000000000000- <1>
-  1692 0000155E 00000000            <1>
-  1693                              <1> tempPSP: ;Points to a 256 byte space that is set up appropriately
-  1694                              <1>     istruc psp
-  1695 00001562 CD40                <1>     at psp.return,      db 0CDh, 40h
-  1696 00001564 0000000000000000    <1>     at psp.allocSize,   dd 0, 0 ;Second 0 is for the reserved dword
-  1697 0000156C 0000000000000000    <1>     at psp.oldInt42h,   dq 0
-  1698 00001574 0000000000000000    <1>     at psp.oldInt43h,   dq 0
-  1699 0000157C 0000000000000000    <1>     at psp.oldInt44h,   dq 0
-  1700 00001584 0000000000000000    <1>     at psp.parentPtr,   dq 0
-  1701 0000158C FFFFFFFFFFFFFFFFFF- <1>     at psp.jobFileTbl,  db 20 dup (0FFh)
-  1701 00001595 FFFFFFFFFFFFFFFFFF- <1>
-  1701 0000159E FFFF                <1>
-  1702 000015A0 0000000000000000    <1>     at psp.envPtr,      dq 0
-  1703 000015A8 0000000000000000    <1>     at psp.rspPtr,      dq 0
-  1704 000015B0 1400                <1>     at psp.jftSize,     dw 20 
-  1705 000015B2 CD41CB              <1>     at psp.unixEntry,   db 0CDh, 41h, 0CBh
-  1706 000015B5 0000000000000000    <1>     at psp.prevPSP,     dq 0
-  1707 000015BD 000000000000000000- <1>     at psp.fcb1,        db 16 dup (0)
-  1707 000015C6 0000000000000000    <1>
-  1708 000015CE 000000000000000000- <1>     at psp.fcb2,        db 20 dup (0)
-  1708 000015D7 000000000000000000- <1>
-  1708 000015E0 0000                <1>
-  1709 000015E2 000D00000000000000- <1>     at psp.dta,         db 0, CR, 126 dup (0)   ;Dummy empty command line
-  1709 000015EB 000000000000000000- <1>
-  1709 000015F4 000000000000000000- <1>
-  1709 000015FD 000000000000000000- <1>
-  1709 00001606 000000000000000000- <1>
-  1709 0000160F 000000000000000000- <1>
-  1709 00001618 000000000000000000- <1>
-  1709 00001621 000000000000000000- <1>
-  1709 0000162A 000000000000000000- <1>
-  1709 00001633 000000000000000000- <1>
-  1709 0000163C 000000000000000000- <1>
-  1709 00001645 000000000000000000- <1>
-  1709 0000164E 000000000000000000- <1>
-  1709 00001657 000000000000000000- <1>
-  1709 00001660 0000                <1>
-  1710                              <1>     iend
+  1655                              <1> 
+  1656                              <1> writeIDTEntry:
+  1657                              <1> ;Writes the interrupt in the right place in the table
+  1658                              <1>     ;al = Interrupt number
+  1659                              <1>     ;rbx -> Handler to install
+  1660 000014ED 50                  <1>     push rax
+  1661 000014EE 53                  <1>     push rbx
+  1662 000014EF 0FB6C0              <1>     movzx eax, al
+  1663 000014F2 4893                <1>     xchg rbx, rax
+  1664 000014F4 48C1E304            <1>     shl rbx, 4h     ;Multiply IDT entry number by 16
+  1665 000014F8 48031D17000000      <1>     add rbx, qword [localIDTpointer.Base]    ;rsx points to IDT entry
+  1666 000014FF 668903              <1>     mov word [rbx], ax  ;Get low word into offset 15...0
+  1667 00001502 48C1E810            <1>     shr rax, 10h    ;Bring next word low
+  1668 00001506 66894306            <1>     mov word [rbx + 6], ax  ;Get low word into offset 31...16
+  1669 0000150A 48C1E810            <1>     shr rax, 10h    ;Bring last dword low
+  1670 0000150E 894308              <1>     mov dword [rbx + 8], eax
+  1671 00001511 5B                  <1>     pop rbx
+  1672 00001512 58                  <1>     pop rax
+  1673 00001513 C3                  <1>     ret
+  1674                              <1> 
+  1675                              <1> ; DATA AREA
+  1676                              <1> localIDTpointer: ;Local IDT pointer
+  1677 00001514 0000                <1>     .Limit  dw 0
+  1678 00001516 0000000000000000    <1>     .Base   dq 0
+  1679                              <1> 
+  1680 0000151E 0000000000000000    <1> FINALDOSPTR dq 0    ;Pointer to where dSeg should be loaded
+  1681 00001526 0000000000000000    <1> DOSENDPTR   dq 0    ;Pointer to the first free byte AFTER DOS
+  1682 0000152E 0000000000000000    <1> MCBANCHOR   dq 0    ;Pointer to the Anchor MCB
+  1683                              <1> 
+  1684                              <1> ;DOS Data given by OEM
+  1685 00001536 00                  <1> FILES       db 0    ;Default number of FILES
+  1686 00001537 00                  <1> BUFFERS     db 0    ;Default number of BUFFERS
+  1687 00001538 00                  <1> DFLTDRIVE   db 0    ;Default drive number (0-25), this is the boot drive
+  1688 00001539 00                  <1> LASTDRIVE   db 0    ;Default last drive number (0-25)
+  1689 0000153A 00                  <1> OEMBIOS     db 0    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
+  1690                              <1> OEMMEMPTR:  ;Used to save the allocated 64k block for OEMCALLBK
+  1691 0000153B 0000000000000000    <1> OEMDRVCHAIN dq 0    ;Pointer to the uninitialised device drivers
+  1692                              <1> 
+  1693 00001543 000000000000000000- <1> initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
+  1693 0000154C 000000000000000000- <1>
+  1693 00001555 000000000000000000- <1>
+  1693 0000155E 00000000            <1>
+  1694                              <1> tempPSP: ;Points to a 256 byte space that is set up appropriately
+  1695                              <1>     istruc psp
+  1696 00001562 CD40                <1>     at psp.return,      db 0CDh, 40h
+  1697 00001564 0000000000000000    <1>     at psp.allocSize,   dd 0, 0 ;Second 0 is for the reserved dword
+  1698 0000156C 0000000000000000    <1>     at psp.oldInt42h,   dq 0
+  1699 00001574 0000000000000000    <1>     at psp.oldInt43h,   dq 0
+  1700 0000157C 0000000000000000    <1>     at psp.oldInt44h,   dq 0
+  1701 00001584 0000000000000000    <1>     at psp.parentPtr,   dq 0
+  1702 0000158C FFFFFFFFFFFFFFFFFF- <1>     at psp.jobFileTbl,  db 20 dup (0FFh)
+  1702 00001595 FFFFFFFFFFFFFFFFFF- <1>
+  1702 0000159E FFFF                <1>
+  1703 000015A0 0000000000000000    <1>     at psp.envPtr,      dq 0
+  1704 000015A8 0000000000000000    <1>     at psp.rspPtr,      dq 0
+  1705 000015B0 1400                <1>     at psp.jftSize,     dw 20 
+  1706 000015B2 CD41CB              <1>     at psp.unixEntry,   db 0CDh, 41h, 0CBh
+  1707 000015B5 0000000000000000    <1>     at psp.prevPSP,     dq 0
+  1708 000015BD 000000000000000000- <1>     at psp.fcb1,        db 16 dup (0)
+  1708 000015C6 0000000000000000    <1>
+  1709 000015CE 000000000000000000- <1>     at psp.fcb2,        db 20 dup (0)
+  1709 000015D7 000000000000000000- <1>
+  1709 000015E0 0000                <1>
+  1710 000015E2 000D00000000000000- <1>     at psp.dta,         db 0, CR, 126 dup (0)   ;Dummy empty command line
+  1710 000015EB 000000000000000000- <1>
+  1710 000015F4 000000000000000000- <1>
+  1710 000015FD 000000000000000000- <1>
+  1710 00001606 000000000000000000- <1>
+  1710 0000160F 000000000000000000- <1>
+  1710 00001618 000000000000000000- <1>
+  1710 00001621 000000000000000000- <1>
+  1710 0000162A 000000000000000000- <1>
+  1710 00001633 000000000000000000- <1>
+  1710 0000163C 000000000000000000- <1>
+  1710 00001645 000000000000000000- <1>
+  1710 0000164E 000000000000000000- <1>
+  1710 00001657 000000000000000000- <1>
+  1710 00001660 0000                <1>
+  1711                              <1>     iend
     17                                  %include "./Source/Sysinit/oeminit.asm"
      1                              <1> %use masm
      2                              <1> 
