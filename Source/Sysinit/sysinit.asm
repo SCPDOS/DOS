@@ -548,7 +548,6 @@ configParse:
     ;Else, rdi points to the table entry from the head of the table
     ;      rcx has the length of the name field
     ;rdx points to the terminating char of the line 
-    breakpoint
     lea rsi, .keyTbl
     mov rax, rsi    ;Keep a copy in rax
     movzx rsi, word [rdi + rcx + 1]
@@ -719,7 +718,6 @@ configParse:
 ;   Device Driver Loader here  :
 ;===============================
 .drvLoader:
-    breakpoint
 ;    mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
     mov rdi, qword [rbp - cfgFrame.linePtr]
     add rdi, 7  ;Go past DEVICE= to the pathname
@@ -830,16 +828,15 @@ configParse:
     jne .drvFreeMemAndHdl
     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
     jne .drvFreeMemAndHdl
-    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 56
+    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 60
     jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
-    ;Now read the first 56 bytes of the optional header here
-    mov rdx, rdi    ;Overwrite the 16-bit header
-    mov ecx, 56     ;Read only 56 bytes
+    ;Now read the first 60 bytes of the optional header here. rdx points to buffer
+    mov ecx, 60     ;Read only 60 bytes
     mov eax, 3F00h  ;READ
     int 41h
     jc .drvFreeMemAndHdl   ;If something goes wrong, skip
     cmp eax, 56
-    jb .drvFreeMemAndHdl   ;If fewer than 56 bytes read, skip
+    jb .drvFreeMemAndHdl   ;If fewer than 60 bytes read, skip
     ;Round up size requirement.
     ;If .EXE, round up to nearest section alignment
     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
@@ -863,7 +860,8 @@ configParse:
     int 41h         ;rax gets the pointer to load the program into
     jc .drvMemClose
     ;Now set the subsystem marker and the owner to DOS
-    mov qword [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
+    mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
+    mov qword [rax - mcb_size + mcb.owner], mcbOwnerNewDOS
     ;Build the overlay command block
     lea rbx, cmdBlock
     mov qword [rbx + loadOvly.pLoadLoc], rax
@@ -902,6 +900,7 @@ configParse:
 .driverPtrAdjustment:
     add qword [rsi + drvHdr.strPtr], rsi
     add qword [rsi + drvHdr.intPtr], rsi
+    cmp qword [rsi + drvHdr.nxtPtr], -1
     je short .driverPtrAdjustmentDone
     add qword [rsi + drvHdr.nxtPtr], rsi
     mov rsi, qword [rsi + drvHdr.nxtPtr]
@@ -911,35 +910,38 @@ configParse:
     ;Prepare for initialising the drivers in the arena
     ;EXPERIMENT: USING R9-R11 UNTIL THE END OF THE FUNCTION
     mov r9, rsi     ;Save a copy of the driver pointer in r9
-    mov r10, rbp    ;Save a copy of the cfg frame pointer
     mov r11, mcbOwnerNewDOS ;Set currentPSP for new dos object
     xchg r11, qword fs:[currentPSP] ;Save in r11 old owner
     lea rbx, initDrvBlk
     mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
     mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
+    mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
 .driverInit:
+    breakpoint
+    xchg r12, rbp
     call initDriver
-    jc short .driverBad
+    jc short .driverBadRbpAdjust
     call addDriverMarkers
+    xchg r12, rbp
     test word [rsi + drvHdr.attrib], devDrvChar
     jnz short .driverInitialised
     call buildDPBs          ;Preserves rbp, rsi and rbx
     jc short .driverBad
 .driverInitialised:
-    cmp rsi, -1     ;We at the end of the chain?
+    cmp qword [rsi + drvHdr.nxtPtr], -1     ;We at the end of the chain?
     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
     jne short .driverInit ;If not, goto next driver
 ;Now we eject the init routines for the driver
-;r8 points to the MCB already
+;r8 points to the MCB data area already
     xor ebx, ebx
-    mov ebx, dword [r8 + mcb.blockSize] ;Get the size of the arena in paragraphs
+    mov ebx, dword [r8 - mcb_size + mcb.blockSize] ;Get the size of the arena in paragraphs
     shl rbx, 4  ;Turn into number of bytes
-    lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
+    lea rbx, qword [r8 + rbx - mcb_size + mcb.program] ;Get pointer to the end of the arena
     call ejectKernelInit    ;Ignore any errors in ejection.
     ;Link into main driver chain, 
     ;r9 points to first driver in block
     ;rsi points to last driver in block
-    mov rdi, qword [r10 - cfgFrame.oldRBP]  ;Get DOSSEG ptr
+    mov rdi, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG ptr
     lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
     mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
     mov qword [rdi + drvHdr.nxtPtr], r9     ;Link new drivers in
@@ -948,9 +950,10 @@ configParse:
 ;Exit the init routine if it all works out, WOO!
 ;Return values to original registers/memory locations
     mov qword fs:[currentPSP], r11
-    mov rbp, r10    ;Return rbp to original cfg frame
+    clc
     return
-
+.driverBadRbpAdjust:
+    mov rbp, r12
 .driverBad:
     ;Form the string to print
     lea rdi, .driverBad2    ;Store the name here
@@ -1618,7 +1621,7 @@ buildDPBs:
     int 41h
     jc short .badExit
     mov rbp, rax    
-    mov qword [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
+    mov byte [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
     ;rsi -> Ptr to BPB
 	;rbp -> Ptr to buffer to hold first DPB

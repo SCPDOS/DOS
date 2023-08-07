@@ -100,12 +100,12 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rbp, rsp
     sub rsp, execFrame_size   ;Make the space pointing at rbp
     ;Clear up the pointers on the stack frame
-    xor eax, eax
-    mov qword [rbp - execFrame.pPSPBase], rax
-    mov qword [rbp - execFrame.pEnvBase], rax
-    mov qword [rbp - execFrame.pProgBase], rax
-    mov qword [rbp - execFrame.pPSPBase], rax
-    mov qword [rbp - execFrame.pProgEP], rax
+    xor ecx, ecx
+    mov qword [rbp - execFrame.pPSPBase], rcx
+    mov qword [rbp - execFrame.pEnvBase], rcx
+    mov qword [rbp - execFrame.pProgBase], rcx
+    mov qword [rbp - execFrame.pPSPBase], rcx
+    mov qword [rbp - execFrame.pProgEP], rcx
 
     mov ah, execOverlay
     test byte [dosMgrPresent], -1 ;If bits set, change max to execBkgrnd
@@ -412,6 +412,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ; refuse to load it IF it contains no BSS, Data or Code and skip to the 
     ; next section.
     mov rdx, qword [rbp - execFrame.pPSPBase]
+    test rdx, rdx   ;If this is 0 (as in the case of overlay)...
+    jz short .okToLoad  ;skip this as it is assumed there is enough space!
     sub rdx, mcb_size   ;Go back a unit of mcb
     xor ecx, ecx
     mov ecx, dword [rdx + mcb.blockSize]
@@ -421,8 +423,12 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp rdx, rdi    ;If rdx > rdi, we are ok
     ja short .okToLoad
     ;Now check if this is a useless section. If so, we don't load it at all
+
+    ;V-0000000000-EARMARK FOR REMOVAL-0000000000-V
     test dword [sectHdr + imageSectionHdr.dCharacteristics], imgScnCntBSS | imgScnCntCode | imgScnCntData
     jnz .badFmtErr  ;If any of these bits set, error out
+    ;^-0000000000-EARMARK FOR REMOVAL-0000000000-^
+
     ;Else, just skip this section, goto next section
     pop rcx
     jmp short .gotoNextSection
