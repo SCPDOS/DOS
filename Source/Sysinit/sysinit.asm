@@ -552,7 +552,6 @@ configParse:
     movzx rsi, word [rdi + rcx + 1]
     add rsi, rax    ;So add the EA of the head of the tbl before calling
     clc ;Ensure flags are happy before entering
-    breakpoint
     push rbp
     call rsi    ;Call this function
     pop rbp
