@@ -3,11 +3,18 @@
 ;-----------------------------------:
 ;  Memory related Kernel routines   :
 ;-----------------------------------:
+;NOTE: 
+;   If less than 6 paragraphs requested for alloc, allocate 6 paragraphs.
+;   If between 0 and 6 paras requested for realloc, realloc to 6.
+;       If 0 requested for realloc, free.
 allocateMemory:    ;ah = 48h
 ;Input: ebx = Number of paragraphs requested
 ;Output:    CF=NC: rax = Ptr to allocated memory block
 ;           CF=CY: ax = Error code, ebx = Largest block available
     call dosCrit1Enter
+    mov eax, 6
+    cmp ebx, eax
+    cmovb ebx, eax
     xor edx, edx
     ;Clear the pointers
     mov qword [firstMCB], rdx
@@ -104,42 +111,37 @@ allocateMemory:    ;ah = 48h
     add rsi, rcx    ;Go to the new MCB we are creating
     mov byte [rsi + mcb.marker], al ;Store marker
     mov dword [rsi + mcb.blockSize], ebx
-    mov rdx, qword [currentPSP] ;Owner is the calling application
-    mov qword [rsi + mcb.owner], rdx
-    mov rdx, qword [oldRSP]
-    add rsi, mcb.program    ;Point to program area
-    mov rax, rsi
-    mov qword [rdx + callerFrame.rax], rax  ;Save pointer in rax
-    and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
-    call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
-    call dosCrit1Exit
-    return
+    jmp short .bfPerfectFit
 .bfCommon:
     mov rsi, qword [firstMCB]
     cmp byte [allocStrat], 1    ;Check if best fit
     cmove rsi, qword [bestMCB]  ;Replace if alloc strat is best fit
     test rsi, rsi   ;Check if null pointer
     jz .allocFail
-    mov al, byte [rsi + mcb.marker]
-    mov byte [rsi + mcb.marker], mcbMarkCtn
+    ;Now check if we need to make a "spill over" free MCB
     xor ecx, ecx
-    mov ecx, [rsi + mcb.blockSize]  ;Get current whole block size
+    mov ecx, dword [rsi + mcb.blockSize]  ;Get current whole block size
     sub ecx, ebx    ;Take away the allocation
+    jz short .bfPerfectFit
+    ;Make the spill over MCB 
     sub ecx, (mcb.program >> 4) ;Make space for new MCB for new block
     mov dword [rsi + mcb.blockSize], ebx    ;Save new allocation in curr MCB
-    mov rdx, qword [currentPSP]
-    mov qword [rsi + mcb.owner], rdx    ;Set owner to calling application
+    mov al, byte [rsi + mcb.marker]
+    mov byte [rsi + mcb.marker], mcbMarkCtn
     mov rdi, rsi    ;Save pointer in rdi
-    add rsi, mcb.program
+    add rdi, mcb.program
     and ebx, -1 ;Zero upper dword
     shl rbx, 4
-    add rsi, rbx
-    mov byte [rsi + mcb.marker], al ;Store old marker in new block
-    mov qword [rsi + mcb.owner], mcbOwnerFree
-    mov dword [rsi + mcb.blockSize], ecx
+    add rdi, rbx
+    mov byte [rdi + mcb.marker], al ;Store old marker in new block
+    mov qword [rdi + mcb.owner], mcbOwnerFree
+    mov dword [rdi + mcb.blockSize], ecx
+.bfPerfectFit:
+    ;Now set the current PSP as the owner of this new MCB
+    mov rdx, qword [currentPSP]
+    mov qword [rsi + mcb.owner], rdx    ;Set owner to calling application
     mov rdx, qword [oldRSP]
-    add rdi, mcb.program    ;Point to program area
-    mov rax, rdi
+    lea rax, qword [rsi + mcb.program]  ;Point return ptr to program area
     mov qword [rdx + callerFrame.rax], rax  ;Save new block pointer in rax
     and byte [rdx + callerFrame.flags], 0FEh    ;Clear carry
     call verifyIntegrityOfMCBChain  ;Ensure MCB chain is still ok!
@@ -265,6 +267,9 @@ reallocMemory:     ;ah = 4Ah
     call dosCrit1Enter
     test ebx, ebx
     jz freeMemory   ;If resize to 0, equivalent to free!
+    mov eax, 6
+    cmp ebx, eax    ;Are we trying to resize to less than 6?
+    cmovb ebx, eax
     sub r8, mcb.program ;Return pointer to MCB for arena
     mov rsi, r8     ;Get segment pointer in rsi
     cmp byte [rsi + mcb.marker], mcbMarkCtn

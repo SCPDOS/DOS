@@ -553,6 +553,7 @@ configParse:
     movzx rsi, word [rdi + rcx + 1]
     add rsi, rax    ;So add the EA of the head of the tbl before calling
     clc ;Ensure flags are happy before entering
+    ;breakpoint
     push rbp
     call rsi    ;Call this function
     pop rbp
@@ -785,7 +786,6 @@ configParse:
     jmp .drvBadClose
 .headerReadOK:
 ;Use register r10 as the indicator for .COM or .EXE. Set if COM.
-    xor r10, r10    ;Clear r10 i.e. EXE format
     mov rdi, rdx    ;Save the pointer in rdi
     ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
     cmp word [rdi], dosMagicSignature
@@ -793,16 +793,13 @@ configParse:
     cmp word [rdi], dosMagicSignature2
     je short .exeDrivers
 ;.COM drivers come down here
-    dec r10 ;Set r10 to -1 i.e. COM format. Driver pointers need adjusting.
     ;Get File Image Allocation Size in ecx here.
     ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
     xor ecx, ecx
     xor edx, edx
     mov eax, 4202h  ;LSEEK from the end of the file
     int 41h
-    ;edx:eax now has the filesize. 
-    test edx, edx   ;edx must be 0
-    jnz .drvFreeMemAndHdl
+    ;eax now has the filesize. 
     mov ecx, eax
     and ecx, ~0Fh   ;Clear lower byte
     add ecx, 1h     ;... and round up!
@@ -917,7 +914,6 @@ configParse:
     mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
     mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
 .driverInit:
-    breakpoint
     xchg r12, rbp
     call initDriver
     jc short .driverBadRbpAdjust
@@ -936,7 +932,8 @@ configParse:
     xor ebx, ebx
     mov ebx, dword [r8 - mcb_size + mcb.blockSize] ;Get the size of the arena in paragraphs
     shl rbx, 4  ;Turn into number of bytes
-    lea rbx, qword [r8 + rbx - mcb_size + mcb.program] ;Get pointer to the end of the arena
+    sub r8, mcb_size    ;Point to the mcb header proper
+    lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
     call ejectKernelInit    ;Ignore any errors in ejection.
     ;Link into main driver chain, 
     ;r9 points to first driver in block
@@ -1201,7 +1198,11 @@ noCfg:
     mov ebx, eax        ;And move into ebx for the syscall
     add ebx, 0Fh        ;Round up to nearest paragraph...
     shr ebx, 4          ;And convert to paragraphs
+    ;TEMP TEMP TEMP TEMP
+    ;shl ebx, 1
+    ;TEMP TEMP TEMP TEMP
     mov eax, 4800h
+    breakpoint
     int 41h
     jc short .skipSFT   ;Skip adding files if this fails. Sorry end user!
     mov rsi, qword fs:[sftHeadPtr]
@@ -1509,7 +1510,7 @@ ejectKernelInit:
 ;Reallocates the space allocated to the driver file after 
 ; init was called.
 ;Input: rbx -> Pointer to the original end of the allocation (para aligned)
-;       r8 -> Points to the mcb for reallocation
+;       r8 -> Points to the mcb header for reallocation
 ;Uses the sysinit init drive block. 
 ;rax, rbx, rflags trashed
 ;If returns CF=CY, error in reallocation.
