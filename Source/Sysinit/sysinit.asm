@@ -553,7 +553,6 @@ configParse:
     movzx rsi, word [rdi + rcx + 1]
     add rsi, rax    ;So add the EA of the head of the tbl before calling
     clc ;Ensure flags are happy before entering
-    ;breakpoint
     push rbp
     call rsi    ;Call this function
     pop rbp
@@ -1198,11 +1197,7 @@ noCfg:
     mov ebx, eax        ;And move into ebx for the syscall
     add ebx, 0Fh        ;Round up to nearest paragraph...
     shr ebx, 4          ;And convert to paragraphs
-    ;TEMP TEMP TEMP TEMP
-    ;shl ebx, 1
-    ;TEMP TEMP TEMP TEMP
     mov eax, 4800h
-    breakpoint
     int 41h
     jc short .skipSFT   ;Skip adding files if this fails. Sorry end user!
     mov rsi, qword fs:[sftHeadPtr]
