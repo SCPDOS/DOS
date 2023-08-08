@@ -903,7 +903,7 @@ configParse:
     mov eax, 0900h
     int 41h
     return
-.drvMemMsg: db "Not enough memory for driver",CR,LF,"$" 
+.drvMemMsg: db CR,LF,"Not enough memory for driver",CR,LF,"$" 
 .loadOk:
     ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
     mov rsi, qword [rbx + loadOvly.pLoadLoc]
@@ -996,7 +996,7 @@ configParse:
     mov eax, 4900h  ;Attempt to deallocate the driver now
     int 41h
     jmp short .driverExit
-.driverBad1 db "Error initialising driver: "
+.driverBad1 db CR,LF,"Error initialising driver: "
 .driverBad2 db "        ",CR,LF,"$"
 ;------------------
 ;Bad exit cases
@@ -1017,7 +1017,7 @@ configParse:
     lea rdx, .drvMemMsg
     jmp short .drvBad2
 
-.drvBadMsg: db "Bad or missing filename",CR,LF,"$"
+.drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
 
 .sftHandler:
 ;This reads the line to set the number of FILE to between 1 and 254
