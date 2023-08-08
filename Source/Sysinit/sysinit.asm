@@ -598,9 +598,7 @@ configParse:
     cmp al, ";"
     return
 .stopProcessError:
-    lea rdx, .speLine
-    mov eax, 0900h
-    int 41h
+    call .badLineErrorMsg
     ;Reset all values to OEM defaults
     movzx eax, byte [BUFFERS]
     mov qword [rbp - cfgFrame.newBuffers], rax
@@ -611,6 +609,17 @@ configParse:
     movzx eax, byte [LASTDRIVE]
     mov qword [rbp - cfgFrame.newLastdrive], rax
     jmp .cfgExit
+    
+.badLineErrorMsg:
+;Prints an error message BUT DOES NOT TERMINATE PARSING
+    push rax
+    push rdx
+    lea rdx, .speLine
+    mov eax, 0900h
+    int 41h
+    pop rdx
+    pop rax
+    return
 .speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
 .keyTbl: 
     db 5, "BREAK"           ;DONE
@@ -665,7 +674,7 @@ configParse:
     cmp byte [rsi + 2], "F"
     je .breakCommon
 .breakBad:
-    stc
+    call .badLineErrorMsg
     return
 .breakOn:
     inc edx ;Go from OFF to ON  (keeps CF=NC)
@@ -721,7 +730,7 @@ configParse:
     add edx, eax
     return
 .bufHandlerErr:
-    stc
+    call .badLineErrorMsg
     return
 .bufHandlerTermCheck:
     cmp al, SPC
@@ -1086,7 +1095,7 @@ configParse:
     pop rcx
     return
 .sftHandlerErr:
-    stc
+    call .badLineErrorMsg
     return
 .sftHandlerTermCheck:
     cmp al, SPC
