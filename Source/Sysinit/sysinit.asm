@@ -490,9 +490,8 @@ configParse:
     mov ecx, 1  ;Read one byte
     int 41h
     jc .stopProcessError
-    test ecx, ecx	;If this is zero, EOF reached
-    jnz short .notEOF
-    mov qword [rbp - cfgFrame.lastLine], -1	;Note we are at EOF
+    test eax, eax	;If this is zero, EOF reached
+    jz .cfgExit
 .notEOF:
     movzx eax, byte [rdx]
     cmp al, CR
@@ -553,6 +552,7 @@ configParse:
     movzx rsi, word [rdi + rcx + 1]
     add rsi, rax    ;So add the EA of the head of the tbl before calling
     clc ;Ensure flags are happy before entering
+    breakpoint
     push rbp
     call rsi    ;Call this function
     pop rbp
@@ -634,10 +634,29 @@ configParse:
     db 8, "DRIVPARM"
     dw .drivParm - .keyTbl  ;Ignored for now
 	db -1	;End of table marker
+.cfgSkipLeadingSpaces:
+;Input: rsi -> Start of string to skip spaces of
+;Output: rsi -> First non-space char in string
+    push rax
+    push rcx
+    push rdi
+    mov rdi, rsi
+    mov eax, SPC
+    xor ecx, ecx
+    dec ecx
+    repe scasb  ;
+    mov rsi, rdi
+    pop rdi
+    pop rcx
+    pop rax
+    dec rsi
+    return
+
 .breakHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 6  ;Go past BREAK=
     ;This must be the word ON or OFF 
+    call .cfgSkipLeadingSpaces
     xor edx, edx    ;Clear CF and default to OFF
     cmp word [rsi], "ON"
     je .breakOn
@@ -659,6 +678,7 @@ configParse:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 8  ;Go past BUFFERS=
     ;This must be at most three digits, anything else is a failure
+    call .cfgSkipLeadingSpaces
     mov rdi, rsi    ;Save the start in rdi
     xor ecx, ecx
     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
@@ -995,6 +1015,7 @@ configParse:
 ;This reads the line to set the number of FILE to between 1 and 254
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 6  ;Go past FILES=
+    call .cfgSkipLeadingSpaces
     ;This must be at most three digits, anything else is a failure
     mov rdi, rsi    ;Save the start in rdi
     xor ecx, ecx
@@ -1081,6 +1102,7 @@ configParse:
 .lastdriveHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 10  ;Go past LASTDRIVE=
+    call .cfgSkipLeadingSpaces
     lodsb   ;Get this char
     movzx eax, al   ;Zero extend to eax
     push rax    ;Push on stack
