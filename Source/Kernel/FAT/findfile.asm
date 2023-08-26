@@ -409,7 +409,6 @@ setupFFBlock:
     mov byte [rbx + ffBlock.attrib], al 
     movzx eax, byte [workingDrv]  ;Get the 0 based working drive number
     mov byte [rbx + ffBlock.driveNum], al
-    ;xchg bx, bx
     lea rsi, fcbName
     lea rdi, qword [rbx + ffBlock.template]
     push rdi
