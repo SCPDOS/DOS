@@ -102,8 +102,9 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Clear up the pointers on the stack frame
     xor ecx, ecx
     mov qword [rbp - execFrame.pPSPBase], rcx
-    mov qword [rbp - execFrame.pEnvBase], rcx
-    mov qword [rbp - execFrame.pProgBase], rcx
+    ;These two are cleared
+    ;mov qword [rbp - execFrame.pEnvBase], rcx
+    ;mov qword [rbp - execFrame.pProgBase], rcx
     mov qword [rbp - execFrame.pPSPBase], rcx
     mov qword [rbp - execFrame.pProgEP], rcx
 
@@ -645,6 +646,12 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rbp
     pop rdx
 
+    ;Now copy the environment block over if rax != 0
+    mov rbx, qword [rbp - execFrame.pEnvBase]
+    test rbx, rbx
+    jz short .skipEnvCopy
+    mov qword [rdx + psp.envPtr], rbx
+.skipEnvCopy:
     ;Now set Current PSP to our PSP and set current DTA to command line
     mov qword [currentPSP], rdx
     call dosCrit1Enter
