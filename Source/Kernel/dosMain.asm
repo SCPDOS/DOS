@@ -370,12 +370,16 @@ setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
     iretq
 
 systemServices: ;ah = 61h
-    test al, al ;Get Environment pointer
-    jz .getEnvPtr
+;All pointers returned in rdx
+;al = 0 -> Get Environment pointer in rdx
+;al = 1 -> Get Command Line Arguments Pointer in rdx
+;al = 2 -> Get ptr to ASCIIZ FQFN for program in rdx
+;       al = 2 can fail. If CF=CY or rdx = 0, cannot use ptr.
+;                        Else, rdx -> Filename
     cmp al, 1
-    je .getCmdLineArgs  ;Get ptr to cmdline and fcb's 
-    ;Later add two more to get environment and cmdline ptr for 
-    ;   any process
+    je short .getCmdLineArgs
+    cmp al, 2
+    jbe .getEnvPtr
     mov eax, errInvFnc
 .exitBad:
     or byte [rsp + 2*8], 1  ;Set CF on
@@ -384,6 +388,32 @@ systemServices: ;ah = 61h
     ;Gets the environment pointer in rdx
     mov rdx, qword [currentPSP]
     mov rdx, qword [rdx + psp.envPtr]   ;Get the environement pointer
+    jne short .exitOk   ;If it is not equal to 2, exit (since it was 0)
+;Here we search for the double 00 and then check if it is 0001 and
+; pass the ptr to the word after.
+    cli
+    push rcx
+    xor ecx, ecx
+    mov ecx, 7FFFh  ;Max environment size
+.gep0:
+    cmp word [rdx], 0   ;Zero word?
+    je short .gep1
+    inc rdx         ;Go to the next byte
+    dec ecx
+    jnz short .gep0
+.gep00:
+    ;Failure here if we haven't hit the double null by the end of 32Kb
+    pop rcx
+    sti
+    xor edx, edx    ;Turn it into null pointer
+    jmp short .exitBad
+.gep1:
+    add rdx, 2  ;Skip the double null
+    cmp word [rdx], 1   ;Check if one more string in environment
+    jne .gep00
+    add rdx, 2  ;Skip the 0001 word.
+    pop rcx
+    sti
     jmp short .exitOk
 .getCmdLineArgs:
     mov rdx, qword [currentPSP]

@@ -157,12 +157,12 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rdi, qword [rbp - execFrame.pParam] ;Get params ptr in rdi
     mov rax, qword [rdi + execProg.pEnv]
     test rax, rax   ;Is this 0? (i.e. inherit parent env ptr)
-    jnz .copyEnvironmentBlock
+    jnz short .copyEnvironmentBlock
     mov rsi, qword [currentPSP] ;Get current PSP address in rsi
     mov rax, qword [rsi + psp.envPtr]   ;Get the environment ptr
     mov qword [rbp - execFrame.pEnvBase], rax   ;Store the parent ptr
     test rax, rax   ;Was the parent pointer 0? If so, skip
-    jz .loadProgram
+    jz short .loadProgram
 .copyEnvironmentBlock:
     mov rdi, rax    ;Point rdi to the source of the environment
     ;Get the length of the environment
@@ -171,11 +171,11 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rbx, rdi    ;Use rbx as the base ptr of the scan
 .envVerifyLp:
     repne scasb   ;Scan for a terminating word of nulls
-    jnz .invalidEnvironmentError
+    jnz short .invalidEnvironmentError
     jecxz .invalidEnvironmentError  ;Error if no space for a second null
     dec ecx
     scasb   ;Check if we have a second byte of 00 (i.e. end of environment)
-    jnz .envVerifyLp
+    jnz short .envVerifyLp
 
     sub rdi, rbx ;Get offset into block, gives a result less than 7FFFh
     push rdi     ;Save the length of the environment block
@@ -188,7 +188,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     call allocateMemory
     pop rbp
     pop rcx ;Pop the length of the environment block into rcx
-    jnc .copyEnvironment
+    jnc short .copyEnvironment
     ;Fall thru if not enuff memory
 .insufficientMemory:
     mov eax, errNoMem
