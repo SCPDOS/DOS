@@ -906,11 +906,18 @@ copyPathspec:
     pop rdi
     jmp short .cpsMainLoop
 .cpsWildcard:
+;Fill the entire FCB filespec with ?'s.
+;We lookahead to the first char past the final "*" to prevent multiple
+; *'s from crashing DOS :)
+    lodsb   ;Get char, inc rsi
+    cmp al, "*"
+    je short .cpsWildcard
+    dec rsi ;Go back to the first non-star char
     mov al, "?"
 .cpsWildcardLp:
     stosb
-    cmp rdi, rbx
-    jne .cpsWildcardLp
+    cmp rdi, rbx    ;We filled the FCB name field yet?
+    jne short .cpsWildcardLp
     jmp short .cpsMainLoop
 
 .cpsDots:
