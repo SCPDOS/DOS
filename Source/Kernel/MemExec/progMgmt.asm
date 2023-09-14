@@ -108,7 +108,7 @@ copyPSP:      ;ah = 26h
     ;Now we add the additional useful bits... just in case they are damaged
     mov word [rdx + psp.return], 040CDh  ;Int 40h
     mov word [rdx + psp.unixEntry], 041CDh  
-    mov byte [rdx + psp.unixEntry + 2], 0CBh ;Return
+    mov byte [rdx + psp.unixEntry + 2], 0C3h ;Return
     return
 
 terminateStayRes:  ;ah = 31h

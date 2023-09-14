@@ -1732,7 +1732,7 @@ tempPSP: ;Points to a 256 byte space that is set up appropriately
     at psp.envPtr,      dq 0
     at psp.rspPtr,      dq 0
     at psp.jftSize,     dw 20 
-    at psp.unixEntry,   db 0CDh, 41h, 0CBh
+    at psp.unixEntry,   db 0CDh, 41h, 0C3h
     at psp.prevPSP,     dq 0
     at psp.fcb1,        db 16 dup (0)
     at psp.fcb2,        db 20 dup (0)
