@@ -171,6 +171,20 @@ kernDrvInit:
 ;----------------------------------------:
 ;
 ;Setup internal DOS vars from OEM passed arguments.
+    movzx eax, byte [OEMBIOS]
+    test eax, eax
+    jz short skipOEMName
+    lea rsi, qword [rbp + dosBIOSName]
+    mov rax, "IO"
+    mov qword [rsi], rax
+    mov dword [rsi + 8], ".SYS"
+skipOEMName:
+    mov eax, dword [OEMVERSION]
+    mov dword [rbp + biosVers], eax
+
+    mov rax, qword [OEMPTR]
+    mov qword [rbp + biosPtr], rax
+
     movzx eax, byte [DFLTDRIVE]
     xor ebx, ebx
     cmp eax, 25
@@ -181,18 +195,24 @@ kernDrvInit:
     mov ebx, filesDefault
     cmp eax, 5
     cmovb eax, ebx
+    cmp eax, 254
+    cmova eax, ebx
     mov byte [rbp + numFiles], al
 
     movzx eax, byte [BUFFERS]
     mov ebx, buffersDefault
     test eax, eax
     cmovz eax, ebx
+    cmp eax, 99
+    cmova eax, ebx
     mov byte [BUFFERS], al
 
     movzx eax, byte [LASTDRIVE]
     mov ebx, lastDriveDeflt
     cmp eax, ebx
     cmovb eax, ebx
+    cmp eax, 25
+    cmova eax, ebx
     mov byte [LASTDRIVE], al
     mov byte [rbp + lastdrvNum], al     ;Set for DOS to be usable
 
@@ -1718,6 +1738,8 @@ LASTDRIVE   db 0    ;Default last drive number (0-25)
 OEMBIOS     db 0    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
 OEMMEMPTR:  ;Used to save the allocated 64k block for OEMCALLBK
 OEMDRVCHAIN dq 0    ;Pointer to the uninitialised device drivers
+OEMPTR      dq 0    ;Pointer to store at biosPtr
+OEMVERSION  dd 0    ;BIOS number, to be used by drivers for id-ing
 
 initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
 tempPSP: ;Points to a 256 byte space that is set up appropriately

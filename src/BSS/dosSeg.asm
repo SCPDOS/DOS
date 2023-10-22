@@ -2,6 +2,8 @@
 dosDataArea:
     anchorMcb   resb mcb_size   ;This is space for the anchor MCB
     bootDrive   resb 1    ;The logical drive we booted from
+    biosVers    resd 1    ;Indicates BIOS type. Each OEM picks a number
+    biosPtr     resq 1    ;For saving a data ptr to be used by BIOS/drivers
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
 ;Both below variables can be edited with Int 41h AX=440Bh

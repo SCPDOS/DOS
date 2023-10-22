@@ -7,124 +7,31 @@ Please note, OEMINIT MUST NOT use ANY DOS calls at all.
 
 MUST, MAY and SHOULD can be defined as usual.
 
-0) Hardware setup.
-	DOS needs a minimum of 128Kb to load and run successfully though we suggest a bit more.
-	DOS uses the load address of tasks as their Process ID's and as such, for Version 1, 
-	the entire memory space that is to be used by DOS MUST be identity mapped or at least,
-	mapped in such a way that all tasks live in a single address space. This may be changed 
-	in later versions, though please note that the kernel will always pass virtual addresses 
-	to drivers in all future versions.
+The following routines must be marked as global:
+- OEMRELOC -> Does any necessary relocations.
+- OEMINIT -> Initialises the load-time variables and prepares the drivers for init.
+- OEMMCBINIT -> Provides an MCB chain for use by DOS.
+- OEMHALT -> Called by DOS if DOS wants to abort load.
+- OEMCALLBK -> Called after processing CONFIG.SYS. Gives access to an initialised DOS. Can make final modifications to the way that DOS initialised the system.
 
-1) DOS Load.
-	DOS MUST be loaded to the lowest possible address in memory. This MAY be address 0.
-	No assumptions about DOS's load position are made within the SYSINIT module and as such
-	you are free to load DOS wherever you wish in memory. Please note, the main DOS Code 
-	section is loaded after the DOS data area. This includes any device drivers you might add.
-	Please refer to the file scpdos.asm for information about in what order files are 
-	loaded and how DOS is built.
-	SYSINIT will not do any further relocation of DOS once OEMINIT has loaded DOS into memory.
-	Thus, please be attentive to how you structure your routines to reduce DOS's memory footprint.
-	DOS will place all buffers and do all scratch work in the memory immediately following DOS's 
-	load location.
-
-	When jumping to SYSINT from OEMINIT, you MUST pass the base address of the DOS data area 
-	in the variable QWORD [INITBASE]. You MUST also pass the end address of the DOS allocation 
-	in the variable QWORD [INITEND]. This value MUST point to the first byte of the a memory 
-	control block's memory arena. This memory control block MAY be the anchor MCB.
-
-2) Memory Control Block Chain init.
-	An implementation of OEMINIT MUST create a valid Memory Control Block (MCB) chain. The MCB structure 
-	definition can be found in dosStruc.inc. Each Memory Control Block is split into two regions:
-	- The Arena Header, a 16 byte region defined in dosStruc.inc. 
-		Any memory holes which are reserved for hardware or for use by BIOS can either be hidden behind 
-		the first MCB (known as the anchor MCB) or placed in a memory arena that is given a mcb.owner ID
-		of 7 (meaning memory hole). Blocks allocated with this owner signature cannot be freed or reallocated.
-	- The Memory Arena, a variable sized region, of maximum size 4,294,967,295 (FFFFFFFFh) 16 byte paragraphs.
-
-	All MCBs MUST be paragraph aligned. There is no maximum as to how many MCBs there needs to be in the system
-	though there needs to be a minimum of one, the anchor MCB. 
-	OEMINIT MUST form an MCB chain, where the anchor MCB is the first MCB in the chain. Each MCB follows the previous 
-	one with the final MCB in the chain being marked with an End of chain marker. The MCBs are placed contiguously 
-	in memory with the computation to go from one to the other being made by taking the Memory Arena pointer from the 
-	current MCB in question and adding the number of bytes in the arena to that pointer. This value can be obtained 
-	from the DWORD field mcb.blockSize as a number of paragraphs in the Memory Arena. This computation will take you 
-	to the next MCB's arena header. 
-	Memory holes, such as those found in PCI systems, where a PCI device might reserve some of the system memory 
-	space for device MMIO registers, MUST also be placed in MCBs since MCBs form a contiguous partitioning of 
-	memory. Memory holes have their own special identifying marker. This special marker prevents DOS from 
-	reallocating or freeing these MCBs thus protecting the integrity of the data within the memory hole.
-
-	To summarise:
-	You MUST mark all free space as not owned by any process. 
-	You MUST ONLY mark all space owned by DOS as being owned by DOS. 
-	You MUST ONLY mark all memory holes with the special memory hole marker.
-	You MUST NOT not mark any allocations to DOS as memory holes.
-
-	A suggestion for simplicity and safety is to place the Anchor MCB AFTER DOS, and to not place DOS itself in 
-	an MCB as DOS allocations can be resized and a malicious actor can end up freeing any DOS allocations.
-
-	Finally, when jumping to SYSINIT from OEMINIT, you MUST pass a pointer to the Anchor MCB in QWORD [INITMCB].
-
-3) Device Init.
-	An implementation of OEMINIT MUST implement a minimum of five devices: CON (The Console Device), AUX (The Auxilliary IO Device), PRN (The main Printing Device), CLOCK$ (The Clock Device) and one Block Device Driver capable of supporting between 2 and 5 block devices. 
-	The kernel driver chain must be in the following order:
-	CON->AUX->PRN->CLOCK$->Any block or additional character devices.
-	CLOCK$ MUST NOT fail in an implementation of SCP/DOS and requests to it will not be checked for failure.
-	DOS itself defines a device called NUL (The Null device) which can be used as a bit bucket and OEM Implementers
-	need not implement such a device. Additionally, it MAY be useful to define additional Serial and Parallel devices 
-	such as COM1-4 and PRN1-3 and perhaps more block devices. An implementer MAY additionally implement devices such 
-	as ZERO$ or RND$ to provide a stream of zero bytes and a stream of random bytes respectively, such as those special 
-	files found on UNIX based systems. 
-	In the face of modernisation, it might also be prudent to add network drivers. The DOS device driver model is 
-	flexible enough to support this. Trust us! Suggested names for the main device driver might be something like 
-	NET$ or NETSTAK$. There is an 8 character limit for device names and it is suggested that common device names are 
-	suffixed with a $-sign to avoid the DOS filesystem from mistakening the device name with a file or folder.
-
-	OEMINIT needs not do anything particular to initialise any devices, instead passing a pointer to a linked list
-	of device driver headers. The addresses in the chain MUST be relative to QWORD [INITBASE]. SYSINIT will
-	add this address to each element in the linked list of driver headers and to the Strat and Int fields of each 
-	header. DOS will call the init routine of each device driver in the order that they encountered in the linked 
-	list.
-	ATTENTION!! 
-		The linked list of device driver headers MUST be within the DOS code/data area, i.e. MUST come
-		AFTER the address that is passed in QWORD [INITBASE] and remain resident.
-
-	When jumping to SYSINIT from OEMINIT, you MUST pass a pointer to the Device Driver Chain in QWORD [INITDEVDRV]
-	
-4) System Data.
-	An implementation of OEMINIT MUST pass the default values for FILES and BUFFERS in the variables BYTE [INITFILE]
-	and BYTE [INITBUF].
-	An implementation MAY optionally also pass a value in BYTE [INITDEFAULT] for the start default drive (i.e. the 
-	boot drive) and QWORD [INITMEMSZ] for a total count of bytes available for use by DOS though DOS will never 
-	use this as it does all memory based based on the MCB chain.
-
-5) Final Callback Hook.
-	Should your implementation of OEMINIT require a some additional work before DOS loads the command interpreter
-	you MUST hook the variable QWORD [INITCALLBACK] with an absolute pointer to the routine you wish to be called. 
-	If your implemntation has no need of this functionality, the passed pointer MUST point solely to a return 
-	instruction. 
-	
-	This routine will be called once CONFIG.SYS has been processed by DOS, to allow your implementation to adjust 
-	any values and do any final system initialisation. When this function is called, r8 will be pointing to a 64Kb 
-	block of memory. Please do not lose this pointer. Your function will be running as an extension of DOS. 
-	You MAY reallocate your allocation, and if you do not wish to keep the assigned block in memory, please free the 
-	block before you return to DOS.
-	You MUST NOT use the following DOS functions to terminate excution: Int 40h, Int 41h/AH=00h/31h/44h/4Ch, Int 47h.
-	To return to DOS, simply return from the called routine. On return, ALL REGISTERS MUST BE PRESERVED!
-	If you wish to HALT DOS's init for some reason, please return with the carry flag set, i.e. CF=CY.
-
-All OEM variables are visible across OEMinit.
-
-- OEMSTATS -> Returns a few values in standard form for DOS
-Fill the follwing variables:
-BYTE [INITFILE]	= Default number of FILES
-BYTE [INITBUF]  = Default number of Buffers
-BYTE [INITDEFAULT] = Start drive for the boot
-QWORD [INITMEMSZ] = Number of bytes usable by DOS
+These symbols must be declared as extern:
+BYTE [DFLTDRIVE] = Default boot drive, between 0 and 25
+BYTE [FILES]	= Default value of FILES, between 1 and 254
+BYTE [BUFFERS]  = Default value of BUFFERS, between 1 and 99
+BYTE [LASTDRIVE] = Default value for LASTDRIVE, between 0 and 25
+QWORD [OEMDRVCHAIN] = Pointer to the kernel driver chain
+QWORD [FINALDOSPTR] = Address of the DOS load address
 BYTE [OEMBIOS] = Set means using non SCP name for BIOS (IO.SYS)
+QWORD [OEMPTR] = Ptr to BIOS/HAL internal data structures to be used by 
+				 drivers/utilities. Set to 0 means No pointer.
+DWORD [OEMVERSION] = Set to indicate type of BIOS/HAL (for drivers)
+					 0 = CSM SCP/BIOS
+					 1 = UEFI Boot services x SCP/BIOS
+					 2 = UEFI Runtime services x SCP/BIOS
+					 3-99 = Reserved by SCP/BIOS
+					 99-2^32-1 = For use by OEMs. Please register 
+					 your allocation with the SCP OEM registry.
 
-- OEMCALLBK -> Access to initialised DOSSEG and SDA. Can make final 
-modifications to the way that DOS initialised the system.
 ======================================================================
 
 Kernel Drivers are mildly different in that they must be compiled
@@ -136,10 +43,11 @@ drivers all live in the same chain as far as the SYSINIT routine
 is concerned, the pointer returned by the last driver in the chain
 will be used to denote the end of the driver allocation space.
 
-Please note that all drivers must be flat binary files and that whilst 
-you may have CODE and DATA segments, please return in INIT the pointer
-to the first byte that is no longer needed by the allocation.
-Drivers are NOT bound by the 64Kb limit that .COM files are bounded by.
+Please note that drivers may be flat binaries or .EXE files. Upon 
+completing INIT please return in INIT the pointer to the first byte 
+that is no longer needed by the allocation.
+Flat binary drivers are NOT bound by the 64Kb limit that .COM files 
+are bounded by.
 
 Order of OEMINIT and SYSINIT interplay
 O1) OEMRELOC - Load and relocate DOS to its final resting place.

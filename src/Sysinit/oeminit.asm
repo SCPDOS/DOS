@@ -20,6 +20,9 @@ OEMINIT PROC NEAR
     mov byte [FILES], 8         ;Default 8 files, initially 5 only
     mov byte [BUFFERS], 30      ;Default 30 buffers, at start 1
     mov byte [LASTDRIVE], 5     ;Default Last drive value
+    mov dword [OEMVERSION], 0   ;CSM BIOS
+    mov qword [OEMPTR], 0       ;No pointer
+    mov byte [OEMBIOS], 0       ;Use SCPBIOS/SCPDOS kernel names
    ;If no detected Int 33h devices, halt 
     int 31h ;Get number of Int 33h devices in r8b
     shr r8, 3*8
