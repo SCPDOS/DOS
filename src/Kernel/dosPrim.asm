@@ -63,14 +63,14 @@ setupAbsDiskEntry:
     sti ;Renable interrupts once inDOS and RSP are set
     cld ;Set string ops in the right direction
     call setupPhysicalDiskRequest
-    jc .exit    ;Error exit
+    retc    ;Error exit
     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
     push rsi
     push rax
     lea rsi, buffer1  ;Point to one of the pathspaces
     mov byte [rsi], al  ;Construct a path
     add byte [rsi], "A" ;Convert to ASCII char
-    mov byte [rsi + 1], ":" ;Path Colon
+    mov word [rsi + 1], ":" ;Path Colon and terminating zero
     clc
 ;++++++++++++++++++++++++++++
 ;CRITICAL ENTRY, CHECK IF CAN DO DIRECT DISK IO!
@@ -234,11 +234,11 @@ ensureDiskValid:
     xor ah, ah
     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old flag
     or byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
-    js .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
-    jnz .exit ;If zero, check for dirty buffers for drv, if found, exit
+    js short .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
+    retnz ;If zero, check for dirty buffers for drv, if found, exit
     call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
     cmc ;Compliment CF to ensure we return CF=NC if dirty buffer found
-    jc .resetDPB   ;Exit ONLY if a dirty buffer found!
+    jc short .resetDPB   ;Exit ONLY if a dirty buffer found!
     ;ZF=NZ from test for dirty buffers
 .exit:
     return
@@ -250,7 +250,7 @@ ensureDiskValid:
     ;Get a buffer to read BPB into in rdi
     xor eax, eax   ;Dummy read sector 0 in
     call getBufForDOS ;Get a disk buffer for DOS
-    jc .exitBad    ;Immediately exit with the carry flag set
+    jc short .exitBad    ;Immediately exit with the carry flag set
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .repeatEP:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
