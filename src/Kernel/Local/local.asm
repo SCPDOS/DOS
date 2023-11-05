@@ -53,4 +53,15 @@ getsetCountryInfo: ;ah = 38h, localisation info
 
 getExtLocalInfo:   ;ah = 65h, Get Extended Country Info
 getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage, reserved
-    ret
+    return
+
+caseMapFunc:
+;Input: AL=Char to convert to uppercase (above 80h)
+    cmp al, 80h
+    retb
+    push rbx
+    lea rbx, ucTbl
+    sub al, 80h ;Turn into an offset into the table
+    xlatb
+    pop rbx
+    return

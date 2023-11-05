@@ -9,21 +9,6 @@ dosKernName db "SCPDOS  .SYS"
 ;-----------------------------------:
 ;        Static Data Tables         :
 ;-----------------------------------:
-ctryTbl:
-;Country Table (defaulting to UK), refer to struct in dosStruc.inc
-    dw 1            
-    db 9Ch,0,0,0,0  ;9Ch = £ in British codepage
-    db ",",0
-    db ".",0
-    db "-",0
-    db ":",0
-    db 0
-    db 2 
-    db 0 
-    dq 0 
-    db ",",0    
-    db 0,0,0,0,0,0,0,0,0,0
-
 ;IO Char table
 ;This table has Request header length, command code and error flags
 ; as a packed DWORD entry
@@ -199,14 +184,47 @@ extErrTbl:
     db errShrFul, eClsOoR, eActAbt, eLocMem
     dd -1   ;End of table signature
 
-badDirNameChar: ;This table needs to be replaced in other Codepages (i.e. Kanji)
-    db 00h,01h,02h,03h,04h,05h,06h,07h,08h,09h,0Ah,0Bh,0Ch,0Dh,0Eh,0Fh
-    db 10h,11h,12h,13h,14h,15h,16h,17h,18h,19h,1Ah,1Bh,1Ch,1Dh,1Eh,1Fh
-    db '"', "*", "+",",",".","/",":",";","<","=",">","?","[","\","]","|"
-badDirNameCharL equ $ - badDirNameChar
-;The chars * ? . \ / need to always be handled separately
+;Nationalisation stuff
+defaultCodePage:    dw 0    ;For now, set to 0, needs to be GB CP
+charTableArray:
+    dw 5    ;5 entries (this word inclusive)
+.ucTable:
+    db 2
+    dq ucTblExt     ;Needs fixup
+.filenameUCTable:
+    db 4
+    dq fileUCTblExt ;Needs fixup
+.filenameTerminatingTable:
+    db 5
+    dq fileTermTblExt   ;Needs fixup
+.collatingTable:
+    db 6
+    dq collTblExt  ;Needs fixup
+;Extended country table
+extCtryTbl:
+    db 1    ;infoIDCode (always 1)
+    dw 42   ;Total length of the structure
+    dw 0    ;Current (Active) Country ID
+    dw 0    ;Current (Active) Code page
+;Regular country table
+ctryTbl:
+;Country Table (defaulting to UK), refer to struct in dosStruc.inc
+    dw 1    ;Date format, UK style
+    db 9Ch,0,0,0,0  ;9Ch = £ in British codepage
+    db ",",0    ;Thousand separator
+    db ".",0    ;Decimal separator
+    db "-",0    ;Date separator
+    db ":",0    ;Time separator
+    db 0        ;Currency format, symbol leads with no space
+    db 2        ;Number of digits after decimal point
+    db 0        ;Time format, 12hr clock
+    dq 0        ;Map to function that does UC conversions
+    db ",",0    ;Data list separator
+    db 10 dup (0)
 
-extAsciiTbl:    ;This table needs to be replaced in other Codepages
+ucTblExt:   ;External pointer to the uppercase table
+    dw 80h
+ucTbl:    ;Internal ptr, used by casemapfunc
     db 80h, 9Ah, 45h, 41h, 8Eh, 41h, 8Fh, 80h, 45h, 45h, 45h, 49h, 49h, 49h
     db 8Eh, 8Fh, 90h, 92h, 92h, 4Fh, 99h, 4Fh, 55h, 55h, 59h, 99h, 9Ah, 9Bh
     db 9Ch, 9Dh, 9Eh, 9Fh, 41h, 49h, 4Fh, 55h, 0A5h, 0A5h, 0A6h, 0A7h, 0A8h
@@ -219,7 +237,43 @@ extAsciiTbl:    ;This table needs to be replaced in other Codepages
     db 0F1h, 0F2h, 0F3h, 0F4h, 0F5h, 0F6h, 0F7h, 0F8h, 0F9h, 0FAh, 0FBh, 0FCh
     db 0FDh, 0FEh, 0FFh
 
-asciiCharProperties:   ;This table needs to replaces in other Codepages
+fileUCTblExt:   ;External ptr to the uc table for filenames
+    dw 80h
+fileUCTbl:    ;Internal ptr, used to convert pathspecs correctly
+    db 80h, 9Ah, 45h, 41h, 8Eh, 41h, 8Fh, 80h, 45h, 45h, 45h, 49h, 49h, 49h
+    db 8Eh, 8Fh, 90h, 92h, 92h, 4Fh, 99h, 4Fh, 55h, 55h, 59h, 99h, 9Ah, 9Bh
+    db 9Ch, 9Dh, 9Eh, 9Fh, 41h, 49h, 4Fh, 55h, 0A5h, 0A5h, 0A6h, 0A7h, 0A8h
+    db 0A9h, 0AAh, 0ABh, 0ACh, 0ADh, 0AEh, 0AFh, 0B0h, 0B1h, 0B2h, 0B3h, 0B4h
+    db 0B5h, 0B6h, 0B7h, 0B8h, 0B9h, 0BAh, 0BBh, 0BCh, 0BDh, 0BEh, 0BFh, 0C0h 
+    db 0C1h, 0C2h, 0C3h, 0C4h, 0C5h, 0C6h, 0C7h, 0C8h, 0C9h, 0CAh, 0CBh, 0CCh
+    db 0CDh, 0CEh, 0CFh, 0D0h, 0D1h, 0D2h, 0D3h, 0D4h, 0D5h, 0D6h, 0D7h, 0D8h 
+    db 0D9h, 0DAh, 0DBh, 0DCh, 0DDh, 0DEh, 0DFh, 0E0h, 0E1h, 0E2h, 0E3h, 0E4h
+    db 0E5h, 0E6h, 0E7h, 0E8h, 0E9h, 0EAh, 0EBh, 0ECh, 0EDh, 0EEh, 0EFh, 0F0h
+    db 0F1h, 0F2h, 0F3h, 0F4h, 0F5h, 0F6h, 0F7h, 0F8h, 0F9h, 0FAh, 0FBh, 0FCh
+    db 0FDh, 0FEh, 0FFh
+
+fileTermTblExt:
+    dw filenameTermTblExt_len - 2   ;Length not including this word
+    db 1    ;Signature byte for the table (1)
+    db 0    ;Lowest permissible char value for filename
+    db -1   ;Highest permissible char value for filename
+    db 0    ;Signature byte for DOS 3.3 (0)
+    db 0    ;Start of the illegal range of filename chars
+    db 20h  ;End of the illegal range of filename chars
+    db 2    ;Signature byte for DOS 3.3 (2)
+fileTermTbl:
+    db fileTermTbl_len - 1 ;Length of the table below
+    db ".", 022h, "/", "\", "[", "]", ":", "|", "<",">","+","=",";",02Ch
+    fileTermTbl_len equ $ - fileTermTbl
+    filenameTermTblExt_len equ $ - fileTermTblExt
+    db 24 dup (0) ;DOS 3.3 has this buffer present
+
+collTblExt:  ;Collating sequence table, for sorting
+    dw 0100h
+collTbl:
+    db 256 dup (0)
+
+asciiCharProperties:   ;This table is const. Gives "properties" of chars
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F0h, 0F6h, 0F6h 
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h
     db 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F6h, 0F8h, 0FFh, 0F6h, 0FFh 
@@ -231,6 +285,14 @@ asciiCharProperties:   ;This table needs to replaces in other Codepages
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
     db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   
+
+badDirNameChar: ;This table needs to be replaced in other Codepages (i.e. Kanji)
+    db 00h,01h,02h,03h,04h,05h,06h,07h,08h,09h,0Ah,0Bh,0Ch,0Dh,0Eh,0Fh
+    db 10h,11h,12h,13h,14h,15h,16h,17h,18h,19h,1Ah,1Bh,1Ch,1Dh,1Eh,1Fh
+    db '"', "*", "+",",",".","/",":",";","<","=",">","?","[","\","]","|"
+badDirNameCharL equ $ - badDirNameChar
+;The chars * ? . \ / need to always be handled separately
+
 
 hardErrorStack:
     db errWpd

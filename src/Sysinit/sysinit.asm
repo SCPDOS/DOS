@@ -299,8 +299,12 @@ initialCDSWritten:
 ;Additional DOS Vars init and fixups
     mov byte fs:[errorDrv], -1   ;No error drive
     mov byte fs:[switchChar], "/"  ;Default switch char
-    lea rdi, qword [rbp + extAsciiTbl]  ;Get the load of dflt extascii tbl
-    mov qword fs:[ctryTbl + countryStruc.mapaddr], rdi ;Store in country table
+    lea rdi, qword [rbp + caseMapFunc]  ;Get the function pointer
+    mov qword fs:[ctryTbl + countryStruc.mapptr], rdi ;Store in country table
+    add qword [rbp + charTableArray.ucTable + 1], rbp ;Fixup stored address
+    add qword [rbp + charTableArray.filenameUCTable + 1], rbp 
+    add qword [rbp + charTableArray.filenameTerminatingTable + 1], rbp 
+    add qword [rbp + charTableArray.collatingTable + 1], rbp 
 
 ;Server Table setup
     lea rdi, qword [rbp + serverDispTbl]  ;Get pointer to table
