@@ -69,7 +69,6 @@ getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage
     movzx edx, word [defaultCP] ;Get the default codepage
     mov dword [rsi + callerFrame.rbx], ebx
     mov dword [rsi + callerFrame.rdx], edx
-    xor eax, eax
     jmp extGoodExit
 .exitBadFunc:
     mov eax, errInvFnc
