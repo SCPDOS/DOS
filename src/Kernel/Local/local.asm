@@ -52,7 +52,7 @@ getsetCountryInfo: ;ah = 38h, localisation info
 
 
 getExtLocalInfo:   ;ah = 65h, Get Extended Country Info
-getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage, reserved
+getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage
     return
 
 caseMapFunc:

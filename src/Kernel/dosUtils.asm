@@ -473,12 +473,32 @@ checkCharValid:
 ;If ZF=NZ => Valid Char
     push rcx
     push rdi
-    mov ecx, badDirNameCharL    ;Get table length
-    lea rdi, badDirNameChar ;Point to bad char table
-    repne scasb ;Scan. Stop when equal
+    cmp al, byte [fileTermTblExt.startBadRange]
+    jb .setZeroFlag
+    cmp al, byte [fileTermTblExt.endBadRange] 
+    jbe .setZeroFlag
+    movzx ecx, byte [fileTermTbl]
+    lea rdi, fileTermTbl + 1
+    repne scasb
+.exit:
     pop rdi
     pop rcx
     return
+.setZeroFlag:
+    xor ecx, ecx    ;Clear CF too
+    jmp short .exit
+
+;checkCharValid:
+;If ZF=ZE => Invalid Char
+;If ZF=NZ => Valid Char
+    ;push rcx
+    ;push rdi
+    ;mov ecx, badDirNameCharL    ;Get table length
+    ;lea rdi, badDirNameChar ;Point to bad char table
+    ;repne scasb ;Scan. Stop when equal
+    ;pop rdi
+    ;pop rcx
+    ;return
 
 
 skipSpacesAndTabs:
