@@ -22,3 +22,9 @@ Int 4Fh AX=12xxh = Internal DOS Interface (IDI)
 first drivers with the CLOCK$ and CON bits set to take control of the devices BEFORE init. Therefore an implementer MUST have these two drivers be the first
 two drivers in the chain, if ANY of the other drivers are going to use CHAR functions or get/set date/time! More detail in the OEM init guide.
 -When calling an Int 41h function, if the function returns with a success (CF=NC), then unless the function specifies a meaning to (e)ax, the register (e)ax is to be considered as trashed. In many cases it will be zeroed partially (just al), if not the whole of (e)ax. This is not the case if the function returns an error (CF=CY), where the error code for the request will be placed in ax.
+
+## Default localisation information
+-DOS is by default in CP437 with a COUNTRY setting of 044 (GB). 
+That means keyboard is as per default hardware driver for the keyboard, but time, date, currency, data separation etc characters and layouts are all per GB localisation. 
+
+-If using legacy SCP/BIOS, then the hardware keyboard is a UK Enhanced PC 105-key keyboard layout. The hardware output charset is CP437 compatible.
