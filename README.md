@@ -25,6 +25,6 @@ two drivers in the chain, if ANY of the other drivers are going to use CHAR func
 
 ## Default localisation information
 -DOS is by default in CP437 with a COUNTRY setting of 044 (GB). 
-That means keyboard is as per default hardware driver for the keyboard, but time, date, currency, data separation etc characters and layouts are all per GB localisation. 
+That means console is as per default hardware driver for the console, but time, date, currency, data separation etc characters and layouts are all per GB localisation. 
 
 -If using legacy SCP/BIOS, then the hardware keyboard is a UK Enhanced PC 105-key keyboard layout. The hardware output charset is CP437 compatible.
