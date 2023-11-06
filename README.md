@@ -21,3 +21,4 @@ Int 4Fh AX=12xxh = Internal DOS Interface (IDI)
 - Kernel drivers should have only one type of each driver in the chain but we can handle more! At the very start DOS will scan this chain and set the 
 first drivers with the CLOCK$ and CON bits set to take control of the devices BEFORE init. Therefore an implementer MUST have these two drivers be the first
 two drivers in the chain, if ANY of the other drivers are going to use CHAR functions or get/set date/time! More detail in the OEM init guide.
+-When calling an Int 41h function, if the function returns with a success (CF=NC), then unless the function specifies a meaning to (e)ax, the register (e)ax is to be considered as trashed. In many cases it will be zeroed partially (just al), if not the whole of (e)ax. This is not the case if the function returns an error (CF=CY), where the error code for the request will be placed in ax.

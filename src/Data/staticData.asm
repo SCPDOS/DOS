@@ -185,6 +185,7 @@ extErrTbl:
     dd -1   ;End of table signature
 
 ;Nationalisation stuff
+dosCodepage:   ;Symbol to point to 
 leadingZeros:   db 8 dup (0)    ;Unknown why they are 0 in DOS
 defltCtry:      db "\COUNTRY.SYS", (64-12) dup (0) ;FQ Path to COUNTRY.SYS file
 defaultCP:      dw 437  ;Set to multilingual codepage
@@ -206,7 +207,9 @@ charTableArray: ;All the qwords need fixing up here
 extCtryTbl:
     db 1    ;infoIDCode (always 1)
     dw 42   ;Total length of the structure
+.countryCode:
     dw 044  ;Current (Active) Country ID (044 is UK)
+.activeCP:
     dw 437  ;Current (Active) Code page (starts same as default)
 ;Regular country table
 ctryTbl:

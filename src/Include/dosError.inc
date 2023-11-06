@@ -44,7 +44,7 @@ errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
 
 errNoNet    equ 50  ;Network request not supported, generic net fail
-errNetAcDen equ 65  ;Network Access denied
+errNLSAcDen equ 65  ;Network Access denied (NLS usage)
 
 errFilExist equ 80  ;File already exists
 errDirExist equ 82  ;Directory already exists

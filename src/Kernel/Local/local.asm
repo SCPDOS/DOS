@@ -52,8 +52,50 @@ getsetCountryInfo: ;ah = 38h, localisation info
 
 
 getExtLocalInfo:   ;ah = 65h, Get Extended Country Info
+    mov eax, errAccDen
+    jmp extErrExit
 getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage
-    return
+;If al = 01h -> Get Global Codepage
+;Return:    ebx = Active (current) codepage
+;           edx = System (default) codepage
+;If al = 02h -> Set Global Codepage
+;   (e)bx = Active (current) codepage
+;   (e)dx = System (default) codepage. Not needed, so don't document.
+    cmp al, 1
+    jne .setCodepage
+;Here we get the codepage
+    call getUserRegs
+    movzx ebx, word [extCtryTbl.activeCP]   ;Get the active codepage value
+    movzx edx, word [defaultCP] ;Get the default codepage
+    mov dword [rsi + callerFrame.rbx], ebx
+    mov dword [rsi + callerFrame.rdx], edx
+    xor eax, eax
+    jmp extGoodExit
+.exitBadFunc:
+    mov eax, errInvFnc
+    jmp extErrExit
+.setCodepage:
+    cmp al, 2
+    jne .exitBadFunc
+    movzx edx, word [defltCtry] ;Get the country ID
+    mov eax, 1400h
+    int 4Fh
+    cmp al, -1
+    jne .exitBadFunc
+    lea rsi, dosCodepage    ;Get pointer to the DOS codepage in rsi
+    mov eax, 1401h  ;Set global codepage
+    int 4Fh
+    test al, al
+    jz extGoodExit
+    cmp al, errNLSAcDen
+    jne extErrExit
+    cbw     ;Zero extend al into ax (as we know al = 41h)
+    mov word [errorExCde], ax
+    mov byte [errorAction], eActIgn
+    mov byte [errorLocus], eLocChr
+    mov byte [errorClass], eClsHrdFlt
+    jmp extErrExit.noXlat   ;Jump to error exit without translating the error
+
 
 caseMapFunc:
 ;Input: AL=Char to convert to uppercase (above 80h)

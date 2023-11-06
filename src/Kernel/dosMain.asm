@@ -235,6 +235,7 @@ extErrExit:
     movzx eax, al   ;0 rax except for al with error code
     call xLatError
     call checkFail
+.noXlat:
     call getUserRegs
     mov word [rsi + callerFrame.rax], ax
     or byte [rsi + callerFrame.flags], 1    ;Set error flag
