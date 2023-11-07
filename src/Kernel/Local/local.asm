@@ -73,38 +73,32 @@ getsetCountryInfo: ;ah = 38h, localisation info
     mov eax, ebx    ;Move country code into eax for return (undocumented)
     jmp extGoodExit
 .goToNlsFunc:
-    call .nlsWrap   ;Access the NLS functionality
+    call .nlsWrap   ;Access NLS functionality
     jc extErrExit   ;If CF=CY, exit error (error code in al)
     test ebp, ebp   ;If set, exit, else get, we may need to copy data
     jnz .exitNoCountryCode 
-    test ebx, ebx   ;Has NLSfunc copied the table into the user buffer?
-    jnz .copyCountryTable   ;If not, copy the table into user buffer
+    test ebx, ebx   ;If ebx = 0, we entered NLS and data copied for us.
+    jnz .copyCountryTable   ; If not, we gotta copy from our internal copy.
     mov ebx, edx    ;Move the country code into ebx
     jmp short .exitWithCountryCode
 .nlsWrap:
 ;Subroutine to wrap NLS functions. Should do nothing if we are looking
 ; for the current country (to avoid hitting NLSFUNC and erroring if
-; not installed, for compatibility with DOS 2).
+; not installed).
 ;Input: ebp = 0 -> Get country info
 ;           = 1 -> Set code page
-;        bx = country code
+;        bx = Country code (bx <> 0 here)
+;       rdi -> User buffer
+;       rsi -> DOS codepage structure
 ;Output: CF = CY -> Error, al has error code (-1 is generic error)
 ;        CF = NC -> OK
-;It appears in the case of 1404h, bx is a flag to indicate if we 
-; need to copy the data from our internal table or not to the users'
-; buffer. If bx = 0, no copy. It is assumed that NFS func did the copy for 
-; us, leaving our internal table intact (unchanged).
-; Else, we copy from our internal table.
-;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-; CONFIRMED IN DOS 3.3: NFSFUNC copies the data into the users buffer
-;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-;Final check to make, is to see if the bx = 0 set below is an indicator
-; to NLSFUNC to do the copying for us
-
-    cmp bx, word [extCtryTbl.countryCode]   ;Do nothing if its current country
+;        bx = 0 => Entered NLS and data copied tp user buffer.
+;           > 0 => User requested current country code. Data NOT copied.
+;All other registers remain the unaffected.
+    cmp bx, word [extCtryTbl.countryCode]   ;No NLS access if current ctry.
     rete
     mov edx, ebx    ;Save the country code in edx
-    xor ebx, ebx    ;Guarantee ebx is not 0EDCh (RBIL)
+    xor ebx, ebx    ;Set indicator that we are accessing NLS.
     mov eax, 1400h  ;Is NLS installed?
     int 4fh
     cmp al, -1      ;If al <> -1, error exit
