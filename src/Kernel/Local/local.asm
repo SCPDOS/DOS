@@ -92,7 +92,7 @@ getsetCountryInfo: ;ah = 38h, localisation info
 ;       rsi -> DOS codepage structure
 ;Output: CF = CY -> Error, al has error code (-1 is generic error)
 ;        CF = NC -> OK
-;        bx = 0 => Entered NLS and data copied tp user buffer.
+;        bx = 0 => Entered NLS and data copied to user buffer.
 ;           > 0 => User requested current country code. Data NOT copied.
 ;All other registers remain the unaffected.
     cmp bx, word [extCtryTbl.countryCode]   ;No NLS access if current ctry.
