@@ -86,3 +86,38 @@ getDosDataSeg:  ;Int 4Fh, AX=1203h
     lea r8, dosDataArea
     return
 
+mpxOpen:   ;Int 4Fh, AX=1226h, Open File
+;Input: cl = open mode
+;       rdx -> Ptr to filename to open
+;Output: ax = Error code/handle with CF indicating failure/success
+    mov al, cl
+    call openFileHdl
+    return
+
+mpxLseek:  ;Int 4Fh, AX=1228h, LSEEK
+;Input:  
+;   ebp = Low byte contains subfunction, in normal EP is provided by al
+;   ebx = Handle to move (lower word only)
+;   ecx = Number of bytes to move
+;   edx = 0 (upper dword, reserved for now)
+;Return:
+;   eax = New pointer location
+;   edx = 0
+    push qword [oldRSP] ;Save the callers register stack on internal DOS stack
+    lea rax, mplxRegStack   ;Swap so that data is returned through here
+    mov qword [oldRSP], rax
+    mov eax, ebp
+    call lseekHdl   ;Sets the values of our registers by how it exits
+    pop qword [oldRSP]  ;Get back OG stack
+    return
+
+mpxIOCTL:  ;Int 4Fh, AX=122Bh
+;IO is done exactly as documented by DOS except al is passed in 
+; low byte of bp.
+    push qword [oldRSP] ;Save the callers register stack on internal DOS stack
+    lea rax, mplxRegStack   ;Swap so that data is returned through here
+    mov qword [oldRSP], rax
+    mov eax, ebp
+    call ioctrl   ;Sets the values of our registers by how it exits
+    pop qword [oldRSP]  ;Get back OG stack
+    return  

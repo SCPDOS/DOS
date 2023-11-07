@@ -150,12 +150,12 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw shareRetryCountdown - mDispTbl   ;AX=1224h, Share Retry
     dw strlen2 - mDispTbl   ;AX=1225h, strlen
     ;The file ops need all vars setup as if accessing thru DOS
-    dw openFileHdl - mDispTbl   ;AX=1226h, Open File
+    dw mpxOpen - mDispTbl       ;AX=1226h, Open File
     dw closeFileHdl - mDispTbl  ;AX=1227h, Close File
-    dw lseekHdl - mDispTbl      ;AX=1228h, LSEEK
+    dw mpxLseek - mDispTbl      ;AX=1228h, LSEEK
     dw readFileHdl - mDispTbl   ;AX=1229h, Read File
     dw noOp - mDispTbl          ;AX=122Ah, Noop, Set FASTOPEN EP (reserved)
-    dw ioctrl - mDispTbl        ;AX=122Bh, IOCTL
+    dw mpxIOCTL - mDispTbl      ;AX=122Bh, IOCTL
     dw getDrvChain - mDispTbl   ;AX=122Ch, Get device Chain (ptr in rax)
     dw getExtErrCde - mDispTbl  ;AX=122Dh, Get extended error code
 mDispTblL   equ     $ - mDispTbl

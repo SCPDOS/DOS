@@ -348,6 +348,9 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Exception handler vars in SDA now 
     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
     haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
+;Lseek and IOCTL return data in registers, so their mplx EP's use the 
+; following register stack. One allocated per task.
+    mplxRegStack    db callerFrame_size dup (?) 
     sdaLen      equ     $ - sda 
     sdaDOSLen   equ     $ - sdaDOSSwap
 
