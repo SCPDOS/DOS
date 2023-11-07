@@ -188,7 +188,7 @@ extErrTbl:
 dosCodepage:   ;Symbol to point to 
 leadingZeros:   db 8 dup (0)    ;Unknown why they are 0 in DOS
 defltCtry:      db "\COUNTRY.SYS", (64-12) dup (0) ;FQ Path to COUNTRY.SYS file
-defaultCP:      dw 437  ;Set to multilingual codepage
+defaultCP:      dw 437  ;Set to CP437 default
 ctryFunctions:  dw 5    ;Support 5 extended functions: al=01,02,04,05,06
 charTableArray: ;All the qwords need fixing up here
 .ucTable:

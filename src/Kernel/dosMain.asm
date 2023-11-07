@@ -763,7 +763,8 @@ getExtendedError:  ;ah = 59h
     mov word [rsi + callerFrame.rax], ax
     mov word [rsi + callerFrame.rbx], bx
     mov byte [rsi + callerFrame.rcx + 1], ch
-    return
-getsetDiskSerial:  ;ah = 69h, get/set disk serial number
 noOp:
     return
+;At some point we will implement the below function but that is
+; a low priority as it is not a DOS 3.3 function. 
+;getsetDiskSerial:  ;ah = 69h, get/set disk serial number

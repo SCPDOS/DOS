@@ -572,3 +572,14 @@ getCharDevDriverPtr:
     stc ;Else bad exit
     return
 
+getDrvChain: ;Int 4Fh, AX=122Ch
+;Pointer to the first non-null device driver in the chain.
+;Returns the value in rax only
+    lea rax, nulDevHdr
+    mov rax, qword [rax + drvHdr.nxtPtr]    ;Get the pointer at null driver
+    return
+
+getExtErrCde:   ;Int 4Fh, AX=122Dh
+;Gets the extended error code in ax and returns
+    mov ax, word [errorExCde]
+    return
