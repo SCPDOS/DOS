@@ -1927,7 +1927,7 @@
    309                              <1> ;Server Table setup
    310 000005D4 488DBD[7F060000]    <1>     lea rdi, qword [rbp + serverDispTbl]  ;Get pointer to table
    311 000005DB 6448893C25-         <1>     mov qword fs:[serverDispTblPtr], rdi   ;Store to use
-   311 000005E0 [EB1A0000]          <1>
+   311 000005E0 [8B1A0000]          <1>
    312                              <1> 
    313                              <1> ;Set network machine name to... nothing!
    314 000005E4 488DBD[D6030000]    <1>     lea rdi, qword [rbp + machineName]
@@ -4595,34 +4595,39 @@
    348                              <1> ;Exception handler vars in SDA now 
    349 00001A7A <res 10h>           <1>     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
    350 00001A8A ??                  <1>     haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
-   351                              <1> ;Lseek and IOCTL return data in registers, so their mplx EP's use the 
-   352                              <1> ; following register stack. One allocated per task.
-   353 00001A8B <res 60h>           <1>     mplxRegStack    db callerFrame_size dup (?) 
-   354                              <1>     sdaLen      equ     $ - sda 
-   355                              <1>     sdaDOSLen   equ     $ - sdaDOSSwap
-   356                              <1> 
-   357                              <1> ;Additional variables NOT in the SDA
-   358 00001AEB ????????????????    <1>     serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
-   359 00001AF3 ??                  <1>     xActDrv     resb 1  ;0 based number of last drive to transact
-   360 00001AF4 <res 2Ah>           <1>     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
-   361                              <1>     ;for saving the current header when quickly doing a second request
-   362                              <1> 
-   363 00001B1E ??                  <1>     lastDiskNum resb 1  ;Last drive that operated
-   364 00001B1F ????                <1>     lastOpTime  resw 1  ;Packed Time of last successful disk operation
-   365                              <1>     ;Prevent toggling print if in the middle of reading an extended ASCII char
-   366                              <1> inExtASCII:
-   367 00001B21 ??                  <1>     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
-   368 00001B22 ????                <1>     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
-   369                              <1>     ;Every time this overflows, we read the clock and update the DOS internal
-   370                              <1>     ; copy of the date/time record
-   371                              <1>     ;The idt doesnt need to be in the SDA as we will halt interrupts
-   372                              <1>     ; until we get/set the address. Thus the IDT entry returned is the 
-   373                              <1>     ; correct one AT the time of calling up to "the time it takes to get
-   374                              <1>     ; to the read IDT routine".
-   375                              <1>     dosIdtPtr:          ;41h/25h will always read a new copy of IDT here
-   376 00001B24 ????                <1>         .limit  dw ?
-   377 00001B26 ????????????????    <1>         .base   dq ?
-   378                              <1>     dSegLen     equ     $
+   351                              <1>     sdaLen      equ     $ - sda 
+   352                              <1>     sdaDOSLen   equ     $ - sdaDOSSwap
+   353                              <1> 
+   354                              <1> ;Additional variables NOT in the SDA
+   355 00001A8B ????????????????    <1>     serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
+   356 00001A93 ??                  <1>     xActDrv     resb 1  ;0 based number of last drive to transact
+   357 00001A94 <res 2Ah>           <1>     bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
+   358                              <1>     ;for saving the current header when quickly doing a second request
+   359                              <1> 
+   360 00001ABE ??                  <1>     lastDiskNum resb 1  ;Last drive that operated
+   361 00001ABF ????                <1>     lastOpTime  resw 1  ;Packed Time of last successful disk operation
+   362                              <1>     ;Prevent toggling print if in the middle of reading an extended ASCII char
+   363                              <1> inExtASCII:
+   364 00001AC1 ??                  <1>     noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
+   365 00001AC2 ????                <1>     keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
+   366                              <1>     ;Every time this overflows, we read the clock and update the DOS internal
+   367                              <1>     ; copy of the date/time record
+   368                              <1>     ;The idt doesnt need to be in the SDA as we will halt interrupts
+   369                              <1>     ; until we get/set the address. Thus the IDT entry returned is the 
+   370                              <1>     ; correct one AT the time of calling up to "the time it takes to get
+   371                              <1>     ; to the read IDT routine".
+   372                              <1>     dosIdtPtr:          ;41h/25h will always read a new copy of IDT here
+   373 00001AC4 ????                <1>         .limit  dw ?
+   374 00001AC6 ????????????????    <1>         .base   dq ?
+   375                              <1>     ;Lseek and IOCTL return data in registers as well as on the caller's 
+   376                              <1>     ; stack. In Int 4Fh, this could overwrite user data if the functions
+   377                              <1>     ; were allowed to write to original callers register stack. 
+   378                              <1>     ; So we have this structure below that is used by these functions to 
+   379                              <1>     ; write their "return" data onto a "stack", even though when accessed 
+   380                              <1>     ; through the multiplexer we never will read this structure. 
+   381                              <1>     ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
+   382 00001ACE <res 60h>           <1>     mplxRegStack    db callerFrame_size dup (?) 
+   383                              <1>     dSegLen     equ     $
     20                                  Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
     21                                  %define currSegVBase section.resSeg.vstart
     22                                  %include "./src/Data/staticData.asm"
@@ -4631,7 +4636,7 @@
      3                              <1> ;       Static Data Variables       :
      4                              <1> ;-----------------------------------:
      5 00000000 00                  <1> dosMajor    db 00h      ;Version 0
-     6 00000001 60                  <1> dosMinor    db 96      ;.96
+     6 00000001 60                  <1> dosMinor    db 96       ;.96
      7 00000002 53435042494F53202E- <1> dosBIOSName db "SCPBIOS .SYS"
      7 0000000B 535953              <1>
      8 0000000E 534350444F5320202E- <1> dosKernName db "SCPDOS  .SYS"
@@ -9391,7 +9396,7 @@
    175                              <1> .skiplookahead:
    176 000022BD B484                <1>     mov ah, 84h
    177 000022BF CD4A                <1>     int 4ah ;Multitasking keyboard loop
-   178 000022C1 66813D(221B0000)FF- <1>     cmp word [keybTicks], -1    ;We reached -1 yet?
+   178 000022C1 66813D(C21A0000)FF- <1>     cmp word [keybTicks], -1    ;We reached -1 yet?
    178 000022C9 FF                  <1>
    179 000022CA 751B                <1>     jne .skipClockRead
    180 000022CC E8994C0000          <1>     call dosPushRegs
@@ -9402,7 +9407,7 @@
    185 000022DD E877000000          <1>     call swapPrimaryHeader
    186 000022E2 E86C4C0000          <1>     call dosPopRegs
    187                              <1> .skipClockRead:
-   188 000022E7 66FF05(221B0000)    <1>     inc word [keybTicks]
+   188 000022E7 66FF05(C21A0000)    <1>     inc word [keybTicks]
    189 000022EE EBB6                <1>     jmp short .readAgain
    190                              <1> .pullChar:
    191 000022F0 30E4                <1>     xor ah, ah
@@ -9411,7 +9416,7 @@
    194 000022F8 3C00                <1>     cmp al, NUL ;Is this the null char?
    195 000022FA 7507                <1>     jne .exit
    196                              <1>     ;We are mid extended ascii, prevent printer toggling
-   197 000022FC C605(211B0000)01    <1>     mov byte [inExtASCII], 1    ;Set to be in the Extended ASCII
+   197 000022FC C605(C11A0000)01    <1>     mov byte [inExtASCII], 1    ;Set to be in the Extended ASCII
    198                              <1> .exit:
    199                              <1>     return
     13                              <2> %%_ret:
@@ -9529,7 +9534,7 @@
    263 0000235C 48B92A000000000000- <1>     mov rcx, ioReqPkt_size
    263 00002365 00                  <1>
    264 00002366 488D35(C0040000)    <1>     lea rsi, primReqHdr
-   265 0000236D 488D3D(F41A0000)    <1>     lea rdi, bkupReqHdr
+   265 0000236D 488D3D(941A0000)    <1>     lea rdi, bkupReqHdr
    266 00002374 7303                <1>     jnc .read
    267 00002376 4887F7              <1>     xchg rsi, rdi   ;If carry flag set, swap pointers
    268                              <1> .read:
@@ -9790,9 +9795,9 @@
    422 00002492 E8B6FAFFFF          <1>     call mainCharIO
    423 00002497 3C10                <1>     cmp al, DLE ;Was char ^P, printer echo?
    424 00002499 7514                <1>     jnz .checkBreak2
-   425 0000249B 803D(211B0000)00    <1>     cmp byte [noPrintTog], 00   ;Should we toggle?
+   425 0000249B 803D(C11A0000)00    <1>     cmp byte [noPrintTog], 00   ;Should we toggle?
    426 000024A2 0F847BFFFFFF        <1>     jz .printToggle ;If 0, toggle!
-   427 000024A8 C605(211B0000)00    <1>     mov byte [noPrintTog], 00   ;Else, end extended char read!
+   427 000024A8 C605(C11A0000)00    <1>     mov byte [noPrintTog], 00   ;Else, end extended char read!
    428                              <1> .checkBreak2:
    429 000024AF 3C03                <1>     cmp al, ETX
    430                              <1>     retne   ;Return if not equal, al has char and ZF=NZ
@@ -10480,7 +10485,7 @@
    134 000029B1 56                  <1>     push rsi
    135 000029B2 55                  <1>     push rbp
    136                              <1> 
-   137 000029B3 66C705(221B0000)00- <1>     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
+   137 000029B3 66C705(C21A0000)00- <1>     mov word [keybTicks], 0 ;Reset ticks as we are gonna read time now
    137 000029BB 00                  <1>
    138 000029BC 488D1D(15050000)    <1>     lea rbx, CLOCKrecrd ;Read into clock record
    139 000029C3 B906000000          <1>     mov ecx, 6      ;Number of bytes to xfr
@@ -17920,10 +17925,10 @@
     67                              <1> ;Output: rbx = Interrupt Vector
     68 00006ACD 50                  <1>     push rax    ;Preserve rax
     69 00006ACE FA                  <1>     cli ;Halt interrupts
-    70 00006ACF 0F010D(241B0000)    <1>     sidt [dosIdtPtr]    ;Get the current IDT base pointer
+    70 00006ACF 0F010D(C41A0000)    <1>     sidt [dosIdtPtr]    ;Get the current IDT base pointer
     71 00006AD6 0FB6C0              <1>     movzx eax, al
     72 00006AD9 48C1E004            <1>     shl rax, 4h     ;Multiply IDT entry number by 16 (Size of IDT entry)
-    73 00006ADD 480305(261B0000)    <1>     add rax, qword [dosIdtPtr.base]    
+    73 00006ADD 480305(C61A0000)    <1>     add rax, qword [dosIdtPtr.base]    
     74 00006AE4 31DB                <1>     xor ebx, ebx
     75 00006AE6 8B5808              <1>     mov ebx, dword [rax + 8]    ;Get bits 63...32
     76 00006AE9 48C1E310            <1>     shl rbx, 10h    ;Push the high dword high
@@ -19122,10 +19127,10 @@
    506                              <1> ;   rdx = Pointer to interrupt handler
    507                              <1> ;   al = Interrupt number
    508 000071E2 FA                  <1>     cli ;Halt interrupts
-   509 000071E3 0F010D(241B0000)    <1>     sidt [dosIdtPtr]    ;Get the current IDT base pointer
+   509 000071E3 0F010D(C41A0000)    <1>     sidt [dosIdtPtr]    ;Get the current IDT base pointer
    510 000071EA 0FB6C0              <1>     movzx eax, al
    511 000071ED 48C1E004            <1>     shl rax, 4h     ;Multiply IDT entry number by 16 (Size of IDT entry)
-   512 000071F1 480305(261B0000)    <1>     add rax, qword [dosIdtPtr.base]    
+   512 000071F1 480305(C61A0000)    <1>     add rax, qword [dosIdtPtr.base]    
    513 000071F8 668910              <1>     mov word [rax], dx  ;Get low word into offset 15...0
    514 000071FB 48C1EA10            <1>     shr rdx, 10h    ;Bring next word low
    515 000071FF 66895006            <1>     mov word [rax + 6], dx  ;Get low word into offset 31...16
@@ -19443,7 +19448,7 @@
     17                              <1> .skip2:
     18 0000741B 488D1DD7FFFFFF      <1>     lea rbx, noOp   ;Push the ok function return address
     19 00007422 53                  <1>     push rbx
-    20 00007423 488B1D(EB1A0000)    <1>     mov rbx, qword [serverDispTblPtr]   ;Get the qword
+    20 00007423 488B1D(8B1A0000)    <1>     mov rbx, qword [serverDispTblPtr]   ;Get the qword
     21 0000742A 53                  <1>     push rbx    ;Push the table ptr on the stack
     22 0000742B 50                  <1>     push rax    ;Push al onto stack as a qword
     23 0000742C E856010000          <1>     call serverFunctionSelect
@@ -19547,7 +19552,7 @@
    121                              <1> ;   rcx = size in bytes of area which must be swapped while in DOS
    122                              <1> ;   rdx = size in bytes of area which must always be swapped
    123 00007528 488D3D(07040000)    <1>     lea rdi, sda
-   124 0000752F 48B9E4160000000000- <1>     mov rcx, sdaLen
+   124 0000752F 48B984160000000000- <1>     mov rcx, sdaLen
    124 00007538 00                  <1>
    125 00007539 48BA2C000000000000- <1>     mov rdx, sdaLen - sdaDOSLen ;Get the difference
    125 00007542 00                  <1>
@@ -19805,11 +19810,11 @@
    104                              <1> ;   eax = New pointer location
    105                              <1> ;   edx = 0
    106 000076E9 FF35(7A040000)      <1>     push qword [oldRSP] ;Save the callers register stack on internal DOS stack
-   107 000076EF 488D05(8B1A0000)    <1>     lea rax, mplxRegStack   ;Swap so that data is returned through here
+   107 000076EF 488D05(CE1A0000)    <1>     lea rax, mplxRegStack   ;Swap so that function writes retvals here
    108 000076F6 488905(7A040000)    <1>     mov qword [oldRSP], rax
    109 000076FD 89E8                <1>     mov eax, ebp
    110 000076FF E884BAFFFF          <1>     call lseekHdl   ;Sets the values of our registers by how it exits
-   111 00007704 8F05(7A040000)      <1>     pop qword [oldRSP]  ;Get back OG stack
+   111 00007704 8F05(7A040000)      <1>     pop qword [oldRSP]  ;Get back OG sp
    112                              <1>     return
     13                              <2> %%_ret:
     14 0000770A C3                  <2>  ret
@@ -19819,11 +19824,11 @@
    115                              <1> ;IO is done exactly as documented by DOS except al is passed in 
    116                              <1> ; low byte of bp.
    117 0000770B FF35(7A040000)      <1>     push qword [oldRSP] ;Save the callers register stack on internal DOS stack
-   118 00007711 488D05(8B1A0000)    <1>     lea rax, mplxRegStack   ;Swap so that data is returned through here
+   118 00007711 488D05(CE1A0000)    <1>     lea rax, mplxRegStack   ;Swap so that function writes retvals here
    119 00007718 488905(7A040000)    <1>     mov qword [oldRSP], rax
    120 0000771F 89E8                <1>     mov eax, ebp
    121 00007721 E872D3FFFF          <1>     call ioctrl   ;Sets the values of our registers by how it exits
-   122 00007726 8F05(7A040000)      <1>     pop qword [oldRSP]  ;Get back OG stack
+   122 00007726 8F05(7A040000)      <1>     pop qword [oldRSP]  ;Get back OG sp
    123                              <1>     return  
     13                              <2> %%_ret:
     14 0000772C C3                  <2>  ret
