@@ -348,9 +348,6 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
 ;Exception handler vars in SDA now 
     byteBuffer  resb 16 ;Used by DOS exception handler to build strings
     haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
-;Lseek and IOCTL return data in registers, so their mplx EP's use the 
-; following register stack. One allocated per task.
-    mplxRegStack    db callerFrame_size dup (?) 
     sdaLen      equ     $ - sda 
     sdaDOSLen   equ     $ - sdaDOSSwap
 
@@ -375,4 +372,12 @@ inExtASCII:
     dosIdtPtr:          ;41h/25h will always read a new copy of IDT here
         .limit  dw ?
         .base   dq ?
+    ;Lseek and IOCTL return data in registers as well as on the caller's 
+    ; stack. In Int 4Fh, this could overwrite user data if the functions
+    ; were allowed to write to original callers register stack. 
+    ; So we have this structure below that is used by these functions to 
+    ; write their "return" data onto a "stack", even though when accessed 
+    ; through the multiplexer we never will read this structure. 
+    ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
+    mplxRegStack    db callerFrame_size dup (?) 
     dSegLen     equ     $

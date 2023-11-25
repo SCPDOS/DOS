@@ -3,7 +3,7 @@
 ;       Static Data Variables       :
 ;-----------------------------------:
 dosMajor    db 00h      ;Version 0
-dosMinor    db 95      ;.95
+dosMinor    db 96       ;.96
 dosBIOSName db "SCPBIOS .SYS"
 dosKernName db "SCPDOS  .SYS"
 ;-----------------------------------:
@@ -185,13 +185,13 @@ extErrTbl:
     dd -1   ;End of table signature
 
 ;Nationalisation stuff
-dosCodepage:   ;Symbol to point to 
+dosNLSPtr:      ;Symbol to point to the DOS internal NLS data
 leadingZeros:   db 8 dup (0)    ;Unknown why they are 0 in DOS
 defltCtry:      db "\COUNTRY.SYS", (64-12) dup (0) ;FQ Path to COUNTRY.SYS file
 defaultCP:      dw 437  ;Set to CP437 default
 ctryFunctions:  dw 5    ;Support 5 extended functions: al=01,02,04,05,06
 charTableArray: ;All the qwords need fixing up here
-.ucTable:
+.ucTable:   ;Each table length is 9 bytes in length (except the last one)
     db 2
     dq ucTblExt
 .filenameUCTable:
@@ -205,8 +205,9 @@ charTableArray: ;All the qwords need fixing up here
     dq collTblExt
 ;Extended country table
 extCtryTbl:
-    db 1    ;infoIDCode (always 1)
-    dw 42   ;Total length of the structure
+    db 1    ;infoIDCode (always 1), also matches function 1 value
+    ;Below: Length of structure (not including this word and above byte)
+    dw extCtryTblL
 .countryCode:
     dw 044  ;Current (Active) Country ID (044 is UK)
 .activeCP:
@@ -226,6 +227,7 @@ ctryTbl:
     dq 0        ;Map to function that does UC conversions
     db ",",0    ;Data list separator
     db 10 dup (0)
+extCtryTblL equ $ - extCtryTbl.countryCode
 
 ucTblExt:   ;External pointer to the uppercase table
     dw 80h

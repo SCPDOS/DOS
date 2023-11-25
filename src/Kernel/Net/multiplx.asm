@@ -104,20 +104,20 @@ mpxLseek:  ;Int 4Fh, AX=1228h, LSEEK
 ;   eax = New pointer location
 ;   edx = 0
     push qword [oldRSP] ;Save the callers register stack on internal DOS stack
-    lea rax, mplxRegStack   ;Swap so that data is returned through here
+    lea rax, mplxRegStack   ;Swap so that function writes retvals here
     mov qword [oldRSP], rax
     mov eax, ebp
     call lseekHdl   ;Sets the values of our registers by how it exits
-    pop qword [oldRSP]  ;Get back OG stack
+    pop qword [oldRSP]  ;Get back OG sp
     return
 
 mpxIOCTL:  ;Int 4Fh, AX=122Bh
 ;IO is done exactly as documented by DOS except al is passed in 
 ; low byte of bp.
     push qword [oldRSP] ;Save the callers register stack on internal DOS stack
-    lea rax, mplxRegStack   ;Swap so that data is returned through here
+    lea rax, mplxRegStack   ;Swap so that function writes retvals here
     mov qword [oldRSP], rax
     mov eax, ebp
     call ioctrl   ;Sets the values of our registers by how it exits
-    pop qword [oldRSP]  ;Get back OG stack
+    pop qword [oldRSP]  ;Get back OG sp
     return  
