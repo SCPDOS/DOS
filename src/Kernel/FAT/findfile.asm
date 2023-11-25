@@ -664,12 +664,16 @@ pathWalk:
     mov rbx, rdi
     ;If rsi at the end of the string, exit for ROOT dir
     cmp byte [rsi], 0
-    jnz .mainlp
+    jnz .mainlp0
     ;Setup dummy dir data
     xor eax, eax
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
     jmp short .exitGood
+.mainlp0:
+;    call .mainLp    ;Do an iteration of mainLp
+;    retc
+    ;Handle join here
 .mainlp:
     call copyPathspec  ;Now setup the filename in the FCB name field
     test al, al
@@ -831,6 +835,48 @@ prepareDir:
     mov dword [dirClustPar], eax    ;Store parent cluster number
     pop rcx
     return 
+
+;handleJoin:
+;This function will handle join drives. Since a drive letter can only be 
+; join'ed to a folder in the root directory of another drive (CANNOT BE
+; SUBST OR NET), we will scan the first the first path componant 
+; against each CDS entry. If we match, we store the real drive letter
+; in the internal path instead of the pathspec.
+; Input: rdi -> Points to internal path to use.
+;        rsi -> User path, just past any drive specifier.
+;        al = 1-based drive letter in path selected.
+;Output: rdi -> Points to where the rest of the user path must go.
+;        rsi -> User path advanced by the join'ed path componant.
+;    push rax
+;    push rcx
+;    push rbp
+;    add al, "@" ;Convert to UC ASCII char
+;    xor ecx, ecx
+;    mov rbp, qword [cdsHeadPtr] ;Get the cds ptr
+;.checkCDS:
+;Only compare paths against valid join drives with 
+;    push rax
+;    cmp word [rbp + cds.wFlags], cdsValidDrive | cdsJoinDrive
+;    jne .goToNextDrive
+;    cmp al, byte [rbp]  ;Is this the right drive letter?
+;    jne .goToNextDrive
+;.pathLoop:
+;    lodsb
+;    call swapPathSeparator  ;If char is a pathsep, finish
+;    stosb
+;    jnz .pathLoop
+;.endJoinAdjust:
+;Now change current CDS, DPB and drive letter
+;.goToNextDrive:
+;    pop rax
+;    inc ecx
+;    cmp cl, byte [lastdrvNum]   ;Once equal, exit!
+;    jnz .checkCDS
+;.exit:
+;    pop rbp
+;    pop rcx
+;    pop rax
+;    return
 
 copyPathspec:
 ;1) Copies a path portion from the source buffer to the destination

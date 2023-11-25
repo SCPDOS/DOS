@@ -201,8 +201,8 @@ getDiskDPB:
     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
 .checkCDS:
-;Subst, Redir and Join are skipped as the
-    test word [rdi + cds.wFlags], cdsRedirDrive | cdsSubstDrive | cdsJoinDrive
+;Redir are skipped as they are not associated with a DPB
+    test word [rdi + cds.wFlags], cdsRedirDrive
     jnz .next
     cmp qword [rdi + cds.qDPBPtr], rsi  ;If the dpb ptr matches, reset
     jne .next   ;Else, goto next

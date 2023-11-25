@@ -151,6 +151,7 @@ writeFileHdl:      ;ah = 40h, handle function
 
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 ;Here don't allow malformed chars unless it is a network CDS
+;Allows deleting volume labels.
     mov ebx, dirIncFiles    ;Inclusive w/o dirs
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server invoke, store this value instead

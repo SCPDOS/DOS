@@ -238,17 +238,23 @@ parseFilenameFCB:  ;ah = 29h, Always can be used
 
 createFileFCB:     ;ah = 16h
 ;rdx -> Extended FCB
-;       MUST BE EXTENDED. 
-;       MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
+;   MUST BE EXTENDED. 
+;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail, for now
+; Using FCB's, one can only create a volume label on a volume.
+;Deleting a file label totally can be done using delete file 
+;   (both FCB and hdl).
     cmp byte [rdx + exFcb.extSig], -1
     jne .exit
     cmp byte [rdx + exFcb.attribute], dirVolumeID
     jne .exit
+    lea rdi, buffer1
+    push rdi
+    call fcbInitRoutine ;Build path and find file to delete
+    pop rdi ;Point rdi to the canonised path
+    jc fcbErrExit
     ;Here we search for a volume ID in the root directory.
     ; If one exists, we replace the dir entry name field,
-    ; sync the BPB field and invalidate the DPB (to rebuid the BPB).
-    ; Else, we build a dir entry for it, sync the BPB and invalidate the DPB.
-    ;If ANY bits other than ValidCDS are set in the CDS, fail the operation.
+    ; Else, we build a dir entry for it.
 .exit:
     mov eax, errAccDen
     jmp fcbErrExit
@@ -331,7 +337,7 @@ fcbInitRoutine:
 ;       rdi -> Buffer to use to build the X:FILENAME.EXT,0 pathspec
     push rbp
     mov rbp, rsp
-    sub rsp, 15    ;Make 15 char space on stack
+    sub rsp, 15    ;Make 16 char space on stack
     ;This space is used to store X:FILENAME.EXT,0
     push rdi    ;Save the internal destination pathname buffer 
     lea rdi, qword [rbp - 15]
@@ -354,7 +360,7 @@ fcbInitRoutine:
 .nameCharCheck:
     lodsb   ;Get the char in al
     xlatb   ;Get the char signature in al
-    test al, 8
+    test al, 8  ;Make sure it is a valid FCB filename char
     jz .badDisk
     dec ecx
     jnz .nameCharCheck
@@ -366,7 +372,7 @@ fcbInitRoutine:
     je .badDisk
     lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
     push rbp
-    call canonicaliseFileName   ;Canonicalise filename
+    call canonicaliseFileName   ;Canonicalise filename (add curr dir)
     pop rbp
     jc .badDisk
     call fcbCheckDriveType  ;Set the volume compatibility bit for operation
