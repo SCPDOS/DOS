@@ -197,7 +197,7 @@ getDiskDPB:
     ;Here re-init all CDS's that refer to the dpb if the disk was switched
     movzx ecx, byte [lastdrvNum]
     xor eax, eax
-    dec rax ; -1 means start of root dir and never accessed (i.e. reset path)!
+    dec eax ; -1 means start of root dir and never accessed (i.e. reset path)!
     mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
 .checkCDS:

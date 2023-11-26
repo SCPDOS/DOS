@@ -739,6 +739,7 @@ handleJoin:
 ;If no match, no effect.
 ;If a matched path is found, working CDS, DPB and drv are set for the
 ; join drive. rsi is advanced to the next path componant.
+;If CF=CY => Disk detection error
     push rcx
     push rbp
     mov rbp, qword [workingCDS]
@@ -780,11 +781,11 @@ handleJoin:
     pop rdi ;Get original rdi value (i.e. our internal built path).
     pop rcx 
     mov qword [workingCDS], rbp  ;Save the pointer here
-    mov rax, qword [rbp + cds.qDPBPtr]
-    mov qword [workingDPB], rax ;and the new DPB ptr
-    sub cl, "A" ;Convert to a 0 based number again
-    mov byte [workingDrv], cl
-    jmp short .exit
+    push rdi
+    mov rdi, rbp    ;Needs to be called with rdi = CDS ptr
+    call getDiskDPB ;Rebuild DPB if needed. Sets working DPB and drive
+    pop rdi
+    jmp short .exit ;If return with CF=CY, this failed. Error exit
 .notString:
     pop rsi
     pop rdi
