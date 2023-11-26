@@ -1288,7 +1288,7 @@ openMain:
     jne .notNet
 .redirOpen:
     push rax    ;Push open mode onto stack
-    mov eax, 1116h  ;Open remote file on \\ pathspec drives
+    mov eax, 1116h  ;Open remote file on "\\" pathspec drives
     int 4Fh
     pop rax
     return

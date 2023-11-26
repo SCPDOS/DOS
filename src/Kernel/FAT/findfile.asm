@@ -507,8 +507,8 @@ getPath:
 ; If the portion with wildcards does not end with an ASCII null, we fail the 
 ; request with pnf. If there is a redirector which needs to normalise the path, 
 ; we let it do its thing and return.
-;If the user requests data from a remote server (i.e. a pathspec starting with
-; \\) then wildcards, the colon and dots are forbidden.
+;If the user requests data from a remote server (i.e. UNC pathnames) 
+; then wildcards, the colon and dots are forbidden.
 ;If a remote user requests data (dosInvoke = -1), then the pathspec must be an
 ; absolute path (no wildcards or dots) and must begin with a drive letter 
 ; (converted from using machine name by the net client program).
@@ -542,7 +542,7 @@ getPath:
     call getDrvLetterFromPath   ;rsi will point to the \ in X:\
     call getCDS ;Get the cds for the drive letter on the path
     ;REMEMBER, FOR ALL THE LOGIC TO WORK, HERE WE MUST ENSURE THE PATH
-    ; CONTAINS NO . or .., NO INVALID CHARS OR MULTIPLE \\ AND IS 0 TERMINATED.
+    ; CONTAINS NO . or .., NO INVALID CHARS OR MULTIPLE "\\" AND IS 0 TERMINATED.
     ;We do not scan for this criteria but the client program must adhere to 
     ; these requirements.
     ;When a server request is made, the request can ONLY be for a file on
@@ -569,7 +569,7 @@ getPath:
     push rax    ;Save whether rsi is incremented by 2
     mov ax, word [rsi]   ;Get the word pointed to by rsi
     call swapPathSeparator  ;Convert al if it is a path separator
-    xchg ah, al ;Now swap al into ah to check if we on a network path (i.e. \\)
+    xchg ah, al ;Now swap al into ah to check if we on a network path (i.e. UNC)
     call swapPathSeparator  ;Returns ZF=ZE if al = "/" or "\"
     jnz .notNet
     cmp ah, al  ;If they are equal, we have a net path
@@ -656,11 +656,12 @@ pathWalk:
 ;Input: rsi must point to source buffer for path to expand
 ;       rdi must point to a destination buffer
 ;       al must contain the drive 1 based number
-    call prepareDir    ;Prepare the dir if the drive is subst/join drive
+    call prepareDir    ;Prepare the start of the path
     jc .badDriveExit
-    ;If the user requests to .. to a point before rbx, we fail if a disk
-    ; resolution
-.netEp: ;For net path resolution (resolution ONLY) ptrs must point past "\\"
+.netEp: 
+;For net path resolution (resolution ONLY) ptrs must point past "\\".
+;For subst, resolution cannot go past backslash offset.
+;For join, it is transparent.
     mov rbx, rdi
     ;If rsi at the end of the string, exit for ROOT dir
     cmp byte [rsi], 0
@@ -730,16 +731,10 @@ pathWalk:
     jmp short .exit
 
 handleJoin:
-;Is only entered when parsing the first part of a path. If the 
-; path does not terminate in a null, then we check to see
-; if the portion matches a valid join path. If it does, it then overwrites
-; X: with Y: where Y is the actual drive letter, whilst leaving the 
-; source path buffer advanced, and manually adjusts all internal DOS 
-; vars that might have been set as a result of the original request.
+;Intervenes if the subdirectory we are entering is joined.
 ;This path cannot be on a net redir drive, local redir is ok.
 ;Input:
 ; rsi = First char of potential JOIN'ed pathspec.
-; rdi = Points to where to store it.
 ;Output:
 ;If no match, no effect.
 ;If a matched path is found, working CDS, DPB and drv are set for the
@@ -753,23 +748,7 @@ handleJoin:
     test ecx, cdsRdirLocDrive   ;If not a local redir, exit (cannot be net).
     jz .exitNoCrit
 .okToGo:
-;First scan to see if we null terminate in this portion (exit if so)
     call dosCrit1Enter
-    push rdi
-    mov rdi, rsi    ;Scan the source string
-    mov ecx, 12 ;Only check 12 chars (8+3+1, 1 for max terminator)
-.nullCheck:
-    lodsb
-    test al, al
-    jz .nullCheckDone
-    call swapPathSeparator
-    jz .nullCheckDone
-    dec ecx
-    jnz .nullCheck
-.nullCheckDone:
-    pop rdi
-    test al, al
-    jz .exit
     mov rbp, qword [cdsHeadPtr]
     xor ecx, ecx    ;Use as a CDS counter
 .checkCDS:
@@ -779,27 +758,30 @@ handleJoin:
 ;Get the length of the CDS path componant to check
     push rcx
     push rdi
-    push rsi
-    mov rdi, rbp
+    push rsi        ;Have rsi point to the user path buffer
+    mov rdi, rbp    ;Have rdi point to the CDS path
     movzx eax, word [rbp + cds.wBackslashOffset]
     inc eax ;Add one to push it past the backslash
     add rdi, rax    ;Add this offset to rdi
     call strlen     ;Get length of the path componant in ecx
-    dec ecx ;Dont wanna compare the terminator (this won't be equal)
+    dec ecx ;Dont wanna compare the terminator
     repe cmpsb      ;Ensure strings are equal
     jnz .notString
-    ;Now ensure rsi is pointing at a pathsep char too.
-    ;Dont have to check for null as we discarded that case earlier.
+    ;Now ensure rsi is pointing at a pathsep/terminator char too.
     lodsb   ;Get this char and advance rsi to next path componant.
     call swapPathSeparator
+    jz .goodString
+    test al, al
     jnz .notString
+    dec rsi ;If this is a null char, point rsi back to it
+.goodString:
     ;Here we know we have the right string.
     pop rcx ;Trash original rsi
     pop rdi ;Get original rdi value (i.e. our internal built path).
     pop rcx 
     mov qword [workingCDS], rbp  ;Save the pointer here
     mov rax, qword [rbp + cds.qDPBPtr]
-    mov qword [workingDPB], rax ;Just in case :)
+    mov qword [workingDPB], rax ;and the new DPB ptr
     sub cl, "A" ;Convert to a 0 based number again
     mov byte [workingDrv], cl
     jmp short .exit
@@ -821,30 +803,29 @@ handleJoin:
 
 prepareDir:
 ;Used to transfer the current directory if it is necessary.
-;Always necessary if the user specified a subst/join drive. Else only if 
-; relative
+;Always necessary if the user specified a subst drive. Else only if 
+; a relative path is specified.
 ;Input: al = 1-based drive letter
 ;Output: rdi = Pointing at where to place chars from source string
 ;   If CF=CY => Drive invalid or drive letter too great
-    push rsi
+    push rsi    ;Push ptr to source string
     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jc .critExit    ;If the drive number in al is too great or a join drive specified.
     mov rdi, qword [workingCDS] 
     push rdi    ;Push CDS pointer on stack...
-    call getDiskDPB  ;Update working DPB and drv before searching, dpbptr in rbp
+    call getDiskDPB  ;Update working DPB and drv before searching
+    ;RBP = DPB ptr now
 .critExit:
     call dosCrit1Exit
     pop rsi     ; ...and get CDS pointer in rsi
     jc .badDriveExit 
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
-    ;If this CDS is a join drive, intervene, change CDS & adv ptr.
+    ;If this CDS is a join drive... it can't be!
     ;If the path is to be spliced, then we copy the whole CDS current path
     ;If the CDS is not subst drive, nor to be spliced, we copy first two chars.
-    test word [rsi + cds.wFlags], cdsJoinDrive
-    jnz .prepDirJoin
     test word [rsi + cds.wFlags], cdsSubstDrive
     jnz .prepDirSubst
 .prepMain:
@@ -853,9 +834,8 @@ prepareDir:
     jz .prepLoop ;If this flag is zero, we loop
     ;Else we copy the first two chars only (X:)
     movsw  
-.prepJoinRet:
     mov al, "\"
-    stosb   ;Store the path separator and increment rdi
+    stosb   ;Store the path separator in internal buffer and increment rdi
     xor eax, eax    ;Get cluster 0
     jmp short .prepDirExitSkip
 .prepLoop:
@@ -878,12 +858,6 @@ prepareDir:
 .badDriveExit:
     pop rsi
     return
-.prepDirJoin:
-    call handleJoin ;Handle join
-    mov ax, "A:"
-    add al, byte [workingDrv]   ;Increment the drive letter by that number
-    stosw   ;Store the X:
-    jmp short .prepJoinRet
 .prepDirSubst:
     push rcx
     movzx ecx, word [rdi + cds.wBackslashOffset]
@@ -1104,6 +1078,7 @@ addPathspecToBuffer:
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
     dec rdi ;Go back to the copied Null char
     pop rsi ;Get back src ptr which points to first char in next pathspec
+    call .aptbHandleJoin
 .aptbOkExit:
     mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
     call swapPathSeparator
@@ -1116,14 +1091,21 @@ addPathspecToBuffer:
 ;For one dot, we leave rdi where it is
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
-    clc ;Ensure we clear CF if we return via here
     mov al, byte [rsi - 1]  ;Get the previous char in al if we return
-    retne   ;Return with rdi untouched and rsi advanced.
+    je .aptbPNTwoDots
+    ;rdi is ready for the next char. If this is the start of a disk
+    ; path, we need to place a backslash.
+    clc ;Ensure we clear CF if we return via here
+    cmp byte [rdi - 2], ":" ;Is this so?
+    retne
+    mov byte [rdi - 1], "\" ;Place the starting backslash!
+    return   ;Return with rdi untouched and rsi advanced.
+.aptbPNTwoDots:
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
     dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
     cmp word [rdi - 1], ":\" ;IF the char preceeding \ is :, then error out
-    je .aptbPnf
+    je .startOfPath
     cmp word [rdi - 1], "\\" ;Similar net name check
     je .aptbPnf
 .aptbPNDotsLp:
@@ -1133,16 +1115,32 @@ addPathspecToBuffer:
     ;Don't go past the pathsep, since we may need to replace it with a null
     cmp byte [skipDisk], 0  ;Are we in name resolution mode?
     je .aptbOkExit    ;If clear, we are, so just return
-    cmp rdi, rbx    ;Are we before the start of the path? (i.e in subst?)
+    cmp rdi, rbx    ;Are we before start of path? (i.e in subst resvd part?)
     jb .aptbPnf
     jmp short .aptbOkExit
-;.aptbSearchError:
-;    mov eax, errFnf
-;    jmp short .aptbErrExit
+.startOfPath:
+;Here, if we are on a join CDS, go to the root of the original drive.
+    mov rbp, qword [workingCDS]
+    cmp word [rbp + cds.wFlags], cdsJoinDrive | cdsValidDrive
+    jne .aptbPnf    ;If it is not, we error return (filenotfound)
+    ;Now we change the drive letter and return
+    mov al, byte [rbp]  ;Get the first char of the path 
+    mov byte [rdi - 2], al  ;Replace the char in destination buffer
+    sub al, "@" ;Convert to a 1 based drive number
+    call getCDSNotJoin
+    retc    ;If this errors for some reason, something is really wrong.
+    jmp short .aptbOkExit
 .aptbPnf:
     mov eax, errPnf
 .aptbErrExit:
-    stc ;Set carry
+    stc
+    return
+.aptbHandleJoin:
+;Handles join paths.
+    push rsi    ;rsi already points to the next pathspec
+    mov rsi, rbx    ;Move the start of the buffer to rsi
+    call handleJoin ;Enters crit section, changes the CDS
+    pop rsi
     return
 
 checkDevPath:

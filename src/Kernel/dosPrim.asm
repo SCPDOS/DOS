@@ -40,7 +40,7 @@ setupPhysicalDiskRequest:
     jc .error
     mov byte [workingDrv], al   ;Save al as the working drive number
     mov rbp, qword [workingCDS]  ;Get the current CDS pointer
-    test qword [rbp +cds.wFlags], cdsRedirDrive   ;On a network?
+    test qword [rbp + cds.wFlags], cdsRedirDrive   ;On a network?
     jnz .netError
     mov rbp, qword [rbp + cds.qDPBPtr]  ;Get the DPB pointer for request
     call setWorkingDPB ;Save the DPB as the working DPB

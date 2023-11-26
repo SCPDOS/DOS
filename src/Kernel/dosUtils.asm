@@ -14,7 +14,7 @@ testCDSNet:
 ;Checks if the workingCDS is a redirector drive
 ;Returns: CF=NC => Not net
 ;         CF=CY => Network redirector
-;         ZF=ZE => Net without CDS (\\ paths only)
+;         ZF=ZE => Net without CDS (UNC paths only)
 ;         ZF=NZ => Net with CDS (disk paths ok)
 ;         rdi = workingCDS ptr
     mov rdi, qword [workingCDS]
@@ -379,7 +379,6 @@ checkPathspecOK:
     push rbx    ;Use rbx as the return flag status
     push rsi
     xor ebx, ebx    ;Clear the return status flags
-
     ;Start by getting the length of the ASCIIZ string.
     push rcx
     push rdi
@@ -402,7 +401,7 @@ checkPathspecOK:
     jnz .badExit    ;If this is -1, server invoke.
     jmp short .okToScan
 .netName:
-    add rsi, 2  ;Goto the first char after the \\
+    add rsi, 2  ;Goto the first char after the UNC start symbol
     jmp short .okToScan
 .diskPath:
     add rsi, 2  ;Go past the X:
