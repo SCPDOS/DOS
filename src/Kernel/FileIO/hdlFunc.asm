@@ -1337,6 +1337,10 @@ setOpenMode:
 ;Input: al = Open mode for the file open
     mov byte [fileOpenMd], al
     push rbx
+;Check we are not opening a directory.
+;NOTE SUPERCEEDED IN BUILDSFTENTRY
+;    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+;    jnz .somBad    ;Directories are not allowed to be opened
     mov bl, al
     and bl, 0F0h    ;Isolate upper nybble. Test share mode.
     cmp byte [dosInvoke], -1    
@@ -1391,6 +1395,10 @@ createMain:
     stc
     return
 .validAttr:
+;Check we are not creating a directory.
+;NOTE SUPERCEEDED IN BUILDSFTENTRY
+;    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+;    jnz .bad    ;Directories are not allowed to be created
     mov rdi, qword [currentSFT]
     mov rsi, qword [workingCDS]
     cmp rsi, -1
@@ -1462,6 +1470,8 @@ buildSFTEntry:
     mov qword [rsi + sft.qPSPOwner], rax ;Set who opened the file
 ;Set file pointer to first byte
     mov dword [rsi + sft.dCurntOff], 0  
+    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+    jnz .bad    ;Directories are not allowed to be created/opened
 ;Common fields set
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
@@ -1471,9 +1481,6 @@ buildSFTEntry:
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev
     ;Here disk file exists, so recreating the file.
-    ;If recreating, check we are not overwriting a Dir
-    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-    jnz .bad    ;Directories are not allowed to be created
     push rbp
     push qword [currentSFT]
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
@@ -1598,7 +1605,7 @@ buildSFTEntry:
     jmp .createCommon
 .openProc:
     ;Here if Opening a file.
-    test byte [curDirCopy + fatDirEntry.attribute], 40h ;Was this a char dev?
+    test byte [curDirCopy + fatDirEntry.attribute],dirCharDev
     jz .open
 .charDev:
     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
