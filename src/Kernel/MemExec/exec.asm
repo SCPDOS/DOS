@@ -698,13 +698,13 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Check FCB drive numbers are valid. Return FFh if not
     mov al, bl
     xor bl, bl
-    call setDrive
+    call getCDSNotJoin
     jnc .drive1Ok
     mov bl, -1
 .drive1Ok:
     mov al, bh
     xor bh, bh
-    call setDrive
+    call getCDSNotJoin
     jnc .drive2Ok
     mov bh, -1
 .drive2Ok:

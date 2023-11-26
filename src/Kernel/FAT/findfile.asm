@@ -10,7 +10,7 @@ findNextMain:
     mov al, byte [rdi + ffBlock.driveNum]
     inc al  ;Convert into 1 based number
     call dosCrit1Enter
-    call setDrive   ;Set CDS and current drive vars
+    call getCDS     ;Set CDS and current drive vars
     jc .critError   ;Return error if this fails
     mov rdi, qword [workingCDS] 
     call getDiskDPB  ;Update and set working dpb and drv, get dpbptr in rbp
@@ -664,16 +664,12 @@ pathWalk:
     mov rbx, rdi
     ;If rsi at the end of the string, exit for ROOT dir
     cmp byte [rsi], 0
-    jnz .mainlp0
-    ;Setup dummy dir data
+    jnz .mainlp
+    ;Setup dummy dir data for Root directory
     xor eax, eax
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
     jmp short .exitGood
-.mainlp0:
-;    call .mainLp    ;Do an iteration of mainLp
-;    retc
-    ;Handle join here
 .mainlp:
     call copyPathspec  ;Now setup the filename in the FCB name field
     test al, al
@@ -733,6 +729,96 @@ pathWalk:
     stc
     jmp short .exit
 
+handleJoin:
+;Is only entered when parsing the first part of a path. If the 
+; path does not terminate in a null, then we check to see
+; if the portion matches a valid join path. If it does, it then overwrites
+; X: with Y: where Y is the actual drive letter, whilst leaving the 
+; source path buffer advanced, and manually adjusts all internal DOS 
+; vars that might have been set as a result of the original request.
+;This path cannot be on a net redir drive, local redir is ok.
+;Input:
+; rsi = First char of potential JOIN'ed pathspec.
+; rdi = Points to where to store it.
+;Output:
+;If no match, no effect.
+;If a matched path is found, working CDS, DPB and drv are set for the
+; join drive. rsi is advanced to the next path componant.
+    push rcx
+    push rbp
+    mov rbp, qword [workingCDS]
+    movzx ecx, word [rbp + cds.wFlags]
+    test ecx, cdsRedirDrive     ;Cannot join over networks.
+    jz .okToGo
+    test ecx, cdsRdirLocDrive   ;If not a local redir, exit (cannot be net).
+    jz .exitNoCrit
+.okToGo:
+;First scan to see if we null terminate in this portion (exit if so)
+    call dosCrit1Enter
+    push rdi
+    mov rdi, rsi    ;Scan the source string
+    mov ecx, 12 ;Only check 12 chars (8+3+1, 1 for max terminator)
+.nullCheck:
+    lodsb
+    test al, al
+    jz .nullCheckDone
+    call swapPathSeparator
+    jz .nullCheckDone
+    dec ecx
+    jnz .nullCheck
+.nullCheckDone:
+    pop rdi
+    test al, al
+    jz .exit
+    mov rbp, qword [cdsHeadPtr]
+    xor ecx, ecx    ;Use as a CDS counter
+.checkCDS:
+    cmp word [rbp + cds.wFlags], cdsValidDrive | cdsJoinDrive
+    jne .gotoNextCDS
+.scanCDSName:
+;Get the length of the CDS path componant to check
+    push rcx
+    push rdi
+    push rsi
+    mov rdi, rbp
+    movzx eax, word [rbp + cds.wBackslashOffset]
+    inc eax ;Add one to push it past the backslash
+    add rdi, rax    ;Add this offset to rdi
+    call strlen     ;Get length of the path componant in ecx
+    dec ecx ;Dont wanna compare the terminator (this won't be equal)
+    repe cmpsb      ;Ensure strings are equal
+    jnz .notString
+    ;Now ensure rsi is pointing at a pathsep char too.
+    ;Dont have to check for null as we discarded that case earlier.
+    lodsb   ;Get this char and advance rsi to next path componant.
+    call swapPathSeparator
+    jnz .notString
+    ;Here we know we have the right string.
+    pop rcx ;Trash original rsi
+    pop rdi ;Get original rdi value (i.e. our internal built path).
+    pop rcx 
+    mov qword [workingCDS], rbp  ;Save the pointer here
+    mov rax, qword [rbp + cds.qDPBPtr]
+    mov qword [workingDPB], rax ;Just in case :)
+    sub cl, "A" ;Convert to a 0 based number again
+    mov byte [workingDrv], cl
+    jmp short .exit
+.notString:
+    pop rsi
+    pop rdi
+    pop rcx
+.gotoNextCDS:
+    add rbp, cds_size
+    inc ecx 
+    cmp cl, byte [lastdrvNum]
+    jnz .checkCDS
+.exit:
+    call dosCrit1Exit
+.exitNoCrit:
+    pop rbp
+    pop rcx
+    return
+
 prepareDir:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst/join drive. Else only if 
@@ -742,8 +828,9 @@ prepareDir:
 ;   If CF=CY => Drive invalid or drive letter too great
     push rsi
     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
-    call setDrive   ;Set internal variables, working CDS etc etc
-    jc .critExit    ;If the drive number in al is too great or drive invalid
+    ;Here we prevent going from a join to a join. 
+    call getCDSNotJoin   ;Set internal variables, working CDS etc etc
+    jc .critExit    ;If the drive number in al is too great or a join drive specified.
     mov rdi, qword [workingCDS] 
     push rdi    ;Push CDS pointer on stack...
     call getDiskDPB  ;Update working DPB and drv before searching, dpbptr in rbp
@@ -753,8 +840,7 @@ prepareDir:
     jc .badDriveExit 
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
-    ;If this CDS is a join drive, copy the first 3 chars and up to the next 
-    ;   terminating char (\, / or Null)
+    ;If this CDS is a join drive, intervene, change CDS & adv ptr.
     ;If the path is to be spliced, then we copy the whole CDS current path
     ;If the CDS is not subst drive, nor to be spliced, we copy first two chars.
     test word [rsi + cds.wFlags], cdsJoinDrive
@@ -767,6 +853,7 @@ prepareDir:
     jz .prepLoop ;If this flag is zero, we loop
     ;Else we copy the first two chars only (X:)
     movsw  
+.prepJoinRet:
     mov al, "\"
     stosb   ;Store the path separator and increment rdi
     xor eax, eax    ;Get cluster 0
@@ -792,21 +879,11 @@ prepareDir:
     pop rsi
     return
 .prepDirJoin:
-    push rcx
-    push rsi
-    add rsi, 2  ;Goto the backslash for the dir
-    mov ecx, 2  ;Instantiate ecx to copy X:
-.prepDirJoin1:
-    lodsb   ;Get the char
-    test al, al ;Null char?
-    jz .prepDirJoin2
-    call swapPathSeparator
-    jz .prepDirJoin2
-    inc ecx ;Accrue length to copy
-    jmp short .prepDirJoin1
-.prepDirJoin2:
-    pop rsi ;Return rsi to the start of the buffer
-    jmp short .prepDirCopy1
+    call handleJoin ;Handle join
+    mov ax, "A:"
+    add al, byte [workingDrv]   ;Increment the drive letter by that number
+    stosw   ;Store the X:
+    jmp short .prepJoinRet
 .prepDirSubst:
     push rcx
     movzx ecx, word [rdi + cds.wBackslashOffset]
@@ -835,48 +912,6 @@ prepareDir:
     mov dword [dirClustPar], eax    ;Store parent cluster number
     pop rcx
     return 
-
-;handleJoin:
-;This function will handle join drives. Since a drive letter can only be 
-; join'ed to a folder in the root directory of another drive (CANNOT BE
-; SUBST OR NET), we will scan the first the first path componant 
-; against each CDS entry. If we match, we store the real drive letter
-; in the internal path instead of the pathspec.
-; Input: rdi -> Points to internal path to use.
-;        rsi -> User path, just past any drive specifier.
-;        al = 1-based drive letter in path selected.
-;Output: rdi -> Points to where the rest of the user path must go.
-;        rsi -> User path advanced by the join'ed path componant.
-;    push rax
-;    push rcx
-;    push rbp
-;    add al, "@" ;Convert to UC ASCII char
-;    xor ecx, ecx
-;    mov rbp, qword [cdsHeadPtr] ;Get the cds ptr
-;.checkCDS:
-;Only compare paths against valid join drives with 
-;    push rax
-;    cmp word [rbp + cds.wFlags], cdsValidDrive | cdsJoinDrive
-;    jne .goToNextDrive
-;    cmp al, byte [rbp]  ;Is this the right drive letter?
-;    jne .goToNextDrive
-;.pathLoop:
-;    lodsb
-;    call swapPathSeparator  ;If char is a pathsep, finish
-;    stosb
-;    jnz .pathLoop
-;.endJoinAdjust:
-;Now change current CDS, DPB and drive letter
-;.goToNextDrive:
-;    pop rax
-;    inc ecx
-;    cmp cl, byte [lastdrvNum]   ;Once equal, exit!
-;    jnz .checkCDS
-;.exit:
-;    pop rbp
-;    pop rcx
-;    pop rax
-;    return
 
 copyPathspec:
 ;1) Copies a path portion from the source buffer to the destination

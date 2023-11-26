@@ -101,12 +101,12 @@ walkDPBchain:
     stc
 .exit:
     return
-setDrive:   
-;Gets a drive CDS, sets it as working and checks it is a valid physical drive
+getCDSNotJoin:   
+;Gets a drive CDS, sets it as working and checks it is not a join drive
 ;Input: al = 1-based drive number
 ;Output: al = 0-based drive number
-;   CF=NC => Drive can be set as Current Drive (i.e. Not Network or Join)
-;   CF=CY => 0-based drive number invalid OR CDS returned with Net or Join flags
+;   CF=NC => Drive can be set as Current Drive (i.e. Join)
+;   CF=CY => 0-based drive number invalid OR CDS returned with Join flags
 ;            set.
     call getCDS ;Setup working CDS DOS variable for this drive
     jc .exit    ;Carry the CF flag if not Physical or if al was too large
@@ -171,7 +171,7 @@ getCDS:     ;Int 4Fh AX=1219h
     push rsi
     mov byte [errorLocus], eLocDsk  ;Set the locus
     test byte [dosInvoke], -1   ;If non-zero, invalid
-    jz .physDrive
+    jz .localCall
     ;Invokation via 21/5D00
     push rax
     push rdi
@@ -184,7 +184,7 @@ getCDS:     ;Int 4Fh AX=1219h
     pop rax
     jz .exitBad    ;If the valid flag not set, fail!
     jmp short .exitOk   ;All oki
-.physDrive:
+.localCall:
     call getCDSforDrive ;Get CDS pointer in RSI and in curCDSPtr
     jc .exitBad
     test word [rsi + cds.wFlags], cdsValidDrive

@@ -338,8 +338,8 @@ getCurrentDIR:     ;ah = 47h
 ;       dl = 1-based Drive Number (0 = Default) 
     call dosCrit1Enter
     mov al, dl  ;Move drive number into al
-    call setDrive ;Set drive variables if it is valid and NOT join
-    jnc .okDrive
+    call getCDSNotJoin ;Set drive variables if it is valid and NOT join
+    jnc .okDrive    ;Cant get current dir of a join drive
 .badExit:
     call dosCrit1Exit
     mov eax, errBadDrv

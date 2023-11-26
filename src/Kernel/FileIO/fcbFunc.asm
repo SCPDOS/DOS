@@ -466,7 +466,7 @@ parseNameToFCB:
     sub al, "@" ;Convert into a 1 based drive number
     jbe .invalidDriveLetter ;If less than 0 or 0, fail
     push rax    ;Save the 1 based drive letter
-    call setDrive   ;Verifies if this drive letter is valid
+    call getCDSNotJoin   ;Verifies if this drive letter is valid
     pop rax
     jnc .validDriveLetter
 .invalidDriveLetter:
