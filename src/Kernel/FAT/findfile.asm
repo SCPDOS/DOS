@@ -922,7 +922,7 @@ copyPathspec:
     je .cpsDots
     dec rsi ;Else move rsi to point back to starting char
 ;First char is not a dot, so now check if starts with E5h? 
-;If so, store 05h in its place! KANJI SUPPORT WOOHOO!
+;If so, store 05h in its place!
     cmp al, 0E5h
     jne .cpsMainLoop
     inc rsi ;Push rsi to point to next char
@@ -933,7 +933,7 @@ copyPathspec:
     test al, al ;Is it the null char?
     jz .cpsStore  ;If so, terminate immediately
     call swapPathSeparator  ;And if it is a pathsep, skip any bunched pathseps
-    jz .cpsStore ; and then exit with the final converted pathsep in al
+    jz .cpsSkipPathseps ; and then exit with the final converted pathsep in al
     cmp al, "." ;Filename extension separator
     je .cpsExtension
     ;If we have space in the filename, we check to see if the next char is *
@@ -1005,15 +1005,21 @@ copyPathspec:
     pop rdi
     return
 .oneDotResolve:
-    lea rdi, fcbName+11
-    stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
-    pop rdi ;rdi points to fresh space
-    dec rdi ;Point to the previous path separator
-    stosb   ;Store this separator as if it is what we had before
-    return
+    jmp short .cpsStore ;Temporarily do this
+    ;lea rdi, fcbName+11
+    ;stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
+    ;pop rdi ;rdi points to fresh space
+    ;return
 .cpsBadChar:
     xor al, al  ;Convert the char to a terminator
     return
+.cpsSkipPathseps:
+    lodsb
+    call swapPathSeparator
+    jz .cpsSkipPathseps
+    dec rsi ;Go back to the first char in next section of the pathspec
+    mov al, "\" ;Make sure to store a pathsep char
+    jmp short .cpsStore
 
 searchForPathspec:
     ;Now search the current directory for this filename
@@ -1092,15 +1098,23 @@ addPathspecToBuffer:
 ;For one dot, we leave rdi where it is
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
-    mov al, byte [rsi - 1]  ;Get the previous char in al if we return
     je .aptbPNTwoDots
-    ;rdi is ready for the next char. If this is the start of a disk
-    ; path, we need to place a backslash.
-    clc ;Ensure we clear CF if we return via here
-    cmp byte [rdi - 2], ":" ;Is this so?
-    retne
-    mov byte [rdi - 1], "\" ;Place the starting backslash!
-    return   ;Return with rdi untouched and rsi advanced.
+    breakpoint
+    ;Handle being in the root directory differently.
+    cmp byte [rdi - 2], ":"
+    je .aptbPNDotslp    ;Avoid rewinding in the root directory
+    dec rdi ;Rewind one, point to the separator char itself
+    ;Skip any backslash chars if pathsep or exit if al = 0, storing it.
+.aptbPNDotslp:
+    lodsb
+    test al, al
+    jz .aptbPNexit  ;If we pick up a null, exit at this point
+    call swapPathSeparator
+    jz .aptbPNDotslp
+    dec rsi ;Go back to the first char in next section of the pathspec
+    mov al, "\" ;Store a path separator
+    jmp short .aptbPNexit
+
 .aptbPNTwoDots:
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
@@ -1130,7 +1144,7 @@ addPathspecToBuffer:
     sub al, "@" ;Convert to a 1 based drive number
     call getCDSNotJoin
     retc    ;If this errors for some reason, something is really wrong.
-    jmp short .aptbOkExit
+    jmp .aptbOkExit
 .aptbPnf:
     mov eax, errPnf
 .aptbErrExit:
