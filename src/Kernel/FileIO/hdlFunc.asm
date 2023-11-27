@@ -1470,8 +1470,6 @@ buildSFTEntry:
     mov qword [rsi + sft.qPSPOwner], rax ;Set who opened the file
 ;Set file pointer to first byte
     mov dword [rsi + sft.dCurntOff], 0  
-    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-    jnz .bad    ;Directories are not allowed to be created/opened
 ;Common fields set
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
@@ -1480,6 +1478,8 @@ buildSFTEntry:
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev
+    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+    jnz .bad    ;Directories are not allowed to be created/opened
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
@@ -1605,6 +1605,8 @@ buildSFTEntry:
     jmp .createCommon
 .openProc:
     ;Here if Opening a file.
+    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+    jnz .bad    ;Directories are not allowed to be created/opened
     test byte [curDirCopy + fatDirEntry.attribute],dirCharDev
     jz .open
 .charDev:

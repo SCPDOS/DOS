@@ -1122,7 +1122,6 @@ addPathspecToBuffer:
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
     je .aptbPNTwoDots
-    breakpoint
     ;Handle being in the root directory differently.
     cmp byte [rdi - 2], ":"
     je .aptbPNDotslp    ;Avoid rewinding in the root directory
