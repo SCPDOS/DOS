@@ -1083,16 +1083,39 @@ addPathspecToBuffer:
     push rsi    ;Save source pointer position
     lea rsi, fcbName
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
-    dec rdi ;Go back to the copied Null char
+    dec rdi ;Go back to the in-situ null terminator char
     pop rsi ;Get back src ptr which points to first char in next pathspec
     call .aptbHandleJoin
 .aptbOkExit:
-    mov al, byte [rsi - 1]  ;Get the prev pathspec term char in al
+    mov al, byte [fcbName + 11] ;Get the actual terminator for this portion.
+    test al, al ;If this is a null char, exit
+    jz .aptbPNexitNull  ;by readvancing rdi past terminator
     call swapPathSeparator
-    jz .aptbPNexit
-    xor al, al  ;Set al to 0 else (all other chars are terminators)
+    jnz .aptbPNexitBad  ;If the terminator is not null or pathsep, fail
+    ;Here if a pathsep.
+    cmp byte [rdi], al ;Is the char before us a pathsep?
+    jne .aptbPNexit ;If not, store a pathsep and exit
+    inc rdi ;Else, just advance rdi to point to the in situ null
+    return  ;CF is always clear here since ZF=ZE and inc doesnt touch CF
+.aptbPNexitNull:
+;Before storing and advancing, check if the previous char is a pathsep
+; and if so, overwrite *it* with a null
+    dec rdi
+    movzx eax, byte [rdi]  ;Get the char in front of the terminating null
+    call swapPathSeparator  ;If it is a pathsep, null it
+    mov al, ah  ;Rezero al
+    jz .aptbPNexit  ;If this was a pathsep, simply write the null on it
+    inc rdi ;Else go forwards before storing the null
 .aptbPNexit:
     stosb   ;Store this final char (either \ or NULL) and return
+    clc     ;Ensure the carry flag is clear
+    return
+.aptbPNexitBad:
+    mov al, errFnf
+    mov byte [errorAction], eActUsr
+    mov byte [errorClass], eClsBadFmt
+    mov byte [errorLocus], eLocUnk
+    stc
     return
 .aptbPNDots:
 ;For one dot, we leave rdi where it is
@@ -1132,7 +1155,7 @@ addPathspecToBuffer:
     je .aptbOkExit    ;If clear, we are, so just return
     cmp rdi, rbx    ;Are we before start of path? (i.e in subst resvd part?)
     jb .aptbPnf
-    jmp short .aptbOkExit
+    jmp .aptbOkExit
 .startOfPath:
 ;Here, if we are on a join CDS, go to the root of the original drive.
     mov rbp, qword [workingCDS]
