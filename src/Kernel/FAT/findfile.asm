@@ -724,78 +724,6 @@ pathWalk:
     stc
     jmp short .exit
 
-handleJoin:
-;Intervenes if the subdirectory we are entering is joined.
-;This path cannot be on a net redir drive, local redir is ok.
-;Input:
-; rsi = First char of potential JOIN'ed pathspec.
-;Output:
-;If no match, no effect.
-;If a matched path is found, working CDS, DPB and drv are set for the
-; join drive. rsi is advanced to the next path componant.
-;If CF=CY => Disk detection error
-    push rcx
-    push rbp
-    mov rbp, qword [workingCDS]
-    movzx ecx, word [rbp + cds.wFlags]
-    test ecx, cdsRedirDrive     ;Cannot join over networks.
-    jz .okToGo
-    test ecx, cdsRdirLocDrive   ;If not a local redir, exit (cannot be net).
-    jz .exitNoCrit
-.okToGo:
-    call dosCrit1Enter
-    mov rbp, qword [cdsHeadPtr]
-    xor ecx, ecx    ;Use as a CDS counter
-.checkCDS:
-    cmp word [rbp + cds.wFlags], cdsValidDrive | cdsJoinDrive
-    jne .gotoNextCDS
-.scanCDSName:
-;Get the length of the CDS path componant to check
-    push rcx
-    push rdi
-    push rsi        ;Have rsi point to the user path buffer
-    mov rdi, rbp    ;Have rdi point to the CDS path
-    movzx eax, word [rbp + cds.wBackslashOffset]
-    inc eax ;Add one to push it past the backslash
-    add rdi, rax    ;Add this offset to rdi
-    call strlen     ;Get length of the path componant in ecx
-    dec ecx ;Dont wanna compare the terminator
-    repe cmpsb      ;Ensure strings are equal
-    jnz .notString
-    ;Now ensure rsi is pointing at a pathsep/terminator char too.
-    lodsb   ;Get this char and advance rsi to next path componant.
-    call swapPathSeparator
-    jz .goodString
-    test al, al
-    jnz .notString
-    dec rsi ;If this is a null char, point rsi back to it
-.goodString:
-    ;Here we know we have the right string.
-    pop rcx ;Trash original rsi
-    pop rdi ;Get original rdi value (i.e. our internal built path).
-    pop rcx 
-    mov qword [workingCDS], rbp  ;Save the pointer here
-    push rdi
-    mov rdi, rbp    ;Needs to be called with rdi = CDS ptr
-    call getDiskDPB ;Rebuild DPB if needed. Sets working DPB and drive
-    pop rdi
-    jmp short .exit ;If return with CF=CY, this failed. Error exit
-.notString:
-    pop rsi
-    pop rdi
-    pop rcx
-.gotoNextCDS:
-    add rbp, cds_size
-    inc ecx 
-    cmp cl, byte [lastdrvNum]
-    jnz .checkCDS
-.exit:
-    call dosCrit1Exit
-.exitNoCrit:
-    pop rbp
-    pop rcx
-    return
-
 prepareDir:
 ;Used to transfer the current directory if it is necessary.
 ;Always necessary if the user specified a subst drive. Else only if 
@@ -1170,6 +1098,78 @@ addPathspecToBuffer:
     mov rsi, rbx    ;Move the start of the buffer to rsi
     call handleJoin ;Enters crit section, changes the CDS
     pop rsi
+    return
+
+handleJoin:
+;Intervenes if the subdirectory we are entering is joined.
+;This path cannot be on a net redir drive, local redir is ok.
+;Input:
+; rsi = First char of potential JOIN'ed pathspec.
+;Output:
+;If no match, no effect.
+;If a matched path is found, working CDS, DPB and drv are set for the
+; join drive. rsi is advanced to the next path componant.
+;If CF=CY => Disk detection error
+    push rcx
+    push rbp
+    mov rbp, qword [workingCDS]
+    movzx ecx, word [rbp + cds.wFlags]
+    test ecx, cdsRedirDrive     ;Cannot join over networks.
+    jz .okToGo
+    test ecx, cdsRdirLocDrive   ;If not a local redir, exit (cannot be net).
+    jz .exitNoCrit
+.okToGo:
+    call dosCrit1Enter
+    mov rbp, qword [cdsHeadPtr]
+    xor ecx, ecx    ;Use as a CDS counter
+.checkCDS:
+    cmp word [rbp + cds.wFlags], cdsValidDrive | cdsJoinDrive
+    jne .gotoNextCDS
+.scanCDSName:
+;Get the length of the CDS path componant to check
+    push rcx
+    push rdi
+    push rsi        ;Have rsi point to the user path buffer
+    mov rdi, rbp    ;Have rdi point to the CDS path
+    movzx eax, word [rbp + cds.wBackslashOffset]
+    inc eax ;Add one to push it past the backslash
+    add rdi, rax    ;Add this offset to rdi
+    call strlen     ;Get length of the path componant in ecx
+    dec ecx ;Dont wanna compare the terminator
+    repe cmpsb      ;Ensure strings are equal
+    jnz .notString
+    ;Now ensure rsi is pointing at a pathsep/terminator char too.
+    lodsb   ;Get this char and advance rsi to next path componant.
+    call swapPathSeparator
+    jz .goodString
+    test al, al
+    jnz .notString
+    dec rsi ;If this is a null char, point rsi back to it
+.goodString:
+    ;Here we know we have the right string.
+    pop rcx ;Trash original rsi
+    pop rdi ;Get original rdi value (i.e. our internal built path).
+    pop rcx 
+    mov qword [workingCDS], rbp  ;Save the pointer here
+    push rdi
+    mov rdi, rbp    ;Needs to be called with rdi = CDS ptr
+    call getDiskDPB ;Rebuild DPB if needed. Sets working DPB and drive
+    pop rdi
+    jmp short .exit ;If return with CF=CY, this failed. Error exit
+.notString:
+    pop rsi
+    pop rdi
+    pop rcx
+.gotoNextCDS:
+    add rbp, cds_size
+    inc ecx 
+    cmp cl, byte [lastdrvNum]
+    jnz .checkCDS
+.exit:
+    call dosCrit1Exit
+.exitNoCrit:
+    pop rbp
+    pop rcx
     return
 
 checkDevPath:
