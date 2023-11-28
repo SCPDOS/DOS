@@ -576,17 +576,26 @@ getPath:
     mov bl, byte [skipDisk] ;Save skipDisk state
     mov byte [skipDisk], 0  ;Set to copy and qualify name first
     push rbx
-.moveNetChars:
+.moveNetName: ;This sets up the machine name portion of the UNC path
     lodsb   ;Get the third char into al and inc rsi
     call uppercaseChar  ;Make char in al uppercase
     test al, al
     jz .netEnd
     call swapPathSeparator  ;If path sep, swap it
     stosb
-    jnz .moveNetChars  ;If not a path separating char in al, keep looking
+    jnz .moveNetName  ;If not a path separating char in al, keep looking
+    mov rbx, rdi    ;This is where the head of the path should go
+.moveNetSep:    ;Ensures that all the separators are copied.
+    lodsb
+    stosb
+    call swapPathSeparator
+    jz .moveNetSep
+    ;If we have no more chars after this, avoid entering parse
+    dec rsi ;More rsi back to the first char past the seps
+    test al, al ;Was this char null?
+    jz .netEnd  ;Skip processing if so!
     dec rdi ;Point at the backslash here to make it the start of path
     call pathWalk.netEp     ;Now expand the pathspec portion
-    jnc short .moveNetChars ;If this returns CF=CY, error out!
 .netEnd:
     pop rbx
     retc
@@ -649,14 +658,14 @@ pathWalk:
 ;       rdi must point to a destination buffer
 ;       al must contain the drive 1 based number
     call prepareDir    ;Prepare the start of the path
-    jc .badDriveExit
-.netEp: 
+    jc .badDriveExit 
+    mov rbx, rdi
+    dec rbx ;rbx points at the pathsep before the space for the first char
+.netEp:
 ;For net path resolution (resolution ONLY) ptrs must point past "\\".
 ;For subst, resolution cannot go past backslash offset.
 ;For join, it is transparent.
-    mov rbx, rdi
-    ;If rsi at the end of the string, exit for ROOT dir
-    cmp byte [rsi], 0
+    cmp byte [rsi], 0   ;If rsi at the end of the string, exit for ROOT dir
     jnz .mainlp
     ;Setup dummy dir data for Root directory
     xor eax, eax
@@ -996,110 +1005,109 @@ addPathspecToBuffer:
     test byte [skipDisk], -1
     retnz   ;Only add if in truename mode (also clears CF)
     cmp byte [fcbName], "."   ;Handle destination pointer for  
-    je .aptbPNDots
+    je .aptbDots
     ;Copy filename over to internal buffer
     push rsi    ;Save source pointer position
     lea rsi, fcbName
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
     dec rdi ;Go back to the in-situ null terminator char
     pop rsi ;Get back src ptr which points to first char in next pathspec
-    call .aptbHandleJoin
-.aptbOkExit:
+    call .aptbInterveneEnterJoin
+.aptbHandleTerminator:
     mov al, byte [fcbName + 11] ;Get the actual terminator for this portion.
-    test al, al ;If this is a null char, exit
-    jz .aptbPNexitNull  ;by readvancing rdi past terminator
+    test al, al
+    jz .aptbHandleNull
     call swapPathSeparator
-    jnz .aptbPNexitBad  ;If the terminator is not null or pathsep, fail
-    ;Here if a pathsep.
-    cmp byte [rdi], al ;Is the char before us a pathsep?
-    jne .aptbPNexit ;If not, store a pathsep and exit
-    inc rdi ;Else, just advance rdi to point to the in situ null
-    return  ;CF is always clear here since ZF=ZE and inc doesnt touch CF
-.aptbPNexitNull:
-;Before storing and advancing, check if the previous char is a pathsep
-; and if so, overwrite *it* with a null, ensuring that the previous 
-; pathsep is not the starter pathsep
-    cmp rdi, rbx    ;If equal, store null at rdi directly
-    je .aptbPNexit
-    dec rdi
-    movzx eax, byte [rdi]  ;Get the char in front of the terminating null
-    call swapPathSeparator  ;If it is a pathsep, null it
-    mov al, ah  ;Rezero al
-    jz .aptbPNexit  ;If this was a pathsep, simply write the null on it
-    inc rdi ;Else go forwards before storing the null
-.aptbPNexit:
-    stosb   ;Store this final char (either \ or NULL) and return
-    clc     ;Ensure the carry flag is clear
+    jnz .aptbErrorExit
+;Handle path separator here directly
+    push rax    ;Preserve the terminator char
+    mov al, byte [rdi - 1]
+    call swapPathSeparator  ;If the char before us is a pathsep, do nothing.
+    pop rax
+    jz .aptbExitOk
+    mov byte [rdi], al
+    inc rdi ;Now go past the pathsep we just placed
+    jmp short .aptbExitOk
+.aptbHandleNull:
+    call .aptbAtHeadOfPath
+    je .aptbHandleNullNoOverwrite
+    push rax
+    mov al, byte [rdi - 1]  ;Is previous char a pathsep?
+    call swapPathSeparator
+    pop rax
+    jnz .aptbHandleNullNoOverwrite
+    mov byte [rdi - 1], al  ;Overwrite it!
+    jmp short .aptbExitOk
+.aptbHandleNullNoOverwrite:
+    mov byte [rdi], al  ;Write in a null ()
+.aptbExitOk:
+    clc
     return
-.aptbPNexitBad:
-    mov al, errFnf
-    mov byte [errorAction], eActUsr
-    mov byte [errorClass], eClsBadFmt
-    mov byte [errorLocus], eLocUnk
-    stc
-    return
-.aptbPNDots:
+.aptbDots:
 ;For one dot, we leave rdi where it is
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
-    je .aptbPNTwoDots
-    ;Handle being in the root directory differently.
-    cmp rbx, rdi    ;If rdi points at the first permissible char, skip dec
-    jz .aptbPNDotslp
-    dec rdi ;Rewind one, point to the separator char itself
-    ;Skip any backslash chars if pathsep or exit if al = 0, storing it.
-.aptbPNDotslp:
-    lodsb
-    test al, al
-    jz .aptbPNexit  ;If we pick up a null, exit at this point
-    call swapPathSeparator
-    jz .aptbPNDotslp
-    dec rsi ;Go back to the first char in next section of the pathspec
-    mov al, "\" ;Store a path separator
-    jmp short .aptbPNexit
-
-.aptbPNTwoDots:
-    ;Here we have two dots
-    ;Walk rdi backwards until a \ is found
-    cmp rbx, rdi    ;Check we can even move the pointer backwards
-    jne .aptbPNDotsLp0   ;If we can, peel back the chars
-    cmp word [rdi - 2], ":\" ;IF the char preceeding \ is :, then join check
-    je .startOfPath
-    jmp short .aptbPnf
-.aptbPNDotsLp0:
-    dec rdi ;Point to the current pathsep in anticipation for unpeel
-.aptbPNDotsLp:
+    jne .aptbHandleTerminator   ;If not, we just handle terminator
+    ;je .aptbTwoDots
+    ;call .aptbAtHeadOfPath
+    ;je .aptbInterveneExitJoin ;If so, it must be join or fail
+    ;dec rdi ;Go back to the pathsep
+    ;jmp short .aptbDotsLp2  ;Now skip all following pathseps
+.aptbTwoDots:
+;Here we have two dots
+    call .aptbAtHeadOfPath  ;Are we at the start of the path?
+    je .aptbInterveneExitJoin ;If so, it must be join or fail
+    ;Else, we are able to decrement.
+    sub rdi, 2  ;Go past the pathsep infront of us.
+.aptbDotsLp:
+    call .aptbAtHeadOfPath  ;Are we safe to proceed?
+    je .aptbHandleTerminator
+    dec rdi ;Decrement the pointer by one
+    mov al, byte [rdi]  ;Get the char
+    call swapPathSeparator  ;Is this a valid pathsep?
+    jnz .aptbDotsLp ;If not, keep searching
+;.aptbDotsLp2:   ;This is to avoid the issue of lots of slashes
+;    call .aptbAtHeadOfPath
+;    je .aptbHandleTerminator
+;    dec rdi
+;    mov al, byte [rdi]
+;    call swapPathSeparator
+;    jz .aptbDotsLp2 ;If so, keep searching for the first
+    inc rdi ;Now go just past the new pathsep
+    jmp .aptbHandleTerminator
+.aptbAtHeadOfPath:
+;Returns ZF=ZE if at head of path.
+    push rdi
     dec rdi
-    cmp byte [rdi], "\"
-    jne .aptbPNDotsLp  ;Keep looping around until it is a "\"
-    cmp rdi, rbx
-    jae .aptbOkExit
-    mov rdi, rbx    ;If we passed the start of the path
-    clc ; we are in the root dir,
-    jmp .aptbOkExit ;Go back to it.
-.startOfPath:
+    cmp rbx, rdi    ;Are we right at the start of the path?
+    pop rdi
+    return
+    
+.aptbInterveneExitJoin:
 ;Here, if we are on a join CDS, go to the root of the original drive.
     mov rbp, qword [workingCDS]
     cmp word [rbp + cds.wFlags], cdsJoinDrive | cdsValidDrive
-    jne .aptbPnf    ;If it is not, we error return (filenotfound)
+    jne .aptbErrorExit    ;If it is not, we error return (filenotfound)
     ;Now we change the drive letter and return
     mov al, byte [rbp]  ;Get the first char of the path 
     mov byte [rdi - 2], al  ;Replace the char in destination buffer
     sub al, "@" ;Convert to a 1 based drive number
     call getCDSNotJoin
-    retc    ;If this errors for some reason, something is really wrong.
-    jmp .aptbOkExit
-.aptbPnf:
-    mov eax, errPnf
-.aptbErrExit:
-    stc
-    return
-.aptbHandleJoin:
+    retc ;If this errors, something is really wrong. Propagate error.
+    jmp .aptbHandleTerminator
+.aptbInterveneEnterJoin:
 ;Handles join paths.
     push rsi    ;rsi already points to the next pathspec
     mov rsi, rbx    ;Move the start of the buffer to rsi
     call handleJoin ;Enters crit section, changes the CDS
     pop rsi
+    return
+.aptbErrorExit:
+    mov al, errFnf
+    mov byte [errorAction], eActUsr
+    mov byte [errorClass], eClsBadFmt
+    mov byte [errorLocus], eLocUnk
+    stc
     return
 
 handleJoin:
