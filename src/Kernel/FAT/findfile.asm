@@ -974,7 +974,7 @@ copyPathspec:
     stosb   ;Store the first dot
     mov al, byte [rsi]
     cmp al, "."    ;Check now if we have a second dot
-    jne .oneDotResolve
+    jne .cpsStore
     movsb   ;Now advance rsi and rdi by copying the second dot over directly
 
 .cpsProcessName:
@@ -998,12 +998,6 @@ copyPathspec:
     stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
     pop rdi
     return
-.oneDotResolve:
-    jmp short .cpsStore ;Temporarily do this
-    ;lea rdi, fcbName+11
-    ;stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
-    ;pop rdi ;rdi points to fresh space
-    ;return
 .cpsBadChar:
     xor al, al  ;Convert the char to a terminator
     return
