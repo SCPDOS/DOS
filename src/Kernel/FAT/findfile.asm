@@ -584,10 +584,12 @@ getPath:
     call swapPathSeparator  ;If path sep, swap it
     stosb
     jnz .moveNetChars  ;If not a path separating char in al, keep looking
+    dec rdi ;Point at the backslash here to make it the start of path
     call pathWalk.netEp     ;Now expand the pathspec portion
-    jmp short .moveNetChars
+    jnc short .moveNetChars ;If this returns CF=CY, error out!
 .netEnd:
     pop rbx
+    retc
     stosb
     test bl, bl ;If skip disk was zero, exit
     retz
