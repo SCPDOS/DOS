@@ -472,16 +472,6 @@ canonicaliseFileName:
     inc al  ;make al = 0
     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
     call getPath.epAlt
-    retc    ;Return if an error
-    dec rdi ;Point to what should be the null char
-    cmp byte [rdi - 1], ":" ;Was the prev char a drive sep?
-    jne .storeNull
-    mov al, "\"
-    stosb   ;Store the pathsep and increment rdi
-.storeNull:
-    cmp byte [rdi], 0   ;Ensure path is null terminated (and clear CF)
-    retz
-    mov byte [rdi], 0   ;Store a terminating zero if necessary
     return
 
 getDirPathNoCanon:
@@ -672,7 +662,11 @@ pathWalk:
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
     jmp short .exitGood
 .mainlp:
+    ;rbx must remain constant in this portion,
+    ; and is used to signify the first writable byte in the path
+    push rbx
     call copyPathspec  ;Now setup the filename in the FCB name field
+    pop rbx
     test al, al
     jnz .notFile
     mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
@@ -1099,7 +1093,10 @@ addPathspecToBuffer:
     return  ;CF is always clear here since ZF=ZE and inc doesnt touch CF
 .aptbPNexitNull:
 ;Before storing and advancing, check if the previous char is a pathsep
-; and if so, overwrite *it* with a null
+; and if so, overwrite *it* with a null, ensuring that the previous 
+; pathsep is not the starter pathsep
+    cmp rdi, rbx    ;If equal, store null at rdi directly
+    je .aptbPNexit
     dec rdi
     movzx eax, byte [rdi]  ;Get the char in front of the terminating null
     call swapPathSeparator  ;If it is a pathsep, null it
@@ -1123,8 +1120,8 @@ addPathspecToBuffer:
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
     je .aptbPNTwoDots
     ;Handle being in the root directory differently.
-    cmp byte [rdi - 2], ":"
-    je .aptbPNDotslp    ;Avoid rewinding in the root directory
+    cmp rbx, rdi    ;If rdi points at the first permissible char, skip dec
+    jz .aptbPNDotslp
     dec rdi ;Rewind one, point to the separator char itself
     ;Skip any backslash chars if pathsep or exit if al = 0, storing it.
 .aptbPNDotslp:
@@ -1140,21 +1137,22 @@ addPathspecToBuffer:
 .aptbPNTwoDots:
     ;Here we have two dots
     ;Walk rdi backwards until a \ is found
-    dec rdi  ;rdi points to current char. Preceeding it is a \. Skip that
-    cmp word [rdi - 1], ":\" ;IF the char preceeding \ is :, then error out
+    cmp rbx, rdi    ;Check we can even move the pointer backwards
+    jne .aptbPNDotsLp0   ;If we can, peel back the chars
+    cmp word [rdi - 2], ":\" ;IF the char preceeding \ is :, then join check
     je .startOfPath
-    cmp word [rdi - 1], "\\" ;Similar net name check
-    je .aptbPnf
+    jmp short .aptbPnf
+.aptbPNDotsLp0:
+    dec rdi ;Point to the current pathsep in anticipation for unpeel
 .aptbPNDotsLp:
     dec rdi
     cmp byte [rdi], "\"
     jne .aptbPNDotsLp  ;Keep looping around until it is a "\"
-    ;Don't go past the pathsep, since we may need to replace it with a null
-    cmp byte [skipDisk], 0  ;Are we in name resolution mode?
-    je .aptbOkExit    ;If clear, we are, so just return
-    cmp rdi, rbx    ;Are we before start of path? (i.e in subst resvd part?)
-    jb .aptbPnf
-    jmp .aptbOkExit
+    cmp rdi, rbx
+    jae .aptbOkExit
+    mov rdi, rbx    ;If we passed the start of the path
+    clc ; we are in the root dir,
+    jmp .aptbOkExit ;Go back to it.
 .startOfPath:
 ;Here, if we are on a join CDS, go to the root of the original drive.
     mov rbp, qword [workingCDS]
