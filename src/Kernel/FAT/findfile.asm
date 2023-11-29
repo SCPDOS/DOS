@@ -682,6 +682,7 @@ pathWalk:
     push rbx
     call copyPathspec  ;Now setup the filename in the FCB name field
     pop rbx
+    jc .exit    ;If this errors (bad chars in filename portion), exit bad 
     test al, al
     jnz .notFile
     mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
@@ -880,7 +881,7 @@ copyPathspec:
     je .store
     call uppercaseChar  ;Uppercase the char if it needs to be...
     call checkCharValid ; and check it is a valid char
-    je .cpsInvalidChar  ;If it is not valid, replace with 0 and exit
+    je .cpsExitError
 .store:
     cmp rdi, rbx
     je .cpsProcessName ;Skip any non-terminating chars
@@ -943,8 +944,12 @@ copyPathspec:
 .cpsStore:
     lea rdi, fcbName+11
     stosb   ;Store the terminator in this slot. 0 for End of Path, \ for subdir
+    pop rdi
+    clc
+    return
 .cpsExitError:
     pop rdi
+    stc
     return
 .cpsSkipPathseps:
     lodsb
