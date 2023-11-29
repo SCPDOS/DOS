@@ -588,6 +588,7 @@ getPath:
     lodsb
     call swapPathSeparator
     jz .moveNetSharePtr
+    mov byte [rdi], 0   ;Null terminate path to make ASCIIZ
     dec rsi ;More rsi back to the first char past the seps
     test al, al ;Was this char null?
     jz .netEnd  ;Skip processing if so!
