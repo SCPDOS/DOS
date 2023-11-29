@@ -1035,9 +1035,8 @@ addPathspecToBuffer:
     mov al, byte [rdi - 1]
     call swapPathSeparator  ;If the char before us is a pathsep, do nothing.
     pop rax
-    jz .aptbExitOk
-    mov byte [rdi], al
-    inc rdi ;Now go past the pathsep we just placed
+    jz .aptbExitOk 
+    stosb   ;Now go past the pathsep we just placed
     jmp short .aptbExitOk
 .aptbHandleNull:
     call .aptbAtHeadOfPath
