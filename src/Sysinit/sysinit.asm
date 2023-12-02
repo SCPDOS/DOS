@@ -1261,6 +1261,13 @@ noCfg:
     sub rax, mcb.program    ;Point to MCB now
     mov qword [rax + mcb.owner], mcbOwnerDOS
     mov byte [rax + mcb.subSysMark], mcbSubFiles
+    ;Point rdi to first sft in this arena
+    lea rdi, qword [rax + sfth_size + mcb_size]
+.initExtraSFTs:
+    mov word [rdi], 0
+    add rdi, sft_size   ;Goto next SFT
+    dec ecx
+    jnz .initExtraSFTs  ;Remember uop hybridisation (don't use loop)
 .skipSFT:
 ;FCBS now
     mov rcx, qword [rbp - cfgFrame.newFCBSVal]

@@ -281,10 +281,12 @@ msdInit:
     rep movsq   ;Copy the BPB
     pop rcx
     ;Store BIOS map value and BPBblk pointer in bpbTbl
-    lea rbx, qword [msdDriver.msdBIOSmap + r8]
+    lea rbx, qword [msdDriver.msdBIOSmap]
+    add rbx, r8
     ;Add device count to rbx to point to correct entry
     mov byte [rbx], dl  ;Store BIOS map value 
-    lea rbx, qword [msdDriver.msdBPBTbl + 8*r8]
+    lea rbx, qword [msdDriver.msdBPBTbl]
+    lea rbx, qword [rbx + 8*r8]
     mov qword [rbx], r15
     inc r8  ;Goto next logical drive
     inc byte [physVol] ;Increment the number of valid drives we have
