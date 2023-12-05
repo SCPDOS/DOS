@@ -302,9 +302,17 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
     test word [rsi + cds.wFlags], cdsRedirDrive
     jnz .net    ;This is done by the redirector for redirector drives
-    lea rdi, tmpCDS
+    lea rdi, tmpCDS ;Point to the destination
+    test word [rsi + cds.wFlags], cdsJoinDrive
+    jz .notJoin
+    ;If we are here on a join drive, it must've been due to join 
+    ;intervention. Thus we need to add the "join" prefix to the 
+    ;returned truenamed path, and overwrite the actual drive letter
+    ;to set the correct path. The cluster must also be rootdir
+    ;as the join mount point must be in the root directory.
+.notJoin:
     mov ecx, cds_size
-    rep movsb
+    call .safeCopy  ;Move now our truenamed path into tmpCDS
     ;If the path is longer than 67, call it an invalid path
     lea rdi, buffer1
     call strlen ;Get the length of this path
@@ -322,9 +330,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     lea rsi, tmpCDS
     mov rdi, qword [workingCDS]
     mov ecx, cds_size
-    call dosCrit1Enter  ;Ensure no task interrupts our copy
-    rep movsb
-    call dosCrit1Exit
+    call .safeCopy
     xor eax, eax
     jmp extGoodExit    ;Exit with a smile on our faces
 .net:
@@ -333,14 +339,22 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     int 4fh
     jc extErrExit
     jmp extGoodExit
+.safeCopy:
+;Input: rsi -> Source string
+;       rdi -> Destination string
+;       ecx = Number of chars to copy
+;Ensures no multitasking interrupts our copy.
+    call dosCrit1Enter  ;Ensure no task interrupts our copy
+    rep movsb
+    call dosCrit1Exit
+    return
 getCurrentDIR:     ;ah = 47h
 ;Input: rsi = Pointer to a 64 byte user memory area
 ;       dl = 1-based Drive Number (0 = Default) 
-    call dosCrit1Enter
     mov al, dl  ;Move drive number into al
+    call dosCrit1Enter
     call getCDSNotJoin ;Set drive variables if it is valid and NOT join
     jnc .okDrive    ;Cant get current dir of a join drive
-.badExit:
     call dosCrit1Exit
     mov eax, errBadDrv
     jmp extErrExit
@@ -352,6 +366,7 @@ getCurrentDIR:     ;ah = 47h
     call getDiskDPB
     pop rdi
     pop rsi
+    call dosCrit1Exit
     jc extErrExit
     ;Here, work needs to be done to ensure that the path built is proper
     mov rdi, rsi    ;Save destination buffer in rdi
@@ -369,6 +384,7 @@ getCurrentDIR:     ;ah = 47h
     movzx eax, word [rsi + cds.wBackslashOffset]
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
+    call dosCrit1Enter
     call strcpy
     call dosCrit1Exit
     mov eax, 0100h  ;RBIL -> MS software may rely on this value

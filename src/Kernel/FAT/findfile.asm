@@ -752,20 +752,25 @@ prepareDir:
     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
-    jc .critExit    ;If the drive number in al is too great or a join drive specified.
+    jnc .notJoin ;Very valid disk
+    breakpoint
+    test byte [skipDisk], -1    ;Are we a join drive in truename?
+    jnz .critExit   ;If not, proceed. If so, fail.
+    stc
+    jmp short .critExit    ;If the drive number in al is too great or a join drive specified.
+.notJoin:
     mov rdi, qword [workingCDS] 
-    push rdi    ;Push CDS pointer on stack...
     call getDiskDPB  ;Update working DPB and drv before searching
-    ;RBP = DPB ptr now
+    ;rbp = DPB ptr now
 .critExit:
     call dosCrit1Exit
-    pop rsi     ; ...and get CDS pointer in rsi
     jc .badDriveExit 
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
     ;If this CDS is a join drive... it can't be!
     ;If the path is to be spliced, then we copy the whole CDS current path
     ;If the CDS is not subst drive, nor to be spliced, we copy first two chars.
+    mov rsi, qword [workingCDS] ;Now get the CDS ptr into rsi
     test word [rsi + cds.wFlags], cdsSubstDrive
     jnz .prepDirSubst
 .prepMain:
@@ -1025,6 +1030,7 @@ addPathspecToBuffer:
     dec rdi ;Go back to the in-situ null terminator char
     pop rsi ;Get back src ptr which points to first char in next pathspec
     call .aptbInterveneEnterJoin
+    retc    ;Return bad if a disk error occured.
 .aptbHandleTerminator:
     mov al, byte [fcbName + 11] ;Get the actual terminator for this portion.
     test al, al
@@ -1097,6 +1103,7 @@ addPathspecToBuffer:
 ;Handles join paths.
     push rsi    ;rsi already points to the next pathspec
     mov rsi, rbx    ;Move the start of the buffer to rsi
+    inc rsi
     call handleJoin ;Enters crit section, changes the CDS
     pop rsi
     return
@@ -1113,6 +1120,7 @@ handleJoin:
 ;This path cannot be on a net redir drive, local redir is ok.
 ;Input:
 ; rsi = First char of potential JOIN'ed pathspec.
+; rbx = Ptr to the pathsep behind which we cannot traverse.
 ;Output:
 ;If no match, no effect.
 ;If a matched path is found, working CDS, DPB and drv are set for the
@@ -1135,6 +1143,7 @@ handleJoin:
     jne .gotoNextCDS
 .scanCDSName:
 ;Get the length of the CDS path componant to check
+    breakpoint
     push rcx
     push rdi
     push rsi        ;Have rsi point to the user path buffer
@@ -1158,12 +1167,28 @@ handleJoin:
     pop rcx ;Trash original rsi
     pop rdi ;Get original rdi value (i.e. our internal built path).
     pop rcx 
+    ;Now store the path in the original CDS before intervening
+    ; in the path
     mov qword [workingCDS], rbp  ;Save the pointer here
     push rdi
     mov rdi, rbp    ;Needs to be called with rdi = CDS ptr
+    push rbx    ;Preserve the head of the path
     call getDiskDPB ;Rebuild DPB if needed. Sets working DPB and drive
+    pop rbx
     pop rdi
-    jmp short .exit ;If return with CF=CY, this failed. Error exit
+    jc .exit ;If return with CF=CY, this failed. Error exit
+    breakpoint
+    mov al, byte [workingDrv]   ;Get 0 based number
+    add al, "A" ;Turn into the letter to store in CDS path
+    cmp byte [rbx - 1], ":"
+    je .notNet
+    stc     ;Net drives should be explicitly mounted on a drive first!
+    jmp short .exit
+.notNet:
+    mov byte [rbx - 2], al
+    lea rdi, qword [rbx + 1]    ;Go to first byte past pathsep
+    mov byte [rdi], 0   ;Store a null terminator
+    jmp short .exit
 .notString:
     pop rsi
     pop rdi
