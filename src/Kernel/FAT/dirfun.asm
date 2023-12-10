@@ -302,14 +302,11 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
     test word [rsi + cds.wFlags], cdsRedirDrive
     jnz .net    ;This is done by the redirector for redirector drives
-    lea rdi, tmpCDS ;Point to the destination
     test word [rsi + cds.wFlags], cdsJoinDrive
     jz .notJoin
-    ;If we are here on a join drive, it must've been due to join 
-    ;intervention. Thus we need to add the "join" prefix to the 
-    ;returned truenamed path, and overwrite the actual drive letter
-    ;to set the correct path. The cluster must also be rootdir
-    ;as the join mount point must be in the root directory.
+    ;Here handle setting the right dir for the right drive.
+    ;Set the start cluster in the CDS for the Join-ed drive
+    
 .notJoin:
     mov ecx, cds_size
     call .safeCopy  ;Move now our truenamed path into tmpCDS
@@ -381,7 +378,8 @@ getCurrentDIR:     ;ah = 47h
     movzx eax, word [rsi + cds.wBackslashOffset]
     mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash
 .writePathInBuffer:
-    movzx eax, word [rsi + cds.wBackslashOffset]
+    ;Handle Join prefix copying here
+    movzx eax, word [rsi + cds.wBackslashOffset]    ;This deals with subst
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
     call dosCrit1Enter
@@ -419,6 +417,9 @@ trueName:          ;ah = 60h, get fully qualified name.
 ;-----------------------------------
 ;    General Directory Routines    :
 ;-----------------------------------
+
+buildJoinPath:
+;Builds a join path for us in the TmpCDS
 
 findFreeDiskDirEntry:
 ;Find a space in the directory we are searching for a directory entry
