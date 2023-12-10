@@ -297,32 +297,50 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
     jc extErrExit   ;Exit with error code in eax
-    ;The path must've been ok, so now copy the path into the CDS
-    ;The copy of the directory entry has the start cluster of this dir file
-    mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
-    test word [rsi + cds.wFlags], cdsRedirDrive
-    jnz .net    ;This is done by the redirector for redirector drives
-    test word [rsi + cds.wFlags], cdsJoinDrive
-    jz .notJoin
-    ;Here handle setting the right dir for the right drive.
-    ;Set the start cluster in the CDS for the Join-ed drive
-    
-.notJoin:
-    mov ecx, cds_size
-    call .safeCopy  ;Move now our truenamed path into tmpCDS
-    ;If the path is longer than 67, call it an invalid path
+    ;Now we check to make sure the path provided is not past the maximum
+    ; length of a CDS path. This accounts for the possibility that a SUBST
+    ; moved the path past the end.
     lea rdi, buffer1
     call strlen ;Get the length of this path
     cmp ecx, 67
     ja .badPath
-    mov rsi, rdi    ;Move buffer source to rsi
+    ;The path must've been ok, so now copy the path into the CDS
+    ;The copy of the directory entry has the start cluster of this dir file
     lea rdi, tmpCDS
-    rep movsb   ;Copy the path over
-    ;Now get the start cluster from the directory copy
-    movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
-    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
-    shl eax, 10h
-    or eax, edx ;Add low bits to eax
+    mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
+    test word [rsi + cds.wFlags], cdsRedirDrive
+    jnz .net    ;This is done by the redirector for redirector drives
+    test word [rsi + cds.wFlags], cdsJoinDrive  ;Are we a join drive?
+    jz .notJoin     ;Skip the join intervention if not.
+    call .getFatCluster ;Now get the start cluster from the directory copy
+    call dosCrit1Enter
+    mov dword [rsi + cds.dStartCluster], eax    ;Set on the join drive
+    movzx eax, byte [rsi]   ;Get the first char immediately
+    call strcpy     ;Copy the prefix into the tmpCDS
+    call dosCrit1Exit
+    dec rdi ;Point to the null char to place the next char
+    sub eax, "A"    ;Get 0 based drive number 
+    call getCDSforDrive ;Put in rsi the actual cds now, and set workingCDS
+    movzx eax, word [rsi + cds.wBackslashOffset]
+    add rsi, rax    ;Go to backslash offset here.
+    ;Finally, set these to -1 to ensure the working CDS gets a -1 
+    ;start cluster (as the directory doesnt exist on that disk)
+    mov word [curDirCopy + fatDirEntry.fstClusLo], -1
+    mov word [curDirCopy + fatDirEntry.fstClusHi], -1
+    ;Now check the length of the copied portion plus the length of the string
+    ; will not be above 67.
+    mov eax, ecx
+    sub eax, 3  ;Remove two chars for a duplicate X: and extra nul
+    push rdi
+    lea rdi, tmpCDS
+    call strlen 
+    pop rdi
+    add eax, ecx
+    cmp eax, 67
+    ja .badPath
+.notJoin:
+    call strcpy     ;Copy the truename path over to tmpCDS
+    call .getFatCluster ;Now get the start cluster from the directory copy
     mov dword [tmpCDS + cds.dStartCluster], eax ;Store this value in cds
     lea rsi, tmpCDS
     mov rdi, qword [workingCDS]
@@ -345,7 +363,15 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     rep movsb
     call dosCrit1Exit
     return
+.getFatCluster:
+    movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl eax, 10h
+    or eax, edx ;Add low bits to eax
+    return
+
 getCurrentDIR:     ;ah = 47h
+;Returns the path for a drive with no drive letter or semicolon.
 ;Input: rsi = Pointer to a 64 byte user memory area
 ;       dl = 1-based Drive Number (0 = Default) 
     mov al, dl  ;Move drive number into al
@@ -378,7 +404,6 @@ getCurrentDIR:     ;ah = 47h
     movzx eax, word [rsi + cds.wBackslashOffset]
     mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash
 .writePathInBuffer:
-    ;Handle Join prefix copying here
     movzx eax, word [rsi + cds.wBackslashOffset]    ;This deals with subst
     inc eax ;Go past the backslash
     add rsi, rax ;Add this many chars to rsi to point to first char to copy
@@ -418,8 +443,6 @@ trueName:          ;ah = 60h, get fully qualified name.
 ;    General Directory Routines    :
 ;-----------------------------------
 
-buildJoinPath:
-;Builds a join path for us in the TmpCDS
 
 findFreeDiskDirEntry:
 ;Find a space in the directory we are searching for a directory entry
