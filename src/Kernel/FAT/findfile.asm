@@ -472,6 +472,10 @@ canonicaliseFileName:
     inc al  ;make al = 0
     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
     call getPath.epAlt
+    retc    ;Error return
+    cmp byte [rdi], al  ;Ensure we have a null terminator at the end.
+    retz                ;Dont add another if we dont need it!
+    stosb               ;Else, add one!
     return
 
 getDirPathNoCanon:
@@ -520,7 +524,7 @@ getPath:
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default
     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
-    mov byte [skipDisk], al  ;Store -1 to NOT skip checking the file on disk
+    mov byte [skipDisk], al     ;Store -1 to NOT skip checking the file on disk
 .epAlt:
     mov byte [parDirExist], 0  ;If parent dir exists, set to -1
     mov byte [fileExist], 0 ;If the file exists, set to -1
@@ -592,6 +596,8 @@ getPath:
     dec rsi ;More rsi back to the first char past the seps
     test al, al ;Was this char null?
     jz .netEnd  ;Skip processing if so!
+    mov rbx, rdi
+    dec rbx ;rbx points at the pathsep before the space for the first char
     call pathWalk.netEp     ;Now expand the pathspec portion
     jc .netExitBad
     ;Now if we have a trailing backslash, throw it away
@@ -665,8 +671,6 @@ pathWalk:
     call prepareDir    ;Prepare the start of the path
     jc .badDriveExit 
 .netEp:
-    mov rbx, rdi
-    dec rbx ;rbx points at the pathsep before the space for the first char
 ;For net path resolution (resolution ONLY) ptrs must point past "\\".
 ;For subst, resolution cannot go past backslash offset.
 ;For join, it is transparent.
@@ -747,15 +751,13 @@ prepareDir:
 ; a relative path is specified.
 ;Input: al = 1-based drive letter
 ;Output: rdi = Pointing at where to place chars from source string
+;        rbx -> Pointing at the point before which chars cannot be placed
 ;   If CF=CY => Drive invalid or drive letter too great
     push rsi    ;Push ptr to source string
     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
-    breakpoint
-    test byte [skipDisk], -1    ;Are we a join drive in truename?
-    jnz .critExit   ;If not, proceed. If so, fail.
     stc
     jmp short .critExit    ;If the drive number in al is too great or a join drive specified.
 .notJoin:
@@ -770,11 +772,14 @@ prepareDir:
     ;If this CDS is a join drive... it can't be!
     ;If the path is to be spliced, then we copy the whole CDS current path
     ;If the CDS is not subst drive, nor to be spliced, we copy first two chars.
+    ;Before we begin, we init rbx to point at the backslash offset of the path
     mov rsi, qword [workingCDS] ;Now get the CDS ptr into rsi
+    mov rbx, rdi
+    movzx eax, word [rsi + cds.wBackslashOffset]
+    add rbx, rax    ;Move rbx to the backslash offset for this drive
+    ;Now check if we have a subst to handle
     test word [rsi + cds.wFlags], cdsSubstDrive
     jnz .prepDirSubst
-.prepMain:
-;Ok so now preliminary copy complete, now we check if path spliced
     test byte [spliceFlag], -1
     jz .prepLoop ;If this flag is zero, we loop
     ;Else we copy the first two chars only (X:)
@@ -1086,7 +1091,6 @@ addPathspecToBuffer:
     cmp rbx, rdi    ;Are we right at the start of the path?
     pop rdi
     return
-    
 .aptbInterveneExitJoin:
 ;Here, if we are on a join CDS, go to the root of the original drive.
     mov rbp, qword [workingCDS]
