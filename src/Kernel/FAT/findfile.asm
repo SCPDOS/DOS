@@ -473,6 +473,7 @@ canonicaliseFileName:
     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
     call getPath.epAlt
     retc    ;Error return
+    xor eax, eax
     cmp byte [rdi], al  ;Ensure we have a null terminator at the end.
     retz                ;Dont add another if we dont need it!
     stosb               ;Else, add one!
@@ -598,6 +599,7 @@ getPath:
     jz .netEnd  ;Skip processing if so!
     mov rbx, rdi
     dec rbx ;rbx points at the pathsep before the space for the first char
+    breakpoint
     call pathWalk.netEp     ;Now expand the pathspec portion
     jc .netExitBad
     ;Now if we have a trailing backslash, throw it away
