@@ -341,16 +341,19 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     call getCDSforDrive ;Set working CDS and move ptr in rsi 
     mov rbp, rsi    ;Move working CDS ptr into rbp
     movzx eax, word [rbp + cds.wBackslashOffset]
-    add rsi, rax    ;Advance rsi to the fist char to copy
+    add rsi, rax    ;Advance rsi to the first char to copy
     call strcpy     ;Copy over the full path to tmpCDS.
-    lea rdi, buffer1
-    mov rsi, rbp    
-    call strcpy     ;Now copy the full path into buffer1
-    ;Finally, set these to -1 to ensure the working CDS gets a -1 
-    ;start cluster (as the directory doesnt exist on that disk)
-    mov word [curDirCopy + fatDirEntry.fstClusLo], -1
-    mov word [curDirCopy + fatDirEntry.fstClusHi], -1
-    mov rsi, rbp    ;Set rsi pointing to the workingCDS
+    dec rdi         ;Point rdi at terminating null
+    mov al, byte [rdi - 1]  ;Get the char before the terminating null
+    call swapPathSeparator  ;Is this a trailing backslash?
+    jnz .notNull    ;If not, skip this
+    mov byte [rdi - 1], 0   ;Overwrite the trailing backslash
+.notNull:
+    mov rdi, rbp    ;Copy the string into the correct cds
+    lea rsi, tmpCDS
+    call strcpy     ;Now copy the full path into correct cds entry
+    mov dword [rbp + cds.dStartCluster], -1
+    jmp short .exitGood
 .notJoin:
 ;rsi -> workingCDS
 ;Lets first copy the working CDS into tmpCDS
@@ -366,6 +369,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     mov rdi, qword [workingCDS]
     mov ecx, cds_size
     rep movsb
+.exitGood:
     call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit    ;Exit with a smile on our faces
@@ -401,6 +405,7 @@ getCurrentDIR:     ;ah = 47h
     push rsi    ;Save desired workingCDS on pointer on the stack!
     lea rdi, buffer1
     call getDirPath   ;Canonicalise the filename and check if directory exists!
+    ;breakpoint
     pop rsi ;Get back the original workingCDS
     pop rdi ;Get the callers buffer into rdi
     jc .badDrvExit

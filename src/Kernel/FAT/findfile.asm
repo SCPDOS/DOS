@@ -599,7 +599,6 @@ getPath:
     jz .netEnd  ;Skip processing if so!
     mov rbx, rdi
     dec rbx ;rbx points at the pathsep before the space for the first char
-    breakpoint
     call pathWalk.netEp     ;Now expand the pathspec portion
     jc .netExitBad
     ;Now if we have a trailing backslash, throw it away
@@ -760,6 +759,8 @@ prepareDir:
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
+    test byte [skipDisk], -1    ;Are we a join drive in truename?
+    jnz .joinEp                 ;If not, proceed. If so, fail.    
     stc
     jmp short .critExit    ;If the drive number in al is too great or a join drive specified.
 .notJoin:
@@ -769,9 +770,10 @@ prepareDir:
 .critExit:
     call dosCrit1Exit
     jc .badDriveExit 
+.joinEp:
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
-    ;If this CDS is a join drive... it can't be!
+    ;If this CDS is a join drive... it can't be unless we truenamed our path!
     ;If the path is to be spliced, then we copy the whole CDS current path
     ;If the CDS is not subst drive, nor to be spliced, we copy first two chars.
     ;Before we begin, we init rbx to point at the backslash offset of the path
@@ -1149,7 +1151,6 @@ handleJoin:
     jne .gotoNextCDS
 .scanCDSName:
 ;Get the length of the CDS path componant to check
-    breakpoint
     push rcx
     push rdi
     push rsi        ;Have rsi point to the user path buffer
@@ -1183,7 +1184,6 @@ handleJoin:
     pop rbx
     pop rdi
     jc .exit ;If return with CF=CY, this failed. Error exit
-    breakpoint
     mov al, byte [workingDrv]   ;Get 0 based number
     add al, "A" ;Turn into the letter to store in CDS path
     cmp byte [rbx - 1], ":"
