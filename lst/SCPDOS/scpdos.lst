@@ -11262,203 +11262,204 @@
    351                              <1> .notExtended:
    352 00003014 AC                  <1>     lodsb  ;rsi points to the normal fcb part, advance to filename
    353                              <1> .rename2EP:
-   354 00003015 E87D3D0000          <1>     call getCDS ;Get the CDS (preserves rdi)
-   355 0000301A 723F                <1>     jc .badDisk
-   356 0000301C E842000000          <1>     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
-   357 00003021 488D1D24D4FFFF      <1>     lea rbx, asciiCharProperties
-   358 00003028 B90B000000          <1>     mov ecx, 11 ;11 chars in a filename
-   359 0000302D 56                  <1>     push rsi    ;rsi -> fcb.filename
-   360                              <1> .nameCharCheck:
-   361 0000302E AC                  <1>     lodsb   ;Get the char in al
-   362 0000302F D7                  <1>     xlatb   ;Get the char signature in al
-   363 00003030 A808                <1>     test al, 8  ;Make sure it is a valid FCB filename char
-   364 00003032 7427                <1>     jz .badDisk
-   365 00003034 FFC9                <1>     dec ecx
-   366 00003036 75F6                <1>     jnz .nameCharCheck
-   367 00003038 5E                  <1>     pop rsi ;Point back to the start of the name field in the FCB
-   368 00003039 4889FB              <1>     mov rbx, rdi    ;Save ptr to stackbuffer + 2 (past X:)
-   369 0000303C E82FE1FFFF          <1>     call FCBToAsciiz
-   370 00003041 5F                  <1>     pop rdi ;Get back the ptr the SDA buffer to store the full pathname into
-   371 00003042 803B00              <1>     cmp byte [rbx], 0   ;Is our path X:,0?
-   372 00003045 7414                <1>     je .badDisk
-   373 00003047 488D75F1            <1>     lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
-   374 0000304B 55                  <1>     push rbp
-   375 0000304C E8F5E1FFFF          <1>     call canonicaliseFileName   ;Canonicalise filename (add curr dir)
-   376 00003051 5D                  <1>     pop rbp
-   377 00003052 7207                <1>     jc .badDisk
-   378 00003054 E822FFFFFF          <1>     call fcbCheckDriveType  ;Set the volume compatibility bit for operation
-   379 00003059 EB03                <1>     jmp short .jiggleStack  ;Skip the error
-   380                              <1> .badDisk:
-   381 0000305B B003                <1>     mov al, errPnf  ;DOS does this... so will I
-   382 0000305D F9                  <1>     stc
-   383                              <1> .jiggleStack:
-   384 0000305E 4889EC              <1>     mov rsp, rbp
-   385 00003061 5D                  <1>     pop rbp
-   386                              <1> .exit:
-   387                              <1>     return
+   354                              <1> ;Call notjoin to prevent choosing a CDS that is a join cds for a FCB operation
+   355 00003015 E80D3D0000          <1>     call getCDSNotJoin ;Get the CDS (preserves rdi)
+   356 0000301A 723F                <1>     jc .badDisk
+   357 0000301C E842000000          <1>     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
+   358 00003021 488D1D24D4FFFF      <1>     lea rbx, asciiCharProperties
+   359 00003028 B90B000000          <1>     mov ecx, 11 ;11 chars in a filename
+   360 0000302D 56                  <1>     push rsi    ;rsi -> fcb.filename
+   361                              <1> .nameCharCheck:
+   362 0000302E AC                  <1>     lodsb   ;Get the char in al
+   363 0000302F D7                  <1>     xlatb   ;Get the char signature in al
+   364 00003030 A808                <1>     test al, 8  ;Make sure it is a valid FCB filename char
+   365 00003032 7427                <1>     jz .badDisk
+   366 00003034 FFC9                <1>     dec ecx
+   367 00003036 75F6                <1>     jnz .nameCharCheck
+   368 00003038 5E                  <1>     pop rsi ;Point back to the start of the name field in the FCB
+   369 00003039 4889FB              <1>     mov rbx, rdi    ;Save ptr to stackbuffer + 2 (past X:)
+   370 0000303C E82FE1FFFF          <1>     call FCBToAsciiz
+   371 00003041 5F                  <1>     pop rdi ;Get back the ptr the SDA buffer to store the full pathname into
+   372 00003042 803B00              <1>     cmp byte [rbx], 0   ;Is our path X:,0?
+   373 00003045 7414                <1>     je .badDisk
+   374 00003047 488D75F1            <1>     lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
+   375 0000304B 55                  <1>     push rbp
+   376 0000304C E8F5E1FFFF          <1>     call canonicaliseFileName   ;Canonicalise filename (add curr dir)
+   377 00003051 5D                  <1>     pop rbp
+   378 00003052 7207                <1>     jc .badDisk
+   379 00003054 E822FFFFFF          <1>     call fcbCheckDriveType  ;Set the volume compatibility bit for operation
+   380 00003059 EB03                <1>     jmp short .jiggleStack  ;Skip the error
+   381                              <1> .badDisk:
+   382 0000305B B003                <1>     mov al, errPnf  ;DOS does this... so will I
+   383 0000305D F9                  <1>     stc
+   384                              <1> .jiggleStack:
+   385 0000305E 4889EC              <1>     mov rsp, rbp
+   386 00003061 5D                  <1>     pop rbp
+   387                              <1> .exit:
+   388                              <1>     return
     13                              <2> %%_ret:
     14 00003062 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   388                              <1> 
-   389                              <1> storeZeroBasedDriveNumber:
-   390                              <1> ;Input: al => 0 based drive letter
-   391                              <1> ;       rdi -> Points to buffer to store the X: in
-   392 00003063 FEC0                <1>     inc al
-   393                              <1> storeOneBasedDriveNumber:
-   394                              <1> ;Input: al => 1 based drive letter
-   395                              <1> ;       rdi -> Points to buffer to store the X: in
-   396 00003065 0440                <1>     add al, "@"
-   397 00003067 B43A                <1>     mov ah, ":"
-   398 00003069 66AB                <1>     stosw
-   399                              <1>     return
+   389                              <1> 
+   390                              <1> storeZeroBasedDriveNumber:
+   391                              <1> ;Input: al => 0 based drive letter
+   392                              <1> ;       rdi -> Points to buffer to store the X: in
+   393 00003063 FEC0                <1>     inc al
+   394                              <1> storeOneBasedDriveNumber:
+   395                              <1> ;Input: al => 1 based drive letter
+   396                              <1> ;       rdi -> Points to buffer to store the X: in
+   397 00003065 0440                <1>     add al, "@"
+   398 00003067 B43A                <1>     mov ah, ":"
+   399 00003069 66AB                <1>     stosw
+   400                              <1>     return
     13                              <2> %%_ret:
     14 0000306B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   400                              <1> 
-   401                              <1> isFCBExtended:
-   402                              <1> ;Input: rdx = FCB ptr
-   403                              <1> ;Output: rsi -> Drive letter of FCB
-   404                              <1> ;        rdx -> FCB first byte
-   405                              <1> ;ZF=NZ => Extended FCB, ZF=ZY => Normal FCB
-   406 0000306C 4889D6              <1>     mov rsi, rdx
-   407 0000306F 803EFF              <1>     cmp byte [rsi], -1
-   408 00003072 7507                <1>     jne .notExtended
-   409 00003074 4881C607000000      <1>     add rsi, exFcb.driveNum
-   410                              <1> .notExtended:
-   411 0000307B 4839F2              <1>     cmp rdx, rsi
-   412                              <1>     return
+   401                              <1> 
+   402                              <1> isFCBExtended:
+   403                              <1> ;Input: rdx = FCB ptr
+   404                              <1> ;Output: rsi -> Drive letter of FCB
+   405                              <1> ;        rdx -> FCB first byte
+   406                              <1> ;ZF=NZ => Extended FCB, ZF=ZY => Normal FCB
+   407 0000306C 4889D6              <1>     mov rsi, rdx
+   408 0000306F 803EFF              <1>     cmp byte [rsi], -1
+   409 00003072 7507                <1>     jne .notExtended
+   410 00003074 4881C607000000      <1>     add rsi, exFcb.driveNum
+   411                              <1> .notExtended:
+   412 0000307B 4839F2              <1>     cmp rdx, rsi
+   413                              <1>     return
     13                              <2> %%_ret:
     14 0000307E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   413                              <1> 
-   414                              <1> parseNameToFCB:
-   415                              <1> ;rsi points to a command line to parse
-   416                              <1> ;rdi points to a future unopened FCB
-   417                              <1> ;al = parsing control bits. 
-   418                              <1> ; al[0] = If set, leading filename separators are scanned off
-   419                              <1> ; al[1] = If set, we set the drive ID byte if a drive letter was found
-   420                              <1> ; al[2] = If set, will copy the filename to the FCB filename field
-   421                              <1> ; al[3] = If set, will copy the extension to the FCB extension field
-   422                              <1> ;
-   423                              <1> ;Separators include : . ; , = + TAB SPACE
-   424                              <1> ;Terminators include separators and , < > | / " [ ] and all ctrl chars
-   425                              <1> 
-   426 0000307F C605(8C040000)00    <1>     mov byte [fcbSpaceOk], 0    ;Don't allow spaces in filename
-   427 00003086 31D2                <1>     xor edx, edx    ;Use dl to keep drive name/state of operation
-   428 00003088 A802                <1>     test al, 2  ;Set drive letter>
-   429 0000308A 7402                <1>     jz .skipDriveLetter
-   430 0000308C 8817                <1>     mov byte [rdi + fcb.driveNum], dl   ;Clear this for usage
-   431                              <1> .skipDriveLetter:
-   432 0000308E 48FFC7              <1>     inc rdi ;Go past the drive letter field in the FCB
-   433 00003091 B908000000          <1>     mov ecx, 8  ;Copy Filename
-   434 00003096 A804                <1>     test al, 4  ;Do we copy the filename to the fcb field?
-   435 00003098 93                  <1>     xchg eax, ebx
-   436 00003099 B020                <1>     mov al, " " ;Clear the field
-   437 0000309B 7405                <1>     jz .clearFilenameField
-   438 0000309D 4801CF              <1>     add rdi, rcx    ;Move to the extension field of the fcb
-   439 000030A0 31C9                <1>     xor ecx, ecx
-   440                              <1> .clearFilenameField:
-   441 000030A2 F3AA                <1>     rep stosb
-   442 000030A4 B903000000          <1>     mov ecx, 3
-   443 000030A9 F6C308              <1>     test bl, 8  ;Skip clearing extension field?
-   444 000030AC 7405                <1>     jz .clearExtensionField
-   445 000030AE 4801CF              <1>     add rdi, rcx
-   446 000030B1 31C9                <1>     xor ecx, ecx
-   447                              <1> .clearExtensionField:
-   448 000030B3 F3AA                <1>     rep stosb
-   449 000030B5 91                  <1>     xchg eax, ecx
-   450 000030B6 AB                  <1>     stosd   ;Initialise curBlock and recordSize like DOS does in parseFilename
-   451 000030B7 4881EF10000000      <1>     sub rdi, 10h    ;Go back to head of FCB
-   452 000030BE F6C301              <1>     test bl, 1  ;Skip scanning preceeding spaces
-   453 000030C1 740F                <1>     jz .dontScanOff
-   454 000030C3 E8D43E0000          <1>     call skipSpacesAndTabs
-   455 000030C8 E8DB3E0000          <1>     call isCharDelimType
-   456 000030CD 7508                <1>     jnz .skipIfDelim
-   457 000030CF 48FFC6              <1>     inc rsi
-   458                              <1> .dontScanOff:
-   459 000030D2 E8C53E0000          <1>     call skipSpacesAndTabs  ;Skip a char
-   460                              <1> .skipIfDelim:
-   461 000030D7 E8533D0000          <1>     call uppercaseCharAtPtr 
-   462 000030DC 741E                <1>     jz .skipSettingDriveLetter  ;Skip if first char not a possible drive letter
-   463 000030DE 803E3A              <1>     cmp byte [rsi], ":" ;Is the next char a drive separator?
-   464 000030E1 7519                <1>     jne .skipSettingDriveLetter
-   465 000030E3 48FFC6              <1>     inc rsi ;Goto next char
-   466 000030E6 2C40                <1>     sub al, "@" ;Convert into a 1 based drive number
-   467 000030E8 7609                <1>     jbe .invalidDriveLetter ;If less than 0 or 0, fail
-   468 000030EA 50                  <1>     push rax    ;Save the 1 based drive letter
-   469 000030EB E8373C0000          <1>     call getCDSNotJoin   ;Verifies if this drive letter is valid
-   470 000030F0 58                  <1>     pop rax
-   471 000030F1 7302                <1>     jnc .validDriveLetter
-   472                              <1> .invalidDriveLetter:
-   473 000030F3 B2FF                <1>     mov dl, -1
-   474                              <1> .validDriveLetter:
-   475 000030F5 AA                  <1>     stosb
-   476 000030F6 48FFC6              <1>     inc rsi ;Align pointers...
-   477 000030F9 48FFCF              <1>     dec rdi 
-   478                              <1> .skipSettingDriveLetter:
-   479 000030FC 48FFCE              <1>     dec rsi
-   480 000030FF 48FFC7              <1>     inc rdi
-   481                              <1>     
-   482                              <1> getFCBFilename:
-   483                              <1> ;Input: rsi points to first char of filename
-   484                              <1> ;       rdi points to storage buffer for filename
-   485                              <1> ;       dl contains the signature if drive invalid
-   486                              <1> ;Output:
-   487                              <1> ;       Fields filled
-   488                              <1> ;       al = Return signature
-   489 00003102 B908000000          <1>     mov ecx, 8
-   490 00003107 E815000000          <1>     call getFCBNameField
-   491 0000310C 803E2E              <1>     cmp byte [rsi], "." ;Name sep?
-   492 0000310F 750D                <1>     jne .noExt
-   493 00003111 B903000000          <1>     mov ecx, 3
-   494 00003116 48FFC6              <1>     inc rsi ;Skip this char
-   495 00003119 E814000000          <1>     call forceFCBNameField
-   496                              <1> .noExt:
-   497 0000311E 88D0                <1>     mov al, dl  ;Store the return signature
-   498                              <1>     return
+   414                              <1> 
+   415                              <1> parseNameToFCB:
+   416                              <1> ;rsi points to a command line to parse
+   417                              <1> ;rdi points to a future unopened FCB
+   418                              <1> ;al = parsing control bits. 
+   419                              <1> ; al[0] = If set, leading filename separators are scanned off
+   420                              <1> ; al[1] = If set, we set the drive ID byte if a drive letter was found
+   421                              <1> ; al[2] = If set, will copy the filename to the FCB filename field
+   422                              <1> ; al[3] = If set, will copy the extension to the FCB extension field
+   423                              <1> ;
+   424                              <1> ;Separators include : . ; , = + TAB SPACE
+   425                              <1> ;Terminators include separators and , < > | / " [ ] and all ctrl chars
+   426                              <1> 
+   427 0000307F C605(8C040000)00    <1>     mov byte [fcbSpaceOk], 0    ;Don't allow spaces in filename
+   428 00003086 31D2                <1>     xor edx, edx    ;Use dl to keep drive name/state of operation
+   429 00003088 A802                <1>     test al, 2  ;Set drive letter>
+   430 0000308A 7402                <1>     jz .skipDriveLetter
+   431 0000308C 8817                <1>     mov byte [rdi + fcb.driveNum], dl   ;Clear this for usage
+   432                              <1> .skipDriveLetter:
+   433 0000308E 48FFC7              <1>     inc rdi ;Go past the drive letter field in the FCB
+   434 00003091 B908000000          <1>     mov ecx, 8  ;Copy Filename
+   435 00003096 A804                <1>     test al, 4  ;Do we copy the filename to the fcb field?
+   436 00003098 93                  <1>     xchg eax, ebx
+   437 00003099 B020                <1>     mov al, " " ;Clear the field
+   438 0000309B 7405                <1>     jz .clearFilenameField
+   439 0000309D 4801CF              <1>     add rdi, rcx    ;Move to the extension field of the fcb
+   440 000030A0 31C9                <1>     xor ecx, ecx
+   441                              <1> .clearFilenameField:
+   442 000030A2 F3AA                <1>     rep stosb
+   443 000030A4 B903000000          <1>     mov ecx, 3
+   444 000030A9 F6C308              <1>     test bl, 8  ;Skip clearing extension field?
+   445 000030AC 7405                <1>     jz .clearExtensionField
+   446 000030AE 4801CF              <1>     add rdi, rcx
+   447 000030B1 31C9                <1>     xor ecx, ecx
+   448                              <1> .clearExtensionField:
+   449 000030B3 F3AA                <1>     rep stosb
+   450 000030B5 91                  <1>     xchg eax, ecx
+   451 000030B6 AB                  <1>     stosd   ;Initialise curBlock and recordSize like DOS does in parseFilename
+   452 000030B7 4881EF10000000      <1>     sub rdi, 10h    ;Go back to head of FCB
+   453 000030BE F6C301              <1>     test bl, 1  ;Skip scanning preceeding spaces
+   454 000030C1 740F                <1>     jz .dontScanOff
+   455 000030C3 E8D43E0000          <1>     call skipSpacesAndTabs
+   456 000030C8 E8DB3E0000          <1>     call isCharDelimType
+   457 000030CD 7508                <1>     jnz .skipIfDelim
+   458 000030CF 48FFC6              <1>     inc rsi
+   459                              <1> .dontScanOff:
+   460 000030D2 E8C53E0000          <1>     call skipSpacesAndTabs  ;Skip a char
+   461                              <1> .skipIfDelim:
+   462 000030D7 E8533D0000          <1>     call uppercaseCharAtPtr 
+   463 000030DC 741E                <1>     jz .skipSettingDriveLetter  ;Skip if first char not a possible drive letter
+   464 000030DE 803E3A              <1>     cmp byte [rsi], ":" ;Is the next char a drive separator?
+   465 000030E1 7519                <1>     jne .skipSettingDriveLetter
+   466 000030E3 48FFC6              <1>     inc rsi ;Goto next char
+   467 000030E6 2C40                <1>     sub al, "@" ;Convert into a 1 based drive number
+   468 000030E8 7609                <1>     jbe .invalidDriveLetter ;If less than 0 or 0, fail
+   469 000030EA 50                  <1>     push rax    ;Save the 1 based drive letter
+   470 000030EB E8373C0000          <1>     call getCDSNotJoin   ;Verifies if this drive letter is valid
+   471 000030F0 58                  <1>     pop rax
+   472 000030F1 7302                <1>     jnc .validDriveLetter
+   473                              <1> .invalidDriveLetter:
+   474 000030F3 B2FF                <1>     mov dl, -1
+   475                              <1> .validDriveLetter:
+   476 000030F5 AA                  <1>     stosb
+   477 000030F6 48FFC6              <1>     inc rsi ;Align pointers...
+   478 000030F9 48FFCF              <1>     dec rdi 
+   479                              <1> .skipSettingDriveLetter:
+   480 000030FC 48FFCE              <1>     dec rsi
+   481 000030FF 48FFC7              <1>     inc rdi
+   482                              <1>     
+   483                              <1> getFCBFilename:
+   484                              <1> ;Input: rsi points to first char of filename
+   485                              <1> ;       rdi points to storage buffer for filename
+   486                              <1> ;       dl contains the signature if drive invalid
+   487                              <1> ;Output:
+   488                              <1> ;       Fields filled
+   489                              <1> ;       al = Return signature
+   490 00003102 B908000000          <1>     mov ecx, 8
+   491 00003107 E815000000          <1>     call getFCBNameField
+   492 0000310C 803E2E              <1>     cmp byte [rsi], "." ;Name sep?
+   493 0000310F 750D                <1>     jne .noExt
+   494 00003111 B903000000          <1>     mov ecx, 3
+   495 00003116 48FFC6              <1>     inc rsi ;Skip this char
+   496 00003119 E814000000          <1>     call forceFCBNameField
+   497                              <1> .noExt:
+   498 0000311E 88D0                <1>     mov al, dl  ;Store the return signature
+   499                              <1>     return
     13                              <2> %%_ret:
     14 00003120 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   499                              <1> 
-   500                              <1> getFCBNameField:
-   501                              <1> ;Checks if the field is appropriate before copying it
-   502 00003121 E8093D0000          <1>     call uppercaseCharAtPtr
-   503 00003126 7507                <1>     jnz .okName  ;If ZF not set, we can proceed!
-   504 00003128 4801CF              <1>     add rdi, rcx    ;Advance rdi by ecx chars
-   505 0000312B 48FFCE              <1>     dec rsi ;Point to previous char
-   506                              <1>     return
+   500                              <1> 
+   501                              <1> getFCBNameField:
+   502                              <1> ;Checks if the field is appropriate before copying it
+   503 00003121 E8093D0000          <1>     call uppercaseCharAtPtr
+   504 00003126 7507                <1>     jnz .okName  ;If ZF not set, we can proceed!
+   505 00003128 4801CF              <1>     add rdi, rcx    ;Advance rdi by ecx chars
+   506 0000312B 48FFCE              <1>     dec rsi ;Point to previous char
+   507                              <1>     return
     13                              <2> %%_ret:
     14 0000312E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   507                              <1> .okName:
-   508 0000312F 48FFCE              <1>     dec rsi ;Go back now a char
-   509                              <1> forceFCBNameField:
-   510                              <1> ;Forcefully copies the name from rsi to rdi
-   511 00003132 E8F83C0000          <1>     call uppercaseCharAtPtr
-   512 00003137 7226                <1>     jc .terminatingSpace
-   513 00003139 750D                <1>     jnz .notSep
-   514 0000313B F605(8C040000)FF    <1>     test byte [fcbSpaceOk], -1
-   515 00003142 741B                <1>     jz .terminatingSpace
-   516 00003144 3C20                <1>     cmp al, " "
-   517 00003146 7517                <1>     jne .terminatingSpace
-   518                              <1> .notSep:
-   519 00003148 67E3E7              <1>     jecxz forceFCBNameField    ;For the last char, now immediately loop around
-   520 0000314B FFC9                <1>     dec ecx
-   521 0000314D 3C2A                <1>     cmp al, "*" ;Big wildcard?
-   522 0000314F 7504                <1>     jne .notBigWildcard
-   523 00003151 B03F                <1>     mov al, "?"
-   524 00003153 F3AA                <1>     rep stosb
-   525                              <1> .notBigWildcard:
-   526 00003155 AA                  <1>     stosb   ;Stores the uppercased char
-   527 00003156 3C3F                <1>     cmp al, "?"
-   528 00003158 75D8                <1>     jne forceFCBNameField
-   529 0000315A 80CA01              <1>     or dl, 1    ;Set dl to 1 to indicate wildcard char
-   530 0000315D EBD3                <1>     jmp short forceFCBNameField
-   531                              <1> .terminatingSpace:
-   532 0000315F B020                <1>     mov al, " "
-   533 00003161 AA                  <1>     stosb
-   534 00003162 48FFCE              <1>     dec rsi ;Point to this trailing space
-   535                              <1>     return
+   508                              <1> .okName:
+   509 0000312F 48FFCE              <1>     dec rsi ;Go back now a char
+   510                              <1> forceFCBNameField:
+   511                              <1> ;Forcefully copies the name from rsi to rdi
+   512 00003132 E8F83C0000          <1>     call uppercaseCharAtPtr
+   513 00003137 7226                <1>     jc .terminatingSpace
+   514 00003139 750D                <1>     jnz .notSep
+   515 0000313B F605(8C040000)FF    <1>     test byte [fcbSpaceOk], -1
+   516 00003142 741B                <1>     jz .terminatingSpace
+   517 00003144 3C20                <1>     cmp al, " "
+   518 00003146 7517                <1>     jne .terminatingSpace
+   519                              <1> .notSep:
+   520 00003148 67E3E7              <1>     jecxz forceFCBNameField    ;For the last char, now immediately loop around
+   521 0000314B FFC9                <1>     dec ecx
+   522 0000314D 3C2A                <1>     cmp al, "*" ;Big wildcard?
+   523 0000314F 7504                <1>     jne .notBigWildcard
+   524 00003151 B03F                <1>     mov al, "?"
+   525 00003153 F3AA                <1>     rep stosb
+   526                              <1> .notBigWildcard:
+   527 00003155 AA                  <1>     stosb   ;Stores the uppercased char
+   528 00003156 3C3F                <1>     cmp al, "?"
+   529 00003158 75D8                <1>     jne forceFCBNameField
+   530 0000315A 80CA01              <1>     or dl, 1    ;Set dl to 1 to indicate wildcard char
+   531 0000315D EBD3                <1>     jmp short forceFCBNameField
+   532                              <1> .terminatingSpace:
+   533 0000315F B020                <1>     mov al, " "
+   534 00003161 AA                  <1>     stosb
+   535 00003162 48FFCE              <1>     dec rsi ;Point to this trailing space
+   536                              <1>     return
     13                              <2> %%_ret:
     14 00003165 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
@@ -11899,7 +11900,7 @@
    432 00003642 8F05(25060000)      <1>     pop qword [fname2Ptr]
    433 00003648 488D3D(1D050000)    <1>     lea rdi, buffer1
    434 0000364F E8F2DBFFFF          <1>     call canonicaliseFileName ;rdi = Buffer to use, rsi = filename
-   435 00003654 7210                <1>     jc .pnfError  
+   435 00003654 7210                <1>     jc .pnfError 
    436 00003656 E860030000          <1>     call renameMain ;Both pathnames made good and copied internally, lets go!!
    437 0000365B 0F827C3B0000        <1>     jc extErrExit
    438 00003661 E9693B0000          <1>     jmp extGoodExit

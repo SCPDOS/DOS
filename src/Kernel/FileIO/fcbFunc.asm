@@ -351,7 +351,8 @@ fcbInitRoutine:
 .notExtended:
     lodsb  ;rsi points to the normal fcb part, advance to filename
 .rename2EP:
-    call getCDS ;Get the CDS (preserves rdi)
+;Call notjoin to prevent choosing a CDS that is a join cds for a FCB operation
+    call getCDSNotJoin ;Get the CDS (preserves rdi)
     jc .badDisk
     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
     lea rbx, asciiCharProperties
