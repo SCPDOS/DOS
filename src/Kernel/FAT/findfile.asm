@@ -271,7 +271,16 @@ findInBuffer:
     rep movsq   ;Copy the directory to SDA
     pop rdi
     pop rsi ;Point rsi to the directory entry in the buffer
+    ;call .joinBreakpoint
     clc
+    return
+.joinBreakpoint:
+    push rsi
+    mov rsi, qword [workingCDS]
+    test word [rsi + cds.wFlags], cdsJoinDrive
+    pop rsi
+    retz
+    breakpoint
     return
 
 .nameCompare:
