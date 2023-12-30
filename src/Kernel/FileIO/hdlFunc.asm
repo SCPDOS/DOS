@@ -373,6 +373,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     jmp extErrExit
 .pathspecOk:
     push qword [currentDTA]
+    breakpoint
     lea rdi, dosffblock ;Use the dosFFblock as the DTA
     mov qword [currentDTA], rdi
     lea rdi, buffer1    ;Build the full path here

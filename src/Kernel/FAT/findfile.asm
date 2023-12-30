@@ -271,7 +271,7 @@ findInBuffer:
     rep movsq   ;Copy the directory to SDA
     pop rdi
     pop rsi ;Point rsi to the directory entry in the buffer
-    ;call .joinBreakpoint
+    call .joinBreakpoint
     clc
     return
 .joinBreakpoint:
