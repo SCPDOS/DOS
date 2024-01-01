@@ -533,7 +533,7 @@ getPath:
 .notServer:
     ;Make Redir request to qualify the filename if NOT invoked by server call
     mov qword [workingCDS], -1  ;Set workingCDS to unknown
-    mov eax, 1123h
+    mov eax, 1123h  ;Net Qualify Path name
     int 4fh ;CF=CY if not resolved. CF=NC if resolved
     retnc  ;Return if resolved
     call getDrvLetterFromPath ;Get the drive letter in al (or -1)
