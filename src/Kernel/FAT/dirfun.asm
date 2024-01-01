@@ -319,6 +319,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     ;!!!! JOIN INTERVENTION BELOW !!!!
     ;First finish dealing with original join drive CDS. 
     ;Then build the fullname path in tmpCDS and then copy it back into buffer1.
+    breakpoint
     call .getFatCluster
     mov dword [rsi + cds.dStartCluster], eax    ;Set cluster
     lea rdi, tmpCDS ;Copy the path into the tmpCDS
@@ -405,7 +406,6 @@ getCurrentDIR:     ;ah = 47h
     push rsi    ;Save desired workingCDS on pointer on the stack!
     lea rdi, buffer1
     call getDirPath   ;Canonicalise the filename and check if directory exists!
-    ;breakpoint
     pop rsi ;Get back the original workingCDS
     pop rdi ;Get the callers buffer into rdi
     jc .badDrvExit

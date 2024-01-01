@@ -271,16 +271,7 @@ findInBuffer:
     rep movsq   ;Copy the directory to SDA
     pop rdi
     pop rsi ;Point rsi to the directory entry in the buffer
-    call .joinBreakpoint
     clc
-    return
-.joinBreakpoint:
-    push rsi
-    mov rsi, qword [workingCDS]
-    test word [rsi + cds.wFlags], cdsJoinDrive
-    pop rsi
-    retz
-    breakpoint
     return
 
 .nameCompare:
@@ -1037,6 +1028,7 @@ addPathspecToBuffer:
 ;        CF=CY -> Invalid path (i.e. tried to go too far backwards)
 ;rdi is advanced to the NEXT space for the next level of the filename
 ;rbx points to the "head of the path"
+;rsi points to the first char of the next portion if al is pathsep
     test byte [skipDisk], -1
     retnz   ;Only add if in truename mode (also clears CF)
     cmp byte [fcbName], "."   ;Handle destination pointer for  
@@ -1118,6 +1110,8 @@ addPathspecToBuffer:
     jmp .aptbHandleTerminator
 .aptbInterveneEnterJoin:
 ;Handles join paths.
+    ;test byte [numJoinDrv], -1  ;Test if we have any join drives
+    ;retz    ;Return if not 
     push rsi    ;rsi already points to the next pathspec
     mov rsi, rbx    ;Move the start of the buffer to rsi
     inc rsi
@@ -1138,6 +1132,7 @@ handleJoin:
 ;Input:
 ; rsi = First char of potential JOIN'ed pathspec.
 ; rbx = Ptr to the pathsep behind which we cannot traverse.
+; rax = 0
 ;Output:
 ;If no match, no effect.
 ;If a matched path is found, working CDS, DPB and drv are set for the
@@ -1180,18 +1175,21 @@ handleJoin:
     dec rsi ;If this is a null char, point rsi back to it
 .goodString:
     ;Here we know we have the right string.
+    breakpoint
     pop rcx ;Trash original rsi
     pop rdi ;Get original rdi value (i.e. our internal built path).
     pop rcx 
     ;Now store the path in the original CDS before intervening
     ; in the path
     mov qword [workingCDS], rbp  ;Save the pointer here
+    push rsi    ;Save ptr to the possible null char!
     push rdi
     mov rdi, rbp    ;Needs to be called with rdi = CDS ptr
     push rbx    ;Preserve the head of the path
     call getDiskDPB ;Rebuild DPB if needed. Sets working DPB and drive
     pop rbx
     pop rdi
+    pop rsi
     jc .exit ;If return with CF=CY, this failed. Error exit
     mov al, byte [workingDrv]   ;Get 0 based number
     add al, "A" ;Turn into the letter to store in CDS path
@@ -1200,9 +1198,18 @@ handleJoin:
     stc     ;Net drives should be explicitly mounted on a drive first!
     jmp short .exit
 .notNet:
+; Join entry intervention occurs here.
     mov byte [rbx - 2], al
     lea rdi, qword [rbx + 1]    ;Go to first byte past pathsep
-    mov byte [rdi], 0   ;Store a null terminator
+.pullLp:
+    lodsb
+    stosb
+    test al, al
+    jnz .pullLp
+    ;mov al, byte [rsi]  ;Now we get the possible null char
+    ;test al, al
+    ;jnz .exit   ;If this is not null, we have pathsep. Exit in that case
+    ;mov byte [rdi], 0   ;Store a null terminator
     jmp short .exit
 .notString:
     pop rsi
