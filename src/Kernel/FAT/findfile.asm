@@ -495,20 +495,6 @@ getDirPath:
 getFilePath:
     mov al, -1  ;Set to File
 getPath:
-;Determines whether the path is spliced or not and transfers the chars
-; from the user buffer into an internal buffer, normalising them.
-; Single and double dot entries are left as is, but the wildcard * is converted
-; to ?. Wildcards can only be present in the LAST portion of the given path.
-; If the portion with wildcards does not end with an ASCII null, we fail the 
-; request with pnf. If there is a redirector which needs to normalise the path, 
-; we let it do its thing and return.
-;If the user requests data from a remote server (i.e. UNC pathnames) 
-; then wildcards, the colon and dots are forbidden.
-;If a remote user requests data (dosInvoke = -1), then the pathspec must be an
-; absolute path (no wildcards or dots) and must begin with a drive letter 
-; (converted from using machine name by the net client program).
-;We check if we are a net invoke to ensure that the pathspec that was recieved
-; was good.
 ;Called with:
 ; rdi = SDA Buffer for filename
 ; rsi = Potentially unqualified filename
@@ -531,17 +517,8 @@ getPath:
     mov byte [fileExist], 0 ;If the file exists, set to -1
     test byte [dosInvoke], -1   ;Was it invoked via server? -1 = Server
     jz .notServer
-    ;In this case, the client network program will have correctly
-    ; substituted the drive letter for the path before making the request.
-    ;Thus we can immediately assume the existance of a drive letter in the path 
     call getDrvLetterFromPath   ;rsi will point to the \ in X:\
     call getCDS ;Get the cds for the drive letter on the path
-    ;REMEMBER, FOR ALL THE LOGIC TO WORK, HERE WE MUST ENSURE THE PATH
-    ; CONTAINS NO . or .., NO INVALID CHARS OR MULTIPLE "\\" AND IS 0 TERMINATED.
-    ;We do not scan for this criteria but the client program must adhere to 
-    ; these requirements.
-    ;When a server request is made, the request can ONLY be for a file on
-    ; a CDS drive to avoid multiple server hops.
     inc al  ;Turn back into a 1 based drive number
     mov rdi, qword [workingCDS]
     push rax
