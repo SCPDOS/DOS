@@ -1124,11 +1124,9 @@ addPathspecToBuffer:
     jmp .aptbHandleTerminator
 .aptbInterveneEnterJoin:
 ;Handles join paths.
-    ;test byte [numJoinDrv], -1  ;Test if we have any join drives
-    ;retz    ;Return if not 
+    test byte [numJoinDrv], -1  ;Test if we have any join drives
+    retz    ;Return if not 
     push rsi    ;rsi already points to the next pathspec
-    ;mov rsi, rbx    ;Move the start of the buffer to rsi
-    ;inc rsi
     mov rsi, qword [fname1Ptr]
     call handleJoin ;Enters crit section, changes the CDS
     pop rsi
@@ -1174,9 +1172,6 @@ handleJoin:
     push rdi
     push rsi        ;Have rsi point to the user path buffer
     mov rdi, rbp    ;Have rdi point to the CDS path
-    ;movzx eax, word [rbp + cds.wBackslashOffset]
-    ;inc eax ;Add one to push it past the backslash
-    ;add rdi, rax    ;Add this offset to rdi
     call strlen     ;Get length of the path componant in ecx
     dec ecx ;Dont wanna compare the terminator
     repe cmpsb      ;Ensure strings are equal
@@ -1221,10 +1216,6 @@ handleJoin:
     test al, al
     jnz .pullLp
     dec rdi
-    ;mov al, byte [rsi]  ;Now we get the possible null char
-    ;test al, al
-    ;jnz .exit   ;If this is not null, we have pathsep. Exit in that case
-    ;mov byte [rdi], 0   ;Store a null terminator
     jmp short .exit
 .notString:
     pop rsi
