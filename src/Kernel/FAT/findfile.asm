@@ -3,7 +3,7 @@ findNextMain:
     mov rdi, qword [currentDTA] ;Get the current DTA ptr in rdi
     test byte [rdi + ffBlock.driveNum], 80h ;Bit 7 set for network search
     jz .notNet
-    mov eax, 0111Ch ;Netowrk find next
+    mov eax, 0111Ch ;Network find next
     int 4Fh
     return  ;Return propagating the error code
 .notNet:
@@ -462,34 +462,6 @@ getDrvLetterFromPath:   ;Int 4Fh, AX=121Ah
     mov al, -1  ;Else not a valid drive number
     return
 
-canonicaliseFileName:
-;Always trying to build and qualify a full pathname
-;Does getPath without hitting the disk
-    mov al, -1
-    mov byte [fileDirFlag], al  
-    mov byte [spliceFlag], al   ;Set splice for Full path by default
-    mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
-    inc al  ;make al = 0
-    mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
-    call getPathNoCanon.epAlt
-    retc    ;Error return
-    xor eax, eax
-    cmp byte [rdi], al  ;Ensure we have a null terminator at the end.
-    retz                ;Dont add another if we dont need it!
-    stosb               ;Else, add one!
-    return
-
-getDirPathNoCanon:
-;FCB only
-    xor eax, eax
-    mov rsi, rdi
-    jmp short getPathNoCanon
-getFilePathNoCanon:
-;Used when the path is constructed internally (as for FCB functions), and renameMain
-;Input: rdi -> Buffer with qualified pathname for search
-    mov al, -1
-    mov rsi, rdi
-    jmp short getPathNoCanon
 getDirPath:
     xor al, al   ;Set to Directory
     jmp short getPath
@@ -506,22 +478,58 @@ getPath:
     pop rdi
     pop rax
     retc
-    ;Now our name is FQ, we can search the disk for it!
-    ;lea rsi, qword [rbx + 1]    ;Use the newly built path as the source
-    ;mov rdi, rsi
+    ;Now our name is FQ, we can search the for it!
+    cmp qword [workingCDS], -1  ;If there is no CDS associated with this path
+    je getPathNoCanon.netFFnoCDS ;It must be a net no CDS search!
     mov byte [fileDirFlag], al 
-    mov rsi, rdi
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default
     mov byte [skipDisk], al     ;Store -1 to NOT skip checking the file on disk
     mov byte [parDirExist], 0   ;If parent dir exists, set to -1
     mov byte [fileExist], 0     ;If the file exists, set to -1
-    ;jmp pathWalk.netEp
-    jmp short getPathNoCanon.epFq
-.bad:
-    stc
+    lea rsi, qword [rbx + 1]    ;Move the pointers past the machine name pathsep
+    cmp word [rdi], "\\"        ;Did we resolve to remote path?
+    jne pathWalk                ;If not, setup the dir vars for drive access
+    mov rdi, rsi                ;Else, skip setting up vars for drive access
+    jmp pathWalk.netEp          ;Still do all drive access using CDS, but over redir
+    ;The reason why this works is that DOS doesn't need to keep track of the 
+    ; internal vars for accessing a net drive. All accesses still occur via the
+    ; redir, and the redir can update its vars as it needs. The DOS pointers
+    ; point as is necessary on the path (with machine name prefix), and in the SDA
+    ; so the redir can do it's job.
+
+canonicaliseFileName:
+;Always trying to build and qualify a full pathname
+;Does getPath without hitting the disk
+    mov al, -1
+    mov byte [fileDirFlag], al  
+    mov byte [spliceFlag], al   ;Set splice for Full path by default
+    mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
+    inc al  ;make al = 0
+    mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
+    call getPathNoCanon.epAlt
+    retc    ;Error return
+    ;Check the last two chars to see if we have a null terminator.
+    ;If neither has a null terminator, add one
+    xor eax, eax
+    cmp byte [rdi], al
+    retz                
+    cmp byte [rdi - 1], al 
+    retz
+    stosb
     return
 
+getDirPathNoCanon:
+;FCB only
+    xor eax, eax
+    mov rsi, rdi
+    jmp short getPathNoCanon
+getFilePathNoCanon:
+;Used when the path is constructed internally (as for FCB functions), and renameMain
+;Input: rdi -> Buffer with qualified pathname for search
+    mov al, -1
+    mov rsi, rdi
+    jmp short getPathNoCanon
 getPathNoCanon:
 ;Called with:
 ; rdi = SDA Buffer for filename
@@ -537,7 +545,6 @@ getPathNoCanon:
     mov byte [fileExist], 0 ;If the file exists, set to -1
     test byte [dosInvoke], -1   ;Was it invoked via server? -1 = Server
     jz .notServer
-.epFq:
     call getDrvLetterFromPath   ;rsi will point to the \ in "X:\"
     call getCDS ;Get the cds for the drive letter on the path
     inc al  ;Turn back into a 1 based drive number
@@ -613,6 +620,7 @@ getPathNoCanon:
     pop rbx
     test bl, bl ;If skip disk was zero, exit
     retz
+.netFFnoCDS:
     mov eax, 1119h  ;Find First Without CDS
     int 4Fh
     return
@@ -1036,6 +1044,7 @@ addPathspecToBuffer:
     cmp byte [fcbName], "."   ;Handle destination pointer for  
     je .aptbDots
     ;Copy filename over to internal buffer
+.aptbAddNull:
     push rsi    ;Save source pointer position
     lea rsi, fcbName
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
@@ -1073,10 +1082,13 @@ addPathspecToBuffer:
     clc
     return
 .aptbDots:
-;For one dot, we leave rdi where it is
+;For one dot, we pull the terminating null to rdi
 ;For two dots, we search backwards for the previous "\"
     cmp byte [fcbName + 1], "." ;Was the second char also a dot?
-    jne .aptbHandleTerminator   ;If not, we just handle terminator
+    je .aptbMoreDots
+    mov byte [fcbName], " "
+    jmp short .aptbAddNull
+.aptbMoreDots:
 ;Here we have two dots
     call .aptbAtHeadOfPath  ;Are we at the start of the path?
     je .aptbInterveneExitJoin ;If so, it must be join or fail

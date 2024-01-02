@@ -31,9 +31,5 @@ That means console is as per default hardware driver for the console, but time, 
 
 ## Join note
 Join currently depends on the fact that you can only mount a local drive onto a
-local drive. Both the host and joined drive may be network drives but they need
-to be mounted in DOS, and have CDS's on the machine the mounting is occuring on.
-Furthermore, they are not allowed to have any further indirections (i.e. subst)
-and their paths *must* be drive letter based, not UNC based. This is to force the
-IFS driver to not allow multiple hops!
-All JOINs with drives working with UNC paths will fail.
+local drive. Though there are possible combinations where one may use a subst/net
+through a join host and a join client, this is forbidden in this version. A join host must be a local drive only. A join drive must a local drive only.
