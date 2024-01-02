@@ -761,7 +761,7 @@ prepareDir:
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
-    breakpoint
+    ;breakpoint
     test byte [skipDisk], -1    ;Are we a join drive in truename?
     jnz .joinEp                 ;If not, proceed. If so, fail.    
     stc
@@ -1179,7 +1179,7 @@ handleJoin:
     dec rsi ;If this is a null char, point rsi back to it
 .goodString:
     ;Here we know we have the right string.
-    breakpoint
+    ;breakpoint
     pop rcx ;Trash original rsi
     pop rdi ;Get original rdi value (i.e. our internal built path).
     pop rcx 
@@ -1210,6 +1210,7 @@ handleJoin:
     stosb
     test al, al
     jnz .pullLp
+    dec rdi
     ;mov al, byte [rsi]  ;Now we get the possible null char
     ;test al, al
     ;jnz .exit   ;If this is not null, we have pathsep. Exit in that case

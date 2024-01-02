@@ -290,6 +290,9 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 .badPathCrit:
     call dosCrit1Exit
     jmp short .badPath
+.badCrit:
+    call dosCrit1Exit
+    jmp extErrExit
 .okLength:
     mov rsi, rdx
     call checkPathspecOK
@@ -297,13 +300,13 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     call checkPathNet
     jz .badPath ;Or Net paths
     ;Path is ok, now proceed
+    call dosCrit1Enter  ;ENTER DOS CRITICAL SECTION HERE!!
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
-    jc extErrExit   ;Exit with error code in eax
+    jc .badCrit   ;Exit with error code in eax
     ;Now we check to make sure the path provided is not past the maximum
     ; length of a CDS path. This accounts for the possibility that a SUBST
     ; moved the path past the end.
-    call dosCrit1Enter  ;ENTER DOS CRITICAL SECTION HERE!!
     lea rdi, buffer1
     call strlen ;Get the length of this path
     cmp ecx, 67
@@ -317,43 +320,51 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     test word [rsi + cds.wFlags], cdsJoinDrive  ;Are we a join drive?
     jz .notJoin     ;Skip the join intervention if not.
     ;!!!! JOIN INTERVENTION BELOW !!!!
-    ;First finish dealing with original join drive CDS. 
-    ;Then build the fullname path in tmpCDS and then copy it back into buffer1.
-    breakpoint
+    mov rbp, rdi    ;Save the ptr to the pathname here
     call .getFatCluster
     mov dword [rsi + cds.dStartCluster], eax    ;Set cluster
-    lea rdi, tmpCDS ;Copy the path into the tmpCDS
-    mov rbp, rsi    ;Save the ptr to the workingCDS
-    call strcpy ;Move the Join prefix
-    dec rdi     ;Point rdi to the terminating null itself
-    movzx eax, byte [rbp]   ;Copy the drive letter
-    ;We are now done with the original join drive CDS. Join drive path prefix
-    ; copied into tmpCDS.
-    mov ebx, ecx    ;Save the length of the path with the real join drive prefix
-    sub ebx, 3      ;Remove count for X: and terminating null
-    push rdi        ;Save the ptr to the end of the string
-    lea rdi, tmpCDS
+    ;ecx has the length of the path in the buffer
+    mov eax, ecx    ;Save the number of chars in the buffer
+    sub eax, 2      ;Remove the X: prefix
+    mov rdi, rsi    ;Get the ptr to the cds to get it's length
     call strlen
-    pop rdi
-    add ebx, ecx
-    cmp ebx, 67     ;If the path is gonna be greater than 67 chars, fail
+    add eax, ecx    ;Add the lengths of the two strings together
+    cmp eax, 67     ;If the sum is greater than the space for the string + null, error
     ja .badPathCrit
-    sub eax, "A"    ;Else turn into a 0 based drive number
+    push rcx
+    lea rdi, tmpCDS ;Copy the join-disabled CDS over to tmpCDS
+    mov ecx, cds_size
+    rep movsb   
+    pop rcx
+    dec ecx ;Remove the trailing null from the count
+    lea rdi, tmpCDS
+    push rdi
+    add rdi, rcx    ;Move the destination ptr to the trailing null
+    lea rsi, qword [rbp + 2]    ;Skip the first two chars from path to copy
+    rep movsb   ;Copy the new part of the path back in
+    pop rdi
+    mov rsi, rdi
+    xor eax, eax
+    xor ecx, ecx
+    dec ecx
+    repne scasb   ;Search for the terminating null
+    breakpoint
+    sub rdi, 2
+    mov al, byte [rdi]  ;Get the second to last char
+    call swapPathSeparator
+    jnz .notSlash
+    mov byte [rdi], 0   ;If it is a pathsep, put a null here
+.notSlash:
+    movzx eax, byte [rsi]    ;Get the drive letter here
+    sub al, "A"     ;Turn into a 1 based drive number
     call getCDSforDrive ;Set working CDS and move ptr in rsi 
-    mov rbp, rsi    ;Move working CDS ptr into rbp
-    movzx eax, word [rbp + cds.wBackslashOffset]
-    add rsi, rax    ;Advance rsi to the first char to copy
-    call strcpy     ;Copy over the full path to tmpCDS.
-    dec rdi         ;Point rdi at terminating null
-    mov al, byte [rdi - 1]  ;Get the char before the terminating null
-    call swapPathSeparator  ;Is this a trailing backslash?
-    jnz .notNull    ;If not, skip this
-    mov byte [rdi - 1], 0   ;Overwrite the trailing backslash
-.notNull:
-    mov rdi, rbp    ;Copy the string into the correct cds
-    lea rsi, tmpCDS
-    call strcpy     ;Now copy the full path into correct cds entry
-    mov dword [rbp + cds.dStartCluster], -1
+    lea rdi, tmpCDS ;Put tmpCDS in rdi
+    xchg rsi, rdi   ;And swap the pointers
+    mov dword [rdi + cds.dStartCluster], -1 ;Finally, set the start cluster to welp.
+    ;mov word [rdi + cds.wBackslashOffset], 2    ;Make sure this is 2 if it changed...
+    ;Backslash offset must always be 2 on a join host
+    mov ecx, 67
+    rep movsb   ;Copy in the CDS path only, to keep all other fields ok.
     jmp short .exitGood
 .notJoin:
 ;rsi -> workingCDS
@@ -409,7 +420,6 @@ getCurrentDIR:     ;ah = 47h
     pop rsi ;Get back the original workingCDS
     pop rdi ;Get the callers buffer into rdi
     jc .badDrvExit
-    ;breakpoint
     ;Now buffer1 has the truenamed form of the directory entry. 
     ;We don't copy that, instead copying the path directly from the cds entry.
     ;since we confirmed it exists! This avoids join issues :D 
