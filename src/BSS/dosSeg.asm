@@ -257,7 +257,9 @@ sdaDOSSwap:
     fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0
     wcdFcbName  resb 11+1   ;Used to expand any wildcards for rename
     fileDirSect resq 1  ;File/Directory starting sector, for each level
-
+;Join state vars 
+    ;joinPath    resb 1  ;Set => Path being qualified is join.
+    ;joinDrv     resb 1  ;Drive number for join (0 based)
     volIncmpFCB resb 1  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
     extFCBAttr  resb 1  ;Extended FCB file attribute
     extFCBFlag  resb 1  ;Set to -1 if Extended FCB

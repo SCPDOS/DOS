@@ -471,7 +471,7 @@ canonicaliseFileName:
     mov qword [fname1Ptr], rdi  ;Save the SDA buffer we are using for this file
     inc al  ;make al = 0
     mov byte [skipDisk], al  ;Store 0 to skip checking the file exists
-    call getPath.epAlt
+    call getPathNoCanon.epAlt
     retc    ;Error return
     xor eax, eax
     cmp byte [rdi], al  ;Ensure we have a null terminator at the end.
@@ -480,15 +480,16 @@ canonicaliseFileName:
     return
 
 getDirPathNoCanon:
+;FCB only
     xor eax, eax
     mov rsi, rdi
-    jmp short getPath.noCanon
+    jmp short getPathNoCanon
 getFilePathNoCanon:
-;Used when the path is constructed internally (as for FCB functions)
+;Used when the path is constructed internally (as for FCB functions), and renameMain
 ;Input: rdi -> Buffer with qualified pathname for search
     mov al, -1
     mov rsi, rdi
-    jmp short getPath.noCanon
+    jmp short getPathNoCanon
 getDirPath:
     xor al, al   ;Set to Directory
     jmp short getPath
@@ -504,9 +505,28 @@ getPath:
     call canonicaliseFileName   ;First canonicalise the pathspec presented
     pop rdi
     pop rax
-    mov rsi, rdi    ;Use the newly built path as the source
     retc
-.noCanon:
+    ;Now our name is FQ, we can search the disk for it!
+    ;lea rsi, qword [rbx + 1]    ;Use the newly built path as the source
+    ;mov rdi, rsi
+    mov byte [fileDirFlag], al 
+    mov rsi, rdi
+    mov al, -1
+    mov byte [spliceFlag], al   ;Set splice for Full path by default
+    mov byte [skipDisk], al     ;Store -1 to NOT skip checking the file on disk
+    mov byte [parDirExist], 0   ;If parent dir exists, set to -1
+    mov byte [fileExist], 0     ;If the file exists, set to -1
+    ;jmp pathWalk.netEp
+    jmp short getPathNoCanon.epFq
+.bad:
+    stc
+    return
+
+getPathNoCanon:
+;Called with:
+; rdi = SDA Buffer for filename
+; rsi = Potentially unqualified filename
+; al = 0 => Search for Dir only. al != 0 => Search for File (or dir)
     mov byte [fileDirFlag], al  
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default
@@ -517,15 +537,20 @@ getPath:
     mov byte [fileExist], 0 ;If the file exists, set to -1
     test byte [dosInvoke], -1   ;Was it invoked via server? -1 = Server
     jz .notServer
-    call getDrvLetterFromPath   ;rsi will point to the \ in X:\
+.epFq:
+    call getDrvLetterFromPath   ;rsi will point to the \ in "X:\"
     call getCDS ;Get the cds for the drive letter on the path
     inc al  ;Turn back into a 1 based drive number
+    push rsi
+    push rdi
     mov rdi, qword [workingCDS]
     push rax
     call dosCrit1Enter
     call getDiskDPB ;Force an initial update of the disk dpb. Get ptr in rbp
     call dosCrit1Exit
     pop rax
+    pop rdi
+    pop rsi
     jnc .driveOk
 .serverExit:
     mov al, errPnf  ;If CF=CY, use this error code
@@ -736,6 +761,7 @@ prepareDir:
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
+    breakpoint
     test byte [skipDisk], -1    ;Are we a join drive in truename?
     jnz .joinEp                 ;If not, proceed. If so, fail.    
     stc
@@ -747,7 +773,6 @@ prepareDir:
 .critExit:
     call dosCrit1Exit
     jc .badDriveExit 
-.joinEp:
     mov rdi, qword [fname1Ptr] ;Get the ptr to the filename buffer we will use
     ;If this CDS is a subst drive, copy the current path to backslashOffset
     ;If this CDS is a join drive... it can't be unless we truenamed our path!
@@ -767,6 +792,7 @@ prepareDir:
     movsw  
     mov al, "\"
     stosb   ;Store the path separator in internal buffer and increment rdi
+.joinEp:
     xor eax, eax    ;Get cluster 0
     jmp short .prepDirExitSkip
 .prepLoop:
@@ -1090,8 +1116,9 @@ addPathspecToBuffer:
     ;test byte [numJoinDrv], -1  ;Test if we have any join drives
     ;retz    ;Return if not 
     push rsi    ;rsi already points to the next pathspec
-    mov rsi, rbx    ;Move the start of the buffer to rsi
-    inc rsi
+    ;mov rsi, rbx    ;Move the start of the buffer to rsi
+    ;inc rsi
+    mov rsi, qword [fname1Ptr]
     call handleJoin ;Enters crit section, changes the CDS
     pop rsi
     return
@@ -1136,9 +1163,9 @@ handleJoin:
     push rdi
     push rsi        ;Have rsi point to the user path buffer
     mov rdi, rbp    ;Have rdi point to the CDS path
-    movzx eax, word [rbp + cds.wBackslashOffset]
-    inc eax ;Add one to push it past the backslash
-    add rdi, rax    ;Add this offset to rdi
+    ;movzx eax, word [rbp + cds.wBackslashOffset]
+    ;inc eax ;Add one to push it past the backslash
+    ;add rdi, rax    ;Add this offset to rdi
     call strlen     ;Get length of the path componant in ecx
     dec ecx ;Dont wanna compare the terminator
     repe cmpsb      ;Ensure strings are equal

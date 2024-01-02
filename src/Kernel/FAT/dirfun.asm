@@ -409,6 +409,7 @@ getCurrentDIR:     ;ah = 47h
     pop rsi ;Get back the original workingCDS
     pop rdi ;Get the callers buffer into rdi
     jc .badDrvExit
+    ;breakpoint
     ;Now buffer1 has the truenamed form of the directory entry. 
     ;We don't copy that, instead copying the path directly from the cds entry.
     ;since we confirmed it exists! This avoids join issues :D 
