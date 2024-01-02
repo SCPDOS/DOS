@@ -348,7 +348,6 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     xor ecx, ecx
     dec ecx
     repne scasb   ;Search for the terminating null
-    breakpoint
     sub rdi, 2
     mov al, byte [rdi]  ;Get the second to last char
     call swapPathSeparator
