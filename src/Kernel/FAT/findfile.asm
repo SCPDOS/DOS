@@ -761,7 +761,6 @@ prepareDir:
     ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
-    ;breakpoint
     test byte [skipDisk], -1    ;Are we a join drive in truename?
     jnz .joinEp                 ;If not, proceed. If so, fail.    
     stc
@@ -1179,7 +1178,6 @@ handleJoin:
     dec rsi ;If this is a null char, point rsi back to it
 .goodString:
     ;Here we know we have the right string.
-    ;breakpoint
     pop rcx ;Trash original rsi
     pop rdi ;Get original rdi value (i.e. our internal built path).
     pop rcx 
