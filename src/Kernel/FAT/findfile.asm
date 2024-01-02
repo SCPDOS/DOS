@@ -1105,7 +1105,7 @@ addPathspecToBuffer:
     jne .aptbErrorExit    ;If it is not, we error return (filenotfound)
     ;Now we change the drive letter and return
     mov al, byte [rbp]  ;Get the first char of the path 
-    mov byte [rdi - 2], al  ;Replace the char in destination buffer
+    mov byte [rdi - 3], al  ;Replace the char in destination buffer
     sub al, "@" ;Convert to a 1 based drive number
     call getCDSNotJoin
     retc ;If this errors, something is really wrong. Propagate error.
