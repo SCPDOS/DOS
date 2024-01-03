@@ -491,7 +491,15 @@ getPath:
     inc al
     lea rsi, qword [rbx + 1]    ;Move the pointers past the machine name pathsep
     cmp word [rdi], "\\"        ;Did we resolve to remote path?
-    jne pathWalk                ;If not, setup the dir vars for drive access
+    je .net
+    mov rbx, qword [fname1Ptr]
+    add rbx, 2  ;Now our path is completely normalised so this always works!
+    lea rsi, qword [rbx + 1]
+    push qword [workingCDS] ;Save the original CDS to allow for subst to work
+    call pathWalk
+    pop qword [workingCDS]
+    return
+.net:
     mov rdi, rsi                ;Else, skip setting up vars for drive access
     jmp pathWalk.netEp          ;Still do all drive access using CDS, but over redir
     ;The reason why this works is that DOS doesn't need to keep track of the 
@@ -824,9 +832,7 @@ prepareDir:
     pop rsi
     return
 .prepDirSubst:
-    ;breakpoint
     push rcx
-    lea rcx, pathWalk
     movzx ecx, word [rsi + cds.wBackslashOffset]
 .prepDirCopy1:
     rep movsb   ;Copy the string over
@@ -836,6 +842,7 @@ prepareDir:
     jmp short .prepLoop ;Else, need to copy CDS now too as part of path
 .prepSetupDirSearchVars:
 ;Input: eax = Starting Cluster of search on disk (0=Root dir)
+;       rbp -> Working DPB
     push rcx
     xor ecx, ecx
     mov word [dirSect], cx  ;Always start searching at sector 0 of dir cluster
@@ -1070,7 +1077,7 @@ addPathspecToBuffer:
     jmp short .aptbExitOk
 .aptbHandleNull:
     call .aptbAtHeadOfPath
-    je .aptbHandleNullNoOverwrite
+    je .aptbHandleNullNoOverwritePrim
     push rax
     mov al, byte [rdi - 1]  ;Is previous char a pathsep?
     call swapPathSeparator
@@ -1078,6 +1085,11 @@ addPathspecToBuffer:
     jnz .aptbHandleNullNoOverwrite
     mov byte [rdi - 1], al  ;Overwrite it!
     jmp short .aptbExitOk
+.aptbHandleNullNoOverwritePrim:
+    cmp byte [rbx - 1], ":"
+    je short .aptbHandleNullNoOverwrite
+    ;This handles trailing slashes that are not right at the head of the path
+    dec rdi
 .aptbHandleNullNoOverwrite:
     mov byte [rdi], al  ;Write in a null
 .aptbExitOk:
