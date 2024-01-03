@@ -485,8 +485,10 @@ getPath:
     mov al, -1
     mov byte [spliceFlag], al   ;Set splice for Full path by default
     mov byte [skipDisk], al     ;Store -1 to NOT skip checking the file on disk
-    mov byte [parDirExist], 0   ;If parent dir exists, set to -1
-    mov byte [fileExist], 0     ;If the file exists, set to -1
+    mov byte [parDirExist], 0   
+    mov byte [fileExist], 0     
+    mov al, byte [workingDrv]
+    inc al
     lea rsi, qword [rbx + 1]    ;Move the pointers past the machine name pathsep
     cmp word [rdi], "\\"        ;Did we resolve to remote path?
     jne pathWalk                ;If not, setup the dir vars for drive access
@@ -766,7 +768,6 @@ prepareDir:
 ;   If CF=CY => Drive invalid or drive letter too great
     push rsi    ;Push ptr to source string
     call dosCrit1Enter ;CDS/DPB cannot be touched whilst we read the pathstring
-    ;Here we prevent going from a join to a join. 
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
     test byte [skipDisk], -1    ;Are we a join drive in truename?
@@ -823,8 +824,10 @@ prepareDir:
     pop rsi
     return
 .prepDirSubst:
+    ;breakpoint
     push rcx
-    movzx ecx, word [rdi + cds.wBackslashOffset]
+    lea rcx, pathWalk
+    movzx ecx, word [rsi + cds.wBackslashOffset]
 .prepDirCopy1:
     rep movsb   ;Copy the string over
     pop rcx
@@ -833,7 +836,6 @@ prepareDir:
     jmp short .prepLoop ;Else, need to copy CDS now too as part of path
 .prepSetupDirSearchVars:
 ;Input: eax = Starting Cluster of search on disk (0=Root dir)
-;       rbp = DPB pointer for the device which will do transaction
     push rcx
     xor ecx, ecx
     mov word [dirSect], cx  ;Always start searching at sector 0 of dir cluster
@@ -1121,6 +1123,14 @@ addPathspecToBuffer:
     sub al, "@" ;Convert to a 1 based drive number
     call getCDSNotJoin
     retc ;If this errors, something is really wrong. Propagate error.
+    push rsi
+    push rdi
+    push rbx
+    mov rdi, qword [workingCDS]
+    call getDiskDPB 
+    pop rbx
+    pop rdi
+    pop rsi
     jmp .aptbHandleTerminator
 .aptbInterveneEnterJoin:
 ;Handles join paths.
