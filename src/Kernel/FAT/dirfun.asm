@@ -287,6 +287,12 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 .badPath:
     mov al, errPnf
     jmp extErrExit
+.badPathCrit:
+    call dosCrit1Exit
+    jmp short .badPath
+.badCrit:
+    call dosCrit1Exit
+    jmp extErrExit
 .okLength:
     mov rsi, rdx
     call checkPathspecOK
@@ -294,36 +300,87 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     call checkPathNet
     jz .badPath ;Or Net paths
     ;Path is ok, now proceed
+    call dosCrit1Enter  ;ENTER DOS CRITICAL SECTION HERE!!
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
-    jc extErrExit   ;Exit with error code in eax
-    ;The path must've been ok, so now copy the path into the CDS
-    ;The copy of the directory entry has the start cluster of this dir file
-    mov rsi, qword [workingCDS] ;Copy the CDS to the tmpCDS
-    test word [rsi + cds.wFlags], cdsRedirDrive
-    jnz .net    ;This is done by the redirector for redirector drives
-    lea rdi, tmpCDS
-    mov ecx, cds_size
-    rep movsb
-    ;If the path is longer than 67, call it an invalid path
+    jc .badCrit   ;Exit with error code in eax
+    ;Now we check to make sure the path provided is not past the maximum
+    ; length of a CDS path. This accounts for the possibility that a SUBST
+    ; moved the path past the end.
     lea rdi, buffer1
     call strlen ;Get the length of this path
     cmp ecx, 67
-    ja .badPath
-    mov rsi, rdi    ;Move buffer source to rsi
+    ja .badPathCrit
+    ;The path must've been ok, so now copy the path into the CDS
+    ;The copy of the directory entry has the start cluster of this dir file
+    ;Copy the workingCDS to the tmpCDS
+    mov rsi, qword [workingCDS]
+    test word [rsi + cds.wFlags], cdsRedirDrive
+    jnz .net    ;This is done by the redirector for redirector drives
+    test word [rsi + cds.wFlags], cdsJoinDrive  ;Are we a join drive?
+    jz .notJoin     ;Skip the join intervention if not.
+    ;!!!! JOIN INTERVENTION BELOW !!!!
+    mov rbp, rdi    ;Save the ptr to the pathname here
+    call .getFatCluster
+    mov dword [rsi + cds.dStartCluster], eax    ;Set cluster
+    ;ecx has the length of the path in the buffer
+    mov eax, ecx    ;Save the number of chars in the buffer
+    sub eax, 2      ;Remove the X: prefix
+    mov rdi, rsi    ;Get the ptr to the cds to get it's length
+    call strlen
+    add eax, ecx    ;Add the lengths of the two strings together
+    cmp eax, 67     ;If the sum is greater than the space for the string + null, error
+    ja .badPathCrit
+    push rcx
+    lea rdi, tmpCDS ;Copy the join-disabled CDS over to tmpCDS
+    mov ecx, cds_size
+    rep movsb   
+    pop rcx
+    dec ecx ;Remove the trailing null from the count
     lea rdi, tmpCDS
-    rep movsb   ;Copy the path over
-    ;Now get the start cluster from the directory copy
-    movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
-    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
-    shl eax, 10h
-    or eax, edx ;Add low bits to eax
+    push rdi
+    add rdi, rcx    ;Move the destination ptr to the trailing null
+    lea rsi, qword [rbp + 2]    ;Skip the first two chars from path to copy
+    rep movsb   ;Copy the new part of the path back in
+    pop rdi
+    mov rsi, rdi
+    xor eax, eax
+    xor ecx, ecx
+    dec ecx
+    repne scasb   ;Search for the terminating null
+    sub rdi, 2
+    mov al, byte [rdi]  ;Get the second to last char
+    call swapPathSeparator
+    jnz .notSlash
+    mov byte [rdi], 0   ;If it is a pathsep, put a null here
+.notSlash:
+    movzx eax, byte [rsi]    ;Get the drive letter here
+    sub al, "A"     ;Turn into a 1 based drive number
+    call getCDSforDrive ;Set working CDS and move ptr in rsi 
+    lea rdi, tmpCDS ;Put tmpCDS in rdi
+    xchg rsi, rdi   ;And swap the pointers
+    mov dword [rdi + cds.dStartCluster], -1 ;Finally, set the start cluster to welp.
+    ;mov word [rdi + cds.wBackslashOffset], 2    ;Make sure this is 2 if it changed...
+    ;Backslash offset must always be 2 on a join host
+    mov ecx, 67
+    rep movsb   ;Copy in the CDS path only, to keep all other fields ok.
+    jmp short .exitGood
+.notJoin:
+;rsi -> workingCDS
+;Lets first copy the working CDS into tmpCDS
+    lea rdi, tmpCDS
+    mov ecx, cds_size
+    rep movsb         ;Copy the workingCDS into tmpCDS
+    call .getFatCluster ;Now get the start cluster from the directory copy
     mov dword [tmpCDS + cds.dStartCluster], eax ;Store this value in cds
-    lea rsi, tmpCDS
+    lea rdi, tmpCDS
+    lea rsi, buffer1    ;Now copy the FQ pathname into the CDS
+    call strcpy
+    lea rsi, tmpCDS     ;And copy back the tmpCDS into the CDS itself
     mov rdi, qword [workingCDS]
     mov ecx, cds_size
-    call dosCrit1Enter  ;Ensure no task interrupts our copy
     rep movsb
+.exitGood:
     call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit    ;Exit with a smile on our faces
@@ -333,43 +390,54 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     int 4fh
     jc extErrExit
     jmp extGoodExit
+.getFatCluster:
+    movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
+    movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
+    shl eax, 10h
+    or eax, edx ;Add low bits to eax
+    return
+
 getCurrentDIR:     ;ah = 47h
+;Returns the path for a drive with no X:\.
 ;Input: rsi = Pointer to a 64 byte user memory area
 ;       dl = 1-based Drive Number (0 = Default) 
-    call dosCrit1Enter
     mov al, dl  ;Move drive number into al
+    call dosCrit1Enter
     call getCDSNotJoin ;Set drive variables if it is valid and NOT join
     jnc .okDrive    ;Cant get current dir of a join drive
-.badExit:
+.badDrvExit:
     call dosCrit1Exit
     mov eax, errBadDrv
     jmp extErrExit
 .okDrive:
     ;Now we update the DPB, to be accurate for swapped disks
-    push rsi
-    push rdi
-    mov rdi, qword [workingCDS] ;Get CDS ptr in rdi
-    call getDiskDPB
-    pop rdi
-    pop rsi
-    jc extErrExit
-    ;Here, work needs to be done to ensure that the path built is proper
-    mov rdi, rsi    ;Save destination buffer in rdi
-    mov rsi, qword [workingCDS]  ;Get pointer to current CDS in rsi
-    xor eax, eax
-    dec eax
-    cmp dword [rsi + cds.dStartCluster], eax    ;StartCluster != -1 is all ok
-    jne .writePathInBuffer
-    inc eax
-    mov dword [rsi + cds.dStartCluster], eax    ;Set to root dir
-    ;Here we now add a terminating null at wBackslashOffset
+    push rsi    ;Save the callers buffer on the stack.
+    mov rsi, qword [workingCDS] ;Get the current Working CDS ptr in rsi
+    push rsi    ;Save desired workingCDS on pointer on the stack!
+    lea rdi, buffer1
+    call getDirPath   ;Canonicalise the filename and check if directory exists!
+    pop rsi ;Get back the original workingCDS
+    pop rdi ;Get the callers buffer into rdi
+    jc .badDrvExit
+    ;Now buffer1 has the truenamed form of the directory entry. 
+    ;We don't copy that, instead copying the path directly from the cds entry.
+    ;since we confirmed it exists! This avoids join issues :D 
     movzx eax, word [rsi + cds.wBackslashOffset]
-    mov byte [rsi + rax + 1], 0 ;Store a zero just past the backslash
-.writePathInBuffer:
-    movzx eax, word [rsi + cds.wBackslashOffset]
-    inc eax ;Go past the backslash
-    add rsi, rax ;Add this many chars to rsi to point to first char to copy
-    call strcpy
+    add rsi, rax    ;Skip any prefixed chars (handle SUBST)
+    cmp byte [rsi],"\" ;Skip if pathsep (these pathseps are always proper)
+    jne .dontSkipChar
+    inc rsi ;Skip leading pathseps on the path
+.dontSkipChar:
+    lodsb   ;Get char
+    test al, al
+    jz .notSpecialChar
+    cmp al, 05h     ;Special char case?
+    jne .notSpecialChar
+    mov al, 0E5h    ;Replace with the correct "replacement" char
+.notSpecialChar:
+    stosb
+    test al, al ;Did we store a terminator char?
+    jnz .dontSkipChar   ;If not, keep copying
     call dosCrit1Exit
     mov eax, 0100h  ;RBIL -> MS software may rely on this value
     jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
@@ -403,6 +471,7 @@ trueName:          ;ah = 60h, get fully qualified name.
 ;-----------------------------------
 ;    General Directory Routines    :
 ;-----------------------------------
+
 
 findFreeDiskDirEntry:
 ;Find a space in the directory we are searching for a directory entry

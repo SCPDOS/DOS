@@ -372,6 +372,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov eax, errPnf
     jmp extErrExit
 .pathspecOk:
+    ;breakpoint
     push qword [currentDTA]
     lea rdi, dosffblock ;Use the dosFFblock as the DTA
     mov qword [currentDTA], rdi
@@ -432,7 +433,7 @@ renameFile:        ;ah = 56h
     pop qword [fname2Ptr]
     lea rdi, buffer1
     call canonicaliseFileName ;rdi = Buffer to use, rsi = filename
-    jc .pnfError  
+    jc .pnfError 
     call renameMain ;Both pathnames made good and copied internally, lets go!!
     jc extErrExit
     jmp extGoodExit

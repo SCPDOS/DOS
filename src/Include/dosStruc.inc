@@ -49,12 +49,13 @@ fat16MaxClustCnt    equ 65525   ;Cluster count less than this is FAT16
 ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
 ;------------------------------------------------------------------------;
 struc cds       ;Current Directory structure
-    .sCurrentPath        resb 67    ;Current Directory Path String
-    .wFlags              resw 1 ;CDS Flags - 
-    .qDPBPtr             resq 1 ;Ptr to the DPB of the dev using this CDS
-    .dStartCluster       resd 1 ;Starting cluster of the directory on disk
-    .qReserved           resq 1 ;Reserved for future expansions
-    .wBackslashOffset    resw 1 ;How many chars to start of current dir in the 
+    .sCurrentPath        db 67 dup (?)    ;Current Directory Path String
+    .wFlags              dw ?   ;CDS Flags - 
+    .qDPBPtr             dq ?   ;Ptr to the DPB of the dev using this CDS
+    .dStartCluster       dd ?   ;Starting cluster of the directory on disk
+    .qIFSPtr             dq ?   ;Reserved for IFS driver expansions
+    .dNetStore           dd ?   ;For storing a owner dword for IFS (41h/5F03h)
+    .wBackslashOffset    dw ?   ;How many chars to skip for getting the path
 ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
 ; another, we save the number of chars to skip to that deep level).
 ; I.E. if we SUBST A:\DOS G: then this value for the CDS for drive G is 6

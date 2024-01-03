@@ -141,7 +141,8 @@ buildNewCDS:   ;Int 4Fh AX=121Fh
     pop rax
     or word [rdi + cds.wFlags], cdsValidDrive    ;Config bit set
     mov dword [rdi + cds.dStartCluster], 0  ;Root dir
-    mov qword [rdi + cds.qReserved], 0   ;Optional redir signature field
+    mov qword [rdi + cds.qIFSPtr], 0    ;Optional redir signature field
+    mov dword [rdi + cds.dNetStore], 0   ;Optional storage/signature dword
     mov word [rdi + cds.wBackslashOffset], 2    ;Skip letter and :
     ;Search for a DPB for the CDS if it is based on a physical device
     push rax

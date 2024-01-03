@@ -28,3 +28,8 @@ two drivers in the chain, if ANY of the other drivers are going to use CHAR func
 That means console is as per default hardware driver for the console, but time, date, currency, data separation etc characters and layouts are all per GB localisation. 
 
 -If using legacy SCP/BIOS, then the hardware keyboard is a UK Enhanced PC 105-key keyboard layout. The hardware output charset is CP437 compatible.
+
+## Join note
+Join currently depends on the fact that you can only mount a local drive onto a
+local drive. Though there are possible combinations where one may use a subst/net
+through a join host and a join client, this is forbidden in this version. A join host must be a local drive only. A join drive must a local drive only.
