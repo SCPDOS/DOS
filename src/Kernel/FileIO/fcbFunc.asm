@@ -355,6 +355,12 @@ fcbInitRoutine:
     call getCDSNotJoin ;Get the CDS (preserves rdi)
     jc .badDisk
     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
+    ;!!!! VOL ID CHECK BELOW !!!!
+    cmp byte [searchAttr], dirVolumeID  ;Are we initialising for a volume ID?
+    jne .notVolumeSearch
+    mov byte [rdi], "\" ;If so, indicate that we are working in the root dir.
+    inc rdi ;Go to the next char space
+.notVolumeSearch:
     lea rbx, asciiCharProperties
     mov ecx, 11 ;11 chars in a filename
     push rsi    ;rsi -> fcb.filename
@@ -366,14 +372,14 @@ fcbInitRoutine:
     dec ecx
     jnz .nameCharCheck
     pop rsi ;Point back to the start of the name field in the FCB
-    mov rbx, rdi    ;Save ptr to stackbuffer + 2 (past X:)
+    mov rbx, rdi    ;Save ptr to first char past X: (or X:\)
     call FCBToAsciiz
     pop rdi ;Get back the ptr the SDA buffer to store the full pathname into
-    cmp byte [rbx], 0   ;Is our path X:,0?
+    cmp byte [rbx], 0   ;Is our path X:,0 (or X:\,0)?
     je .badDisk
     lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
     push rbp
-    call canonicaliseFileName   ;Canonicalise filename (add curr dir)
+    call canonicaliseFileName   ;Canonicalise filename (add curr dir if X:)
     pop rbp
     jc .badDisk
     call fcbCheckDriveType  ;Set the volume compatibility bit for operation
