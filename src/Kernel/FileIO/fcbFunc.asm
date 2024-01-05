@@ -239,23 +239,32 @@ parseFilenameFCB:  ;ah = 29h, Always can be used
 createFileFCB:     ;ah = 16h
 ;rdx -> Extended FCB
 ;   MUST BE EXTENDED. 
-;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail, for now
-; Using FCB's, one can only create a volume label on a volume.
+;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
+; Using FCB's, one can only create a volume label on a volume, or 
+; change it.
 ;Deleting a file label totally can be done using delete file 
 ;   (both FCB and hdl).
     cmp byte [rdx + exFcb.extSig], -1
-    jne .exit
+    jne .exitErr
     cmp byte [rdx + exFcb.attribute], dirVolumeID
-    jne .exit
+    jne .exitErr
     lea rdi, buffer1
     push rdi
     call fcbInitRoutine ;Build path and find file to delete
-    pop rdi ;Point rdi to the canonised path
+    pop rsi ;Point rdi to the canonised path
     jc fcbErrExit
     ;Here we search for a volume ID in the root directory.
     ; If one exists, we replace the dir entry name field,
     ; Else, we build a dir entry for it.
-.exit:
+    mov rsi, rdi    ;Pass argument in rsi. rsi, rdi preserved
+    call checkPathspecOK    ;If the path has wildcards, fail!
+    jc .exitErr
+    call getFilePathNoCanon ;Get the file if it exists!
+    lea rbx, scratchSFT ;Set the working SFT to the scratch in the SDA
+    mov qword [workingSFT], rbx
+    call createMain
+
+.exitErr:
     mov eax, errAccDen
     jmp fcbErrExit
 
