@@ -158,6 +158,8 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw mpxIOCTL - mDispTbl      ;AX=122Bh, IOCTL
     dw getDrvChain - mDispTbl   ;AX=122Ch, Get device Chain (ptr in rax)
     dw getExtErrCde - mDispTbl  ;AX=122Dh, Get extended error code
+    dw noOp - mDispTbl          ;AX=122Eh, Get/Set error table (unsupported for now)
+    dw setDOSversion - mDispTbl ;AX=122Fh, Set DOS version to report. Undocumented.
 mDispTblL   equ     $ - mDispTbl
 
 serverDispTbl:  ;Server Dispatch functions

@@ -333,8 +333,12 @@ checkFail:
 ;      Reentrant Kernel Functions        :
 ;========================================:
 ctrlBreakCheck:    ;ah = 33h
+    cmp al, 6
+    je .trueVer
+    cmp al, 5
+    je .getBtDrv    ;Peel off btdrv req.
     test al, al
-    jnz .cbcget  ;Get the state or other functions
+    jnz .cbcget     ;Get the state or other functions
     mov dl, byte [breakFlag]    ;Get the state
     iretq
 .cbcget:
@@ -352,6 +356,21 @@ ctrlBreakCheck:    ;ah = 33h
     iretq
 .cbcBad:
     mov al, -1
+    iretq
+.getBtDrv:
+;Undocumented.
+;Might be unreliable so dont document yet.
+;Return 1 based boot drive in dl
+    mov dl, byte [bootDrive]    ;Get the 0 based bootDrive number
+    inc dl  ;Return a 1 based drive number
+    iretq
+.trueVer:
+;Undocumented.
+;bx returns true DOS number.
+;dl has "revision" number in bits 0-2. 
+;dh has various flags. All reserved for future use.
+    mov bx, dosVerMac
+    mov dx, (dosVerFlags << 8) | dosRev
     iretq
 
 setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
@@ -526,8 +545,18 @@ getDOSversion:     ;ah = 30h
     call getUserRegs
     xor ah, ah ;Continue the mainline PC-DOS identification line
     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
-    mov ax, word [dosMajor] ;Major and minor version in al,ah resp.
+    mov ax, word [dosVersion] ;Major and minor version in al,ah resp.
     mov word [rsi + callerFrame.rax], ax    ;Save ax
+    return
+
+setDOSversion:  ;Int 4Fh, AX=122Fh - Set DOS verstion to report
+;Input: dx = Version number. Value of 0 means true value.
+    test dx, dx
+    jnz .newVal
+    mov word [dosVersion], dosVerMac    ;Reset the value
+    return
+.newVal:
+    mov word [dosVersion], dx    ;Store dx in the value to report.
     return
 
 ;AH = 1Fh/32h - GET (current) DISK DPB

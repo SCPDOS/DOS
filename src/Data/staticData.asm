@@ -2,8 +2,16 @@
 ;-----------------------------------:
 ;       Static Data Variables       :
 ;-----------------------------------:
-dosMajor    db 00h      ;Version 0
-dosMinor    db 96       ;.96
+;Encode the true version number as a macro!
+;This is to avoid mutability of the true number by obtaining a pointer to it.
+;Initialise the reporting version number of DOS to the true version number
+dosMajor equ 0  ;Version 0
+dosMinor equ 96 ;.96
+dosRev   equ 0  ;Reserved for revision number. Byte at most.
+dosVerFlags equ 0   ;Reserved, byte at most.
+dosVerMac equ (dosMinor << 8) | dosMajor    ;DOS version macro
+
+dosVersion  dw dosVerMac    ;DOS version number
 dosBIOSName db "SCPBIOS .SYS"
 dosKernName db "SCPDOS  .SYS"
 ;-----------------------------------:
