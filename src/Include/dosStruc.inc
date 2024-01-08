@@ -169,9 +169,10 @@ FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
 readOnlyFile    equ 1h
 hiddenFile      equ 2h
 systemFile      equ 4h
-volumeLabel     equ 8h
+volLabelFile    equ 8h
 directoryFile   equ 10h ;Directory entry
 archiveFile     equ 20h
+charFile        equ 40h ;Reserved, never found in dir
 ;Device Info equates
 ;For a block device, bits [5:0] contain the drive number
 charDevConIn    equ 1h  ;If set, device is CON input

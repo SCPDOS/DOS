@@ -170,124 +170,6 @@ kernDrvInit:
 ;START OF COMMON DOS SYSINIT PORTION VVV :
 ;----------------------------------------:
 ;
-;Setup internal DOS vars from OEM passed arguments.
-    movzx eax, byte [OEMBIOS]
-    test eax, eax
-    jz short skipOEMName
-    lea rsi, qword [rbp + dosBIOSName]
-    mov rax, "IO"
-    mov qword [rsi], rax
-    mov dword [rsi + 8], ".SYS"
-skipOEMName:
-    mov eax, dword [OEMVERSION]
-    mov dword [rbp + biosVers], eax
-
-    mov rax, qword [OEMPTR]
-    mov qword [rbp + biosPtr], rax
-
-    movzx eax, byte [DFLTDRIVE]
-    xor ebx, ebx
-    cmp eax, 25
-    cmova eax, ebx
-    mov byte [rbp + bootDrive], al
-
-    movzx eax, byte [FILES]
-    mov ebx, filesDefault
-    cmp eax, 5
-    cmovb eax, ebx
-    cmp eax, 254
-    cmova eax, ebx
-    mov byte [rbp + numFiles], al
-
-    movzx eax, byte [BUFFERS]
-    mov ebx, buffersDefault
-    test eax, eax
-    cmovz eax, ebx
-    cmp eax, 99
-    cmova eax, ebx
-    mov byte [BUFFERS], al
-
-    movzx eax, byte [LASTDRIVE]
-    mov ebx, lastDriveDeflt
-    cmp eax, ebx
-    cmovb eax, ebx
-    cmp eax, 25
-    cmova eax, ebx
-    mov byte [LASTDRIVE], al
-    mov byte [rbp + lastdrvNum], al     ;Set for DOS to be usable
-
-    mov word [rbp + shareCount], 3      ;Retry the repeat 3 times before failing
-    mov word [rbp + shareDelay], 1      ;Go through one multiple of countdown loop
-;------------------------------------------------;
-;          Find largest sector size              ;
-;------------------------------------------------;
-sectorSizeSearch:
-;Done by reading DPB's for each drive
-    xor eax, eax
-    mov rdx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
-    ;Go thru each block individually
-.findLargest:
-    cmp ax, word [rdx + dpb.wBytesPerSector]    ;Is current bigger than max?
-    cmovb ax, word [rdx + dpb.wBytesPerSector]  ;Move if so
-    mov rdx, qword [rdx + dpb.qNextDPBPtr]  ;Goto next DPB
-    cmp rdx, -1 ;We at the end?
-    jne short .findLargest  ;If not, keep checking
-    mov word fs:[maxBytesSec], ax
-;------------------------------------------------;
-;                CDS array inits                 ;
-;------------------------------------------------;
-    movzx ecx, byte [rbp + lastdrvNum]     ;Use as a counter
-    call makeCDSArray   ;Sets the CDS head pointer to rdi
-    jmp initialCDSWritten ;Go past the function
-makeCDSArray:
-;Builds a new CDS array for ya and sets the sysvars var to point to it!
-;Input: ecx = Size of array (number of CDS's in the array)
-;Ouput: CF=CY: Abort operation. CF=NC: CDS Array allocated ok!
-    mov eax, cds_size
-    mul ecx ;eax has the size of the CDS array to make
-    add eax, 0Fh    ;Round up if not on a para boundary
-    shr eax, 4      ;Convert to paragraphs
-    xor ebx, ebx
-    mov ebx, eax
-    mov eax, 4800h  ;ALLOC  (current owner is mcbOwnerNewDOS)
-    int 41h
-    retc    ;Return if Carry set
-    mov rdi, rax            ;Save pointer to MCB in rdi
-    sub rax, mcb_size       ;Move rax to point to MCB
-    mov byte [rax + mcb.subSysMark], mcbSubCDS  ;Mark as a CDS array
-    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Mark as owned by DOS
-
-    mov qword fs:[cdsHeadPtr], rdi
-    push rdi
-    push rcx
-    mov eax, ecx
-    mov ecx, cds_size
-    mul ecx ;Multiply eax with ecx to get number of bytes to null out
-    mov ecx, eax
-    xor eax, eax
-    rep stosb
-    pop rcx
-    pop rdi
-    mov rbx, qword fs:[dpbHeadPtr]
-    mov eax, 005C3A41h      ;"A:\"+NULL char
-.tempCDS:
-    mov dword [rdi + cds.sCurrentPath], eax
-    mov qword [rdi + cds.qDPBPtr], rbx
-    mov dword [rdi + cds.dStartCluster], 0  ;Root dir for all!
-    mov word [rdi + cds.wBackslashOffset], 2    ;Skip the X:
-    xor edx, edx    ;Use edx for flags
-    cmp rbx, -1 ;Is rbx an invalid DPB ptr?
-    je .skipValidCDS
-    mov edx, cdsValidDrive  ;If not, set drive to valid and...
-    mov rbx, qword [rbx + dpb.qNextDPBPtr]  ;... go to next DPB
-.skipValidCDS:
-    mov word [rdi + cds.wFlags], dx ;Store the flags now
-    inc eax ;Increment the drive letter
-    add rdi, cds_size   ;Goto next array entry
-    dec ecx
-    jnz .tempCDS
-    ret
-initialCDSWritten:
 ;------------------------------------------------;
 ;     Set up general PSP areas and DOS vars      ;
 ;------------------------------------------------;
@@ -298,6 +180,9 @@ initialCDSWritten:
 
 ;Additional DOS Vars init and fixups
     mov byte fs:[errorDrv], -1   ;No error drive
+    mov word fs:[currentNdx], -1    ;Has to be -1 initially
+    mov word [rbp + shareCount], 3      ;Retry the repeat 3 times before failing
+    mov word [rbp + shareDelay], 1      ;Go through one multiple of countdown loop
     mov byte fs:[switchChar], "/"  ;Default switch char
     lea rdi, qword [rbp + caseMapFunc]  ;Get the function pointer
     mov qword fs:[ctryTbl + countryStruc.mapptr], rdi ;Store in country table
@@ -385,6 +270,123 @@ initialCDSWritten:
     xchg rax, rbx
     stosq   ;Store bad for close handles for new file opened 
     stosq   ;Store bad for update dir information
+
+;Finish by setting up internal DOS vars from OEM passed arguments.
+    movzx eax, byte [OEMBIOS]
+    test eax, eax
+    jz short skipOEMName
+    lea rsi, qword [rbp + dosBIOSName]
+    mov rax, "IO"
+    mov qword [rsi], rax
+    mov dword [rsi + 8], ".SYS"
+skipOEMName:
+    mov eax, dword [OEMVERSION]
+    mov dword [rbp + biosVers], eax
+
+    mov rax, qword [OEMPTR]
+    mov qword [rbp + biosPtr], rax
+
+    movzx eax, byte [DFLTDRIVE]
+    xor ebx, ebx
+    cmp eax, 25
+    cmova eax, ebx
+    mov byte [rbp + bootDrive], al
+
+    movzx eax, byte [FILES]
+    mov ebx, filesDefault
+    cmp eax, 5
+    cmovb eax, ebx
+    cmp eax, 254
+    cmova eax, ebx
+    mov byte [rbp + numFiles], al
+
+    movzx eax, byte [BUFFERS]
+    mov ebx, buffersDefault
+    test eax, eax
+    cmovz eax, ebx
+    cmp eax, 99
+    cmova eax, ebx
+    mov byte [BUFFERS], al
+
+    movzx eax, byte [LASTDRIVE]
+    mov ebx, lastDriveDeflt
+    cmp eax, ebx
+    cmovb eax, ebx
+    cmp eax, 25
+    cmova eax, ebx
+    mov byte [LASTDRIVE], al
+    mov byte [rbp + lastdrvNum], al     ;Set for DOS to be usable
+
+;------------------------------------------------;
+;          Find largest sector size              ;
+;------------------------------------------------;
+sectorSizeSearch:
+;Done by reading DPB's for each drive
+    xor eax, eax
+    mov rdx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
+    ;Go thru each block individually
+.findLargest:
+    cmp ax, word [rdx + dpb.wBytesPerSector]    ;Is current bigger than max?
+    cmovb ax, word [rdx + dpb.wBytesPerSector]  ;Move if so
+    mov rdx, qword [rdx + dpb.qNextDPBPtr]  ;Goto next DPB
+    cmp rdx, -1 ;We at the end?
+    jne short .findLargest  ;If not, keep checking
+    mov word fs:[maxBytesSec], ax
+;------------------------------------------------;
+;                CDS array inits                 ;
+;------------------------------------------------;
+    movzx ecx, byte [rbp + lastdrvNum]     ;Use as a counter
+    call makeCDSArray   ;Sets the CDS head pointer to rdi
+    jmp initialCDSWritten ;Go past the function
+makeCDSArray:
+;Builds a new CDS array for ya and sets the sysvars var to point to it!
+;Input: ecx = Size of array (number of CDS's in the array)
+;Ouput: CF=CY: Abort operation. CF=NC: CDS Array allocated ok!
+    mov eax, cds_size
+    mul ecx ;eax has the size of the CDS array to make
+    add eax, 0Fh    ;Round up if not on a para boundary
+    shr eax, 4      ;Convert to paragraphs
+    xor ebx, ebx
+    mov ebx, eax
+    mov eax, 4800h  ;ALLOC  (current owner is mcbOwnerNewDOS)
+    int 41h
+    retc    ;Return if Carry set
+    mov rdi, rax            ;Save pointer to MCB in rdi
+    sub rax, mcb_size       ;Move rax to point to MCB
+    mov byte [rax + mcb.subSysMark], mcbSubCDS  ;Mark as a CDS array
+    mov qword [rax + mcb.owner], mcbOwnerDOS    ;Mark as owned by DOS
+
+    mov qword fs:[cdsHeadPtr], rdi
+    push rdi
+    push rcx
+    mov eax, ecx
+    mov ecx, cds_size
+    mul ecx ;Multiply eax with ecx to get number of bytes to null out
+    mov ecx, eax
+    xor eax, eax
+    rep stosb
+    pop rcx
+    pop rdi
+    mov rbx, qword fs:[dpbHeadPtr]
+    mov eax, 005C3A41h      ;"A:\"+NULL char
+.tempCDS:
+    mov dword [rdi + cds.sCurrentPath], eax
+    mov qword [rdi + cds.qDPBPtr], rbx
+    mov dword [rdi + cds.dStartCluster], 0  ;Root dir for all!
+    mov word [rdi + cds.wBackslashOffset], 2    ;Skip the X:
+    xor edx, edx    ;Use edx for flags
+    cmp rbx, -1 ;Is rbx an invalid DPB ptr?
+    je .skipValidCDS
+    mov edx, cdsValidDrive  ;If not, set drive to valid and...
+    mov rbx, qword [rbx + dpb.qNextDPBPtr]  ;... go to next DPB
+.skipValidCDS:
+    mov word [rdi + cds.wFlags], dx ;Store the flags now
+    inc eax ;Increment the drive letter
+    add rdi, cds_size   ;Goto next array entry
+    dec ecx
+    jnz .tempCDS
+    ret
+initialCDSWritten:
 ;------------------------------------------------;
 ;        Create a Default Temporary Buffer       ;
 ;------------------------------------------------;

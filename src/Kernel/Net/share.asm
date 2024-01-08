@@ -81,7 +81,7 @@ shareCheckOpenViolation:
 
 
 shareFile:
-;Once the SFT has been made, here we allocate resoureces within share to
+;Once the SFT has been made, here we allocate resources within share to
 ; share the file, if it is possible to do so!
 ; This is done by calling the open wrapper
     push rcx
@@ -102,47 +102,6 @@ shareFile:
     jnc .reloadCounter  ;If user selected retry, we retry
 .exit:
     pop rcx
-    return
-
-shareLockViolationCriticalError:
-;This does NOT force rwFlag to 0.
-    push rdi
-    mov byte [Int44bitfld], critRetryOK | critFailOK
-    mov eax, errLokVio
-    mov rbp, qword [workingDPB]
-    ;Figure out what goes here once we figure out the full crit error invoke
-    call fullcriticalErrorInvoke
-    pop rdi
-    cmp eax, critRetry
-    rete
-    stc
-    return
-
-shareCriticalError: ;Int 4Fh AX=120Ah
-;Used for share Read/Write requests
-    push rdi
-    mov byte [rwFlag], 0    ;Default to read
-    mov byte [Int44bitfld], critRetryOK | critFailOK
-    mov rbp, qword [workingDPB]
-    mov edi, 1
-    ;Figure out what goes here once we figure out the full crit error invoke
-    call fullcriticalErrorInvoke
-    pop rdi
-    cmp al, critRetry   ;If we returned retry, return plainly, else set CF
-    rete
-    stc
-    return
-
-shareReadWriteViolationError:
-;Called in Binary Disk Read/Write if getting access to shared resource fails
-    cmp al, drvBadDskChnge
-    jne .doReq
-    push rax    ;IF a bad disk change, drop the volume descriptor ptr here
-    mov rax, qword [primReqHdr + ioReqPkt.desptr]   ;Get volume descriptor ptr
-    mov qword [xInt44RDI], rax
-    pop rax
-.doReq:
-    call fullcriticalErrorInvoke
     return
 
 shareCheckWriteLockViolation:
@@ -167,4 +126,25 @@ shareCheckReadLockViolation:
     xor ecx, ecx    ;Number of bytes xferred
     mov eax, errLokVio
     stc ;Set the flag for error
+    return
+
+shareLockViolationCriticalError:
+;This does NOT force rwFlag to 0 and signals a lock violation
+    push rdi
+    mov eax, errLokVio
+    jmp short shareCriticalError.common
+shareCriticalError: ;Int 4Fh AX=120Ah
+;Used for share Read requests
+;Input: eax = Error code
+    push rdi
+    mov byte [rwFlag], 0    ;Default to read
+.common:
+    mov byte [Int44bitfld], critRetryOK | critFailOK
+    mov rbp, qword [workingDPB] 
+    xor edi, edi   ;Indicate that this was due to share
+    call diskDevErr
+    pop rdi
+    cmp al, critRetry   ;If we returned retry, return plainly, else set CF
+    rete
+    stc
     return

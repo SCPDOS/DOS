@@ -134,8 +134,9 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     dec esi
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
+;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
     mov byte [Int44bitfld], critWrite ;Set the initial bitfield to write req
-    call diskDevErr ;Call with rdi = Buffer header and eax = Status Word
+    call diskIOError ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
     je .fbRequest0
     ;Else we fail (Ignore=Fail here)
@@ -262,10 +263,8 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
-    or byte [rdi + bufferHdr.bufferFlags], refBuffer ;Only set if in buf chain
-.rbExit:
     clc
-.rbExitNoFlag:
+.rbExit:
     pop rdi
     pop rsi
     pop rdx
@@ -274,14 +273,8 @@ getBuffer: ;Internal Linkage ONLY
     return
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
-    cmp byte [diskChange], -1 ;Are we in disk change?
-    jne .flush  ;We are not, flush buffer
-    cmp rsi, qword [rdi + bufferHdr.driveDPBPtr]    ;If yes...
-    je .skipFlush   ;Avoid flushing if same DPB being used. Lose the sector
-.flush:
     call flushAndFreeBuffer
-    jc .rbExitNoFlag    ;Preserve the set carry flag
-.skipFlush:
+    jc .rbExit    ;Preserve the set carry flag
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
     ;If the sector is to be lost or has been successfully flushed, then it
     ; is no longer owned by that File so we mark the owner as none
@@ -300,8 +293,7 @@ getBuffer: ;Internal Linkage ONLY
     mov qword [rdi + bufferHdr.driveDPBPtr], rsi
     mov byte [rdi + bufferHdr.reserved], 0
     call readSectorBuffer ;Carry the flag from the request
-    jc .rbExitNoFlag
-    jmp short .rbExit
+    jmp short .rbExit   ;Jump preserving the carry flag
 
 readSectorBuffer:   ;Internal Linkage
 ;Reads a sector into a built sector buffer
@@ -345,14 +337,18 @@ readSectorBuffer:   ;Internal Linkage
     dec esi
     jnz .rsRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
-;First free the buffer if we failed to read data into it 
-    movzx ecx, word [rdi + bufferHdr.driveNumber]   ;Save drv num for retry
-    mov word [rdi + bufferHdr.driveNumber], 00FFh ;Free buffer and clear flags
+;First free the buffer if we failed to read data into it. 
+;We free this buffer to free the resource if the user aborts.
+;This function is called in a critical section so the buffer pointer
+; is under no thread of being reallocated.
+;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
+    mov word [rdi + bufferHdr.driveNumber], 0FFFh ;Free buffer and clear dirty/ref bits
     mov byte [Int44bitfld], critRead    ;Set the initial bitfield to read req
-    call diskDevErr
+    call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry
     jne .fail   ;Else we fail (Ignore=Fail here)
-    mov word [rdi + bufferHdr.driveNumber], cx ;Put drvNm + flgs if trying again
+    movzx eax, byte [rbp + dpb.bDriveNumber]    ;Get drv num to put back
+    mov byte [rdi + bufferHdr.driveNumber], al ;Put it back (buffer type bits set)
     jmp short .rsRequest0
 .fail:
     stc ;Set error flag to indicate fail

@@ -185,7 +185,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     errorExCde  resw 1  ;Extended Error Code
     errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
-    xInt44RDI   resq 1  ;Preserved rdi across a critical error
+    xInt44RDI   resq 1  ;Preserved rdi across a critical error handle
     currentDTA  resq 1  ;Address of the current DTA x
     currentPSP  resq 1  ;Address of current PSP x
 
@@ -267,7 +267,7 @@ sdaDOSSwap:
     fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
     fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
     badNameRen  resb 1  ;Device name or File not found for rename
-    rwFlag      resb 1  ;00h=Read, -1=Write, read/write/share error reporting
+    rwFlag      resb 1  ;00h=Read, 1=Write, read/write/share error reporting
     spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
     dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
 
@@ -342,8 +342,9 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     DiskStack   resq 199
     DiskStakTop resq 1
 
-    diskChange  resb 1  ;-1 = disk has been changed!
-    lookahead   resb 1  ;-1 => Lookahead on select Char function calls! 
+    lookahead   db ?  ;-1 => Lookahead on select Char function calls!
+    rebuildDrv  db ?  ;Stores the drive letter of the dpb to reset.
+    ;The above is used in create and delete for volume labels only. Otherwise is -1.
 ;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
     exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
     sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time

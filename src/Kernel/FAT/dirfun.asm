@@ -23,6 +23,20 @@ makeDIR:           ;ah = 39h
     call getFilePath ;Get a Directory path in buffer1, hitting the disk
     ;If the path exists, exit error
     jnc extErrExit
+    ;-------------------------------------------
+    ;TEST THAT THE DRIVE IS VALID AND NOT JOIN
+    ;-------------------------------------------
+    push rdi
+    mov rdi, qword [workingCDS]
+    test word [rdi + cds.wFlags], cdsValidDrive ;Cannot make on invalid drive
+    pop rdi
+    jz extErrExit  ;Exit access denied
+    push rdi
+    mov rdi, qword [workingCDS]
+    test word [rdi + cds.wFlags], cdsJoinDrive ;Cannot make on a live join drive
+    pop rdi
+    jnz extErrExit  ;Exit access denied
+    ;-------------------------------------------
     ;Now check if the reason for the error was that the last pathcomp was 0
     call checkFailingComp
     jnz extErrExit

@@ -1,7 +1,18 @@
 
-fullcriticalErrorInvoke:
-    mov eax, 03 ;Always fail for now
-    stc
+diskIOError:
+;Called in Binary Disk Read/Write if getting access to shared resource fails
+;Input: rwFlag = 0 or 1 for read/write
+;       eax = Status word
+;       rdi -> disk pointer
+;       rbp -> DPB ptr
+    cmp al, drvBadDskChnge
+    jne .doReq
+    push rax    ;If a bad disk change, drop the volume descriptor ptr here
+    mov rax, qword [primReqHdr + ioReqPkt.desptr]   ;Get volume descriptor ptr
+    mov qword [xInt44RDI], rax
+    pop rax
+.doReq:
+    call diskDevErr ;Preserves the disk pointer
     return
 xlatHardError:
 ;Translates a hard error code to a generic DOS error
@@ -19,22 +30,40 @@ xlatHardError:
     pop rsi
     return
 
+charDevErr:
+;Hard character device errors come here
+;Input:
+; ah = Additional Int 44h flags.
+;edi = error code in low byte
+;rbp -> Not accessed but preserved
+    or ah, critIgnorOK | critRetryOK | critFailOK   ;Set the always bits
+    mov byte [Int44bitfld], ah
+    mov qword [tmpDPBPtr], rbp
+    push rsi
+    movzx edi, dil    ;Zero extend the error code up
+    call hardErrorCommon
+    pop rsi
+    return
 diskDevErr:
 ;Called, NOT Jumped to. 
-;Input: rdi = Disk Buffer pointer
-;       eax = Status word (Zero Extended)
+;Input: rdi = Disk Buffer pointer (or 0 to mean share)
+;       eax = Status word (error code in al)
 ;       rbp = Disk DPB pointer
 ; [Int44hbitfld] = Specific bitflags (r/w AND potential extra ok responses)
 ;Output: al = Int 44h response (0-3)
 ; All other registers preserved
-    mov qword [xInt44RDI], rdi  ;Save rdi (Disk Buffer pointer)
-    mov edi, eax    ;Store status word in rdi
+    mov bl, dataBuffer  ;Set dflt flags for invoke
+    test rdi, rdi       ;Is this a share invokation?
+    je .skipbufferread  ;Jump if so, since share lock issues occur on data io
+    mov bl, byte [rdi + bufferHdr.bufferFlags]  ;Else get the buffer data type
+.skipbufferread:
+    push rdi        ;Save the buffer pointer
+    movzx edi, al   ;Store status code in dil, zero extend
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
+    mov byte [errorDrv], al ;Store this value
     mov ah, byte [Int44bitfld]  ;Get the permissions in var
-    or ah, critFailOK | critRetryOK ;Set bits
+    or ah, critFailOK | critRetryOK ;Set the always bits
     ;Test for correct buffer data type
-    push rbx    ;Save rbx temporarily
-    mov bl, byte [rdi + bufferHdr.bufferFlags]  ;Get the buffer data type
     test bl, dosBuffer
     jnz .df0
     or ah, critDOS  ;Add DOS data type bit
@@ -43,6 +72,7 @@ diskDevErr:
     test bl, fatBuffer
     jnz .df1
     or ah, critFAT  ;Add FAT data type bit
+    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Invalidate the count!
     jmp short .df3
 .df1:
     test bl, dirBuffer
@@ -52,23 +82,29 @@ diskDevErr:
 .df2:
     or ah, critData ;Here it must be a data buffer
 .df3:
-    pop rbx
-    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get driver header ptr from dpb
-    call criticalErrorSetup ;Save ah and rbp in this function
-    mov rbp, qword [tmpDPBPtr]  ;Get back rbp that was saved by critErrSetup
-    mov rdi, qword [xInt44RDI]  ;Return original rdi value
-    return
-
-charDevErr:
-;Called with ah with additional bits
-    or ah, critIgnorOK | critRetryOK | critFailOK  ;Ignore,Retry,Fail OK
-criticalErrorSetup:
-    mov byte [Int44bitfld], ah  ;Save bitfield
-    mov qword [tmpDPBPtr], rbp  ;rbp is the DPB if a disk operation errored
-    and edi, 00FFh  ;Save only low byte of error
-    ;For now, fall through, but need much work to change it later! 
-
-
+    and byte [rwFlag], 1    ;Save only the bottom bit
+    or ah, byte [rwFlag]    ;And set the low bit here
+    or ah, byte [Int44bitfld]
+    ;Continue down with failing disk buffer pointer on stack
+    call diskDevErrBitfield
+    pop rdi ;Pop back the disk buffer pointer
+    return   
+diskDevErrBitfield:
+;Called with Int44Bitfield constructed and in ah and error code in dil
+;This is to avoid rebuilding the bitfield.
+    mov al, byte [rbp + dpb.bDriveNumber]   ;Get the drive number
+    mov qword [tmpDPBPtr], rbp  ;Save the DPB 
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;And get the driver ptr in rsi
+    xor ebp, ebp    ;Finally, set ebp to 0 to simulate the segment
+hardErrorCommon:
+;The common fields, with the vars set up. 
+;Ensure we dont have a crazy error code.
+    call xlatHardError
+    push rax
+    mov eax, errGF - drvErrShft
+    cmp edi, eax    ; If the returned error code is above largest driver code
+    cmovbe edi, eax ; return the driver largest code
+    pop rax
 criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function 
 ;Will swap stacks and enter int 44h safely and handle passing the right data 
 ; to the critical error handler.
@@ -103,16 +139,24 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     mov al, critFail    ;Else, return Fail always
     jmp short .exit     ;Don't translate fail to abort
 .noIntError:
+    mov qword [xInt44hRSP], rsp ;Save our critical error stack
+    cmp word  [currentNdx], -1  ;If this is -1, we are not opening a file
+    je .notOpeningFile
+    push rdi
+    mov rdi, qword [curHdlPtr]  ;Get the pointer to the current handle entry
+    mov byte [rdi], -1          ;Free this handle
+    pop rdi
+.notOpeningFile:
     cli ;Disable Interrupts
     inc byte [critErrFlag]  ;Set flag for critical error
     dec byte [inDOS]    ;Exiting DOS
-    mov qword [xInt44hRSP], rsp
     mov rsp, qword [oldRSP] ;Get the old RSP value
     xor ebp, ebp    ;Always zeroed
     int 44h ;Call critical error handler, sets interrupts on again
     mov rsp, qword [xInt44hRSP] ;Return to the stack of the function that failed
     mov byte [critErrFlag], 0   ;Clear critical error flag
     inc byte [inDOS]    ;Reenter DOS
+    mov rbp, qword [tmpDPBPtr]
     sti ;Reenable Interrupts
     ;Now we check that the response given was allowed, and translate if needed
 .checkResponse:
@@ -129,6 +173,16 @@ criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function
     jz .abort  ;If bit not set, fail not permitted, abort
 .exit:
     mov byte [errorDrv], -1 ;Unknown drive (to be set)
+    cmp byte [currentNdx], -1   ;Is there a file that needs handling?
+    rete    ;Only if this is not equal
+    ;In that case, we set the jft entry to its initial value, whatever it was
+    push rax
+    push rdi
+    movzx eax, word [currentNdx]
+    mov rdi, qword [curHdlPtr]
+    mov byte [rdi], al
+    pop rdi
+    pop rax
     return
 .checkIgnore:
     test byte [Int44bitfld], critIgnorOK

@@ -39,7 +39,7 @@ errGF       equ 31  ;General fault
 errShrVio   equ 32  ;Sharing violations
 errLokVio   equ 33  ;File Lock violation
 ;----------------------------------------------
-errIDC      equ 34  ;Driver code, Invalid Disk Change
+errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
 
