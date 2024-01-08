@@ -789,9 +789,11 @@ getExtendedError:  ;ah = 59h
     mov ch, byte [errorLocus]
     mov bh, byte [errorClass]
     mov bl, byte [errorAction]
+    mov rdi, qword [errorVolLbl]
     mov word [rsi + callerFrame.rax], ax
     mov word [rsi + callerFrame.rbx], bx
     mov byte [rsi + callerFrame.rcx + 1], ch
+    mov qword [rsi + callerFrame.rdi], rdi
 noOp:
     return
 ;At some point we will implement the below function but that is

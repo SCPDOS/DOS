@@ -185,7 +185,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     errorExCde  resw 1  ;Extended Error Code
     errorAction resb 1  ;Suggested action for error  
     errorClass  resb 1  ;Error Class
-    xInt44RDI   resq 1  ;Preserved rdi across a critical error handle
+    errorVolLbl dq ?    ;Sets a ptr to the volume label of the error disk
     currentDTA  resq 1  ;Address of the current DTA x
     currentPSP  resq 1  ;Address of current PSP x
 

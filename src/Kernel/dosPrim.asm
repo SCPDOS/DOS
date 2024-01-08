@@ -327,7 +327,7 @@ ensureDiskValid:
     ;rbp points to the dpb still
     push rdi
     mov rdi, qword [primReqHdr + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
-    mov qword [xInt44RDI], rdi
+    mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
     pop rdi ;Get back the buffer pointer
     mov byte [Int44bitfld], critRead | critDOS | critRetryOK | critFailOK
     mov byte [rwFlag], 1    ;A write was the cause of the error

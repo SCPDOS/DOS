@@ -7,9 +7,10 @@ diskIOError:
 ;       rbp -> DPB ptr
     cmp al, drvBadDskChnge
     jne .doReq
-    push rax    ;If a bad disk change, drop the volume descriptor ptr here
-    mov rax, qword [primReqHdr + ioReqPkt.desptr]   ;Get volume descriptor ptr
-    mov qword [xInt44RDI], rax
+    push rax    ;If a bad disk change, drop the volume label ptr here
+    mov rax, qword [primReqHdr + ioReqPkt.desptr]   ;Get volume label ptr
+    mov qword [errorVolLbl], rax    ;and save it!
+    ;Later versions will include a serial number after the lbl too
     pop rax
 .doReq:
     call diskDevErr ;Preserves the disk pointer

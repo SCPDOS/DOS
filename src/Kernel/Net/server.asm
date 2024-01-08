@@ -141,8 +141,8 @@ setExtendedErrorInfo:       ;AX=5D0Ah
 ;   rsi -> DPL
     mov eax, dword [rsi + dpl.rax]  ;Get ax (extended error code)
     mov word [errorExCde], ax
-    mov rax, qword [rsi + dpl.rdi]  ;Get rdi as a full ptr
-    mov qword [xInt44RDI], rax
+    mov rax, qword [rsi + dpl.rdi]  ;Set the volume label pointer var
+    mov qword [errorVolLbl], rax
     mov eax, dword [rsi + dpl.rbx]  ;Get bx (error action and class)
     mov word [errorAction], ax  ;Store action and class together
     mov eax, dword [rsi + dpl.rcx]  ;Get ch (error locus)
