@@ -66,8 +66,12 @@ diskDevErr:
 .skipbufferread:
     push rdi        ;Save the buffer pointer
     movzx edi, al   ;Store status code in dil, zero extend
+    cmp edi, drvWPErr
+    jne .notReset
+    ;Reset the error drive to report dpb drive if a write protect error!
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov byte [errorDrv], al ;Store this value
+.notReset:
     mov ah, byte [Int44bitfld]  ;Get the permissions in var
     or ah, critFailOK | critRetryOK ;Set the always bits
     ;Test for correct buffer data type
