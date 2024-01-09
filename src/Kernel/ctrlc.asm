@@ -17,13 +17,19 @@ diskIOError:
     return
 xlatHardError:
 ;Translates a hard error code to a generic DOS error
-;Input: edi = eax = Hard Error Code
-    push rax
-    cmp eax, drvErrShft
-    jb .skipXlat
-    add eax, drvErrShft
+;Input: edi = Hard Error Code
+;       ah = Bitfield
+;       al = Failing drive number
+    push rax    ;Wanna preserve ax
+    cmp di, hardXlatTblL    ;If errorcode > 15, do not adjust!!
+    movzx eax, di  ;Clears 64 bits and moves error code into ax
+    jae .skipXlat   ;Skip xlat if above 15, for IOCTL return errors
+    push rbx
+    lea rbx, hardXlatTbl
+    xlatb    ;Get translated byte from the table in al
+    pop rbx
 .skipXlat:
-    mov byte [hardErrorStack], al   ;Store this error code here
+    mov word [errorExCde], ax   ;Store this error code here
     pop rax
     push rsi
     lea rsi, extErrTbl
@@ -34,7 +40,7 @@ xlatHardError:
 charDevErr:
 ;Hard character device errors come here
 ;Input:
-; ah = Additional Int 44h flags.
+; ah = Additional Int 44h flags. Top bit should be set!
 ;edi = error code in low byte
 ;rbp -> Not accessed but preserved
     or ah, critIgnorOK | critRetryOK | critFailOK   ;Set the always bits
@@ -100,11 +106,14 @@ diskDevErrBitfield:
 hardErrorCommon:
 ;The common fields, with the vars set up. 
 ;Ensure we dont have a crazy error code.
+;Entered with: ah = bitfield, al = Fail drive (0 based) if not char
+; dil = Driver error code, rsi -> Driver header
+;tmpDBPPtr = Fail DPB if not char, rwFlag set/clear
     call xlatHardError
     push rax
     mov eax, errGF - drvErrShft
     cmp edi, eax    ; If the returned error code is above largest driver code
-    cmovbe edi, eax ; return the driver largest code
+    cmova edi, eax  ; return the driver largest code
     pop rax
 criticalDOSError:   ;Int 4Fh, AX=1206h, Invoke Critical Error Function 
 ;Will swap stacks and enter int 44h safely and handle passing the right data 

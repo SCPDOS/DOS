@@ -310,6 +310,7 @@ ensureDiskValid:
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov ah, critRead | critFAT | critFailOK | critRetryOK
     mov byte [Int44bitfld], ah  ;Save the permissions in var
+    movzx edi, dil  ;Clear the upper bytes, save only error code
     call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
     mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry

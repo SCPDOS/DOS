@@ -1884,6 +1884,7 @@ readCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .asciiNoError
+    mov ah, critCharDev | critData
     call charDevErr    ;Call Int 44h
     ;Now setup number of bytes to transfer to 1 if the user requests retry
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1

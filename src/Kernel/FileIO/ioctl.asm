@@ -411,7 +411,6 @@ failIOCTLCall:
 ;rbx -> Driver request packet
     movzx edi, word [rbx + ioctlReqPkt.status]
     and edi, 0FFh   ;Save the low byte only
-    mov eax, edi
     call xlatHardError
     movzx eax, word [errorExCde] 
     jmp extErrExit

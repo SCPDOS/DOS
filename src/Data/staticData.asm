@@ -78,6 +78,28 @@ monthsTbl:
     db 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 
 ;Error tables
+hardXlatTbl:
+;Hard error xlat table. Used so that it can be patched by 
+; multitaskers and network tools as opposed to having a static
+; conversion factor as was initially. Not extensible though (thats ok)
+    db errWpd       ;Attempt to write on write protected disk
+    db errUnkUnt    ;Unknown Unit
+    db errDrvNR     ;Drive not ready
+    db errUnkCmd    ;Unknown Command
+    db errCRCerr    ;Data (CRC) error
+    db errBadRLn    ;Bad request structure length
+    db errSekErr    ;Seek error
+    db errUnkMed    ;Unknown media type
+    db errSecNF     ;Sector not Found
+    db errNoPap     ;Printer out of paper
+    db errWF        ;Write fault
+    db errRF        ;Read fault
+    db errGF        ;General fault
+    ;The following two adjust for share errors
+    db errGF        ;Sharing violations
+    db errGF        ;File Lock violation
+    db errIDC       ;Invalid Disk Change
+hardXlatTblL equ $ - hardXlatTbl
 errXlatTbl:
 ;Each entry is n bytes long, defined as
 ; Byte 0      : DOS function number for which translation will occur
