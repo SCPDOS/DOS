@@ -379,23 +379,3 @@ asciiCharProperties:   ;This table is const. Gives "properties" of chars.
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh   ;Chars 70h-77h
     db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   ;Chars 78h-7Fh
     db 128 dup (0FFh)                                   ;Chars 80h-100h
-
-;!!!NOTE!!!:
-;This table is being commented out, and checkCharValid has been replaced
-; with a version using the codepage table now, properly.
-;This is being left commented in FOR NOW, in case of any instabilities.
-;Should not be the case ever
-;!!!NOTE!!!:
-;badDirNameChar: ;This table needs to be replaced in other Codepages (i.e. Kanji)
-;    db 00h,01h,02h,03h,04h,05h,06h,07h,08h,09h,0Ah,0Bh,0Ch,0Dh,0Eh,0Fh
-;    db 10h,11h,12h,13h,14h,15h,16h,17h,18h,19h,1Ah,1Bh,1Ch,1Dh,1Eh,1Fh
-;    db '"', "*", "+",",",".","/",":",";","<","=",">","?","[","\","]","|"
-;badDirNameCharL equ $ - badDirNameChar
-;The chars * ? . \ / need to always be handled separately
-
-
-hardErrorStack:
-    db errWpd
-    db eClsMedia
-    db eActRetUsr
-    db eLocDsk
