@@ -121,3 +121,31 @@ mpxIOCTL:  ;Int 4Fh, AX=122Bh
     call ioctrl   ;Sets the values of our registers by how it exits
     pop qword [oldRSP]  ;Get back OG sp
     return  
+
+mpxChecksum:
+;Computes the checksum of a number of bytes in memory
+;Input: edx = Start value for checksum
+;       ecx = number of bytes to sum
+;       rsi -> Ptr to byte array to perform sum on
+    xor eax, eax
+    jecxz .exit
+.lp:
+    lodsb
+    add edx, eax
+    dec ecx
+    jnz .lp
+.exit:
+    return
+mpxSum: ;Could use in readDateTimeRecord (two places)
+;Sums the values in a number of bytes in memory
+;Input: rsi -> Byte array to sum values of
+;       edx = Value limit (for the sum)
+;       ecx = 0
+    xor eax, eax
+.lp:
+    lodsb
+    cmp edx, eax
+    retc
+    sub edx, eax
+    inc ecx
+    jmp short .lp
