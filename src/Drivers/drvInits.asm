@@ -26,7 +26,7 @@ conInit:
     push rcx
     push rdx
     lea rdx, qword [fastOutput]
-    mov eax, 49h
+    mov eax, 29h
     call installInterrupt
     lea rdx, qword [ctrlBreak]
     mov eax, 3Bh
