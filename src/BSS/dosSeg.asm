@@ -6,7 +6,7 @@ dosDataArea:
     biosPtr     resq 1    ;For saving a data ptr to be used by BIOS/drivers
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
-;Both below variables can be edited with Int 41h AX=440Bh
+;Both below variables can be edited with Int 21h AX=440Bh
     validNetNam resw 1    ;Flag if machinename valid, deflt no=0
     shareCount  resw 1    ;Share Retry Count, number of repeats before fail.
     shareDelay  resw 1    ;Share Delay, in multiples of ms. (TEMP, just loop)
@@ -178,7 +178,7 @@ vConBuf:    ;Proper buffer symbol
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
-    critErrFlag resb 1  ;Critical error flag, set on entry to INT 44h x
+    critErrFlag resb 1  ;Critical error flag, set on entry to Int 24h x
     inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
     errorDrv    resb 1  ;Drive on which error occured or FFh x
     errorLocus  resb 1  ;Where the error took place  
@@ -189,30 +189,30 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     currentDTA  resq 1  ;Address of the current DTA x
     currentPSP  resq 1  ;Address of current PSP x
 
-    xInt43hRSP  resq 1  ;Saves RSP across an Int 43h call
-    errorLevel  resw 1  ;Last return code returned by Int 41h/4Ch x
+    xInt23hRSP  resq 1  ;Saves RSP across an Int 23h call
+    errorLevel  resw 1  ;Last return code returned by Int 21h/4Ch x
     ;Upper byte: 0=Normal, 1=Abort Occured, 2=CtrlC, 3=TSR 41h/31h
     ;Lower byte: User Specified
     currentDrv  resb 1  ;Default drive x
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
 ;SDA, needs to be replaced between processes
 sdaDOSSwap:
-    oldRAX      resq 1  ;Store rax on entering Int41h or returning Int 43h
+    oldRAX      resq 1  ;Store rax on entering Int21h or returning Int 23h
     serverPSP   resq 1  ;PSP of prog making server request, used by net & share
     machineNum  resw 1  ;for sharing/networking 00h = default number (us)
     firstMCB    resq 1  ;First fit MCB for request
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
     dirEntryNum resw 1  ;Offset into directory of entry we are looking for
-    xInt44hRSP  resq 1  ;RSP across an Int 44h call
-    Int44bitfld resb 1  ;Copies the bit field given to the Int 44h handler
+    xInt24hRSP  resq 1  ;RSP across an Int 24h call
+    Int24bitfld resb 1  ;Copies the bit field given to the Int 24h handler
     fileDirFlag resb 1  ;File/Directory flag. 0 = Dir, ¬0 = File
-    Int44Fail   resb 1  ;Set if Int 44h returned fail
+    Int24Fail   resb 1  ;Set if Int 24h returned fail
 
-    oldoldRSP   resq 1  ;RSP at prev Int 41h entry if called from within Int 41h
+    oldoldRSP   resq 1  ;RSP at prev Int 21h entry if called from within Int 21h
     dosReturn   resq 1  ;Used as a var to return when juggling stack
-    oldRSP      resq 1  ;RSP when entering Int 41h
-    oldRBX      resq 1  ;Temp var to save value of rbx during an Int 41 call
+    oldRSP      resq 1  ;RSP when entering Int 21h
+    oldRBX      resq 1  ;Temp var to save value of rbx during an Int 21 call
     dirFlag     resb 1  ;Directory Flag. 0 => Search for Dir, 1 => for File
 ;The below flag tells DOS to print ^C in the termination function
     ctrlCExit   resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
@@ -226,8 +226,8 @@ sdaDOSSwap:
     dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
 
     vConDrvSwp  resb 1  ;Set if vCon controlled by a different driver to vConPtr
-    int48Flag   resb 1  ;If set, Int 48h should be called, if clear no
-    Int44Trans  resb 1  ;Set to -1 if Abort translated to Fail
+    int28Flag   resb 1  ;If set, Int 28h should be called, if clear no
+    Int24Trans  resb 1  ;Set to -1 if Abort translated to Fail
 ;A request routed through the FCB or handle uses primReqHdr for its main IO.
 ;A secondary header is present to allow simultaneous echoing to console 
 ; without forcing to re-build the whole primary request block.
@@ -269,7 +269,7 @@ sdaDOSSwap:
     badNameRen  resb 1  ;Device name or File not found for rename
     rwFlag      resb 1  ;00h=Read, 1=Write, read/write/share error reporting
     spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
-    dosInvoke   resb 1  ;0 = Invoked via Int 41h, -1 = Invoked via 41h/5D01h
+    dosInvoke   resb 1  ;0 = Invoked via Int 21h, -1 = Invoked via 41h/5D01h
 
     vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)
     fileExist   resb 1  ;-1 if file in pathspec exists (create/open)
@@ -338,7 +338,7 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     
     alignb  8
     AuxStack    resq 199
-    AuxStakTop  resq 1  ;Auxilliary stack (Char IO, INT 45h/46h etc)
+    AuxStakTop  resq 1  ;Auxilliary stack (Char IO, Int 25h/46h etc)
     DiskStack   resq 199
     DiskStakTop resq 1
 
@@ -376,7 +376,7 @@ inExtASCII:
         .limit  dw ?
         .base   dq ?
     ;Lseek and IOCTL return data in registers as well as on the caller's 
-    ; stack. In Int 4Fh, this could overwrite user data if the functions
+    ; stack. In Int 2Fh, this could overwrite user data if the functions
     ; were allowed to write to original callers register stack. 
     ; So we have this structure below that is used by these functions to 
     ; write their "return" data onto a "stack", even though when accessed 

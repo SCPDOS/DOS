@@ -46,7 +46,7 @@ makeDIR:           ;ah = 39h
     ;returns in rdi the working cds ptr
     jnc .notNet
     mov eax, 1103h
-    int 4fh
+    int 2fh
     jc extErrExit
     jmp extGoodExit
 .notNet:
@@ -188,7 +188,7 @@ removeDIR:         ;ah = 3Ah
     call testCDSNet ;Check if the working CDS is a NET CDS
     jnc .notNet
     mov eax, 1101h  ;RMDIR for net
-    int 4fh
+    int 2fh
     jc extErrExit
     jmp extGoodExit
 .notNet:
@@ -401,7 +401,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 .net:
 ;SDA Vars are setup for this request
     mov eax, 1105h
-    int 4fh
+    int 2fh
     jc extErrExit
     jmp extGoodExit
 .getFatCluster:
@@ -456,10 +456,10 @@ getCurrentDIR:     ;ah = 47h
     mov eax, 0100h  ;RBIL -> MS software may rely on this value
     jmp extGoodExit ;Exit very satisfied with ourselves that it worked!
 
-trueNameMultiplex:  ;Int 4Fh, AX=1221h
+trueNameMultiplex:  ;Int 2Fh, AX=1221h
     push rax
     mov eax, 6000h
-    int 41h
+    int 21h
     pop rax
     return
     

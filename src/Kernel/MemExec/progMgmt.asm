@@ -3,15 +3,15 @@
 ;========================
 ;   Interrupt handlers
 ;========================
-terminateProcess:   ;Int 40h
+terminateProcess:   ;Int 20h
     xor eax, eax    ;Prepare for AH=00h call
-    jmp functionDispatch    ;Dispatch 41h/AH=00h (which jumps to 41h/AX=4C00h)
-terminateRes:       ;Int 47h
+    jmp functionDispatch    ;Dispatch 21h/AH=00h (which jumps to 21h/AX=4C00h)
+terminateRes:       ;Int 27h
 ;Input: edx = offset of last byte in program to remain resident plus 1
     add edx, 0Fh    ;Round up number of bytes to next paragraph
     shr edx, 4      ;Divide by 16 to get number of paragraphs
-    mov eax, 3100h  ;Setup a call to TSR 41h/AH=31h
-    jmp functionDispatch    ;Dispatch 41h/AH=31h Terminate and Stay Resident
+    mov eax, 3100h  ;Setup a call to TSR 21h/AH=31h
+    jmp functionDispatch    ;Dispatch 21h/AH=31h Terminate and Stay Resident
 ;========================
 ;    Int 21h functions
 ;========================
@@ -92,22 +92,22 @@ copyPSP:      ;ah = 26h
     pop rax ;Pop the allocsize back into rax
     mov dword [rdx + psp.allocSize], eax    ;Store allocsize
     ;Now we copy the Interrupt addresses from the IDT to the PSP
-    lea rdi, qword [rdx + psp.oldInt42h]
-    mov al, 42h
+    lea rdi, qword [rdx + psp.oldInt22h]
+    mov al, 22h
     call muxGetIntVector    ;Get vector in rbx
     mov rax, rbx    ;Move vector number to rax
     stosq   ;Move rdi to next entry and store
-    mov al, 43h
+    mov al, 23h
     call muxGetIntVector    ;Get vector in rbx
     mov rax, rbx    ;Move vector number to rax
     stosq   ;Move rdi to next entry and store
-    mov al, 44h
+    mov al, 24h
     call muxGetIntVector    ;Get vector in rbx
     mov rax, rbx    ;Move vector number to rax
     stosq   ;Move rdi to next entry and store
     ;Now we add the additional useful bits... just in case they are damaged
-    mov word [rdx + psp.return], 040CDh  ;Int 40h
-    mov word [rdx + psp.unixEntry], 041CDh  
+    mov word [rdx + psp.return], 020CDh  ;Int 20h
+    mov word [rdx + psp.unixEntry], 021CDh  
     mov byte [rdx + psp.unixEntry + 2], 0C3h ;Return
     return
 
@@ -149,9 +149,9 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;       Note this means, reducing the open counts and setting PSP entries to -1
 ;5) Free all memory blocks that have the signature of current PSP
 ;6) Set current PSP to parent PSP
-;7) Restore Int 42h, 43h, 44h handlers from the PSP to the IDT
+;7) Restore Int 22h, 23h, 24h handlers from the PSP to the IDT
 ;8) Set rsp of parent proc upon entry to DOS to our rsp
-;9) Set Int 42h to be the RIP value on the now oldRSP stack
+;9) Set Int 22h to be the RIP value on the now oldRSP stack
 ;10) Exit all critical sections.
 ;
 ; Step 0
@@ -170,7 +170,7 @@ terminateClean:    ;ah = 4Ch, EXIT
 ; Step 1 Tell network a process is terminating
     mov eax, 1122h  ;Net redir, Process Termination Hook
     mov r8, qword [currentPSP]  ;Use r8 instead of DS
-    int 4Fh
+    int 2Fh
 ; Step 2
 .step1:
     mov rdi, qword [currentPSP] ;Get the current psp
@@ -187,7 +187,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp byte [exitType], 2  ;Abort type exit?
     jne .skipAbortNetClose  ;Skip the following
     mov eax, 111Dh  ; Close all remote files for process on Abort!
-    int 4Fh
+    int 2Fh
 .skipAbortNetClose:
     call qword [closeTaskShare] ;Close all shared files for this task
     call qword [unloadDLLHook]  ;Now free exported function for this task
@@ -246,25 +246,25 @@ terminateClean:    ;ah = 4Ch, EXIT
 ;Step 7
     ;rbx points to current PSP, the old parent task
     ;Use setIntVector. Takes in al the interrupt number and rdx = ptr to routine
-    mov rdx, qword [rbx + psp.oldInt44h]
-    mov al, 44h
+    mov rdx, qword [rbx + psp.oldInt24h]
+    mov al, 24h
     call setIntVector
-    mov rdx, qword [rbx + psp.oldInt43h]
-    mov al, 43h
+    mov rdx, qword [rbx + psp.oldInt23h]
+    mov al, 23h
     call setIntVector
-    mov rdx, qword [rbx + psp.oldInt42h]
-    mov al, 42h
+    mov rdx, qword [rbx + psp.oldInt22h]
+    mov al, 22h
     push rdx
     call setIntVector
     pop rdx
 ;Step 8
 .exit:
     mov ah, 82h ;Cancel all critical sections 0-7
-    int 4ah
+    int 2Ah
 
     cli
     mov rbx, qword [currentPSP]
-    mov rdx, qword [rbx + psp.oldInt42h]
+    mov rdx, qword [rbx + psp.oldInt22h]
     ;Make the parent register frame the current one
     ;Make RSP point to user stack from parent entry to exec
     mov rsp, qword [rbx + psp.rspPtr]
@@ -272,7 +272,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov qword [rsp + callerFrame.rip], rdx  ;Store return address vector here
     mov qword [rsp + callerFrame.flags], 0F202h ;Mimic DOS's return flags
 
-    mov byte [Int44Trans], 0    ;Clear this flag
+    mov byte [Int24Trans], 0    ;Clear this flag
     mov byte [inDOS], 0 ;Exiting DOS now
     mov byte [errorDrv], -1 ;Reset
     call dosPopRegs  ;Pop the stack frame pointed to by rsp

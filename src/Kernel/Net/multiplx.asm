@@ -17,7 +17,7 @@
 ; stack before the interrupt is called. This word is always read from the
 ; stack, but the stack is not rejiggled to remove it.
 
-multiplexHdlr:          ;Int 4Fh, AH=12h, exposed internal functions
+multiplexHdlr:          ;Int 2Fh, AH=12h, exposed internal functions
     cmp ah, 10h ;Are we share?
     je .installCheck
     cmp ah, 11h ;Are we redir?
@@ -81,12 +81,12 @@ multiplexTest:
     mov al, -1
     ret
 
-getDosDataSeg:  ;Int 4Fh, AX=1203h
+getDosDataSeg:  ;Int 2Fh, AX=1203h
 ;Return: r8 = Dos Data Segment Pointer
     lea r8, dosDataArea
     return
 
-mpxOpen:   ;Int 4Fh, AX=1226h, Open File
+mpxOpen:   ;Int 2Fh, AX=1226h, Open File
 ;Input: cl = open mode
 ;       rdx -> Ptr to filename to open
 ;Output: ax = Error code/handle with CF indicating failure/success
@@ -94,7 +94,7 @@ mpxOpen:   ;Int 4Fh, AX=1226h, Open File
     call openFileHdl
     return
 
-mpxLseek:  ;Int 4Fh, AX=1228h, LSEEK
+mpxLseek:  ;Int 2Fh, AX=1228h, LSEEK
 ;Input:  
 ;   ebp = Low byte contains subfunction, in normal EP is provided by al
 ;   ebx = Handle to move (lower word only)
@@ -111,7 +111,7 @@ mpxLseek:  ;Int 4Fh, AX=1228h, LSEEK
     pop qword [oldRSP]  ;Get back OG sp
     return
 
-mpxIOCTL:  ;Int 4Fh, AX=122Bh
+mpxIOCTL:  ;Int 2Fh, AX=122Bh
 ;IO is done exactly as documented by DOS except al is passed in 
 ; low byte of bp.
     push qword [oldRSP] ;Save the callers register stack on internal DOS stack

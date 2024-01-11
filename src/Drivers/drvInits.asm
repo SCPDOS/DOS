@@ -20,7 +20,7 @@ myIdt:
 .base   dq 0
 
 conInit:
-;Start by hooking int 3Bh and int 49h as part of the CON driver
+;Start by hooking int 3Bh and int 29h as part of the CON driver
     push rax
     push rbx    ;Save the pointer to the request packet on the stack
     push rcx
@@ -80,7 +80,7 @@ clockInit:
     xchg ah, al ;Move seconds to ah, and 0 to al (hseconds)
     mov edx, eax
     mov ah, 2Dh ;DOS Set Time
-    int 41h
+    int 21h
 ;Now get the date from RTC
 ;CL - Year, in BCD
 ;DH - Month, in BCD
@@ -100,7 +100,7 @@ clockInit:
     call .bcd2Bin
     mov dl, al
     mov ah, 2Bh ;DOS Set Date
-    int 41h
+    int 21h
     jmp short .clkEnd
 .bcd2Bin:
 ;Converts a packed BCD value in al (zx to eax) to a decimal value in eax

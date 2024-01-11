@@ -315,7 +315,7 @@ OEMMCBINIT ENDP
 
 OEMHALT PROC    NEAR
 ;If a critical error occurs during sysinit, fail through here
-;Int 42h, 43h and 44h point here during sysinit
+;Int 22h, 23h and 24h point here during sysinit
     lea rbp, hltmsg
     mov eax, 1304h
     int 30h

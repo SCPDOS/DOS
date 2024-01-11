@@ -131,7 +131,7 @@ getSDAData:                 ;AX=5D06h
 printerRedir:               ;AX=5D07/8/9h
     push rax
     mov eax, 1125h  ;Redir Printer Mode setup
-    int 4Fh
+    int 2Fh
     pop rbx
     jc short closeFilesByName.shareExitBad
     jmp short  closeFilesByName.shareExitGood
@@ -221,7 +221,7 @@ netServices:   ;ah = 5Eh, do nothing
 .netRedir:
     push rax
     mov eax, 111Fh  ;Net Services over the Redirector
-    int 4Fh
+    int 2Fh
     pop rdx
     jc .badExit
 .exitGood:
@@ -236,7 +236,7 @@ netRedir:;ah = 5Fh, redirector needs to be installed
     ;Else, use redirector to process request
     push rax
     mov eax, 111eh  ;Do redirection redirector function
-    int 4Fh
+    int 2Fh
     pop rbx
 .badExit:
     jc extErrExit

@@ -160,7 +160,7 @@ netFCBShare     equ 70h
 noInherit       equ 80h
 ;Bits 8-12 reserved 0
 
-diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 44h on disk full.
+diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 24h on disk full.
 ;Buffering on writes
 noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
 ;FCB opened file, shouldn't see this as we are depreciating FCB's completely now
@@ -179,7 +179,7 @@ charDevConIn    equ 1h  ;If set, device is CON input
 charDevConOut   equ 2h  ;If set, device is CON output
 charDevNulDev   equ 4h  ;If set, device is NULL device
 charDevClockDev equ 8h  ;If set, device is CLOCK device
-charDevFastOut  equ 10h ;If set, device supports INT 49h
+charDevFastOut  equ 10h ;If set, device supports INT 29h
 charDevBinary   equ 20h ;If set, r/w char device in Binary mode!!!
 charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
 blokFileNoFlush equ 40h ;Set if file has not yet been accessed (sol no flush!)
@@ -266,7 +266,7 @@ memLastFit      equ 2   ;Last free block goes to application
 ;Owner = Non-para aligned address => Error? Should maybe lock up system?
 ;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
 ;------------------------------------------------------------------------;
-; For Int 41h, the callers registers are saved on their stack in the 
+; For Int 21h, the callers registers are saved on their stack in the 
 ; following order, thus allowing for return values to be placed in the 
 ; registers by accessing the caller register stack frame.
 ;------------------------------------------------------------------------;
@@ -341,14 +341,14 @@ struc psp
     .return     resb 2  ;Should always be CDh 40h, same place as DOS
     .allocSize  resd 1  ;Number of paras in init alloc or when exiting as TSR.
                 resd 1  ;Reserved 4 bytes
-    .oldInt42h  resq 1  ;Int 42h pointer on overlay load
-    .oldInt43h  resq 1  ;Int 43h pointer on overlay load
-    .oldInt44h  resq 1  ;Int 44h pointer on overlay load
+    .oldInt22h  resq 1  ;Int 22h pointer on overlay load
+    .oldInt23h  resq 1  ;Int 23h pointer on overlay load
+    .oldInt24h  resq 1  ;Int 24h pointer on overlay load
     .parentPtr  resq 1  ;Pointer to parent process PSP
     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
     .jobFileTbl resb 20 ;Main File handle array, JFT
     .envPtr     resq 1  ;Pointer to the environment
-    .rspPtr     resq 1  ;Pointer to rsp on entry to Int 41h
+    .rspPtr     resq 1  ;Pointer to rsp on entry to Int 21h
     .jftSize    resw 1  ;JFT array size, 20 => PSP JFT in use
     .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)

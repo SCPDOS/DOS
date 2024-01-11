@@ -133,13 +133,13 @@ shareLockViolationCriticalError:
     push rdi
     mov eax, errLokVio
     jmp short shareCriticalError.common
-shareCriticalError: ;Int 4Fh AX=120Ah
+shareCriticalError: ;Int 2Fh AX=120Ah
 ;Used for share Read requests
 ;Input: eax = Error code
     push rdi
     mov byte [rwFlag], 0    ;Default to read
 .common:
-    mov byte [Int44bitfld], critRetryOK | critFailOK
+    mov byte [Int24bitfld], critRetryOK | critFailOK
     mov rbp, qword [workingDPB] 
     xor edi, edi   ;Indicate that this was due to share
     call diskDevErr

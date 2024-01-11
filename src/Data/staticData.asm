@@ -208,7 +208,7 @@ extErrTbl:
     db errDupRedir, eClsClash, eActUsr, eLocNet
 ;Error 57: Bad parameter in request
     db errBadParam, eClsBadFmt, eActUsr, eLocUnk
-;Error 53: Fail was returned from Int 44h
+;Error 53: Fail was returned from Int 24h
     db errFI44, eClsUnk, eActAbt, eLocUnk
 ;Error 24: Sharing Buffer Full
     db errShrFul, eClsOoR, eActAbt, eLocMem

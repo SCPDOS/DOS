@@ -22,14 +22,14 @@ charIn_BE:     ;ah = 01h
 charOut_B:       ;ah = 02h
 ;Bspace is regular cursor left, does not insert a blank
     mov al, dl
-.in:  ;Internal function Entry Point, with char in al, also Int 4Fh, AX=1205h
+.in:  ;Internal function Entry Point, with char in al, also Int 2Fh, AX=1205h
     cmp al, asciiCaret
     jb .control
     cmp al, DEL ;DEL char?
     je .skipCurs
     inc byte [vConCursPos]  ;Increment Cursor pos
 .skipCurs:
-    inc byte [vConErr]   ;Increment 4 char error checker
+    inc byte [vConErr]   ;Increment 2 char error checker
     and byte [vConErr], 3
     push rsi
     jnz .skipErrorCheck
@@ -101,7 +101,7 @@ auxIn_B:        ;ah = 03h
     call mainCharIO
     return
 .signalLoop:
-    call callInt48h
+    call callInt28h
     jmp short .auxloop
 
 auxOut_B:       ;ah = 04h
@@ -136,7 +136,7 @@ directConIO:    ;ah = 06h
     mov rbp, qword [oldRSP] ;Get pointer to stack frame
     mov ah, 01h ;ND read from rsi sft ptr
     call mainCharIO
-    call callInt48h ;This preserves flags so call here!
+    call callInt28h ;This preserves flags so call here!
     jnz .readChar
     or byte [rbp + callerFrame.flags], 40h  ;Set Zero Flag
     xor al, al  ;Set caller return code to 0
@@ -153,8 +153,8 @@ charIn:         ;ah = 07h
     call mainCharIO
     jnz .getChar
     mov ah, 84h ;Multitasking keyboard loop
-    int 4Ah
-    call callInt48h
+    int 2Ah
+    call callInt28h
     jmp short charIn    ;Loop again awaiting the char
 .getChar:
     ;Get the char in al and exit
@@ -174,7 +174,7 @@ charIn_B:       ;ah = 08h
     call mainCharIO
 .skiplookahead:
     mov ah, 84h
-    int 4ah ;Multitasking keyboard loop
+    int 2ah ;Multitasking keyboard loop
     cmp word [keybTicks], -1    ;We reached -1 yet?
     jne .skipClockRead
     call dosPushRegs
@@ -281,9 +281,9 @@ outputOnStdout:
     test word [rsi + sft.wDeviceInfo], devCharDev
     jz .notCharDevOrFast  ;If disk or redir device, skip fast check
     mov rbx, qword [rsi + sft.qPtr] ;Get driver pointer in rbx
-    test word [rbx + drvHdr.attrib], devDrvFastOut  ;Can we use Int 49?
+    test word [rbx + drvHdr.attrib], devDrvFastOut  ;Can we use Int 29?
     jz .notCharDevOrFast
-    int 49h ;Fast output
+    int 29h ;Fast output
 .exitOk:
     clc
 .exit:
@@ -301,7 +301,7 @@ outputToHandle:
 outputOnSFT:
 ;Output char in al to SFT in rsi
 ;Waits until device is not busy to send char.
-;Calls int 48h if device busy
+;Calls int 28h if device busy
     push rax
     mov ah, 03h ;Get output Status (ready to recieve?)
     call mainCharIO
@@ -312,20 +312,20 @@ outputOnSFT:
     clc
     return
 .signalLoop:
-    call callInt48h
+    call callInt28h
     jmp short outputOnSFT
 
-callInt48h:
-;Preserve full state, including "safetocallint48" flag and flags
+callInt28h:
+;Preserve full state, including "safetocallint28" flag and flags
     pushfq
-    test byte [int48Flag], -1
+    test byte [int28Flag], -1
     jz .exit    ;If zero, not safe
     test byte [critErrFlag], -1 ;Are we in a critical error situation?
     jnz .exit
-;Preserve stack alignment!!! Push Qword including and after int48Flag 
-    push qword [int48Flag] 
-    int 48h
-    pop qword [int48Flag]    ;Return original value
+;Preserve stack alignment!!! Push Qword including and after int28Flag 
+    push qword [int28Flag] 
+    int 28h
+    pop qword [int28Flag]    ;Return original value
 .exit:
     popfq
     return
@@ -357,7 +357,7 @@ vConCtrlCheck:
     retc    ;Return if CF=CY
     mov ah, 01  ;Non destructively read CON
     call mainCharIO
-    jz callInt48h   ;If ZF=ZE, BUSY set, no char in al, return thru Int 48h
+    jz callInt28h   ;If ZF=ZE, BUSY set, no char in al, return thru Int 28h
     ;Check if we have a ^C, ^S or a ^P to process as needed
     cmp al, DC3 ;^S ?
     jne .checkPrintOrExit    ;Nope, check ^P or ^C?
@@ -384,14 +384,14 @@ vConCtrlCheck:
     jz .notNet
     push rax
     mov eax, 1126h  ;Network redirector! Toggle Remote Printer Echo!
-    int 4Fh
+    int 2Fh
     pop rax
     jnc .notNet  ;If returned not Carry, all ok, now echo char as needed 
     ;If something went wrong, turn off echo
     mov byte [printEcho], 0 ;Turn off local echo byte
     push rax
     mov eax, 1124h  ;Net redir! Turn off Remote Printer!
-    int 4Fh
+    int 2Fh
     pop rax
     jmp short .printExit    ;Skip the following for local printers
 .notNet:
@@ -406,12 +406,12 @@ vConCtrlCheck:
 .printExit:
     pop rdi
     return
-.sigNextChar:   ;Signal Int 48h before waiting for the next char
-    call callInt48h
+.sigNextChar:   ;Signal Int 28h before waiting for the next char
+    call callInt28h
 .waitNextChar:   ;Here get next char
     mov ah, 01h ;ND read
     call mainCharIO
-    jz .sigNextChar    ;IF device busy, Int 48h and keep waiting
+    jz .sigNextChar    ;IF device busy, Int 28h and keep waiting
 .readCharNoWait:    ;Pull the non ^S control char from the buffer
     push rbx
     xor ebx, ebx
@@ -481,7 +481,7 @@ printCRLF:
 
 checkBreak:
 ;Reads bytes from CON if there are any bytes to read and 
-; if it is a ^C or CTRL+BREAK, then exit via INT 43h
+; if it is a ^C or CTRL+BREAK, then exit via Int 23h
     cmp byte [inDOS], 1
     retne    ;Return if not inDOS only once
 ;Returns in al the keystroke that is available IF one is available

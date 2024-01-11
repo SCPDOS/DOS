@@ -1,5 +1,5 @@
 ;Driver Primitives, functions for Disk IO and calling a device driver
-; are placed here (Int 45h Int 46h and goDriver)
+; are placed here (Int 25h Int 26h and goDriver)
 
 dosDefCritErrHdlr:
 ;The DOS default critical error handler always returns FAIL
@@ -50,7 +50,7 @@ setupPhysicalDiskRequest:
     jmp short .error
 .diskError:
     mov word [errorExCde], errBadDrv
-.error: ;This error setting needs to remain as is to allow for Int 45/46
+.error: ;This error setting needs to remain as is to allow for Int 25/46
     mov byte [errorLocus], eLocDsk
     mov byte [errorAction], eActRetUsr
     mov byte [errorClass], eClsBadFmt
@@ -76,7 +76,7 @@ setupAbsDiskEntry:
 ;CRITICAL ENTRY, CHECK IF CAN DO DIRECT DISK IO!
 ;Entered with path in rsi (ah=03h)
     mov eax, 0300h  
-    int 4Ah ;If ret with CF=CY, DO NOT PROCEED WITH ACCESS
+    int 2Ah ;If ret with CF=CY, DO NOT PROCEED WITH ACCESS
 ;++++++++++++++++++++++++++++
     pop rax
     pop rsi
@@ -84,7 +84,7 @@ setupAbsDiskEntry:
     jc setupPhysicalDiskRequest.netError    ;Recycle error
     return
 
-absDiskWrite:       ;Int 46h
+absDiskWrite:       ;Int 26h
 ;al = Drive number
 ;rbx = Memory Buffer address to read from
 ;ecx = Number of sectors to write
@@ -98,7 +98,7 @@ absDiskWrite:       ;Int 46h
     jc absDiskExit
     call primReqWriteSetup
     jmp short absDiskReadWriteCommon
-absDiskRead:        ;Int 45h
+absDiskRead:        ;Int 25h
 ;al = Drive number
 ;rbx = Memory Buffer address to write to
 ;ecx = Number of sectors to read
@@ -309,7 +309,7 @@ ensureDiskValid:
     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Reset freecluster count
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov ah, critRead | critFAT | critFailOK | critRetryOK
-    mov byte [Int44bitfld], ah  ;Save the permissions in var
+    mov byte [Int24bitfld], ah  ;Save the permissions in var
     movzx edi, dil  ;Clear the upper bytes, save only error code
     call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
     mov rbp, qword [tmpDPBPtr]
@@ -330,7 +330,7 @@ ensureDiskValid:
     mov rdi, qword [primReqHdr + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
     pop rdi ;Get back the buffer pointer
-    mov byte [Int44bitfld], critRead | critDOS | critRetryOK | critFailOK
+    mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
     mov byte [rwFlag], 1    ;A write was the cause of the error
     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
     call diskDevErr

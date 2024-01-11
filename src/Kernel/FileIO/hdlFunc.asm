@@ -221,7 +221,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     jne .proceedDisk
 .netSeek:
     mov eax, 1121h  ;Make net seek from end request
-    int 4Fh
+    int 2Fh
     jnc .seekExit ;If the request returns with CF clear, there was no error
     jmp extErrExit
 
@@ -277,7 +277,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     test word [rdi + cds.wFlags], cdsRedirDrive
     jz .getDiskAttribs
     mov eax, 110Fh  ;Get attributes and size in edi
-    int 4Fh
+    int 2Fh
     jc extErrExit
     jmp extGoodExit
 .getDiskAttribs:
@@ -291,7 +291,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     movzx ecx, cx
     push rcx    ;Push attributes on stack in zero extended qword
     mov eax, 110Eh
-    int 4Fh
+    int 2Fh
     pop rcx
     jc extErrExit
     jmp extGoodExit
@@ -598,7 +598,7 @@ lockUnlockFile:    ;ah = 5Ch
     jz .unlockShare ;Jump if a local file only
     push rax
     mov eax, 110Bh     ;Unlock Net file region
-    int 4Fh
+    int 2Fh
     pop rbx
     jmp short .exitSelect
 .unlockShare:
@@ -611,7 +611,7 @@ lockUnlockFile:    ;ah = 5Ch
     jz .lockShare   ;Jump if a local file only
     push rax
     mov eax, 110Ah  ;Lock net file region
-    int 4Fh
+    int 2Fh
     pop rbx
     jmp short .exitSelect
 .lockShare:
@@ -827,7 +827,7 @@ commitMain:
     jnz .notNet
     ;Commit file net redir call and exit
     mov eax, 1107h
-    int 4Fh
+    int 2Fh
     return  ;Propagate CF and AL if needed due to error
 .notNet:
     call dosCrit1Enter
@@ -857,7 +857,7 @@ renameMain:
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
     mov eax, 1111h
-    int 4Fh
+    int 2Fh
     return
 .notNet:
 ;First check if both drives are on the same disk
@@ -1211,7 +1211,7 @@ outerDeleteMain:
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
     mov eax, 1113h  ;Allows wildcards, and will delete all which match
-    int 4Fh
+    int 2Fh
     return
 .notNet:
     mov eax, errAccDen  
@@ -1304,7 +1304,7 @@ openMain:
 .redirOpen:
     push rax    ;Push open mode onto stack
     mov eax, 1116h  ;Open remote file on "\\" pathspec drives
-    int 4Fh
+    int 2Fh
     pop rax
     return
 .notNet:
@@ -1337,7 +1337,7 @@ openMain:
     call getCurrentSFT  ;Get SFT ptr in rdi
     call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
     call dosCrit1Exit
-openDriverMux:  ;Int 4Fh, AX=120Ch, jumped to by Create
+openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
     mov rdi, qword [currentSFT]
     call openSFT
     test word [rdi + sft.wOpenMode], FCBopenedFile
@@ -1418,7 +1418,7 @@ createMain:
     jne .diskFile
     push rax    ;Save the new attributes
     mov eax, 1118h  ;Create file w/o CDS
-    int 4Fh
+    int 2Fh
     pop rbx
     return
 .diskFile:
@@ -1426,7 +1426,7 @@ createMain:
     jz .hardFile
     push rax    ;Save the new attributes
     mov eax, 1117h  ;Create file with CDS
-    int 4Fh
+    int 2Fh
     pop rbx
     return
 .hardFile:
@@ -1660,7 +1660,7 @@ buildSFTEntry:
     pop rbp
     return
 
-closeMain: ;Int 4Fh AX=1201h
+closeMain: ;Int 2Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
 ;If CF=CY on return: Error, return error with al = error code
@@ -1670,9 +1670,9 @@ closeMain: ;Int 4Fh AX=1201h
     mov rdi, qword [currentSFT] ;Get the sft pointer
     test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
     jz .physical
-    ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
+    ;Here we beep out the request to the network redirector (Int 2Fh AX=1106h)
     mov eax, 1106h  ;Make request
-    int 4Fh ;Beep!
+    int 2Fh ;Beep!
     return  ;Returns with CF set or clear as appropriate
 .physical:  
 ; We make a request to the dev dir to close the device
@@ -1746,7 +1746,7 @@ readBytes:
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
     mov eax, 1108h  ;Call Redir Read Bytes function
-    int 4Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
+    int 2Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
     return 
 .exitOk:
     clc
@@ -1839,7 +1839,7 @@ readCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .binNoError
-    ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
+    ;ERROR HERE! Prepare for Int 24h (if SFT allows us to issue Int 24h)
     mov ah, critCharDev | critData ;Char device, data error signature
     call charDevErr   ;ah = has part of the error 
     ;al now has the response
@@ -1885,7 +1885,7 @@ readCharDev:
     test edi, drvErrStatus  ;Did an error occur?
     jz .asciiNoError
     mov ah, critCharDev | critData
-    call charDevErr    ;Call Int 44h
+    call charDevErr    ;Call Int 24h
     ;Now setup number of bytes to transfer to 1 if the user requests retry
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
     mov rdi, rdx    ;Get the buffer position back into rdi
@@ -2070,7 +2070,7 @@ writeBytes:
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
     mov eax, 1109h  ;Write to redir
-    int 4Fh
+    int 2Fh
     return
 .notRedir:
     test word [rdi + sft.wDeviceInfo], devCharDev
@@ -2105,7 +2105,7 @@ writeCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
     test edi, drvErrStatus
     jz .binXfrOk
-    call charDevErr ;Invoke Int 44h
+    call charDevErr ;Invoke Int 24h
     mov rbx, rdx    ;Return the buffer ptr in rbx
     cmp al, critIgnore
     je .binXfrOk
@@ -2139,7 +2139,7 @@ writeCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
     test edi, drvErrStatus
     jz .asciiNoError
-    call charDevErr ;Invoke Int 44h
+    call charDevErr ;Invoke Int 24h
     pop rdi
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
     cmp al, critRetry
@@ -2523,7 +2523,7 @@ findFreeSFT:
     pop rbx
     clc
     return
-getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
+getSFTPtrfromSFTNdx:    ;Int 2Fh AX=1216h
 ;Return a pointer to the SFT entry in rdi
 ;Input: rbx = Valid SFT ndx number (byte, zero extended)
 ;Output: rdi = SFT pointer
@@ -2547,7 +2547,7 @@ getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
     pop rax
     add rdi, sfth_size  ;Go past the header
     return
-getJFTPtr:    ;Int 4Fh AX=1220h
+getJFTPtr:    ;Int 2Fh AX=1220h
 ;Return a zero extended value in rdi for the SFT entry
 ;Input: bx = JFT handle (we zero extend)
 ;Output: CF=NC => rdi = Points to first SFT ndx or -1 => free space
@@ -2663,7 +2663,7 @@ incrementOpenCount:
     pop rdi
     return
 
-decrementOpenCount: ;Int 4Fh AX = 1208h
+decrementOpenCount: ;Int 2Fh AX = 1208h
 ;Input: rdi = SFT pointer
 ;Output: ax = Original wNumHandles count
     pushfq
