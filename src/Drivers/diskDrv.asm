@@ -466,7 +466,7 @@ msdDriver:
     mov ecx, .msdStrikeL
 .msdCDTprintMessage:
     lodsb   ;Get the char in al, inc rsi
-    int 49h ;Print char in al
+    int 29h ;Print char in al
     dec ecx
     jnz .msdCDTprintMessage
     xor eax, eax

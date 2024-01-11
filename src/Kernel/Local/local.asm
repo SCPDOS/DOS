@@ -101,7 +101,7 @@ getsetCountryInfo: ;ah = 38h, localisation info
     mov edx, ebx    ;Save the country code in edx
     xor ebx, ebx    ;Set indicator that we are accessing NLS.
     mov eax, 1400h  ;Is NLS installed?
-    int 4fh
+    int 2fh
     cmp al, -1      ;If al <> -1, error exit
     jne .errNotInstalled
     lea rsi, dosNLSPtr    ;Point rsi to the DOS codepage area
@@ -109,7 +109,7 @@ getsetCountryInfo: ;ah = 38h, localisation info
     mov ecx, 1403h  ;Set DOS Country Info, to country code in dx
     test ebp, ebp   ;What can I do you for amigo?
     cmovnz eax, ecx ;Set codepage if this is non-zero
-    int 4fh
+    int 2fh
     test al, al ;If al = 0, all ok and return CF=NC!
     retz  
 .exitErr:   ;Else return with the retuned error code
@@ -196,11 +196,11 @@ getExtLocalInfo:    ;ah = 65h, Get Extended Country Info
 ; and bpl has the function code (1,2,4,5,6)
     movzx ebp, al   ;Place the function code in ebp (low byte, zx the rest)
     mov eax, 1400h  ;Install check!
-    int 4fh
+    int 2fh
     cmp al, -1          ;If not installed, error exit
     jne .invFuncExit    
     mov eax, 1402h      ;Get codepage info
-    int 4fh
+    int 2fh
     test al, al         ;If the return code is 0, we are ok, else
     jne extErrExit      ; al has error code
     ;Undocumented, if success, ax contains the default codepage
@@ -233,12 +233,12 @@ getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage
     jne .exitBadFunc
     movzx edx, word [defltCtry] ;Get the country ID
     mov eax, 1400h
-    int 4Fh
+    int 2Fh
     cmp al, -1
     jne .exitBadFunc
     lea rsi, dosNLSPtr  ;Get pointer to the DOS codepage in rsi
     mov eax, 1401h      ;Set global codepage
-    int 4Fh
+    int 2Fh
     test al, al
     jz extGoodExit
     cmp al, errNLSAcDen

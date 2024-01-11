@@ -4,7 +4,7 @@
 ;           Externally referenced functions         :
 ;----------------------------------------------------
 
-makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
+makeBufferMostRecentlyUsed: ;Int 2Fh AX=1207h
 ;Sets the buffer in rdi to the head of the chain
 ;Input: rdi = Buffer header to move to the head of the chain
 ;Output: Buffer header set to the head of the chain
@@ -29,7 +29,7 @@ makeBufferMostRecentlyUsed: ;Int 4Fh AX=1207h
 .exit:
     return
 
-flushAndFreeBuffer:         ;Int 4Fh AX=1209h 
+flushAndFreeBuffer:         ;Int 2Fh AX=1209h 
 ;1 External reference
 ;Input: rdi = Buffer header to flush and free
     call flushBuffer
@@ -39,7 +39,7 @@ flushAndFreeBuffer:         ;Int 4Fh AX=1209h
 .exit:
     return
 
-markBuffersAsUnreferenced:  ;Int 4Fh AX=120Eh
+markBuffersAsUnreferenced:  ;Int 2Fh AX=120Eh
 ;Marks all buffers as unreferenced (clears the reference bit from all buffers)
 ;Output: rdi = First disk buffer
     mov rdi, [bufHeadPtr]
@@ -52,7 +52,7 @@ markBuffersAsUnreferenced:  ;Int 4Fh AX=120Eh
     pop rdi
     return
 
-makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
+makeBufferMostRecentlyUsedGetNext: ;Int 2Fh AX=120Fh
 ;Sets the buffer in rdi to the head of the chain and gets the 
 ; second buffer in the chain in rdi
 ;Input: rdi = Buffer header to move to the head of the chain
@@ -64,7 +64,7 @@ makeBufferMostRecentlyUsedGetNext: ;Int 4Fh AX=120Fh
     pop rdx
     return
 
-findUnreferencedBuffer: ;Int 4Fh AX=1210h
+findUnreferencedBuffer: ;Int 2Fh AX=1210h
 ;Finds the first unreferenced buffer starting at the given buffer header.
 ;Input: rdi = Buffer header to start searching at
 ;Output: ZF=NZ => rdi = Unreferenced Buffer Header
@@ -77,7 +77,7 @@ findUnreferencedBuffer: ;Int 4Fh AX=1210h
 .exit:
     return
 
-flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
+flushBuffer:         ;Internal Linkage Int 2Fh AX=1215h
 ;Flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
@@ -135,7 +135,7 @@ flushBuffer:         ;Internal Linkage Int 4Fh AX=1215h
     jnz .fbRequest1 ;Try the request again!
 ;Request failed thrice, critical error call
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    mov byte [Int44bitfld], critWrite ;Set the initial bitfield to write req
+    mov byte [Int24bitfld], critWrite ;Set the initial bitfield to write req
     call diskIOError ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
     je .fbRequest0
@@ -343,7 +343,7 @@ readSectorBuffer:   ;Internal Linkage
 ; is under no thread of being reallocated.
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
     mov word [rdi + bufferHdr.driveNumber], 0FFFh ;Free buffer and clear dirty/ref bits
-    mov byte [Int44bitfld], critRead    ;Set the initial bitfield to read req
+    mov byte [Int24bitfld], critRead    ;Set the initial bitfield to read req
     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry
     jne .fail   ;Else we fail (Ignore=Fail here)

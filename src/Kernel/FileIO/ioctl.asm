@@ -95,7 +95,7 @@ ioctrl:            ;ah = 44h, handle function
     movzx esi, bl
     lea rbx, primReqHdr
     mov byte [errorLocus], eLocUnk
-    mov byte [Int44bitfld], 0
+    mov byte [Int24bitfld], 0
 ;Get in rdi the ptr to the SFT for the handle we are looking at
 ;Setup the common ioReqPkt fields and the read/write 
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -108,7 +108,7 @@ ioctrl:            ;ah = 44h, handle function
     test al, 1  ;If set, this is a write operation
     cmovnz ecx, edx ;Move write command into ecx
     jnz .notWrite
-    or byte [Int44bitfld], critWrite
+    or byte [Int24bitfld], critWrite
 .notWrite:
     pop rdx
     pop rcx
@@ -124,7 +124,7 @@ ioctrl:            ;ah = 44h, handle function
     jz .invalidFunction
 
     mov rbx, qword [rdi + sft.qPtr] ;Get ptr to device driver
-    or byte [Int44bitfld], critCharDev
+    or byte [Int24bitfld], critCharDev
     xchg rbx, rsi   ;Swap back
     xor eax, eax
     jmp short .ioctlStringCommon
@@ -176,7 +176,7 @@ ioctrl:            ;ah = 44h, handle function
     mov byte [errorLocus], eLocUnk
     test word [rdi + sft.wDeviceInfo], devRedirDev  ;File cannot be redir!
     jnz .invalidFunction
-    mov byte [Int44bitfld], 0
+    mov byte [Int24bitfld], 0
     mov ecx, drvINSTATUS
     mov edx, drvOUTSTATUS
     test al, al
@@ -185,7 +185,7 @@ ioctrl:            ;ah = 44h, handle function
     test word [rdi + sft.wDeviceInfo], devCharDev
     jz .ioStatDisk
     mov byte [errorLocus], eLocChr
-    or byte [Int44bitfld], critCharDev
+    or byte [Int24bitfld], critCharDev
     mov rsi, qword [rdi + sft.qPtr]
     xor al, al
     jmp short .ioStatCommon
@@ -407,7 +407,7 @@ ioctrl:            ;ah = 44h, handle function
     test word [rbx + getDevReqPkt.status], drvErrStatus
     retz    ;Return if OK, else fail
 failIOCTLCall:
-;Called to fail IOCTL calls that don't trigger Int 44h
+;Called to fail IOCTL calls that don't trigger Int 24h
 ;rbx -> Driver request packet
     movzx edi, word [rbx + ioctlReqPkt.status]
     and edi, 0FFh   ;Save the low byte only

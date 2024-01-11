@@ -2,11 +2,11 @@
 Some notes on documentation
 
 ## Various interfaces:
-Int 41h = DOS API (DAPI)
+Int 21h = DOS API (DAPI)
 
-Int 4Fh AX=11xxh = DOS Redirector Interface (DRI)
+Int 2Fh AX=11xxh = DOS Redirector Interface (DRI)
 
-Int 4Fh AX=12xxh = Internal DOS Interface (IDI)
+Int 2Fh AX=12xxh = Internal DOS Interface (IDI)
 
 ## API function states
 - Proposed (A proposed new API function)

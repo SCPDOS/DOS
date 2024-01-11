@@ -224,7 +224,7 @@ setDayofWeek:
     xor eax, eax
     return
 
-setDaysInFeb:   ;Int 4Fh AX = 121Bh, Set days in february
+setDaysInFeb:   ;Int 2Fh AX = 121Bh, Set days in february
 ;Every fourth year has an extra day in feb (!! 2100 exception!!)
 ;Input: cl = Year - 1980
 ;Output: al = Number of days in February
@@ -274,7 +274,7 @@ getDirDTwords:
     or eax, ebx
     pop rbx
     return
-getDateAndTimeOld:  ;INT 4Fh AX=12
+getDateAndTimeOld:  ;Int 2Fh AX=12
 ;Returns edx = time
 ;        eax = date
 ; Formally ax and dx but we clear the upper words

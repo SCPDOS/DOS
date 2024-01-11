@@ -1,7 +1,7 @@
 ;This include file contains structures related to the EXE format
-; and the exec frame used when setting up the EXE in memory by 41h/4Bh
+; and the exec frame used when setting up the EXE in memory by 21h/4Bh
 
-;Int 41h/4Bh stack frame, used to store values whilst processing a EXE or COM
+;Int 21h/4Bh stack frame, used to store values whilst processing a EXE or COM
 ; file.
 execLoadGo  equ 0
 execLoad    equ 1
