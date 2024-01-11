@@ -342,7 +342,7 @@ vConCtrlCheck:
 ;^P will toggle the printer echo feature of the vConsole
 ;
 ;This is usually STDIN (Handle 0), but can be any file handle 
-; in ASCII mode when called using 41h/3Fh (Handle Read)
+; in ASCII mode when called using 21h/3Fh (Handle Read)
 ;
 ;Output: 
 ;   CF=CY : Error
@@ -570,7 +570,7 @@ buffCharInput_BE:  ;ah = 0Ah
     lea rdi, vConBuffer
     mov byte [vConInsert], 0    ;Set insert mode off by default
 .mainLoop:
-    call charIn_B   ;Get a char in AL from 41/08h
+    call charIn_B   ;Get a char in AL from 21/08h
     cmp al, LF
     jne .checkControlChars
 .mainLoop2:

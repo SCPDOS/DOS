@@ -164,7 +164,7 @@ vConBuf:    ;Proper buffer symbol
 
     printEcho   resb 1  ;If 0, no echo. Non-zero => Echo to PRN
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
-    switchChar  resb 1  ;Editable by 41h/37h. Set to / by default
+    switchChar  resb 1  ;Editable by 21h/37h. Set to / by default
     vConErr     resb 1  ;Inc on each char output call
     ;Is and-ed with 03h, checks for ^C on every fourth char output
 
@@ -172,8 +172,8 @@ vConBuf:    ;Proper buffer symbol
 ;Server stuff. Default to all zeros (blank)
     shareFlag   resb 1  ;Sharing flag, set to 0 for now (future expansion)
     ;When share is loaded, this flag is set to -1 !!!!!
-    serverCnt   resb 1  ;Increments on each 41h/5E01h call
-    machineName resb 16 ;Machine name (Set via 41h/5E01h) (set to SPC)    
+    serverCnt   resb 1  ;Increments on each 21h/5E01h call
+    machineName resb 16 ;Machine name (Set via 21h/5E01h) (set to SPC)    
 ;Swappable Data Area
     critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
                 resb 1  ;Alignment byte
@@ -191,7 +191,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 
     xInt23hRSP  resq 1  ;Saves RSP across an Int 23h call
     errorLevel  resw 1  ;Last return code returned by Int 21h/4Ch x
-    ;Upper byte: 0=Normal, 1=Abort Occured, 2=CtrlC, 3=TSR 41h/31h
+    ;Upper byte: 0=Normal, 1=Abort Occured, 2=CtrlC, 3=TSR 21h/31h
     ;Lower byte: User Specified
     currentDrv  resb 1  ;Default drive x
     breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
@@ -269,9 +269,9 @@ sdaDOSSwap:
     badNameRen  resb 1  ;Device name or File not found for rename
     rwFlag      resb 1  ;00h=Read, 1=Write, read/write/share error reporting
     spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
-    dosInvoke   resb 1  ;0 = Invoked via Int 21h, -1 = Invoked via 41h/5D01h
+    dosInvoke   resb 1  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
 
-    vConInsert  resb 1  ;Insert mode on 41/0ah (0 = not insert, !0 = insert)
+    vConInsert  resb 1  ;Insert mode on 21/0ah (0 = not insert, !0 = insert)
     fileExist   resb 1  ;-1 if file in pathspec exists (create/open)
     parDirExist resb 1  ;-1 if parent directory for file exists (create/open)
     exitType    resb 1  ;Forms the upper byte of the errorlvl
@@ -372,7 +372,7 @@ inExtASCII:
     ; until we get/set the address. Thus the IDT entry returned is the 
     ; correct one AT the time of calling up to "the time it takes to get
     ; to the read IDT routine".
-    dosIdtPtr:          ;41h/25h will always read a new copy of IDT here
+    dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
         .limit  dw ?
         .base   dq ?
     ;Lseek and IOCTL return data in registers as well as on the caller's 

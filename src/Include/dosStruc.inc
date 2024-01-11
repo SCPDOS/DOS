@@ -54,7 +54,7 @@ struc cds       ;Current Directory structure
     .qDPBPtr             dq ?   ;Ptr to the DPB of the dev using this CDS
     .dStartCluster       dd ?   ;Starting cluster of the directory on disk
     .qIFSPtr             dq ?   ;Reserved for IFS driver expansions
-    .dNetStore           dd ?   ;For storing a owner dword for IFS (41h/5F03h)
+    .dNetStore           dd ?   ;For storing a owner dword for IFS (21h/5F03h)
     .wBackslashOffset    dw ?   ;How many chars to skip for getting the path
 ; currentPath (usually 2 to skip C: in C:\, but when SUBSTing a drive letter to 
 ; another, we save the number of chars to skip to that deep level).
