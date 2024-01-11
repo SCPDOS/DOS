@@ -139,8 +139,8 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw getCDS - mDispTbl    ;AX=1219h
     dw getDrvLetterFromPath - mDispTbl ;AX=121Ah
     dw setDaysInFeb - mDispTbl  ;AX=121Bh
-    dw noOp - mDispTbl  ;AX=121Ch -> Old Checksum memory
-    dw noOp - mDispTbl  ;AX=121Dh -> Old Sum Memory
+    dw mpxChecksum - mDispTbl  ;AX=121Ch -> Checksum memory
+    dw mpxSum - mDispTbl  ;AX=121Dh -> Sum Memory
     dw compareFileNames - mDispTbl ;AX=121Eh, Compare Filenames
     dw buildNewCDS - mDispTbl   ;AX=121Fh, Build CDS
     dw getJFTPtr - mDispTbl     ;AX=1220h, Get JFT entry
@@ -154,11 +154,11 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw closeFileHdl - mDispTbl  ;AX=1227h, Close File
     dw mpxLseek - mDispTbl      ;AX=1228h, LSEEK
     dw readFileHdl - mDispTbl   ;AX=1229h, Read File
-    dw noOp - mDispTbl          ;AX=122Ah, Noop, Set FASTOPEN EP (reserved)
+    dw noOp - mDispTbl          ;AX=122Ah, Nop, Set FASTOPEN EP (reserved)
     dw mpxIOCTL - mDispTbl      ;AX=122Bh, IOCTL
     dw getDrvChain - mDispTbl   ;AX=122Ch, Get device Chain (ptr in rax)
     dw getExtErrCde - mDispTbl  ;AX=122Dh, Get extended error code
-    dw noOp - mDispTbl          ;AX=122Eh, Get/Set error table (unsupported for now)
+    dw noOp - mDispTbl          ;AX=122Eh, Nop, Get/Set error table (reserved)
     dw setDOSversion - mDispTbl ;AX=122Fh, Set DOS version to report. Undocumented.
 mDispTblL   equ     $ - mDispTbl
 

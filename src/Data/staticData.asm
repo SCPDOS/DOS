@@ -78,6 +78,28 @@ monthsTbl:
     db 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 
 ;Error tables
+hardXlatTbl:
+;Hard error xlat table. Used so that it can be patched by 
+; multitaskers and network tools as opposed to having a static
+; conversion factor as was initially. Not extensible though (thats ok)
+    db errWpd       ;Attempt to write on write protected disk
+    db errUnkUnt    ;Unknown Unit
+    db errDrvNR     ;Drive not ready
+    db errUnkCmd    ;Unknown Command
+    db errCRCerr    ;Data (CRC) error
+    db errBadRLn    ;Bad request structure length
+    db errSekErr    ;Seek error
+    db errUnkMed    ;Unknown media type
+    db errSecNF     ;Sector not Found
+    db errNoPap     ;Printer out of paper
+    db errWF        ;Write fault
+    db errRF        ;Read fault
+    db errGF        ;General fault
+    ;The following two adjust for share errors
+    db errGF        ;Sharing violations
+    db errGF        ;File Lock violation
+    db errIDC       ;Invalid Disk Change
+hardXlatTblL equ $ - hardXlatTbl
 errXlatTbl:
 ;Each entry is n bytes long, defined as
 ; Byte 0      : DOS function number for which translation will occur
@@ -186,7 +208,7 @@ extErrTbl:
     db errDupRedir, eClsClash, eActUsr, eLocNet
 ;Error 57: Bad parameter in request
     db errBadParam, eClsBadFmt, eActUsr, eLocUnk
-;Error 53: Fail was returned from Int 44h
+;Error 53: Fail was returned from Int 24h
     db errFI44, eClsUnk, eActAbt, eLocUnk
 ;Error 24: Sharing Buffer Full
     db errShrFul, eClsOoR, eActAbt, eLocMem
@@ -357,23 +379,3 @@ asciiCharProperties:   ;This table is const. Gives "properties" of chars.
     db 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh   ;Chars 70h-77h
     db 0FFh, 0FFh, 0FFh, 0FFh, 0F4h, 0FFh, 0FFh, 0FFh   ;Chars 78h-7Fh
     db 128 dup (0FFh)                                   ;Chars 80h-100h
-
-;!!!NOTE!!!:
-;This table is being commented out, and checkCharValid has been replaced
-; with a version using the codepage table now, properly.
-;This is being left commented in FOR NOW, in case of any instabilities.
-;Should not be the case ever
-;!!!NOTE!!!:
-;badDirNameChar: ;This table needs to be replaced in other Codepages (i.e. Kanji)
-;    db 00h,01h,02h,03h,04h,05h,06h,07h,08h,09h,0Ah,0Bh,0Ch,0Dh,0Eh,0Fh
-;    db 10h,11h,12h,13h,14h,15h,16h,17h,18h,19h,1Ah,1Bh,1Ch,1Dh,1Eh,1Fh
-;    db '"', "*", "+",",",".","/",":",";","<","=",">","?","[","\","]","|"
-;badDirNameCharL equ $ - badDirNameChar
-;The chars * ? . \ / need to always be handled separately
-
-
-hardErrorStack:
-    db errWpd
-    db eClsMedia
-    db eActRetUsr
-    db eLocDsk

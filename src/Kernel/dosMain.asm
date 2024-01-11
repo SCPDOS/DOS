@@ -2,7 +2,7 @@
 ;        Main Kernel dispatch       :
 ;            and routines           :
 ;-----------------------------------:
-functionDispatch:   ;Int 41h Main function dispatcher
+functionDispatch:   ;Int 21h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
  %if DEBUG
     ;Entry function
@@ -24,8 +24,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
     jb .fsbegin   ;If below skip these checks
     je ctrlBreakCheck
     cmp ah, 64h
-    je setDriverLookahead  ;Reserved, but avoids usual Int 41h spiel
-    ja .fsbegin   ;If above, do usual Int41 entry
+    je setDriverLookahead  ;Reserved, but avoids usual Int 21h spiel
+    ja .fsbegin   ;If above, do usual Int21 entry
     cmp ah, 51h
     je getCurrProcessID    ;This and below are exactly the same
     cmp ah, 62h
@@ -57,8 +57,8 @@ functionDispatch:   ;Int 41h Main function dispatcher
 
     xor ebx, ebx    ;Zero rbx for later and bl for now
     mov byte [vConDrvSwp], bl   ;Clear the conDrvSwp (use default CON driver)
-    mov byte [int48Flag], 1 ;Make it ok to trigger Int 48h
-    mov byte [Int44Fail], bl    ;Clear the Int44 returned fail flag
+    mov byte [int28Flag], 1 ;Make it ok to trigger Int 28h
+    mov byte [Int24Fail], bl    ;Clear the Int24 returned fail flag
     mov byte [dirFlag], bl  ;Default to look for dir
 
     push rax        ;Save rax to use temporarily as table base 
@@ -92,10 +92,10 @@ functionDispatch:   ;Int 41h Main function dispatcher
 
     push rax
     mov ah, 82h ;Cancel all critical section!
-    int 4ah ;DOS critical section semphore handler (default, iretq)
+    int 2ah ;DOS critical section semphore handler (default, iretq)
     pop rax
 
-    mov byte [int48Flag], 0     ;Turn off the ability to trigger Int 48h
+    mov byte [int28Flag], 0     ;Turn off the ability to trigger Int 28h
     lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
     test byte [breakFlag], -1   ;Test if set
     jz .fdGoToFunction
@@ -123,7 +123,7 @@ functionDispatch:   ;Int 41h Main function dispatcher
     lea rbp, .l0002
     call debPrintNullString
     jmp short .l0003
-.l0002 db "Exiting Int 41h",0Ah,0Dh,0
+.l0002 db "Exiting Int 21h",0Ah,0Dh,0
 .l0003:    
     debugExitM
     %endif
@@ -173,25 +173,25 @@ dosPushRegs:
 dosCrit1Enter:
     return     ;Needs to be patched with 50h (PUSH RAX)
     mov eax, 8001h
-    int 4ah
+    int 2ah
     pop rax
     return
 dosCrit1Exit:
     return
     mov eax, 8101h
-    int 4ah
+    int 2ah
     pop rax
     return
 dosCrit2Enter:
     return
     mov eax, 8002h
-    int 4ah
+    int 2ah
     pop rax
     return
 dosCrit2Exit:
     return
     mov eax, 8102h
-    int 4ah
+    int 2ah
     pop rax
     return
 
@@ -281,7 +281,7 @@ xLatError:
     pop rcx
     pop rbx
     return
-setErrorVars:   ;Int 4Fh, AX=1222h
+setErrorVars:   ;Int 2Fh, AX=1222h
 ;Looks up the error code in the variable and sets the other error vars
 ;Called with the lookup table in rsi
 ;All regs preserved
@@ -318,11 +318,11 @@ setErrorVars:   ;Int 4Fh, AX=1222h
     pop rax
     return
 checkFail:
-;Checks if the error was dealt with by the user with a Fail on a Int 44h
+;Checks if the error was dealt with by the user with a Fail on a Int 24h
 ; and swaps the var error code if so
-    cmp byte [Int44Fail], 0
+    cmp byte [Int24Fail], 0
     jnz .skipFail
-    mov word [errorExCde], errFI44  ;Set error to "Fail on Int 44h"
+    mov word [errorExCde], errFI44  ;Set error to "Fail on Int 24h"
 .skipFail:
     push rsi
     lea rsi, extErrTbl
@@ -463,7 +463,7 @@ diskReset:         ;ah = 0Dh
 .drExit:
     call dosCrit1Exit
     mov eax, 1120h  ;Redirector flush all 
-    int 4fh
+    int 2fh
     return
 
 selectDisk:        ;ah = 0Eh
@@ -549,7 +549,7 @@ getDOSversion:     ;ah = 30h
     mov word [rsi + callerFrame.rax], ax    ;Save ax
     return
 
-setDOSversion:  ;Int 4Fh, AX=122Fh - Set DOS verstion to report
+setDOSversion:  ;Int 2Fh, AX=122Fh - Set DOS verstion to report
 ;Input: dx = Version number. Value of 0 means true value.
     test dx, dx
     jnz .newVal
@@ -560,7 +560,7 @@ setDOSversion:  ;Int 4Fh, AX=122Fh - Set DOS verstion to report
     return
 
 ;AH = 1Fh/32h - GET (current) DISK DPB
-getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 41h\ah=32h with dl=0
+getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 21h\ah=32h with dl=0
     xor dl, dl
 getDeviceDPBptr:   ;ah = 32h
 ;On entry: dl = Drive number 1-based drive number (0=Default)
@@ -789,9 +789,11 @@ getExtendedError:  ;ah = 59h
     mov ch, byte [errorLocus]
     mov bh, byte [errorClass]
     mov bl, byte [errorAction]
+    mov rdi, qword [errorVolLbl]
     mov word [rsi + callerFrame.rax], ax
     mov word [rsi + callerFrame.rbx], bx
     mov byte [rsi + callerFrame.rcx + 1], ch
+    mov qword [rsi + callerFrame.rdi], rdi
 noOp:
     return
 ;At some point we will implement the below function but that is

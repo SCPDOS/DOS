@@ -127,7 +127,7 @@ debPrintDOSStack:
     db 0Ah, 0Dh
     db "flg=0000000000000000h "
     db 0Ah,0Dh,0
-.a1 db "Registers on Int 41h stack",0Ah,0Dh,0
+.a1 db "Registers on Int 21h stack",0Ah,0Dh,0
 
 debDPBptr:
     ;rbp has dpb pointer in it or if -1, no dpb
@@ -300,7 +300,7 @@ debPrintFunctionName:
     lea rbp, .dosString
     call debPrintNullString
     ret
-.dosString db "DOS function Int 41h/AH="
+.dosString db "DOS function Int 21h/AH="
 .number db "00h",0Ah,0Dh,0
 
 ;----------------:

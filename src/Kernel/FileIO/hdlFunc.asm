@@ -90,18 +90,19 @@ openFileHdl:       ;ah = 3Dh, handle function
     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
     movzx eax, word [currentHdl]
     call qword [closeDupFileShare]  ;Close Duplicate Handles if opened file! 
+    mov word [currentNdx], -1       ;Now reset the index back to -1
     jmp extGoodExit ;Save ax and return OK
 .exitBad:
     sti ;To prevent new net open/create reqs from crapping out a failed request
     pop rbx ;Pop the word from the stack
-    mov word [currentNdx], -1
-    jmp extErrExit ;Propagate the error code that is in ax
+    jmp short .exitBadCommon
 .exitBad2:
     ;Now we deallocate the SFT entry in the JFT and SFT block
     mov rsi, qword [curHdlPtr]
     mov byte [rsi], -1  ;Re-free the entry in the JFT
     mov rsi, qword [currentSFT]
     mov word [rsi], 0   ;Re-free the SFT 
+.exitBadCommon:
     mov word [currentNdx], -1
     jmp extErrExit ;Propagate the error code that is in ax
 
@@ -220,7 +221,7 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
     jne .proceedDisk
 .netSeek:
     mov eax, 1121h  ;Make net seek from end request
-    int 4Fh
+    int 2Fh
     jnc .seekExit ;If the request returns with CF clear, there was no error
     jmp extErrExit
 
@@ -276,7 +277,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     test word [rdi + cds.wFlags], cdsRedirDrive
     jz .getDiskAttribs
     mov eax, 110Fh  ;Get attributes and size in edi
-    int 4Fh
+    int 2Fh
     jc extErrExit
     jmp extGoodExit
 .getDiskAttribs:
@@ -290,7 +291,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     movzx ecx, cx
     push rcx    ;Push attributes on stack in zero extended qword
     mov eax, 110Eh
-    int 4Fh
+    int 2Fh
     pop rcx
     jc extErrExit
     jmp extGoodExit
@@ -300,23 +301,27 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     mov eax, errShrVio
     jmp extErrExit
 .okToSet:
+    call dosCrit1Enter
     call getDiskDirectoryEntry  ;Get ptr to entry in rsi
-    jc extErrExit
-    test cl, dirVolumeID | dirDirectory
+    jc .setErrorNoFlush
+    test cl, volLabelFile | directoryFile
     jz .set
     mov eax, errAccDen
-    jmp extErrExit
+    jmp .setErrorNoFlush
 .set:
     mov ch, byte [rsi + fatDirEntry.attribute]  ;Get attribs
-    and ch, (dirVolumeID | dirDirectory)    ;Keep these two bits
+    and ch, (volLabelFile | directoryFile)    ;Keep these two bits
     or cl, ch
     mov byte [rsi + fatDirEntry.attribute], cl  ;Set new bits
     call writeThroughBuffers
     jc .setError
+    call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit
 .setError:
     call cancelWriteThroughBuffers
+.setErrorNoFlush:
+    call dosCrit1Exit
     jmp extErrExit
 
 duplicateHandle:   ;ah = 45h, handle function
@@ -593,7 +598,7 @@ lockUnlockFile:    ;ah = 5Ch
     jz .unlockShare ;Jump if a local file only
     push rax
     mov eax, 110Bh     ;Unlock Net file region
-    int 4Fh
+    int 2Fh
     pop rbx
     jmp short .exitSelect
 .unlockShare:
@@ -606,7 +611,7 @@ lockUnlockFile:    ;ah = 5Ch
     jz .lockShare   ;Jump if a local file only
     push rax
     mov eax, 110Ah  ;Lock net file region
-    int 4Fh
+    int 2Fh
     pop rbx
     jmp short .exitSelect
 .lockShare:
@@ -822,7 +827,7 @@ commitMain:
     jnz .notNet
     ;Commit file net redir call and exit
     mov eax, 1107h
-    int 4Fh
+    int 2Fh
     return  ;Propagate CF and AL if needed due to error
 .notNet:
     call dosCrit1Enter
@@ -852,7 +857,7 @@ renameMain:
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
     mov eax, 1111h
-    int 4Fh
+    int 2Fh
     return
 .notNet:
 ;First check if both drives are on the same disk
@@ -895,8 +900,8 @@ renameMain:
     call setupFFBlock   ;Need this to save the dir entry cluster/sector/offset 
     ;Now we check this path, if it is a DIR, ensure it is not the current
     ; dir for any CDS.
-    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-    jnz .notDirCheck
+    test byte [curDirCopy + fatDirEntry.attribute], directoryFile
+    jz .notDirCheck
     mov rdi, qword [fname1Ptr]
     push rdi
     call strlen ;Get asciiz length in ecx
@@ -906,15 +911,24 @@ renameMain:
     movzx edx, byte [lastdrvNum]
 .dirCheck:
     mov rdi, rbx
+    push rcx    ;Save the char count to check!
     push rsi    ;Save rsi pointing to the start of the CDS
     repe cmpsb  ;Compare while they are equal
     lodsb   ;Get the last char to check in al
     pop rsi ;Put rsi back to the start of the string
+    pop rcx
     jne .neqDir
+    ;Instead of failing, if not join, simply reset that CDS entry to root.
     cmp al, "\" ;Check the last char manually for pathend
-    je .accDen
+    je .curDirChangeErr
     test al, al
-    je .accDen
+    jne .neqDir ;Proceed as normal if not null
+.curDirChangeErr:
+    ;Here we are trying to change a current directory. Fail it!
+    ;This is (DOS 5.0+/Windows)-like behaviour but its sensible and what
+    ; we initially had programmed in (with access denied error instead).
+    mov eax, errDelCD   ;This is a more descriptive error.
+    jmp .errorExit
 .neqDir:
     add rsi, cds_size   ;Goto next CDS
     dec edx
@@ -1197,7 +1211,7 @@ outerDeleteMain:
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
     mov eax, 1113h  ;Allows wildcards, and will delete all which match
-    int 4Fh
+    int 2Fh
     return
 .notNet:
     mov eax, errAccDen  
@@ -1290,7 +1304,7 @@ openMain:
 .redirOpen:
     push rax    ;Push open mode onto stack
     mov eax, 1116h  ;Open remote file on "\\" pathspec drives
-    int 4Fh
+    int 2Fh
     pop rax
     return
 .notNet:
@@ -1323,7 +1337,7 @@ openMain:
     call getCurrentSFT  ;Get SFT ptr in rdi
     call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
     call dosCrit1Exit
-openDriverMux:  ;Int 4Fh, AX=120Ch, jumped to by Create
+openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
     mov rdi, qword [currentSFT]
     call openSFT
     test word [rdi + sft.wOpenMode], FCBopenedFile
@@ -1338,10 +1352,9 @@ setOpenMode:
 ;Input: al = Open mode for the file open
     mov byte [fileOpenMd], al
     push rbx
-;Check we are not opening a directory.
-;NOTE SUPERCEEDED IN BUILDSFTENTRY
-;    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-;    jnz .somBad    ;Directories are not allowed to be opened
+;Check we are not opening a directory. This is to prevent disk io with a dir
+    test byte [curDirCopy + fatDirEntry.attribute], directoryFile
+    jnz .somBad    ;Directories are not allowed to be opened
     mov bl, al
     and bl, 0F0h    ;Isolate upper nybble. Test share mode.
     cmp byte [dosInvoke], -1    
@@ -1384,12 +1397,14 @@ createMain:
 ;       [workingDPB] = DPB of drive to access
     movzx eax, al
 .createNewEP:
-    test al, 80h | 40h   ;Invalid bits?
+    test al, 80h    ; Is this invalid bit set?
     jnz .invalidAttrib
-    test al, dirVolumeID
-    jnz .invalidAttrib  ;Creating volume label with this function is forbidden
-    or al, dirArchive   ;Set archive bit
-    test al, dirDirectory   
+    test al, volLabelFile    ;Is this a volume label?
+    jnz .notVol
+    mov al, volLabelFile ;If the vol bit is set, set the whole thing to volume only
+.notVol:
+    or al, archiveFile   ;Set archive bit
+    test al, directoryFile | charFile   ;Invalid bits?
     jz .validAttr   ;Creating directory with this function is forbidden also
 .invalidAttrib:
     mov eax, errAccDen
@@ -1397,16 +1412,13 @@ createMain:
     return
 .validAttr:
 ;Check we are not creating a directory.
-;NOTE SUPERCEEDED IN BUILDSFTENTRY
-;    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-;    jnz .bad    ;Directories are not allowed to be created
     mov rdi, qword [currentSFT]
     mov rsi, qword [workingCDS]
     cmp rsi, -1
     jne .diskFile
     push rax    ;Save the new attributes
     mov eax, 1118h  ;Create file w/o CDS
-    int 4Fh
+    int 2Fh
     pop rbx
     return
 .diskFile:
@@ -1414,7 +1426,7 @@ createMain:
     jz .hardFile
     push rax    ;Save the new attributes
     mov eax, 1117h  ;Create file with CDS
-    int 4Fh
+    int 2Fh
     pop rbx
     return
 .hardFile:
@@ -1429,7 +1441,16 @@ createMain:
     pop rbx ;Pop the word off (though it has been used already!)
     pop rdi
     jc .errorExit
-    mov eax, 2
+    mov al, byte [searchAttr]   ;Get the attr we created with.
+    cmp al, volLabelFile
+    jne .notVolLabel    ;If not vol label, skip.
+    ;Treat volume label creation case here. Free the SFT immediately
+    ; and ensure the dir is flushed, and dpb updated (shouldn't make a difference).
+    ;mov al, byte [workingDrv]
+    ;mov byte [rebuildDrv], al
+    ;mov byte [rebuildDrv], -1   ;TEMPORARY
+.notVolLabel:
+    mov eax, 2  ;Needed for the SHARE call
     call qword [updateDirShare]
     call dosCrit1Exit
     jmp openDriverMux
@@ -1479,8 +1500,6 @@ buildSFTEntry:
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev
-    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-    jnz .bad    ;Directories are not allowed to be created/opened
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
@@ -1605,9 +1624,9 @@ buildSFTEntry:
     call getDiskDirectoryEntry  ;And setup vars! rsi points to disk buffer
     jmp .createCommon
 .openProc:
-    ;Here if Opening a file.
-    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-    jnz .bad    ;Directories are not allowed to be created/opened
+    ;Here if Opening a file. 
+    ;Dirs cannot be opened through open, only for renaming.
+    ;This is taken care of by openMain.
     test byte [curDirCopy + fatDirEntry.attribute],dirCharDev
     jz .open
 .charDev:
@@ -1641,7 +1660,7 @@ buildSFTEntry:
     pop rbp
     return
 
-closeMain: ;Int 4Fh AX=1201h
+closeMain: ;Int 2Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
 ;If CF=CY on return: Error, return error with al = error code
@@ -1651,9 +1670,9 @@ closeMain: ;Int 4Fh AX=1201h
     mov rdi, qword [currentSFT] ;Get the sft pointer
     test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
     jz .physical
-    ;Here we beep out the request to the network redirector (Int 4Fh AX=1106h)
+    ;Here we beep out the request to the network redirector (Int 2Fh AX=1106h)
     mov eax, 1106h  ;Make request
-    int 4Fh ;Beep!
+    int 2Fh ;Beep!
     return  ;Returns with CF set or clear as appropriate
 .physical:  
 ; We make a request to the dev dir to close the device
@@ -1727,7 +1746,7 @@ readBytes:
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
     mov eax, 1108h  ;Call Redir Read Bytes function
-    int 4Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
+    int 2Fh ;Call redir (tfr buffer in DTA var, ecx has bytes to tfr)
     return 
 .exitOk:
     clc
@@ -1820,7 +1839,7 @@ readCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .binNoError
-    ;ERROR HERE! Prepare for Int 44h (if SFT allows us to issue Int 44h)
+    ;ERROR HERE! Prepare for Int 24h (if SFT allows us to issue Int 24h)
     mov ah, critCharDev | critData ;Char device, data error signature
     call charDevErr   ;ah = has part of the error 
     ;al now has the response
@@ -1865,7 +1884,8 @@ readCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .asciiNoError
-    call charDevErr    ;Call Int 44h
+    mov ah, critCharDev | critData
+    call charDevErr    ;Call Int 24h
     ;Now setup number of bytes to transfer to 1 if the user requests retry
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
     mov rdi, rdx    ;Get the buffer position back into rdi
@@ -1919,7 +1939,7 @@ readDiskFile:
     jz readExitOk   
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
     ;Check if we have opened a volume label (should never happen)
-    test word [rdi + sft.wOpenMode], volumeLabel    ;If we try read from vollbl
+    test byte [rdi + sft.bFileAttrib], volLabelFile    ;If we try read from vollbl
     jz .shareCheck
     mov eax, errAccDen
     stc
@@ -2050,7 +2070,7 @@ writeBytes:
     test word [rdi + sft.wDeviceInfo], devRedirDev
     jz .notRedir
     mov eax, 1109h  ;Write to redir
-    int 4Fh
+    int 2Fh
     return
 .notRedir:
     test word [rdi + sft.wDeviceInfo], devCharDev
@@ -2085,7 +2105,7 @@ writeCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
     test edi, drvErrStatus
     jz .binXfrOk
-    call charDevErr ;Invoke Int 44h
+    call charDevErr ;Invoke Int 24h
     mov rbx, rdx    ;Return the buffer ptr in rbx
     cmp al, critIgnore
     je .binXfrOk
@@ -2119,7 +2139,7 @@ writeCharDev:
     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
     test edi, drvErrStatus
     jz .asciiNoError
-    call charDevErr ;Invoke Int 44h
+    call charDevErr ;Invoke Int 24h
     pop rdi
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
     cmp al, critRetry
@@ -2170,7 +2190,7 @@ writeDiskFile:
     ;rdi has SFT ptr
     mov ecx, dword [tfrLen] ;Get the transfer length 
     mov byte [errorLocus], eLocDsk 
-    mov byte [rwFlag], -1    ;Write operation
+    mov byte [rwFlag], 1    ;Write operation
     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
     jnz .badExit
     test ecx, ecx
@@ -2503,7 +2523,7 @@ findFreeSFT:
     pop rbx
     clc
     return
-getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
+getSFTPtrfromSFTNdx:    ;Int 2Fh AX=1216h
 ;Return a pointer to the SFT entry in rdi
 ;Input: rbx = Valid SFT ndx number (byte, zero extended)
 ;Output: rdi = SFT pointer
@@ -2527,7 +2547,7 @@ getSFTPtrfromSFTNdx:    ;Int 4Fh AX=1216h
     pop rax
     add rdi, sfth_size  ;Go past the header
     return
-getJFTPtr:    ;Int 4Fh AX=1220h
+getJFTPtr:    ;Int 2Fh AX=1220h
 ;Return a zero extended value in rdi for the SFT entry
 ;Input: bx = JFT handle (we zero extend)
 ;Output: CF=NC => rdi = Points to first SFT ndx or -1 => free space
@@ -2643,7 +2663,7 @@ incrementOpenCount:
     pop rdi
     return
 
-decrementOpenCount: ;Int 4Fh AX = 1208h
+decrementOpenCount: ;Int 2Fh AX = 1208h
 ;Input: rdi = SFT pointer
 ;Output: ax = Original wNumHandles count
     pushfq

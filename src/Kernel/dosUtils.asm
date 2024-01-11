@@ -2,7 +2,7 @@
 
 ;Basic Drive related Utilities
 ;Any function which takes args in rax (or any subpart of it), has that 
-; argument provided on the stack when called from Int 4Fh interface (when 
+; argument provided on the stack when called from Int 2Fh interface (when 
 ; that gets set up)
 
 setWorkingDPB:
@@ -40,7 +40,7 @@ getDiskData:
     jnc .physical
     ;Beep a redir request out
     mov eax, 110Ch 
-    int 4Fh
+    int 2Fh
     return
 .physical:
 ;Now we must lock the structures
@@ -62,7 +62,7 @@ getDiskData:
     call dosCrit1Exit
     return
 
-muxGetIntVector:    ;Int 4Fh AX=1202h
+muxGetIntVector:    ;Int 2Fh AX=1202h
 ;Input: al = Interrupt number
 ;Output: rbx = Interrupt Vector
     push rax    ;Preserve rax
@@ -81,7 +81,7 @@ muxGetIntVector:    ;Int 4Fh AX=1202h
     pop rax
     return
 
-getUserRegs:   ;Int 4Fh AX=1218h
+getUserRegs:   ;Int 2Fh AX=1218h
 ;Returns ptr to user regs in rsi
     mov rsi, qword [oldRSP]
     return
@@ -119,7 +119,7 @@ getCDSNotJoin:
 .exit:
     return
 
-buildNewCDS:   ;Int 4Fh AX=121Fh
+buildNewCDS:   ;Int 2Fh AX=121Fh
 ;Allows a redirector or subst/join to build a CDS
 ;Input drive letter must be above the reserved CDS entries for the system 
 ; volumes, that are made at system boot.
@@ -157,7 +157,7 @@ buildNewCDS:   ;Int 4Fh AX=121Fh
 .exit:
     return
 
-getCDS:     ;Int 4Fh AX=1219h
+getCDS:     ;Int 2Fh AX=1219h
 ;Gets the device DPB and saves it in the DOS variable
 ;This can be called to get CDS for network drives too!
 ;Input: al = 1 based drive number
@@ -199,7 +199,7 @@ getCDS:     ;Int 4Fh AX=1219h
     pop rsi
     return
 
-getCDSforDrive:     ;Int 4Fh AX=1217h
+getCDSforDrive:     ;Int 2Fh AX=1217h
     ;Gets the CDS for the current drive in al
     ;Input: al = Drive number, 0 = A ...
     ;Output: CF=NC => rsi = Pointer to CDS for drive in al (and workingCDS var)
@@ -224,7 +224,7 @@ getCDSforDrive:     ;Int 4Fh AX=1217h
     return
 
 
-swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
+swapPathSeparator:  ;Int 2Fh, AX=1204h, Normalise Path Separator
 ;Swap / to \ in a path. Leave all other chars alone.
 ;Input: AL = Char to normalise.
 ;Output: AL = Normalised Char (if / swap to \. Leave all other chars alone)
@@ -240,7 +240,7 @@ swapPathSeparator:  ;Int 4Fh, AX=1204h, Normalise Path Separator
 uppercaseCharAtPtr:
 ;Get the char pointed to by rsi and then fall
     lodsb
-uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
+uppercaseChar:      ;Int 2Fh, AX=1213h, Uppercase Char
 ;Convert a lowercase char to uppercase
 ; Leave alone uppercase chars and invalid chars
 ;Input: al = Char to convert to uppercase
@@ -266,7 +266,7 @@ uppercaseChar:      ;Int 4Fh, AX=1213h, Uppercase Char
     pop rbx
     return
 
-strlen2:    ;Int 4Fh, AX=1212h
+strlen2:    ;Int 2Fh, AX=1212h
 ;Entry point for Multiplex
     push rdi
     mov rdi, rsi
@@ -311,7 +311,7 @@ strcmp:
     return
 
 
-normaliseFileName:  ;Int 4Fh, AX=1211h
+normaliseFileName:  ;Int 2Fh, AX=1211h
 ;Converts lowercase to uppercase and / to "\"
 ;Input: rsi = Source buffer
 ;       rdi = Buffer to place normalised path
@@ -332,7 +332,7 @@ normaliseFileName:  ;Int 4Fh, AX=1211h
     pop rax
     return
 
-compareFileNames:   ;Int 4Fh, AX=121Eh
+compareFileNames:   ;Int 2Fh, AX=121Eh
 ;Compares two filenames char by char. Accepts invalid chars too.
 ;Input: rsi = One ASCIIZ pathname
 ;       rdi = Second ASCIIZ pathname
@@ -536,7 +536,7 @@ isCharSpaceType:
     pop rax
     return
 
-compareFarPointers: ;Int 4Fh, AX = 1214h
+compareFarPointers: ;Int 2Fh, AX = 1214h
 ;Compare if two pointers are equal. A layover from the era of far pointers.
 ;Input: rsi = One pointer
 ;       rdi = Second pointer
@@ -572,14 +572,14 @@ getCharDevDriverPtr:
     stc ;Else bad exit
     return
 
-getDrvChain: ;Int 4Fh, AX=122Ch
+getDrvChain: ;Int 2Fh, AX=122Ch
 ;Pointer to the first non-null device driver in the chain.
 ;Returns the value in rax only
     lea rax, nulDevHdr
     mov rax, qword [rax + drvHdr.nxtPtr]    ;Get the pointer at null driver
     return
 
-getExtErrCde:   ;Int 4Fh, AX=122Dh
+getExtErrCde:   ;Int 2Fh, AX=122Dh
 ;Gets the extended error code in ax and returns
     mov ax, word [errorExCde]
     return

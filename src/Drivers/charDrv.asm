@@ -131,7 +131,7 @@ conDriver:
     cmp ecx, dword [rbx + ioReqPkt.tfrlen]
     je .cw2
     lodsb   ;Get char into al, and inc rsi
-    int 49h ;Fast print char
+    int 29h ;Fast print char
     inc ecx
     jmp short .cw1 ;keep printing until all chars printed
 .cw2:
@@ -146,7 +146,7 @@ conDriver:
     jmp .conExit
 
 .conBuf db 0    ;Single byte buffer
-fastOutput:         ;This CON driver supports Int 49h
+fastOutput:         ;This CON driver supports Int 29h
 ;Called with char to transfer in al
     push rax
     mov ah, 0Eh

@@ -63,7 +63,7 @@ endstruc
     devDrvConOut   equ 2h  ;If set, device is CON output
     devDrvNulDev   equ 4h  ;If set, device is NULL device
     devDrvClockDev equ 8h  ;If set, device is CLOCK device
-    devDrvFastOut  equ 10h ;If set, device supports INT 49h
+    devDrvFastOut  equ 10h ;If set, device supports Int 29h
     devDrvIOCTL    equ 40h ;If set, IOCTL and GET/SET suported
     devDrvHdlCTL   equ 800h ;If set, Open, Close and Rem media supported
     devDrvIOCTLRW  equ 4000h ;If set, IOCTL Read/Write supported
@@ -72,7 +72,7 @@ endstruc
 ;    1 1=console output (character devices)
 ;    2 1=NUL device
 ;    3 1=CLOCK device
-;    4 1=INT 49 output (CON)
+;    4 1=Int 29 output (CON)
 ;    6 1=extended functions supported (13,17,18) (3.2+)
 ;    7 1=query IOCTL function supported (19) (5.0+)
 ;   11 1=open/close/removable media supported (3.0+)

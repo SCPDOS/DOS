@@ -72,6 +72,52 @@ pdptLoop:
     pop rdi
     add rax, rdi    ;Add the DOSSEG base address
     mov qword [OEMDRVCHAIN], rax  ;Store this value here
+
+;----------------------------------------------------------------
+;                       PIC Remap procedure                     :
+;----------------------------------------------------------------
+;Remapping the IRQ lines to Interrupts 0F0h - 0FFh
+    cli
+    mov al, 0FFh    ;Mask all interrupts 
+    out 021h, al
+    out 0A1h, al
+    sidt [oemIDTptr]    ;Get the idt here
+    mov rsi, qword [oemIDTptr.Base] ;Get the base ptr
+    mov rdi, rsi
+    add rsi, 020h*10h
+    add rdi, 0F0h*10h
+    mov ecx, 2*10h    ;Copy the hardware IRQ pointers high!
+    rep movsq
+
+    mov al, 11h        ;bit 10h and 1h = Start initialisation
+    out 020h, al
+    out 080h, al    
+    out 0A0h, al
+    out 080h, al    
+    mov al, 0F0h       ;PIC1 to take Int 0F0h - F7h
+    out 021h, al
+    out 080h, al    
+    add al, 8        ;PIC2 to take Int  F8h - FFh
+    out 0A1h, al 
+    out 080h, al    
+    mov al, 4
+    out 021h, al    ;Tell PIC 1 that there is a PIC 2 at IRQ2 (00000100)
+    out 080h, al    
+    dec al
+    dec al
+    out 0A1h, al    ;Tell PIC 2 its cascade identity (00000010)
+    out 080h, al
+    mov al, 01h        ;Initialise in 8086 mode
+    out 021h, al
+    out 080h, al    
+    out 0A1h, al
+    out 080h, al    
+    lidt [oemIDTptr] 
+    xor eax, eax    ;Unmask all interrupts 
+    out 021h, al
+    out 0A1h, al
+    sti
+;Ensure that interrupts are still masked
     ret
 aptSize equ 60*4096 ;(APT = Additional Page Tables)
 OEMINIT ENDP
@@ -269,7 +315,7 @@ OEMMCBINIT ENDP
 
 OEMHALT PROC    NEAR
 ;If a critical error occurs during sysinit, fail through here
-;Int 42h, 43h and 44h point here during sysinit
+;Int 22h, 23h and 24h point here during sysinit
     lea rbp, hltmsg
     mov eax, 1304h
     int 30h
@@ -290,3 +336,6 @@ biosUBase   dq 0
 loProtMem   dd 0
 hiProtMem   dd 0
 longMem     dq 0
+oemIDTptr:      ;Local IDT pointer
+    .Limit  dw 0
+    .Base   dq 0

@@ -4,7 +4,7 @@ findNextMain:
     test byte [rdi + ffBlock.driveNum], 80h ;Bit 7 set for network search
     jz .notNet
     mov eax, 0111Ch ;Network find next
-    int 4Fh
+    int 2Fh
     return  ;Return propagating the error code
 .notNet:
     mov al, byte [rdi + ffBlock.driveNum]
@@ -123,7 +123,7 @@ searchDir:
     test word [rdi + cds.wFlags], cdsRedirDrive
     jz .notNet
     mov eax, 111Bh  ;Find First with CDS
-    int 4fh
+    int 2fh
     return
 .notNet:
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
@@ -441,7 +441,7 @@ setupFFBlock:
     pop rax
     return
 
-getDrvLetterFromPath:   ;Int 4Fh, AX=121Ah
+getDrvLetterFromPath:   ;Int 2Fh, AX=121Ah
 ;Gets the drive letter for the path in al
 ;Input: rsi = Buffer to process
 ;Output: If al = 0, rsi NOT incremented by 2. Else, rsi incremented by 2 
@@ -576,7 +576,7 @@ getPathNoCanon:
     ;Make Redir request to qualify the filename if NOT invoked by server call
     mov qword [workingCDS], -1  ;Set workingCDS to unknown
     mov eax, 1123h  ;Net Qualify Path name
-    int 4fh ;CF=CY if not resolved. CF=NC if resolved
+    int 2fh ;CF=CY if not resolved. CF=NC if resolved
     retnc  ;Return if resolved
     call getDrvLetterFromPath ;Get the drive letter in al (or -1)
     pushfq  ;Save the flag state on stack
@@ -632,7 +632,7 @@ getPathNoCanon:
     retz
 .netFFnoCDS:
     mov eax, 1119h  ;Find First Without CDS
-    int 4Fh
+    int 2Fh
     return
 .netExitBad:
     pop rbx
@@ -746,9 +746,9 @@ pathWalk:
 .exit:
     return
 .checkDev:
-;If the return code is errNoFil AND Int44Fail = 0, then we check to see if 
+;If the return code is errNoFil AND Int24Fail = 0, then we check to see if 
 ; we are in \DEV pseudo dir
-    test byte [Int44Fail], -1   ;Make sure we are not returning from a FAIL
+    test byte [Int24Fail], -1   ;Make sure we are not returning from a FAIL
     jnz .nodev  ;If any bits set, ignore this check
     ;Here we check to see if DEV"\" was what we were searching for
     push rsi
@@ -1328,7 +1328,7 @@ checkDevPath:
     stc ;Else set CF=CY to pretend not found to write as normal
     return
 
-checkIfCharDevice:  ;Int 4Fh AX=1223h
+checkIfCharDevice:  ;Int 2Fh AX=1223h
 ;Compares the first 8 chars of the FCB field to each device name in the
 ; device driver chain. 
 ;Output: CF=CY if not found

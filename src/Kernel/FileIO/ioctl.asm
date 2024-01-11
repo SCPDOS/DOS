@@ -95,7 +95,7 @@ ioctrl:            ;ah = 44h, handle function
     movzx esi, bl
     lea rbx, primReqHdr
     mov byte [errorLocus], eLocUnk
-    mov byte [Int44bitfld], 0
+    mov byte [Int24bitfld], 0
 ;Get in rdi the ptr to the SFT for the handle we are looking at
 ;Setup the common ioReqPkt fields and the read/write 
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -108,7 +108,7 @@ ioctrl:            ;ah = 44h, handle function
     test al, 1  ;If set, this is a write operation
     cmovnz ecx, edx ;Move write command into ecx
     jnz .notWrite
-    or byte [Int44bitfld], critWrite
+    or byte [Int24bitfld], critWrite
 .notWrite:
     pop rdx
     pop rcx
@@ -124,7 +124,7 @@ ioctrl:            ;ah = 44h, handle function
     jz .invalidFunction
 
     mov rbx, qword [rdi + sft.qPtr] ;Get ptr to device driver
-    or byte [Int44bitfld], critCharDev
+    or byte [Int24bitfld], critCharDev
     xchg rbx, rsi   ;Swap back
     xor eax, eax
     jmp short .ioctlStringCommon
@@ -155,7 +155,6 @@ ioctrl:            ;ah = 44h, handle function
     test word [rsi + drvHdr.attrib], devDrvIOCTLRW
     jz .invalidFunction ;If not supported, invalid function error 
     ;Make request now
-.ioctlStringCommonRetry:
     push rcx    ;Push xfrctr
     push rdx    ;Buffer Ptr
     mov word [rbx + ioReqPkt.status], 0
@@ -165,21 +164,7 @@ ioctrl:            ;ah = 44h, handle function
 ;Check status, if bad, reuse ecx and rdx for tfrlen and bufptr and go again
     test word [rbx + ioReqPkt.status], drvErrStatus
     jz extGoodExit
-    or byte [Int44bitfld], critFailOK | critRetryOK | critFailOK
-    mov al, byte [rbx + ioReqPkt.unitnm]
-    mov ah, byte [Int44bitfld]
-    mov qword [xInt44RDI], rdi
-    movzx rdi, byte [rbx + ioReqPkt.status] ;Get low word of status (errorcde)
-    call criticalDOSError
-    mov rdi, qword [xInt44RDI]
-    cmp al, critIgnore
-    je extGoodExit 
-    cmp al, critRetry
-    je .ioctlStringCommonRetry
-    movzx eax, byte [rbx + ioReqPkt.status]    ;Get the error code into al
-    add eax, drvErrShft ;Convert to general error code
-    jmp extErrExit
-
+    jmp failIOCTLCall
 
 .ioStatusFunctions:
 ;al = 0 -> Get input status 
@@ -191,7 +176,7 @@ ioctrl:            ;ah = 44h, handle function
     mov byte [errorLocus], eLocUnk
     test word [rdi + sft.wDeviceInfo], devRedirDev  ;File cannot be redir!
     jnz .invalidFunction
-    mov byte [Int44bitfld], 0
+    mov byte [Int24bitfld], 0
     mov ecx, drvINSTATUS
     mov edx, drvOUTSTATUS
     test al, al
@@ -200,7 +185,7 @@ ioctrl:            ;ah = 44h, handle function
     test word [rdi + sft.wDeviceInfo], devCharDev
     jz .ioStatDisk
     mov byte [errorLocus], eLocChr
-    or byte [Int44bitfld], critCharDev
+    or byte [Int24bitfld], critCharDev
     mov rsi, qword [rdi + sft.qPtr]
     xor al, al
     jmp short .ioStatCommon
@@ -213,25 +198,7 @@ ioctrl:            ;ah = 44h, handle function
 .ioStatCommon:
     call goDriver
     test word [rbx + statusReqPkt.status], drvErrStatus
-    jz .ioStatOk
-    ;Error handling here
-
-    or byte [Int44bitfld], critFailOK | critRetryOK | critFailOK
-    mov al, byte [rbx + statusReqPkt.unitnm]
-    mov ah, byte [Int44bitfld]
-    mov qword [xInt44RDI], rdi
-    movzx rdi, byte [rbx + statusReqPkt.status]
-    call criticalDOSError
-    mov rdi, qword [xInt44RDI]
-    cmp al, critIgnore
-    je .ioStatOk 
-    cmp al, critRetry
-    je .ioStatCommon
-    movzx eax, byte [rbx + statusReqPkt.status]    ;Get the error code into al
-    add eax, drvErrShft ;Convert to general error code
-    jmp extErrExit
-
-.ioStatOk:
+    jnz failIOCTLCall
     test word [rbx + statusReqPkt.status], drvBsyStatus
     jz .notBusyExit
     mov al, -1  ;Device Busy/EOF
@@ -389,12 +356,7 @@ ioctrl:            ;ah = 44h, handle function
     call goDriver
     test word [rbx + ioctlReqPkt.status], drvErrStatus
     jz extGoodExit
-    movzx edi, word [rbx + ioctlReqPkt.status]
-    and edi, 0FFh   ;Save the low byte only
-    mov eax, edi
-    call xlatHardError
-    movzx eax, word [errorExCde] 
-    jmp extErrExit
+    jmp failIOCTLCall
 
 .getDrvLogicalDevice:
     mov al, bl
@@ -418,15 +380,7 @@ ioctrl:            ;ah = 44h, handle function
     call goDriver
     test word [rbx + getDevReqPkt.status], drvErrStatus
     jz .getDrvOk
-    ;Can only Fail, Ignore and Abort.
-    movzx eax, byte [workingDrv]  
-    or ah, critRead | critIgnorOK | critFailOK
-    movzx edi, word [rbx + getDevReqPkt.status]
-    call criticalDOSError
-    cmp al, critIgnore
-    je .getDrvOk
-    mov eax, errInvFnc
-    jmp extErrExit
+    jmp failIOCTLCall
 .getDrvOk:
     mov al, byte [rbx + getDevReqPkt.unitnm]    ;Get the byte
     return
@@ -451,14 +405,13 @@ ioctrl:            ;ah = 44h, handle function
     call goDriver
     xor al, al
     test word [rbx + getDevReqPkt.status], drvErrStatus
-    retz    ;Return if OK
-    ;Can only Fail, Ignore and Abort.
-    movzx eax, byte [workingDrv]  
-    or ah, critRead | critIgnorOK | critFailOK
-    movzx edi, word [rbx + getDevReqPkt.status]
-    call criticalDOSError
-    cmp al, critIgnore
-    rete    ;Return if Ignore
-    mov eax, errInvFnc
+    retz    ;Return if OK, else fail
+failIOCTLCall:
+;Called to fail IOCTL calls that don't trigger Int 24h
+;rbx -> Driver request packet
+    movzx edi, word [rbx + ioctlReqPkt.status]
+    and edi, 0FFh   ;Save the low byte only
+    call xlatHardError
+    movzx eax, word [errorExCde] 
     jmp extErrExit
 

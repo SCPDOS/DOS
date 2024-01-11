@@ -39,7 +39,7 @@ errGF       equ 31  ;General fault
 errShrVio   equ 32  ;Sharing violations
 errLokVio   equ 33  ;File Lock violation
 ;----------------------------------------------
-errIDC      equ 34  ;Driver code, Invalid Disk Change
+errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
 
@@ -48,7 +48,7 @@ errNLSAcDen equ 65  ;Network Access denied (NLS usage)
 
 errFilExist equ 80  ;File already exists
 errDirExist equ 82  ;Directory already exists
-errFI44     equ 83  ;Fail on INT 44h
+errFI44     equ 83  ;Fail on Int 24h
 errRedir    equ 84  ;Too many levels of redirection
 errDupRedir equ 85  ;Trying to redirect a redirection
 errBadPass  equ 86  ;Bad password

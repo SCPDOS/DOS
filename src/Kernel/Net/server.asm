@@ -54,10 +54,10 @@ serverDispatch: ;AX=5D00h
 commitAllFilesForProcess:   ;AX=5D01h
 ;Will commit all the files for the current Process as indicated by the DPL
 ;A bad procID (otherwise known as a PSP) may otherwise crash the call.
-;Thus we check the first two bytes of the current PSP to be CD 40h
+;Thus we check the first two bytes of the current PSP to be CDh 20h
 ;If so, we proceed, otherwise, fail with AccDen
     mov rbx, qword [currentPSP] ;Get the current PSP (setup from DPL)
-    cmp word [rbx], 40CDh
+    cmp word [rbx], 20CDh
     je .validTask
     mov eax, errAccDen
     jmp extErrExit
@@ -131,7 +131,7 @@ getSDAData:                 ;AX=5D06h
 printerRedir:               ;AX=5D07/8/9h
     push rax
     mov eax, 1125h  ;Redir Printer Mode setup
-    int 4Fh
+    int 2Fh
     pop rbx
     jc short closeFilesByName.shareExitBad
     jmp short  closeFilesByName.shareExitGood
@@ -141,8 +141,8 @@ setExtendedErrorInfo:       ;AX=5D0Ah
 ;   rsi -> DPL
     mov eax, dword [rsi + dpl.rax]  ;Get ax (extended error code)
     mov word [errorExCde], ax
-    mov rax, qword [rsi + dpl.rdi]  ;Get rdi as a full ptr
-    mov qword [xInt44RDI], rax
+    mov rax, qword [rsi + dpl.rdi]  ;Set the volume label pointer var
+    mov qword [errorVolLbl], rax
     mov eax, dword [rsi + dpl.rbx]  ;Get bx (error action and class)
     mov word [errorAction], ax  ;Store action and class together
     mov eax, dword [rsi + dpl.rcx]  ;Get ch (error locus)
@@ -221,7 +221,7 @@ netServices:   ;ah = 5Eh, do nothing
 .netRedir:
     push rax
     mov eax, 111Fh  ;Net Services over the Redirector
-    int 4Fh
+    int 2Fh
     pop rdx
     jc .badExit
 .exitGood:
@@ -236,7 +236,7 @@ netRedir:;ah = 5Fh, redirector needs to be installed
     ;Else, use redirector to process request
     push rax
     mov eax, 111eh  ;Do redirection redirector function
-    int 4Fh
+    int 2Fh
     pop rbx
 .badExit:
     jc extErrExit

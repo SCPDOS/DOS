@@ -1,5 +1,5 @@
 ;Driver Primitives, functions for Disk IO and calling a device driver
-; are placed here (Int 45h Int 46h and goDriver)
+; are placed here (Int 25h Int 26h and goDriver)
 
 dosDefCritErrHdlr:
 ;The DOS default critical error handler always returns FAIL
@@ -50,7 +50,7 @@ setupPhysicalDiskRequest:
     jmp short .error
 .diskError:
     mov word [errorExCde], errBadDrv
-.error: ;This error setting needs to remain as is to allow for Int 45/46
+.error: ;This error setting needs to remain as is to allow for Int 25/46
     mov byte [errorLocus], eLocDsk
     mov byte [errorAction], eActRetUsr
     mov byte [errorClass], eClsBadFmt
@@ -76,7 +76,7 @@ setupAbsDiskEntry:
 ;CRITICAL ENTRY, CHECK IF CAN DO DIRECT DISK IO!
 ;Entered with path in rsi (ah=03h)
     mov eax, 0300h  
-    int 4Ah ;If ret with CF=CY, DO NOT PROCEED WITH ACCESS
+    int 2Ah ;If ret with CF=CY, DO NOT PROCEED WITH ACCESS
 ;++++++++++++++++++++++++++++
     pop rax
     pop rsi
@@ -84,7 +84,7 @@ setupAbsDiskEntry:
     jc setupPhysicalDiskRequest.netError    ;Recycle error
     return
 
-absDiskWrite:       ;Int 46h
+absDiskWrite:       ;Int 26h
 ;al = Drive number
 ;rbx = Memory Buffer address to read from
 ;ecx = Number of sectors to write
@@ -98,7 +98,7 @@ absDiskWrite:       ;Int 46h
     jc absDiskExit
     call primReqWriteSetup
     jmp short absDiskReadWriteCommon
-absDiskRead:        ;Int 45h
+absDiskRead:        ;Int 25h
 ;al = Drive number
 ;rbx = Memory Buffer address to write to
 ;ecx = Number of sectors to read
@@ -221,32 +221,62 @@ ensureDiskValid:
 ;On entry: rbp = DPB (and working DPB = DPB)
 ;On exit: CF=NC => Passed, CF=CY => Fail
 ; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
-.medChk:
     call primReqMedCheckSetup    ;Prepare disk io packet for media check
 ;Return in rbx the req hdr address
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
     call goDriver   ;Request!
     movzx edi, word [rbx + mediaCheckReqPkt.status]
     test edi, drvErrStatus
-    jnz .diskDrvCritErrMedChk
-.medChkIgnore:
-    mov al, byte [workingDrv]   ;Get the drive number for test
-    xor ah, ah
+    jnz .diskDrvCritErr
+    movzx eax, byte [workingDrv]   ;Get the drive number for test
     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old flag
+    cmp byte [rebuildDrv], al   ;Do we need to rebuild this drive?
+    jne .notForce
+    ;Here we are forced to rebuild the DPB. In principle, the medium has
+    ; not changed but the new volume needs to be updated. 
+    ;The driver can use this opportunity to synchronise its BPB with the 
+    ; new label.  
+    mov byte [rebuildDrv], -1   ;Now reset this flag as we are doing our job.
+    jmp .resetDPB   ;Don't need to flush as the disk is the same.
+.notForce:
     or byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
-    js short .invalidateBuffers  ;If byte is -1, freebuffers and buildbpb
+    js short .invalidateBuffers  ;If either byte is -1, freebuffers and buildbpb
     retnz ;If zero, check for dirty buffers for drv, if found, exit
-    call testDirtyBufferForDrive  ;If CF=CY, dirty buffer found. DO NOT GET NEW BPB!
-    cmc ;Compliment CF to ensure we return CF=NC if dirty buffer found
-    jc short .resetDPB   ;Exit ONLY if a dirty buffer found!
-    ;ZF=NZ from test for dirty buffers
+    ;Here we check for any dirty buffers
+    ;If dirty buffer found, dont get new DPB
+    mov rdi, qword [bufHeadPtr]
+.checkBuffer:
+    cmp al, byte [rdi + bufferHdr.driveNumber]              ;IS this buffer for us?
+    jne .gotoNextBuffer ;If no, goto next buffer
+    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is this buffer dirty?
+    jz .gotoNextBuffer  ;If no, goto next buffer
+    clc 
+    return
+.gotoNextBuffer:
+    mov rdi, qword [rdi]    ;Get buffer link pointer
+    cmp rdi, -1
+    jne .checkBuffer        ;Check for this buffer
+    ;If we get here, we found no dirty buffers for our drive
+    ;We use the reference bit to keep track of which buffers we've gone through
+    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Reset number of free to unknown
+    call markBuffersAsUnreferenced  ;We're going to walk through so clear ref bit
+.dirtyLoop:
+    or byte [rdi + bufferHdr.bufferFlags], refBuffer    ;Set this buffer as referenced
+    cmp al, byte [rdi + bufferHdr.driveNumber]          ;Is this buffer for us?
+    jne .skipDirtyCheck
+    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is this dirty?
+    je .dirtyBufferError
+    mov word [rdi + bufferHdr.driveNumber], 020FFh  ;Set reference bit and drive to free
+    call makeBufferMostRecentlyUsedGetNext  ;Move this up, get next buffer
+.skipDirtyCheck:
+    call findUnreferencedBuffer ;Get the next unreferenced buffer
+    jnz .dirtyLoop  ;Now repeat for this buffer too
 .exit:
     return
 .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
     call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
 .resetDPB:    ;If no buffers found, skip freeing them as theres nothing to free!
     mov byte [rbp + dpb.bAccessFlag], -1 ;Mark DPB as inaccurate now
-    mov byte [diskChange], -1   ;In disk Change!
     ;Get a buffer to read BPB into in rdi
     xor eax, eax   ;Dummy read sector 0 in
     call getBufForDOS ;Get a disk buffer for DOS
@@ -256,9 +286,9 @@ ensureDiskValid:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
     call goDriver   ;Request!
-    movzx eax, word [rbx + bpbBuildReqPkt.status]
-    test eax, drvErrStatus
-    jnz .diskDrvCritErrBPB
+    movzx edi, word [rbx + mediaCheckReqPkt.status]
+    test edi, drvErrStatus
+    jnz .diskDrvCritErr
     ;Now rebuild the dpb fields for this drive
     mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
     push rbx
@@ -272,38 +302,41 @@ ensureDiskValid:
     xor ah, ah    ;Set ZF and clear CF
     mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
 .exitBad:
-    mov byte [diskChange], 0   ;Clear Disk Change flag
     return
-.diskDrvCritErrMedChk:
+.diskDrvCritErr:
 ;Critical Errors fall through here
     ;rbp has dpb ptr, di has status word, rsi points to the driver
-    mov qword [xInt44RDI], rdi  ;Save rdi
+    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Reset freecluster count
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
-    mov ah, critRead | critDOS | critFailOK | critRetryOK | critIgnorOK
-    mov byte [Int44bitfld], ah  ;Save the permissions in var
-    call criticalDOSError
-    mov rdi, qword [xInt44RDI]
+    mov ah, critRead | critFAT | critFailOK | critRetryOK
+    mov byte [Int24bitfld], ah  ;Save the permissions in var
+    movzx edi, dil  ;Clear the upper bytes, save only error code
+    call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
     mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
-    je .medChk
-    cmp al, critIgnore
-    je .medChkIgnore
-    stc ;Set error flag to indicate fail
-    return ;And exit from function with CF set
+    je getDiskDPB
+.errorExitBad:
+    stc     ;Set error flag to indicate fail
+    return  ;And exit
 
-.diskDrvCritErrBPB:
-    ;eax has status word, rbp has dpb ptr
-    ;rdi has buffer header pointer, rsi points to the driver
-    mov byte [diskChange], 0   ;Clear Disk Change flag (to prevent abort issues)
-    mov byte [Int44bitfld], critRead | critDOS | critFailOK | critRetryOK
-    mov byte [diskChange], -1  ;Set Disk Change flag again as we are back in
+.dirtyBufferError:
+    push rbp
+    mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
+    test word [rbp + drvHdr.attrib], devDrvHdlCTL
+    pop rbp
+    jz .errorExitBad    ;Just return fail if bit not set
+    ;rbp points to the dpb still
+    push rdi
+    mov rdi, qword [primReqHdr + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
+    mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
+    pop rdi ;Get back the buffer pointer
+    mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
+    mov byte [rwFlag], 1    ;A write was the cause of the error
+    mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
     call diskDevErr
-    cmp al, critRetry
-    je .repeatEP
-    ;Else we fail (Ignore=Fail here)
-    stc ;Set error flag to indicate fail
-    jmp short .exitBad ;And exit from function with CF set
+    cmp al, critFail    ;Did the user select fail?
+    je .errorExitBad    ;If so, exit with CF set
+    jmp getDiskDPB  ;Now we try again
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++

@@ -240,31 +240,38 @@ createFileFCB:     ;ah = 16h
 ;rdx -> Extended FCB
 ;   MUST BE EXTENDED. 
 ;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
-; Using FCB's, one can only create a volume label on a volume, or 
-; change it.
-;Deleting a file label totally can be done using delete file 
-;   (both FCB and hdl).
-    cmp byte [rdx + exFcb.extSig], -1
-    jne .exitErr
-    cmp byte [rdx + exFcb.attribute], dirVolumeID
-    jne .exitErr
-    lea rdi, buffer1
-    push rdi
-    call fcbInitRoutine ;Build path and find file to delete
-    pop rsi ;Point rdi to the canonised path
-    jc fcbErrExit
+; Using FCB's, one can only create a volume label on a volume.
+;
+;Deleting a volume label can be done using delete file (fcb and hdl)
+;Renaming a volume label can be done using rename file (fcb and hdl)
+;Creating a volume label can be done using create file fcb only.
+;
+    ;mov qword [workingFCB], rdx     ;Save the FCB ptr
+    ;cmp byte [rdx + exFcb.extSig], -1
+    ;jne .exitErr
+    ;cmp byte [rdx + exFcb.attribute], dirVolumeID
+    ;jne .exitErr
     ;Here we search for a volume ID in the root directory.
-    ; If one exists, we replace the dir entry name field,
-    ; Else, we build a dir entry for it.
-    mov rsi, rdi    ;Pass argument in rsi. rsi, rdi preserved
-    call checkPathspecOK    ;If the path has wildcards, fail!
-    jc .exitErr
-    call getFilePathNoCanon ;Get the file if it exists!
-    lea rbx, scratchSFT ;Set the working SFT to the scratch in the SDA
-    mov qword [workingSFT], rbx
-    call createMain
+    ;If one exists, we fail the call.
 
-.exitErr:
+    ;Here we proceed with creating a volume label
+    ;lea rdi, buffer1
+    ;push rdi
+    ;call fcbInitRoutine ;Build path and find file to delete
+    ;pop rsi ;Point rdi to the canonised path
+    ;jc fcbErrExit
+    ;mov rsi, rdi    ;Pass argument in rsi. rsi, rdi preserved
+    ;call checkPathspecOK    ;If the path has wildcards, fail!
+    ;jc .exitErr
+    ;call getFilePathNoCanon ;Get the file if it exists! Sets DPB too.
+    ;lea rbx, scratchSFT ;Set the working SFT to the scratch in the SDA
+    ;mov qword [workingSFT], rbx
+    ;movzx eax, byte [searchAttr]   ;Get the search attribute in al
+    ;call createMain.validAttr   ;We have a "valid" attrib for our purposes.
+    ;jc .exitErr
+    ;call closeMain      ;Flush the updated disk label from the buffer to the disk
+    ;jnc fcbGoodExit     ;We require no copying into the FCB, so we ok!
+;.exitErr:
     mov eax, errAccDen
     jmp fcbErrExit
 
