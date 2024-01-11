@@ -338,7 +338,7 @@ struc ffBlock   ;The structure of the Find First structure at the DTA
 endstruc
 
 struc psp
-    .return     resb 2  ;Should always be CDh 40h, same place as DOS
+    .return     resb 2  ;Should always be CDh 20h, same place as DOS
     .allocSize  resd 1  ;Number of paras in init alloc or when exiting as TSR.
                 resd 1  ;Reserved 4 bytes
     .oldInt22h  resq 1  ;Int 22h pointer on overlay load
@@ -350,7 +350,7 @@ struc psp
     .envPtr     resq 1  ;Pointer to the environment
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 21h
     .jftSize    resw 1  ;JFT array size, 20 => PSP JFT in use
-    .unixEntry  resb 3  ;Must always be CDh 41h CBh, same place as DOS
+    .unixEntry  resb 3  ;Must always be CDh 21h CBh, same place as DOS
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
                 resb 1  ;Reserved byte
 ;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer

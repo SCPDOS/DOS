@@ -54,10 +54,10 @@ serverDispatch: ;AX=5D00h
 commitAllFilesForProcess:   ;AX=5D01h
 ;Will commit all the files for the current Process as indicated by the DPL
 ;A bad procID (otherwise known as a PSP) may otherwise crash the call.
-;Thus we check the first two bytes of the current PSP to be CD 40h
+;Thus we check the first two bytes of the current PSP to be CDh 20h
 ;If so, we proceed, otherwise, fail with AccDen
     mov rbx, qword [currentPSP] ;Get the current PSP (setup from DPL)
-    cmp word [rbx], 40CDh
+    cmp word [rbx], 20CDh
     je .validTask
     mov eax, errAccDen
     jmp extErrExit
