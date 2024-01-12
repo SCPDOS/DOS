@@ -193,18 +193,26 @@ removeDIR:         ;ah = 3Ah
     jmp extGoodExit
 .notNet:
     call dosCrit1Enter
-    mov rbp, qword [workingDPB]
-    ;Now let use check that our directory is not the CDS currentdir
-    mov rsi, qword [workingCDS]
     lea rdi, buffer1
     call strlen ;Get the length of the full qualified name in ecx
     mov word [pathLen], cx
-    call strcmp ;Then compare rdi to CDS string
-    jnz .notEqual
+    ;Now we scan all the CDS's to ensure this path is not the current dir anywhere
+    xor eax, eax
+.scanLoop:
+    call getCDSforDrive ;Gets a CDS string ptr in rsi
+    jc .notCurrent
+    call compareFileNames
+    jz .cantDelCD
+    inc eax
+    jmp short .scanLoop
+.cantDelCD:
     mov eax, errDelCD   ;Cant delete whilst in current directory
     call dosCrit1Exit
     jmp extErrExit
-.notEqual:
+.notCurrent:
+    mov rbp, qword [workingDPB]
+    ;Now let use check that our directory is not the CDS currentdir
+    mov rsi, qword [workingCDS]
     mov rdi, rsi    ;rsi points to CDS
     ;If the given path length is one more than the backslash offset
     ; due to the terminating null, then the user is trying to delete the 

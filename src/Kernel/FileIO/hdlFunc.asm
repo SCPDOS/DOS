@@ -852,7 +852,8 @@ renameMain:
 ;Input:
 ; filenamePtr1 -> Source path + filename pattern
 ; filenamePtr2 -> New path + filename pattern
-; workingCDS -> CDS for drive we are considering (set by )
+; workingCDS -> CDS for drive we are considering (set by first pathspec)
+; searchAttr = Set to search attributes (inclusive or by request if netinvoke)
     mov rdi, qword [workingCDS]
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
@@ -886,10 +887,14 @@ renameMain:
     xor al, al
     cmp eax, 005C3A00h
     je .accDen  ;If this is the root, exit access denied
+    ;Now ensure hte two paths are not equal
+    lea rsi, buffer1
+    lea rdi, buffer2
+    call compareFileNames
+    jz .accDen
 ;Now we find first the source file
     mov rsi, qword [fname1Ptr]
     mov rdi, rsi
-    mov byte [searchAttr], dirInclusive    ;Inclusive search
     call getFilePathNoCanon    ;Get the path for the file to delete
     jc .exit2    ;Return with CF=CY if file doesn't exist
     lea rsi, curDirCopy
