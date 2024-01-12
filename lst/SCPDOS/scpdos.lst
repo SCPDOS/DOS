@@ -18820,247 +18820,246 @@
    350 00006FC5 E80C000000          <1>     call .normaliseChar
    351 00006FCA 38E0                <1>     cmp al, ah  ;Are they equal?
    352 00006FCC 7504                <1>     jne .exit   ;If not equal, exit
-   353                              <1> ;Keep searching until a null char is found
-   354 00006FCE 84C0                <1>     test al, al ;Here al=ah. If al == 0, exit!
-   355 00006FD0 75E6                <1>     jnz .scan
-   356                              <1> .exit:
-   357 00006FD2 5F                  <1>     pop rdi
-   358 00006FD3 5E                  <1>     pop rsi
-   359 00006FD4 58                  <1>     pop rax
-   360                              <1>     return
+   353 00006FCE 84C0                <1>     test al, al ;Here al=ah. If al == 0, exit!
+   354 00006FD0 75E6                <1>     jnz .scan
+   355                              <1> .exit:
+   356 00006FD2 5F                  <1>     pop rdi
+   357 00006FD3 5E                  <1>     pop rsi
+   358 00006FD4 58                  <1>     pop rax
+   359                              <1>     return
     13                              <2> %%_ret:
     14 00006FD5 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   361                              <1> .normaliseChar:
-   362 00006FD6 E871FFFFFF          <1>     call uppercaseChar      ;Uppercase the char if uppercaseable
-   363 00006FDB E860FFFFFF          <1>     call swapPathSeparator  ;Swap if a pathsep char
-   364                              <1>     return
+   360                              <1> .normaliseChar:
+   361 00006FD6 E871FFFFFF          <1>     call uppercaseChar      ;Uppercase the char if uppercaseable
+   362 00006FDB E860FFFFFF          <1>     call swapPathSeparator  ;Swap if a pathsep char
+   363                              <1>     return
     13                              <2> %%_ret:
     14 00006FE0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   365                              <1> checkPathspecOK:
-   366                              <1> ;Input:
-   367                              <1> ;rsi -> points to a path to verify if it is ok.
-   368                              <1> ;Output:
-   369                              <1> ;CF=NC => The path is totally clean and ok to use.
-   370                              <1> ;CF=CY => the path is malformed or longer than 64 chars.
-   371                              <1> ; If CF=CY and ZF=ZE then wildcards were found in the last portion
-   372                              <1> ; and depending on method of invokation and caller, may be permissable.
-   373                              <1> ;We accept lc and uc characters in this check function.
-   374 00006FE1 50                  <1>     push rax
-   375 00006FE2 53                  <1>     push rbx    ;Use rbx as the return flag status
-   376 00006FE3 56                  <1>     push rsi
-   377 00006FE4 31DB                <1>     xor ebx, ebx    ;Clear the return status flags
-   378                              <1>     ;Start by getting the length of the ASCIIZ string.
-   379 00006FE6 51                  <1>     push rcx
-   380 00006FE7 57                  <1>     push rdi
-   381 00006FE8 4889F7              <1>     mov rdi, rsi
-   382 00006FEB E88EFFFFFF          <1>     call strlen
-   383 00006FF0 81F940000000        <1>     cmp ecx, 64    ;Check
-   384 00006FF6 5F                  <1>     pop rdi
-   385 00006FF7 59                  <1>     pop rcx
-   386 00006FF8 7770                <1>     ja .badExit ;Above 64 only as the count includes the terminating null
-   387                              <1>     ;First we verify if our path is relative or canonical (absolute)
-   388 00006FFA 668B06              <1>     mov ax, word [rsi]  ;Get the first two chars
-   389 00006FFD 663D5C5C            <1>     cmp ax, "\\"    ;UNC network start
-   390 00007001 7416                <1>     je .netName
-   391 00007003 663D2F2F            <1>     cmp ax, "//"    ;Also acceptable UNC network start
-   392 00007007 7410                <1>     je .netName
-   393 00007009 80FC3A              <1>     cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
-   394 0000700C 7414                <1>     je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
-   395                              <1>     ;Here if relative
-   396 0000700E F605(01070000)FF    <1>     test byte [dosInvoke], -1
-   397 00007015 7553                <1>     jnz .badExit    ;If this is -1, server invoke.
-   398 00007017 EB21                <1>     jmp short .okToScan
-   399                              <1> .netName:
-   400 00007019 4881C602000000      <1>     add rsi, 2  ;Goto the first char after the UNC start symbol
-   401 00007020 EB18                <1>     jmp short .okToScan
-   402                              <1> .diskPath:
-   403 00007022 4881C602000000      <1>     add rsi, 2  ;Go past the X:
-   404 00007029 F605(01070000)FF    <1>     test byte [dosInvoke], -1    ;If this is minus 1, this is a server invoke
-   405 00007030 7408                <1>     jz .okToScan
-   406 00007032 AC                  <1>     lodsb   ;Get the third byte. It MUST be a pathsep if server invokation.
-   407 00007033 E808FFFFFF          <1>     call swapPathSeparator
-   408 00007038 7530                <1>     jnz .badExit    ;If ZF=NZ => Not a pathsep, bad path
-   409                              <1> .okToScan:
-   410 0000703A AC                  <1>     lodsb   
-   411 0000703B 84C0                <1>     test al, al ;End of path char?
-   412 0000703D 7430                <1>     jz .exit
-   413 0000703F E8FCFEFFFF          <1>     call swapPathSeparator
-   414 00007044 741C                <1>     jz .wcCheck ;If it was a pathsep, ensure no WC's have been detected
-   415 00007046 3C2A                <1>     cmp al, "*" ;Was al a big wildcard?
-   416 00007048 7411                <1>     je .wcFound
-   417 0000704A 3C3F                <1>     cmp al, "?" ;Was al a small wildcard?
-   418 0000704C 740D                <1>     je .wcFound ;If al was a wildcard, proceed as for wildcard
-   419                              <1>     ;Else we check that the char in al is an acceptable char
-   420 0000704E 3C2E                <1>     cmp al, "." ;Ensure that dots are allowed through this part check
-   421 00007050 74E8                <1>     je .okToScan
-   422 00007052 E831000000          <1>     call checkCharValid
-   423 00007057 7411                <1>     jz .badExit ;If the char is invalid, exit immediately badly
-   424 00007059 EBDF                <1>     jmp short .okToScan
-   425                              <1> .wcFound:
-   426 0000705B BB41000000          <1>     mov ebx, 41h    ;Set bit 6 and bit 0
-   427 00007060 EBD8                <1>     jmp short .okToScan
-   428                              <1> .wcCheck:
-   429                              <1> ;This is to check we havent had any WC's upon hitting a pathsep
-   430 00007062 F7C340000000        <1>     test ebx, 40h
-   431 00007068 74D0                <1>     jz .okToScan    ;Clearly al is not a WC, so goto next char now
-   432                              <1>     ;Else fall through in error
-   433                              <1> .badExit:
-   434 0000706A BB01000000          <1>     mov ebx, 1  ;Totally clear ZF and set CF
-   435                              <1> .exit:
-   436 0000706F 53                  <1>     push rbx    ;Set bit 0 for CF and bit 6 for ZF
-   437 00007070 9D                  <1>     popfq
-   438 00007071 5E                  <1>     pop rsi
-   439 00007072 5B                  <1>     pop rbx
-   440 00007073 58                  <1>     pop rax
-   441                              <1>     return
+   364                              <1> checkPathspecOK:
+   365                              <1> ;Input:
+   366                              <1> ;rsi -> points to a path to verify if it is ok.
+   367                              <1> ;Output:
+   368                              <1> ;CF=NC => The path is totally clean and ok to use.
+   369                              <1> ;CF=CY => the path is malformed or longer than 64 chars.
+   370                              <1> ; If CF=CY and ZF=ZE then wildcards were found in the last portion
+   371                              <1> ; and depending on method of invokation and caller, may be permissable.
+   372                              <1> ;We accept lc and uc characters in this check function.
+   373 00006FE1 50                  <1>     push rax
+   374 00006FE2 53                  <1>     push rbx    ;Use rbx as the return flag status
+   375 00006FE3 56                  <1>     push rsi
+   376 00006FE4 31DB                <1>     xor ebx, ebx    ;Clear the return status flags
+   377                              <1>     ;Start by getting the length of the ASCIIZ string.
+   378 00006FE6 51                  <1>     push rcx
+   379 00006FE7 57                  <1>     push rdi
+   380 00006FE8 4889F7              <1>     mov rdi, rsi
+   381 00006FEB E88EFFFFFF          <1>     call strlen
+   382 00006FF0 81F940000000        <1>     cmp ecx, 64    ;Check
+   383 00006FF6 5F                  <1>     pop rdi
+   384 00006FF7 59                  <1>     pop rcx
+   385 00006FF8 7770                <1>     ja .badExit ;Above 64 only as the count includes the terminating null
+   386                              <1>     ;First we verify if our path is relative or canonical (absolute)
+   387 00006FFA 668B06              <1>     mov ax, word [rsi]  ;Get the first two chars
+   388 00006FFD 663D5C5C            <1>     cmp ax, "\\"    ;UNC network start
+   389 00007001 7416                <1>     je .netName
+   390 00007003 663D2F2F            <1>     cmp ax, "//"    ;Also acceptable UNC network start
+   391 00007007 7410                <1>     je .netName
+   392 00007009 80FC3A              <1>     cmp ah, ":" ;Is this a full or CWD of drive letter relative disk path?
+   393 0000700C 7414                <1>     je .diskPath    ;Need to check if the char preceeding is an ASCII drive char
+   394                              <1>     ;Here if relative
+   395 0000700E F605(01070000)FF    <1>     test byte [dosInvoke], -1
+   396 00007015 7553                <1>     jnz .badExit    ;If this is -1, server invoke.
+   397 00007017 EB21                <1>     jmp short .okToScan
+   398                              <1> .netName:
+   399 00007019 4881C602000000      <1>     add rsi, 2  ;Goto the first char after the UNC start symbol
+   400 00007020 EB18                <1>     jmp short .okToScan
+   401                              <1> .diskPath:
+   402 00007022 4881C602000000      <1>     add rsi, 2  ;Go past the X:
+   403 00007029 F605(01070000)FF    <1>     test byte [dosInvoke], -1    ;If this is minus 1, this is a server invoke
+   404 00007030 7408                <1>     jz .okToScan
+   405 00007032 AC                  <1>     lodsb   ;Get the third byte. It MUST be a pathsep if server invokation.
+   406 00007033 E808FFFFFF          <1>     call swapPathSeparator
+   407 00007038 7530                <1>     jnz .badExit    ;If ZF=NZ => Not a pathsep, bad path
+   408                              <1> .okToScan:
+   409 0000703A AC                  <1>     lodsb   
+   410 0000703B 84C0                <1>     test al, al ;End of path char?
+   411 0000703D 7430                <1>     jz .exit
+   412 0000703F E8FCFEFFFF          <1>     call swapPathSeparator
+   413 00007044 741C                <1>     jz .wcCheck ;If it was a pathsep, ensure no WC's have been detected
+   414 00007046 3C2A                <1>     cmp al, "*" ;Was al a big wildcard?
+   415 00007048 7411                <1>     je .wcFound
+   416 0000704A 3C3F                <1>     cmp al, "?" ;Was al a small wildcard?
+   417 0000704C 740D                <1>     je .wcFound ;If al was a wildcard, proceed as for wildcard
+   418                              <1>     ;Else we check that the char in al is an acceptable char
+   419 0000704E 3C2E                <1>     cmp al, "." ;Ensure that dots are allowed through this part check
+   420 00007050 74E8                <1>     je .okToScan
+   421 00007052 E831000000          <1>     call checkCharValid
+   422 00007057 7411                <1>     jz .badExit ;If the char is invalid, exit immediately badly
+   423 00007059 EBDF                <1>     jmp short .okToScan
+   424                              <1> .wcFound:
+   425 0000705B BB41000000          <1>     mov ebx, 41h    ;Set bit 6 and bit 0
+   426 00007060 EBD8                <1>     jmp short .okToScan
+   427                              <1> .wcCheck:
+   428                              <1> ;This is to check we havent had any WC's upon hitting a pathsep
+   429 00007062 F7C340000000        <1>     test ebx, 40h
+   430 00007068 74D0                <1>     jz .okToScan    ;Clearly al is not a WC, so goto next char now
+   431                              <1>     ;Else fall through in error
+   432                              <1> .badExit:
+   433 0000706A BB01000000          <1>     mov ebx, 1  ;Totally clear ZF and set CF
+   434                              <1> .exit:
+   435 0000706F 53                  <1>     push rbx    ;Set bit 0 for CF and bit 6 for ZF
+   436 00007070 9D                  <1>     popfq
+   437 00007071 5E                  <1>     pop rsi
+   438 00007072 5B                  <1>     pop rbx
+   439 00007073 58                  <1>     pop rax
+   440                              <1>     return
     13                              <2> %%_ret:
     14 00007074 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   442                              <1> 
-   443                              <1> scanPathWC:
-   444                              <1> ;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
-   445                              <1> ; even in the final path componant.
-   446                              <1> ;Input: rsi = Pointer to the ASCIIZ filename
-   447                              <1> ;Output: CF=NC => No wildcards present
-   448                              <1> ;        CF=CY => Wildcards found
-   449 00007075 50                  <1>     push rax
-   450 00007076 56                  <1>     push rsi
-   451                              <1> .scan:
-   452 00007077 AC                  <1>     lodsb
-   453 00007078 84C0                <1>     test al, al
-   454 0000707A 7409                <1>     jz .exit
-   455 0000707C 3C3F                <1>     cmp al, "?"
-   456 0000707E 7404                <1>     je .wcFnd
-   457 00007080 3C2A                <1>     cmp al, "*"
-   458 00007082 75F3                <1>     jne .scan
-   459                              <1> .wcFnd:
-   460 00007084 F9                  <1>     stc
-   461                              <1> .exit:
-   462 00007085 5E                  <1>     pop rsi
-   463 00007086 58                  <1>     pop rax
-   464                              <1>     return
+   441                              <1> 
+   442                              <1> scanPathWC:
+   443                              <1> ;Scans a path for wildcards. Used in cases where wildcards cannot be permitted
+   444                              <1> ; even in the final path componant.
+   445                              <1> ;Input: rsi = Pointer to the ASCIIZ filename
+   446                              <1> ;Output: CF=NC => No wildcards present
+   447                              <1> ;        CF=CY => Wildcards found
+   448 00007075 50                  <1>     push rax
+   449 00007076 56                  <1>     push rsi
+   450                              <1> .scan:
+   451 00007077 AC                  <1>     lodsb
+   452 00007078 84C0                <1>     test al, al
+   453 0000707A 7409                <1>     jz .exit
+   454 0000707C 3C3F                <1>     cmp al, "?"
+   455 0000707E 7404                <1>     je .wcFnd
+   456 00007080 3C2A                <1>     cmp al, "*"
+   457 00007082 75F3                <1>     jne .scan
+   458                              <1> .wcFnd:
+   459 00007084 F9                  <1>     stc
+   460                              <1> .exit:
+   461 00007085 5E                  <1>     pop rsi
+   462 00007086 58                  <1>     pop rax
+   463                              <1>     return
     13                              <2> %%_ret:
     14 00007087 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   465                              <1> 
-   466                              <1> checkCharValid:
-   467                              <1> ;If ZF=ZE => Invalid Char
-   468                              <1> ;If ZF=NZ => Valid Char
-   469 00007088 51                  <1>     push rcx
-   470 00007089 57                  <1>     push rdi
-   471 0000708A 3A05A092FFFF        <1>     cmp al, byte [fileTermTblExt.startBadRange]
-   472 00007090 721B                <1>     jb .setZeroFlag
-   473 00007092 3A059992FFFF        <1>     cmp al, byte [fileTermTblExt.endBadRange] 
-   474 00007098 7613                <1>     jbe .setZeroFlag
-   475 0000709A 0FB60D9292FFFF      <1>     movzx ecx, byte [fileTermTbl]
-   476 000070A1 488D3D8C92FFFF      <1>     lea rdi, fileTermTbl + 1
-   477 000070A8 F2AE                <1>     repne scasb
-   478                              <1> .exit:
-   479 000070AA 5F                  <1>     pop rdi
-   480 000070AB 59                  <1>     pop rcx
-   481                              <1>     return
+   464                              <1> 
+   465                              <1> checkCharValid:
+   466                              <1> ;If ZF=ZE => Invalid Char
+   467                              <1> ;If ZF=NZ => Valid Char
+   468 00007088 51                  <1>     push rcx
+   469 00007089 57                  <1>     push rdi
+   470 0000708A 3A05A092FFFF        <1>     cmp al, byte [fileTermTblExt.startBadRange]
+   471 00007090 721B                <1>     jb .setZeroFlag
+   472 00007092 3A059992FFFF        <1>     cmp al, byte [fileTermTblExt.endBadRange] 
+   473 00007098 7613                <1>     jbe .setZeroFlag
+   474 0000709A 0FB60D9292FFFF      <1>     movzx ecx, byte [fileTermTbl]
+   475 000070A1 488D3D8C92FFFF      <1>     lea rdi, fileTermTbl + 1
+   476 000070A8 F2AE                <1>     repne scasb
+   477                              <1> .exit:
+   478 000070AA 5F                  <1>     pop rdi
+   479 000070AB 59                  <1>     pop rcx
+   480                              <1>     return
     13                              <2> %%_ret:
     14 000070AC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   482                              <1> .setZeroFlag:
-   483 000070AD 31C9                <1>     xor ecx, ecx    ;Clear CF too
-   484 000070AF EBF9                <1>     jmp short .exit
-   485                              <1> 
-   486                              <1> ;checkCharValid:
-   487                              <1> ;If ZF=ZE => Invalid Char
-   488                              <1> ;If ZF=NZ => Valid Char
-   489                              <1>     ;push rcx
-   490                              <1>     ;push rdi
-   491                              <1>     ;mov ecx, badDirNameCharL    ;Get table length
-   492                              <1>     ;lea rdi, badDirNameChar ;Point to bad char table
-   493                              <1>     ;repne scasb ;Scan. Stop when equal
-   494                              <1>     ;pop rdi
-   495                              <1>     ;pop rcx
-   496                              <1>     ;return
+   481                              <1> .setZeroFlag:
+   482 000070AD 31C9                <1>     xor ecx, ecx    ;Clear CF too
+   483 000070AF EBF9                <1>     jmp short .exit
+   484                              <1> 
+   485                              <1> ;checkCharValid:
+   486                              <1> ;If ZF=ZE => Invalid Char
+   487                              <1> ;If ZF=NZ => Valid Char
+   488                              <1>     ;push rcx
+   489                              <1>     ;push rdi
+   490                              <1>     ;mov ecx, badDirNameCharL    ;Get table length
+   491                              <1>     ;lea rdi, badDirNameChar ;Point to bad char table
+   492                              <1>     ;repne scasb ;Scan. Stop when equal
+   493                              <1>     ;pop rdi
+   494                              <1>     ;pop rcx
+   495                              <1>     ;return
+   496                              <1> 
    497                              <1> 
-   498                              <1> 
-   499                              <1> skipSpacesAndTabs:
-   500                              <1> ;Input: rsi -> String 
-   501                              <1> ;Output: rsi -> First non Space or Tab type char
-   502 000070B1 AC                  <1>     lodsb
-   503 000070B2 E815000000          <1>     call isCharSpaceType
-   504 000070B7 74F8                <1>     jz skipSpacesAndTabs
-   505 000070B9 48FFCE              <1>     dec rsi
-   506                              <1>     return
+   498                              <1> skipSpacesAndTabs:
+   499                              <1> ;Input: rsi -> String 
+   500                              <1> ;Output: rsi -> First non Space or Tab type char
+   501 000070B1 AC                  <1>     lodsb
+   502 000070B2 E815000000          <1>     call isCharSpaceType
+   503 000070B7 74F8                <1>     jz skipSpacesAndTabs
+   504 000070B9 48FFCE              <1>     dec rsi
+   505                              <1>     return
     13                              <2> %%_ret:
     14 000070BC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   507                              <1> 
-   508                              <1> isCharDelimType:
-   509                              <1> ;Input: al = Char to check properties of
-   510                              <1> ;Output:    ZF=NZ => Char not name delimiter
-   511                              <1> ;           ZF=ZE => Char delimiter
-   512 000070BD 50                  <1>     push rax
-   513 000070BE 53                  <1>     push rbx
-   514 000070BF 488D1D9693FFFF      <1>     lea rbx, asciiCharProperties
-   515 000070C6 D7                  <1>     xlatb
-   516 000070C7 A802                <1>     test al, 2
-   517 000070C9 5B                  <1>     pop rbx
-   518 000070CA 58                  <1>     pop rax
-   519                              <1>     return
+   506                              <1> 
+   507                              <1> isCharDelimType:
+   508                              <1> ;Input: al = Char to check properties of
+   509                              <1> ;Output:    ZF=NZ => Char not name delimiter
+   510                              <1> ;           ZF=ZE => Char delimiter
+   511 000070BD 50                  <1>     push rax
+   512 000070BE 53                  <1>     push rbx
+   513 000070BF 488D1D9693FFFF      <1>     lea rbx, asciiCharProperties
+   514 000070C6 D7                  <1>     xlatb
+   515 000070C7 A802                <1>     test al, 2
+   516 000070C9 5B                  <1>     pop rbx
+   517 000070CA 58                  <1>     pop rax
+   518                              <1>     return
     13                              <2> %%_ret:
     14 000070CB C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   520                              <1> 
-   521                              <1> isCharSpaceType:
-   522                              <1> ;Input: al = Char to check properties of
-   523                              <1> ;Output:    ZF=NZ => Char not Space or Tab
-   524                              <1> ;           ZF=ZE => Char Space or Tab
-   525 000070CC 50                  <1>     push rax
-   526 000070CD 53                  <1>     push rbx
-   527 000070CE 488D1D8793FFFF      <1>     lea rbx, asciiCharProperties
-   528 000070D5 D7                  <1>     xlatb
-   529 000070D6 A804                <1>     test al, 4
-   530 000070D8 5B                  <1>     pop rbx
-   531 000070D9 58                  <1>     pop rax
-   532                              <1>     return
+   519                              <1> 
+   520                              <1> isCharSpaceType:
+   521                              <1> ;Input: al = Char to check properties of
+   522                              <1> ;Output:    ZF=NZ => Char not Space or Tab
+   523                              <1> ;           ZF=ZE => Char Space or Tab
+   524 000070CC 50                  <1>     push rax
+   525 000070CD 53                  <1>     push rbx
+   526 000070CE 488D1D8793FFFF      <1>     lea rbx, asciiCharProperties
+   527 000070D5 D7                  <1>     xlatb
+   528 000070D6 A804                <1>     test al, 4
+   529 000070D8 5B                  <1>     pop rbx
+   530 000070D9 58                  <1>     pop rax
+   531                              <1>     return
     13                              <2> %%_ret:
     14 000070DA C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   533                              <1> 
-   534                              <1> compareFarPointers: ;Int 2Fh, AX = 1214h
-   535                              <1> ;Compare if two pointers are equal. A layover from the era of far pointers.
-   536                              <1> ;Input: rsi = One pointer
-   537                              <1> ;       rdi = Second pointer
-   538                              <1> ;Output: ZF=ZE if equal
-   539                              <1> ;        ZF=NZ if not
-   540 000070DB 4839FE              <1>     cmp rsi, rdi
-   541                              <1>     return
+   532                              <1> 
+   533                              <1> compareFarPointers: ;Int 2Fh, AX = 1214h
+   534                              <1> ;Compare if two pointers are equal. A layover from the era of far pointers.
+   535                              <1> ;Input: rsi = One pointer
+   536                              <1> ;       rdi = Second pointer
+   537                              <1> ;Output: ZF=ZE if equal
+   538                              <1> ;        ZF=NZ if not
+   539 000070DB 4839FE              <1>     cmp rsi, rdi
+   540                              <1>     return
     13                              <2> %%_ret:
     14 000070DE C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   542                              <1> 
-   543                              <1> checkPathNet:
-   544                              <1> ;Input: rsi = Start of path to check if it starts with two slashes
-   545                              <1> ;Output: ZF=ZE => Path is a net path
-   546                              <1> ;        ZF=NZ => Path is not a net path
-   547 000070DF 50                  <1>     push rax
-   548 000070E0 0FB706              <1>     movzx eax, word [rsi]    ;Get the first two chars of the path
-   549 000070E3 E858FEFFFF          <1>     call swapPathSeparator
-   550 000070E8 7505                <1>     jnz .exit
-   551 000070EA E851FEFFFF          <1>     call swapPathSeparator  ;ZF=ZE if net path
-   552                              <1> .exit:
-   553 000070EF 58                  <1>     pop rax
-   554                              <1>     return
+   541                              <1> 
+   542                              <1> checkPathNet:
+   543                              <1> ;Input: rsi = Start of path to check if it starts with two slashes
+   544                              <1> ;Output: ZF=ZE => Path is a net path
+   545                              <1> ;        ZF=NZ => Path is not a net path
+   546 000070DF 50                  <1>     push rax
+   547 000070E0 0FB706              <1>     movzx eax, word [rsi]    ;Get the first two chars of the path
+   548 000070E3 E858FEFFFF          <1>     call swapPathSeparator
+   549 000070E8 7505                <1>     jnz .exit
+   550 000070EA E851FEFFFF          <1>     call swapPathSeparator  ;ZF=ZE if net path
+   551                              <1> .exit:
+   552 000070EF 58                  <1>     pop rax
+   553                              <1>     return
     13                              <2> %%_ret:
     14 000070F0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   555                              <1> 
-   556                              <1> getCharDevDriverPtr:
-   557                              <1> ;Gets a pointer to the char device driver header with the 8 char name in rax
-   558                              <1> ;Input: rax = Device Driver name (space padded)
-   559                              <1> ;Output: rdi = Ptr to the header, -1 => Invalid filename and CF=CY
-   560 000070F1 488D3D(7A000000)    <1>     lea rdi, nulDevHdr  ;Point to the start of the chain
-   561                              <1> .lp:
-   562 000070F8 4839471A            <1>     cmp qword [rdi + drvHdr.drvNam], rax
-   563                              <1>     rete    ;Exit if equal
+   554                              <1> 
+   555                              <1> getCharDevDriverPtr:
+   556                              <1> ;Gets a pointer to the char device driver header with the 8 char name in rax
+   557                              <1> ;Input: rax = Device Driver name (space padded)
+   558                              <1> ;Output: rdi = Ptr to the header, -1 => Invalid filename and CF=CY
+   559 000070F1 488D3D(7A000000)    <1>     lea rdi, nulDevHdr  ;Point to the start of the chain
+   560                              <1> .lp:
+   561 000070F8 4839471A            <1>     cmp qword [rdi + drvHdr.drvNam], rax
+   562                              <1>     rete    ;Exit if equal
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -19081,29 +19080,29 @@
     35                              <3>  return
     36                              <3> %%a:
     37                              <3>  %endif
-   564 000070FE 488B3F              <1>     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto next header
-   565 00007101 4881FFFFFFFFFF      <1>     cmp rdi, -1 ;End of chain?
-   566 00007108 75EE                <1>     jne .lp ;If not loop
-   567 0000710A F9                  <1>     stc ;Else bad exit
-   568                              <1>     return
+   563 000070FE 488B3F              <1>     mov rdi, qword [rdi + drvHdr.nxtPtr]    ;Goto next header
+   564 00007101 4881FFFFFFFFFF      <1>     cmp rdi, -1 ;End of chain?
+   565 00007108 75EE                <1>     jne .lp ;If not loop
+   566 0000710A F9                  <1>     stc ;Else bad exit
+   567                              <1>     return
     13                              <2> %%_ret:
     14 0000710B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   569                              <1> 
-   570                              <1> getDrvChain: ;Int 2Fh, AX=122Ch
-   571                              <1> ;Pointer to the first non-null device driver in the chain.
-   572                              <1> ;Returns the value in rax only
-   573 0000710C 488D05(7A000000)    <1>     lea rax, nulDevHdr
-   574 00007113 488B00              <1>     mov rax, qword [rax + drvHdr.nxtPtr]    ;Get the pointer at null driver
-   575                              <1>     return
+   568                              <1> 
+   569                              <1> getDrvChain: ;Int 2Fh, AX=122Ch
+   570                              <1> ;Pointer to the first non-null device driver in the chain.
+   571                              <1> ;Returns the value in rax only
+   572 0000710C 488D05(7A000000)    <1>     lea rax, nulDevHdr
+   573 00007113 488B00              <1>     mov rax, qword [rax + drvHdr.nxtPtr]    ;Get the pointer at null driver
+   574                              <1>     return
     13                              <2> %%_ret:
     14 00007116 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   576                              <1> 
-   577                              <1> getExtErrCde:   ;Int 2Fh, AX=122Dh
-   578                              <1> ;Gets the extended error code in ax and returns
-   579 00007117 668B05(0B040000)    <1>     mov ax, word [errorExCde]
-   580                              <1>     return
+   575                              <1> 
+   576                              <1> getExtErrCde:   ;Int 2Fh, AX=122Dh
+   577                              <1> ;Gets the extended error code in ax and returns
+   578 00007117 668B05(0B040000)    <1>     mov ax, word [errorExCde]
+   579                              <1>     return
     13                              <2> %%_ret:
     14 0000711E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$

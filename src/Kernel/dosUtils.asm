@@ -350,7 +350,6 @@ compareFileNames:   ;Int 2Fh, AX=121Eh
     call .normaliseChar
     cmp al, ah  ;Are they equal?
     jne .exit   ;If not equal, exit
-;Keep searching until a null char is found
     test al, al ;Here al=ah. If al == 0, exit!
     jnz .scan
 .exit:
