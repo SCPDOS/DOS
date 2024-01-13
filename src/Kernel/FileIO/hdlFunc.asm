@@ -1505,6 +1505,8 @@ buildSFTEntry:
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev
+    test byte [curDirCopy + fatDirEntry.attribute], directoryFile
+    jnz .bad    ;Make sure we are not recreating a directory as a file!
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
