@@ -2056,7 +2056,7 @@ readExitOk:
 writeBytes:
 ;Writes the bytes from the user buffer
 ;Input: ecx = Bytes to xfr
-;Returns number of bytes written in ecx
+;Returns number of bytes written in ecx if CF=NC
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
     and al, 0Fh ;Eliminate except access mode
@@ -2314,7 +2314,17 @@ writeDiskFile:
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
-
+;If the user wants to not buffer their writes but push them to disk immediately,
+; they can do so here!
+    mov rsi, qword [currentSFT]
+    test byte [rsi + sft.wOpenMode], noBufferWrites
+    jz .noWriteThru 
+    push rdi
+    mov rdi, qword [currBuff]
+    call flushAndFreeBuffer
+    pop rdi
+    jc .exitPrepHardErr
+.noWriteThru:
     mov rsi, qword [currBuff]    ;Get current disk buffer
     lea rsi, qword [rsi + bufferHdr.dataarea]   ;Shift the ptr to the first data byte
     movzx ebx, word [rbp + dpb.wBytesPerSector] 
@@ -2342,12 +2352,18 @@ writeDiskFile:
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
     jc .exitPrepHardErr
     cmp eax, -1
-    mov eax, errAccDen
-    je .exitPrepHardErr
+    je .noMoreClusters
 .noExtend:
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
     jmp .mainWrite
+.noMoreClusters:
+    push rsi
+    mov rsi, qword [currentSFT]
+    test word [rsi + sft.wOpenMode], diskFullFail
+    pop rsi
+    jz .badExit
+    ;Here we future proof for triggering Int 24h.
 .badExit:
     mov eax, errAccDen
 .exitPrepHardErr:
