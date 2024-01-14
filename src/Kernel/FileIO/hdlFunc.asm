@@ -2317,7 +2317,7 @@ writeDiskFile:
 ;If the user wants to not buffer their writes but push them to disk immediately,
 ; they can do so here!
     mov rsi, qword [currentSFT]
-    test byte [rsi + sft.wOpenMode], noBufferWrites
+    test word [rsi + sft.wOpenMode], noBufferWrites
     jz .noWriteThru 
     push rdi
     mov rdi, qword [currBuff]

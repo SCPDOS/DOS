@@ -141,17 +141,18 @@ mainCharIO:
 .prepDiskNetIO:
 ;Set up the currentDTA to the internal buffer
 ;We use this here only so we can tweak it for this purpose
-    pop qword [altRet]
+    pop qword [altRet]  ;Pop the ret addr here
     call dosPushRegs
     push qword [currentDTA]
     lea rcx, singleIObyt   ;Get the buffer ptr
     mov qword [currentDTA], rcx ;and use it as the current DTA
+    mov qword [currentSFT], rsi ;Set this sft ptr as the current SFT
     xor ecx, ecx
     inc ecx ;IO 1 byte only
 .cleanDNIOReturn:
     jmp qword [altRet]
 .cleanDiskNetIO:
-    pop qword [altRet]
+    pop qword [altRet]  ;Pop the ret addr here
     pop qword [currentDTA]
     call dosPopRegs
     jmp short .cleanDNIOReturn
