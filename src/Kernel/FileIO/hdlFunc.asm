@@ -2314,6 +2314,7 @@ writeDiskFile:
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
+    pop rsi
 ;If the user wants to not buffer their writes but push them to disk immediately,
 ; they can do so here!
     mov rsi, qword [currentSFT]
@@ -2325,12 +2326,6 @@ writeDiskFile:
     pop rdi
     jc .exitPrepHardErr
 .noWriteThru:
-    mov rsi, qword [currBuff]    ;Get current disk buffer
-    lea rsi, qword [rsi + bufferHdr.dataarea]   ;Shift the ptr to the first data byte
-    movzx ebx, word [rbp + dpb.wBytesPerSector] 
-    add rsi, rbx    ;Point rsi to the end of the disk buffer
-    cmp rdi, rsi    ;If current pos - end < 0, jump
-    pop rsi
     mov eax, dword [tfrLen] ;Get total length
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
