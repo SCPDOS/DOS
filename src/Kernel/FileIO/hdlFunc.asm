@@ -377,7 +377,6 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov eax, errPnf
     jmp extErrExit
 .pathspecOk:
-    ;breakpoint
     push qword [currentDTA]
     lea rdi, dosffblock ;Use the dosFFblock as the DTA
     mov qword [currentDTA], rdi
@@ -1959,6 +1958,7 @@ readDiskFile:
     jnc .shareCheck ;IF the user selected retry, lets try again
     return  ;Otherwise, return with the share error code in eax and CF=CY
 .shareOk:
+    call markBuffersAsUnreferencedWrapper
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
     jz .skipWalk
@@ -2211,6 +2211,8 @@ writeDiskFile:
     jnc .nonZeroWrite   ;If returned retry, retry the request
     return  ;Else return with CF=CY
 .proceedWithWrite:
+;Ensure that all buffers are now unreferenced
+    call markBuffersAsUnreferencedWrapper
     xor ebx, ebx
     mov dword [bytesAppend], ebx    ;Used for file extends (not writes!)
     mov byte [fileGrowing], bl   ;Reset the file growth flag!
@@ -2307,7 +2309,7 @@ writeDiskFile:
     push rcx
     rep movsb
     pop rcx
-    call markBufferDirty   ;Preserves all CPU state 
+    call markBufferDirty   ;Preserves all CPU state, this buffer is now dirty
 
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
@@ -2319,10 +2321,6 @@ writeDiskFile:
     add rsi, rbx    ;Point rsi to the end of the disk buffer
     cmp rdi, rsi    ;If current pos - end < 0, jump
     pop rsi
-    jb short .skipWritethrough
-    call writeThroughBuffer ;Write thru this disk buffer now it is full
-    jc .exitPrepHardErr
-.skipWritethrough:
     mov eax, dword [tfrLen] ;Get total length
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
@@ -2350,21 +2348,27 @@ writeDiskFile:
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
     jmp .mainWrite
+.badExit:
+    mov eax, errAccDen
 .exitPrepHardErr:
-    push rax    ;Save error code
-    call writeExit
-    pop rax
-.badExitHard:    ;AL has error code already
-    call cancelWriteThroughBuffers
-    mov eax, 1  ;Give it one last update of the data in the directory!
-    call qword [updateDirShare]
+;Here we take stock of the buffers that are dirty and referenced. All dirty 
+; buffers get freed. We do NOT update the SFT or the dir entry for this file
+; write.
+    mov rdi, qword [bufHeadPtr]
+.badExitLp:
+    mov cl, byte [rdi + bufferHdr.bufferFlags]
+    and cl, refBuffer | dirtyBuffer
+    jz .badExitGotoNextBuffer
+    test cl, refBuffer  ;Don't touch dirty buffers that are not ours
+    jz .badExitGotoNextBuffer
+    ;Here the ref and dirty bits are set, we lose this data
+    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
+.badExitGotoNextBuffer:
+    call makeBufferMostRecentlyUsedGetNext  ;Push to front of list, get next
+    cmp rdi, -1
+    jne .badExitLp
     stc
     return
-.badExit:
-;Might need to do some weird stuff later. Leave for now
-    mov eax, errAccDen
-    jmp short .badExitHard
-
 .noByteExit:
     mov eax, 2  ;Update last accessed fields of SFT
     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after

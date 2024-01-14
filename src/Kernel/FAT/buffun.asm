@@ -39,6 +39,14 @@ flushAndFreeBuffer:         ;Int 2Fh AX=1209h
 .exit:
     return
 
+markBuffersAsUnreferencedWrapper:
+;Marks all buffers as unreferenced (clears the reference bit from all buffers)
+; and preserves rdi
+    push rdi
+    call markBuffersAsUnreferenced
+    pop rdi
+    return
+
 markBuffersAsUnreferenced:  ;Int 2Fh AX=120Eh
 ;Marks all buffers as unreferenced (clears the reference bit from all buffers)
 ;Output: rdi = First disk buffer
@@ -269,7 +277,10 @@ getBuffer: ;Internal Linkage ONLY
     pop rsi
     pop rdx
     pop rcx
+    pushfq
     mov rbx, qword [currBuff]   ;Get current buffer
+    or byte [rbx + bufferHdr.bufferFlags], refBuffer    ;Mark as referenced!
+    popfq
     return
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
