@@ -35,7 +35,7 @@ flushAndFreeBuffer:         ;Int 2Fh AX=1209h
     call flushBuffer
     jc .exit
     ;Free the buffer if it was flushed successfully (CF=NC)
-    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer   ;Free buffer and clear flags
 .exit:
     return
 
@@ -186,7 +186,7 @@ freeBuffersForDPB:  ;External Linkage (Before Get BPB in medchk)
 .i0:
     cmp qword [rbx + bufferHdr.driveDPBPtr], rbp  ;Chosen DPB?
     jne .i1 ;If no, skip freeing
-    mov word [rbx + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
+    mov word [rbx + bufferHdr.driveNumber], freeBuffer  ;Free buffer and clear flags
 .i1:
     mov rbx, qword [rbx + bufferHdr.nextBufPtr] ;goto next buffer
     cmp rbx, -1
@@ -202,11 +202,17 @@ writeThroughBuffer: ;External linkage
 ;          CF=CY => Buffer failed to flush, marked as dirty and return 
     push rdi
     mov rdi, qword [currBuff]
-    call flushBuffer
-    jc short .exit
-    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
-.exit:
+    call writeThroughBufferPrimitive
     pop rdi
+    return
+
+writeThroughBufferPrimitive:
+; Input: rdi -> Buffer to flush
+;Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
+;         CF=CY => Buffer failed to flush, left possibly dirty and/or referenced
+    call flushBuffer
+    retc
+    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
     return
 ;******* NEW BUFFER HANDLING *******
 
@@ -353,7 +359,7 @@ readSectorBuffer:   ;Internal Linkage
 ;This function is called in a critical section so the buffer pointer
 ; is under no thread of being reallocated.
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    mov word [rdi + bufferHdr.driveNumber], 0FFFh ;Free buffer and clear dirty/ref bits
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer and clear dirty/ref bits
     mov byte [Int24bitfld], critRead    ;Set the initial bitfield to read req
     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry
@@ -527,7 +533,7 @@ flushFile:
 ; We flush and free, and set to head of chain before continuing to search
 ;Input: rdi = is the file (sft) we wish to flush
 ;Output: CF=NC => All ok
-;        CF=CY => A sector failed, exit. 
+;        CF=CY => A sector failed, exit.
     push rdi
     push rsi
     ;First check if the file has been written to?
@@ -556,7 +562,7 @@ flushFile:
 .found:
 ;Here we take the old next buffer, then flush and free the current buffer
 ; then return the old next buffer into rdi and go back to ffLoop
-    call flushAndFreeBuffer ;Flush and free buffer
+    call writeThroughBufferPrimitive ;Flush and free buffer
     jc .exitNoFlush    ;Exit preserving CF
     ;If the sector has been successfully flushed, then it
     ; is no longer owned by that File so we mark the owner as none

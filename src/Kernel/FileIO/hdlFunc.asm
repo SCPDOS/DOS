@@ -2364,7 +2364,7 @@ writeDiskFile:
     test cl, refBuffer  ;Don't touch dirty buffers that are not ours
     jz .badExitGotoNextBuffer
     ;Here the ref and dirty bits are set, we lose this data
-    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer   ;Free buffer and clear flags
 .badExitGotoNextBuffer:
     call makeBufferMostRecentlyUsedGetNext  ;Push to front of list, get next
     cmp rdi, -1

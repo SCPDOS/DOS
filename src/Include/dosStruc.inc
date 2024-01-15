@@ -223,6 +223,7 @@ dirBuffer   equ 4h  ;Directory sector in buffer
 dataBuffer  equ 8h  ;File Data sector in buffer
 refBuffer   equ 20h ;Data in buffer has been referenced by an application
 dirtyBuffer equ 40h ;Data in buffer modified by an application
+freeBuffer  equ 00FFh   ;A word which goes into the drive number to clear both fields
 ;Note! A buffer is marked as referenced only when the application 
 ; is done with that buffer OR if a hard error has occured (both read and write)
 ;------------------------------------------------------------------------;
