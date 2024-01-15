@@ -2285,6 +2285,7 @@ writeDiskFile:
     call checkBreak
     pop rax
 .mainWriteNoBreak:
+;Must intervene here for direct writes (if the handle specifies no buffering)
     call getBufForData  ;Get bufHdr ptr in rbx and currBuff var for sector in rax
     jc .badExit
     lea rdi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rdi
@@ -2315,17 +2316,7 @@ writeDiskFile:
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
     pop rsi
-;If the user wants to not buffer their writes but push them to disk immediately,
-; they can do so here!
-    mov rsi, qword [currentSFT]
-    test word [rsi + sft.wOpenMode], noBufferWrites
-    jz .noWriteThru 
-    push rdi
-    mov rdi, qword [currBuff]
-    call flushAndFreeBuffer
-    pop rdi
-    jc .exitPrepHardErr
-.noWriteThru:
+
     mov eax, dword [tfrLen] ;Get total length
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
