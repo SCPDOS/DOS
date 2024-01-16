@@ -266,7 +266,8 @@ ensureDiskValid:
     jne .skipDirtyCheck
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is this dirty?
     je .dirtyBufferError
-    mov word [rdi + bufferHdr.driveNumber], freeBuffer  ;Set reference bit and drive to free
+    ;Set reference bit and drive to free
+    mov word [rdi + bufferHdr.driveNumber], (refBuffer << 8) | freeBuffer 
     call makeBufferMostRecentlyUsedGetNext  ;Move this up, get next buffer
 .skipDirtyCheck:
     call findUnreferencedBuffer ;Get the next unreferenced buffer

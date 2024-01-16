@@ -33,10 +33,9 @@ flushAndFreeBuffer:         ;Int 2Fh AX=1209h
 ;1 External reference
 ;Input: rdi = Buffer header to flush and free
     call flushBuffer
-    jc .exit
+    retc
     ;Free the buffer if it was flushed successfully (CF=NC)
     mov word [rdi + bufferHdr.driveNumber], freeBuffer   ;Free buffer and clear flags
-.exit:
     return
 
 markBuffersAsUnreferencedWrapper:
@@ -195,18 +194,8 @@ freeBuffersForDPB:  ;External Linkage (Before Get BPB in medchk)
     pop rbx
     return
 
-;******* NEW BUFFER HANDLING *******
-writeThroughBuffer: ;External linkage
-; Flushes the current disk buffer to disk.
-; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
-;          CF=CY => Buffer failed to flush, marked as dirty and return 
-    push rdi
-    mov rdi, qword [currBuff]
-    call writeThroughBufferPrimitive
-    pop rdi
-    return
 
-writeThroughBufferPrimitive:
+writeThroughBuffer:
 ; Input: rdi -> Buffer to flush
 ;Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
 ;         CF=CY => Buffer failed to flush, left possibly dirty and/or referenced
@@ -214,7 +203,6 @@ writeThroughBufferPrimitive:
     retc
     and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
     return
-;******* NEW BUFFER HANDLING *******
 
 writeThroughBuffers:    ;External linkage
 ; Flushes and resets the dirty bit for all dirty bufs for working drive
@@ -229,9 +217,8 @@ writeThroughBuffers:    ;External linkage
     je .exit   
     cmp qword [rdi + bufferHdr.driveDPBPtr], rax  ;Compare dpb numbers
     jne .nextBuffer
-    call flushBuffer    ;Flush this buffer if it on dpb we want
-    jc .exit  ;If something went wrong, exit
-    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
+    call writeThroughBuffer    ;Flush this buffer if it is on the DPB we want
+    jc .exit    ;Exit if something went wrong!
 .nextBuffer:
     mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
     jmp short .mainLp
@@ -562,7 +549,7 @@ flushFile:
 .found:
 ;Here we take the old next buffer, then flush and free the current buffer
 ; then return the old next buffer into rdi and go back to ffLoop
-    call writeThroughBufferPrimitive ;Flush and free buffer
+    call writeThroughBuffer ;Flush buffer and mark as not dirty
     jc .exitNoFlush    ;Exit preserving CF
     ;If the sector has been successfully flushed, then it
     ; is no longer owned by that File so we mark the owner as none
