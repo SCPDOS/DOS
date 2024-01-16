@@ -264,6 +264,7 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
+    call makeBufferMostRecentlyUsed
     clc
 .rbExit:
     pop rdi
@@ -517,7 +518,7 @@ getBufCommon:
 flushFile:
 ;We search the chain for buffers with the currentSFT = owning file and ALL
 ; FAT/DOS buffers to flush
-; We flush and free, and set to head of chain before continuing to search
+; We flush and set to head of chain before continuing to search
 ;Input: rdi = is the file (sft) we wish to flush
 ;Output: CF=NC => All ok
 ;        CF=CY => A sector failed, exit.
@@ -547,8 +548,8 @@ flushFile:
     pop rdi
     return
 .found:
-;Here we take the old next buffer, then flush and free the current buffer
-; then return the old next buffer into rdi and go back to ffLoop
+;Here we take the old next buffer, then flush it then return the old next buffer 
+; into rdi and go back to ffLoop
     call writeThroughBuffer ;Flush buffer and mark as not dirty
     jc .exitNoFlush    ;Exit preserving CF
     ;If the sector has been successfully flushed, then it
