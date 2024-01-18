@@ -462,12 +462,7 @@ findSectorInBuffer:     ;Internal linkage
 ;-----------------------------------------------------------------------------
 ;SPECIAL BUFFER FUNCTIONS
 ;Buffer functions for sectors associated to file handles and specific purposes
-; DOS and FAT sectors need to setup [workingDPB] to make the transfer
-; DIR and DATA sectors need to setup [currentSFT] to make the transfer
-;FCB requests use FCBS (or SDA SFT if FCBS=0)
-;Since they are just SFT entries on a separate list, this logic still holds
-;The only difference is if an FCBS may need to be recycled; Then all buffers 
-; belonging to that FCBS get flushed before freeing the FCBS.
+; ALL sector types need to setup [workingDPB] to make the transfer
 ;-----------------------------------------------------------------------------
 getBufForDOS:
 ;Returns a buffer to use for DOS sector(s) in rbx
@@ -510,26 +505,4 @@ getBufCommon:
     pop rdi
     pop rsi
     pop rcx
-    return
-
-flushFile:
-;We search the chain for buffers with the currentSFT = owning file and ALL
-; FAT/DOS buffers to flush
-; We flush and set to head of chain before continuing to search
-;Input: rdi = is the file (sft) we wish to flush
-;Output: CF=NC => All ok
-;        CF=CY => A sector failed, exit.
-    test word [rdi + sft.wDeviceInfo], blokFileNoFlush
-    retnz
-    push rsi
-    push rdi
-    movzx eax, byte [workingDrv]   ;Get the working drive number
-    call flushAllBuffersForDrive   
-    mov eax, errAccDen
-    pushfq
-    call closeSFT
-    popfq
-.exit:
-    pop rdi
-    pop rsi
     return

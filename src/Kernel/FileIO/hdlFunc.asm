@@ -9,7 +9,7 @@ createFileHdl:     ;ah = 3Ch, handle function
 ;        CF=NC => al = Error code
     push rcx    ;Save file attributes on stack
     lea rcx, createMain
-    mov byte [searchAttr], dirInclusive ;Inclusive w/ directory
+    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
     jmp short openFileHdl.openCommon
 openFileHdl:       ;ah = 3Dh, handle function
 ;Input: al = Open mode, to open file with
@@ -111,24 +111,20 @@ closeFileHdl:      ;ah = 3Eh, handle function
     call getSFTPtr  ;Get a pointer to the SFT in rdi
     jc extErrExit   ;If CF is set, al has error code, exit!
     call setCurrentSFT  ;Set this as the current SFT
-    ;Check count to see if we need to check share mode
-    xor eax, eax    ;Preset ax to 0
-    cmp word [rdi], 1   ;Opened once only, not shared, no need for share check
-    je .skipShareCheck
+    cmp word [rdi + sft.wNumHandles], 1
+    je .killHdl
     ;Now check sharing mode
     movzx eax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
     and al, 0F0h    ;And wipe out the other bits
+.killHdl:
+    cmp al, netFCBShare ;If this is a NetFile, skip nuking the JFT entry
+    je .skipShareCheck
+    call getJFTPtr  ;Remember, bx has handle number
+    mov byte [rdi], -1  ;Now free the JFT entry
 .skipShareCheck:
-    push rax    ;Save the share mode on stack
     call closeMain  ;Call close main!
-    pop rax 
     jc extErrExit   ;If an error, exit through error exit
-    cmp al, netFCBShare ;Do NetFCB check (only if file opened more than once)
-    je .exitOk  ;If sharing mode was net FCB, it had no JFT entry, skip nulling
-    call getJFTPtr  ;Get the pointer to the JFT entry in rdi
-    mov byte [rdi], -1  ;Free JFT entry
-.exitOk:
-    xor eax, eax    ;Return value
+    mov eax, 3E00h    ;Return value
     jmp extGoodExit
 
 readFileHdl:       ;ah = 3Fh, handle function
@@ -819,10 +815,10 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 commitMain:
 ;Commits the current SFT 
     call getCurrentSFT  ;Gets currentSFT into rdi
-    movzx eax, word [rdi + sft.wDeviceInfo]
-    test eax, devCharDev | blokFileNoFlush
-    retnz   ;Return if nothing has been written or a char dev (modify 4 char devs)
-    test ax, devRedirDev
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test ebx, devCharDev | blokFileNoFlush
+    retnz   ;Return if nothing has been written or a char dev
+    test ebx, devRedirDev
     jnz .notNet
     ;Commit file net redir call and exit
     mov eax, 1107h
@@ -830,14 +826,11 @@ commitMain:
     return  ;Propagate CF and AL if needed due to error
 .notNet:
     call dosCrit1Enter
-    mov rbp, qword [rdi + sft.qPtr]  ;Get DPB pointer in rbp
-    call setWorkingDPB
-    call updateDirectoryEntryForFile    ;Update the directory entry
-    jc short .exit    ;Return in error if this fails, exit critical
-    call flushFile  ;Now the file gets flushed
+    call updateSFTDateTimeFields    ;Update the SFT Time fields
+    mov eax, -1         ;Set a "large" count for open handles
+    call flushFile      ;Now the file gets flushed and we exit critical section
 .exit:
 ;Propagate CF and AL if needed due to error
-    call dosCrit1Exit
     return
 renameMain:
 ;Now, creates a special find first block for the source file
@@ -1671,7 +1664,8 @@ closeMain: ;Int 2Fh AX=1201h
 ; If CF=NC on return: eax = Unknown
 ;                     rdi = current SFT ptr
     mov rdi, qword [currentSFT] ;Get the sft pointer
-    test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test ebx, devRedirDev ;Is this a network drive?
     jz .physical
     ;Here we beep out the request to the network redirector (Int 2Fh AX=1106h)
     mov eax, 1106h  ;Make request
@@ -1681,46 +1675,74 @@ closeMain: ;Int 2Fh AX=1201h
 ; We make a request to the dev dir to close the device
 ; If the device is disk, we then update the directory entry for the disk file
     call dosCrit1Enter  ;Enter critical section 1
-    push rbx
-    push rsi
-    mov rsi, qword [rdi + sft.qPtr] ;Get driver or DPB ptr in rsi
-    test word [rdi + sft.wDeviceInfo], devCharDev
-    jnz .charClose   ;Char devs aren't affected by directory work
-    ;rsi has DPB pointer here
-    ;rdi has the SFT pointer
-    push rbp
-    mov rbp, rsi ;Move the dpb pointer into rbp
-    call setWorkingDPB  ;Set the working dpb to rbp
-    call updateDirectoryEntryForFile
-    pop rbp
-    ;If CF is set, Fail was requested and ax has an error code
-    jc .exit
-    call flushFile  ;If the flush fails, dont return error, keep going
-    movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
-    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
-.charClose:
-    ;Now rsi = Device Driver Header and rdi = Current SFT header
-    ;We now decrement handle count in SFT structure
-    call decrementOpenCount ;rdi = current SFT, returns ax = old handle count
-    dec ax  ;If this is zero, then we need to set wNumHandles to zero
-    jnz .driverClose
-    inc word [rdi + sft.wNumHandles]    ;Now make it zero again as it is -1
-.driverClose:
+    call updateSFTDateTimeFields
+    call decrementOpenCount ;rdi = current SFT, returns (e)ax = old handle count
     push rax
-    push rcx
+    push rbx
     call closeShareCallWrapper  ;The SFT count has been decremented
-    pop rcx
+    pop rbx
     pop rax
-    xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
-    ;and if the device is a disk device, cl will have the unit number
+flushFile:  ;Make this non-local to be jumped to by commit too!
+;Updates the Dir entry with info from SFT and flushes.
+;Closes the handle properly if only one reference to file remains.
+;Input: ax = Initial open handle count
+;       bx = attribute byte from the SFT
+;       rdi -> Current SFT
+    push rax    ;Save the handle count for later
+    test bx, blokFileNoFlush | devCharDev
+    jnz .notDiskBitsSet
+    call getAndUpdateDirSectorForFile   ;rsi -> Buffer dir entry
+    mov eax, errAccDen
+    jc .accDenExit
+    push rsi    ; -> Buffer dir entry
+    push rdi    ; -> SFT ptr
+    lea rdi, qword [rdi + sft.sFileName]    ;Ensure this is the right file
+    call findInBuffer.nameCompare
+    pop rdi     ; -> SFT ptr
+    pop rsi     ; -> Buffer dir entry
+    jz .dirEntryForUs
+.badFileFound:
+    mov eax, errFnf ;Dir entry has changed, and now file not found on medium
+    stc
+    jmp short .accDenExit
+.dirEntryForUs:
+    movzx ecx, byte [rsi + fatDirEntry.attribute] ;Get dir file attrib
+    movzx eax, byte [rdi + sft.bFileAttrib]   ;Get SFT file attrib
+    not al  ;Reverse the bits
+    and al, cl  ;These should be equal
+    and al, dirInclusive ;And nothing outside of these should be set
+    jnz .badFileFound
+    mov eax, dword [rdi + sft.dFileSize]    ;Get the file size
+    mov dword [rsi + fatDirEntry.fileSize], eax ;And update field
+    movzx eax, word [rdi + sft.wTime]   ;Get the last write time
+    mov word [rsi + fatDirEntry.wrtTime], ax    ;And update field
+    movzx eax, word [rdi + sft.wDate]   ;Get the last write time
+    mov word [rsi + fatDirEntry.wrtDate], ax    ;And update field
+    mov word [rsi + fatDirEntry.lastAccDat], ax    ;And update final field
+    mov eax, dword [rdi + sft.dStartClust]  ;Always update the start cluster
+    mov word [rsi + fatDirEntry + fatDirEntry.fstClusLo], ax
+    shr eax, 10h
+    mov word [rsi + fatDirEntry + fatDirEntry.fstClusHi], ax
+    call markBufferDirty
+    movzx eax, byte [workingDrv]
+    call flushAllBuffersForDrive
+    mov eax, errAccDen
+    jc .accDenExit
+.notDiskBitsSet:
+    clc
+.accDenExit:
     pushfq
     call closeSFT   ;Called with rdi -> Current SFT
     popfq
-    call writeThroughBuffersForHandle   ;Propagate the CF
+    pop rcx ;Get back the initial open handle count
+    movzx ecx, cx   ;Force upper bits clear
+    pushfq
+    dec ecx ;Decrement count
+    jnz .exit   ;If our initial count was not 1, skip resetting the count since
+    mov word [rdi], cx ; decrementOpenCount didnt set it to -1
 .exit:
-    pop rsi
-    pop rbx
     call dosCrit1Exit
+    popfq
     return
 
 readBytes:
@@ -2670,7 +2692,7 @@ incrementOpenCount:
 
 decrementOpenCount: ;Int 2Fh AX = 1208h
 ;Input: rdi = SFT pointer
-;Output: ax = Original wNumHandles count
+;Output: ax = Original wNumHandles count (zero extended to eax)
     pushfq
     movzx eax, word [rdi + sft.wNumHandles]
     dec eax     ;Decrement count
@@ -2699,3 +2721,14 @@ writeThroughBuffersForHandle:
     pop rdi
     return
 
+setDPBfromSFT:
+;Sets and updates the DPB from an SFT ptr
+;Input: rdi -> sft
+;Output: CF=NC: workingDPB set
+;        CF=CY: Error fail, exit
+    mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
+    movzx eax, byte [rbp + dpb.bDriveNumber]
+    mov byte [workingDrv], al
+    call setWorkingDPB
+    call ensureDiskValid
+    return

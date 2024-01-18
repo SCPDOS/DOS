@@ -212,7 +212,7 @@ struc bufferHdr
     .bufFATcopy  resb  1   ;Number of copies of the FAT to write (1 if non-FAT)
     .bufFATsize  resd  1   ;Number of sectors per FAT (or 0 if non-FAT)
     .driveDPBPtr resq  1   ;Pointer to the device DPB block
-    .reserved    resb  9   ;Alignment bytes
+    .reserved    resb  1   ;Alignment byte
     .dataarea:             ;Points to the start of the data area
 endstruc
 ;Buffer Flag equates

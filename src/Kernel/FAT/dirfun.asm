@@ -559,25 +559,18 @@ getDiskDirectoryEntry:
     pop rbx
     return
 
-
-updateDirectoryEntryForFile:    
-;Updates the directory entry for disk files
+updateSFTDateTimeFields:    
+;Updates the SFT time/date entries for disk files
 ;Called with:
 ;   [workingDPB] = DPB pointer for the disk device
 ;   [currentSFT] = Current SFT pointer
+;   bx = attribute byte from the SFT
+    test bx, blokFileNoFlush | devCharDev
+    retnz
+    test bx, blokNoDTonClose
+    retnz
     push rax
     push rbx
-    push rdi
-    push rbp
-
-    call dosCrit1Enter
-    mov rdi, qword [currentSFT]
-    mov rbp, qword [workingDPB]
-    test word [rdi + sft.wDeviceInfo], blokFileNoFlush | devCharDev
-    jnz .exit   ;If it is a char dev or hasn't been written to yet, skip this
-    test word [rdi + sft.wDeviceInfo], blokNoDTonClose
-    jnz .skipDT
-    ;Get date and time words and add them to the directory entry
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     ;Build date and time words
     call getDirDTwords  ;Get date time words packed in eax
@@ -585,52 +578,31 @@ updateDirectoryEntryForFile:
     mov word [rdi + sft.wTime], ax
     shr eax, 16 ;Eject the time, get the date in eax
     mov word [rdi + sft.wDate], ax
-    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush  ;We update DT, so flush
-.skipDT:
-;Before we read the dir sector in, if we never wrote to the disk
-; we skip all of this
-    test word [rdi + sft.wDeviceInfo], blokFileNoFlush
-    jnz .exit ;If the file was never written to, don't bother updating DIR data
-    mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
-    call getBufForDir  ;Returns buffer pointer in rbx
-    jc .exitBad    ;If an error is to be returned from, we skip the rest of this
-    ;Now we write the changes to the sector
-    ;Mark sector as referenced and dirty! Ready to be flushed!
-    lea rbp, qword [rbx + bufferHdr.dataarea]   ;Goto data area
-    movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
-    shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
-    add rbp, rbx    ;Move rbp to point to the directory entry
-    mov eax, dword [rdi + sft.dFileSize]    ;Get the file size
-    mov dword [rbp + fatDirEntry.fileSize], eax ;And update field
-    movzx eax, word [rdi + sft.wTime]   ;Get the last write time
-    mov word [rbp + fatDirEntry.wrtTime], ax    ;And update field
-    movzx eax, word [rdi + sft.wDate]   ;Get the last write time
-    mov word [rbp + fatDirEntry.wrtDate], ax    ;And update field
-    mov word [rbp + fatDirEntry.lastAccDat], ax    ;And update final field
-    mov eax, dword [rdi + sft.dStartClust]  ;Always update the start cluster
-    mov word [rbp + fatDirEntry + fatDirEntry.fstClusLo], ax
-    shr eax, 10h
-    mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
-    ;Directory sector updated and marked to be flushed to disk!
     xor eax, eax
     call qword [updateDirShare]
-    clc ;Clear CF as updateDirShare Defaults to CF=CY
-    call markBufferDirty
-    call flushAllBuffersForDPB
-    jc .exitBad
-.exit:
-    call dosCrit1Exit
-    pop rbp
-    pop rdi
     pop rbx
     pop rax
     return
-.exitBad:
-    pushfq  ;Save the state for if we come here from a fail
-    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush
-    popfq
-    jmp short .exit
-    
+
+getAndUpdateDirSectorForFile:
+;Input: rdi -> SFT
+;Output: CF=NC: rsi -> Updated dir entry in buffer
+;               rdi -> SFT
+    push qword [rdi + sft.qDirSect] ;Get the directory sector for this file
+    call setDPBfromSFT
+    pop rax
+    retc
+    mov byte [errorLocus], eLocDsk
+    mov byte [Int24bitfld], critFailOK | critRetryOK
+    call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
+    retc    ;If an error is to be returned from, we skip the rest of this
+    mov rdi, qword [currentSFT] ;Reobtain the SFT ptr
+    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Goto data area
+    movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
+    shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
+    add rsi, rbx    ;Move rsi to point to the directory entry
+    return
+
 growDirectory:
 ;Input: dword [dirClustPar] must have the first cluster number of the directory
 ;Output: CF=NC => All ok, directory grew by 1 sector
