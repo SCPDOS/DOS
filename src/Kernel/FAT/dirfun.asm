@@ -103,7 +103,7 @@ makeDIR:           ;ah = 39h
     shr eax, 10h    ;Get high word low
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov rax, qword [tempSect]   ;Get the sector back
-    call getBufForDirNoFile
+    call getBufForDir
     jc .badExit
     movzx eax, word [entry] ;Get byte offset into sector back
     lea rsi, curDirCopy    ;The dummy dir is the source now
@@ -128,7 +128,7 @@ makeDIR:           ;ah = 39h
     shl edx, 10h
     or eax, edx ;Add upper bits to eax cluster number
     call getStartSectorOfCluster    ;Get start sector in rax
-    call getBufForDirNoFile
+    call getBufForDir
     jc .badExit
     ;rbx has buffer pointer now
     lea rsi, curDirCopy
@@ -152,7 +152,7 @@ makeDIR:           ;ah = 39h
     mov ecx, 4
     rep movsq
     call markBufferDirty ;We wrote to this buffer
-    call writeThroughBuffers    ;Write the buffers to disk
+    call flushAllBuffersForDPB    ;Write the buffers to disk
     jc .badExit
 .okExit:
     ;AND WE ARE DONE!
@@ -162,7 +162,6 @@ makeDIR:           ;ah = 39h
 .bad:
     mov eax, errAccDen
 .badExit:
-    call cancelWriteThroughBuffers
     call dosCrit1Exit
     jmp extErrExit
 
@@ -229,7 +228,7 @@ removeDIR:         ;ah = 3Ah
     or eax, ebx
     mov dword [dirClustPar], eax    ;Store the first cluster of subdir here
     call getStartSectorOfCluster  ;Check first sector of cluster is . and ..
-    call getBufForDirNoFile
+    call getBufForDir
     jc .exitBad
     ;rbx points to buffer
     lea rsi, qword [rbx + bufferHdr.dataarea]
@@ -287,7 +286,7 @@ removeDIR:         ;ah = 3Ah
     ;Now remove the FAT chain
     call unlinkFAT
     jc .exitBad
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .exitBad
     call dosCrit1Exit
     xor eax, eax
@@ -295,7 +294,6 @@ removeDIR:         ;ah = 3Ah
 .accessDenied:
     mov eax, errAccDen
 .exitBad:
-    call cancelWriteThroughBuffers
     stc
     call dosCrit1Exit
     jmp extErrExit
@@ -618,7 +616,7 @@ updateDirectoryEntryForFile:
     call qword [updateDirShare]
     clc ;Clear CF as updateDirShare Defaults to CF=CY
     call markBufferDirty
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .exitBad
 .exit:
     call dosCrit1Exit
@@ -628,7 +626,6 @@ updateDirectoryEntryForFile:
     pop rax
     return
 .exitBad:
-    call cancelWriteThroughBuffers
     pushfq  ;Save the state for if we come here from a fail
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush
     popfq
@@ -681,7 +678,7 @@ sanitiseCluster:
     movzx edx, byte [rbp + dpb.bMaxSectorInCluster] 
     inc edx ;Make it a count of sectors
 .getSectorInCluster:
-    call getBufForDataNoFile  ;Get a generic data buffer in rbx
+    call getBufForDir  ;Get a generic data buffer in rbx
     jc .exitBad
     lea rdi, qword [rbx + bufferHdr.dataarea]
     movzx ecx, word [rbp + dpb.wBytesPerSector]

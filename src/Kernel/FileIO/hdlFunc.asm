@@ -313,13 +313,13 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     and ch, (volLabelFile | directoryFile)    ;Keep these two bits
     or cl, ch
     mov byte [rsi + fatDirEntry.attribute], cl  ;Set new bits
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .setError
     call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit
 .setError:
-    call cancelWriteThroughBuffers
+
 .setErrorNoFlush:
     call dosCrit1Exit
     jmp extErrExit
@@ -821,7 +821,7 @@ commitMain:
     call getCurrentSFT  ;Gets currentSFT into rdi
     movzx eax, word [rdi + sft.wDeviceInfo]
     test eax, devCharDev | blokFileNoFlush
-    retnz   ;Return if nothing has been written or a char dev
+    retnz   ;Return if nothing has been written or a char dev (modify 4 char devs)
     test ax, devRedirDev
     jnz .notNet
     ;Commit file net redir call and exit
@@ -830,7 +830,7 @@ commitMain:
     return  ;Propagate CF and AL if needed due to error
 .notNet:
     call dosCrit1Enter
-    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer in rbp
+    mov rbp, qword [rdi + sft.qPtr]  ;Get DPB pointer in rbp
     call setWorkingDPB
     call updateDirectoryEntryForFile    ;Update the directory entry
     jc short .exit    ;Return in error if this fails, exit critical
@@ -978,7 +978,7 @@ renameMain:
     mov eax, dword [dirClustA]  ;Get the current dir cluster, not start cluster
     call getStartSectorOfCluster    ;Cluster number in eax, sector in rax
     add rax, rbx    ;Goto the sector for the cluster
-    call getBufForDirNoFile ;Get buffer pointer in rbx
+    call getBufForDir ;Get buffer pointer in rbx
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea + rdx] ;Goto byte offset in sector
     ;rsi points to the file entry
@@ -1116,7 +1116,7 @@ renameMain:
     ;Else propagate the CF if this ends with an error (inc no more files)
 .exit:
     pop rdi ;Pop the ptr to the dest pathspec ptr off stack
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .badExit
 .exit2: ;Bad exit before we push qword on stack 
     call dosCrit1Exit
@@ -1124,7 +1124,6 @@ renameMain:
 .bad:
     mov eax, errAccDen  ;Temp return code
 .badExit:
-    call cancelWriteThroughBuffers
     stc
     pop rdi
     jmp short .exit2
@@ -1284,10 +1283,9 @@ deleteMain:
     xchg byte [rsi], al    ;Mark entry as free, get char in al
     call markBufferDirty
     ;CF must be clear
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     retnc
 .exitBad:
-    call cancelWriteThroughBuffers
     stc
     return
 
@@ -1661,7 +1659,6 @@ buildSFTEntry:
 .bad:   ;Set Access Denied
     mov eax, errAccDen
 .bad2:  ;Error propagating error code
-    call cancelWriteThroughBuffersForHandle
     stc
     pop rbp
     return
@@ -1698,8 +1695,7 @@ closeMain: ;Int 2Fh AX=1201h
     pop rbp
     ;If CF is set, Fail was requested and ax has an error code
     jc .exit
-    call flushFile
-    jc .exit    ;If something went wrong, exit
+    call flushFile  ;If the flush fails, dont return error, keep going
     movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
 .charClose:
@@ -1720,12 +1716,8 @@ closeMain: ;Int 2Fh AX=1201h
     pushfq
     call closeSFT   ;Called with rdi -> Current SFT
     popfq
-    call writeThroughBuffersForHandle
-    jnc short .exitOk
+    call writeThroughBuffersForHandle   ;Propagate the CF
 .exit:
-    call cancelWriteThroughBuffersForHandle
-    stc
-.exitOk:
     pop rsi
     pop rbx
     call dosCrit1Exit
@@ -2689,7 +2681,7 @@ decrementOpenCount: ;Int 2Fh AX = 1208h
     xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
     return
 
-;Buffer Wrappers
+;Buffer Wrapper
 writeThroughBuffersForHandle:
 ;Input: qword [currentSFT] = Current SFT pointer
     push rdi
@@ -2700,26 +2692,10 @@ writeThroughBuffersForHandle:
     push qword [workingDPB]
     mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
     mov qword [workingDPB], rbp
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     pop qword [workingDPB]
 .exit:
     pop rbp
     pop rdi
     return
 
-cancelWriteThroughBuffersForHandle:
-;Input: qword [currentSFT] = Current SFT pointer
-    push rdi
-    push rbp
-    mov rdi, qword [currentSFT]
-    test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
-    jnz .exit
-    push qword [workingDPB]
-    mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
-    mov qword [workingDPB], rbp
-    call cancelWriteThroughBuffers
-    pop qword [workingDPB]
-.exit:
-    pop rbp
-    pop rdi
-    return

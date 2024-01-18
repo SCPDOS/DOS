@@ -275,7 +275,7 @@ ensureDiskValid:
 .exit:
     return
 .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
-    call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
+    call freeBuffersForDrive    ;Free all the buffers with the DPB in rbp
 .resetDPB:    ;If no buffers found, skip freeing them as theres nothing to free!
     mov byte [rbp + dpb.bAccessFlag], -1 ;Mark DPB as inaccurate now
     ;Get a buffer to read BPB into in rdi

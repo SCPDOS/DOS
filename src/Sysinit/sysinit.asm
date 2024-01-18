@@ -1227,7 +1227,6 @@ noCfg:
     mov byte [rsi + bufferHdr.bufFATcopy], al
     mov dword [rsi + bufferHdr.bufFATsize], eax
     mov qword [rsi + bufferHdr.driveDPBPtr], rax
-    mov qword [rsi + bufferHdr.owningFile], rax
     mov rsi, rdi    ;Move rsi to next buffer position
     dec ecx
     jnz .bufferLoop
@@ -1239,7 +1238,6 @@ noCfg:
     mov byte [rsi + bufferHdr.bufFATcopy], al
     mov dword [rsi + bufferHdr.bufFATsize], eax
     mov qword [rsi + bufferHdr.driveDPBPtr], rax
-    mov qword [rsi + bufferHdr.owningFile], rax
 .skipBuffers:
 ;Now build a new SFT header for the number of files specified by user
     mov rcx, qword [rbp - cfgFrame.newSFTVal]
