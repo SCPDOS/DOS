@@ -2235,7 +2235,8 @@ writeDiskFile:
     test eax, eax
     jnz .notStart
     call startNewChain  ;Allocate a first cluster! 
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     cmp eax, -1
     je writeExit
     ;Now eax has the first cluster of chain
@@ -2251,7 +2252,8 @@ writeDiskFile:
     jz .skipWalk
 .goToCurrentCluster:
     call readFAT    ;Get in eax the next cluster
-    jc .exitPrepHardErr   ;This can only return Fail
+    ;jc .exitPrepHardErr
+    retc   ;This can only return Fail
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
 .addCluster:
@@ -2260,13 +2262,15 @@ writeDiskFile:
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     movzx ecx, word [rbp + dpb.wBytesPerSector]
     add dword [bytesAppend], ecx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
     call readFAT    ;Get in eax the new cluster
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
 .stillInFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
     dec edx ;Decrement counter
@@ -2336,7 +2340,8 @@ writeDiskFile:
     test ecx, ecx  ;Are we at the end yet?
     jz writeExit
     call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     cmp eax, -1
     jne .noExtend
     ;Here we need to extend by a cluster
@@ -2344,13 +2349,15 @@ writeDiskFile:
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     movzx ebx, word [rbp + dpb.wBytesPerSector]
     add dword [bytesAppend], ebx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     cmp eax, -1
     je .noMoreClusters
 .noExtend:
@@ -2362,27 +2369,11 @@ writeDiskFile:
     mov rsi, qword [currentSFT]
     test word [rsi + sft.wOpenMode], diskFullFail
     pop rsi
-    jz .badExit
+    jz .noExtend    ;If no trigger Int 24h, return success
     ;Here we future proof for triggering Int 24h.
 .badExit:
     mov eax, errAccDen
-.exitPrepHardErr:
-;Here we take stock of the buffers that are dirty and referenced. All dirty 
-; buffers get freed. We do NOT update the SFT or the dir entry for this file
-; write.
-    mov rdi, qword [bufHeadPtr]
-.badExitLp:
-    mov cl, byte [rdi + bufferHdr.bufferFlags]
-    and cl, refBuffer | dirtyBuffer
-    jz .badExitGotoNextBuffer
-    test cl, refBuffer  ;Don't touch dirty buffers that are not ours
-    jz .badExitGotoNextBuffer
-    ;Here the ref and dirty bits are set, we lose this data
-    mov word [rdi + bufferHdr.driveNumber], freeBuffer   ;Free buffer and clear flags
-.badExitGotoNextBuffer:
-    call makeBufferMostRecentlyUsedGetNext  ;Push to front of list, get next
-    cmp rdi, -1
-    jne .badExitLp
+;.exitPrepHardErr:
     stc
     return
 .noByteExit:
