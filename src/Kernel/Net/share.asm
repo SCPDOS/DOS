@@ -84,6 +84,7 @@ shareFile:
 ;Once the SFT has been made, here we allocate resources within share to
 ; share the file, if it is possible to do so!
 ; This is done by calling the open wrapper
+;Output: rdi -> Current SFT!!
     push rcx
 .reloadCounter:
     movzx ecx, word [shareCount] ;Try to allocate resources, this many times

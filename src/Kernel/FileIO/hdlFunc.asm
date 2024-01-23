@@ -1173,15 +1173,13 @@ checkNoOpenHandlesForShareAction:
     mov eax, RWAccess | CompatShare ;Set open mode
     mov byte [openCreate], 0    ;Make sure we are just opening the file
     ;This is to avoid needing to put the file attributes on the stack
-    push rdi
+    push rdi    ;Save the SFT ptr
     call buildSFTEntry
     pop rdi
     jc .errorMain
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
     mov word [rdi + sft.wOpenMode], denyRWShare ;Prevent everything temporarily
-    push rdi
-    call shareFile
-    pop rdi
+    call shareFile  ;Puts an sft handle in rdi
     jc .errorMain
     mov word [rdi + sft.wNumHandles], 0
     call closeShareCallWrapper
@@ -1310,22 +1308,10 @@ openMain:
     mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
     jc .errorExit
-.openShareLoop:
-;Now we attempt to register the file with SHARE
-    movzx ecx, word [shareCount]    
-.openShareTryAgain: 
-    push rcx
-    call openShareCallWrapper
-    pop rcx
-    jnc .fileSharedOk
-    call shareRetryCountdown
-    dec ecx
-    jnz .openShareTryAgain
-    mov rdi, qword [currentSFT]
-    call shareCheckOpenViolation
-    jnc .openShareLoop  ;If user selects retry, we retry!
+    call shareFile      ;Puts an SFT handle in rdi
+    jnc .fileSharedOk   ;If the file open doesnt violate share, jump!
 .errorExit:
-    call dosCrit1Exit   ;Else we error out
+    call dosCrit1Exit   ;Else we error out with error code in al
     return
 .fileSharedOk:
     mov eax, 3  ;Update date/time and everything in the share dir sync call
@@ -1429,12 +1415,14 @@ createMain:
     mov byte [openCreate], -1   ;Creating file, set to FFh
     mov byte [delChar], 0E5h
     call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
-    push rdi
+    push rdi    ;Save the sft handle
     push rax    ;Save the file attributes on stack
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
     pop rbx ;Pop the word off (though it has been used already!)
     pop rdi
+    jc .errorExit
+    call shareFile  ;Puts an sft handle in rdi
     jc .errorExit
     mov al, byte [searchAttr]   ;Get the attr we created with.
     cmp al, volLabelFile
