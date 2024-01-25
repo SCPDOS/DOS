@@ -1044,150 +1044,147 @@
    344 00000012 ????????????????    <1>     .oldInt23h  resq 1  ;Int 23h pointer on overlay load
    345 0000001A ????????????????    <1>     .oldInt24h  resq 1  ;Int 24h pointer on overlay load
    346 00000022 ????????????????    <1>     .parentPtr  resq 1  ;Pointer to parent process PSP
-   347                              <1>     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
-   348 0000002A <res 14h>           <1>     .jobFileTbl resb 20 ;Main File handle array, JFT
-   349 0000003E ????????????????    <1>     .envPtr     resq 1  ;Pointer to the environment
-   350 00000046 ????????????????    <1>     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 21h
-   351 0000004E ????                <1>     .jftSize    resw 1  ;JFT array size, 20 => PSP JFT in use
-   352 00000050 ??????              <1>     .unixEntry  resb 3  ;Must always be CDh 21h CBh, same place as DOS
-   353 00000053 ????????????????    <1>     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
-   354 0000005B ??                  <1>                 resb 1  ;Reserved byte
-   355                              <1> ;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer
-   356                              <1> ; to the actual in use JFT and the other 12 bytes are left undefined.
-   357                              <1> ;If xtraHdlSz < 20 (DOS will never set it so), then it is considered as 20
-   358                              <1> ;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
-   359                              <1> ; always used and xtraHdlSz.
-   360                              <1> ;Will need to add two SYSCALLS for future expansion:
-   361                              <1> ;       1) Get Program Environment Pointer
-   362                              <1> ;       2) Get Command Line arguments pointer
-   363                              <1> ;The below are in the same place as in DOS.
-   364                              <1>     .cmdLineArgPtr: ;Symbol for future use
-   365 0000005C <res 10h>           <1>     .fcb1       resb 16  ;First FCB,    argument 1 
-   366 0000006C <res 14h>           <1>     .fcb2       resb 20  ;Second FCB,   argument 2
-   367                              <1>     .dta:   ;Pointer to the default DTA in the PSP
-   368 00000080 ??                  <1>     .parmList   resb 1   ;Number of characters in command tail
-   369 00000081 <res 7Fh>           <1>     .progTail   resb 127 ;Default DTA/Program tail
-   370                              <1> endstruc
-   371                              <1> 
-   372                              <1> dfltJFTsize equ 20  ;Default size of PSP JFT
-   373                              <1> 
-   374                              <1> struc clkStruc
-   375 00000000 ????                <1>     .dateWord   resw 1
-   376 00000002 ??                  <1>     .minutes    resb 1
-   377 00000003 ??                  <1>     .hours      resb 1
-   378 00000004 ??                  <1>     .hseconds   resb 1  ;Hundreths of seconds
-   379 00000005 ??                  <1>     .seconds    resb 1
-   380                              <1> endstruc
-   381                              <1> 
-   382                              <1> 
-   383                              <1> struc extCtryStruc
-   384 00000000 ??                  <1>     .infoIDCode db ?    ;Information ID code (01h)
-   385 00000001 ????                <1>     .strucSize  dw ?    ;Length of the structure  (42 or less)
-   386 00000003 ????                <1>     .ctryID     dw ?    ;Country ID number
-   387 00000005 ????                <1>     .cpNumber   dw ?    ;Code page number
-   388 00000007 ????                <1>     .dtfmt      resw 1  ;Date time format (2 bytes)
-   389                              <1>                         ;0 = month day year hh:mm:ss
-   390                              <1>                         ;1 = day month year hh:mm:ss
-   391                              <1>                         ;2 = year month day hh:mm:ss
-   392 00000009 ??????????          <1>     .curr       resb 5   ;ASCIIZ Currency symbol (5 chars)
-   393 0000000E ????                <1>     .thouSep    resb 2   ;ASCIIZ Thousands separator
-   394 00000010 ????                <1>     .dcmlSep    resb 2   ;ASCIIZ Decimal separator
-   395 00000012 ????                <1>     .dateSep    resb 2   ;ASCIIZ Date separator
-   396 00000014 ????                <1>     .timeSep    resb 2   ;ASCIIZ Time separator
-   397 00000016 ??                  <1>     .currFmt    resb 1   ;Currency Format
-   398                              <1>                         ;0 = Symbol leads, without space
-   399                              <1>                         ;1 = Symbol follows, without space
-   400                              <1>                         ;2 = Symbol leads, one space
-   401                              <1>                         ;3 = Symbol follows, one space
-   402                              <1>                         ;4 = Symbol replace decimal separator
-   403 00000017 ??                  <1>     .digtdpt    resb 1   ;Number of digits after the decimal point
-   404 00000018 ??                  <1>     .timefmt    resb 1   ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
-   405 00000019 ????????????????    <1>     .mapptr     resb 8   ;Case map address (0 is nulptr), needs fixing up
-   406 00000021 ????                <1>     .dataSep    resb 2   ;Data list separator
-   407 00000023 <res Ah>            <1>     .resv       resb 10  ;Reserve 10 bytes
-   408                              <1> endstruc
-   409                              <1> 
-   410                              <1> struc countryStruc
-   411 00000000 ????                <1>     .dtfmt     resw 1   ;Date time format (2 bytes)
-   412                              <1>                         ;0 = month day year hh:mm:ss
-   413                              <1>                         ;1 = day month year hh:mm:ss
-   414                              <1>                         ;2 = year month day hh:mm:ss
-   415 00000002 ??????????          <1>     .curr      resb 5   ;ASCIIZ Currency symbol (5 chars)
-   416 00000007 ????                <1>     .thouSep   resb 2   ;ASCIIZ Thousands separator
-   417 00000009 ????                <1>     .dcmlSep   resb 2   ;ASCIIZ Decimal separator
-   418 0000000B ????                <1>     .dateSep   resb 2   ;ASCIIZ Date separator
-   419 0000000D ????                <1>     .timeSep   resb 2   ;ASCIIZ Time separator
-   420 0000000F ??                  <1>     .currFmt   resb 1   ;Currency Format
-   421                              <1>                         ;0 = Symbol leads, without space
-   422                              <1>                         ;1 = Symbol follows, without space
-   423                              <1>                         ;2 = Symbol leads, one space
-   424                              <1>                         ;3 = Symbol follows, one space
-   425                              <1>                         ;4 = Symbol replace decimal separator
-   426 00000010 ??                  <1>     .digtdpt   resb 1   ;Number of digits after the decimal point
-   427 00000011 ??                  <1>     .timefmt   resb 1   ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
-   428 00000012 ????????????????    <1>     .mapptr    resb 8   ;Case map address (0 is nulptr), needs fixing up
-   429 0000001A ????                <1>     .dataSep   resb 2   ;Data list separator
-   430 0000001C <res Ah>            <1>     .resv      resb 10  ;Reserve 10 bytes
-   431                              <1> endstruc
-   432                              <1> 
-   433                              <1> ;Critical Error AH bitfield equates
-   434                              <1> critRead    equ 0h
-   435                              <1> critWrite   equ 1h
-   436                              <1> critDOS     equ 0h
-   437                              <1> critFAT     equ 2h
-   438                              <1> critDir     equ 4h
-   439                              <1> critData    equ 6h
-   440                              <1> critFailOK  equ 8h
-   441                              <1> critRetryOK equ 10h
-   442                              <1> critIgnorOK equ 20h
-   443                              <1> critCharDev equ 80h
-   444                              <1> 
-   445                              <1> critIgnore  equ 0
-   446                              <1> critRetry   equ 1
-   447                              <1> critAbort   equ 2
-   448                              <1> critFail    equ 3
-   449                              <1> 
-   450                              <1> ;MISC ASCII control chars
-   451                              <1> NUL equ 00h ;^@         | ASCII Null
-   452                              <1> ETX equ 03h ;^C         | ASCII Break (End of Text) 
-   453                              <1> ACK equ 06h ;^F         | ASCII Acknowledgement
-   454                              <1> BEL equ 07h ;^G         | ASCII Bell
-   455                              <1> BSP equ 08h ;^H         | ASCII Backspace
-   456                              <1> TAB equ 09h ;^I         | ASCII Horizontal Tab
-   457                              <1> LF  equ 0Ah ;^J         | ASCII Line Feed
-   458                              <1> CR  equ 0Dh ;^M         | ASCII Carriage Return
-   459                              <1> DLE equ 10h ;^P         | ASCII Data Link End (Toggle Print Echo)
-   460                              <1> DC3 equ 13h ;^S         | ASCII Device Control 3 (Toggle Scroll Lock)
-   461                              <1> DC4 equ 14h ;^T         | ASCII Device Control 4
-   462                              <1> NAK equ 15h ;^U         | ASCII Negative Acknowledgement
-   463                              <1> ETB equ 17h ;^W         | ASCII End of Transmission Block
-   464                              <1> EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
-   465                              <1> ESC equ 1Bh ;           | ASCII Escape char, used for ANSI.SYS
-   466                              <1> SPC equ 20h ;Printable  | ASCII Space
-   467                              <1> ;This last one is NEVER printed with a caret as it is a console control char
-   468                              <1> DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
-   469                              <1> 
-   470                              <1> asciiCaret  equ 20h ;Used to check which chars need to be printed with caret
-   471                              <1> ;Extended Ascii Codes
-   472                              <1> eF1     equ 3Bh ;F1 second byte
-   473                              <1> eF2     equ 3Ch ;F2 second byte
-   474                              <1> eF3     equ 3Dh ;F3 second byte
-   475                              <1> eF4     equ 3Eh ;F4 second byte
-   476                              <1> eF5     equ 3Fh ;F5 second byte
-   477                              <1> eF6     equ 40h ;F6 second byte
-   478                              <1> eF7     equ 41h ;F7 second byte
-   479                              <1> eCursL  equ 4Bh ;Cursor Left second byte
-   480                              <1> eCursR  equ 4Dh ;Cursor Right second byte
-   481                              <1> eIns    equ 52h ;Insert second byte
-   482                              <1> eDel    equ 53h ;DEL second byte (not necessarily delete key)
-   483                              <1> 
-   484                              <1> ;Default Configuration for the system
-   485                              <1> 
-   486                              <1> buffersDefault  equ 30
-   487                              <1> filesDefault    equ 20
-   488                              <1> fcbsDefault     equ 4
-   489                              <1> safeFcbsDeflt   equ 0
-   490                              <1> lastDriveDeflt  equ 5   
+   347                              <1> ;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer
+   348                              <1> ; to the actual in use JFT and the other 12 bytes are left undefined.
+   349                              <1> ;If xtraHdlSz < 20 (DOS will never set it so), then it is considered as 20
+   350                              <1> ;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
+   351                              <1> ; always used and xtraHdlSz.
+   352                              <1>     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
+   353 0000002A <res 14h>           <1>     .jobFileTbl resb dfltJFTsize ;Main File handle array, JFT
+   354 0000003E ????????????????    <1>     .envPtr     resq 1  ;Pointer to the environment
+   355 00000046 ????????????????    <1>     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 21h
+   356 0000004E ????                <1>     .jftSize    resw 1  ;JFT array size, 20 => PSP JFT in use
+   357 00000050 ??????              <1>     .unixEntry  resb 3  ;Must always be CDh 21h CBh, same place as DOS
+   358 00000053 ????????????????    <1>     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
+   359 0000005B ??                  <1>                 resb 1  ;Reserved byte
+   360                              <1> ;The below are in the same place as in DOS.
+   361                              <1>     .cmdLineArgPtr: ;Symbol for future use
+   362 0000005C <res 10h>           <1>     .fcb1       resb 16  ;First FCB,    argument 1 
+   363 0000006C <res 14h>           <1>     .fcb2       resb 20  ;Second FCB,   argument 2
+   364                              <1>     .dta:   ;Pointer to the default DTA in the PSP
+   365 00000080 ??                  <1>     .parmList   resb 1   ;Number of characters in command tail
+   366 00000081 <res 7Fh>           <1>     .progTail   resb 127 ;Default DTA/Program tail
+   367                              <1> endstruc
+   368                              <1> 
+   369                              <1> dfltJFTsize equ 20  ;Default size of PSP JFT
+   370                              <1> 
+   371                              <1> struc clkStruc
+   372 00000000 ????                <1>     .dateWord   resw 1
+   373 00000002 ??                  <1>     .minutes    resb 1
+   374 00000003 ??                  <1>     .hours      resb 1
+   375 00000004 ??                  <1>     .hseconds   resb 1  ;Hundreths of seconds
+   376 00000005 ??                  <1>     .seconds    resb 1
+   377                              <1> endstruc
+   378                              <1> 
+   379                              <1> 
+   380                              <1> struc extCtryStruc
+   381 00000000 ??                  <1>     .infoIDCode db ?    ;Information ID code (01h)
+   382 00000001 ????                <1>     .strucSize  dw ?    ;Length of the structure  (42 or less)
+   383 00000003 ????                <1>     .ctryID     dw ?    ;Country ID number
+   384 00000005 ????                <1>     .cpNumber   dw ?    ;Code page number
+   385 00000007 ????                <1>     .dtfmt      resw 1  ;Date time format (2 bytes)
+   386                              <1>                         ;0 = month day year hh:mm:ss
+   387                              <1>                         ;1 = day month year hh:mm:ss
+   388                              <1>                         ;2 = year month day hh:mm:ss
+   389 00000009 ??????????          <1>     .curr       resb 5   ;ASCIIZ Currency symbol (5 chars)
+   390 0000000E ????                <1>     .thouSep    resb 2   ;ASCIIZ Thousands separator
+   391 00000010 ????                <1>     .dcmlSep    resb 2   ;ASCIIZ Decimal separator
+   392 00000012 ????                <1>     .dateSep    resb 2   ;ASCIIZ Date separator
+   393 00000014 ????                <1>     .timeSep    resb 2   ;ASCIIZ Time separator
+   394 00000016 ??                  <1>     .currFmt    resb 1   ;Currency Format
+   395                              <1>                         ;0 = Symbol leads, without space
+   396                              <1>                         ;1 = Symbol follows, without space
+   397                              <1>                         ;2 = Symbol leads, one space
+   398                              <1>                         ;3 = Symbol follows, one space
+   399                              <1>                         ;4 = Symbol replace decimal separator
+   400 00000017 ??                  <1>     .digtdpt    resb 1   ;Number of digits after the decimal point
+   401 00000018 ??                  <1>     .timefmt    resb 1   ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
+   402 00000019 ????????????????    <1>     .mapptr     resb 8   ;Case map address (0 is nulptr), needs fixing up
+   403 00000021 ????                <1>     .dataSep    resb 2   ;Data list separator
+   404 00000023 <res Ah>            <1>     .resv       resb 10  ;Reserve 10 bytes
+   405                              <1> endstruc
+   406                              <1> 
+   407                              <1> struc countryStruc
+   408 00000000 ????                <1>     .dtfmt     resw 1   ;Date time format (2 bytes)
+   409                              <1>                         ;0 = month day year hh:mm:ss
+   410                              <1>                         ;1 = day month year hh:mm:ss
+   411                              <1>                         ;2 = year month day hh:mm:ss
+   412 00000002 ??????????          <1>     .curr      resb 5   ;ASCIIZ Currency symbol (5 chars)
+   413 00000007 ????                <1>     .thouSep   resb 2   ;ASCIIZ Thousands separator
+   414 00000009 ????                <1>     .dcmlSep   resb 2   ;ASCIIZ Decimal separator
+   415 0000000B ????                <1>     .dateSep   resb 2   ;ASCIIZ Date separator
+   416 0000000D ????                <1>     .timeSep   resb 2   ;ASCIIZ Time separator
+   417 0000000F ??                  <1>     .currFmt   resb 1   ;Currency Format
+   418                              <1>                         ;0 = Symbol leads, without space
+   419                              <1>                         ;1 = Symbol follows, without space
+   420                              <1>                         ;2 = Symbol leads, one space
+   421                              <1>                         ;3 = Symbol follows, one space
+   422                              <1>                         ;4 = Symbol replace decimal separator
+   423 00000010 ??                  <1>     .digtdpt   resb 1   ;Number of digits after the decimal point
+   424 00000011 ??                  <1>     .timefmt   resb 1   ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
+   425 00000012 ????????????????    <1>     .mapptr    resb 8   ;Case map address (0 is nulptr), needs fixing up
+   426 0000001A ????                <1>     .dataSep   resb 2   ;Data list separator
+   427 0000001C <res Ah>            <1>     .resv      resb 10  ;Reserve 10 bytes
+   428                              <1> endstruc
+   429                              <1> 
+   430                              <1> ;Critical Error AH bitfield equates
+   431                              <1> critRead    equ 0h
+   432                              <1> critWrite   equ 1h
+   433                              <1> critDOS     equ 0h
+   434                              <1> critFAT     equ 2h
+   435                              <1> critDir     equ 4h
+   436                              <1> critData    equ 6h
+   437                              <1> critFailOK  equ 8h
+   438                              <1> critRetryOK equ 10h
+   439                              <1> critIgnorOK equ 20h
+   440                              <1> critCharDev equ 80h
+   441                              <1> 
+   442                              <1> critIgnore  equ 0
+   443                              <1> critRetry   equ 1
+   444                              <1> critAbort   equ 2
+   445                              <1> critFail    equ 3
+   446                              <1> 
+   447                              <1> ;MISC ASCII control chars
+   448                              <1> NUL equ 00h ;^@         | ASCII Null
+   449                              <1> ETX equ 03h ;^C         | ASCII Break (End of Text) 
+   450                              <1> ACK equ 06h ;^F         | ASCII Acknowledgement
+   451                              <1> BEL equ 07h ;^G         | ASCII Bell
+   452                              <1> BSP equ 08h ;^H         | ASCII Backspace
+   453                              <1> TAB equ 09h ;^I         | ASCII Horizontal Tab
+   454                              <1> LF  equ 0Ah ;^J         | ASCII Line Feed
+   455                              <1> CR  equ 0Dh ;^M         | ASCII Carriage Return
+   456                              <1> DLE equ 10h ;^P         | ASCII Data Link End (Toggle Print Echo)
+   457                              <1> DC3 equ 13h ;^S         | ASCII Device Control 3 (Toggle Scroll Lock)
+   458                              <1> DC4 equ 14h ;^T         | ASCII Device Control 4
+   459                              <1> NAK equ 15h ;^U         | ASCII Negative Acknowledgement
+   460                              <1> ETB equ 17h ;^W         | ASCII End of Transmission Block
+   461                              <1> EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
+   462                              <1> ESC equ 1Bh ;           | ASCII Escape char, used for ANSI.SYS
+   463                              <1> SPC equ 20h ;Printable  | ASCII Space
+   464                              <1> ;This last one is NEVER printed with a caret as it is a console control char
+   465                              <1> DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
+   466                              <1> 
+   467                              <1> asciiCaret  equ 20h ;Used to check which chars need to be printed with caret
+   468                              <1> ;Extended Ascii Codes
+   469                              <1> eF1     equ 3Bh ;F1 second byte
+   470                              <1> eF2     equ 3Ch ;F2 second byte
+   471                              <1> eF3     equ 3Dh ;F3 second byte
+   472                              <1> eF4     equ 3Eh ;F4 second byte
+   473                              <1> eF5     equ 3Fh ;F5 second byte
+   474                              <1> eF6     equ 40h ;F6 second byte
+   475                              <1> eF7     equ 41h ;F7 second byte
+   476                              <1> eCursL  equ 4Bh ;Cursor Left second byte
+   477                              <1> eCursR  equ 4Dh ;Cursor Right second byte
+   478                              <1> eIns    equ 52h ;Insert second byte
+   479                              <1> eDel    equ 53h ;DEL second byte (not necessarily delete key)
+   480                              <1> 
+   481                              <1> ;Default Configuration for the system
+   482                              <1> 
+   483                              <1> buffersDefault  equ 30
+   484                              <1> filesDefault    equ 20
+   485                              <1> fcbsDefault     equ 4
+   486                              <1> safeFcbsDeflt   equ 0
+   487                              <1> lastDriveDeflt  equ 5   
     10                                  %include "./src/Debug/debSym.inc"
      1                              <1> ;This file will include the debuging symbols
      2                              <1> 

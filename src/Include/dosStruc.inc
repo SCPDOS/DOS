@@ -344,22 +344,19 @@ struc psp
     .oldInt23h  resq 1  ;Int 23h pointer on overlay load
     .oldInt24h  resq 1  ;Int 24h pointer on overlay load
     .parentPtr  resq 1  ;Pointer to parent process PSP
+;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer
+; to the actual in use JFT and the other 12 bytes are left undefined.
+;If xtraHdlSz < 20 (DOS will never set it so), then it is considered as 20
+;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
+; always used and xtraHdlSz.
     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
-    .jobFileTbl resb 20 ;Main File handle array, JFT
+    .jobFileTbl resb dfltJFTsize ;Main File handle array, JFT
     .envPtr     resq 1  ;Pointer to the environment
     .rspPtr     resq 1  ;Pointer to rsp on entry to Int 21h
     .jftSize    resw 1  ;JFT array size, 20 => PSP JFT in use
     .unixEntry  resb 3  ;Must always be CDh 21h CBh, same place as DOS
     .prevPSP    resq 1  ;Pointer to the previous PSP in chain (used by SHARE)
                 resb 1  ;Reserved byte
-;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer
-; to the actual in use JFT and the other 12 bytes are left undefined.
-;If xtraHdlSz < 20 (DOS will never set it so), then it is considered as 20
-;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
-; always used and xtraHdlSz.
-;Will need to add two SYSCALLS for future expansion:
-;       1) Get Program Environment Pointer
-;       2) Get Command Line arguments pointer
 ;The below are in the same place as in DOS.
     .cmdLineArgPtr: ;Symbol for future use
     .fcb1       resb 16  ;First FCB,    argument 1 
