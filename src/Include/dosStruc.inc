@@ -344,11 +344,11 @@ struc psp
     .oldInt23h  dq ?  ;Int 23h pointer on overlay load
     .oldInt24h  dq ?  ;Int 24h pointer on overlay load
     .parentPtr  dq ?  ;Pointer to parent process PSP
-;If xtraHdlSz > 20, then the QWORD at .jobFileTbl becomes a pointer
+;If jftSize > 20, then the QWORD at .jobFileTbl becomes a pointer
 ; to the actual in use JFT and the other 12 bytes are left undefined.
-;If xtraHdlSz < 20 (DOS will never set it so), then it is considered as 20
+;If jftSize < 20 (DOS will never set it so), then it is considered as 20
 ;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
-; always used and xtraHdlSz.
+; always used and jftSize.
     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
     .jobFileTbl resb dfltJFTsize ;Main File handle array, JFT
     .envPtr     dq ?  ;Pointer to the environment
