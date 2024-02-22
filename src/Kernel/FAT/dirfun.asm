@@ -19,23 +19,21 @@ makeDIR:           ;ah = 39h
     call scanPathWC
     jc .badPath ;Dont allow wildcards
     ;Path is ok, now proceed
+    mov byte [searchAttr], dirInclusive
     lea rdi, buffer1    ;Build the full path here
     call getFilePath ;Get a Directory path in buffer1, hitting the disk
     ;If the path exists, exit error
     jnc extErrExit
-    ;-------------------------------------------
-    ;TEST THAT THE DRIVE IS VALID AND NOT JOIN
-    ;-------------------------------------------
+    ;-----------------------------
+    ;TEST THAT THE DRIVE IS VALID
+    ;This is clearly unnecessary
+    ;    Keep it for now...
+    ;-----------------------------
     push rdi
     mov rdi, qword [workingCDS]
     test word [rdi + cds.wFlags], cdsValidDrive ;Cannot make on invalid drive
     pop rdi
     jz extErrExit  ;Exit access denied
-    push rdi
-    mov rdi, qword [workingCDS]
-    test word [rdi + cds.wFlags], cdsJoinDrive ;Cannot make on a live join drive
-    pop rdi
-    jnz extErrExit  ;Exit access denied
     ;-------------------------------------------
     ;Now check if the reason for the error was that the last pathcomp was 0
     call checkFailingComp

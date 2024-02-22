@@ -9,7 +9,7 @@ createFileHdl:     ;ah = 3Ch, handle function
 ;        CF=NC => al = Error code
     push rcx    ;Save file attributes on stack
     lea rcx, createMain
-    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
+    mov byte [searchAttr], dirInclusive ;Inclusive with directory
     jmp short openFileHdl.openCommon
 openFileHdl:       ;ah = 3Dh, handle function
 ;Input: al = Open mode, to open file with
@@ -1291,7 +1291,6 @@ openMain:
     mov rdi, qword [currentSFT]
     mov rsi, qword [workingCDS]
     xor ah, ah  ;al has the access mode
-    mov word [rdi + sft.wOpenMode], ax  ;Set the SFT access mode
     cmp rsi, -1
     jne .notNet
 .redirOpen:
@@ -1304,6 +1303,35 @@ openMain:
     test word [rsi + cds.wFlags], cdsRedirDrive
     jnz .redirOpen  ;If redir drive, go via the redir interface
     call dosCrit1Enter
+;Ensure our disk attributes permit opening
+    mov dl, byte [curDirCopy + fatDirEntry.attribute]   ;Get the disk attrib
+    test dl, dirVolumeID    ;Is the found file a volume label?
+    jnz .accDenExit
+    test dl, dirReadOnly    ;Is the found file marked as RO in the file system?
+    jz short .openFile      ;If not, proceed.
+;Else, we check if we are permitted to open this file.
+    movzx ecx, word [rsi + sft.wOpenMode]   ;Get the user-set open mode
+    test ecx, FCBopenedFile  ;We consider FCBs here for future net use 
+    jnz .fcbOpen    ;If FCB open, intervene appropriately
+    mov edx, ecx
+    and edx, 070h   ;Isolate the share bits only
+    cmp edx, netFCBShare ;Is this a net server FCB open?
+    je .fcbOpen     ;If it is net fcb, similarly force to ro as before
+    and ecx, 0Fh    ;Else, isolate the bottom nybble
+    cmp cl, ReadAccess  ;Are we asking for more than read?
+    je .openFile    ;If no, proceed, eax has openmode. Else, access denied!
+.accDenExit:
+    mov eax, errAccDen
+    jmp short .errorExit
+.fcbOpen:
+;FCB calls are depreciated, so this is lined up for removal already. Kept in
+; the event that we introduce a 64-bit FCB equivalent interface for net use.
+;Since FCB calls cannot set the open mode, we set the FCB open of a RO file
+; to only allow reading of the file. 
+    and cx, 0FFF0h  ;Set to read access open only. Preserve share/property bits
+    mov word [rsi + sft.wOpenMode], cx
+    mov eax, ecx    ;Move the modified open mode into eax for buildSFT
+.openFile:
     mov byte [openCreate], 0   ;Opening file, set to 0
     mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode

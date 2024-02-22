@@ -156,15 +156,16 @@ denyRWShare     equ 10h
 denyWriteShare  equ 20h
 denyReadShare   equ 30h
 denyNoneShare   equ 40h
-netFCBShare     equ 70h
+;If remote pc used fcb to open, use netFCB to make maximum restrictive share
+netFCBShare     equ 70h     
 noInherit       equ 80h
 ;Bits 8-12 reserved 0
+;Fancy open mode bits
+diskFullFail    equ 2000h   ;Reserved: If set, trigger Int 24h on disk full.
+noBufferWrites  equ 4000h   ;Reserved: If set, flush after each buffer write.
+;Once share is loaded, if a local FCB open occurs, mark the sft as so.
+FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else handle based.
 
-diskFullFail    equ 2000h   ;DO NOT USE. IF set, Trigger Int 24h on disk full.
-;Buffering on writes
-noBufferWrites  equ 4000h   ;If set, dont buffer writes, always update disk
-;FCB opened file, shouldn't see this as we are depreciating FCB's completely now
-FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else SFT
 ;Attribute Byte
 readOnlyFile    equ 1h
 hiddenFile      equ 2h

@@ -482,19 +482,6 @@ checkCharValid:
     xor ecx, ecx    ;Clear CF too
     jmp short .exit
 
-;checkCharValid:
-;If ZF=ZE => Invalid Char
-;If ZF=NZ => Valid Char
-    ;push rcx
-    ;push rdi
-    ;mov ecx, badDirNameCharL    ;Get table length
-    ;lea rdi, badDirNameChar ;Point to bad char table
-    ;repne scasb ;Scan. Stop when equal
-    ;pop rdi
-    ;pop rcx
-    ;return
-
-
 skipSpacesAndTabs:
 ;Input: rsi -> String 
 ;Output: rsi -> First non Space or Tab type char
