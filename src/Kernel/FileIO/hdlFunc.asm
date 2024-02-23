@@ -1455,11 +1455,14 @@ createMain:
     mov al, byte [searchAttr]   ;Get the attr we created with.
     cmp al, volLabelFile
     jne .notVolLabel    ;If not vol label, skip.
-    ;Treat volume label creation case here. Free the SFT immediately
-    ; and ensure the dir is flushed, and dpb updated (shouldn't make a difference).
-    ;mov al, byte [workingDrv]
-    ;mov byte [rebuildDrv], al
-    ;mov byte [rebuildDrv], -1   ;TEMPORARY
+; Treat volume label creation case here. Rebuild DPB.
+    mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
+    mov al, byte [rdi]     ;Get the drive letter
+    sub al, "A"            ;Convert to a 0 based number
+    mov byte [rebuildDrv], al  ;Set the volid rebuild var
+    call dosCrit1Enter
+    call getDiskDPB        ;Rebuild DPB and clear var
+    call dosCrit1Exit
 .notVolLabel:
     mov eax, 2  ;Needed for the SHARE call
     call qword [updateDirShare]
@@ -1507,6 +1510,9 @@ buildSFTEntry:
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
     ;Here if Creating a file.
+    ;First check if we are handling a volume label
+    cmp qword [rbp + 10h], volLabelFile  ;Are we creating a volume label?
+    je .createVolLabel
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
@@ -1579,7 +1585,7 @@ buildSFTEntry:
     jmp .exit
 .createFile:
     ;Create a dummy dir entry in the SDA to swap into the disk buffer
-    ;rsi points to current sda entry
+    ;rsi points to current sft entry
     lea rdi, curDirCopy
     ;Clear out the dir entry
     push rdi
@@ -1671,7 +1677,41 @@ buildSFTEntry:
     stc
     pop rbp
     return
-
+;vvvvvvvvvv INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE vvvvvvvvvv
+.createVolLabel:
+;Handles the creation of a volume label. 
+;Uses the final part of a pathspec to use as a volume label.
+;Procedure as follows:
+;1) Search for the existence of any volume label. Fail if exists. Proceed if not.
+;2) Set up vars (such as [dirClustPar]) to build entry in root dir of disk.
+;3) Goto create new file subroutine
+    push rbp
+    mov rbp, rsp
+    sub rsp, 10    ;Make 11 (8.3) char space on stack
+    lea rsi, fcbName
+    lea rdi, qword [rbp - 10]   ;Store the FCB filename here
+    push rsi
+    movsq
+    movsw
+    movsb
+    pop rdi
+    mov ecx, 11
+    mov al, "?"
+    rep stosb   ;Store all question marks
+    mov byte [searchAttr], volLabelFile ;Set to search for volume labels
+    lea rsi, qword [rbp - 10]   ;Get the FCB filename back
+    lea rdi, fcbName            ;and place it back in the fcbName field
+    movsq
+    movsw
+    movsb
+    mov rsp, rbp    ;Return the stack ptr home
+    pop rbp
+    jmp .createFile
+.createVolLabelError:
+    mov rsp, rbp    ;Return the stack ptr home
+    pop rbp
+    jmp .bad        ;Set access denied error code and exit!
+;^^^^^^^^^^ INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE ^^^^^^^^^^
 closeMain: ;Int 2Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)

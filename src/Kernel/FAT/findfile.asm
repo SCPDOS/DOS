@@ -126,6 +126,9 @@ searchDir:
     int 2fh
     return
 .notNet:
+;vvvvvvvvvv INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE vvvvvvvvvv
+    ;Here we do a volid search intervention. Always searches root dir.
+;^^^^^^^^^^ INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE ^^^^^^^^^^
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
     mov eax, dword [dirClustA]  ;Get the cluster number to start searching at
     test eax, eax
