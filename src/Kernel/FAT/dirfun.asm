@@ -257,9 +257,9 @@ removeDIR:         ;ah = 3Ah
     mov byte [searchAttr], dirInclusive ;Search for anything
     pop rax
     call getStartSectorOfCluster
-    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    call getBufForDir   
     jc .exitBad
-    call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
+    call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
     add rsi, fatDirEntry_size*2 ;Start searching from the second entry in dir
     sub ecx, 2  ;Two fewer entries to search for in this sector
     mov byte [fileDirFlag], -1  ;Make sure we are searching for everythin
@@ -268,9 +268,9 @@ removeDIR:         ;ah = 3Ah
     ;Else, this is a empty dir, we can remove it
     ;tempSect has the sector of the entry and entries points to the offset
     mov rax, qword [tempSect]
-    call getBufForDOS
+    call getBufForDir
     jc .exitBad
-    call adjustDosDirBuffer
+    call prepSectorSearch
     movzx eax, word [entry]
     lea rsi, qword [rbx + bufferHdr.dataarea]
     add rsi, rax    
@@ -537,12 +537,12 @@ getDiskDirectoryEntry:
 .skipOldFat:
     add rax, rbx    ;Add sector offset to start sector of cluster
     mov qword [tempSect], rax   ;Save this sector number
-    call getBufForDOS   ;Get buffer for DOS in rbx
+    call getBufForDir   ;Get buffer for dir in rbx
     pop rbx
     retc
     push rbx
     mov rbx, qword [currBuff]
-    call adjustDosDirBuffer ;Change buffer to Dir buffer
+    call prepSectorSearch
     ;Above function gets data buffer ptr in rsi
     movzx eax, word [dirSect]   ;Get the sector in which the offset lies
     movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector

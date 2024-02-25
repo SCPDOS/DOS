@@ -78,9 +78,9 @@ searchMoreDir:
     movzx ebx, word [dirSect]   ;Get sector offset into the cluster
     add rax, rbx    ;Add the sector offset into the cluster
 .common:
-    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    call getBufForDir
     jc searchDir.hardError
-    call adjustDosDirBuffer  ;rbx has the buffer ptr for this dir sector
+    call prepSectorSearch  ;rbx has the buffer ptr for this dir sector
     call findInBuffer.getNumberOfEntries    ;Get in ecx # of entries in sector
     mov eax, dword [dirEntry]
     and eax, 0Fh    ;Get the value modulo 16
@@ -135,9 +135,9 @@ searchDir:
     jz .oldRoot
     call getStartSectorOfCluster    ;Else, get the start sector in rax
 .sectorLoop:
-    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    call getBufForDir
     jc .hardError
-    call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
+    call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
 .rmdirEP: ;Entry used by rmdir to jump into this routine
     call findInBuffer
 .nextEp:
@@ -170,9 +170,9 @@ searchDir:
 .oldSectorLp:
     movzx eax, word [dirSect]    ;Move the sector number into eax
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
-    call getBufForDOS
+    call getBufForDir
     jc .hardError
-    call adjustDosDirBuffer      ;rbx has the buffer pointer for this dir sector
+    call prepSectorSearch      ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
@@ -188,9 +188,10 @@ searchDir:
 .hardError:
     mov al, -1
     return
-adjustDosDirBuffer:
-    or byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
-    and byte [rbx + bufferHdr.bufferFlags], ~dosBuffer
+prepSectorSearch:
+;Input: rbx -> Buffer with Dir sector to search
+;Output: rsi -> Start of the dir data area
+;        ecx = Max number of 32 byte dir entries in sector buffer
     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
     shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer

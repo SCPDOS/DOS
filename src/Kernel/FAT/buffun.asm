@@ -482,7 +482,7 @@ getBufForFat:
     jmp short getBufCommon
 getBufForDir:
 ;Returns a buffer to use for disk directory data in rbx
-;Input: [currentSFT] = File to manipulate
+;Input: [workingDPB] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -491,7 +491,7 @@ getBufForDir:
 getBufForData:
 ;Returns a buffer to use for disk data in rbx
 ;Requires a File Handle.
-;Input: [currentSFT] = File to manipulate
+;Input: [workingDPB] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
