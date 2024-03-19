@@ -126,10 +126,15 @@ searchDir:
     int 2fh
     return
 .notNet:
-;vvvvvvvvvv INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE vvvvvvvvvv
-    ;Here we do a volid search intervention. Always searches root dir.
-;^^^^^^^^^^ INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE ^^^^^^^^^^
+;vvvvvvvvvvvvvvvv NEW NEW NEW vvvvvvvvvvvvvvvv
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
+    test byte [searchAttr], dirVolumeID  ;Is vol id bit set (highest priority)?
+    jz .notRoot    ;Skip the intervention if bit not set
+;Here we do a volid search intervention. Always searches root dir.
+    xor eax, eax ;Search the root dir. Must be the last path element
+    call prepSetupDirSearchVars
+.notRoot:
+;^^^^^^^^^^^^^^^^ NEW NEW NEW ^^^^^^^^^^^^^^^^
     mov eax, dword [dirClustA]  ;Get the cluster number to start searching at
     test eax, eax
     jz .oldRoot
@@ -830,7 +835,7 @@ prepareDir:
     mov rsi, qword [workingCDS] ;Get the CDS ptr ONLY IF CDS Relative
     mov eax, dword [rsi + cds.dStartCluster]    ;... and start at given cluster
 .prepDirExitSkip:
-    call .prepSetupDirSearchVars
+    call prepSetupDirSearchVars
     clc ;Clear carry before exiting
 .badDriveExit:
     pop rsi
@@ -844,7 +849,7 @@ prepareDir:
     test byte [spliceFlag], -1
     jnz .prepDirExit    ;If not relative, exit as we put the "root dir" marker
     jmp short .prepLoop ;Else, need to copy CDS now too as part of path
-.prepSetupDirSearchVars:
+prepSetupDirSearchVars:
 ;Input: eax = Starting Cluster of search on disk (0=Root dir)
 ;       rbp -> Working DPB
     push rcx

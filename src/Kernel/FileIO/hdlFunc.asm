@@ -1511,8 +1511,10 @@ buildSFTEntry:
     jz .openProc
     ;Here if Creating a file.
     ;First check if we are handling a volume label
-    cmp qword [rbp + 10h], volLabelFile  ;Are we creating a volume label?
-    je .createVolLabel
+;vvvvvvvvvvvvvvvv NEW NEW NEW vvvvvvvvvvvvvvvv
+    test qword [rbp + 10h], volLabelFile  ;Are we creating a volume label?
+    jnz .createVolLabel
+;^^^^^^^^^^^^^^^^ NEW NEW NEW ^^^^^^^^^^^^^^^^
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
