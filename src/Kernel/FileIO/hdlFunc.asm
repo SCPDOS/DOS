@@ -1409,8 +1409,9 @@ createMain:
     test al, 80h    ; Is this invalid bit set?
     jnz .invalidAttrib
     test al, volLabelFile    ;Is this a volume label?
-    jnz .notVol
+    jz .notVol
     mov al, volLabelFile ;If the vol bit is set, set the whole thing to volume only
+    jmp short .validAttr    ;Don't set the archive bit for vol label
 .notVol:
     or al, archiveFile   ;Set archive bit
     test al, directoryFile | charFile   ;Invalid bits?
@@ -1447,14 +1448,13 @@ createMain:
     push rax    ;Save the file attributes on stack
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
-    pop rbx ;Pop the word off (though it has been used already!)
+    pop rbx ;Pop the file attribute off
     pop rdi
     jc .errorExit
-    call shareFile  ;Puts an sft handle in rdi
+    call shareFile  ;Puts an sft handle in rdi, preserves rbx
     jc .errorExit
-    mov al, byte [searchAttr]   ;Get the attr we created with.
-    cmp al, volLabelFile
-    jne .notVolLabel    ;If not vol label, skip.
+    test bl, volLabelFile    ;Was the attribute a volume label?
+    jz .notVolLabel    ;If not vol label, skip.
 ; Treat volume label creation case here. Rebuild DPB.
     mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
     mov al, byte [rdi]     ;Get the drive letter
@@ -1511,10 +1511,21 @@ buildSFTEntry:
     jz .openProc
     ;Here if Creating a file.
     ;First check if we are handling a volume label
-;vvvvvvvvvvvvvvvv NEW NEW NEW vvvvvvvvvvvvvvvv
     test qword [rbp + 10h], volLabelFile  ;Are we creating a volume label?
-    jnz .createVolLabel
-;^^^^^^^^^^^^^^^^ NEW NEW NEW ^^^^^^^^^^^^^^^^
+    jz .notVolLbl   ;Bit not set? Jump!
+    push rsi
+    push rdi
+    push rbp
+    mov byte [volIdFlag], -1    ;Set the volid search bit
+    call searchDir  ;Searches the root dir
+    mov byte [volIdFlag], 0     ;We are done searching for volid
+    pop rbp
+    pop rdi
+    pop rsi
+    jnc .bad ;If CF=NC, then we have found a vollbl, fail.
+    cmp al, errNoFil
+    jne .bad ;If not "no file found", error out
+.notVolLbl:
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
@@ -1606,7 +1617,6 @@ buildSFTEntry:
 
     mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
     ;al has file attributes.
-    and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
     mov byte [rdi + fatDirEntry.attribute], al
     mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
     mov dword [rdi + fatDirEntry.crtTime], eax
@@ -1679,41 +1689,6 @@ buildSFTEntry:
     stc
     pop rbp
     return
-;vvvvvvvvvv INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE vvvvvvvvvv
-.createVolLabel:
-;Handles the creation of a volume label. 
-;Uses the final part of a pathspec to use as a volume label.
-;Procedure as follows:
-;1) Search for the existence of any volume label. Fail if exists. Proceed if not.
-;2) Set up vars (such as [dirClustPar]) to build entry in root dir of disk.
-;3) Goto create new file subroutine
-    push rbp
-    mov rbp, rsp
-    sub rsp, 10    ;Make 11 (8.3) char space on stack
-    lea rsi, fcbName
-    lea rdi, qword [rbp - 10]   ;Store the FCB filename here
-    push rsi
-    movsq
-    movsw
-    movsb
-    pop rdi
-    mov ecx, 11
-    mov al, "?"
-    rep stosb   ;Store all question marks
-    mov byte [searchAttr], volLabelFile ;Set to search for volume labels
-    lea rsi, qword [rbp - 10]   ;Get the FCB filename back
-    lea rdi, fcbName            ;and place it back in the fcbName field
-    movsq
-    movsw
-    movsb
-    mov rsp, rbp    ;Return the stack ptr home
-    pop rbp
-    jmp .createFile
-.createVolLabelError:
-    mov rsp, rbp    ;Return the stack ptr home
-    pop rbp
-    jmp .bad        ;Set access denied error code and exit!
-;^^^^^^^^^^ INCOMPLETE INCOMPLETE INCOMPLETE INCOMPLETE ^^^^^^^^^^
 closeMain: ;Int 2Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)

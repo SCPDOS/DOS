@@ -126,15 +126,13 @@ searchDir:
     int 2fh
     return
 .notNet:
-;vvvvvvvvvvvvvvvv NEW NEW NEW vvvvvvvvvvvvvvvv
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
-    test byte [searchAttr], dirVolumeID  ;Is vol id bit set (highest priority)?
-    jz .notRoot    ;Skip the intervention if bit not set
+    test byte [volIdFlag], -1  ;Is the search for volid flag set?
+    jz .notVolSearch    ;Skip the intervention if not set
 ;Here we do a volid search intervention. Always searches root dir.
-    xor eax, eax ;Search the root dir. Must be the last path element
+    xor eax, eax ;Search the root dir.
     call prepSetupDirSearchVars
-.notRoot:
-;^^^^^^^^^^^^^^^^ NEW NEW NEW ^^^^^^^^^^^^^^^^
+.notVolSearch:
     mov eax, dword [dirClustA]  ;Get the cluster number to start searching at
     test eax, eax
     jz .oldRoot
@@ -233,11 +231,17 @@ findInBuffer:
 .notLookingForEmpty:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
+    test byte [volIdFlag], -1   ;If this is set, intervene in search.
+    jz .notVolIdExclusive
+    cmp ah, dirVolumeID   ;If we are a volid, clear CF, set ZF and return
+    jne .nextEntry
+    return
+.notVolIdExclusive:
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .exclusiveDir
-    cmp al, dirVolumeID ;Are WE searching for a volume only?
+    cmp al, dirVolumeID ;Are WE searching for a volume label?
     je .volFile ;If so, go here
-    cmp ah, 08h ;Is this file a volume lbl that we are not looking for?
+    cmp ah, dirVolumeID ;Is this file a volume lbl that we are not looking for?
     je .nextEntry
     cmp ah, al  ;If file attr <= user selected attribs, scan name for match
     ja .nextEntry

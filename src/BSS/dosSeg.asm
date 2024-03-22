@@ -204,6 +204,7 @@ sdaDOSSwap:
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
     dirEntryNum resw 1  ;Offset into directory of entry we are looking for
+    volIdFlag   db ?    ;If set, we are searching for a volume ID
     xInt24hRSP  resq 1  ;RSP across an Int 24h call
     Int24bitfld resb 1  ;Copies the bit field given to the Int 24h handler
     fileDirFlag resb 1  ;File/Directory flag. 0 = Dir, ¬0 = File
