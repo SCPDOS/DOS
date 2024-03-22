@@ -29,14 +29,12 @@ makeBufferMostRecentlyUsed: ;Int 2Fh AX=1207h
 .exit:
     return
 
-flushAndFreeBuffer:         ;Int 2Fh AX=1209h 
-;1 External reference
-;Input: rdi = Buffer header to flush and free
-    call flushBuffer
-    jc .exit
-    ;Free the buffer if it was flushed successfully (CF=NC)
-    mov word [rdi + bufferHdr.driveNumber], 00FFh   ;Free buffer and clear flags
-.exit:
+markBuffersAsUnreferencedWrapper:
+;Marks all buffers as unreferenced (clears the reference bit from all buffers)
+; and preserves rdi
+    push rdi
+    call markBuffersAsUnreferenced
+    pop rdi
     return
 
 markBuffersAsUnreferenced:  ;Int 2Fh AX=120Eh
@@ -77,12 +75,80 @@ findUnreferencedBuffer: ;Int 2Fh AX=1210h
 .exit:
     return
 
-flushBuffer:         ;Internal Linkage Int 2Fh AX=1215h
-;Flushes the data in a sector buffer to disk!
+flushAllBuffersForDPB:  ;External linkage
+;Wrapper to allow calls to the below functions from the workingDPB
+    push rax
+    mov rax, qword [workingDPB]
+    movzx eax, byte [rax + dpb.bDriveNumber]
+    call flushAllBuffersForDrive
+    pop rax
+    return
+
+flushAllBuffersForDrive:    ;External linkage (2 - diskReset/exit)
+; Flushes and resets the dirty bit for all dirty bufs in buffer chain.
+; Used also to allow flushing all buffers
+; Input: al = 0-based physical drive number we are xacting on
+; Returns: CF=NC => All is well, buffers flushed and dirty bits cleaned
+;          CF=CY => A Buffer failed to flush, it was lost.
+    push rdi
+    push rax
+    mov rdi, qword [bufHeadPtr]
+    mov ah, -1  ;Set to ignore no buffers
+.mainLp:
+    cmp rdi, -1 ;When we get to the end of the buffer chain, exit
+    je .exit   
+    call flushAndCleanBuffer    ;Flush this buffer if it is on the DPB we want
+    push rax
+    movzx eax, byte [rdi + bufferHdr.driveNumber]
+    cmp al, byte [errorDrv] ;Was this a buffer on the error drive?
+    pop rax
+    je .errDrv    ;If not, goto next buffer
+.nextBuffer:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
+    jmp short .mainLp
+.errDrv:
+    mov byte [rdi + bufferHdr.driveNumber], -1  ;Free the buffer if caused error
+    jmp short .nextBuffer
+.exit:
+    pop rax
+    pop rdi
+    test byte [Int24Fail], -1   ;Did we xlat error?
+    retz
+    stc ;If so, return CF=CY
+    return
+
+flushAndCleanBuffer:   ;Internal Linkage Int 2Fh AX=1215h
+;Flushes and cleans the dirty bit from the buffer
+;Input: AH = Drives to ignore flush for
+;       AL = Drive to flush for. If AL=AH, take this buffer unless ignored!
+;       rdi -> Buffer in question
+    cmp ah, byte [rdi + bufferHdr.driveNumber]  ;Is this an ignorable drv number?
+    rete
+    cmp ah, al  ;Do we ignore ourselves?
+    je .takeThisBuffer
+    cmp al, byte [rdi + bufferHdr.driveNumber] ;Is this an acceptable buffer?
+    clc
+    retne
+.takeThisBuffer:
+    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer   ;Is it dirty?
+    retz
+    push rax    ;Save the drive number
+    movzx eax, byte [rdi + bufferHdr.bufferFlags]
+    push rax    ;Save the buffer flags
+    call flushAndFreeBuffer
+    pop rax     ;Get back the flags
+    jc .exit
+    and al, ~dirtyBuffer    ;Clean the dirty bit
+    mov byte [rdi + bufferHdr.bufferFlags], al  ;And return the flags!
+.exit:  
+    pop rax     ;Get back the drive number
+    return
+
+flushAndFreeBuffer:    ;Int 2Fh AX=1209h 
+;Frees, then attempts flushes the data in a sector buffer to disk!
 ;Entry: rdi = Pointer to buffer header for this buffer
 ;Exit:  CF=NC : Success
 ;       CF=CY : Fail, terminate the request
-;First make request to device driver
     push rax
     push rbx
     push rcx
@@ -90,35 +156,57 @@ flushBuffer:         ;Internal Linkage Int 2Fh AX=1215h
     push rsi
     push rbp
 ;If the buffer is freed, skip flushing to avoid issues
-    cmp byte [rdi + bufferHdr.driveNumber], -1  ;-1 means free buffer
-    je .fbFreeExit  ;If it is free exit
-    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Data modified?
+    mov eax, freeBuffer
+    xchg ax, word [rdi + bufferHdr.driveNumber] ;Free the buffer, get flags
+    ;ah = Flags, al = Drive number
+    cmp al, -1  ;-1 means free buffer
+    je .fbFreeExit  ;If it was free, exit
+    test ah, dirtyBuffer    ;Data modified?
     jz .fbFreeExit  ;Skip write to disk if data not modified
-.fbRequest0:
+    cmp al, byte [errorDrv] ;Was this drive the error drive?    
+    je .fbFreeExit  ;Skip write if this disk has caused an error
+    mov byte [Int24bitfld], critRetryOK | critFailOK
+    test ah, dataBuffer
+    jz .fbNotData
+    or byte [Int24bitfld], critIgnorOK  ;If this is a data buffer, we can ignore too
+.fbNotData:
     mov esi, 3  ;Repeat attempt counter
-    test byte [rdi + bufferHdr.bufferFlags], fatBuffer
-    jz .fbRequest1
+    test ah, fatBuffer
+    jz .fbWriteSetup
     add esi, 2  ;FAT sectors have 5 attempts
-.fbRequest1:
-    mov al, byte [rdi + bufferHdr.driveNumber]
-    mov ecx, 1  ;One sector to copy
+.fbWriteSetup:
+    movzx ecx, byte [rdi + bufferHdr.bufFATcopy]   ;And FAT copies (if FAT sector)
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     lea rbx, qword [rdi + bufferHdr.dataarea]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
+.fbWriteDisk:
+    push rax    ;Save the drive number and flags
+    push rbx    ;Has pointer to buffer data area
+    push rcx    ;# of FAT sectors
+    push rdx    ;The LBA of the buffer that we are writing
+    push rsi    ;Error counter (5 for FAT sectors, 3 otherwise) 
+    push rbp    ;DPB ptr for drive
+    mov ecx, 1  ;One sector to copy
     call primReqWriteSetup  ;Setup request (preserves setup registers)
     call absDiskDriverCall    ;Make Driver Request
+    pop rbp
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+
     jnz .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
-    test byte [rdi + bufferHdr.bufferFlags], fatBuffer ;FAT buffer?
+    test ah, fatBuffer ;FAT buffer?
     jz .fbFreeExit  ;If not, exit
-    dec byte [rdi + bufferHdr.bufFATcopy]
-    jz .fbFreeExit1  ;Once this goes to 0, stop writing FAT copies
+    dec ecx
+    jz .fbFreeExit  ;Once this goes to 0, stop writing FAT copies
+    push rax
     mov eax, dword [rdi + bufferHdr.bufFATsize]
-    add qword [rdi + bufferHdr.bufferLBA], rax ;Add the FAT size to the LBA
-    jmp .fbRequest0 ;Make another request
-.fbFreeExit1:
-    mov bl, byte [rbp + dpb.bNumberOfFATs]
-    mov byte [rdi + bufferHdr.bufFATcopy], bl    ;Just in case, replace this
+    add rdx, rax ;Add the FAT size to the LBA (rdx has LBA number)
+    pop rax
+    jmp .fbWriteDisk ;Make another request for the other FAT copy
 .fbFreeExit:
     clc
 .fbExitFail:
@@ -132,13 +220,13 @@ flushBuffer:         ;Internal Linkage Int 2Fh AX=1215h
 .fbFail:
 ;Enter here only if the request failed
     dec esi
-    jnz .fbRequest1 ;Try the request again!
+    jnz .fbWriteDisk ;Try the request again!
 ;Request failed thrice, critical error call
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    mov byte [Int24bitfld], critWrite ;Set the initial bitfield to write req
+    or byte [Int24bitfld], critWrite ;Set the initial bitfield to write req
     call diskIOError ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
-    je .fbRequest0
+    je .fbWriteSetup   ;If we retry, we rebuild the stack, values possibly trashed
     ;Else we fail (Ignore=Fail here)
     stc ;Set error flag to indicate fail
     jmp .fbExitFail
@@ -165,65 +253,25 @@ testDirtyBufferForDrive:    ;External linkage
     je .tdbfdExit
     jmp short .tdbfdCheckBuffer
 
-
-cancelWriteThroughBuffers:  ;External linkage
-; Frees all buffers for the workingDPB
-; Alternative symbol for the same function. Used on Fails and Aborts.
-freeBuffersForDPB:  ;External Linkage (Before Get BPB in medchk)
+freeBuffersForDrive:  ;External Linkage (Before Get BPB in medchk)
 ;Walks the buffer chain and sets ALL buffers with the given DPB 
 ; to have a drive number of -1, thus freeing it
-;Given DPB is in rbp
-    push rbx
-    mov rbx, qword [bufHeadPtr]
-.i0:
-    cmp qword [rbx + bufferHdr.driveDPBPtr], rbp  ;Chosen DPB?
-    jne .i1 ;If no, skip freeing
-    mov word [rbx + bufferHdr.driveNumber], 00FFh  ;Free buffer and clear flags
-.i1:
-    mov rbx, qword [rbx + bufferHdr.nextBufPtr] ;goto next buffer
-    cmp rbx, -1
-    jne .i0
-.exit:
-    pop rbx
-    return
-
-;******* NEW BUFFER HANDLING *******
-writeThroughBuffer: ;External linkage
-; Flushes the current disk buffer to disk.
-; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
-;          CF=CY => Buffer failed to flush, marked as dirty and return 
+;Given Drive number is in al
     push rdi
-    mov rdi, qword [currBuff]
-    call flushBuffer
-    jc short .exit
-    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
-.exit:
-    pop rdi
-    return
-;******* NEW BUFFER HANDLING *******
-
-writeThroughBuffers:    ;External linkage
-; Flushes and resets the dirty bit for all dirty bufs for working drive
-; Returns: CF=NC => All is well, buffer flushed and dirty bit cleaned
-;          CF=CY => Buffer failed to flush, marked as dirty and return
-    push rax
-    push rdi
-    mov rax, qword [workingDPB]    ;Get current DPB to compare with
     mov rdi, qword [bufHeadPtr]
-.mainLp:
-    cmp rdi, -1 ;When we get to the end of the buffer chain, exit
-    je .exit   
-    cmp qword [rdi + bufferHdr.driveDPBPtr], rax  ;Compare dpb numbers
-    jne .nextBuffer
-    call flushBuffer    ;Flush this buffer if it on dpb we want
-    jc .exit  ;If something went wrong, exit
-    and byte [rdi + bufferHdr.bufferFlags], ~dirtyBuffer
-.nextBuffer:
-    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
-    jmp short .mainLp
+.i0:
+    cmp rdi, -1
+    je .exit
+    cmp byte [rdi + bufferHdr.driveNumber], al  ;Chosen Drive?
+    jne .i1 ;If no, skip freeing
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer | (refBuffer << 8)
+    call makeBufferMostRecentlyUsedGetNext
+    jmp short .i0
+.i1:
+    mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;goto next buffer
+    jmp short .i0
 .exit:
     pop rdi
-    pop rax
     return
 
 markBufferDirty:
@@ -234,7 +282,6 @@ markBufferDirty:
     popfq
     pop rbp
     return
-
 
 getBuffer: ;Internal Linkage ONLY
 ;
@@ -263,13 +310,17 @@ getBuffer: ;Internal Linkage ONLY
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
     mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
+    call makeBufferMostRecentlyUsed
     clc
 .rbExit:
     pop rdi
     pop rsi
     pop rdx
     pop rcx
+    pushfq
     mov rbx, qword [currBuff]   ;Get current buffer
+    or byte [rbx + bufferHdr.bufferFlags], refBuffer    ;Mark as referenced!
+    popfq
     return
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
@@ -278,7 +329,6 @@ getBuffer: ;Internal Linkage ONLY
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
     ;If the sector is to be lost or has been successfully flushed, then it
     ; is no longer owned by that File so we mark the owner as none
-    mov qword [rdi + bufferHdr.owningFile], -1
     mov byte [rdi + bufferHdr.driveNumber], dl
     mov byte [rdi + bufferHdr.bufferFlags], cl ;FAT/DIR/DATA and NOT dirty
     mov qword [rdi + bufferHdr.bufferLBA], rax
@@ -342,7 +392,7 @@ readSectorBuffer:   ;Internal Linkage
 ;This function is called in a critical section so the buffer pointer
 ; is under no thread of being reallocated.
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    mov word [rdi + bufferHdr.driveNumber], 0FFFh ;Free buffer and clear dirty/ref bits
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer and clear dirty/ref bits
     mov byte [Int24bitfld], critRead    ;Set the initial bitfield to read req
     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry
@@ -412,54 +462,8 @@ findSectorInBuffer:     ;Internal linkage
 ;-----------------------------------------------------------------------------
 ;SPECIAL BUFFER FUNCTIONS
 ;Buffer functions for sectors associated to file handles and specific purposes
-; DOS and FAT sectors need to setup [workingDPB] to make the transfer
-; DIR and DATA sectors need to setup [currentSFT] to make the transfer
-;FCB requests use FCBS (or SDA SFT if FCBS=0)
-;Since they are just SFT entries on a separate list, this logic still holds
-;The only difference is if an FCBS may need to be recycled; Then all buffers 
-; belonging to that FCBS get flushed before freeing the FCBS.
-;Buffer owningFile pointers get set to -1 if they are successfully freed
-; or they don't belong to a file (i.e. FAT or DOS sectors)
-;OwningFile is only referenced for handle/FCB sectors (DIR and Data sectors)
+; ALL sector types need to setup [workingDPB] to make the transfer
 ;-----------------------------------------------------------------------------
-getBufForDataNoFile:
-;Returns a buffer to use for disk data in rbx
-;Requires a File Handle.
-;Input: [workingDPB] = DPB to transact on
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, dataBuffer
-    push rsi
-    push rdi
-    mov rsi, qword [workingDPB] ;Get working DPB 
-    call getBuffer  ;Gives the buffer ptr in rbx
-    jc getBufCommon.exit
-    mov qword [rbx + bufferHdr.owningFile], -1  ;Set owner to none
-    jmp short getBufCommon.exit
-getBufForDirNoFile:
-;Returns a buffer to use for disk dir data in rbx
-;Requires a File Handle.
-;Input: [workingDPB] = DPB to transact on
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, dirBuffer
-    push rsi
-    push rdi
-    mov rsi, qword [workingDPB] ;Get working DPB 
-    call getBuffer  ;Gives the buffer ptr in rbx
-    jc getBufCommon.exit
-    mov qword [rbx + bufferHdr.owningFile], -1  ;Set owner to none
-    jmp short getBufCommon.exit
-getBufForFat:
-;Returns a buffer to use for fat data in rbx
-;Input: [workingDPB] = DPB to transact on
-;       rax = Sector to transfer
-;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
-    push rcx
-    mov cl, fatBuffer
-    jmp short getBufCommon2
 getBufForDOS:
 ;Returns a buffer to use for DOS sector(s) in rbx
 ;Input: [workingDPB] = DPB to transact on
@@ -467,14 +471,18 @@ getBufForDOS:
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
     mov cl, dosBuffer
-getBufCommon2:
-    push rsi
-    push rdi    ;Push rdi to preserve it
-    mov rsi, qword [workingDPB] ;Get working DPB 
-    jmp short getBufCommon.makeReq
+    jmp short getBufCommon
+getBufForFat:
+;Returns a buffer to use for fat data in rbx
+;Input: [workingDPB] = DPB to transact on
+;       rax = Sector to transfer
+;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
+    push rcx
+    mov cl, fatBuffer
+    jmp short getBufCommon
 getBufForDir:
 ;Returns a buffer to use for disk directory data in rbx
-;Input: [currentSFT] = File to manipulate
+;Input: [workingDPB] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -483,7 +491,7 @@ getBufForDir:
 getBufForData:
 ;Returns a buffer to use for disk data in rbx
 ;Requires a File Handle.
-;Input: [currentSFT] = File to manipulate
+;Input: [workingDPB] = File to manipulate
 ;       rax = Sector to transfer
 ;Output: rbx = Buffer to use or if CF=CY, error rbx = Undefined
     push rcx
@@ -491,64 +499,10 @@ getBufForData:
 getBufCommon:
     push rsi
     push rdi
-    mov rdi, qword [currentSFT]
-    mov rsi, qword [rdi + sft.qPtr] ;Get DPB
+    mov rsi, qword [workingDPB] ;Get working DPB 
 .makeReq:
     call getBuffer  ;Gives the buffer ptr in rbx
-    jc .exit    ;Don't change SFT field if the request FAILED.
-    ;That would be very bad as it would potentially cause faulty data to be 
-    ; flushed to the file!
-    ;Only set the SFT field if Data or DIR sectors, as getBuffer
-    ; will always set the owningFile field to -1 if the data was successfully
-    ; flushed or deemed ok to lose (thus completing setup for dos/fat buffers).
-    test cl, dosBuffer | fatBuffer
-    jnz .exit
-    mov qword [rbx + bufferHdr.owningFile], rdi ;Set owner for the data
-.exit:
     pop rdi
     pop rsi
     pop rcx
     return
-
-flushFile:
-;We search the chain for buffers with the currentSFT = owning file and ALL
-; FAT/DOS buffers to flush
-; We flush and free, and set to head of chain before continuing to search
-;Input: rdi = is the file (sft) we wish to flush
-;Output: CF=NC => All ok
-;        CF=CY => A sector failed, exit. 
-    push rdi
-    push rsi
-    ;First check if the file has been written to?
-    test word [rdi + sft.wDeviceInfo], blokFileNoFlush
-    jnz .exitNoFlush ;Exit without flushing if set
-    mov rsi, rdi    ;Move the currentSFT to rsi
-    mov rdi, qword [bufHeadPtr]
-.ffLoop:
-    cmp rdi, -1
-    je .exit
-    test byte [rdi + bufferHdr.bufferFlags], fatBuffer | dosBuffer | dirBuffer
-    jnz .found  ;Flush if either bit is set
-    cmp qword [rdi + bufferHdr.owningFile], -1  ;If owning file is -1, flush too
-    je .found
-    cmp qword [rdi + bufferHdr.owningFile], rsi
-    je .found
-    mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-    jmp short .ffLoop
-.exit:
-    ;Here we undo the disk file to be flushed bit in the SFT
-    or word [rsi + sft.wDeviceInfo], blokFileNoFlush  ;Set that bit again!
-.exitNoFlush:
-    pop rsi
-    pop rdi
-    return
-.found:
-;Here we take the old next buffer, then flush and free the current buffer
-; then return the old next buffer into rdi and go back to ffLoop
-    call flushAndFreeBuffer ;Flush and free buffer
-    jc .exitNoFlush    ;Exit preserving CF
-    ;If the sector has been successfully flushed, then it
-    ; is no longer owned by that File so we mark the owner as none
-    mov qword [rdi + bufferHdr.owningFile], -1
-    call makeBufferMostRecentlyUsedGetNext  ;Return in rdi the next buffer
-    jmp short .ffLoop

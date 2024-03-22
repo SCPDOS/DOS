@@ -9,7 +9,7 @@ createFileHdl:     ;ah = 3Ch, handle function
 ;        CF=NC => al = Error code
     push rcx    ;Save file attributes on stack
     lea rcx, createMain
-    mov byte [searchAttr], dirInclusive ;Inclusive w/ directory
+    mov byte [searchAttr], dirInclusive ;Inclusive with directory
     jmp short openFileHdl.openCommon
 openFileHdl:       ;ah = 3Dh, handle function
 ;Input: al = Open mode, to open file with
@@ -111,24 +111,20 @@ closeFileHdl:      ;ah = 3Eh, handle function
     call getSFTPtr  ;Get a pointer to the SFT in rdi
     jc extErrExit   ;If CF is set, al has error code, exit!
     call setCurrentSFT  ;Set this as the current SFT
-    ;Check count to see if we need to check share mode
-    xor eax, eax    ;Preset ax to 0
-    cmp word [rdi], 1   ;Opened once only, not shared, no need for share check
-    je .skipShareCheck
+    cmp word [rdi + sft.wNumHandles], 1
+    je .killHdl
     ;Now check sharing mode
     movzx eax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
     and al, 0F0h    ;And wipe out the other bits
+.killHdl:
+    cmp al, netFCBShare ;If this is a NetFile, skip nuking the JFT entry
+    je .skipShareCheck
+    call getJFTPtr  ;Remember, bx has handle number
+    mov byte [rdi], -1  ;Now free the JFT entry
 .skipShareCheck:
-    push rax    ;Save the share mode on stack
     call closeMain  ;Call close main!
-    pop rax 
     jc extErrExit   ;If an error, exit through error exit
-    cmp al, netFCBShare ;Do NetFCB check (only if file opened more than once)
-    je .exitOk  ;If sharing mode was net FCB, it had no JFT entry, skip nulling
-    call getJFTPtr  ;Get the pointer to the JFT entry in rdi
-    mov byte [rdi], -1  ;Free JFT entry
-.exitOk:
-    xor eax, eax    ;Return value
+    mov eax, 3E00h    ;Return value
     jmp extGoodExit
 
 readFileHdl:       ;ah = 3Fh, handle function
@@ -153,7 +149,7 @@ writeFileHdl:      ;ah = 40h, handle function
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 ;Here don't allow malformed chars unless it is a network CDS
 ;Allows deleting volume labels.
-    mov ebx, dirIncFiles    ;Inclusive w/o dirs
+    mov ebx, dirInclusive    ;Search all files, dirs handled later
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server invoke, store this value instead
     mov byte [searchAttr], cl
@@ -313,13 +309,13 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     and ch, (volLabelFile | directoryFile)    ;Keep these two bits
     or cl, ch
     mov byte [rsi + fatDirEntry.attribute], cl  ;Set new bits
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .setError
     call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit
 .setError:
-    call cancelWriteThroughBuffers
+
 .setErrorNoFlush:
     call dosCrit1Exit
     jmp extErrExit
@@ -377,7 +373,6 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     mov eax, errPnf
     jmp extErrExit
 .pathspecOk:
-    ;breakpoint
     push qword [currentDTA]
     lea rdi, dosffblock ;Use the dosFFblock as the DTA
     mov qword [currentDTA], rdi
@@ -571,7 +566,7 @@ createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
     push rcx    ;Save file attributes on stack
     lea rcx, createNewMain
-    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
+    mov byte [searchAttr], dirInclusive ;Inclusive with dir (handled later)
     jmp openFileHdl.openCommon
 
 lockUnlockFile:    ;ah = 5Ch
@@ -820,10 +815,10 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
 commitMain:
 ;Commits the current SFT 
     call getCurrentSFT  ;Gets currentSFT into rdi
-    movzx eax, word [rdi + sft.wDeviceInfo]
-    test eax, devCharDev | blokFileNoFlush
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test ebx, devCharDev | blokFileNoFlush
     retnz   ;Return if nothing has been written or a char dev
-    test ax, devRedirDev
+    test ebx, devRedirDev
     jnz .notNet
     ;Commit file net redir call and exit
     mov eax, 1107h
@@ -831,15 +826,11 @@ commitMain:
     return  ;Propagate CF and AL if needed due to error
 .notNet:
     call dosCrit1Enter
-    mov rbp, qword [rdi +sft.qPtr]  ;Get DPB pointer in rbp
-    call setWorkingDPB
-    call updateDirectoryEntryForFile    ;Update the directory entry
-    jc short .exit    ;Return in error if this fails, exit critical
-    call flushFile  ;Now the file gets flushed
-.exit:
-;Propagate CF and AL if needed due to error
-    call dosCrit1Exit
-    return
+    call updateSFTDateTimeFields    ;Update the SFT Time fields
+    mov eax, -1         ;Set a "large" count for open handles
+    call flushFile      ;Now file gets flushed and exit critical section
+    return  ;Propagate CF and AL if needed due to error
+    
 renameMain:
 ;Now, creates a special find first block for the source file
 ; that is in curDirCopy. Then we build a search pattern for the new name, 
@@ -852,7 +843,8 @@ renameMain:
 ;Input:
 ; filenamePtr1 -> Source path + filename pattern
 ; filenamePtr2 -> New path + filename pattern
-; workingCDS -> CDS for drive we are considering (set by )
+; workingCDS -> CDS for drive we are considering (set by first pathspec)
+; searchAttr = Set to search attributes (inclusive or by request if netinvoke)
     mov rdi, qword [workingCDS]
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
@@ -886,10 +878,14 @@ renameMain:
     xor al, al
     cmp eax, 005C3A00h
     je .accDen  ;If this is the root, exit access denied
+    ;Now ensure hte two paths are not equal
+    lea rsi, buffer1
+    lea rdi, buffer2
+    call compareFileNames
+    jz .accDen
 ;Now we find first the source file
     mov rsi, qword [fname1Ptr]
     mov rdi, rsi
-    mov byte [searchAttr], dirInclusive    ;Inclusive search
     call getFilePathNoCanon    ;Get the path for the file to delete
     jc .exit2    ;Return with CF=CY if file doesn't exist
     lea rsi, curDirCopy
@@ -974,7 +970,7 @@ renameMain:
     mov eax, dword [dirClustA]  ;Get the current dir cluster, not start cluster
     call getStartSectorOfCluster    ;Cluster number in eax, sector in rax
     add rax, rbx    ;Goto the sector for the cluster
-    call getBufForDirNoFile ;Get buffer pointer in rbx
+    call getBufForDir ;Get buffer pointer in rbx
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea + rdx] ;Goto byte offset in sector
     ;rsi points to the file entry
@@ -1112,7 +1108,7 @@ renameMain:
     ;Else propagate the CF if this ends with an error (inc no more files)
 .exit:
     pop rdi ;Pop the ptr to the dest pathspec ptr off stack
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .badExit
 .exit2: ;Bad exit before we push qword on stack 
     call dosCrit1Exit
@@ -1120,7 +1116,6 @@ renameMain:
 .bad:
     mov eax, errAccDen  ;Temp return code
 .badExit:
-    call cancelWriteThroughBuffers
     stc
     pop rdi
     jmp short .exit2
@@ -1177,15 +1172,13 @@ checkNoOpenHandlesForShareAction:
     mov eax, RWAccess | CompatShare ;Set open mode
     mov byte [openCreate], 0    ;Make sure we are just opening the file
     ;This is to avoid needing to put the file attributes on the stack
-    push rdi
+    push rdi    ;Save the SFT ptr
     call buildSFTEntry
     pop rdi
     jc .errorMain
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
     mov word [rdi + sft.wOpenMode], denyRWShare ;Prevent everything temporarily
-    push rdi
-    call shareFile
-    pop rdi
+    call shareFile  ;Puts an sft handle in rdi
     jc .errorMain
     mov word [rdi + sft.wNumHandles], 0
     call closeShareCallWrapper
@@ -1215,10 +1208,8 @@ outerDeleteMain:
     return
 .notNet:
     mov eax, errAccDen  
-    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
-    jnz .exitBad  ;Can't delete a char dev
-    test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
-    jnz .exitBad  ;Can't delete a read only file
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev | dirDirectory | dirReadOnly
+    jnz .exitBad  ;Can't delete char dev, dir or ro file
     call deleteMain
     jc .exitBad
     ;Check if the name has a wildcard in it, if so, keep searching
@@ -1237,6 +1228,7 @@ outerDeleteMain:
     pop qword [currentDTA] ;And use the dosFFblock as the DTA
     call findNextMain   ;rdi gets reloaded with DTA in this call
     pop qword [currentDTA]
+    retc    ;Return with no more files error now
     call deleteMain ;Whilst it keeps finding files that match, keep deleting
     jnc .serverWCloop     
 ;Stop as soon as an error occurs
@@ -1280,10 +1272,9 @@ deleteMain:
     xchg byte [rsi], al    ;Mark entry as free, get char in al
     call markBufferDirty
     ;CF must be clear
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     retnc
 .exitBad:
-    call cancelWriteThroughBuffers
     stc
     return
 
@@ -1298,7 +1289,6 @@ openMain:
     mov rdi, qword [currentSFT]
     mov rsi, qword [workingCDS]
     xor ah, ah  ;al has the access mode
-    mov word [rdi + sft.wOpenMode], ax  ;Set the SFT access mode
     cmp rsi, -1
     jne .notNet
 .redirOpen:
@@ -1311,26 +1301,43 @@ openMain:
     test word [rsi + cds.wFlags], cdsRedirDrive
     jnz .redirOpen  ;If redir drive, go via the redir interface
     call dosCrit1Enter
+;Ensure our disk attributes permit opening
+    mov dl, byte [curDirCopy + fatDirEntry.attribute]   ;Get the disk attrib
+    test dl, dirVolumeID    ;Is the found file a volume label?
+    jnz .accDenExit
+    test dl, dirReadOnly    ;Is the found file marked as RO in the file system?
+    jz short .openFile      ;If not, proceed.
+;Else, we check if we are permitted to open this file.
+    movzx ecx, word [rsi + sft.wOpenMode]   ;Get the user-set open mode
+    test ecx, FCBopenedFile  ;We consider FCBs here for future net use 
+    jnz .fcbOpen    ;If FCB open, intervene appropriately
+    mov edx, ecx
+    and edx, 070h   ;Isolate the share bits only
+    cmp edx, netFCBShare ;Is this a net server FCB open?
+    je .fcbOpen     ;If it is net fcb, similarly force to ro as before
+    and ecx, 0Fh    ;Else, isolate the bottom nybble
+    cmp cl, ReadAccess  ;Are we asking for more than read?
+    je .openFile    ;If no, proceed, eax has openmode. Else, access denied!
+.accDenExit:
+    mov eax, errAccDen
+    jmp short .errorExit
+.fcbOpen:
+;FCB calls are depreciated, so this is lined up for removal already. Kept in
+; the event that we introduce a 64-bit FCB equivalent interface for net use.
+;Since FCB calls cannot set the open mode, we set the FCB open of a RO file
+; to only allow reading of the file. 
+    and cx, 0FFF0h  ;Set to read access open only. Preserve share/property bits
+    mov word [rsi + sft.wOpenMode], cx
+    mov eax, ecx    ;Move the modified open mode into eax for buildSFT
+.openFile:
     mov byte [openCreate], 0   ;Opening file, set to 0
     mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
     jc .errorExit
-.openShareLoop:
-;Now we attempt to register the file with SHARE
-    movzx ecx, word [shareCount]    
-.openShareTryAgain: 
-    push rcx
-    call openShareCallWrapper
-    pop rcx
-    jnc .fileSharedOk
-    call shareRetryCountdown
-    dec ecx
-    jnz .openShareTryAgain
-    mov rdi, qword [currentSFT]
-    call shareCheckOpenViolation
-    jnc .openShareLoop  ;If user selects retry, we retry!
+    call shareFile      ;Puts an SFT handle in rdi
+    jnc .fileSharedOk   ;If the file open doesnt violate share, jump!
 .errorExit:
-    call dosCrit1Exit   ;Else we error out
+    call dosCrit1Exit   ;Else we error out with error code in al
     return
 .fileSharedOk:
     mov eax, 3  ;Update date/time and everything in the share dir sync call
@@ -1400,8 +1407,9 @@ createMain:
     test al, 80h    ; Is this invalid bit set?
     jnz .invalidAttrib
     test al, volLabelFile    ;Is this a volume label?
-    jnz .notVol
+    jz .notVol
     mov al, volLabelFile ;If the vol bit is set, set the whole thing to volume only
+    ;Set archive bit for new vol labels for incremental archivers to update
 .notVol:
     or al, archiveFile   ;Set archive bit
     test al, directoryFile | charFile   ;Invalid bits?
@@ -1434,21 +1442,25 @@ createMain:
     mov byte [openCreate], -1   ;Creating file, set to FFh
     mov byte [delChar], 0E5h
     call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
-    push rdi
+    push rdi    ;Save the sft handle
     push rax    ;Save the file attributes on stack
     mov eax, RWAccess | CompatShare ;Set open mode
     call buildSFTEntry
-    pop rbx ;Pop the word off (though it has been used already!)
+    pop rbx ;Pop the file attribute off
     pop rdi
     jc .errorExit
-    mov al, byte [searchAttr]   ;Get the attr we created with.
-    cmp al, volLabelFile
-    jne .notVolLabel    ;If not vol label, skip.
-    ;Treat volume label creation case here. Free the SFT immediately
-    ; and ensure the dir is flushed, and dpb updated (shouldn't make a difference).
-    ;mov al, byte [workingDrv]
-    ;mov byte [rebuildDrv], al
-    ;mov byte [rebuildDrv], -1   ;TEMPORARY
+    call shareFile  ;Puts an sft handle in rdi, preserves rbx
+    jc .errorExit
+    test bl, volLabelFile    ;Was the attribute a volume label?
+    jz .notVolLabel    ;If not vol label, skip.
+; Treat volume label creation case here. Rebuild DPB.
+    mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
+    mov al, byte [rdi]     ;Get the drive letter
+    sub al, "A"            ;Convert to a 0 based number
+    mov byte [rebuildDrv], al  ;Set the volid rebuild var
+    call dosCrit1Enter
+    call getDiskDPB        ;Rebuild DPB and clear var
+    call dosCrit1Exit
 .notVolLabel:
     mov eax, 2  ;Needed for the SHARE call
     call qword [updateDirShare]
@@ -1496,10 +1508,28 @@ buildSFTEntry:
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
     ;Here if Creating a file.
+    ;First check if we are handling a volume label
+    test qword [rbp + 10h], volLabelFile  ;Are we creating a volume label?
+    jz .notVolLbl   ;Bit not set? Jump!
+    push rsi
+    push rdi
+    push rbp
+    mov byte [volIdFlag], -1    ;Set the volid search bit
+    call searchDir  ;Searches the root dir
+    mov byte [volIdFlag], 0     ;We are done searching for volid
+    pop rbp
+    pop rdi
+    pop rsi
+    jnc .bad ;If CF=NC, then we have found a vollbl, fail.
+    cmp al, errNoFil
+    jne .bad ;If not "no file found", error out
+.notVolLbl:
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev
+    test byte [curDirCopy + fatDirEntry.attribute], directoryFile
+    jnz .bad    ;Make sure we are not recreating a directory as a file!
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
@@ -1513,7 +1543,6 @@ buildSFTEntry:
     mov byte [rsi], al  ;Replace the first char of the filename back
     mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
     ;al has file attributes.
-    and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
     mov byte [rsi + fatDirEntry.attribute], al
     xor eax, eax
     ;Clear all the fields south of ntRes (20 bytes)
@@ -1566,7 +1595,7 @@ buildSFTEntry:
     jmp .exit
 .createFile:
     ;Create a dummy dir entry in the SDA to swap into the disk buffer
-    ;rsi points to current sda entry
+    ;rsi points to current sft entry
     lea rdi, curDirCopy
     ;Clear out the dir entry
     push rdi
@@ -1585,7 +1614,6 @@ buildSFTEntry:
 
     mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
     ;al has file attributes.
-    and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
     mov byte [rdi + fatDirEntry.attribute], al
     mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
     mov dword [rdi + fatDirEntry.crtTime], eax
@@ -1655,11 +1683,9 @@ buildSFTEntry:
 .bad:   ;Set Access Denied
     mov eax, errAccDen
 .bad2:  ;Error propagating error code
-    call cancelWriteThroughBuffersForHandle
     stc
     pop rbp
     return
-
 closeMain: ;Int 2Fh AX=1201h
 ;Gets the directory entry for a file
 ;Input: qword [currentSFT] = SFT to operate on (for FCB ops, use the SDA SFT)
@@ -1668,7 +1694,8 @@ closeMain: ;Int 2Fh AX=1201h
 ; If CF=NC on return: eax = Unknown
 ;                     rdi = current SFT ptr
     mov rdi, qword [currentSFT] ;Get the sft pointer
-    test word [rdi + sft.wDeviceInfo], devRedirDev ;Is this a network drive?
+    movzx ebx, word [rdi + sft.wDeviceInfo]
+    test ebx, devRedirDev ;Is this a network drive?
     jz .physical
     ;Here we beep out the request to the network redirector (Int 2Fh AX=1106h)
     mov eax, 1106h  ;Make request
@@ -1678,51 +1705,74 @@ closeMain: ;Int 2Fh AX=1201h
 ; We make a request to the dev dir to close the device
 ; If the device is disk, we then update the directory entry for the disk file
     call dosCrit1Enter  ;Enter critical section 1
-    push rbx
-    push rsi
-    mov rsi, qword [rdi + sft.qPtr] ;Get driver or DPB ptr in rsi
-    test word [rdi + sft.wDeviceInfo], devCharDev
-    jnz .charClose   ;Char devs aren't affected by directory work
-    ;rsi has DPB pointer here
-    ;rdi has the SFT pointer
-    push rbp
-    mov rbp, rsi ;Move the dpb pointer into rbp
-    call setWorkingDPB  ;Set the working dpb to rbp
-    call updateDirectoryEntryForFile
-    pop rbp
-    ;If CF is set, Fail was requested and ax has an error code
-    jc .exit
-    call flushFile
-    jc .exit    ;If something went wrong, exit
-    movzx ecx, byte [rsi + dpb.bUnitNumber]    ;Get the unit number in cl
-    mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr
-.charClose:
-    ;Now rsi = Device Driver Header and rdi = Current SFT header
-    ;We now decrement handle count in SFT structure
-    call decrementOpenCount ;rdi = current SFT, returns ax = old handle count
-    dec ax  ;If this is zero, then we need to set wNumHandles to zero
-    jnz .driverClose
-    inc word [rdi + sft.wNumHandles]    ;Now make it zero again as it is -1
-.driverClose:
+    call updateSFTDateTimeFields
+    call decrementOpenCount ;rdi = current SFT, returns (e)ax = old handle count
     push rax
-    push rcx
+    push rbx
     call closeShareCallWrapper  ;The SFT count has been decremented
-    pop rcx
+    pop rbx
     pop rax
-    xchg ecx, eax ;Now store this because DOS returns in cx (according to RBIL)
-    ;and if the device is a disk device, cl will have the unit number
+flushFile:  ;Make this non-local to be jumped to by commit too!
+;Updates the Dir entry with info from SFT and flushes.
+;Closes the handle properly if only one reference to file remains.
+;Input: ax = Initial open handle count
+;       bx = attribute byte from the SFT
+;       rdi -> Current SFT
+    push rax    ;Save the handle count for later
+    test bx, blokFileNoFlush | devCharDev
+    jnz .notDiskBitsSet
+    call getAndUpdateDirSectorForFile   ;rsi -> Buffer dir entry
+    mov eax, errAccDen
+    jc .accDenExit
+    push rsi    ; -> Buffer dir entry
+    push rdi    ; -> SFT ptr
+    lea rdi, qword [rdi + sft.sFileName]    ;Ensure this is the right file
+    call findInBuffer.nameCompare
+    pop rdi     ; -> SFT ptr
+    pop rsi     ; -> Buffer dir entry
+    jz .dirEntryForUs
+.badFileFound:
+    mov eax, errFnf ;Dir entry has changed, and now file not found on medium
+    stc
+    jmp short .accDenExit
+.dirEntryForUs:
+    movzx ecx, byte [rsi + fatDirEntry.attribute] ;Get dir file attrib
+    movzx eax, byte [rdi + sft.bFileAttrib]   ;Get SFT file attrib
+    not al  ;Reverse the bits
+    and al, cl  ;These should be equal
+    and al, dirInclusive ;And nothing outside of these should be set
+    jnz .badFileFound
+    mov eax, dword [rdi + sft.dFileSize]    ;Get the file size
+    mov dword [rsi + fatDirEntry.fileSize], eax ;And update field
+    movzx eax, word [rdi + sft.wTime]   ;Get the last write time
+    mov word [rsi + fatDirEntry.wrtTime], ax    ;And update field
+    movzx eax, word [rdi + sft.wDate]   ;Get the last write time
+    mov word [rsi + fatDirEntry.wrtDate], ax    ;And update field
+    mov word [rsi + fatDirEntry.lastAccDat], ax    ;And update final field
+    mov eax, dword [rdi + sft.dStartClust]  ;Always update the start cluster
+    mov word [rsi + fatDirEntry + fatDirEntry.fstClusLo], ax
+    shr eax, 10h
+    mov word [rsi + fatDirEntry + fatDirEntry.fstClusHi], ax
+    call markBufferDirty
+    movzx eax, byte [workingDrv]
+    call flushAllBuffersForDrive
+    mov eax, errAccDen
+    jc .accDenExit
+.notDiskBitsSet:
+    clc
+.accDenExit:
     pushfq
     call closeSFT   ;Called with rdi -> Current SFT
     popfq
-    call writeThroughBuffersForHandle
-    jnc short .exitOk
+    pop rcx ;Get back the initial open handle count
+    movzx ecx, cx   ;Force upper bits clear
+    pushfq
+    dec ecx ;Decrement count
+    jnz .exit   ;If our initial count was not 1, skip resetting the count since
+    mov word [rdi], cx ; decrementOpenCount didnt set it to -1
 .exit:
-    call cancelWriteThroughBuffersForHandle
-    stc
-.exitOk:
-    pop rsi
-    pop rbx
     call dosCrit1Exit
+    popfq
     return
 
 readBytes:
@@ -1952,6 +2002,7 @@ readDiskFile:
     jnc .shareCheck ;IF the user selected retry, lets try again
     return  ;Otherwise, return with the share error code in eax and CF=CY
 .shareOk:
+    call markBuffersAsUnreferencedWrapper
     xor ebx, ebx    ;Use ebx to contain the old cluster number
     test edx, edx   ;Is the relative sector zero? (I.E start of file?)
     jz .skipWalk
@@ -2049,7 +2100,7 @@ readExitOk:
 writeBytes:
 ;Writes the bytes from the user buffer
 ;Input: ecx = Bytes to xfr
-;Returns number of bytes written in ecx
+;Returns number of bytes written in ecx if CF=NC
     call getCurrentSFT  ;Get current SFT in rdi
     movzx eax, word [rdi + sft.wOpenMode]
     and al, 0Fh ;Eliminate except access mode
@@ -2204,6 +2255,8 @@ writeDiskFile:
     jnc .nonZeroWrite   ;If returned retry, retry the request
     return  ;Else return with CF=CY
 .proceedWithWrite:
+;Ensure that all buffers are now unreferenced
+    call markBuffersAsUnreferencedWrapper
     xor ebx, ebx
     mov dword [bytesAppend], ebx    ;Used for file extends (not writes!)
     mov byte [fileGrowing], bl   ;Reset the file growth flag!
@@ -2212,7 +2265,8 @@ writeDiskFile:
     test eax, eax
     jnz .notStart
     call startNewChain  ;Allocate a first cluster! 
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     cmp eax, -1
     je writeExit
     ;Now eax has the first cluster of chain
@@ -2228,7 +2282,8 @@ writeDiskFile:
     jz .skipWalk
 .goToCurrentCluster:
     call readFAT    ;Get in eax the next cluster
-    jc .exitPrepHardErr   ;This can only return Fail
+    ;jc .exitPrepHardErr
+    retc   ;This can only return Fail
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
 .addCluster:
@@ -2237,13 +2292,15 @@ writeDiskFile:
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     movzx ecx, word [rbp + dpb.wBytesPerSector]
     add dword [bytesAppend], ecx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
     call readFAT    ;Get in eax the new cluster
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
 .stillInFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
     dec edx ;Decrement counter
@@ -2276,6 +2333,7 @@ writeDiskFile:
     call checkBreak
     pop rax
 .mainWriteNoBreak:
+;Must intervene here for direct writes (if the handle specifies no buffering)
     call getBufForData  ;Get bufHdr ptr in rbx and currBuff var for sector in rax
     jc .badExit
     lea rdi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rdi
@@ -2300,28 +2358,20 @@ writeDiskFile:
     push rcx
     rep movsb
     pop rcx
-    call markBufferDirty   ;Preserves all CPU state 
+    call markBufferDirty   ;Preserves all CPU state, this buffer is now dirty
 
     add dword [currByteF], ecx ;Move file pointer by ecx bytes
     sub dword [tfrCntr], ecx   ;Subtract from the number of bytes left
     mov qword [currentDTA], rsi ;rsi has been shifted by ecx on entry amount
-
-    mov rsi, qword [currBuff]    ;Get current disk buffer
-    lea rsi, qword [rsi + bufferHdr.dataarea]   ;Shift the ptr to the first data byte
-    movzx ebx, word [rbp + dpb.wBytesPerSector] 
-    add rsi, rbx    ;Point rsi to the end of the disk buffer
-    cmp rdi, rsi    ;If current pos - end < 0, jump
     pop rsi
-    jb short .skipWritethrough
-    call writeThroughBuffer ;Write thru this disk buffer now it is full
-    jc .exitPrepHardErr
-.skipWritethrough:
+
     mov eax, dword [tfrLen] ;Get total length
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
     jz writeExit
     call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     cmp eax, -1
     jne .noExtend
     ;Here we need to extend by a cluster
@@ -2329,35 +2379,33 @@ writeDiskFile:
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     movzx ebx, word [rbp + dpb.wBytesPerSector]
     add dword [bytesAppend], ebx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
-    jc .exitPrepHardErr
+    ;jc .exitPrepHardErr
+    retc
     cmp eax, -1
-    mov eax, errAccDen
-    je .exitPrepHardErr
+    je .noMoreClusters
 .noExtend:
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
     jmp .mainWrite
-.exitPrepHardErr:
-    push rax    ;Save error code
-    call writeExit
-    pop rax
-.badExitHard:    ;AL has error code already
-    call cancelWriteThroughBuffers
-    mov eax, 1  ;Give it one last update of the data in the directory!
-    call qword [updateDirShare]
+.noMoreClusters:
+    push rsi
+    mov rsi, qword [currentSFT]
+    test word [rsi + sft.wOpenMode], diskFullFail
+    pop rsi
+    jz .noExtend    ;If no trigger Int 24h, return success
+    ;Here we future proof for triggering Int 24h.
+.badExit:
+    mov eax, errAccDen
+;.exitPrepHardErr:
     stc
     return
-.badExit:
-;Might need to do some weird stuff later. Leave for now
-    mov eax, errAccDen
-    jmp short .badExitHard
-
 .noByteExit:
     mov eax, 2  ;Update last accessed fields of SFT
     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
@@ -2665,7 +2713,7 @@ incrementOpenCount:
 
 decrementOpenCount: ;Int 2Fh AX = 1208h
 ;Input: rdi = SFT pointer
-;Output: ax = Original wNumHandles count
+;Output: ax = Original wNumHandles count (zero extended to eax)
     pushfq
     movzx eax, word [rdi + sft.wNumHandles]
     dec eax     ;Decrement count
@@ -2676,7 +2724,7 @@ decrementOpenCount: ;Int 2Fh AX = 1208h
     xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
     return
 
-;Buffer Wrappers
+;Buffer Wrapper
 writeThroughBuffersForHandle:
 ;Input: qword [currentSFT] = Current SFT pointer
     push rdi
@@ -2687,26 +2735,21 @@ writeThroughBuffersForHandle:
     push qword [workingDPB]
     mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
     mov qword [workingDPB], rbp
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     pop qword [workingDPB]
 .exit:
     pop rbp
     pop rdi
     return
 
-cancelWriteThroughBuffersForHandle:
-;Input: qword [currentSFT] = Current SFT pointer
-    push rdi
-    push rbp
-    mov rdi, qword [currentSFT]
-    test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
-    jnz .exit
-    push qword [workingDPB]
-    mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
-    mov qword [workingDPB], rbp
-    call cancelWriteThroughBuffers
-    pop qword [workingDPB]
-.exit:
-    pop rbp
-    pop rdi
+setDPBfromSFT:
+;Sets and updates the DPB from an SFT ptr
+;Input: rdi -> sft
+;Output: CF=NC: workingDPB set
+;        CF=CY: Error fail, exit
+    mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
+    movzx eax, byte [rbp + dpb.bDriveNumber]
+    mov byte [workingDrv], al
+    call setWorkingDPB
+    call ensureDiskValid
     return

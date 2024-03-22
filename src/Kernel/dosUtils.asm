@@ -342,30 +342,24 @@ compareFileNames:   ;Int 2Fh, AX=121Eh
     push rsi
     push rdi
 .scan:
-    mov al, byte [rsi]
-    test al, al
-    jz .endOfString
-    mov ah, byte [rdi]
-    call swapPathSeparator  ;Convert al to \ if pathsep
-    jz .pathseps
-    or ax, 2020h    ;Convert both chars to lower case
-    cmp al, ah
-    jnz .exit
-.nextChar:
-    inc rsi
-    inc rdi
-    jmp short .scan
-.pathseps:
-    xchg ah, al
-    call swapPathSeparator  ;If ah is not a pathsep, then exit ZF=NZ
-    jnz .exit
-    jmp short .nextChar ;Else get the next chars
-.endOfString:
-    test ah, ah ;If ah is also the end of the path, then ZF=ZE else ZF=NZ
+    lodsb
+    call .normaliseChar
+    mov ah, al  ;Save normalised char in ah
+    mov al, byte [rdi]  ;Get the char in path2
+    inc rdi ;And goto next char
+    call .normaliseChar
+    cmp al, ah  ;Are they equal?
+    jne .exit   ;If not equal, exit
+    test al, al ;Here al=ah. If al == 0, exit!
+    jnz .scan
 .exit:
     pop rdi
     pop rsi
     pop rax
+    return
+.normaliseChar:
+    call uppercaseChar      ;Uppercase the char if uppercaseable
+    call swapPathSeparator  ;Swap if a pathsep char
     return
 checkPathspecOK:
 ;Input:
@@ -487,19 +481,6 @@ checkCharValid:
 .setZeroFlag:
     xor ecx, ecx    ;Clear CF too
     jmp short .exit
-
-;checkCharValid:
-;If ZF=ZE => Invalid Char
-;If ZF=NZ => Valid Char
-    ;push rcx
-    ;push rdi
-    ;mov ecx, badDirNameCharL    ;Get table length
-    ;lea rdi, badDirNameChar ;Point to bad char table
-    ;repne scasb ;Scan. Stop when equal
-    ;pop rdi
-    ;pop rcx
-    ;return
-
 
 skipSpacesAndTabs:
 ;Input: rsi -> String 

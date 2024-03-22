@@ -78,9 +78,9 @@ searchMoreDir:
     movzx ebx, word [dirSect]   ;Get sector offset into the cluster
     add rax, rbx    ;Add the sector offset into the cluster
 .common:
-    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    call getBufForDir
     jc searchDir.hardError
-    call adjustDosDirBuffer  ;rbx has the buffer ptr for this dir sector
+    call prepSectorSearch  ;rbx has the buffer ptr for this dir sector
     call findInBuffer.getNumberOfEntries    ;Get in ecx # of entries in sector
     mov eax, dword [dirEntry]
     and eax, 0Fh    ;Get the value modulo 16
@@ -127,14 +127,23 @@ searchDir:
     return
 .notNet:
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
+    test byte [searchAttr], dirVolumeID  ;If the attr has volid, intervene
+    jnz .volIdSearch
+    test byte [volIdFlag], -1  ;Is volid search override flag set?
+    jz .notVolSearch    ;Skip the intervention if not set
+.volIdSearch:
+;Here we do a volid search intervention. Always searches root dir.
+    xor eax, eax ;Search the root dir.
+    call prepSetupDirSearchVars
+.notVolSearch:
     mov eax, dword [dirClustA]  ;Get the cluster number to start searching at
     test eax, eax
     jz .oldRoot
     call getStartSectorOfCluster    ;Else, get the start sector in rax
 .sectorLoop:
-    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    call getBufForDir
     jc .hardError
-    call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
+    call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
 .rmdirEP: ;Entry used by rmdir to jump into this routine
     call findInBuffer
 .nextEp:
@@ -167,9 +176,9 @@ searchDir:
 .oldSectorLp:
     movzx eax, word [dirSect]    ;Move the sector number into eax
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
-    call getBufForDOS
+    call getBufForDir
     jc .hardError
-    call adjustDosDirBuffer      ;rbx has the buffer pointer for this dir sector
+    call prepSectorSearch      ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
@@ -185,9 +194,10 @@ searchDir:
 .hardError:
     mov al, -1
     return
-adjustDosDirBuffer:
-    or byte [rbx + bufferHdr.bufferFlags], dirBuffer   ;Change to dir buffer
-    and byte [rbx + bufferHdr.bufferFlags], ~dosBuffer
+prepSectorSearch:
+;Input: rbx -> Buffer with Dir sector to search
+;Output: rsi -> Start of the dir data area
+;        ecx = Max number of 32 byte dir entries in sector buffer
     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Set rsi to buffer data area
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
     shr ecx, 5  ;Divide by 32 to get # of entries in sector buffer
@@ -224,11 +234,17 @@ findInBuffer:
 .notLookingForEmpty:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
+    test byte [volIdFlag], -1   ;If this is set, intervene in search.
+    jz .notVolIdExclusive
+    cmp ah, dirVolumeID   ;If we are a volid, clear CF, set ZF and return
+    jne .nextEntry
+    return
+.notVolIdExclusive:
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .exclusiveDir
-    cmp al, dirVolumeID ;Are WE searching for a volume only?
+    cmp al, dirVolumeID ;Are WE searching for a volume label?
     je .volFile ;If so, go here
-    cmp ah, 08h ;Is this file a volume lbl that we are not looking for?
+    cmp ah, dirVolumeID ;Is this file a volume lbl that we are not looking for?
     je .nextEntry
     cmp ah, al  ;If file attr <= user selected attribs, scan name for match
     ja .nextEntry
@@ -826,7 +842,7 @@ prepareDir:
     mov rsi, qword [workingCDS] ;Get the CDS ptr ONLY IF CDS Relative
     mov eax, dword [rsi + cds.dStartCluster]    ;... and start at given cluster
 .prepDirExitSkip:
-    call .prepSetupDirSearchVars
+    call prepSetupDirSearchVars
     clc ;Clear carry before exiting
 .badDriveExit:
     pop rsi
@@ -840,7 +856,7 @@ prepareDir:
     test byte [spliceFlag], -1
     jnz .prepDirExit    ;If not relative, exit as we put the "root dir" marker
     jmp short .prepLoop ;Else, need to copy CDS now too as part of path
-.prepSetupDirSearchVars:
+prepSetupDirSearchVars:
 ;Input: eax = Starting Cluster of search on disk (0=Root dir)
 ;       rbp -> Working DPB
     push rcx

@@ -266,7 +266,8 @@ ensureDiskValid:
     jne .skipDirtyCheck
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is this dirty?
     je .dirtyBufferError
-    mov word [rdi + bufferHdr.driveNumber], 020FFh  ;Set reference bit and drive to free
+    ;Set reference bit and drive to free
+    mov word [rdi + bufferHdr.driveNumber], (refBuffer << 8) | freeBuffer 
     call makeBufferMostRecentlyUsedGetNext  ;Move this up, get next buffer
 .skipDirtyCheck:
     call findUnreferencedBuffer ;Get the next unreferenced buffer
@@ -274,7 +275,7 @@ ensureDiskValid:
 .exit:
     return
 .invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
-    call freeBuffersForDPB    ;Free all the buffers with the DPB in rbp
+    call freeBuffersForDrive    ;Free all the buffers with the DPB in rbp
 .resetDPB:    ;If no buffers found, skip freeing them as theres nothing to free!
     mov byte [rbp + dpb.bAccessFlag], -1 ;Mark DPB as inaccurate now
     ;Get a buffer to read BPB into in rdi

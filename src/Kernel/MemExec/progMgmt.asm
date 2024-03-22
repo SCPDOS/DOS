@@ -139,21 +139,6 @@ terminateStayRes:  ;ah = 31h
 simpleTerminate:   ;ah = 00h
     xor eax, eax    ;Just fall through as normal
 terminateClean:    ;ah = 4Ch, EXIT
-;Here we must:
-;0) Build errorlevel and adjust variables accordingly
-;1) Call Network Termination hook.
-;2) Check if the program is it's own parent. If so, return.
-;3) Swap the console back to the original driver if it is swapped.
-;3.5) If we are exiting due to TSR, jump to 5
-;4) Free all file handles associated to the current process.
-;       Note this means, reducing the open counts and setting PSP entries to -1
-;5) Free all memory blocks that have the signature of current PSP
-;6) Set current PSP to parent PSP
-;7) Restore Int 22h, 23h, 24h handlers from the PSP to the IDT
-;8) Set rsp of parent proc upon entry to DOS to our rsp
-;9) Set Int 22h to be the RIP value on the now oldRSP stack
-;10) Exit all critical sections.
-;
 ; Step 0
 ;For now, just adjust error level in var
     xor ah, ah  ;Eliminate the 4Ch
@@ -167,7 +152,9 @@ terminateClean:    ;ah = 4Ch, EXIT
 .storeELvl:
     mov word [errorLevel], ax   ;Store word
     
-; Step 1 Tell network a process is terminating
+; Step 1
+    mov ah, 82h ;Cancel all critical sections 0-7
+    int 2Ah
     mov eax, 1122h  ;Net redir, Process Termination Hook
     mov r8, qword [currentPSP]  ;Use r8 instead of DS
     int 2Fh
@@ -259,8 +246,10 @@ terminateClean:    ;ah = 4Ch, EXIT
     pop rdx
 ;Step 8
 .exit:
-    mov ah, 82h ;Cancel all critical sections 0-7
-    int 2Ah
+    mov al, -1  ;Flush all drive buffers
+    call dosCrit1Enter
+    call flushAllBuffersForDrive
+    call dosCrit1Exit
 
     cli
     mov rbx, qword [currentPSP]

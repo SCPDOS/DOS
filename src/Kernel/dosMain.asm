@@ -449,17 +449,16 @@ systemServices: ;ah = 61h
 diskReset:         ;ah = 0Dh
 ;Flush all dirty buffers to disk
     call dosCrit1Enter
+    mov al, -1  ;Mark all drives as flushable
+    call flushAllBuffersForDrive  
+    ;Now we free all buffers and set their referenced bit
     mov rdi, qword [bufHeadPtr]
-.drCheckBuffer:
-    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer
-    jz .drGotoNextBuffer
-.drFlushBuffer:
-    call flushAndFreeBuffer    ;Called with rdi = buffer header
-    jc .drExit
-.drGotoNextBuffer:
+.drBufferLp:
+    cmp rdi, -1
+    je .drExit
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer | (refBuffer << 8)
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-    cmp rdi, -1     ;If rdi points to -1, exit
-    jne .drCheckBuffer
+    jmp short .drBufferLp
 .drExit:
     call dosCrit1Exit
     mov eax, 1120h  ;Redirector flush all 

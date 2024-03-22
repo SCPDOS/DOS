@@ -204,6 +204,7 @@ sdaDOSSwap:
     bestMCB     resq 1  ;Best fit MCB for request
     lastMCB     resq 1  ;Last fit MCB for request
     dirEntryNum resw 1  ;Offset into directory of entry we are looking for
+    volIdFlag   db ?    ;If set, we are searching for a volume ID
     xInt24hRSP  resq 1  ;RSP across an Int 24h call
     Int24bitfld resb 1  ;Copies the bit field given to the Int 24h handler
     fileDirFlag resb 1  ;File/Directory flag. 0 = Dir, ¬0 = File
@@ -257,9 +258,6 @@ sdaDOSSwap:
     fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0
     wcdFcbName  resb 11+1   ;Used to expand any wildcards for rename
     fileDirSect resq 1  ;File/Directory starting sector, for each level
-;Join state vars 
-    ;joinPath    resb 1  ;Set => Path being qualified is join.
-    ;joinDrv     resb 1  ;Drive number for join (0 based)
     volIncmpFCB resb 1  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
     extFCBAttr  resb 1  ;Extended FCB file attribute
     extFCBFlag  resb 1  ;Set to -1 if Extended FCB

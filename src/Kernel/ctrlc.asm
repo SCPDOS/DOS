@@ -217,6 +217,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov word [errorExCde], di ;Save the error code if Abort
     mov eax, edi    ;Make the return error code the Driver Error Code
     mov byte [exitType], 2    ;We are returning from Abort, ret type 2!
+    mov byte [volIdFlag], 0 ;Clear special vol search byte if set
     jmp terminateClean.altEP
 
 ctrlBreakHdlr:

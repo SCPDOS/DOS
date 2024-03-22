@@ -19,23 +19,21 @@ makeDIR:           ;ah = 39h
     call scanPathWC
     jc .badPath ;Dont allow wildcards
     ;Path is ok, now proceed
+    mov byte [searchAttr], dirInclusive
     lea rdi, buffer1    ;Build the full path here
     call getFilePath ;Get a Directory path in buffer1, hitting the disk
     ;If the path exists, exit error
     jnc extErrExit
-    ;-------------------------------------------
-    ;TEST THAT THE DRIVE IS VALID AND NOT JOIN
-    ;-------------------------------------------
+    ;-----------------------------
+    ;TEST THAT THE DRIVE IS VALID
+    ;This is clearly unnecessary
+    ;    Keep it for now...
+    ;-----------------------------
     push rdi
     mov rdi, qword [workingCDS]
     test word [rdi + cds.wFlags], cdsValidDrive ;Cannot make on invalid drive
     pop rdi
     jz extErrExit  ;Exit access denied
-    push rdi
-    mov rdi, qword [workingCDS]
-    test word [rdi + cds.wFlags], cdsJoinDrive ;Cannot make on a live join drive
-    pop rdi
-    jnz extErrExit  ;Exit access denied
     ;-------------------------------------------
     ;Now check if the reason for the error was that the last pathcomp was 0
     call checkFailingComp
@@ -103,7 +101,7 @@ makeDIR:           ;ah = 39h
     shr eax, 10h    ;Get high word low
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov rax, qword [tempSect]   ;Get the sector back
-    call getBufForDirNoFile
+    call getBufForDir
     jc .badExit
     movzx eax, word [entry] ;Get byte offset into sector back
     lea rsi, curDirCopy    ;The dummy dir is the source now
@@ -128,7 +126,7 @@ makeDIR:           ;ah = 39h
     shl edx, 10h
     or eax, edx ;Add upper bits to eax cluster number
     call getStartSectorOfCluster    ;Get start sector in rax
-    call getBufForDirNoFile
+    call getBufForDir
     jc .badExit
     ;rbx has buffer pointer now
     lea rsi, curDirCopy
@@ -152,7 +150,7 @@ makeDIR:           ;ah = 39h
     mov ecx, 4
     rep movsq
     call markBufferDirty ;We wrote to this buffer
-    call writeThroughBuffers    ;Write the buffers to disk
+    call flushAllBuffersForDPB    ;Write the buffers to disk
     jc .badExit
 .okExit:
     ;AND WE ARE DONE!
@@ -162,7 +160,6 @@ makeDIR:           ;ah = 39h
 .bad:
     mov eax, errAccDen
 .badExit:
-    call cancelWriteThroughBuffers
     call dosCrit1Exit
     jmp extErrExit
 
@@ -193,18 +190,26 @@ removeDIR:         ;ah = 3Ah
     jmp extGoodExit
 .notNet:
     call dosCrit1Enter
-    mov rbp, qword [workingDPB]
-    ;Now let use check that our directory is not the CDS currentdir
-    mov rsi, qword [workingCDS]
     lea rdi, buffer1
     call strlen ;Get the length of the full qualified name in ecx
     mov word [pathLen], cx
-    call strcmp ;Then compare rdi to CDS string
-    jnz .notEqual
+    ;Now we scan all the CDS's to ensure this path is not the current dir anywhere
+    xor eax, eax
+.scanLoop:
+    call getCDSforDrive ;Gets a CDS string ptr in rsi
+    jc .notCurrent
+    call compareFileNames
+    jz .cantDelCD
+    inc eax
+    jmp short .scanLoop
+.cantDelCD:
     mov eax, errDelCD   ;Cant delete whilst in current directory
     call dosCrit1Exit
     jmp extErrExit
-.notEqual:
+.notCurrent:
+    mov rbp, qword [workingDPB]
+    ;Now let use check that our directory is not the CDS currentdir
+    mov rsi, qword [workingCDS]
     mov rdi, rsi    ;rsi points to CDS
     ;If the given path length is one more than the backslash offset
     ; due to the terminating null, then the user is trying to delete the 
@@ -221,7 +226,7 @@ removeDIR:         ;ah = 3Ah
     or eax, ebx
     mov dword [dirClustPar], eax    ;Store the first cluster of subdir here
     call getStartSectorOfCluster  ;Check first sector of cluster is . and ..
-    call getBufForDirNoFile
+    call getBufForDir
     jc .exitBad
     ;rbx points to buffer
     lea rsi, qword [rbx + bufferHdr.dataarea]
@@ -252,9 +257,9 @@ removeDIR:         ;ah = 3Ah
     mov byte [searchAttr], dirInclusive ;Search for anything
     pop rax
     call getStartSectorOfCluster
-    call getBufForDOS   ;Not quite a DOS buffer but we won't be making changes
+    call getBufForDir   
     jc .exitBad
-    call adjustDosDirBuffer    ;rbx has the buffer pointer for this dir sector
+    call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
     add rsi, fatDirEntry_size*2 ;Start searching from the second entry in dir
     sub ecx, 2  ;Two fewer entries to search for in this sector
     mov byte [fileDirFlag], -1  ;Make sure we are searching for everythin
@@ -263,9 +268,9 @@ removeDIR:         ;ah = 3Ah
     ;Else, this is a empty dir, we can remove it
     ;tempSect has the sector of the entry and entries points to the offset
     mov rax, qword [tempSect]
-    call getBufForDOS
+    call getBufForDir
     jc .exitBad
-    call adjustDosDirBuffer
+    call prepSectorSearch
     movzx eax, word [entry]
     lea rsi, qword [rbx + bufferHdr.dataarea]
     add rsi, rax    
@@ -279,7 +284,7 @@ removeDIR:         ;ah = 3Ah
     ;Now remove the FAT chain
     call unlinkFAT
     jc .exitBad
-    call writeThroughBuffers
+    call flushAllBuffersForDPB
     jc .exitBad
     call dosCrit1Exit
     xor eax, eax
@@ -287,7 +292,6 @@ removeDIR:         ;ah = 3Ah
 .accessDenied:
     mov eax, errAccDen
 .exitBad:
-    call cancelWriteThroughBuffers
     stc
     call dosCrit1Exit
     jmp extErrExit
@@ -533,12 +537,12 @@ getDiskDirectoryEntry:
 .skipOldFat:
     add rax, rbx    ;Add sector offset to start sector of cluster
     mov qword [tempSect], rax   ;Save this sector number
-    call getBufForDOS   ;Get buffer for DOS in rbx
+    call getBufForDir   ;Get buffer for dir in rbx
     pop rbx
     retc
     push rbx
     mov rbx, qword [currBuff]
-    call adjustDosDirBuffer ;Change buffer to Dir buffer
+    call prepSectorSearch
     ;Above function gets data buffer ptr in rsi
     movzx eax, word [dirSect]   ;Get the sector in which the offset lies
     movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
@@ -553,25 +557,18 @@ getDiskDirectoryEntry:
     pop rbx
     return
 
-
-updateDirectoryEntryForFile:    
-;Updates the directory entry for disk files
+updateSFTDateTimeFields:    
+;Updates the SFT time/date entries for disk files
 ;Called with:
 ;   [workingDPB] = DPB pointer for the disk device
 ;   [currentSFT] = Current SFT pointer
+;   bx = attribute byte from the SFT
+    test bx, blokFileNoFlush | devCharDev
+    retnz
+    test bx, blokNoDTonClose
+    retnz
     push rax
     push rbx
-    push rdi
-    push rbp
-
-    call dosCrit1Enter
-    mov rdi, qword [currentSFT]
-    mov rbp, qword [workingDPB]
-    test word [rdi + sft.wDeviceInfo], blokFileNoFlush | devCharDev
-    jnz .exit   ;If it is a char dev or hasn't been written to yet, skip this
-    test word [rdi + sft.wDeviceInfo], blokNoDTonClose
-    jnz .skipDT
-    ;Get date and time words and add them to the directory entry
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     ;Build date and time words
     call getDirDTwords  ;Get date time words packed in eax
@@ -579,53 +576,31 @@ updateDirectoryEntryForFile:
     mov word [rdi + sft.wTime], ax
     shr eax, 16 ;Eject the time, get the date in eax
     mov word [rdi + sft.wDate], ax
-    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush  ;We update DT, so flush
-.skipDT:
-;Before we read the dir sector in, if we never wrote to the disk
-; we skip all of this
-    test word [rdi + sft.wDeviceInfo], blokFileNoFlush
-    jnz .exit ;If the file was never written to, don't bother updating DIR data
-    mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
-    call getBufForDir  ;Returns buffer pointer in rbx
-    jc .exitBad    ;If an error is to be returned from, we skip the rest of this
-    ;Now we write the changes to the sector
-    ;Mark sector as referenced and dirty! Ready to be flushed!
-    lea rbp, qword [rbx + bufferHdr.dataarea]   ;Goto data area
-    movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
-    shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
-    add rbp, rbx    ;Move rbp to point to the directory entry
-    mov eax, dword [rdi + sft.dFileSize]    ;Get the file size
-    mov dword [rbp + fatDirEntry.fileSize], eax ;And update field
-    movzx eax, word [rdi + sft.wTime]   ;Get the last write time
-    mov word [rbp + fatDirEntry.wrtTime], ax    ;And update field
-    movzx eax, word [rdi + sft.wDate]   ;Get the last write time
-    mov word [rbp + fatDirEntry.wrtDate], ax    ;And update field
-    mov word [rbp + fatDirEntry.lastAccDat], ax    ;And update final field
-    mov eax, dword [rdi + sft.dStartClust]  ;Always update the start cluster
-    mov word [rbp + fatDirEntry + fatDirEntry.fstClusLo], ax
-    shr eax, 10h
-    mov word [rbp + fatDirEntry + fatDirEntry.fstClusHi], ax
-    ;Directory sector updated and marked to be flushed to disk!
     xor eax, eax
     call qword [updateDirShare]
-    clc ;Clear CF as updateDirShare Defaults to CF=CY
-    call markBufferDirty
-    call writeThroughBuffers
-    jc .exitBad
-.exit:
-    call dosCrit1Exit
-    pop rbp
-    pop rdi
     pop rbx
     pop rax
     return
-.exitBad:
-    call cancelWriteThroughBuffers
-    pushfq  ;Save the state for if we come here from a fail
-    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush
-    popfq
-    jmp short .exit
-    
+
+getAndUpdateDirSectorForFile:
+;Input: rdi -> SFT
+;Output: CF=NC: rsi -> Updated dir entry in buffer
+;               rdi -> SFT
+    push qword [rdi + sft.qDirSect] ;Get the directory sector for this file
+    call setDPBfromSFT
+    pop rax
+    retc
+    mov byte [errorLocus], eLocDsk
+    mov byte [Int24bitfld], critFailOK | critRetryOK
+    call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
+    retc    ;If an error is to be returned from, we skip the rest of this
+    mov rdi, qword [currentSFT] ;Reobtain the SFT ptr
+    lea rsi, qword [rbx + bufferHdr.dataarea]   ;Goto data area
+    movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
+    shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
+    add rsi, rbx    ;Move rsi to point to the directory entry
+    return
+
 growDirectory:
 ;Input: dword [dirClustPar] must have the first cluster number of the directory
 ;Output: CF=NC => All ok, directory grew by 1 sector
@@ -673,7 +648,7 @@ sanitiseCluster:
     movzx edx, byte [rbp + dpb.bMaxSectorInCluster] 
     inc edx ;Make it a count of sectors
 .getSectorInCluster:
-    call getBufForDataNoFile  ;Get a generic data buffer in rbx
+    call getBufForDir  ;Get a generic data buffer in rbx
     jc .exitBad
     lea rdi, qword [rbx + bufferHdr.dataarea]
     movzx ecx, word [rbp + dpb.wBytesPerSector]
