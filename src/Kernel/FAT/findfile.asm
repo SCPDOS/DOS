@@ -127,8 +127,11 @@ searchDir:
     return
 .notNet:
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
-    test byte [volIdFlag], -1  ;Is the search for volid flag set?
+    test byte [searchAttr], dirVolumeID  ;If the attr has volid, intervene
+    jnz .volIdSearch
+    test byte [volIdFlag], -1  ;Is volid search override flag set?
     jz .notVolSearch    ;Skip the intervention if not set
+.volIdSearch:
 ;Here we do a volid search intervention. Always searches root dir.
     xor eax, eax ;Search the root dir.
     call prepSetupDirSearchVars

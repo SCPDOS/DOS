@@ -149,7 +149,7 @@ writeFileHdl:      ;ah = 40h, handle function
 deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
 ;Here don't allow malformed chars unless it is a network CDS
 ;Allows deleting volume labels.
-    mov ebx, dirIncFiles    ;Inclusive w/o dirs
+    mov ebx, dirInclusive    ;Search all files, dirs handled later
     test byte [dosInvoke], -1
     cmovz ecx, ebx  ;If not server invoke, store this value instead
     mov byte [searchAttr], cl
@@ -566,7 +566,7 @@ createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 createNewFile:     ;ah = 5Bh
     push rcx    ;Save file attributes on stack
     lea rcx, createNewMain
-    mov byte [searchAttr], dirIncFiles ;Inclusive w/o directory
+    mov byte [searchAttr], dirInclusive ;Inclusive with dir (handled later)
     jmp openFileHdl.openCommon
 
 lockUnlockFile:    ;ah = 5Ch
@@ -828,10 +828,9 @@ commitMain:
     call dosCrit1Enter
     call updateSFTDateTimeFields    ;Update the SFT Time fields
     mov eax, -1         ;Set a "large" count for open handles
-    call flushFile      ;Now the file gets flushed and we exit critical section
-.exit:
-;Propagate CF and AL if needed due to error
-    return
+    call flushFile      ;Now file gets flushed and exit critical section
+    return  ;Propagate CF and AL if needed due to error
+    
 renameMain:
 ;Now, creates a special find first block for the source file
 ; that is in curDirCopy. Then we build a search pattern for the new name, 
@@ -1209,10 +1208,8 @@ outerDeleteMain:
     return
 .notNet:
     mov eax, errAccDen  
-    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
-    jnz .exitBad  ;Can't delete a char dev
-    test byte [curDirCopy + fatDirEntry.attribute], dirReadOnly
-    jnz .exitBad  ;Can't delete a read only file
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev | dirDirectory | dirReadOnly
+    jnz .exitBad  ;Can't delete char dev, dir or ro file
     call deleteMain
     jc .exitBad
     ;Check if the name has a wildcard in it, if so, keep searching
@@ -1231,6 +1228,7 @@ outerDeleteMain:
     pop qword [currentDTA] ;And use the dosFFblock as the DTA
     call findNextMain   ;rdi gets reloaded with DTA in this call
     pop qword [currentDTA]
+    retc    ;Return with no more files error now
     call deleteMain ;Whilst it keeps finding files that match, keep deleting
     jnc .serverWCloop     
 ;Stop as soon as an error occurs
@@ -1411,7 +1409,7 @@ createMain:
     test al, volLabelFile    ;Is this a volume label?
     jz .notVol
     mov al, volLabelFile ;If the vol bit is set, set the whole thing to volume only
-    jmp short .validAttr    ;Don't set the archive bit for vol label
+    ;Set archive bit for new vol labels for incremental archivers to update
 .notVol:
     or al, archiveFile   ;Set archive bit
     test al, directoryFile | charFile   ;Invalid bits?
@@ -1545,7 +1543,6 @@ buildSFTEntry:
     mov byte [rsi], al  ;Replace the first char of the filename back
     mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
     ;al has file attributes.
-    and al, dirArchive | dirIncFiles | dirReadOnly ;Permissable bits only
     mov byte [rsi + fatDirEntry.attribute], al
     xor eax, eax
     ;Clear all the fields south of ntRes (20 bytes)

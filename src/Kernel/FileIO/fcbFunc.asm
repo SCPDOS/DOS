@@ -1,8 +1,8 @@
 ;FCB functions.
-;FCBs may only be generally used for file access FAT 12/16 volumes. 
-;On FAT 32 volumes things are a bit more restricted.
+;FCBs may only be generally used for particular uses. This is planned
+; to be extended later.
 
-;The following functions ARE currently supported for general FAT 32 files:
+;The following functions ARE currently supported:
 ;   deleteFileFCB       (to allow for easy wildcard deletion)
 ;   renameFileFCB       (to allow for easy wildcard renaming)
 ;   parseFilename       (I mean, this function is useful anyway)
@@ -10,24 +10,18 @@
 ;   findFirstFileFCB    (allows easy access to the file directory data)
 ;   findNextFileFCB     (ditto the above)
 
-;The following functions are NOT currently supported for general FAT 32 files:
+;The following functions are NOT currently generally supported:
 ;   openFCB
 ;   closeFCB
-;   createFCB
+;   createFCB -> Except for creating a volume label.
 ;   randomReadFCB
 ;   randomWriteFCB
 ;   randBlockReadFCB
 ;   randBlockWriteFCB
 ;   sequentialReadFCB
 ;   sequentialWriteFCB
-;An attempt to run these functions on a FAT 32 volume will result in returning 
-; al = -1 and an extended error code of 05 - Access Denied unless a device
-
-;FAT 32 volumes will support all functions for Volume Labels using xFCBs.
-;Reading and Writing to the Volume label will silently return ok.
-;Volume labels will be editable by being created/opened/closed.
-;If the current directory is not the root, Volume Label work will assume the 
-; root directory always.
+;An attempt to run these functions will result in returning al = -1 and 
+; an extended error code of 05 - Access Denied unless a device
 
 findFirstFileFCB:  ;ah = 11h
 ;Input: rdx -> FCB
@@ -242,8 +236,8 @@ createFileFCB:     ;ah = 16h
 ;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
 ; Using FCB's, one can only create a volume label on a volume.
 ;
-;Deleting a volume label can be done using delete file (fcb and hdl)
-;Renaming a volume label can be done using rename file (fcb and hdl)
+;Deleting a volume label can be done using delete file (fcb)
+;Renaming a volume label can be done using rename file (fcb)
 ;Creating a volume label can be done using create file (fcb and hdl)
 ;
 ; In all cases, we recommend the use of fcb's ONLY. Hdl funcs are not 
@@ -257,15 +251,15 @@ createFileFCB:     ;ah = 16h
     ;Here we proceed with creating a volume label
     lea rdi, buffer1
     push rdi
-    call fcbInitRoutine     ;Build path and find file to delete
-    pop rsi                 ;Point rdi to the canonised path
+    call fcbInitRoutine     ;Build path to volid
+    pop rsi                 ;Point rsi to the canonised path
     jc fcbErrExit
-    mov rsi, rdi            ;Pass argument in rsi. rsi, rdi preserved
+    mov rdi, rsi            ;Pass argument to rdi. rsi, rdi preserved
     call checkPathspecOK    ;If the path has wildcards, fail!
     jc .exitErr
     call getFilePathNoCanon ;Get the file if it exists! Sets DPB too.
     lea rbx, scratchSFT     ;Set the working SFT to the scratch in the SDA
-    mov qword [workingSFT], rbx
+    mov qword [currentSFT], rbx
     movzx eax, byte [searchAttr]   ;Get the file attribute in al
     call createMain
     jc .exitErr
