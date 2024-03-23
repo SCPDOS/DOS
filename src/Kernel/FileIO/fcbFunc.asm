@@ -11,7 +11,7 @@
 ;   findNextFileFCB     (ditto the above)
 
 ;The following functions are NOT currently generally supported:
-;   openFCB
+;   openFCB -> Except for creating a volume label.
 ;   closeFCB
 ;   createFCB -> Except for creating a volume label.
 ;   randomReadFCB
@@ -21,7 +21,7 @@
 ;   sequentialReadFCB
 ;   sequentialWriteFCB
 ;An attempt to run these functions will result in returning al = -1 and 
-; an extended error code of 05 - Access Denied unless a device
+; an extended error code of 05 - Access Denied
 
 findFirstFileFCB:  ;ah = 11h
 ;Input: rdx -> FCB
@@ -232,6 +232,7 @@ parseFilenameFCB:  ;ah = 29h, Always can be used
     return  ;al now contains dl, the signature, special unique return type
 
 createFileFCB:     ;ah = 16h
+openFileFCB:       ;ah = 0Fh
 ;rdx -> Extended FCB
 ;   MUST BE EXTENDED. 
 ;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
@@ -281,7 +282,6 @@ createFileFCB:     ;ah = 16h
 ; maintaining the usefulness of record based IO.
 ;=================================================================
 ;=================================================================
-openFileFCB:       ;ah = 0Fh
 closeFileFCB:      ;ah = 10h
 sequentialReadFCB: ;ah = 14h
 sequentialWriteFCB:;ah = 15h

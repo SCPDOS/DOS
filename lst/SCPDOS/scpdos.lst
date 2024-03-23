@@ -5115,7 +5115,7 @@
     16 00000574 0B20                <1>     dw clearbuffDoFunc - kDispTbl     ;AH = 0CH, CHAR IO
     17 00000576 816F                <1>     dw diskReset - kDispTbl           ;AH = 0DH, DISK MANAGEMENT
     18 00000578 B56F                <1>     dw selectDisk - kDispTbl          ;AH = 0EH, DISK MANAGEMENT
-    19 0000057A AD2A                <1>     dw openFileFCB - kDispTbl         ;AH = 0FH, FILE OPERATION       FCB
+    19 0000057A 472A                <1>     dw openFileFCB - kDispTbl         ;AH = 0FH, FILE OPERATION       FCB
     20 0000057C AD2A                <1>     dw closeFileFCB - kDispTbl        ;AH = 10H, FILE OPERATION       FCB
     21 0000057E E227                <1>     dw findFirstFileFCB - kDispTbl    ;AH = 11H, FILE OPERATION       FCB
     22 00000580 9E28                <1>     dw findNextFileFCB - kDispTbl     ;AH = 12H, FILE OPERATION       FCB
@@ -11195,7 +11195,7 @@
     11                              <1> ;   findNextFileFCB     (ditto the above)
     12                              <1> 
     13                              <1> ;The following functions are NOT currently generally supported:
-    14                              <1> ;   openFCB
+    14                              <1> ;   openFCB -> Except for creating a volume label.
     15                              <1> ;   closeFCB
     16                              <1> ;   createFCB -> Except for creating a volume label.
     17                              <1> ;   randomReadFCB
@@ -11205,7 +11205,7 @@
     21                              <1> ;   sequentialReadFCB
     22                              <1> ;   sequentialWriteFCB
     23                              <1> ;An attempt to run these functions will result in returning al = -1 and 
-    24                              <1> ; an extended error code of 05 - Access Denied unless a device
+    24                              <1> ; an extended error code of 05 - Access Denied
     25                              <1> 
     26                              <1> findFirstFileFCB:  ;ah = 11h
     27                              <1> ;Input: rdx -> FCB
@@ -11422,56 +11422,56 @@
     15                              <2> %assign retOff %%_ret-$$
    233                              <1> 
    234                              <1> createFileFCB:     ;ah = 16h
-   235                              <1> ;rdx -> Extended FCB
-   236                              <1> ;   MUST BE EXTENDED. 
-   237                              <1> ;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
-   238                              <1> ; Using FCB's, one can only create a volume label on a volume.
-   239                              <1> ;
-   240                              <1> ;Deleting a volume label can be done using delete file (fcb)
-   241                              <1> ;Renaming a volume label can be done using rename file (fcb)
-   242                              <1> ;Creating a volume label can be done using create file (fcb and hdl)
-   243                              <1> ;
-   244                              <1> ; In all cases, we recommend the use of fcb's ONLY. Hdl funcs are not 
-   245                              <1> ; suggested for use with the vol crud because, do we really need the hdl? No!
-   246                              <1> ;
-   247 00002FA3 488915(1A070000)    <1>     mov qword [workingFCB], rdx     ;Save the FCB ptr
-   248 00002FAA 803AFF              <1>     cmp byte [rdx + exFcb.extSig], -1
-   249 00002FAD 7550                <1>     jne .exitErr
-   250 00002FAF 807A0608            <1>     cmp byte [rdx + exFcb.attribute], dirVolumeID
-   251 00002FB3 754A                <1>     jne .exitErr
-   252                              <1>     ;Here we proceed with creating a volume label
-   253 00002FB5 488D3D(1E050000)    <1>     lea rdi, buffer1
-   254 00002FBC 57                  <1>     push rdi
-   255 00002FBD E8B5000000          <1>     call fcbInitRoutine     ;Build path to volid
-   256 00002FC2 5E                  <1>     pop rsi                 ;Point rsi to the canonised path
-   257 00002FC3 0F825F430000        <1>     jc fcbErrExit
-   258 00002FC9 4889F7              <1>     mov rdi, rsi            ;Pass argument to rdi. rsi, rdi preserved
-   259 00002FCC E866400000          <1>     call checkPathspecOK    ;If the path has wildcards, fail!
-   260 00002FD1 722C                <1>     jc .exitErr
-   261 00002FD3 E8F9E2FFFF          <1>     call getFilePathNoCanon ;Get the file if it exists! Sets DPB too.
-   262 00002FD8 488D1D(180D0000)    <1>     lea rbx, scratchSFT     ;Set the working SFT to the scratch in the SDA
-   263 00002FDF 48891D(32070000)    <1>     mov qword [currentSFT], rbx
-   264 00002FE6 0FB605(FC060000)    <1>     movzx eax, byte [searchAttr]   ;Get the file attribute in al
-   265 00002FED E847100000          <1>     call createMain
-   266 00002FF2 720B                <1>     jc .exitErr
-   267                              <1>     ;We close the sda sft since we dont have an explicit FCB close fn.
-   268                              <1>     ;Necessary to close the associated share record when sharing.
-   269 00002FF4 E861130000          <1>     call closeMain
-   270 00002FF9 0F8326430000        <1>     jnc fcbGoodExit     ;We require no back copying so exit!
-   271                              <1> .exitErr:
-   272 00002FFF B805000000          <1>     mov eax, errAccDen
-   273 00003004 E91F430000          <1>     jmp fcbErrExit
-   274                              <1> 
-   275                              <1> ;=================================================================
+   235                              <1> openFileFCB:       ;ah = 0Fh
+   236                              <1> ;rdx -> Extended FCB
+   237                              <1> ;   MUST BE EXTENDED. 
+   238                              <1> ;   MUST HAVE ATTRIBUTE OF 08h, VOLID, else will fail
+   239                              <1> ; Using FCB's, one can only create a volume label on a volume.
+   240                              <1> ;
+   241                              <1> ;Deleting a volume label can be done using delete file (fcb)
+   242                              <1> ;Renaming a volume label can be done using rename file (fcb)
+   243                              <1> ;Creating a volume label can be done using create file (fcb and hdl)
+   244                              <1> ;
+   245                              <1> ; In all cases, we recommend the use of fcb's ONLY. Hdl funcs are not 
+   246                              <1> ; suggested for use with the vol crud because, do we really need the hdl? No!
+   247                              <1> ;
+   248 00002FA3 488915(1A070000)    <1>     mov qword [workingFCB], rdx     ;Save the FCB ptr
+   249 00002FAA 803AFF              <1>     cmp byte [rdx + exFcb.extSig], -1
+   250 00002FAD 7550                <1>     jne .exitErr
+   251 00002FAF 807A0608            <1>     cmp byte [rdx + exFcb.attribute], dirVolumeID
+   252 00002FB3 754A                <1>     jne .exitErr
+   253                              <1>     ;Here we proceed with creating a volume label
+   254 00002FB5 488D3D(1E050000)    <1>     lea rdi, buffer1
+   255 00002FBC 57                  <1>     push rdi
+   256 00002FBD E8B5000000          <1>     call fcbInitRoutine     ;Build path to volid
+   257 00002FC2 5E                  <1>     pop rsi                 ;Point rsi to the canonised path
+   258 00002FC3 0F825F430000        <1>     jc fcbErrExit
+   259 00002FC9 4889F7              <1>     mov rdi, rsi            ;Pass argument to rdi. rsi, rdi preserved
+   260 00002FCC E866400000          <1>     call checkPathspecOK    ;If the path has wildcards, fail!
+   261 00002FD1 722C                <1>     jc .exitErr
+   262 00002FD3 E8F9E2FFFF          <1>     call getFilePathNoCanon ;Get the file if it exists! Sets DPB too.
+   263 00002FD8 488D1D(180D0000)    <1>     lea rbx, scratchSFT     ;Set the working SFT to the scratch in the SDA
+   264 00002FDF 48891D(32070000)    <1>     mov qword [currentSFT], rbx
+   265 00002FE6 0FB605(FC060000)    <1>     movzx eax, byte [searchAttr]   ;Get the file attribute in al
+   266 00002FED E847100000          <1>     call createMain
+   267 00002FF2 720B                <1>     jc .exitErr
+   268                              <1>     ;We close the sda sft since we dont have an explicit FCB close fn.
+   269                              <1>     ;Necessary to close the associated share record when sharing.
+   270 00002FF4 E861130000          <1>     call closeMain
+   271 00002FF9 0F8326430000        <1>     jnc fcbGoodExit     ;We require no back copying so exit!
+   272                              <1> .exitErr:
+   273 00002FFF B805000000          <1>     mov eax, errAccDen
+   274 00003004 E91F430000          <1>     jmp fcbErrExit
+   275                              <1> 
    276                              <1> ;=================================================================
-   277                              <1> ;These functions will be marked as reserved for future expansion.
-   278                              <1> ; One idea will be to create a handle based record IO interface.
-   279                              <1> ; We will be able to do IO on records of predefined length 
-   280                              <1> ; on a file handle, thus removing the need for an FCB but still
-   281                              <1> ; maintaining the usefulness of record based IO.
-   282                              <1> ;=================================================================
+   277                              <1> ;=================================================================
+   278                              <1> ;These functions will be marked as reserved for future expansion.
+   279                              <1> ; One idea will be to create a handle based record IO interface.
+   280                              <1> ; We will be able to do IO on records of predefined length 
+   281                              <1> ; on a file handle, thus removing the need for an FCB but still
+   282                              <1> ; maintaining the usefulness of record based IO.
    283                              <1> ;=================================================================
-   284                              <1> openFileFCB:       ;ah = 0Fh
+   284                              <1> ;=================================================================
    285                              <1> closeFileFCB:      ;ah = 10h
    286                              <1> sequentialReadFCB: ;ah = 14h
    287                              <1> sequentialWriteFCB:;ah = 15h
