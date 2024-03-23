@@ -14,6 +14,7 @@ Segment .text align=1   ;Init code
 %define currSegVBase 0
 %include "./src/Sysinit/oemreloc.asm"
 %include "./src/Sysinit/sysinit.asm"
+%include "./src/Sysinit/cfginit.asm"
 %include "./src/Sysinit/oeminit.asm"
 Segment dSeg nobits align=1 start=0     ;BSS data segment
 %include "./src/BSS/dosSeg.asm"
