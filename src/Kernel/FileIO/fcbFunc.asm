@@ -28,7 +28,7 @@ findFirstFileFCB:  ;ah = 11h
     mov qword [workingFCB], rdx ;Store FCB ptr in variable
     mov rsi, rdx
     cmp byte [rsi], -1
-    je .notExt1
+    jne .notExt1
     add rsi, exFcb.driveNum
 .notExt1:
     movzx eax, byte [rsi]
@@ -65,7 +65,8 @@ findFirstFileFCB:  ;ah = 11h
     lodsb   ;Get search drive from FFBlock in al
     inc rdi ;Go past the given drive number in the FCB
     mov ecx, 5 ;Copy the 20 bytes in ffBlock after ffBlock.driveNum
-    movsd
+    rep movsd
+    mov eax, ebx
     stosb   ;Store the find first search drive number at the end of the FCB
     mov rdi, qword [currentDTA] ;Now copy current directory to DTA 
     lea rsi, curDirCopy ;Point rsi to the current directory copy
