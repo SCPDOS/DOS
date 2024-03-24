@@ -439,7 +439,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     push rdi    ;Save section in memory locally
     call .readDataFromHdl
     pop rdi
-    pop rcx
+    pop rcx     ; Matches push after skipRawPtrMove
     jc .badFmtErr
     ;Don't check for a zero section read as empty sections may be present!
     cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]

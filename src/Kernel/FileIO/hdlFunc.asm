@@ -2046,6 +2046,7 @@ readDiskFile:
     cmp ecx, ebx    ;Is bytes left to read in file > bytes user has left?
     cmova ecx, ebx  ;Move ebx into ecx if so
     movzx ebx, word [rbp + dpb.wBytesPerSector]  ;Compare to sector size
+    sub bx, word [currByteS]    ;Remove the number of bytes into the sector we are
     cmp ecx, ebx  ;ecx > sector size?
     cmova ecx, ebx  ;Move it into ecx if so
     
