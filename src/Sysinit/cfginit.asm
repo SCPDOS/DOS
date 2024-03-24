@@ -93,6 +93,10 @@ configParse:
 ;rdx points to terminating char
 ;First find the length of the instruction word
     mov rsi, qword [rbp - cfgFrame.linePtr]
+;If this is a 1 char line, skip processing (as it is CR), and goto next line
+    cmp rdx, rsi
+    je .cmdPrepNew
+    call .cfgSkipLeadingSpaces  ;Skip any leading spaces
     xor ecx, ecx
 .cmdNameLenGet:
     lodsb
@@ -105,11 +109,11 @@ configParse:
 .endOfCommandFound:
 ;ecx has the length of the command
     cmp ecx, 10
-    je .stopProcessError
+    je .badLineHandle
     lea rdi, .keyTbl ;Put rdi at the table to search for
 .cmdSearch:
     cmp byte [rdi], -1
-    je .stopProcessError
+    je .badLineHandle
     cmp byte [rdi], cl
     jne short .gotoNextCmd
     ;Candidate command found, check said command is the command we want
@@ -134,7 +138,8 @@ configParse:
     push rbp
     call rsi    ;Call this function
     pop rbp
-    jc .stopProcessError    ;If the function returns CF=CY, error exit
+    jc .stopProcessErrorNoPrint    ;If the function returns CF=CY, error exit
+.cmdPrepNew:
     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
     jnz .cfgExit
     mov rdx, qword [rbp - cfgFrame.linePtr] ;Start reading afresh
@@ -156,7 +161,7 @@ configParse:
     je .cfgExit
     cmp al, LF
     je .nextChar
-    jmp .notEOF
+    jmp short .endCommandClear  ;Loop out trailing spaces, crap chars and CR
 ;CONFIG.SYS utility functions
 .gotoNextCmd:
     movzx eax, byte [rdi]
@@ -175,9 +180,28 @@ configParse:
     rete
     cmp al, ";"
     return
-.stopProcessError:
+.skipTerminators:
+;Input: rsi -> Start of string
+;Output: rsi -> First non-terminator char after string of terminators
+    push rax
+.stl1:
+    lodsb   ;Get char
+    call .isCharTerminal    ;Is it terminal?
+    jz .stl1    ;Yes, keep going
+    pop rax
+    dec rsi
+    return
+
+.badLineHandle:
+;If the command was unrecognised, goto next line! Do not halt!
     call .badLineErrorMsg
-    ;Reset all values to OEM defaults
+    jmp  .cmdPrepNew
+
+.stopProcessError:
+;Print the hard error message and reset the system values
+    call .hardErrorMsg
+.stopProcessErrorNoPrint:
+;Reset all values to OEM defaults
     movzx eax, byte [BUFFERS]
     mov qword [rbp - cfgFrame.newBuffers], rax
     movzx eax, byte [FILES]
@@ -187,17 +211,24 @@ configParse:
     movzx eax, byte [LASTDRIVE]
     mov qword [rbp - cfgFrame.newLastdrive], rax
     jmp .cfgExit
-    
+.hardErrorMsg:
+;Prints an error message and TERMINATE parsing
+    push rax
+    push rdx
+    lea rdx, .hdLine
+    jmp short .errorCmn
 .badLineErrorMsg:
 ;Prints an error message BUT DOES NOT TERMINATE PARSING
     push rax
     push rdx
     lea rdx, .speLine
+.errorCmn:
     mov eax, 0900h
     int 21h
     pop rdx
     pop rax
     return
+.hdLine:    db CR,LF,"Error in processing CONFIG.SYS",CR,LF,"$"
 .speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
 .keyTbl: 
     db 5, "BREAK"           ;DONE
@@ -220,6 +251,9 @@ configParse:
 	dw .stacksHandler - .keyTbl
     db 8, "DRIVPARM"
     dw .drivParm - .keyTbl  ;Ignored for now
+    ;The following three are to not cause issues with empty lines/EOF chars
+    db 3, "REM"
+    dw .comment - .keyTbl
 	db -1	;End of table marker
 .cfgSkipLeadingSpaces:
 ;Input: rsi -> Start of string to skip spaces/tabs of
@@ -237,9 +271,9 @@ configParse:
 
 .breakHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
-    add rsi, 6  ;Go past BREAK=
+    add rsi, 5  ;Go past BREAK
     ;This must be the word ON or OFF 
-    call .cfgSkipLeadingSpaces
+    call .skipTerminators
     xor edx, edx    ;Clear CF and default to OFF
     cmp word [rsi], "ON"
     je .breakOn
@@ -259,9 +293,9 @@ configParse:
 
 .bufHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
-    add rsi, 8  ;Go past BUFFERS=
+    add rsi, 7  ;Go past BUFFERS=
     ;This must be at most three digits, anything else is a failure
-    call .cfgSkipLeadingSpaces
+    call .skipTerminators
     mov rdi, rsi    ;Save the start in rdi
     xor ecx, ecx
     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
@@ -325,18 +359,13 @@ configParse:
 ;   Device Driver Loader here  :
 ;===============================
 .drvLoader:
-;    mov rsi, rdx    ;Save the ptr to past the end of the line in rsi
     mov rdi, qword [rbp - cfgFrame.linePtr]
-    add rdi, 7  ;Go past DEVICE= to the pathname
-    mov rdx, rdi    ;Prepare rdx for the open
-    mov eax, SPC
-    push rcx
-    xor ecx, ecx
-    dec ecx
-    repe scasb      ;Skip leading spaces for name (between = and first char)
-    pop rcx
-;Now search for the first char after pathname. 
+    add rdi, 6  ;Go past DEVICE= to the pathname
     mov rsi, rdi
+    call .skipTerminators
+    mov rdi, rsi
+    mov rdx, rdi    ;Prepare rdx for the open
+;Now search for the first char after pathname. 
 .drvFindEndOfFileName:
     lodsb ;Get char from string name
     ;Was the char a primitive string terminator?
@@ -349,7 +378,7 @@ configParse:
     cmp al, LF
     jne short .drvFindEndOfFileName
 .fileNameFound:
-    dec rsi ;Point rdi to the space itself
+    dec rsi ;Point rsi to the space itself
     mov qword [rbp - cfgFrame.driverBreak], rsi
     movzx eax, byte [rsi]   ;Get the original breakchar
     mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
@@ -469,8 +498,10 @@ configParse:
     lea rbx, cmdBlock
     mov qword [rbx + loadOvly.pLoadLoc], rax
     mov qword [rbx + loadOvly.qRelocFct], rax
-    mov rdx, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
-    add rdx, 7  ;Go past DEVICE= to the null terminated pathname
+    mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
+    add rsi, 6  ;Go past DEVICE= to the null terminated pathname
+    call .skipTerminators
+    mov rdx, rsi
     mov eax, 4B03h  ;Load overlay!
     int 21h
     jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
@@ -601,8 +632,8 @@ configParse:
 .sftHandler:
 ;This reads the line to set the number of FILE to between 1 and 254
     mov rsi, qword [rbp - cfgFrame.linePtr]
-    add rsi, 6  ;Go past FILES=
-    call .cfgSkipLeadingSpaces
+    add rsi, 5  ;Go past FILES=
+    call .skipTerminators
     ;This must be at most three digits, anything else is a failure
     mov rdi, rsi    ;Save the start in rdi
     xor ecx, ecx
@@ -690,8 +721,8 @@ configParse:
 
 .lastdriveHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
-    add rsi, 10  ;Go past LASTDRIVE=
-    call .cfgSkipLeadingSpaces
+    add rsi, 9  ;Go past LASTDRIVE=
+    call .skipTerminators
     lodsb   ;Get this char
     movzx eax, al   ;Zero extend to eax
     push rax    ;Push on stack
@@ -719,13 +750,12 @@ configParse:
     mov qword [rbp - cfgFrame.newLastdrive], rax
     clc
     return
-.ldBad:
-    stc
 .countryScan:
 .fcbHandler:
 .shellHandler:
 .stacksHandler:
 .drivParm:
+.comment:
     return
 
 .cfgExit:
