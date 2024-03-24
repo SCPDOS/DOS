@@ -236,7 +236,6 @@ configParse:
     return
 
 .breakHandler:
-    breakpoint
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 6  ;Go past BREAK=
     ;This must be the word ON or OFF 
@@ -719,7 +718,6 @@ configParse:
     cmovb eax, edx
     mov qword [rbp - cfgFrame.newLastdrive], rax
     clc
-    breakpoint
     return
 .ldBad:
     stc
