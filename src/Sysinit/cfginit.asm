@@ -67,16 +67,16 @@ configParse:
     mov ecx, 1  ;Read one byte
     int 21h
     jc .stopProcessError
-    test eax, eax	;If this is zero, EOF reached
-    jz .cfgExit
+    test eax, eax	;If this is zero, EOF reached, take command
+    jz .endOfFile
 .notEOF:
     movzx eax, byte [rdx]
     cmp al, CR
     je short .endOfLine
     cmp al, LF
-    je short .endOfLine
+    je short .endOfLineChange   ;Continue, but replace with standard EOL char (CR)
     cmp al, EOF
-    je short .endOfFileChar
+    je short .endOfFile
     push rax    ;Push rax on stack as the argument to normalise
     mov eax, 1213h  ;Uppercase the char if it is uppercasable
     int 2Fh
@@ -85,8 +85,10 @@ configParse:
 .notChar:
     inc rdx ;Now move our local pointer to the next byte
     jmp short .nextChar
-.endOfFileChar:
+.endOfFile:
     mov qword [rbp - cfgFrame.lastLine], -1	;Mark EOF and End of line
+.endOfLineChange:
+    mov byte [rdx], CR  ;Store a terminating char at the end of the command
 .endOfLine:
 ;rdx points to terminating char
 ;First find the length of the instruction word
@@ -220,24 +222,21 @@ configParse:
     dw .drivParm - .keyTbl  ;Ignored for now
 	db -1	;End of table marker
 .cfgSkipLeadingSpaces:
-;Input: rsi -> Start of string to skip spaces of
+;Input: rsi -> Start of string to skip spaces/tabs of
 ;Output: rsi -> First non-space char in string
     push rax
-    push rcx
-    push rdi
-    mov rdi, rsi
-    mov eax, SPC
-    xor ecx, ecx
-    dec ecx
-    repe scasb  ;
-    mov rsi, rdi
-    pop rdi
-    pop rcx
+.csls1:
+    lodsb
+    cmp al, SPC
+    je .csls1
+    cmp al, TAB
+    je .csls1
     pop rax
     dec rsi
     return
 
 .breakHandler:
+    breakpoint
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 6  ;Go past BREAK=
     ;This must be the word ON or OFF 
@@ -287,16 +286,20 @@ configParse:
     mov rsi, rdi    ;Go back to the first number
 .bufHandlerLp:
     lodsb   ;Get the digit
-    call .bufHandlerMul
-    jecxz .bufHandlerPrepExit
-    dec ecx
-    jmp short .bufHandlerLp 
+    sub al, "0" ;Convert to ASCII
+    movzx eax, al
+    jecxz .bufHandlerPrepExit   ;Exit if this is the only digit
+    shl eax, 1  ;Multiply by 2
+    lea edx, dword [4*eax + eax]    ;Multiply (2*eax) by 5
+    lodsb   ;Get the next digit
+    sub al, "0"
+    movzx eax, al
+    add eax, edx    ;Add the tens to the unit
 .bufHandlerPrepExit:
-;edx has the value now, so place it in stack
     movzx ecx, byte [BUFFERS]
-    test edx, edx
-    cmovz edx, ecx  ;Replace zero with default if the user specified 0 buffers
-    mov qword [rbp - cfgFrame.newBuffers], rdx
+    test eax, eax
+    cmovz eax, ecx  ;Replace zero with default if the user specified 0 buffers
+    mov qword [rbp - cfgFrame.newBuffers], rax
     clc
     return
 .bufHandlerMul:
@@ -623,7 +626,7 @@ configParse:
     je .sftHandlerProcess   ;If it is a terminating char, exit
     cmp al, "0"
     jb .sftHandlerErr
-    cmp al, "2" ;Max BUFFERS=254 soooo, sorry buddy!
+    cmp al, "9"
     ja .sftHandlerErr
     lodsb   ;Check no more chars!
     call .sftHandlerTermCheck
@@ -640,8 +643,10 @@ configParse:
     jmp short .sftHandlerLp 
 .sftHandlerPrepExit:
 ;edx has the value now, so place it in stack
-    mov ecx, filesDefault  ;Get default if the user specifies less than min
-    cmp edx, 8
+    cmp edx, 254
+    ja .sftHandlerErr       ;DOS maximum number of files
+    movzx ecx, byte [FILES] ;Get default if the user specifies less than min
+    cmp edx, 8              ;DOS minimum number of files
     cmovb edx, ecx
     mov qword [rbp - cfgFrame.newSFTVal], rdx
     clc
@@ -707,13 +712,14 @@ configParse:
     cmp byte [rsi], SPC
     jne .sftHandlerErr
 .ldProceed:
-    sub al, "A" ;Convert into a number
+    sub al, "@"     ;Convert into a number 1-26 
     movzx eax, al   ;Zero extend in case DOS rets something dumb in upper bits
-    mov edx, lastDriveDeflt
-    cmp eax, lastDriveDeflt
+    movzx edx, byte [LASTDRIVE]
+    cmp eax, edx
     cmovb eax, edx
     mov qword [rbp - cfgFrame.newLastdrive], rax
     clc
+    breakpoint
     return
 .ldBad:
     stc

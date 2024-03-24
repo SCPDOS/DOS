@@ -57,7 +57,6 @@ multiplexHdlr:          ;Int 2Fh, AH=12h, exposed internal functions
     lea rbx, qword mDispTbl   ;Get mplx displacement tbl
     push rbx
     movzx ecx, al   ;Get the subfunction number into ecx
-    mov rax, qword [rsp + 10*8]  ;Pick the word pushed on the stack before call 
     shl ecx, 1   ;multiply by 2
     inc rbx         ;Go past the first byte (length count)
     movzx ebx, word [rbx + rcx] ;Get the word at this address
@@ -66,7 +65,7 @@ multiplexHdlr:          ;Int 2Fh, AH=12h, exposed internal functions
     pop rcx
     mov qword [rsp + 8], rbx
     pop rbx
-    mov rax, qword [rsp + 7*8]  ;Get qword that may be passed on stack
+    mov rax, qword [rsp + 8*8]  ;Pick the word pushed on the stack before call 
     return
 
 .retAddr:
