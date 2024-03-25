@@ -819,7 +819,7 @@ commitMain:
     test ebx, devCharDev | blokFileNoFlush
     retnz   ;Return if nothing has been written or a char dev
     test ebx, devRedirDev
-    jnz .notNet
+    jz .notNet
     ;Commit file net redir call and exit
     mov eax, 1107h
     int 2Fh
@@ -2014,9 +2014,7 @@ readDiskFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
-;Now we fall out with ebx = Current cluster
     mov eax, dword [currClustD]    ;Get the current cluster in eax
-    ;mov eax, ebx
 .skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
     ;Now we add the offset to this
@@ -2037,8 +2035,8 @@ readDiskFile:
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rsi, rbx    ;Shift rsi by that amount into the sector
     ;Now we read the smallest of the following from the sector buffer:
-    ; 1) Sector size, 2) Bytes left in File, 
-    ; 3) Bytes left to read from Request, 4) Bytes left in sector
+    ; 1) Bytes left in sector size, 2) Bytes left in File, 
+    ; 3) Bytes left to read from Request
 
     mov ecx, dword [rdi + sft.dFileSize]
     sub ecx, dword [currByteF]  ;Get bytes left to read in file in ecx
