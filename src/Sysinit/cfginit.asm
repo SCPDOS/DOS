@@ -96,11 +96,11 @@ configParse:
 ;If this is a 1 char line, skip processing (as it is CR), and goto next line
     cmp rdx, rsi
     je .cmdPrepNew
-    call .cfgSkipLeadingSpaces  ;Skip any leading spaces
+    call .skipSeparators  ;Skip any standard leading separators
     xor ecx, ecx
 .cmdNameLenGet:
     lodsb
-    call .isCharTerminal
+    call .isCharSeparator
     jz short .endOfCommandFound
     inc ecx
     cmp ecx, 10 ;If shorter than longest command, keep looping
@@ -168,7 +168,7 @@ configParse:
     add eax, 3
     add rdi, rax
     jmp .cmdSearch
-.isCharTerminal:
+.isCharSeparator:
 ;Input: AL = Char to check
 ;Output: ZF=ZE -> Char terminal
 ;        ZF=NZ -> Char not terminal
@@ -179,14 +179,18 @@ configParse:
     cmp al, TAB
     rete
     cmp al, ";"
+    rete
+    cmp al, ":"
+    rete
+    cmp al, "+"
     return
-.skipTerminators:
+.skipSeparators:
 ;Input: rsi -> Start of string
 ;Output: rsi -> First non-terminator char after string of terminators
     push rax
 .stl1:
     lodsb   ;Get char
-    call .isCharTerminal    ;Is it terminal?
+    call .isCharSeparator    ;Is it terminal?
     jz .stl1    ;Yes, keep going
     pop rax
     dec rsi
@@ -255,25 +259,12 @@ configParse:
     db 3, "REM"
     dw .comment - .keyTbl
 	db -1	;End of table marker
-.cfgSkipLeadingSpaces:
-;Input: rsi -> Start of string to skip spaces/tabs of
-;Output: rsi -> First non-space char in string
-    push rax
-.csls1:
-    lodsb
-    cmp al, SPC
-    je .csls1
-    cmp al, TAB
-    je .csls1
-    pop rax
-    dec rsi
-    return
 
 .breakHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 5  ;Go past BREAK
     ;This must be the word ON or OFF 
-    call .skipTerminators
+    call .skipSeparators
     xor edx, edx    ;Clear CF and default to OFF
     cmp word [rsi], "ON"
     je .breakOn
@@ -295,7 +286,7 @@ configParse:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 7  ;Go past BUFFERS=
     ;This must be at most three digits, anything else is a failure
-    call .skipTerminators
+    call .skipSeparators
     mov rdi, rsi    ;Save the start in rdi
     xor ecx, ecx
     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
@@ -362,7 +353,7 @@ configParse:
     mov rdi, qword [rbp - cfgFrame.linePtr]
     add rdi, 6  ;Go past DEVICE= to the pathname
     mov rsi, rdi
-    call .skipTerminators
+    call .skipSeparators
     mov rdi, rsi
     mov rdx, rdi    ;Prepare rdx for the open
 ;Now search for the first char after pathname. 
@@ -500,7 +491,7 @@ configParse:
     mov qword [rbx + loadOvly.qRelocFct], rax
     mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
     add rsi, 6  ;Go past DEVICE= to the null terminated pathname
-    call .skipTerminators
+    call .skipSeparators
     mov rdx, rsi
     mov eax, 4B03h  ;Load overlay!
     int 21h
@@ -633,7 +624,7 @@ configParse:
 ;This reads the line to set the number of FILE to between 1 and 254
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 5  ;Go past FILES=
-    call .skipTerminators
+    call .skipSeparators
     ;This must be at most three digits, anything else is a failure
     mov rdi, rsi    ;Save the start in rdi
     xor ecx, ecx
@@ -722,7 +713,7 @@ configParse:
 .lastdriveHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
     add rsi, 9  ;Go past LASTDRIVE=
-    call .skipTerminators
+    call .skipSeparators
     lodsb   ;Get this char
     movzx eax, al   ;Zero extend to eax
     push rax    ;Push on stack
