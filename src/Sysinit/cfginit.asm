@@ -180,9 +180,7 @@ configParse:
     rete
     cmp al, ";"
     rete
-    cmp al, ":"
-    rete
-    cmp al, "+"
+    cmp al, ","
     return
 .skipSeparators:
 ;Input: rsi -> Start of string
