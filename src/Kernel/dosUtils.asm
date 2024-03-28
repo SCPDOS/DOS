@@ -491,22 +491,10 @@ scanPathWC:
 checkCharValid:
 ;If ZF=ZE => Invalid Char
 ;If ZF=NZ => Valid Char
-    push rcx
-    push rdi
-    cmp al, byte [fileTermTblExt.startBadRange]
-    jb .setZeroFlag
-    cmp al, byte [fileTermTblExt.endBadRange] 
-    jbe .setZeroFlag
-    movzx ecx, byte [fileTermTbl]
-    lea rdi, fileTermTbl + 1
-    repne scasb
-.exit:
-    pop rdi
-    pop rcx
+    push rax
+    call uppercaseChar  ;Sets ZF if invalid filename char
+    pop rax
     return
-.setZeroFlag:
-    xor ecx, ecx    ;Clear CF too
-    jmp short .exit
 
 
 compareFarPointers: ;Int 2Fh, AX = 1214h
