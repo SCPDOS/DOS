@@ -486,3 +486,10 @@ filesDefault    equ 20
 fcbsDefault     equ 4
 safeFcbsDeflt   equ 0
 lastDriveDeflt  equ 5   
+
+;ASCII char property table equates. If such a bit is clear in signature in table
+; then the char has this property.
+badChar     equ 1   ;Bad ASCIIZ filename char
+termChar    equ 2   ;Terminator char type
+sepChar     equ 4   ;Separator char type
+badFCBChar  equ 8   ;FCB filename char

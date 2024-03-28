@@ -261,9 +261,35 @@ uppercaseChar:      ;Int 2Fh, AX=1213h, Uppercase Char
     push rax    ;Save al temporarily
     lea rbx, asciiCharProperties
     xlatb   ;Get the signature in al
-    test al, 1 ;test bit 0. Set ZF as appropriate
+    test al, badChar
     pop rax
     pop rbx
+    return
+
+isCharTerminator:
+;Input: al = Char to check properties of
+;Output:    ZF=NZ => Char not name terminator
+;           ZF=ZE => Char terminator
+    push rax
+    push rbx
+    lea rbx, asciiCharProperties
+    xlatb
+    test al, termChar
+    pop rbx
+    pop rax
+    return
+
+isCharSeparator:
+;Input: al = Char to check properties of
+;Output:    ZF=NZ => Char not separator
+;           ZF=ZE => Char separator
+    push rax
+    push rbx
+    lea rbx, asciiCharProperties
+    xlatb
+    test al, sepChar
+    pop rbx
+    pop rax
     return
 
 strlen2:    ;Int 2Fh, AX=1212h
@@ -482,40 +508,6 @@ checkCharValid:
     xor ecx, ecx    ;Clear CF too
     jmp short .exit
 
-skipSpacesAndTabs:
-;Input: rsi -> String 
-;Output: rsi -> First non Space or Tab type char
-    lodsb
-    call isCharSpaceType
-    jz skipSpacesAndTabs
-    dec rsi
-    return
-
-isCharDelimType:
-;Input: al = Char to check properties of
-;Output:    ZF=NZ => Char not name delimiter
-;           ZF=ZE => Char delimiter
-    push rax
-    push rbx
-    lea rbx, asciiCharProperties
-    xlatb
-    test al, 2
-    pop rbx
-    pop rax
-    return
-
-isCharSpaceType:
-;Input: al = Char to check properties of
-;Output:    ZF=NZ => Char not Space or Tab
-;           ZF=ZE => Char Space or Tab
-    push rax
-    push rbx
-    lea rbx, asciiCharProperties
-    xlatb
-    test al, 4
-    pop rbx
-    pop rax
-    return
 
 compareFarPointers: ;Int 2Fh, AX = 1214h
 ;Compare if two pointers are equal. A layover from the era of far pointers.

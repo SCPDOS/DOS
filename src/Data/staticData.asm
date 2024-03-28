@@ -358,7 +358,7 @@ collTbl:
 asciiCharProperties:   ;This table is const. Gives "properties" of chars.
 ;Bit[0]=Clear if the char is an invalid filename character.
 ;Bit[1]=Clear if the char of a terminating type.
-;Bit[2]=Clear if the char is of space/tab type.
+;Bit[2]=Clear if the char is of separator type.
 ;Bit[3]=Clear if the char is an invalid FCB name character.
 ;Bit[4-7]=Unused.    
 

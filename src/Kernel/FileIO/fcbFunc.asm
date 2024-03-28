@@ -380,7 +380,7 @@ fcbInitRoutine:
 .nameCharCheck:
     lodsb   ;Get the char in al
     xlatb   ;Get the char signature in al
-    test al, 8  ;Make sure it is a valid FCB filename char
+    test al, badFCBChar  ;Make sure it is a valid FCB filename char
     jz .badDisk
     dec ecx
     jnz .nameCharCheck
@@ -445,7 +445,7 @@ parseNameToFCB:
 
     mov byte [fcbSpaceOk], 0    ;Don't allow spaces in filename
     xor edx, edx    ;Use dl to keep drive name/state of operation
-    test al, 2  ;Set drive letter>
+    test al, 2  ;Set drive letter
     jz .skipDriveLetter
     mov byte [rdi + fcb.driveNum], dl   ;Clear this for usage
 .skipDriveLetter:
@@ -470,14 +470,14 @@ parseNameToFCB:
     stosd   ;Initialise curBlock and recordSize like DOS does in parseFilename
     sub rdi, 10h    ;Go back to head of FCB
     test bl, 1  ;Skip scanning preceeding spaces
-    jz .dontScanOff
-    call skipSpacesAndTabs
-    call isCharDelimType
-    jnz .skipIfDelim
+    jz .dontScanOffTerm
+    call skipSeparators ;Skip leading separators
+    call isCharTerminator   ;If first char is terminator, go past and keep skipping
+    jnz .skipIfNotTerminator
     inc rsi
-.dontScanOff:
-    call skipSpacesAndTabs  ;Skip a char
-.skipIfDelim:
+.dontScanOffTerm:
+    call skipSeparators  ;Skip separators
+.skipIfNotTerminator:
     call uppercaseCharAtPtr 
     jz .skipSettingDriveLetter  ;Skip if first char not a possible drive letter
     cmp byte [rsi], ":" ;Is the next char a drive separator?
@@ -498,7 +498,6 @@ parseNameToFCB:
 .skipSettingDriveLetter:
     dec rsi
     inc rdi
-    
 getFCBFilename:
 ;Input: rsi points to first char of filename
 ;       rdi points to storage buffer for filename
@@ -552,4 +551,13 @@ forceFCBNameField:
     mov al, " "
     stosb
     dec rsi ;Point to this trailing space
+    return
+
+skipSeparators:
+;Input: rsi -> String 
+;Output: rsi -> First non separator type char
+    lodsb
+    call isCharSeparator
+    jz skipSeparators
+    dec rsi
     return
