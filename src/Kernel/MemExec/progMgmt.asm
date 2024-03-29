@@ -259,7 +259,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rsp, qword [rbx + psp.rspPtr]
 
     mov qword [rsp + callerFrame.rip], rdx  ;Store return address vector here
-    mov qword [rsp + callerFrame.flags], 0F202h ;Mimic DOS's return flags
+    mov qword [rsp + callerFrame.flags], 0202h ;Mimic DOS's return flags
 
     mov byte [Int24Trans], 0    ;Clear this flag
     mov byte [inDOS], 0 ;Exiting DOS now
