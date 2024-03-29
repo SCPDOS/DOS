@@ -77,11 +77,8 @@ configParse:
     je short .endOfLineChange   ;Continue, but replace with standard EOL char (CR)
     cmp al, EOF
     je short .endOfFile
-    push rax    ;Push rax on stack as the argument to normalise
-    mov eax, 1213h  ;Uppercase the char if it is uppercasable
-    int 2Fh
+    call .ucChar    ;Uppercase the char
     mov byte [rdx], al  ;Replace the char with the capitalised form
-    pop rax ;Pop into rax to renormalise the stack
 .notChar:
     inc rdx ;Now move our local pointer to the next byte
     jmp short .nextChar
@@ -714,10 +711,7 @@ configParse:
     call .skipSeparators
     lodsb   ;Get this char
     movzx eax, al   ;Zero extend to eax
-    push rax    ;Push on stack
-    mov eax, 1213h  ;Uppercase the char
-    int 2Fh
-    pop rbx
+    call .ucChar
     cmp al, "Z"
     ja .sftHandlerErr
     cmp al, "A"
@@ -754,4 +748,16 @@ configParse:
     mov r8, qword [rbp - cfgFrame.linePtr]   ;Get the line buffer ptr back
     mov eax, 4900h  ;FREE
     int 21h
+    return
+.ucChar:
+;Input: al = Char to UC
+;Output: al = UC'd char
+    push rbx    ;Save on original stack
+    mov rbx, rsp    ;Save across the call.
+    push rax    ;Push two copies in case we get aligned (since we 8byte)
+    push rax
+    mov eax, 1213h  ;Uppercase the char in al
+    int 2fh
+    mov rsp, rbx    ;Bring back stack
+    pop rbx         ;Get back original rbx
     return
