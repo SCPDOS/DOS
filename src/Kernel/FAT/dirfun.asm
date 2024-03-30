@@ -317,8 +317,11 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 .okLength:
     mov rsi, rdx
     call checkPathspecOK
-    jc .badPath  ;Don't allow any malformed chars or wildcards
-    call checkPathNet
+    jnc .notBad     ;Don't allow any malformed chars or wildcards
+    jz .badPath     ;If wildcards found, exit error!
+    ;Malformed chars get caught later! Allow for "X:\",0" style paths
+.notBad:
+    call checkPathNet   ;Never allow network paths
     jz .badPath ;Or Net paths
     ;Path is ok, now proceed
     call dosCrit1Enter  ;ENTER DOS CRITICAL SECTION HERE!!

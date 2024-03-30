@@ -511,15 +511,9 @@ getPath:
     mov rbx, qword [fname1Ptr]
     add rbx, 2  ;Now our path is completely normalised so this always works!
     lea rsi, qword [rbx + 1]
-    cmp byte [rsi], 0   ;Is this a null path? No files match a null path!
-    je .noFil   
     push qword [workingCDS] ;Save the original CDS to allow for subst to work
     call pathWalk
     pop qword [workingCDS]
-    return
-.noFil:
-    mov eax, errNoFil
-    stc
     return
 .net:
     mov rdi, rsi                ;Else, skip setting up vars for drive access

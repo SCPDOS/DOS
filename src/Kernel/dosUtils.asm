@@ -530,6 +530,7 @@ checkPathNet:
     movzx eax, word [rsi]    ;Get the first two chars of the path
     call swapPathSeparator
     jnz .exit
+    mov al, ah  ;Get the second char
     call swapPathSeparator  ;ZF=ZE if net path
 .exit:
     pop rax
