@@ -9,7 +9,7 @@ makeDIR:           ;ah = 39h
     cmp ecx, 64
     jbe .okLength
 .badPath:
-    mov al, errPnf
+    mov al, errAccDen
     jmp extErrExit
 .okLength:
     mov rsi, rdx
@@ -169,6 +169,9 @@ removeDIR:         ;ah = 3Ah
     cmp ecx, 64
     jbe .okLength
 .badPath:
+    mov al, errAccDen
+    jmp extErrExit
+.pnf:
     mov al, errPnf
     jmp extErrExit
 .okLength:
@@ -181,7 +184,7 @@ removeDIR:         ;ah = 3Ah
     ;Path is ok, now proceed
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
-    jc .badPath    ;Path Doesn't exist
+    jc .pnf    ;Path Doesn't exist
     call testCDSNet ;Check if the working CDS is a NET CDS
     jnc .notNet
     mov eax, 1101h  ;RMDIR for net
@@ -473,7 +476,7 @@ trueName:          ;ah = 60h, get fully qualified name.
     jnc .pathspecOk ;If CF=NC this path is totally ok
     jz .pathspecOk  ;If the last part has wildcards, allow it too
 .badPath:
-    mov eax, errPnf
+    mov eax, errAccDen
     jmp extErrExit
 .pathspecOk:
     push rdi    ;Save the destination

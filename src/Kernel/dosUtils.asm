@@ -405,10 +405,13 @@ checkPathspecOK:
     push rdi
     mov rdi, rsi
     call strlen
-    cmp ecx, 64    ;Check
+    mov eax, ecx    ;Save the length in eax
     pop rdi
     pop rcx
+    cmp eax, 64    ;Check
     ja .badExit ;Above 64 only as the count includes the terminating null
+    test eax, eax   ;If the path is empty, also error out!
+    jz .badExit
     ;First we verify if our path is relative or canonical (absolute)
     mov ax, word [rsi]  ;Get the first two chars
     cmp ax, "\\"    ;UNC network start
@@ -423,14 +426,27 @@ checkPathspecOK:
     jmp short .okToScan
 .netName:
     add rsi, 2  ;Goto the first char after the UNC start symbol
+    cmp byte [rsi], 0   ;If this is an empty path, error!
+    je .badExit
     jmp short .okToScan
 .diskPath:
     add rsi, 2  ;Go past the X:
+    cmp byte [rsi], 0   ;Cannot have an empty relative path!
+    je .badExit
     test byte [dosInvoke], -1    ;If this is minus 1, this is a server invoke
-    jz .okToScan
+    jz .localAbsCheck
+.absMain:
     lodsb   ;Get the third byte. It MUST be a pathsep if server invokation.
     call swapPathSeparator
     jnz .badExit    ;If ZF=NZ => Not a pathsep, bad path
+    cmp byte [rsi], 0   ;Is the char after the slash null?
+    je .badExit ;Error if so!
+    jmp short .okToScan
+.localAbsCheck:
+    mov al, byte [rsi]  ;Get the char we are pointing at
+    call swapPathSeparator  ;Is it a pathsep?
+    jz .absMain ;If it is, we do the absolute check
+    ;Else we are relative and begin wildcard search
 .okToScan:
     lodsb   
     test al, al ;End of path char?

@@ -29,7 +29,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     jnc .pathOk ;Path ok save for potentially having wildcards
 .badPath: ;We cant have wildcards when creating or opening a file!
     pop rax
-    mov eax, errPnf
+    mov eax, errAccDen
     jmp extErrExit
 .pathOk:
     call dosCrit1Enter
@@ -161,7 +161,7 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     test byte [dosInvoke], -1
     jnz .pathOk ;If this is -1, server invoke, wildcards are OK
 .badPath:
-    mov eax, errPnf
+    mov eax, errAccDen
     jmp extErrExit
 .pathOk:
     lea rdi, buffer1
@@ -242,7 +242,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
 .badPath:
     pop rcx
     pop rbx
-    mov eax, errPnf
+    mov eax, errAccDen
     jmp short .chmodError
 .pathOk:
     call checkPathNet 
@@ -370,7 +370,7 @@ findFirstFileHdl:  ;ah = 4Eh, handle function, Find First Matching File
     jnc .pathspecOk ;Path ok save for potentially having wildcards
     jz .pathspecOk  ;If ZF=ZE, then we had wildcards in last part which is ok
 .badPath:
-    mov eax, errPnf
+    mov eax, errAccDen  ;Gets xlat to errNoFil
     jmp extErrExit
 .pathspecOk:
     push qword [currentDTA]
@@ -415,30 +415,30 @@ renameFile:        ;ah = 56h
     mov byte [searchAttr], cl
     ;Step 0, verify both paths provided are valid
     call .renamePathCheck   ;Preserves rsi and rdi, check rsi path
-    jc .pnfError
+    jc .accDenError
     push rsi
     mov rsi, rdi    ;Now check rdi path
     call .renamePathCheck
     pop rsi
-    jc .pnfError
+    jc .accDenError
     ;Now we canonicalise the filenames to make life easy
     push rsi
     mov rsi, rdi
     lea rdi, buffer2
     call canonicaliseFileName   ;Now canonicalise rdi path
     pop rsi
-    jc .pnfError
+    jc .accDenError
     ;Now test if first file exists.
     push qword [fname1Ptr]  ;Move the pointer to its var position
     pop qword [fname2Ptr]
     lea rdi, buffer1
     call canonicaliseFileName ;rdi = Buffer to use, rsi = filename
-    jc .pnfError 
+    jc .accDenError 
     call renameMain ;Both pathnames made good and copied internally, lets go!!
     jc extErrExit
     jmp extGoodExit
-.pnfError:
-    mov eax, errPnf
+.accDenError:
+    mov eax, errAccDen
     jmp extErrExit
 .renamePathCheck:
 ;Checks if the pathspec in rsi is OK
