@@ -528,7 +528,6 @@ writeFAT:
     jnz .gotoNextClusterFat12NoCross
     ;Boundary cross, build entry properly
     ;Replace the high nybble of the low byte 
-    ;breakpoint
     movzx ecx, byte [rbx + bufferHdr.dataarea + rdx] ;Use ecx as it is free
     and ecx, 0Fh    ;Clear the high nybble
     shl esi, 4  ;Shift value up by 4 to insert the low nybble in the right place

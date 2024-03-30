@@ -133,6 +133,8 @@ searchDir:
     jz .notVolSearch    ;Skip the intervention if not set
 .volIdSearch:
 ;Here we do a volid search intervention. Always searches root dir.
+    test byte [fileDirFlag], -1 ;If we are going down path, avoid invervention
+    jz .notVolSearch
     xor eax, eax ;Search the root dir.
     call prepSetupDirSearchVars
 .notVolSearch:
@@ -555,7 +557,6 @@ getFilePathNoCanon:
 ;Input: rdi -> Buffer with qualified pathname for search
     mov al, -1
     mov rsi, rdi
-    jmp short getPathNoCanon
 getPathNoCanon:
 ;Called with:
 ; rdi = SDA Buffer for filename

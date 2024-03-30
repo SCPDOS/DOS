@@ -368,12 +368,6 @@ fcbInitRoutine:
     call getCDSNotJoin ;Get the CDS (preserves rdi)
     jc .badDisk
     call storeZeroBasedDriveNumber  ;Store X: on stack space, add two to rdi
-    ;!!!! VOL ID CHECK BELOW !!!!
-;    cmp byte [searchAttr], dirVolumeID  ;Are we initialising for a volume ID?
-;    jne .notVolumeSearch
-;    mov byte [rdi], "\" ;If so, indicate that we are working in the root dir.
-;    inc rdi ;Go to the next char space
-;.notVolumeSearch:
     lea rbx, asciiCharProperties
     mov ecx, 11 ;11 chars in a filename
     push rsi    ;rsi -> fcb.filename
