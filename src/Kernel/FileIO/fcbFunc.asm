@@ -442,7 +442,7 @@ parseNameToFCB:
 ;
 ;Separators include : . ; , = + TAB SPACE
 ;Terminators include separators and , < > | / " [ ] and all ctrl chars
-
+    breakpoint
     mov byte [fcbSpaceOk], 0    ;Don't allow spaces in filename
     xor edx, edx    ;Use dl to keep drive name/state of operation
     test al, 2  ;Set drive letter
@@ -549,8 +549,8 @@ forceFCBNameField:
     jmp short forceFCBNameField
 .terminatingSpace:
     mov al, " "
-    stosb
-    dec rsi ;Point to this trailing space
+    rep stosb   ;Store remaining chars worth in spaces
+    dec rsi     ;Point back to terminating char
     return
 
 skipSeparators:
