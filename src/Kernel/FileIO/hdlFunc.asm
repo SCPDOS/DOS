@@ -66,9 +66,8 @@ openFileHdl:       ;ah = 3Dh, handle function
     ;Now check the path is not X:\<NUL>
     mov ecx, dword [buffer1]    ;Get the first four chars for comparison
     xor cl, cl
-    cmp ecx, 005C3A00h
-    jz .badPath
-    jmp short .proceedCall    ;Else, proceed.
+    cmp ecx, 005C3A00h  ;If this is a null path, set file not found!
+    jnz .proceedCall    ;Else, proceed.
 .badPathspec:
     pop rax
     mov eax, errFnf

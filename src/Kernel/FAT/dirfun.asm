@@ -8,13 +8,16 @@ makeDIR:           ;ah = 39h
     call strlen
     cmp ecx, 64
     jbe .okLength
+.badFile:
+    mov al, errFnf
+    jmp extErrExit
 .badPath:
-    mov al, errAccDen
+    mov al, errPnf
     jmp extErrExit
 .okLength:
     mov rsi, rdx
     call checkPathspecOK
-    jc .badPath  ;Don't allow any malformed chars
+    jc .bad  ;Don't allow any malformed chars, exit Acc den
 .pathOk:
     call scanPathWC
     jc .badPath ;Dont allow wildcards
@@ -28,7 +31,7 @@ makeDIR:           ;ah = 39h
     mov eax, dword [buffer1]    ;Get the first four chars for comparison
     xor al, al
     cmp eax, 005C3A00h
-    je .badPath
+    je .badFile
     ;-----------------------------
     ;TEST THAT THE DRIVE IS VALID
     ;This is clearly unnecessary
