@@ -60,17 +60,21 @@ openFileHdl:       ;ah = 3Dh, handle function
 ;      If parDirExists = -1 => For Open, Bad.  For both Creates, Good. 
 ;Now we check if we are creating or opening.
     cmp rbx, rax    ;Are we trying to open a non-existant file?
-    je .badPathspec ;Jmp to error if opening file that doesnt exist
+    je .badFile ;Jmp to error if opening file that doesnt exist
     test byte [parDirExist], -1 ;If creating, check if parent path was found
-    jz .badPath ;If not then bad path
+    jz .badPathspec ;If not then exit bad path
     ;Now check the path is not X:\<NUL>
     mov ecx, dword [buffer1]    ;Get the first four chars for comparison
     xor cl, cl
     cmp ecx, 005C3A00h  ;If this is a null path, set file not found!
     jnz .proceedCall    ;Else, proceed.
-.badPathspec:
+.badFile:   ;If trying to open a file that doesnt exit, error so!
     pop rax
-    mov eax, errFnf
+    mov eax, errFnf 
+    jmp .exitBad2   ;Need to deallocate the SFT before returning
+.badPathspec:   ;If the parent path doesnt exist, error thus.
+    pop rax
+    mov eax, errPnf
     jmp .exitBad2   ;Need to deallocate the SFT before returning
 .proceedCall:
 ;If the pathspec exists, recall that for create, we truncate.
