@@ -260,6 +260,10 @@ openFileFCB:       ;ah = 0Fh
     call checkPathspecOK    ;If the path has wildcards, fail!
     jc .exitErr
     call getFilePathNoCanon ;Get the file if it exists! Sets DPB too.
+    mov eax, dword [buffer1]    ;Get the first four chars for comparison
+    xor al, al
+    cmp eax, 005C3A00h  ;Do null path check!
+    je .exitErr
     lea rbx, scratchSFT     ;Set the working SFT to the scratch in the SDA
     mov qword [currentSFT], rbx
     movzx eax, byte [searchAttr]   ;Get the file attribute in al

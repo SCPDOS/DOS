@@ -24,6 +24,11 @@ makeDIR:           ;ah = 39h
     call getFilePath ;Get a Directory path in buffer1, hitting the disk
     ;If the path exists, exit error
     jnc extErrExit
+    ;Handle resolved null paths here!!!
+    mov eax, dword [buffer1]    ;Get the first four chars for comparison
+    xor al, al
+    cmp eax, 005C3A00h
+    je .badPath
     ;-----------------------------
     ;TEST THAT THE DRIVE IS VALID
     ;This is clearly unnecessary

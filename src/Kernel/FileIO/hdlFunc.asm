@@ -62,7 +62,13 @@ openFileHdl:       ;ah = 3Dh, handle function
     cmp rbx, rax    ;Are we trying to open a non-existant file?
     je .badPathspec ;Jmp to error if opening file that doesnt exist
     test byte [parDirExist], -1 ;If creating, check if parent path was found
-    jnz .proceedCall    ;If so, proceed.
+    jz .badPath ;If not then bad path
+    ;Now check the path is not X:\<NUL>
+    mov ecx, dword [buffer1]    ;Get the first four chars for comparison
+    xor cl, cl
+    cmp ecx, 005C3A00h
+    jz .badPath
+    jmp short .proceedCall    ;Else, proceed.
 .badPathspec:
     pop rax
     mov eax, errFnf
