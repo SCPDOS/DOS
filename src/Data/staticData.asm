@@ -33,7 +33,9 @@ ioRqCmdErrTbl:
 
 
 ;Keyboard vCon static data that can be edited and replaced by a user if they
-; wish to install their own custom logic.
+; wish to install their own custom logic. The table below is NOT patched
+; but instead, the function below gets replaced. By default, it points to 
+; the function editKeys in charFunc.asm. 
 extKeyFunc  dq 0 ;The editing keys can be replaced by replacing this ptr
 extESC      db 00h  ;NULL char is our Escape char
 extBreak    db 1Bh  ;1Bh is our Break Char
