@@ -125,7 +125,7 @@ searchDir:
     test byte [fcbName + 11], -1 ;Is this null (i.e. last path componant?)
     retnz   ;Exit until so, to avoid calling this path repeatedly! Clear CF!
     mov eax, 111Bh  ;Find First with CDS
-    int 2fh
+    int 2fh ;Consider moving this out two levels to avoid the pathwalk loop
     return
 .notNet:
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
