@@ -48,7 +48,7 @@ errNLSAcDen equ 65  ;Network Access denied (NLS usage)
 
 errFilExist equ 80  ;File already exists
 errDirExist equ 82  ;Directory already exists
-errFI44     equ 83  ;Fail on Int 24h
+errFI24     equ 83  ;Fail on Int 24h
 errRedir    equ 84  ;Too many levels of redirection
 errDupRedir equ 85  ;Trying to redirect a redirection
 errBadPass  equ 86  ;Bad password

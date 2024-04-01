@@ -211,7 +211,7 @@ extErrTbl:
 ;Error 57: Bad parameter in request
     db errBadParam, eClsBadFmt, eActUsr, eLocUnk
 ;Error 53: Fail was returned from Int 24h
-    db errFI44, eClsUnk, eActAbt, eLocUnk
+    db errFI24, eClsUnk, eActAbt, eLocUnk
 ;Error 24: Sharing Buffer Full
     db errShrFul, eClsOoR, eActAbt, eLocMem
     dd -1   ;End of table signature

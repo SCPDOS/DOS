@@ -322,7 +322,7 @@ checkFail:
 ; and swaps the var error code if so
     cmp byte [Int24Fail], 0
     jnz .skipFail
-    mov word [errorExCde], errFI44  ;Set error to "Fail on Int 24h"
+    mov word [errorExCde], errFI24  ;Set error to "Fail on Int 24h"
 .skipFail:
     push rsi
     lea rsi, extErrTbl
