@@ -10,14 +10,17 @@ msdDriver:
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
     cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
     mov al, drvBadCmd
-    ja .msdWriteErrorCode ;If yes, error!
+    ja .msdWriteEntryError ;If yes, error!
     mov al, drvBadUnit 
     cmp byte [rbx + drvReqHdr.unitnm], 05h  ;Unit greater than 5 is invalid
-    ja .msdWriteErrorCode ;If yes, error!
+    ja .msdWriteEntryError ;If yes, error!
     lea rsi, .msdBPBTbl  ;Point to the BPB pointer table
     movzx eax, byte [rbx + drvReqHdr.unitnm]
     shl eax, 3  ;Multiply by 8 to get pointer to pointer to bpb
     mov rbp, qword [rsi + rax]    ;Get pointer to bpb in rbp
+;    mov al, drvNotReady    ;If the sectors per cluster = 0, device not ready
+;    test byte [rbp + bpb.secPerClus], -1    ; to be accessed!
+;    jz .msdWriteEntryError
     movzx eax, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     shl eax, 1  ;Multiply by 2 since each entry is a word in size
     lea rcx, .msdTable
@@ -37,7 +40,10 @@ msdDriver:
     pop rbx
     pop rax
     ret
-
+.msdWriteEntryError:
+;Used for errors which occur before a function!
+    call .msdWriteErrorCode
+    jmp short .msdDriverExit
 .msdIOError:  ;In Read and Write errors, rdi points to the dev struc
     mov rbx, rdi
     movzx eax, al   ;Number of IO-ed sectors in last request
