@@ -122,6 +122,8 @@ searchDir:
     mov rdi, qword [workingCDS] ;Get current CDS
     test word [rdi + cds.wFlags], cdsRedirDrive
     jz .notNet
+    test byte [fcbName + 11], -1 ;Is this null (i.e. last path componant?)
+    retnz   ;Exit until so, to avoid calling this path repeatedly! Clear CF!
     mov eax, 111Bh  ;Find First with CDS
     int 2fh
     return

@@ -180,6 +180,7 @@ removeDIR:         ;ah = 3Ah
     mov al, errAccDen
     jmp extErrExit
 .pnf:
+    call dosCrit1Exit   ;Only jumped to in a critical section
     mov al, errPnf
     jmp extErrExit
 .okLength:
@@ -190,6 +191,8 @@ removeDIR:         ;ah = 3Ah
     call scanPathWC
     jc .badPath ;Dont allow wildcards
     ;Path is ok, now proceed
+    call dosCrit1Enter  ;Don't let another DOS task interrupt us!
+    mov byte [searchAttr], dirDirectory
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
     jc .pnf    ;Path Doesn't exist
@@ -200,7 +203,6 @@ removeDIR:         ;ah = 3Ah
     jc extErrExit
     jmp extGoodExit
 .notNet:
-    call dosCrit1Enter
     lea rdi, buffer1
     call strlen ;Get the length of the full qualified name in ecx
     mov word [pathLen], cx
@@ -333,6 +335,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     jz .badPath ;Or Net paths
     ;Path is ok, now proceed
     call dosCrit1Enter  ;ENTER DOS CRITICAL SECTION HERE!!
+    mov byte [searchAttr], dirDirectory
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
     jc .badCrit   ;Exit with error code in eax
@@ -446,6 +449,7 @@ getCurrentDIR:     ;ah = 47h
     push rsi    ;Save the callers buffer on the stack.
     mov rsi, qword [workingCDS] ;Get the current Working CDS ptr in rsi
     push rsi    ;Save desired workingCDS on pointer on the stack!
+    mov byte [searchAttr], dirDirectory
     lea rdi, buffer1
     call getDirPath   ;Canonicalise the filename and check if directory exists!
     pop rsi ;Get back the original workingCDS
