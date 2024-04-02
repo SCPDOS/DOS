@@ -18,9 +18,6 @@ msdDriver:
     movzx eax, byte [rbx + drvReqHdr.unitnm]
     shl eax, 3  ;Multiply by 8 to get pointer to pointer to bpb
     mov rbp, qword [rsi + rax]    ;Get pointer to bpb in rbp
-;    mov al, drvNotReady    ;If the sectors per cluster = 0, device not ready
-;    test byte [rbp + bpb.secPerClus], -1    ; to be accessed!
-;    jz .msdWriteEntryError
     movzx eax, byte [rbx + drvReqHdr.cmdcde]   ;Get command code in al
     shl eax, 1  ;Multiply by 2 since each entry is a word in size
     lea rcx, .msdTable
@@ -146,6 +143,9 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], mediaCheckReqPkt_size
     jne .msdWriteErrorCode
+    ;If the BPB makes no sense, claim it was changed, so we can rebuild BPB.
+    test byte [rbp + bpb.secPerClus], -1
+    jnz .mmcChange   ;If the BPB weird, say that it was changed!
 
     call .msdCheckDeviceType    ;Check and ensure that media type is "swapped"
     jnz .mmcChange  ;Always change if swapping between same phys volume!
@@ -216,8 +216,14 @@ msdDriver:
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
     mov rdi, rbp     ;Get pointer to buffer to overwrite
     mov ecx, bpbEx_size/8
+    push rsi
     rep movsq   ;Move the BPB data into the right space
-    ret
+    pop rsi
+    test byte [rbp + bpb.secPerClus], -1 ;Does this BPB makes sense?
+    retnz ;If its not zero, we ok
+    ;Else, we error.
+    mov eax, drvNotReady
+    jmp .msdWriteErrorCode
 .msdIOCTLRead:       ;Function 3, returns done
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size

@@ -315,7 +315,7 @@ ensureDiskValid:
     call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
     mov rbp, qword [tmpDPBPtr]
     cmp al, critRetry
-    je getDiskDPB
+    je ensureDiskValid
 .errorExitBad:
     stc     ;Set error flag to indicate fail
     return  ;And exit
