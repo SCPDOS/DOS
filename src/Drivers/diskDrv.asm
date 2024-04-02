@@ -145,7 +145,7 @@ msdDriver:
     jne .msdWriteErrorCode
     ;If the BPB makes no sense, claim it was changed, so we can rebuild BPB.
     test byte [rbp + bpb.secPerClus], -1
-    jnz .mmcChange   ;If the BPB weird, say that it was changed!
+    jz .mmcChange   ;If the BPB weird, say that it was changed!
 
     call .msdCheckDeviceType    ;Check and ensure that media type is "swapped"
     jnz .mmcChange  ;Always change if swapping between same phys volume!
