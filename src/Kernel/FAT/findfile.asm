@@ -234,7 +234,7 @@ findInBuffer:
 ;        rsi = Points to start of the disk buffer directory entry
     call .getNumberOfEntries    ;Get in ecx # of entries in sector
     mov al, byte [searchAttr]  ;Get the search attrib
-    call adjustSearchAttr   ;Adjust the search attributes 
+    call adjustSearchAttr   ;Adjust the search attributes, including volid
 .searchMainLp:
 ;First check if rsi is pointing to a 00h or 0E5h
     mov ah, byte [delChar]
@@ -258,18 +258,21 @@ findInBuffer:
     and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
     test byte [volIdFlag], -1   ;If this is set, intervene in search.
     jz .notVolIdExclusive
-    cmp ah, dirVolumeID   ;If we are a volid, clear CF, set ZF and return
-    jne .nextEntry
+    test ah, dirVolumeID   ;If we are a volid, clear CF return
+    jz .nextEntry
     return
 .notVolIdExclusive:
+;If any entry has the volid bit set, it is considered a VOL id only.
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .exclusiveDir
     cmp al, dirVolumeID ;Are WE searching for a volume label?
     je .volFile ;If so, go here
-    cmp ah, dirVolumeID ;Is this file a volume lbl that we are not looking for?
-    je .nextEntry
-    cmp ah, al  ;If file attr <= user selected attribs, scan name for match
-    ja .nextEntry
+    test ah, dirVolumeID ;Is this file a vollbl that we are not looking for?
+    jnz .nextEntry
+    test ah, ah ;Regular files are always accepted at this point!
+    jz .scanName
+    test ah, al ;If ah has bits, they must match some of our search bits!
+    jz .nextEntry
     ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
 .scanName:
     push rsi
@@ -1065,6 +1068,13 @@ searchForPathspec:
     cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
     je .sfpPNNoDisk
     call searchDir
+    jc .sfpPNNoDisk
+    cmp byte [curDirCopy], 05h 
+    jne .noAdjust
+    ;Readjust when the start of a dir entry name is 05h
+    mov byte [curDirCopy], 0E5h
+.noAdjust:
+    clc ;Ensure the carry flag is clear here!
 .sfpPNNoDisk:
     pop rbx
     mov byte [fileDirFlag], bl  ;Return the original flag
@@ -1086,6 +1096,7 @@ addPathspecToBuffer:
 ;rdi is advanced to the NEXT space for the next level of the filename
 ;rbx points to the "head of the path"
 ;rsi points to the first char of the next portion if al is pathsep
+;Converts the special char if the filename starts with it!
     test byte [skipDisk], -1
     retnz   ;Only add if in truename mode (also clears CF)
     cmp byte [fcbName], "."   ;Handle destination pointer for  
@@ -1094,6 +1105,10 @@ addPathspecToBuffer:
 .aptbAddNull:
     push rsi    ;Save source pointer position
     lea rsi, fcbName
+    cmp byte [rsi], 05h
+    jne .notSpecialChar
+    mov byte [rsi], 0E5h
+.notSpecialChar:
     call FCBToAsciiz    ;Convert the filename in FCB format to asciiz
     dec rdi ;Go back to the in-situ null terminator char
     pop rsi ;Get back src ptr which points to first char in next pathspec
