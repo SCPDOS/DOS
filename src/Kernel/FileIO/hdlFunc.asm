@@ -1547,9 +1547,9 @@ buildSFTEntry:
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
-    jnz .charDev
-    test byte [curDirCopy + fatDirEntry.attribute], directoryFile
-    jnz .bad    ;Make sure we are not recreating a directory as a file!
+    jnz .charDev    ;If its valid, just reopens it!
+    test byte [curDirCopy + fatDirEntry.attribute], directoryFile | dirReadOnly
+    jnz .bad    ;Cant recreate a dir or ro file!
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
