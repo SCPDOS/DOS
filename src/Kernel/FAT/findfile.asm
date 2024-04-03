@@ -271,10 +271,12 @@ findInBuffer:
     jnz .nextEntry
     test ah, ah ;Regular files are always accepted at this point!
     jz .scanName
-    test ah, al ;If ah has bits, they must match some of our search bits!
-    jz .nextEntry
-    ;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
+    cmp al, dirInclusive    ;Is this an inclusive search?
+    je .scanName            ;If so, we accept this file!
+    cmp ah, al              ;(ah=File bits)==(al=Search bits)?
+    jne .nextEntry          ;If bits dont match now, we ignore entry
 .scanName:
+;rsi points to the start of the fatDirEntry in the Sector Buffer (fname)
     push rsi
     lea rdi, fcbName ;Goto name template to search for
     call .nameCompare

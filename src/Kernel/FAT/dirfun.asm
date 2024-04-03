@@ -130,7 +130,7 @@ makeDIR:           ;ah = 39h
     mov byte [curDirCopy], al
     movzx eax, word [curDirCopy + fatDirEntry.fstClusLo]
     movzx edx, word [curDirCopy + fatDirEntry.fstClusHi]
-    mov byte [curDirCopy + fatDirEntry.attribute], dirDirectory 
+    mov byte [curDirCopy + fatDirEntry.attribute], dirDirectory | dirArchive 
     shl edx, 10h
     or eax, edx ;Add upper bits to eax cluster number
     call getStartSectorOfCluster    ;Get start sector in rax
