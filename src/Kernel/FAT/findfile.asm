@@ -7,26 +7,44 @@ findNextMain:
     int 2Fh
     return  ;Return propagating the error code
 .notNet:
-    mov al, byte [rdi + ffBlock.driveNum]
-    inc al  ;Convert into 1 based number
+    mov byte [errorLocus], eLocDsk
     call dosCrit1Enter
-    call getCDS     ;Set CDS and current drive vars
+    lea rax, tmpCDS
+    mov qword [workingCDS], rax ;Set the working CDS to be the tmp cds!
+    mov al, byte [rdi + ffBlock.driveNum]   ;Get 1 based number back!
+    add al, "@"  ;Convert into letter
+    call buildNewCDS     ;Build a new CDS bypassing the real CDS!
     jc .critError   ;Return error if this fails
     mov rdi, qword [workingCDS] 
-    call getDiskDPB  ;Update and set working dpb and drv, get dpbptr in rbp
-.critError:
+    mov rbp, qword [rdi + cds.qDPBPtr] 
+    call setWorkingDPB
+    movzx eax, byte [rbp + dpb.bDriveNumber]
+    mov byte [workingDrv], al
+    mov byte [delChar], 0E5h
+    mov byte [fcbName + 11], 0  ;Set to this being a file we are searching for
+    mov byte [fileDirFlag], -1  ;Set to searching for a file!
+    call searchMoreDir  ;Now find the next one!
+    jc .critError   ;Return error if this fails
+.errExit:
     call dosCrit1Exit
-    retc    ;Return error if this fails
-    call searchMoreDir
     return
+.critError:
+    mov eax, errNoFil
+    jmp short .errExit
 searchMoreDir:
 ;The three directory variables are set up from the ffblock. 
 ; WorkingDPB is setup also (hence, level 1 critical section)
 ;Current DTA is also used to contain the ff block address
 ;All registers can be trashed
     mov rbp, qword [workingDPB]
-    ;First setup dirClustA and dirSect vars
+    ;First copy the search template back then setup dirClustA and dirSect vars
     mov rdi, qword [currentDTA]
+    push rdi
+    lea rsi, qword [rdi + ffBlock.template]
+    lea rdi, fcbName
+    mov ecx, 11
+    rep movsb   ;Get copy the search template!
+    pop rdi
     mov al, byte [rdi + ffBlock.attrib] ;Get search attrib...
     mov byte [searchAttr], al   ;And save it
     mov eax, dword [rdi + ffBlock.parDirClus]   ;Get the directory cluster
@@ -428,6 +446,7 @@ setupFFBlock:
     and al, 3Fh ;Clear upper two bits
     mov byte [rbx + ffBlock.attrib], al 
     movzx eax, byte [workingDrv]  ;Get the 0 based working drive number
+    inc al  ;Convert into 1 based number to agree with DOS
     mov byte [rbx + ffBlock.driveNum], al
     lea rsi, fcbName
     lea rdi, qword [rbx + ffBlock.template]

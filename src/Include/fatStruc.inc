@@ -112,7 +112,7 @@ struc fatDirEntry
     .crtTimeT   resb 1  ;Count of tenths of a second of file creation time <=199
     .crtTime    resb 2  ;Creation time, granularity of 2 seconds
     .crtDate    resb 2  ;Creation date
-    .lastAccDat resb 2  ;Last Read/Write date
+    .lastAccDat resb 2  ;Last Read/Write date, not 100% supported (consider later)
     .fstClusHi  resb 2  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
     .wrtTime    resb 2  ;Last modification (write) time
     .wrtDate    resb 2  ;Last modification (write) date

@@ -89,7 +89,7 @@ getUserRegs:   ;Int 2Fh AX=1218h
 walkDPBchain:
 ;Called with al = 0 based drive number
 ;Returns in rsi a pointer to the DPB or if CF=CY, invalid drive number
-    mov rsi, qword [sftHeadPtr]  ;Get variable pointing to first DPB
+    mov rsi, qword [dpbHeadPtr]  ;Get variable pointing to first DPB
 .walk:
     cmp rsi, -1
     je .exitBad
@@ -120,9 +120,12 @@ getCDSNotJoin:
     return
 
 buildNewCDS:   ;Int 2Fh AX=121Fh
-;Allows a redirector or subst/join to build a CDS
-;Input drive letter must be above the reserved CDS entries for the system 
-; volumes, that are made at system boot.
+;If used with SDA CDS allows for direct disk access without needing to 
+; actually use the real CDS. This prevents troubles when findnext on a 
+; drive occurs the real CDS itself may have completely changed, i.e. 
+; become unavailable. The SDA CDS becomes like the protoCDS of DOS 2 
+; that was just an appendix of the DPB. Otherwise, can be used to init
+; a new CDS or even a new complete CDS array!
 ;Input: al = Drive Letter for drive
 ;       workingCDS = Set to the CDS array slot for the drive
 ;Output: rdi = newly filled in workingCDS
@@ -130,7 +133,7 @@ buildNewCDS:   ;Int 2Fh AX=121Fh
 ;CF=CY => Either drive letter not ok OR No DPB for drive
     push rax
     sub al, "A"-1
-    cmp al, byte [numPhysVol]    ;al must be bigger than # of block drives
+    cmp byte [numPhysVol], al    ;al must be bigger than # of block drives
     mov rdi, qword [workingCDS] ;Get CDS pointer
     mov word [rdi + cds.wFlags], 0  ;Nullify CDS (mark as invalid)
     pop rax

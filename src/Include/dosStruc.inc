@@ -325,7 +325,7 @@ struc filename
 endstruc
 
 struc ffBlock   ;The structure of the Find First structure at the DTA
-    .driveNum   db ?  ;Drive we are searching on
+    .driveNum   db ?  ;Drive we are searching on, 1 based number
     .template   db 11 dup (?) ;Search template (? meaning anything)
     .attrib     db ?  ;Search attribute
     .dirOffset  dd ?  ;32 byte entry within dir cluster

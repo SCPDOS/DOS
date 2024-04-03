@@ -468,7 +468,7 @@ renameFile:        ;ah = 56h
     clc
     return
 
-getSetFileDateTime:;ah = 57h
+getSetFileDateTime: ;ah = 57h
     cmp al, 1
     jbe .oksubfun
     mov eax, errInvFnc
@@ -479,8 +479,10 @@ getSetFileDateTime:;ah = 57h
     cmp al, 1
     je .setTimeDate
     ;Here we get the Time/Date
+    call dosCrit1Enter
     movzx ecx, word [rdi + sft.wTime]
     movzx edx, word [rdi + sft.wDate]
+    call dosCrit1Exit
     call getUserRegs
     mov word [rsi + callerFrame.rcx], cx
     mov word [rsi + callerFrame.rdx], dx
@@ -488,8 +490,17 @@ getSetFileDateTime:;ah = 57h
     jmp extGoodExit
 .setTimeDate:
     ;Here we set the Time/Date
+    call dosCrit1Enter
     mov word [rdi + sft.wTime], cx
     mov word [rdi + sft.wDate], dx
+    xor eax, eax
+    call qword [updateDirShare]
+    ;Clear the flag to indicate that the dir needs to be updated and dont 
+    ; further change the file time since we have manually overridden it 
+    ; with the time specified
+    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush  ;Clear flag to sync
+    or word [rdi + sft.wDeviceInfo], blokNoDTonClose    ;Force it to this time
+    call dosCrit1Exit
     xor eax, eax
     jmp extGoodExit
 
@@ -1751,13 +1762,15 @@ flushFile:  ;Make this non-local to be jumped to by commit too!
     and al, cl  ;These should be equal
     and al, dirInclusive ;And nothing outside of these should be set
     jnz .badFileFound
+    
+    or byte [rsi + fatDirEntry.attribute], dirArchive   ;File changed!
     mov eax, dword [rdi + sft.dFileSize]    ;Get the file size
     mov dword [rsi + fatDirEntry.fileSize], eax ;And update field
     movzx eax, word [rdi + sft.wTime]   ;Get the last write time
     mov word [rsi + fatDirEntry.wrtTime], ax    ;And update field
     movzx eax, word [rdi + sft.wDate]   ;Get the last write time
     mov word [rsi + fatDirEntry.wrtDate], ax    ;And update field
-    mov word [rsi + fatDirEntry.lastAccDat], ax    ;And update final field
+    mov word [rsi + fatDirEntry.lastAccDat], ax ;Partialy implemented
     mov eax, dword [rdi + sft.dStartClust]  ;Always update the start cluster
     mov word [rsi + fatDirEntry + fatDirEntry.fstClusLo], ax
     shr eax, 10h

@@ -274,7 +274,7 @@ getDirDTwords:
     or eax, ebx
     pop rbx
     return
-getDateAndTimeOld:  ;Int 2Fh AX=12
+getDateAndTimeOld:  ;Int 2Fh AX=120Dh
 ;Returns edx = time
 ;        eax = date
 ; Formally ax and dx but we clear the upper words
