@@ -156,7 +156,9 @@ denyRWShare     equ 10h
 denyWriteShare  equ 20h
 denyReadShare   equ 30h
 denyNoneShare   equ 40h
-;If remote pc used fcb to open, use netFCB to make maximum restrictive share
+;NetFCB is for files open by a local server, handling IO from a remote
+; client by proxy opened by an FCB! Sets the Net bit to indicate this. 
+;Thus, this is a handle with no JFT entry! Server handles its own JFT!
 netFCBShare     equ 70h     
 noInherit       equ 80h
 ;Bits 8-12 reserved 0

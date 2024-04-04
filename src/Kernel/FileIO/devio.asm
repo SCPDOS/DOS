@@ -170,7 +170,7 @@ closeSFT:
 openCloseCommon:
 ;Only signals an open/close to a block device if SHARE is loaded
     test word [rdi + sft.wDeviceInfo], devRedirDev  ;We a network device?
-    jz .exit    ;Exit if so
+    jnz .exit    ;Exit if so
     test byte [rdi + sft.wDeviceInfo], devCharDev
     mov rdi, qword [rdi + sft.qPtr] ;Get DPB or Device Driver header
     jnz .charDev

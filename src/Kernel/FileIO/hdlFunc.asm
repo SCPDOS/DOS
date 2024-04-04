@@ -120,17 +120,17 @@ closeFileHdl:      ;ah = 3Eh, handle function
     call getSFTPtr  ;Get a pointer to the SFT in rdi
     jc extErrExit   ;If CF is set, al has error code, exit!
     call setCurrentSFT  ;Set this as the current SFT
-    cmp word [rdi + sft.wNumHandles], 1
-    je .killHdl
-    ;Now check sharing mode
+    cmp word [rdi + sft.wNumHandles], 1 ;If this is last reference to sft
+    je .killHdl ;always kill the handle!
+    ;Else if network file opened as FCB, avoid nuking JFT!
     movzx eax, word [rdi + sft.wOpenMode]  ;Get the share mode bits
     and al, 0F0h    ;And wipe out the other bits
+    cmp al, netFCBShare
+    je .notNetFCB
 .killHdl:
-    cmp al, netFCBShare ;If this is a NetFile, skip nuking the JFT entry
-    je .skipShareCheck
     call getJFTPtr  ;Remember, bx has handle number
     mov byte [rdi], -1  ;Now free the JFT entry
-.skipShareCheck:
+.notNetFCB:
     call closeMain  ;Call close main!
     jc extErrExit   ;If an error, exit through error exit
     mov eax, 3E00h    ;Return value
@@ -1342,10 +1342,6 @@ openMain:
     mov eax, errAccDen
     jmp short .errorExit
 .fcbOpen:
-;FCB calls are depreciated, so this is lined up for removal already. Kept in
-; the event that we introduce a 64-bit FCB equivalent interface for net use.
-;Since FCB calls cannot set the open mode, we set the FCB open of a RO file
-; to only allow reading of the file. 
     and cx, 0FFF0h  ;Set to read access open only. Preserve share/property bits
     mov word [rsi + sft.wOpenMode], cx
     mov eax, ecx    ;Move the modified open mode into eax for buildSFT
