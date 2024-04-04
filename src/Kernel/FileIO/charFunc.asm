@@ -569,15 +569,15 @@ buffCharInput_BE:  ;ah = 0Ah
     push rsi    ;Push user buffer address
     lea rdi, vConBuffer
     mov byte [vConInsert], 0    ;Set insert mode off by default
-.mainLoop:
+
     call charIn_B   ;Get a char in AL from 21/08h
     cmp al, LF
     jne .checkControlChars
-.mainLoop2:
+.mainLoop:
     call charIn_B
 .checkControlChars:
     cmp al, ACK
-    je .mainLoop2   ;Get another char
+    je .mainLoop   ;Get another char
     cmp al, byte [extESC]   ;Is it our ESC key?
     je .escape
     cmp al, DEL
@@ -602,20 +602,20 @@ buffCharInput_BE:  ;ah = 0Ah
     inc dh  ;Inc the count of bytes in the buffer
     call printCaretASCII    ;Print the char with a caret if needed or as is!
     cmp byte [vConInsert], 00h  ;Are we in insert mode? 0 = No, 1 = Yes
-    jne .mainLoop2
+    jne .mainLoop
     ;IF not in insert mode, we fall here
     ;Here we follow the chars in the user buffer so we can overwrite 
     ; or insert chars if needed.
     cmp bh, bl  ;IS the number of chars in the buffer equal to the number placed
-    jae .mainLoop2  ;If geq dont follow in user buffer
+    jae .mainLoop  ;If geq dont follow in user buffer
     inc rsi ;Otherwise, goto the next char in the user buffer
     inc bh  ;Incrememnt the counter of the char in user buffer we now point at
-    jmp short .mainLoop2
+    jmp short .mainLoop
 .bufOflw:
 ;Buffer overflow
     mov al, BEL ;Sound the bell
     call charOut_B.in   ;Call this with char in al
-    jmp short .mainLoop2
+    jmp short .mainLoop
 .break:
 ;Break, Place a "\", and do a CRLF
     mov al, "\"
@@ -635,14 +635,14 @@ buffCharInput_BE:  ;ah = 0Ah
 .carriageReturnAlt: ;EP without affecting buffer counts
     lea rsi, vConBuffer
     movzx ecx, dh   ;Move chars between buffers now
-    repz movsb  ;If the inc dh cause an overflow, dont copy! 
+    rep movsb  ;If the inc dh cause an overflow, dont copy! 
     return
 .lineFeed:
     call printCRLF
-    jmp .mainLoop2
+    jmp .mainLoop
 .delete:
     call .removeChar
-    jmp .mainLoop2
+    jmp .mainLoop
 .removeChar:
     test dh, dh ;Is char count 0?
     jz .normalChar   ;If so, skip going back!
@@ -728,9 +728,9 @@ buffCharInput_BE:  ;ah = 0Ah
 .fCommon:
     mov byte [vConInsert], 0    ;Turn off insert if on
     cmp dh, dl  ;Are we already at the end of internal buffer?
-    je .mainLoop2
+    je .mainLoop
     cmp bh, bl  ;Are we already at the end of user stored string?
-    je .mainLoop2
+    je .mainLoop
     ;Else, copy byte by byte, and retain char in al
     lodsb
     stosb
@@ -738,12 +738,12 @@ buffCharInput_BE:  ;ah = 0Ah
     inc bh
     inc dh
     loop .fCommon   ;Keep loading until end of string or buffers
-    jmp .mainLoop2
+    jmp .mainLoop
 .f4:
     call .fCommon2
     add rsi, rcx
     add bh, cl
-    jmp .mainLoop2
+    jmp .mainLoop
 .fCommon2:
     call charIn_B   ;Get a char in al
     cmp al, byte [extESC]   ;IS this the escape char?
@@ -753,7 +753,7 @@ buffCharInput_BE:  ;ah = 0Ah
     call charIn_B
 .fforceExit:
     pop rcx ;Get original return address from stack
-    jmp .mainLoop2
+    jmp .mainLoop
 .fnotEscape:
     movzx ecx, bl   ;Zero extend to rcx
     sub cl, bh
@@ -792,10 +792,10 @@ buffCharInput_BE:  ;ah = 0Ah
     return
 .eDel:
     cmp bh, bl
-    je .mainLoop2
+    je .mainLoop
     inc bh
     inc rsi
-    jmp .mainLoop2
+    jmp .mainLoop
 
 editKeys:
 ;Our Default Extended keys handler
@@ -822,4 +822,4 @@ editKeys:
 .notInTable:
     pop rcx ;Realign stack
     pop rcx
-    jmp buffCharInput_BE.mainLoop2
+    jmp buffCharInput_BE.mainLoop
