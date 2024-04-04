@@ -67,11 +67,12 @@ charOut_B:       ;ah = 02h
     cmp al, TAB
     jne .skipCurs   ;Treat as normal
     ;TAB key here
-.tab:
+    mov al, byte [vConCursPos]
+    or al, ~7
+    neg al
+.outputATab:   ;Called with al = Number of chars into the tabstop we are!
     push rcx
-    movzx ecx, byte [vConCursPos]
-    or cl, ~7
-    neg cl
+    movzx ecx, al
     jecxz .stopTab ;If this and was 0, skip printing spaces
 .tabloop:
     mov al, SPC
@@ -569,7 +570,8 @@ buffCharInput_BE:  ;ah = 0Ah
     push rsi    ;Push user buffer address
     lea rdi, vConBuffer
     mov byte [vConInsert], 0    ;Set insert mode off by default
-
+    xor dh, dh  ;Ensure these are 0 when coming back from break!
+    xor bh, bh  ;They should be... earmark
     call charIn_B   ;Get a char in AL from 21/08h
     cmp al, LF
     jne .checkControlChars
@@ -624,7 +626,8 @@ buffCharInput_BE:  ;ah = 0Ah
 .breakAlt:  ;Enter with stack aligned, print tab aligned CRLF
     call printCRLF
     ;Align to next tabstop
-    call charOut_B.tab
+    mov al, byte [vConCurCnt]  ;Get without rounding!!
+    call charOut_B.outputATab
     jmp .breakEP
 .carriageReturn:
     stosb
