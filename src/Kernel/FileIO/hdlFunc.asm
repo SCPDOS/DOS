@@ -1840,13 +1840,13 @@ readCharDev:
     mov bx, word [rdi + sft.wDeviceInfo]    ;Get dev info
     mov rdi, qword [currentDTA] ;Get the DTA for this transfer in rdi
     test bl, charDevNoEOF   ;Does our device NOT generate EOF's on reads?
-    jz readExitOk    ;If it does, jump to exit as if EOF has been hit
+    jz charReadExitOk    ;If it does, jump to exit as if EOF has been hit
     test bl, charDevNulDev  ;Is our device the NUL device?
     jz .notNul
-    ;If it is the NUL device, we can simply return unsucessfully!
-    ;NUL never transfers bytes 
+    ;If it is a new NUL device hdl, we can simply return!
+    ;NUL never transfers bytes and now clears this bit to indicate EOF
     xor eax, eax    ;Set ZF so the next read causes EOF!
-    jmp readExitOk    ;Goto exit
+    jmp charReadExitOk    ;Goto exit
 .notNul:
     test bl, charDevBinary
     jnz .binary
@@ -1897,7 +1897,8 @@ readCharDev:
 .exit:
     call vConRetDriver
     mov qword [vConHdlOff], rsi ;Store the offset (or 0 value)
-    jmp readExitOk    ;Exit ok! ecx has # chars tfred and ZF=ZE if @ EOF
+    ;Only return with ZF=ZE if first char in buffer was EOF
+    jmp charReadExitOk    ;Exit ok! ecx has # chars tfred
 
 .binary:
     ;Setup registers for transfer
@@ -1937,7 +1938,7 @@ readCharDev:
     xor eax, eax ;Set ZF
     inc eax ;Clear ZF
     pop rax ;Get back the original value
-    jmp readExitOk    ;GoExit with ecx=Bytes left to read
+    jmp charReadExitOk    ;GoExit with ecx=Bytes left to read. ZF=NZ always
 .generalASCII:
     ;ecx has bytes to transfer here
     ;Setup registers for transfer
@@ -1957,7 +1958,7 @@ readCharDev:
     test edi, drvErrStatus  ;Did an error occur?
     jz .asciiNoError
     mov ah, critCharDev | critData
-    call charDevErr    ;Call Int 24h
+    call charDevErr    ;Call Int 24h, ecx preserved
     ;Now setup number of bytes to transfer to 1 if the user requests retry
     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
     mov rdi, rdx    ;Get the buffer position back into rdi
@@ -1975,18 +1976,18 @@ readCharDev:
 ;Check EXACTLY 1 char was transferred. Any other value => exit from request
     mov rdi, rdx    ;Get the buffer position back into rdi
     cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
-    jne readExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
+    jne charReadExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
     mov al, byte [rdi]  ;Get byte just input from driver in al
 .asciiIgnoreEP:
     inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
     inc rdi ;Also advance register pointer
-    cmp al, EOF ;Was this char EOF?
-    je readExitOk
+    cmp al, EOF ;Was the char just read EOF?
+    je charReadExitOk   ;Exit if so!
     cmp al, CR  ;Was this char CR?
     loopne .asciiReadChar   ;dec rcx, jnz .asciiReadChar
     ;Fallthrough also if al = CR (i.e ZF=ZE)
     inc al  ;make ZF=NZ
-    jmp readExitOk    ;Called with ecx = Number of bytes LEFT to transfer
+    jmp charReadExitOk    ;Called with ecx = Number of bytes LEFT to transfer
 
 readDiskFile:
 ;rdi = Current SFT
@@ -2104,17 +2105,16 @@ readDiskFile:
     call readExitOk   ;We call this
     stc ;All calls which end up here return Fail!
     ret
-
-readExitOk:
+charReadExitOk:
 ;Input: ecx = Number of bytes left to transfer!
-;       ZF=ZE => clear bit 6 of deviceInfo Word ZF=NZ => preserve bit 6
+;       ZF=ZE => Ensure we reach "EOF" on char device!
+;       ZF=NZ => preserve bit 6
+    jnz readExitOk
+    call getCurrentSFT  ;Get currentSFT in rdi
+    and byte [rdi + sft.wDeviceInfo], ~charDevNoEOF
+readExitOk: ;Disk xfrs always go here. Binary char too but by bouncing!
+;Input: ecx = Number of bytes left to transfer! 
     mov dword [tfrCntr], ecx    ;Update bytes left to transfer
-    ;I argue as this is a simply read-only exit vector, this is unnecessary
-    ;jnz .skipbitClear
-    ;call getCurrentSFT  ;Get currentSFT in rdi
-    ;The disk transfer must've flushed by now. 
-    ;and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
-.skipbitClear:  ;Or skip that entirely
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
     return 
 
@@ -2160,6 +2160,7 @@ writeCharDev:
     xor eax, eax    ;If ecx = 0, set eax = 0 to indicate 0 bytes tfrred
     test ecx, ecx
     jz writeExitChar
+    mov al, bl  ;Move the flags over
     mov rbx, qword [currentDTA] ;Get ptr to storage buffer in rbx
     mov rdi, rbx
     xor edx, edx    ;Set edx to keep track of how many bytes have been xfrd
@@ -2435,12 +2436,12 @@ writeExit:
 ;Return: ecx = Number of bytes transferred
     mov rdi, qword [currentSFT]
     call updateCurrentSFT
+    test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
+    jnz .exit   ;These just exit as no filesize!
     test ecx, ecx   ;If no bytes transferred, dont flush
     jz .noFlush
-    and byte [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
+    and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
 .noFlush:
-    test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
-    jnz .exit
     mov eax, dword [rdi + sft.dFileSize]
     cmp dword [rdi + sft.dCurntOff], eax
     jbe .exit   ;Don't change filesize unless offset is past the Filesize
