@@ -23,14 +23,6 @@ dosReloc:
     rep movsq
 skipDOSReloc:
 ;------------------------------------------------;
-;              Connect Debugger                  ;
-;------------------------------------------------;
-%if DEBUG
-;Only connect if in debug mode
-    mov eax, 0C501h ;Connect debugger
-    int 35h
-%endif
-;------------------------------------------------;
 ;           Sanitise the data area               ;
 ;------------------------------------------------;
 ; This call initialises ALL fields in the DOS    ;

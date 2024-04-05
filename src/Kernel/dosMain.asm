@@ -4,17 +4,6 @@
 ;-----------------------------------:
 functionDispatch:   ;Int 21h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
- %if DEBUG
-    ;Entry function
-    debugEnterM
-    lea rbp, .l0000
-    call debPrintNullString
-    call debPrintFunctionName
-    jmp short .l0001
-.l0000 db 0Ah,0Dh,"Entering ",0
-.l0001:    
-    debugExitM
-    %endif
     cli ;Halt external interrupts
     cld ;Ensure all string ops occur in the right direction
     cmp ah, kDispTblL/2    ;Number of functions
@@ -110,29 +99,7 @@ functionDispatch:   ;Int 21h Main function dispatcher
     ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
     ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
     ;
-    %if DEBUG && REGS
-    ;Print stack if necessary function
-    debugEnterM
-    call debPrintDOSStack
-    debugExitM
-    %endif
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
-    %if DEBUG
-    ;Entry function
-    debugEnterM
-    lea rbp, .l0002
-    call debPrintNullString
-    jmp short .l0003
-.l0002 db "Exiting Int 21h",0Ah,0Dh,0
-.l0003:    
-    debugExitM
-    %endif
-    %if DEBUG && REGS
-    ;Exit function
-    debugEnterM
-    call debPrintDOSStack
-    debugExitM
-    %endif
 .fdExit:
     cli     ;Redisable interrupts
     dec byte [inDOS]            ;Decrement the inDOS count
@@ -762,20 +729,6 @@ createDPB:         ;generates a DPB from a given BPB
 ;Exit epilogue
     mov rbx, qword [oldRSP]
     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
-    %if DEBUG && DPBINFO
-    ;Print DPB 
-    debugEnterM
-    push rbp
-    lea rbp, .l0000
-    call debPrintNullString
-    pop rbp
-    call debDPBBPBptr
-    call debMakeDebuggerRespond
-    jmp short .l0001
-.l0000 db "Constructed DPB from given device BPB",0Ah,0Dh,0
-.l0001:
-    debugExitM
-    %endif
     return
 
 getVerifySetting:  ;ah = 54h
