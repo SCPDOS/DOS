@@ -178,11 +178,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ;    xor ecx, ecx
 ;    mov ecx, dword [rdi - mcb_size + mcb.blockSize]
 ;    shl ecx, 4  ;Convert to bytes from paragraphs
-;    cmp ecx, 8000h  ;Is it above 32Kb?
+;    cmp ecx, 7FF0h  ;Is it above 32Kb?
 ;    ja .invalidEnvironmentError ;Error out!
 ;    cmp ecx, 0A0h   ;Is the environment less than 160 bytes?
 ;    jb .invalidEnvironmentError ;Error out!
-    breakpoint
     xor eax, eax
     mov rbx, rdi    ;Use rbx as the base ptr of the scan
 .envVerifyLp:
