@@ -682,12 +682,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov ebx, eax  ;Save the fcb drive numbers in bx
     mov rdi, rdx  ;Point RDI to PSP
 
-    ;Put PSP base value in edx:eax to place in FS, dont rely on this in future!
-    mov ecx, 0C0000100h ;R/W FS MSR
-    mov eax, edx    ;Move low dword address into rax
-    shr rdx, 20h    ;Shift high dword in low dword
-    wrmsr   ;Write the new value to FS MSR
-
     call getUserRegs    ;Need to get Int 22h address from stack
     mov rax, qword [rsi + callerFrame.rip]  ;Get parent return address
     mov qword [rdi + psp.oldInt22h], rax    ;and save it in PSP
