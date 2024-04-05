@@ -163,11 +163,26 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rax, qword [rsi + psp.envPtr]   ;Get the environment ptr
     mov qword [rbp - execFrame.pEnvBase], rax   ;Store the parent ptr
     test rax, rax   ;Was the parent pointer 0? If so, skip
-    jz short .loadProgram
+    jz short .loadProgram ;This is used by the boot process!!
 .copyEnvironmentBlock:
     mov rdi, rax    ;Point rdi to the source of the environment
     ;Get the length of the environment
     mov ecx, 7fffh  ;Arbitrary 32kb DOS limit, consider increasing to 64Kb
+;    cmp byte [rdi - mcb_size + mcb.marker], mcbMarkCtn
+;    je .envMCBFound
+;    cmp byte [rdi - mcb_size + mcb.marker], mcbMarkEnd
+;    jne .invalidEnvironmentError
+;.envMCBFound:
+    ;The env block mcb size must be between 160 and 32768 bytes.
+    ;Get the length of the environment from the MCB itself!
+;    xor ecx, ecx
+;    mov ecx, dword [rdi - mcb_size + mcb.blockSize]
+;    shl ecx, 4  ;Convert to bytes from paragraphs
+;    cmp ecx, 8000h  ;Is it above 32Kb?
+;    ja .invalidEnvironmentError ;Error out!
+;    cmp ecx, 0A0h   ;Is the environment less than 160 bytes?
+;    jb .invalidEnvironmentError ;Error out!
+    breakpoint
     xor eax, eax
     mov rbx, rdi    ;Use rbx as the base ptr of the scan
 .envVerifyLp:
