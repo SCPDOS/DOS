@@ -160,7 +160,7 @@ vConBuf:    ;Proper buffer symbol
     vConBuffer  resb 128   ;General Buffer for vCon 256 bytes. 
     ;Only 128 bytes at a time if doing CON IO via handle
     vConInBuf   resb 128   ;vConsole buffer for reads ONLY
-    bufpad      resb 1     ;Used to pad with LF
+                resb 1     ;Padding Buffer!
 
     printEcho   resb 1  ;If 0, no echo. Non-zero => Echo to PRN
     verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
