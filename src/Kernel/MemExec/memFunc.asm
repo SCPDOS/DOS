@@ -448,10 +448,10 @@ verifyIntegrityOfMCBChain:
     pop rax
 badMCBChain:
     mov al, errMCBbad   ;Yikes!
+    mov byte [errorDrv], -1 ;No drive
+    jmp extErrExit
 mcbErrHdlr:
     ;Jumped to with eax = error code
     mov byte [errorDrv], -1 ;No drive
     call extErrExit ;Error thru the unified error handler
-    cmp al, errMCBbad
-    rete
     jmp short verifyIntegrityOfMCBChain  ;Check chain ok if error != errMCBbad
