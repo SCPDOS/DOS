@@ -617,10 +617,14 @@ getPathNoCanon:
     return
 .notServer:
     ;Make Redir request to qualify the filename if NOT invoked by server call
+    ; and only in truename mode
+    test byte [skipDisk], -1    ;If set, we on disk hit mode
+    jnz .skipRemoteQualify      ;So skip!
     mov qword [workingCDS], -1  ;Set workingCDS to unknown
     mov eax, 1123h  ;Net Qualify Path name
     int 2fh ;CF=CY if not resolved. CF=NC if resolved
     retnc  ;Return if resolved
+.skipRemoteQualify:
     call getDrvLetterFromPath ;Get the drive letter in al (or -1)
     pushfq  ;Save the flag state on stack
     push rax    ;Save whether rsi is incremented by 2
@@ -744,7 +748,19 @@ pathWalk:
     xor eax, eax
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax
-    jmp short .exitGood
+    mov byte [curDirCopy + fatDirEntry.attribute], dirDirectory
+    ;Now we check if we are on a JOIN drive. If so, we swap back to the 
+    ; join host! Only when hitting the disk though.
+    test byte [skipDisk], -1
+    jz .exitGood
+    push rdi
+    mov rdi, qword [workingCDS]     ;Get the current CDS
+    test word [rdi + cds.wFlags], cdsJoinDrive
+    pop rdi
+    jz .exitGood    ;If not a join drive, exit (this never happens?)
+    mov rsi, qword [workingCDS] ;Use the join client CDS as source string!
+    mov al, -1  ;Set to search for a dir as only dir can be mntpoint
+    jmp getPathNoCanon
 .mainlp:
     ;rbx must remain constant in this portion,
     ; and is used to signify the first writable byte in the path
@@ -822,12 +838,18 @@ prepareDir:
     call getCDSNotJoin   ;Set internal variables, working CDS etc etc
     jnc .notJoin ;Very valid disk
     test byte [skipDisk], -1    ;Are we a join drive in truename?
-    jnz .joinEp                 ;If not, proceed. If so, fail.    
+    jnz .okJoin                 ;If not, proceed. If so, fail.    
     stc
     jmp short .critExit    ;If the drive number in al is too great or a join drive specified.
-.notJoin:
+.getDPB: 
     mov rdi, qword [workingCDS] 
     call getDiskDPB  ;Update working DPB and drv before searching
+    return
+.okJoin:
+    call .getDPB
+    jmp short .joinEp
+.notJoin:
+    call .getDPB
     ;rbp = DPB ptr now
 .critExit:
     call dosCrit1Exit
