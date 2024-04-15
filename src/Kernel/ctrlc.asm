@@ -164,9 +164,11 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     cli ;Disable Interrupts
     inc byte [critErrFlag]  ;Set flag for critical error
     dec byte [inDOS]    ;Exiting DOS
+    breakpoint
     mov rsp, qword [oldRSP] ;Get the old RSP value
     xor ebp, ebp    ;Always zeroed
     int 24h ;Call critical error handler, sets interrupts on again
+    mov qword [oldRSP], rsp     ;Store back the stack pointer
     mov rsp, qword [xInt24hRSP] ;Return to the stack of the function that failed
     mov byte [critErrFlag], 0   ;Clear critical error flag
     inc byte [inDOS]    ;Reenter DOS
@@ -214,6 +216,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [Int24Trans], -1   ;We are translating a Abort to Fail. Mark it
     jmp short .exit
 .kill:
+    add di, drvErrShft
     mov word [errorExCde], di ;Save the error code if Abort
     mov eax, edi    ;Make the return error code the Driver Error Code
     mov byte [exitType], 2    ;We are returning from Abort, ret type 2!

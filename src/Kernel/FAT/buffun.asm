@@ -167,14 +167,14 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     je .fbFreeExit  ;Skip write if this disk has caused an error
     mov byte [Int24bitfld], critRetryOK | critFailOK
     test ah, dataBuffer
-    jz .fbNotData
+    jz .fbWriteSetup
     or byte [Int24bitfld], critIgnorOK  ;If this is a data buffer, we can ignore too
-.fbNotData:
+.fbWriteSetup:
     mov esi, 3  ;Repeat attempt counter
     test ah, fatBuffer
-    jz .fbWriteSetup
+    jz .fbWriteNotFat
     add esi, 2  ;FAT sectors have 5 attempts
-.fbWriteSetup:
+.fbWriteNotFat:
     movzx ecx, byte [rdi + bufferHdr.bufFATcopy]   ;And FAT copies (if FAT sector)
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     lea rbx, qword [rdi + bufferHdr.dataarea]
@@ -194,10 +194,10 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     pop rdx
     pop rcx
     pop rbx
-    pop rax
-
+    ;Don't pop rax here to carry the error code if error!
     jnz .fbFail
 ;Now check if the buffer was a FAT, to write additional copies
+    pop rax ;Now pop the drive number and flags off the stack
     test ah, fatBuffer ;FAT buffer?
     jz .fbFreeExit  ;If not, exit
     dec ecx
@@ -206,7 +206,7 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     mov eax, dword [rdi + bufferHdr.bufFATsize]
     add rdx, rax ;Add the FAT size to the LBA (rdx has LBA number)
     pop rax
-    jmp .fbWriteDisk ;Make another request for the other FAT copy
+    jmp short .fbWriteDisk ;Make another request for the other FAT copy
 .fbFreeExit:
     clc
 .fbExitFail:
@@ -220,16 +220,20 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
 .fbFail:
 ;Enter here only if the request failed
     dec esi
-    jnz .fbWriteDisk ;Try the request again!
+    jz .fbHardError ;Once we have tried it a number of times, fail!
+    pop rax     ;Else pop back the drive number and flags
+    jmp short .fbWriteDisk ;Try the request again!
+.fbHardError:
 ;Request failed thrice, critical error call
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
     or byte [Int24bitfld], critWrite ;Set the initial bitfield to write req
     call diskIOError ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
+    pop rax     ;Now pop back the drive number and flags from the stack!
     je .fbWriteSetup   ;If we retry, we rebuild the stack, values possibly trashed
     ;Else we fail (Ignore=Fail here)
     stc ;Set error flag to indicate fail
-    jmp .fbExitFail
+    jmp short .fbExitFail
 
 testDirtyBufferForDrive:    ;External linkage
 ;Searches the buffer chain for a dirty buffer for a given drive letter.

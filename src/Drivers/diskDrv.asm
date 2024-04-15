@@ -99,6 +99,7 @@ msdDriver:
     cmp cl, 11h     ;Read error
     je .msdWriteErrorCode
 ;General Errors
+.msdGenErr:
     mov al, 0Ch     ;Everything else is general error
 .msdWriteErrorCode:    ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
@@ -234,7 +235,10 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
-
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    test byte [7c02h], 1
+    jnz .msdGenErr
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
     mov rdi, rbx
@@ -256,7 +260,10 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
-
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    test byte [7c02h], 2
+    jnz .msdGenErr
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
     mov rdi, rbx
@@ -278,7 +285,10 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
-
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    test byte [7c02h], 2
+    jnz .msdGenErr
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
     mov rdi, rbx
