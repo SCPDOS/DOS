@@ -287,8 +287,8 @@ setErrorVars:   ;Int 2Fh, AX=1222h
 checkFail:
 ;Checks if the error was dealt with by the user with a Fail on a Int 24h
 ; and swaps the var error code if so
-    cmp byte [Int24Fail], 0
-    jnz .skipFail
+    test byte [Int24Fail], -1   ;If zero, skip!
+    jz .skipFail
     mov word [errorExCde], errFI24  ;Set error to "Fail on Int 24h"
 .skipFail:
     push rsi
