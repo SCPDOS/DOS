@@ -696,13 +696,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov ebx, eax  ;Save the fcb drive numbers in bx
     mov rdi, rdx  ;Point RDI to PSP
 
-    call getUserRegs    ;Need to get Int 22h address from stack
-    mov rax, qword [rsi + callerFrame.rip]  ;Get parent return address
-    mov qword [rdi + psp.oldInt22h], rax    ;and save it in PSP
-    mov rdx, rax    ;Move return address to rdx to set up the Interrupt Vector
-    mov al, 22h
-    call setIntVector   ;bx preserved by this call
-
     ;Check FCB drive numbers are valid. Return FFh if not
     mov al, bl
     xor bl, bl

@@ -139,8 +139,7 @@ terminateStayRes:  ;ah = 31h
 simpleTerminate:   ;ah = 00h
     xor eax, eax    ;Just fall through as normal
 terminateClean:    ;ah = 4Ch, EXIT
-; Step 0
-;For now, just adjust error level in var
+;For now, adjust error level in var
     xor ah, ah  ;Eliminate the 4Ch
     xchg ah, byte [exitType]    ;Set type to zero
     test byte [ctrlCExit], -1   ;Is ^C flag set?
@@ -151,26 +150,34 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov ah, byte [exitType] ;Get the exitType
 .storeELvl:
     mov word [errorLevel], ax   ;Store word
-    
-; Step 1
+;rbx points to current PSP
+;Use setIntVector. Takes in al the interrupt number and rdx = ptr to routine
+    mov rbx, qword [currentPSP]
+    mov rdx, qword [rbx + psp.oldInt24h]
+    mov al, 24h
+    call setIntVector
+    mov rdx, qword [rbx + psp.oldInt23h]
+    mov al, 23h
+    call setIntVector
+    mov rdx, qword [rbx + psp.oldInt22h]
+    mov al, 22h
+    call setIntVector
+
     mov ah, 82h ;Cancel all critical sections 0-7
     int 2Ah
-    mov eax, 1122h  ;Net redir, Process Termination Hook
+    mov byte [Int24Trans], -1   ;Aborts now get translated temporarily
+    mov eax, 1122h              ;Net redir, Process Termination Hook
     mov r8, qword [currentPSP]  ;Use r8 instead of DS
     int 2Fh
-; Step 2
-.step1:
+
     mov rdi, qword [currentPSP] ;Get the current psp
     mov rdx, rdi    ;Save in rdx
     mov rbx, qword [rdi + psp.parentPtr]
     cmp rbx, rdi    ;Check if the application is it's own parent
-    je .exit
-; Step 3
-    call vConRetDriver  ;Always reset the driver flag
-; Step 3.5
+    je .ownParent   ;No resource freeing if it is its own parent!
     cmp byte [exitType], 3  ;TSR exit?
-    je .step6   ;Skip resource freeing if so as TSR exit resizes memory alloc.
-; Step 4
+    je .freeOk   ;Skip resource freeing if so as TSR exit resizes memory alloc.
+
     cmp byte [exitType], 2  ;Abort type exit?
     jne .skipAbortNetClose  ;Skip the following
     mov eax, 111Dh  ; Close all remote files for process on Abort!
@@ -178,11 +185,11 @@ terminateClean:    ;ah = 4Ch, EXIT
 .skipAbortNetClose:
     call qword [closeTaskShare] ;Close all shared files for this task
     call qword [unloadDLLHook]  ;Now free exported function for this task
-
+;Now close file handles
     mov rdi, qword [currentPSP]
     movzx ecx, word [rdi + psp.jftSize] ;Number of entries in current JFT
     xor ebx, ebx    ;Start from handle 0
-.s4lp:
+.hdlLp:
     push rbx
     push rcx
     call closeFileHdl
@@ -190,20 +197,19 @@ terminateClean:    ;ah = 4Ch, EXIT
     pop rbx
     inc ebx ;Goto next handle to close
     cmp ebx, ecx
-    jne .s4lp   ;Keep looping for all entries in the JFT 
-;Step 5
-.step5:
+    jne .hdlLp   ;Keep looping for all entries in the JFT 
+;Now free MCB's owned by task
     mov rbx, qword [currentPSP] ;Get back the current psp
     ;Now we must walk the MCB chain and find all paragraphs
     ; with the currentPSP signature and free them.
     mov rsi, qword [mcbChainPtr]    ;Get the anchor MCB
-.s5lp:  ;And walk the chain
+.wlkMcb:  ;And walk the chain
 ;First verify the address in rsi is a valid mcb
     mov cl, byte [rsi + mcb.marker] ;Get the marker char into cl
     cmp cl, mcbMarkCtn
     je .checkToFree
     cmp cl, mcbMarkEnd
-    jne .step6  ;Something wrong so stop freeing
+    jne .freeOk  ;Something wrong so stop freeing
 .checkToFree:
     cmp qword [rsi + mcb.owner], rbx ;Is this valid block owned by current PSP?
     jne .noFree
@@ -218,51 +224,31 @@ terminateClean:    ;ah = 4Ch, EXIT
     ;If an error occured, the internal vars will be set.
 .noFree:
     cmp cl, mcbMarkEnd  ;Are we at the end of the MCB chain?
-    je .step6   ;Skip if we are
+    je .freeOk          ;Skip if we are
     mov eax, dword [rsi + mcb.blockSize]
     shl rax, 4  ;Multiply by 4 to get bytes from paragraphs
     lea rsi, qword [rsi + mcb.program + rax]    ;Goto next mcb block
-    jmp short .s5lp
-;Step 6
-.step6:
-
+    jmp short .wlkMcb
+.freeOk:
     call qword [terminateTask]  ;Registers task terminating, no retval
-
     mov rax, qword [rbx + psp.parentPtr]    ;Get the parent PSP pointer
     mov qword [currentPSP], rax ;and set it to be the current PSP
-;Step 7
-    ;rbx points to current PSP, the old parent task
-    ;Use setIntVector. Takes in al the interrupt number and rdx = ptr to routine
-    mov rdx, qword [rbx + psp.oldInt24h]
-    mov al, 24h
-    call setIntVector
-    mov rdx, qword [rbx + psp.oldInt23h]
-    mov al, 23h
-    call setIntVector
-    mov rdx, qword [rbx + psp.oldInt22h]
-    mov al, 22h
-    push rdx
-    call setIntVector
-    pop rdx
-;Step 8
-.exit:
+.ownParent:
     mov al, -1  ;Flush all drive buffers
     call dosCrit1Enter
     call flushAllBuffersForDrive
     call dosCrit1Exit
-
     cli
-    mov rbx, qword [currentPSP]
-    mov rdx, qword [rbx + psp.oldInt22h]
-    ;Make the parent register frame the current one
-    ;Make RSP point to user stack from parent entry to exec
-    mov rsp, qword [rbx + psp.rspPtr]
-
-    mov qword [rsp + callerFrame.rip], rdx  ;Store return address vector here
-    mov qword [rsp + callerFrame.flags], 0202h ;Mimic DOS's return flags
-
     mov byte [Int24Trans], 0    ;Clear this flag
     mov byte [inDOS], 0 ;Exiting DOS now
     mov byte [errorDrv], -1 ;Reset
+    mov rbx, qword [currentPSP]
+    mov rsp, qword [rbx + psp.rspPtr]   ;Point rsp to the rsp on entry to DOS call
+    ;Dont touch the previous stack pointer thats left on the stack, only
+    ; the ret ptr and the flags
+    mov al, 22h
+    call muxGetIntVector    ;Get return vector in rbx
+    mov qword [rsp + callerFrame.rip], rbx
+    mov qword [rsp + callerFrame.flags], 0202h  ;Mimic safely DOS's ret flags
     call dosPopRegs  ;Pop the stack frame pointed to by rsp
-    iretq   ;and return to address that was in rdx
+    iretq   

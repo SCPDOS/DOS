@@ -164,7 +164,6 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     cli ;Disable Interrupts
     inc byte [critErrFlag]  ;Set flag for critical error
     dec byte [inDOS]    ;Exiting DOS
-    breakpoint
     mov rsp, qword [oldRSP] ;Get the old RSP value
     xor ebp, ebp    ;Always zeroed
     int 24h ;Call critical error handler, sets interrupts on again
@@ -210,6 +209,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     jmp short .setFail  ;If retry not permitted, return Fail
 .abort:
 ;Prepare to abort. We abort from within!
+    call vConRetDriver  ;Always reset the driver flag on abort
 ;If a network request requests abort, translate to fail
     cmp byte [dosInvoke], -1
     jne .kill   ;If this is zero, local invokation
@@ -228,7 +228,7 @@ ctrlBreakHdlr:
     call printCaretASCII
     call printCRLF
     ;Reset the console back to 0
-    mov byte [vConDrvSwp],  0   ;Set to 0
+    call vConRetDriver
 ;Handles a control break, juggles stacks and enters int 21h 
 .exceptEP:
 ;If return via RET/RET 8 with CF set, DOS will abort program with errorlevel 0
