@@ -133,13 +133,13 @@ flushAndCleanBuffer:   ;Internal Linkage Int 2Fh AX=1215h
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer   ;Is it dirty?
     retz
     push rax    ;Save the drive number
-    movzx eax, byte [rdi + bufferHdr.bufferFlags]
+    movzx eax, word [rdi + bufferHdr.wDrvNumFlg]
     push rax    ;Save the buffer flags
     call flushAndFreeBuffer
     pop rax     ;Get back the flags
     jc .exit
-    and al, ~dirtyBuffer    ;Clean the dirty bit
-    mov byte [rdi + bufferHdr.bufferFlags], al  ;And return the flags!
+    and ah, ~dirtyBuffer    ;Clean the dirty bit
+    mov word [rdi + bufferHdr.wDrvNumFlg], ax  ;And return the drv/flags!
 .exit:  
     pop rax     ;Get back the drive number
     return

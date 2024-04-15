@@ -1272,6 +1272,8 @@ deleteMain:
 ;The dir buffer must be marked as referenced once we are done with it
     call checkNoOpenHandlesForShareAction   ;Also cannot delete if open handle
     retc    ;Return immediately if CF=CY and propagate error code
+    push rbp
+    mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
     push rdx
     movzx edx, word [curDirCopy + fatDirEntry.fstClusLo]
     movzx eax, word [curDirCopy + fatDirEntry.fstClusHi]
@@ -1280,7 +1282,6 @@ deleteMain:
     pop rdx
     test eax, eax   ;Cluster value of 0 means no allocation
     jz .skipUnlink  ;If there is no FAT allocation for file, skip "dealloc"
-    mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
     call unlinkFAT  ;Unlink the FAT entry
     jc .exitBad
 .skipUnlink:
@@ -1293,8 +1294,10 @@ deleteMain:
     call markBufferDirty
     ;CF must be clear
     call flushAllBuffersForDPB
+    pop rbp
     retnc
 .exitBad:
+    pop rbp
     stc
     return
 
@@ -1549,7 +1552,6 @@ buildSFTEntry:
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
-    mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
     pop qword [currentSFT]
     pop rbp

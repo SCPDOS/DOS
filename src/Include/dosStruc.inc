@@ -209,6 +209,7 @@ devRedirDev     equ 8000h   ;If set, dev/file is redirected!
 
 struc bufferHdr
     .nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
+    .wDrvNumFlg:         ;Read as a word to get the following two bytes!
     .driveNumber db  ?   ;Drive number the buffer is used for (or -1 for free)
     .bufferFlags db  ?   ;Standard Flags
     .bufferLBA   dq  ?   ;LBA the buffer contains
