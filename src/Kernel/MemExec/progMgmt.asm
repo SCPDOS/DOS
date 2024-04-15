@@ -239,9 +239,9 @@ terminateClean:    ;ah = 4Ch, EXIT
     call flushAllBuffersForDrive
     call dosCrit1Exit
     cli
-    mov byte [Int24Trans], 0    ;Clear this flag
-    mov byte [inDOS], 0 ;Exiting DOS now
-    mov byte [errorDrv], -1 ;Reset
+    mov byte [Int24Trans], 0    
+    mov byte [inDOS], 0     ;Exiting DOS now
+    mov byte [errorDrv], -1 ;Reset error drive
     mov rbx, qword [currentPSP]
     mov rsp, qword [rbx + psp.rspPtr]   ;Point rsp to the rsp on entry to DOS call
     ;Dont touch the previous stack pointer thats left on the stack, only
@@ -251,4 +251,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov qword [rsp + callerFrame.rip], rbx
     mov qword [rsp + callerFrame.flags], 0202h  ;Mimic safely DOS's ret flags
     call dosPopRegs  ;Pop the stack frame pointed to by rsp
-    iretq   
+    iretq   ;rsp ends up on the stack of the last entry into DOS
+    ;Caveat: If a task which is its own parent CTRL+C's or "aborts and
+    ; accesses DOS during Int 24h", then rsp on return to the Int22h vector 
+    ; is invalid as it points to rsp within DOS. 
