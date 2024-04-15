@@ -1549,6 +1549,7 @@ buildSFTEntry:
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
+    mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
     pop qword [currentSFT]
     pop rbp
