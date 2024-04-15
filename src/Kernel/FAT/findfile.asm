@@ -170,8 +170,8 @@ searchDir:
     call findInBuffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
-    jz .fnfError    ;CF=CY AND ZF=ZE => File not found
-    ;If ZF=ZE then fnfError (i.e. we hit an entry starting with 00)
+    jz .chardev    ;CF=CY AND ZF=ZE => File not found
+    ;If ZF=ZE then chardev (i.e. we hit an entry starting with 00)
     ;Else, we now have to get the next sector of the cluster or next cluster
     ;IF however, the next cluster is -1, then we return fail
     mov eax, dword [dirClustA]  ;Get disk relative cluster
@@ -184,7 +184,7 @@ searchDir:
     call getNextSectorOfFile
     jc .hardError
     cmp eax, -1
-    je .fnfError    ;We are at the end of the directory and didnt find the file
+    je .chardev    ;We are at the end of the directory and didnt find the file
     inc word [dirSect]  ;Goto next sector
     mov eax, dword [dirClustA]  ;Get disk relative cluster
     cmp eax, dword [currClustD] ;Did it change?
@@ -204,14 +204,21 @@ searchDir:
     call findInBuffer
 .oldNextEP:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup 
-    jz .fnfError
+    jz .chardev
     inc word [dirSect]  ;Goto next sector in directory
     movzx eax, word [rbp + dpb.wNumberRootDirEntries]
     cmp dword [dirEntry], eax ;Have we reached the last dir entry?
     jb .oldSectorLp    ;If equal, no more entries to search. Game over!
+.chardev:
+;Now check for a char device!
+    call checkIfCharDevice
+    jc .fnfError    ;Not a char dev? Exit!
+    call buildCharDir
+    xor esi, esi
+    lea rsi, curDirCopy ;Return with rsi pointing to the dir copy!
+    return
 .fnfError:
     mov al, errNoFil
-    stc
     return
 .hardError:
     mov al, -1
@@ -772,12 +779,12 @@ pathWalk:
     jnz .notFile
     mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
 .notFile:
-    push rax    ;Save the fact that al = 0 or "\"
-    call checkDevPath.charDevSearch ;Catch if FCB name = Char device    
-    pop rax
-    jnc .deviceFound
-    call searchForPathspec  ;and search the directory
-    jc .checkDev    ;If CF=CY, error exit UNLESS we were searching for \DEV"\"
+    push rbx    ;The below messes up rbx
+    call checkDevPath       ;Intervene DEV if in truename mode!
+    pop rbx
+    jc .exit
+    call searchForPathspec  ;Now search the directory
+    jc .exit    ;If CF=CY, error exit
     call addPathspecToBuffer    ;Only entered if truename mode
     jc .exit   ;If a bad path (somehow I dont see this happening often)
     test al, al ;Exit if this pathspec was a file
@@ -804,26 +811,6 @@ pathWalk:
     mov byte [fileExist], -1 ;If the file exists, set to -1
 .exit:
     return
-.checkDev:
-;If the return code is errNoFil AND Int24Fail = 0, then we check to see if 
-; we are in \DEV pseudo dir
-    test byte [Int24Fail], -1   ;Make sure we are not returning from a FAIL
-    jnz .nodev  ;If any bits set, ignore this check
-    ;Here we check to see if DEV"\" was what we were searching for
-    push rsi
-    push rdi
-    call checkDevPath
-    pop rdi
-    pop rsi
-    jc .exit   ;IF CF=CY, exit bad, with error code in eax
-.deviceFound:
-    xor eax, eax    ;Set al to 0 as expected on ok!
-    mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
-    mov byte [fileExist], -1 ;If the file exists, set to -1
-    jmp short .exit   
-.nodev:
-    stc
-    jmp short .exit
 
 prepareDir:
 ;Used to transfer the current directory if it is necessary.
@@ -1333,32 +1320,31 @@ handleJoin:
     return
 
 checkDevPath:
-;Called only if the file/directory was not found on disk.
-;Checks if the current fcbname field is "DEV        \" (for the DEV 
-; pseudo-directory). If it is, then we parse the next filename in to fcbName
-; and check to see if it is a char device. If it is, build a directory
-; If it is not, proceed with the request fail.
-;
+;Only works in truename and in the root dir of a disk. If the search pattern
+; is a char device, replace the root pathsep with a UNIX pathsep.
+;Else if we are searching for the DEV folder in the root of a disk
+; and the next componant we are searching for is a char device, we 
+; only copy over the char device to the destination buffer with a UNIX
+; pathsep. Else, we do nothing. Clobbers rbx!
 ;Input: rsi = Pointer to the next path spec
-;Output: CF=NC => Char device found, directory built
-;        CF=CY => Char device not found or not searching for dev. Exit.
-    cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
-    rete
-    cmp byte [fcbName + 11], 0  ;If the fcbname is a file name, exit
-    je .notOk                      
-    ;Now check to see if fcbname is the DEV directory (could be real...)
+;       rdi = Buffer where to add it
+;Output: If \DEV\devicename then copy /devicename to buffer.
+;        If devicename in the root dir, then replace pathsep
+;If returns CF=CY, then a non-char device in the DEV folder
+    test byte [skipDisk], -1    ;If set, return!
+    retnz             
+;First check we are searching in the root dir!
+    cmp word [rdi - 2], ":\" 
+    retne
+;Now check to see if fcbname is DEV
     push rax
     mov rax, "DEV     "
     cmp qword [fcbName], rax    ;x64 cant handle cmp r\m64, imm64
     pop rax
-    jne .notOk
+    jne .checkDevice    ;Was not \DEV\, check if it was \CON or something
     cmp dword [fcbName + 8], "   \"
-    jne .notOk
-    ;So the failed directory was DEV, now we search to see if we are
-    ; looking for a device driver
-    ;First append it to rdi 
-    mov eax, "DEV\" 
-    stosd   ;RDI now ready to add a device name to it too
+    retne
+    ;Don't add the DEV to the name, replace "\" with a "/"
     push rdi
     lea rdi, fcbName
     call asciiToFCB    ;Converts the next section into this field
@@ -1366,44 +1352,29 @@ checkDevPath:
     pop rdi
     ;If al is a pathsep, fail
     call swapPathSeparator
-    jz .notOk   ;Device names cannot be terminated with a \ or /
+    jz .bad   ;Device names cannot be terminated with a "\" or "/"
     xor al, al
     mov byte [fcbName + 11], al ;Store terminator in fcbName field
     push rbx
     call checkIfCharDevice
     pop rbx ;Don't need bh yet
-    jc .notOk
-    call buildCharDir
+    jc .bad    ;Clear CF!
     ;Here the device was determined to be a char device.
-    ;A dummy directory entry was built for it.
-    ;Note to self, If a FFblock is found with found attributes = 40h then...
-    ; Do not Find Next!
-.copyName:
-    call FCBToAsciiz    ;Copy the ASCII form of the name over 
+.pathSepExit:
+    mov byte [rdi - 1], "/" ;Store reverse pathsep here!
+.exit:
     clc
     return
-.notOk:
-    mov eax, errFnf
+.bad:
+    mov al, errPnf  ;Path not found error here due to DEV
     stc
     return
-.charDevSearch:
-    push rbx
-    call checkIfCharDevice
-    pop rbx ;Dont need bh yet
-    jc .notOk
-    call buildCharDir
-    cmp byte [fcbName+11], 0    ;If this is NOT null terminated, skip replacing
-    jne .cds2
-    cmp byte [rdi - 2], ":"
-    jne .cds2 ;IF not at root, then skip replacing pathsep
-    dec rdi
-    mov al, "/" ;Replace \ with "/"
-    stosb   ;Store that and let the dir write the filename
-.cds2:
-    cmp byte [skipDisk], 0  ;If NOT in DISK search, we exit now with CF=CY
-    jne .copyName    ;Now jump if in disk search
-    stc ;Else set CF=CY to pretend not found to write as normal
-    return
+.checkDevice:
+    call checkIfCharDevice ;Check if what we already have is a chardev?
+    jc .exit    ;If not a device, silently return
+    cmp byte [fcbName + 11], 0  ;If this is a pathsep, fail
+    jnz .bad
+    jmp short .pathSepExit
 
 checkIfCharDevice:  ;Int 2Fh AX=1223h
 ;Compares the first 8 chars of the FCB field to each device name in the
