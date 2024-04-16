@@ -45,13 +45,17 @@ searchMoreDir:
     mov ecx, 11
     rep movsb   ;Get copy the search template!
     pop rdi
+    test byte [rdi + ffBlock.attribFnd], dirCharDev  ;Did we find a char dev?
+    jnz .errorExit                              ;No more files if so!!
     mov al, byte [rdi + ffBlock.attrib] ;Get search attrib...
-    mov byte [searchAttr], al   ;And save it
+    mov byte [searchAttr], al   ;... and save it!
     mov eax, dword [rdi + ffBlock.parDirClus]   ;Get the directory cluster
     mov dword [dirClustA], eax  ;... into dir vars
     mov dword [dirClustPar], eax
     ;Get number of 32 byte entries in a sector
     mov eax, dword [rdi + ffBlock.dirOffset]    ;Get the 32 byte entry
+    cmp eax, -1 ;If this is an invalid value, exit error!
+    je .errorExit
     mov dword [dirEntry], eax
     ;Multiply by 32 to get the byte offset into the directory file
     shl eax, 5  ;eax has byte offset into directory file
@@ -97,7 +101,7 @@ searchMoreDir:
     add rax, rbx    ;Add the sector offset into the cluster
 .common:
     call getBufForDir
-    jc searchDir.hardError
+    jc searchDir.fnfError
     call prepSectorSearch  ;rbx has the buffer ptr for this dir sector
     call findInBuffer.getNumberOfEntries    ;Get in ecx # of entries in sector
     mov eax, dword [dirEntry]
@@ -164,7 +168,7 @@ searchDir:
     call getStartSectorOfCluster    ;Else, get the start sector in rax
 .sectorLoop:
     call getBufForDir
-    jc .hardError
+    jc .fnfError
     call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
 .rmdirEP: ;Entry used by rmdir to jump into this routine
     call findInBuffer
@@ -182,7 +186,7 @@ searchDir:
     mov qword [currSectD], rax  
     mov dword [currClustF], 0 ;Use as flag to tell us if cluster has changed
     call getNextSectorOfFile
-    jc .hardError
+    jc .fnfError
     cmp eax, -1
     je .chardev    ;We are at the end of the directory and didnt find the file
     inc word [dirSect]  ;Goto next sector
@@ -199,7 +203,7 @@ searchDir:
     movzx eax, word [dirSect]    ;Move the sector number into eax
     add eax, dword [rbp + dpb.dFirstUnitOfRootDir] ;Get sector 0 of root dir
     call getBufForDir
-    jc .hardError
+    jc .fnfError
     call prepSectorSearch      ;rbx has the buffer pointer for this dir sector
     call findInBuffer
 .oldNextEP:
@@ -210,18 +214,19 @@ searchDir:
     cmp dword [dirEntry], eax ;Have we reached the last dir entry?
     jb .oldSectorLp    ;If equal, no more entries to search. Game over!
 .chardev:
-;Now check for a char device!
+;Now check for a char device ONLY if we are checking for file or dir!
+;If exclusive dir on, fail!
+    test byte [fileDirFlag], -1 ;Set if file/dir. Clear if only dir!
+    jz .fnfError    
     call checkIfCharDevice
     jc .fnfError    ;Not a char dev? Exit!
     call buildCharDir
-    xor esi, esi
+    xor esi, esi        ;Clear the CF flag
     lea rsi, curDirCopy ;Return with rsi pointing to the dir copy!
     return
 .fnfError:
+    stc
     mov al, errNoFil
-    return
-.hardError:
-    mov al, -1
     return
 prepSectorSearch:
 ;Input: rbx -> Buffer with Dir sector to search
@@ -1335,7 +1340,6 @@ checkDevPath:
 ;       rdi = Buffer where to add it
 ;Output: If \DEV\devicename then copy /devicename to buffer.
 ;        If devicename in the root dir, then replace pathsep
-;If returns CF=CY, then a non-char device in the DEV folder
     test byte [skipDisk], -1    ;If set, return!
     retnz             
 ;First check we are searching in the root dir!
@@ -1349,9 +1353,9 @@ checkDevPath:
     jne .checkDevice   ;Maybe this is a device if not DEV
     cmp dword [fcbName + 8], "   \"
     jne .checkDevice    ;Was not \DEV\, check if it was \CON or something
-    ;So here we are in the DEV dir
-    cmp byte [rsi - 5], "\" ;rsi points to first char in new path portion
-    retne   ;If it was relative, we dont adjust truename
+    ;So here we are in the DEV dir. Check if \DEV or just DEV
+    test byte [spliceFlag], -1
+    retz    ;Exit if relative!
     ;Else, don't add DEV to the name, replace "\" with a "/", move rsi past it
     push rsi    ;Save if not followed by dev!
     push rdi    ;If followed by dev, not a problem, we end the pathbuild!
@@ -1422,8 +1426,6 @@ checkIfCharDevice:  ;Int 2Fh AX=1223h
 buildCharDir:
 ;Build a dummy directory entry for the char device in FCBName
 ; Unless we are in disk skip mode (just evaluating the name)
-    cmp byte [skipDisk], 0  ;If we are just qualifying a path, skip the disk hit
-    rete
     push rax
     push rdi
     mov byte [fcbName+11], 0    ;Override and null terminate the fcbName field
@@ -1438,6 +1440,7 @@ buildCharDir:
     pop rdi
     pop rcx
     pop rax
+    mov dword [dirEntry], -1    ;Indicate invalid offset into dir
     mov rax, qword [fcbName]
     mov qword [rdi + fatDirEntry.name], rax  ;Store filename
     mov eax, "    "    ;Four spaces, overwrite the attribute field
