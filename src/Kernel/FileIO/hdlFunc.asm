@@ -916,6 +916,8 @@ renameMain:
     call setupFFBlock   ;Need this to save the dir entry cluster/sector/offset 
     ;Now we check this path, if it is a DIR, ensure it is not the current
     ; dir for any CDS.
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
+    jnz .accDen ;Cant rename a char file!
     test byte [curDirCopy + fatDirEntry.attribute], directoryFile
     jz .notDirCheck
     mov rdi, qword [fname1Ptr]
@@ -1078,7 +1080,7 @@ renameMain:
     mov rdi, rsi
     call getFilePathNoCanon    ;This must be a non-existant file
     jnc .badExit   ;If the file exists, then error
-    cmp eax, errFnf ;If Fnf error then we may proceed
+    cmp al, errFnf ;If Fnf error then we may proceed
     jne .badExit
     ;Now we search the parent dir (the curDirCopy dir) for free space
     ;If the parent is root, deal with special case

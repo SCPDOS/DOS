@@ -779,12 +779,11 @@ pathWalk:
     jnz .notFile
     mov byte [parDirExist], -1  ;Set byte to -1 to indicate parent dir exists!
 .notFile:
-    push rbx    ;The below messes up rbx
-    call checkDevPath       ;Intervene DEV if in truename mode!
+    push rbx                ;The below messes up rbx
+    call checkDevPath       ;Silently intervene DEVs if in truename mode!
     pop rbx
-    jc .exit
     call searchForPathspec  ;Now search the directory
-    jc .exit    ;If CF=CY, error exit
+    jc .exit    ;If CF=CY, error exit. al has error code
     call addPathspecToBuffer    ;Only entered if truename mode
     jc .exit   ;If a bad path (somehow I dont see this happening often)
     test al, al ;Exit if this pathspec was a file
@@ -1050,7 +1049,7 @@ searchForPathspec:
     ;Find first using SDA ffBlock
     ;If al = 0, we have final file name or directory name
     ;If al = \, we have subdirectory. NO WILDCARDS ALLOWED IF PATHSEP
-    ;Output: CF=CY => Error occured
+    ;Output: CF=CY => Error occured, al has error code (Fnf or Pnf)
     ;        CF=NC => Disk File in fcbName found with selected attributes
     ;                 FF block somewhat setup
     ;Preserves rax, rbx, rsi,  rdi
@@ -1092,7 +1091,13 @@ searchForPathspec:
     pop rdi ;rdi points to free space in internal filename buffer
     pop rsi
     pop rbx
-    pop rax
+    pop rax ;Get back the original al value
+    retnc   ;Return if file found. Else, report what was not found correctly!
+    test al, al ;If we are on the last path comp, fail pnf!
+    stc         ;Dont forget to set CF again!!
+    mov eax, errFnf
+    retz
+    mov eax, errPnf ;Else it is path not found!
     return
 .sfpPnf:
     mov eax, errPnf
@@ -1341,40 +1346,49 @@ checkDevPath:
     mov rax, "DEV     "
     cmp qword [fcbName], rax    ;x64 cant handle cmp r\m64, imm64
     pop rax
-    jne .checkDevice    ;Was not \DEV\, check if it was \CON or something
+    jne .checkDevice   ;Maybe this is a device if not DEV
     cmp dword [fcbName + 8], "   \"
-    retne
-    ;Don't add the DEV to the name, replace "\" with a "/"
-    push rdi
+    jne .checkDevice    ;Was not \DEV\, check if it was \CON or something
+    ;So here we are in the DEV dir
+    cmp byte [rsi - 5], "\" ;rsi points to first char in new path portion
+    retne   ;If it was relative, we dont adjust truename
+    ;Else, don't add DEV to the name, replace "\" with a "/", move rsi past it
+    push rsi    ;Save if not followed by dev!
+    push rdi    ;If followed by dev, not a problem, we end the pathbuild!
     lea rdi, fcbName
-    call asciiToFCB    ;Converts the next section into this field
+    call asciiToFCB    ;Advances rsi
     ;Returns in al the terminating char of the source string
     pop rdi
-    ;If al is a pathsep, fail
-    call swapPathSeparator
-    jz .bad   ;Device names cannot be terminated with a "\" or "/"
-    xor al, al
-    mov byte [fcbName + 11], al ;Store terminator in fcbName field
+    pop rsi
+    ;If al is a pathsep, fail 
+    call swapPathSeparator  ;Device names cannot be terminated with a "\" or "/"
+    jz .repDev   ;Thus this is not a device, normal search!
+    ;mov byte [fcbName + 11], 0 ;Store terminator in fcbName field
     push rbx
     call checkIfCharDevice
     pop rbx ;Don't need bh yet
-    jc .bad    ;Clear CF!
-    ;Here the device was determined to be a char device.
+    jnc .pathSepExit    ;If this is a char dev, jump down
+.repDev:
+;Componant after DEV was not a char dev, replace DEV back in the count!
+    mov dword [fcbName], "DEV "
+    mov dword [fcbName + 4], "    "
+    mov dword [fcbName + 8], "   \" 
+    mov al, "\" ;\DEV\ was a dir, report it was so!
+    jmp short .exit
 .pathSepExit:
+;Here only if the device was determined to be a char device.
+    xor al, al
+    mov byte [fcbName + 11], al ;Store null pathsep here!
     mov byte [rdi - 1], "/" ;Store reverse pathsep here!
 .exit:
     clc
     return
-.bad:
-    mov al, errPnf  ;Path not found error here due to DEV
-    stc
-    return
 .checkDevice:
-    call checkIfCharDevice ;Check if what we already have is a chardev?
-    jc .exit    ;If not a device, silently return
-    cmp byte [fcbName + 11], 0  ;If this is a pathsep, fail
-    jnz .bad
-    jmp short .pathSepExit
+    call checkIfCharDevice  ;Check if what we already have is a chardev?
+    jc .exit                ;If not a device, silently return
+    cmp byte [fcbName + 11], 0  ;If null, its a char dev in the root!
+    je .pathSepExit
+    jmp short .exit         ;Else its gonna fail! Char dev as path comp... eek!
 
 checkIfCharDevice:  ;Int 2Fh AX=1223h
 ;Compares the first 8 chars of the FCB field to each device name in the

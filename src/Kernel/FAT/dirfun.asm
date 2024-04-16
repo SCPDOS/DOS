@@ -194,8 +194,10 @@ removeDIR:         ;ah = 3Ah
     call dosCrit1Enter  ;Don't let another DOS task interrupt us!
     mov byte [searchAttr], dirDirectory
     lea rdi, buffer1    ;Build the full path here
-    call getDirPath ;Get a Directory path in buffer1, hitting the disk
-    jc .pnf    ;Path Doesn't exist
+    call getDirPath     ;Get a Directory path in buffer1, hitting the disk
+    jc .pnf             ;Path Doesn't exist
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev 
+    jnz .pnf            ;Cant rmdir a chardev!
     call testCDSNet ;Check if the working CDS is a NET CDS
     jnc .notNet
     mov eax, 1101h  ;RMDIR for net
@@ -339,6 +341,8 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     lea rdi, buffer1    ;Build the full path here
     call getDirPath ;Get a Directory path in buffer1, hitting the disk
     jc .badCrit   ;Exit with error code in eax
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
+    jnz .badCrit    ;We cant cd to a char dir
     ;Now we check to make sure the path provided is not past the maximum
     ; length of a CDS path. This accounts for the possibility that a SUBST
     ; moved the path past the end.
