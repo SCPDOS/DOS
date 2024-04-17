@@ -139,17 +139,7 @@ searchDir:
 ;Return with CF=CY if no entry found in directory with al = errNoFil
 ;If CF=NC, then rsi also points to the directory entry in disk buffer.
 
-    ;We check the cds here. If it is a network cds we make findfirst req 
-    ; with cds. If cds = -1, we make find first req without cds.
     mov rdi, qword [workingCDS] ;Get current CDS
-    test word [rdi + cds.wFlags], cdsRedirDrive
-    jz .notNet
-    test byte [fcbName + 11], -1 ;Is this null (i.e. last path componant?)
-    retnz   ;Exit until so, to avoid calling this path repeatedly! Clear CF!
-    mov eax, 111Bh  ;Find First with CDS
-    int 2fh ;Consider moving this out two levels to avoid the pathwalk loop
-    return
-.notNet:
     mov rbp, qword [workingDPB] ;Get the working dpb for the transfer
     test byte [searchAttr], dirVolumeID  ;If the attr has volid, intervene
     jnz .volIdSearch
@@ -754,6 +744,20 @@ pathWalk:
 ;For net path resolution (resolution ONLY) ptrs must point past "\\".
 ;For subst, resolution cannot go past backslash offset.
 ;For join, it is transparent.
+    test byte [skipDisk], -1    ;Clear if not hitting disk!
+    jz .notNet                  ;Skip this if not hitting disk!
+;Start diskhit by checking the cds here if hitting the disk. 
+;If it is a network cds we make findfirst req. 
+    push rdi
+    mov rdi, qword [workingCDS] ;Get current CDS
+    test word [rdi + cds.wFlags], cdsRedirDrive
+    pop rdi
+    jz .notNet
+    mov rdi, qword [workingCDS] ;Get current CDS as in DOS, undocumented
+    mov eax, 111Bh  ;Find First with CDS!
+    int 2fh 
+    return
+.notNet:
     cmp byte [rsi], 0   ;If rsi at the end of the string, exit for ROOT dir
     jnz .mainlp
     ;Setup dummy dir data for Root directory
