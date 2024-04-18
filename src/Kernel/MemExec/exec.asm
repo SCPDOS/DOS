@@ -582,19 +582,22 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jmp .buildChildPSP
 .loadCom:
     ;File is open here, so just read the file into memory. 
-    ;The file cannot exceed 64Kb in size. COM ONLY for small files!!!!
+    ;The file cannot exceed 64Kb in size.
     ;Allocate 64Kb of memory, or as much as we can
     cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .comOverlay
-    mov ebx, 0FFFFh ;64Kb pls
+    mov ebx, 0FFF0h ;64Kb - 16 bytes, give me FFF0h bytes
     mov dword [rbp - execFrame.dProgSize], ebx
+    shr ebx, 4      ;Convert to paragraphs
     push rbp
     call allocateMemory
     pop rbp
     jnc .comallocOk
     cmp al, errNoMem
     jne .cleanAndFail   ;Propagate the proper error if not a lack of memory
-    ;rbx should have the amount available
+    ;rbx should have the amount available in paragraphs
+    or ebx, ebx ;Clear the upper dword
+    shl rbx, 4
     ;We check if this value is psp_size more than filesize
     push rbx    ;Save new minimum size
     mov eax, 2    ;Reposition to end of file
@@ -608,6 +611,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp edx, psp_size   ;If filesize - memory space is < psp_size...
     jb .insufficientMemory   ;Fail
     mov dword [rbp - execFrame.dProgSize], ebx  ;Store progsize
+    shr ebx, 4  ;Convert to paragraphs
     push rbp
     call allocateMemory
     pop rbp
@@ -637,6 +641,16 @@ loadExecChild:     ;ah = 4Bh, EXEC
     xor edx, edx    ;Go to start of file
     call lseekHdl
     pop rcx ;Get the filesize in rcx (# of bytes to read)
+    cmp qword [rbp - execFrame.bSubFunc], execOverlay
+    je .comOverlay2
+    ;Now we check if the space we have available is sufficient to load
+    ; the program. Skipped if an overlay being loaded
+    ;ecx = # File size
+    mov edx, dword [rbp - execFrame.dProgSize]  ;Get the alloc space size
+    sub edx, psp_size
+    cmp edx, ecx    ;Do we have space for the PSP and program?
+    jb .insufficientMemory
+.comOverlay2:
     mov rdx, qword [rbp - execFrame.pProgBase]  ;Buffer to read into
     call .readDataFromHdl   ;Read from the file handle
     mov rax, qword [rbp - execFrame.pProgBase]
