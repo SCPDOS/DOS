@@ -112,6 +112,11 @@ makeMCBChain:
     pop rbp
     jc OEMHALT
 ;------------------------------------------------;
+;             Set Default Time/Date              ;
+;------------------------------------------------;
+    mov byte [rbp + dayOfMonth], 01     ;Set 1st of Jan
+    mov byte [rbp + monthOfYear], 01
+;------------------------------------------------;
 ;              Kernel Driver inits               ;
 ;------------------------------------------------;
 kernDrvInit:

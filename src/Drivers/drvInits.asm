@@ -92,7 +92,7 @@ clockInit:
     movzx eax, cl   ;Convert Year to Binary
     call .bcd2Bin
     movzx ecx, al   ;Zero extend to ecx (because ch needs to be 0)
-    add ecx, 20  ;Add 20 years to turn it to a year offset from 1980
+    add ecx, 2000   ;ecx is from 2000
     movzx eax, dh   ;Get Months
     call .bcd2Bin
     mov dh, al  

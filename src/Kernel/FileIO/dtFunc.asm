@@ -6,6 +6,7 @@ getDate:           ;ah = 2Ah
     mov dx, word [dayOfMonth]   ;Read as a word to get monthOfYear in dh
 ;    mov dh, byte [monthOfYear]
     movzx ecx, byte [years]
+    add ecx, 1980   ;Turn into the year from offset since 1980
     mov al, byte [dayOfWeek]
     mov word [rsi + callerFrame.rdx], dx
     mov word [rsi + callerFrame.rcx], cx
@@ -14,6 +15,9 @@ setDate:           ;ah = 2Bh
 ;	CX = year (1980-2099)
 ;   DH = month (1-12)
 ;	DL = day (1-31)
+    mov al, -1      ;Default to fail
+    sub cx, 1980    ;Turn into years since 1980
+    retc            ;Return with -1 if cx is below 1980
     call writeDate  ;Set ax to 0 or -1 depending
     return
 getTime:           ;ah = 2Ch
