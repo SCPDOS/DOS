@@ -62,16 +62,28 @@ setTime:           ;ah = 2Dh
 ;   Utility functions   :
 ;------------------------
 writeDate:
+;Input: cx = 00-120 (1980-2099)
+;       dl = Day    (01-31)
+;       dh = Month  (01-12)
     cmp cx, 120
     jae .exitBad
+    test dh, dh
+    jz .exitBad
     cmp dh, 12
     ja .exitBad
+    test dl, dl
+    jz .exitBad
     cmp dl, 31
     ja .exitBad
     mov word [dayOfMonth], dx   ;Write as a word
     ;mov byte [monthOfYear], dh
     mov byte [years], cl    ;Save the years count
     call setDaysInFeb   ;Set days in february this year
+    cmp dh, 2   ;Are we in Feb?
+    jne .notFeb
+    cmp dl, byte [monthsTbl + 1] ;Compare if we are a bad date?
+    ja .exitBad ;If 29-28 (for example), error!
+.notFeb:
     mov ch, cl ;Get years count in ch
     shr cl, 2   ;Get the number of years to the current 4 year bunch
     and ch, 3   ;Get the offset into the current 4 year bunch
@@ -87,8 +99,6 @@ writeDate:
     jecxz .addDay    ;Jump if in year after leap year
     add eax, 365    ;Add the days in the normal years
     jmp short .addYears
-.addLeap:
-    add eax, 366    ;Add the days in the leap year
 .addDay:
     mov edx, eax    ;Save this number in edx
     ;Now to add day offset
