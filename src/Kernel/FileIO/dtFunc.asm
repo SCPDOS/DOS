@@ -17,8 +17,8 @@ setDate:           ;ah = 2Bh
 ;	DL = day (1-31)
     mov al, -1      ;Default to fail
     sub cx, 1980    ;Turn into years since 1980
-    retc            ;Return with -1 if cx is below 1980
-    call writeDate  ;Set ax to 0 or -1 depending
+    retc            ;Return with -1 if cx is below 1980. Avoids going into below.
+    call writeDate  ;Sets ax to 0 or -1, cx needs to be offset since 1980
     return
 getTime:           ;ah = 2Ch
     call readDateTimeRecord ;Update date if necessary, time in CLOCKrecrd
