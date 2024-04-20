@@ -19635,822 +19635,821 @@
     38 000073DA 48896046            <1>     mov qword [rax + psp.rspPtr], rsp    ;Save rsp on callers stack
     39 000073DE 58                  <1>     pop rax     ;Get old rax back
     40 000073DF 50                  <1>     push rax    ;and push it back onto the stack
-    41                              <1> .abortEP:
-    42                              <1> .charFun0CEP:
-    43                              <1> .serverEP:
-    44 000073E0 488D25(100D0000)    <1>     lea rsp, critStakTop
-    45 000073E7 FB                  <1>     sti         ;Reenable interrupts
-    46                              <1> 
-    47 000073E8 31DB                <1>     xor ebx, ebx    ;Zero rbx for later and bl for now
-    48 000073EA 881D(94040000)      <1>     mov byte [vConDrvSwp], bl   ;Clear the conDrvSwp (use default CON driver)
-    49 000073F0 C605(95040000)01    <1>     mov byte [int28Flag], 1 ;Make it ok to trigger Int 28h
-    50 000073F7 881D(6A040000)      <1>     mov byte [Int24Fail], bl    ;Clear the Int24 returned fail flag
-    51 000073FD 881D(8B040000)      <1>     mov byte [dirFlag], bl  ;Default to look for dir
-    52                              <1> 
-    53 00007403 50                  <1>     push rax        ;Save rax to use temporarily as table base 
-    54 00007404 88E3                <1>     mov bl, ah      ;Move the function number bl (rbx = 0)
-    55 00007406 D1E3                <1>     shl ebx, 1      ;Multiply the function number by 2 for offset into table
-    56 00007408 488D054D91FFFF      <1>     lea rax, kDispTbl
-    57 0000740F 4801C3              <1>     add rbx, rax    ;Add dispatch table offset into rbx
-    58 00007412 480FB71B            <1>     movzx rbx, word [rbx]    ;Get the address from the dispatch table
-    59 00007416 4801C3              <1>     add rbx, rax    ;Add the table base (since it is the base addr for table)
-    60 00007419 58                  <1>     pop rax
-    61                              <1> 
-    62 0000741A 84E4                <1>     test ah, ah     ;Simple Terminate function?
-    63 0000741C 741C                <1>     jz .fddiskOp
-    64 0000741E 80FC59              <1>     cmp ah, 59h     ;Extended Error report?
-    65 00007421 7457                <1>     je .fdGoToFunction  ;Bypass code that clears the error report
-    66 00007423 80FC0C              <1>     cmp ah, 0Ch     ;Are we a char function?
-    67 00007426 7712                <1>     ja .fddiskOp
-    68                              <1> ;Char operations here
-    69 00007428 F605(07040000)01    <1>     test byte [critErrFlag], 1  ;Are we in critical error?
-    70 0000742F 7549                <1>     jnz .fdGoToFunction         ;If we are, stay on Critical Error Stack
-    71 00007431 488D25(A0130000)    <1>     lea rsp, AuxStakTop        ;Otherwise, switch to IO stack
-    72 00007438 EB40                <1>     jmp short .fdGoToFunction
-    73                              <1> .fddiskOp:
-    74                              <1>     ;Disk operations go here
-    75                              <1>     ;Save rax on entry to a disk funciton
-    76 0000743A 488905(33040000)    <1>     mov qword [oldRAX], rax
-    77                              <1>     ;Clear up error info
-    78 00007441 C605(0A040000)01    <1>     mov byte [errorLocus], 1    ;Reset to generic, unknown locus
-    79 00007448 C605(07040000)00    <1>     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
-    80 0000744F C605(09040000)FF    <1>     mov byte [errorDrv], -1     ;Set the drive which caused the error to none
-    81                              <1> 
-    82 00007456 50                  <1>     push rax
-    83 00007457 B482                <1>     mov ah, 82h ;Cancel all critical section!
-    84 00007459 CD2A                <1>     int 2ah ;DOS critical section semphore handler (default, iretq)
-    85 0000745B 58                  <1>     pop rax
-    86                              <1> 
-    87 0000745C C605(95040000)00    <1>     mov byte [int28Flag], 0     ;Turn off the ability to trigger Int 28h
-    88 00007463 488D25(E0190000)    <1>     lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
-    89 0000746A F605(32040000)FF    <1>     test byte [breakFlag], -1   ;Test if set
-    90 00007471 7407                <1>     jz .fdGoToFunction
-    91                              <1> ; HANDLE CTRL+BREAK HERE!
-    92 00007473 50                  <1>     push rax
-    93 00007474 E820B4FFFF          <1>     call checkBreak   ; Check for a ^C
-    94 00007479 58                  <1>     pop rax
-    95                              <1> .fdGoToFunction:
-    96 0000747A 48871D(83040000)    <1>     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
-    97                              <1>     ;Potentially point rbp to caller reg frame for easy access of registers 
-    98                              <1>     ;
-    99                              <1>     ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
-   100                              <1>     ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
-   101                              <1>     ;
-   102 00007481 FF15(83040000)      <1>     call qword [oldRBX]     ;Call the desired function, rax contains ret code
-   103                              <1> .fdExit:
-   104 00007487 FA                  <1>     cli     ;Redisable interrupts
-   105 00007488 FE0D(08040000)      <1>     dec byte [inDOS]            ;Decrement the inDOS count
-   106 0000748E 488B25(7B040000)    <1>     mov rsp, qword [oldRSP]     ;Point rsp to old stack
-   107 00007495 880424              <1>     mov byte [rsp], al   ;Put the ret code into its pos on the register frame
-   108 00007498 488B05(6B040000)    <1>     mov rax, qword [oldoldRSP]
-   109 0000749F 488905(7B040000)    <1>     mov qword [oldRSP], rax
-   110 000074A6 E806000000          <1>     call dosPopRegs  ;Pop the frame
-   111 000074AB 48CF                <1>     iretq
-   112                              <1> .fdExitBad:
-   113 000074AD 30C0                <1>     xor al, al
-   114                              <1> defaultIretq:
-   115 000074AF 48CF                <1>     iretq
-   116                              <1> dosPopRegs:
-   117 000074B1 8F05(73040000)      <1>     pop qword [dosReturn]   ;Put return here resetting RSP
-   118 000074B7 58                  <1>     pop rax
-   119 000074B8 5B                  <1>     pop rbx
-   120 000074B9 59                  <1>     pop rcx
-   121 000074BA 5A                  <1>     pop rdx
-   122 000074BB 5E                  <1>     pop rsi
-   123 000074BC 5F                  <1>     pop rdi
-   124 000074BD 5D                  <1>     pop rbp
-   125 000074BE 4158                <1>     pop r8
-   126 000074C0 4159                <1>     pop r9
-   127 000074C2 FF25(73040000)      <1>     jmp qword [dosReturn]
-   128                              <1> dosPushRegs:
-   129 000074C8 8F05(73040000)      <1>     pop qword [dosReturn]   ;Put return here resetting RSP
-   130 000074CE 4151                <1>     push r9
-   131 000074D0 4150                <1>     push r8
-   132 000074D2 55                  <1>     push rbp
-   133 000074D3 57                  <1>     push rdi
-   134 000074D4 56                  <1>     push rsi
-   135 000074D5 52                  <1>     push rdx
-   136 000074D6 51                  <1>     push rcx
-   137 000074D7 53                  <1>     push rbx
-   138 000074D8 50                  <1>     push rax
-   139 000074D9 FF25(73040000)      <1>     jmp qword [dosReturn]
-   140                              <1> dosCrit1Enter:
-   141                              <1>     return     ;Needs to be patched with 50h (PUSH RAX)
+    41                              <1> .charFun0CEP:
+    42                              <1> .serverEP:
+    43 000073E0 488D25(100D0000)    <1>     lea rsp, critStakTop
+    44 000073E7 FB                  <1>     sti         ;Reenable interrupts
+    45                              <1> 
+    46 000073E8 31DB                <1>     xor ebx, ebx    ;Zero rbx for later and bl for now
+    47 000073EA 881D(94040000)      <1>     mov byte [vConDrvSwp], bl   ;Clear the conDrvSwp (use default CON driver)
+    48 000073F0 C605(95040000)01    <1>     mov byte [int28Flag], 1 ;Make it ok to trigger Int 28h
+    49 000073F7 881D(6A040000)      <1>     mov byte [Int24Fail], bl    ;Clear the Int24 returned fail flag
+    50 000073FD 881D(8B040000)      <1>     mov byte [dirFlag], bl  ;Default to look for dir
+    51                              <1> 
+    52 00007403 50                  <1>     push rax        ;Save rax to use temporarily as table base 
+    53 00007404 88E3                <1>     mov bl, ah      ;Move the function number bl (rbx = 0)
+    54 00007406 D1E3                <1>     shl ebx, 1      ;Multiply the function number by 2 for offset into table
+    55 00007408 488D054D91FFFF      <1>     lea rax, kDispTbl
+    56 0000740F 4801C3              <1>     add rbx, rax    ;Add dispatch table offset into rbx
+    57 00007412 480FB71B            <1>     movzx rbx, word [rbx]    ;Get the address from the dispatch table
+    58 00007416 4801C3              <1>     add rbx, rax    ;Add the table base (since it is the base addr for table)
+    59 00007419 58                  <1>     pop rax
+    60                              <1> 
+    61 0000741A 84E4                <1>     test ah, ah     ;Simple Terminate function?
+    62 0000741C 741C                <1>     jz .fddiskOp
+    63 0000741E 80FC59              <1>     cmp ah, 59h     ;Extended Error report?
+    64 00007421 7457                <1>     je .fdGoToFunction  ;Bypass code that clears the error report
+    65 00007423 80FC0C              <1>     cmp ah, 0Ch     ;Are we a char function?
+    66 00007426 7712                <1>     ja .fddiskOp
+    67                              <1> ;Char operations here
+    68 00007428 F605(07040000)01    <1>     test byte [critErrFlag], 1  ;Are we in critical error?
+    69 0000742F 7549                <1>     jnz .fdGoToFunction         ;If we are, stay on Critical Error Stack
+    70 00007431 488D25(A0130000)    <1>     lea rsp, AuxStakTop        ;Otherwise, switch to IO stack
+    71 00007438 EB40                <1>     jmp short .fdGoToFunction
+    72                              <1> .fddiskOp:
+    73                              <1>     ;Disk operations go here
+    74                              <1>     ;Save rax on entry to a disk funciton
+    75 0000743A 488905(33040000)    <1>     mov qword [oldRAX], rax
+    76                              <1>     ;Clear up error info
+    77 00007441 C605(0A040000)01    <1>     mov byte [errorLocus], 1    ;Reset to generic, unknown locus
+    78 00007448 C605(07040000)00    <1>     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
+    79 0000744F C605(09040000)FF    <1>     mov byte [errorDrv], -1     ;Set the drive which caused the error to none
+    80                              <1> 
+    81 00007456 50                  <1>     push rax
+    82 00007457 B482                <1>     mov ah, 82h ;Cancel all critical section!
+    83 00007459 CD2A                <1>     int 2ah ;DOS critical section semphore handler (default, iretq)
+    84 0000745B 58                  <1>     pop rax
+    85                              <1> 
+    86 0000745C C605(95040000)00    <1>     mov byte [int28Flag], 0     ;Turn off the ability to trigger Int 28h
+    87 00007463 488D25(E0190000)    <1>     lea rsp, DiskStakTop        ;Swap the stack to the Disk Transfer Stack
+    88 0000746A F605(32040000)FF    <1>     test byte [breakFlag], -1   ;Test if set
+    89 00007471 7407                <1>     jz .fdGoToFunction
+    90                              <1> ; HANDLE CTRL+BREAK HERE!
+    91 00007473 50                  <1>     push rax
+    92 00007474 E820B4FFFF          <1>     call checkBreak   ; Check for a ^C
+    93 00007479 58                  <1>     pop rax
+    94                              <1> .fdGoToFunction:
+    95 0000747A 48871D(83040000)    <1>     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
+    96                              <1>     ;Potentially point rbp to caller reg frame for easy access of registers 
+    97                              <1>     ;
+    98                              <1>     ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
+    99                              <1>     ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
+   100                              <1>     ;
+   101 00007481 FF15(83040000)      <1>     call qword [oldRBX]     ;Call the desired function, rax contains ret code
+   102                              <1> .fdExit:
+   103 00007487 FA                  <1>     cli     ;Redisable interrupts
+   104 00007488 FE0D(08040000)      <1>     dec byte [inDOS]            ;Decrement the inDOS count
+   105 0000748E 488B25(7B040000)    <1>     mov rsp, qword [oldRSP]     ;Point rsp to old stack
+   106 00007495 880424              <1>     mov byte [rsp], al   ;Put the ret code into its pos on the register frame
+   107 00007498 488B05(6B040000)    <1>     mov rax, qword [oldoldRSP]
+   108 0000749F 488905(7B040000)    <1>     mov qword [oldRSP], rax
+   109 000074A6 E806000000          <1>     call dosPopRegs  ;Pop the frame
+   110 000074AB 48CF                <1>     iretq
+   111                              <1> .fdExitBad:
+   112 000074AD 30C0                <1>     xor al, al
+   113                              <1> defaultIretq:
+   114 000074AF 48CF                <1>     iretq
+   115                              <1> dosPopRegs:
+   116 000074B1 8F05(73040000)      <1>     pop qword [dosReturn]   ;Put return here resetting RSP
+   117 000074B7 58                  <1>     pop rax
+   118 000074B8 5B                  <1>     pop rbx
+   119 000074B9 59                  <1>     pop rcx
+   120 000074BA 5A                  <1>     pop rdx
+   121 000074BB 5E                  <1>     pop rsi
+   122 000074BC 5F                  <1>     pop rdi
+   123 000074BD 5D                  <1>     pop rbp
+   124 000074BE 4158                <1>     pop r8
+   125 000074C0 4159                <1>     pop r9
+   126 000074C2 FF25(73040000)      <1>     jmp qword [dosReturn]
+   127                              <1> dosPushRegs:
+   128 000074C8 8F05(73040000)      <1>     pop qword [dosReturn]   ;Put return here resetting RSP
+   129 000074CE 4151                <1>     push r9
+   130 000074D0 4150                <1>     push r8
+   131 000074D2 55                  <1>     push rbp
+   132 000074D3 57                  <1>     push rdi
+   133 000074D4 56                  <1>     push rsi
+   134 000074D5 52                  <1>     push rdx
+   135 000074D6 51                  <1>     push rcx
+   136 000074D7 53                  <1>     push rbx
+   137 000074D8 50                  <1>     push rax
+   138 000074D9 FF25(73040000)      <1>     jmp qword [dosReturn]
+   139                              <1> dosCrit1Enter:
+   140                              <1>     return     ;Needs to be patched with 50h (PUSH RAX)
     13                              <2> %%_ret:
     14 000074DF C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   142 000074E0 B801800000          <1>     mov eax, 8001h
-   143 000074E5 CD2A                <1>     int 2ah
-   144 000074E7 58                  <1>     pop rax
-   145                              <1>     return
+   141 000074E0 B801800000          <1>     mov eax, 8001h
+   142 000074E5 CD2A                <1>     int 2ah
+   143 000074E7 58                  <1>     pop rax
+   144                              <1>     return
     13                              <2> %%_ret:
     14 000074E8 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   146                              <1> dosCrit1Exit:
-   147                              <1>     return
+   145                              <1> dosCrit1Exit:
+   146                              <1>     return
     13                              <2> %%_ret:
     14 000074E9 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   148 000074EA B801810000          <1>     mov eax, 8101h
-   149 000074EF CD2A                <1>     int 2ah
-   150 000074F1 58                  <1>     pop rax
-   151                              <1>     return
+   147 000074EA B801810000          <1>     mov eax, 8101h
+   148 000074EF CD2A                <1>     int 2ah
+   149 000074F1 58                  <1>     pop rax
+   150                              <1>     return
     13                              <2> %%_ret:
     14 000074F2 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   152                              <1> dosCrit2Enter:
-   153                              <1>     return
+   151                              <1> dosCrit2Enter:
+   152                              <1>     return
     13                              <2> %%_ret:
     14 000074F3 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   154 000074F4 B802800000          <1>     mov eax, 8002h
-   155 000074F9 CD2A                <1>     int 2ah
-   156 000074FB 58                  <1>     pop rax
-   157                              <1>     return
+   153 000074F4 B802800000          <1>     mov eax, 8002h
+   154 000074F9 CD2A                <1>     int 2ah
+   155 000074FB 58                  <1>     pop rax
+   156                              <1>     return
     13                              <2> %%_ret:
     14 000074FC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   158                              <1> dosCrit2Exit:
-   159                              <1>     return
+   157                              <1> dosCrit2Exit:
+   158                              <1>     return
     13                              <2> %%_ret:
     14 000074FD C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   160 000074FE B802810000          <1>     mov eax, 8102h
-   161 00007503 CD2A                <1>     int 2ah
-   162 00007505 58                  <1>     pop rax
-   163                              <1>     return
+   159 000074FE B802810000          <1>     mov eax, 8102h
+   160 00007503 CD2A                <1>     int 2ah
+   161 00007505 58                  <1>     pop rax
+   162                              <1>     return
     13                              <2> %%_ret:
     14 00007506 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   164                              <1> 
-   165                              <1> ;FCB specific returns
-   166                              <1> fcbGoodExit:
-   167                              <1> ;Preserve the carry flag on entry to DOS
-   168 00007507 30C0                <1>     xor al, al ;Set return code al = 0
-   169                              <1>     return
+   163                              <1> 
+   164                              <1> ;FCB specific returns
+   165                              <1> fcbGoodExit:
+   166                              <1> ;Preserve the carry flag on entry to DOS
+   167 00007507 30C0                <1>     xor al, al ;Set return code al = 0
+   168                              <1>     return
     13                              <2> %%_ret:
     14 00007509 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   170                              <1> fcbErrExit:
-   171                              <1> ;Preserve the carry flag on entry to DOS
-   172                              <1> ;Input: eax = Extended error code to store in SDA 
-   173 0000750A E836000000          <1>     call xLatError
-   174 0000750F B0FF                <1>     mov al, -1  ;Set return code al = -1
-   175 00007511 F9                  <1>     stc
-   176                              <1>     return
+   169                              <1> fcbErrExit:
+   170                              <1> ;Preserve the carry flag on entry to DOS
+   171                              <1> ;Input: eax = Extended error code to store in SDA 
+   172 0000750A E836000000          <1>     call xLatError
+   173 0000750F B0FF                <1>     mov al, -1  ;Set return code al = -1
+   174 00007511 F9                  <1>     stc
+   175                              <1>     return
     13                              <2> %%_ret:
     14 00007512 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   177                              <1> 
-   178                              <1> ;Handle and General DOS Returns
-   179                              <1> ;All good exits destroy AT LEAST ax 
-   180                              <1> extGoodExit2:
-   181                              <1> ;Good exit with an extended return code in eax
-   182 00007513 E843FBFFFF          <1>     call getUserRegs
-   183 00007518 8906                <1>     mov dword [rsi + callerFrame.rax], eax    ;Store eax
-   184 0000751A EB08                <1>     jmp short extGoodExit.extGoodCommon
-   185                              <1> extGoodExit:
-   186                              <1> ;Good exit
-   187                              <1> ;Return code in ax
-   188 0000751C E83AFBFFFF          <1>     call getUserRegs
-   189 00007521 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Store ax
-   190                              <1> .extGoodCommon:
-   191 00007524 806658FE            <1>     and byte [rsi + callerFrame.flags], ~1    ;Clear error flag
-   192 00007528 F8                  <1>     clc
-   193                              <1>     return
+   176                              <1> 
+   177                              <1> ;Handle and General DOS Returns
+   178                              <1> ;All good exits destroy AT LEAST ax 
+   179                              <1> extGoodExit2:
+   180                              <1> ;Good exit with an extended return code in eax
+   181 00007513 E843FBFFFF          <1>     call getUserRegs
+   182 00007518 8906                <1>     mov dword [rsi + callerFrame.rax], eax    ;Store eax
+   183 0000751A EB08                <1>     jmp short extGoodExit.extGoodCommon
+   184                              <1> extGoodExit:
+   185                              <1> ;Good exit
+   186                              <1> ;Return code in ax
+   187 0000751C E83AFBFFFF          <1>     call getUserRegs
+   188 00007521 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Store ax
+   189                              <1> .extGoodCommon:
+   190 00007524 806658FE            <1>     and byte [rsi + callerFrame.flags], ~1    ;Clear error flag
+   191 00007528 F8                  <1>     clc
+   192                              <1>     return
     13                              <2> %%_ret:
     14 00007529 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   194                              <1> extErrExit:
-   195                              <1> ;The extended error exit from DOS
-   196                              <1> ;Jumped to with AL=Extended error code
-   197                              <1> ;Can be called too.
-   198                              <1> ;Input: al = Extended error code
-   199                              <1> ;If relevant (i.e. when called or jumped to from deep in DOS)
-   200                              <1> ;   Returns with: eax = xLat Error
-   201                              <1> ;                 rsi = callerFrame
-   202 0000752A 0FB6C0              <1>     movzx eax, al   ;0 rax except for al with error code
-   203 0000752D E813000000          <1>     call xLatError
-   204 00007532 E891000000          <1>     call checkFail
-   205                              <1> .noXlat:
-   206 00007537 E81FFBFFFF          <1>     call getUserRegs
-   207 0000753C 668906              <1>     mov word [rsi + callerFrame.rax], ax
-   208 0000753F 804E5801            <1>     or byte [rsi + callerFrame.flags], 1    ;Set error flag
-   209 00007543 F9                  <1>     stc ;Set carry flag for if this function is called deep inside DOS
-   210                              <1>     return
+   193                              <1> extErrExit:
+   194                              <1> ;The extended error exit from DOS
+   195                              <1> ;Jumped to with AL=Extended error code
+   196                              <1> ;Can be called too.
+   197                              <1> ;Input: al = Extended error code
+   198                              <1> ;If relevant (i.e. when called or jumped to from deep in DOS)
+   199                              <1> ;   Returns with: eax = xLat Error
+   200                              <1> ;                 rsi = callerFrame
+   201 0000752A 0FB6C0              <1>     movzx eax, al   ;0 rax except for al with error code
+   202 0000752D E813000000          <1>     call xLatError
+   203 00007532 E891000000          <1>     call checkFail
+   204                              <1> .noXlat:
+   205 00007537 E81FFBFFFF          <1>     call getUserRegs
+   206 0000753C 668906              <1>     mov word [rsi + callerFrame.rax], ax
+   207 0000753F 804E5801            <1>     or byte [rsi + callerFrame.flags], 1    ;Set error flag
+   208 00007543 F9                  <1>     stc ;Set carry flag for if this function is called deep inside DOS
+   209                              <1>     return
     13                              <2> %%_ret:
     14 00007544 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   211                              <1> xLatError:
-   212                              <1> ;Translates the error code given in ax and sets error code in the var
-   213                              <1> ; Input: ax = Extended Error Code
-   214                              <1> ; Output: ax = Potentially translated Error Code
-   215                              <1> ;         [errorExCde] = Original Error Code
-   216                              <1> ;Preserves all registers except ax
-   217                              <1> ;AH is always returned as 0
-   218 00007545 53                  <1>     push rbx
-   219 00007546 51                  <1>     push rcx
-   220 00007547 56                  <1>     push rsi
-   221 00007548 668905(0B040000)    <1>     mov word [errorExCde], ax
-   222 0000754F 89C3                <1>     mov ebx, eax    ;Save error code to ebx
-   223 00007551 488D35218BFFFF      <1>     lea rsi, errXlatTbl ;Get translation table pointer in rsi
-   224                              <1> .readEntry:
-   225 00007558 66AD                <1>     lodsw   ;Get the first word of the first table entry and rsi += 2
-   226 0000755A 3CFF                <1>     cmp al, -1
-   227 0000755C 741F                <1>     je .skipXlat
-   228 0000755E 3A05(34040000)      <1>     cmp al, byte [oldRAX + 1]   ;Cmp to DOS function number (that is in ah)
-   229 00007564 7408                <1>     je .found
-   230                              <1>     ;Here, entry not found, goto next entry
-   231 00007566 0FB6C4              <1>     movzx eax, ah   ;Zero extend ah to rax to get number of bytes to skip
-   232 00007569 4801C6              <1>     add rsi, rax    ;Goto next entry
-   233 0000756C EBEA                <1>     jmp short .readEntry
-   234                              <1> .found:
-   235                              <1>     ;Here the table entry is found, now we search for if the error needs xlatng
-   236 0000756E 0FB6CC              <1>     movzx ecx, ah   ;Get the number of bytes to check left into ecx
-   237                              <1> .mainSearch:
-   238 00007571 AC                  <1>     lodsb   ;Get one byte into al
-   239 00007572 38C3                <1>     cmp bl, al  ;Check against the error code
-   240 00007574 7407                <1>     je .skipXlat    ;If the error code is found, we can skip xlat
-   241 00007576 FFC9                <1>     dec ecx ;Avoid loop for the zoomies
-   242 00007578 75F7                <1>     jnz .mainSearch ;Whilst ecx is not zero, keep searching
-   243                              <1>     ;Here only if ecx is zero, i.e present error code needs translating
-   244 0000757A 0FB6D8              <1>     movzx ebx, al ;Move the xLat error code into ebx
-   245                              <1> .skipXlat:
-   246 0000757D 89D8                <1>     mov eax, ebx    ;Return the error code back to eax
-   247 0000757F 5E                  <1>     pop rsi
-   248 00007580 59                  <1>     pop rcx
-   249 00007581 5B                  <1>     pop rbx
-   250                              <1>     return
+   210                              <1> xLatError:
+   211                              <1> ;Translates the error code given in ax and sets error code in the var
+   212                              <1> ; Input: ax = Extended Error Code
+   213                              <1> ; Output: ax = Potentially translated Error Code
+   214                              <1> ;         [errorExCde] = Original Error Code
+   215                              <1> ;Preserves all registers except ax
+   216                              <1> ;AH is always returned as 0
+   217 00007545 53                  <1>     push rbx
+   218 00007546 51                  <1>     push rcx
+   219 00007547 56                  <1>     push rsi
+   220 00007548 668905(0B040000)    <1>     mov word [errorExCde], ax
+   221 0000754F 89C3                <1>     mov ebx, eax    ;Save error code to ebx
+   222 00007551 488D35218BFFFF      <1>     lea rsi, errXlatTbl ;Get translation table pointer in rsi
+   223                              <1> .readEntry:
+   224 00007558 66AD                <1>     lodsw   ;Get the first word of the first table entry and rsi += 2
+   225 0000755A 3CFF                <1>     cmp al, -1
+   226 0000755C 741F                <1>     je .skipXlat
+   227 0000755E 3A05(34040000)      <1>     cmp al, byte [oldRAX + 1]   ;Cmp to DOS function number (that is in ah)
+   228 00007564 7408                <1>     je .found
+   229                              <1>     ;Here, entry not found, goto next entry
+   230 00007566 0FB6C4              <1>     movzx eax, ah   ;Zero extend ah to rax to get number of bytes to skip
+   231 00007569 4801C6              <1>     add rsi, rax    ;Goto next entry
+   232 0000756C EBEA                <1>     jmp short .readEntry
+   233                              <1> .found:
+   234                              <1>     ;Here the table entry is found, now we search for if the error needs xlatng
+   235 0000756E 0FB6CC              <1>     movzx ecx, ah   ;Get the number of bytes to check left into ecx
+   236                              <1> .mainSearch:
+   237 00007571 AC                  <1>     lodsb   ;Get one byte into al
+   238 00007572 38C3                <1>     cmp bl, al  ;Check against the error code
+   239 00007574 7407                <1>     je .skipXlat    ;If the error code is found, we can skip xlat
+   240 00007576 FFC9                <1>     dec ecx ;Avoid loop for the zoomies
+   241 00007578 75F7                <1>     jnz .mainSearch ;Whilst ecx is not zero, keep searching
+   242                              <1>     ;Here only if ecx is zero, i.e present error code needs translating
+   243 0000757A 0FB6D8              <1>     movzx ebx, al ;Move the xLat error code into ebx
+   244                              <1> .skipXlat:
+   245 0000757D 89D8                <1>     mov eax, ebx    ;Return the error code back to eax
+   246 0000757F 5E                  <1>     pop rsi
+   247 00007580 59                  <1>     pop rcx
+   248 00007581 5B                  <1>     pop rbx
+   249                              <1>     return
     13                              <2> %%_ret:
     14 00007582 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   251                              <1> setErrorVars:   ;Int 2Fh, AX=1222h
-   252                              <1> ;Looks up the error code in the variable and sets the other error vars
-   253                              <1> ;Called with the lookup table in rsi
-   254                              <1> ;All regs preserved
-   255 00007583 50                  <1>     push rax
-   256 00007584 53                  <1>     push rbx
-   257 00007585 51                  <1>     push rcx
-   258 00007586 56                  <1>     push rsi
-   259 00007587 0FB71D(0B040000)    <1>     movzx ebx, word [errorExCde]
-   260 0000758E B908000000          <1>     mov ecx, 8  ;Use to shift eax efficiently
-   261                              <1> .readEntry:
-   262 00007593 AD                  <1>     lodsd   ;Read the dword table entry into eax
-   263 00007594 3DFFFFFFFF          <1>     cmp eax, -1  ;If the dword is -1, simply exit
-   264 00007599 7428                <1>     je .exit    
-   265 0000759B 38D8                <1>     cmp al, bl  ;Compare the error codes
-   266 0000759D 75F4                <1>     jne .readEntry ;Keep reading entries until we find the one we need
-   267 0000759F D3E8                <1>     shr eax, cl
-   268 000075A1 3CFF                <1>     cmp al, -1
-   269 000075A3 7406                <1>     je .skipClass
-   270 000075A5 8805(0E040000)      <1>     mov byte [errorClass], al
-   271                              <1> .skipClass:
-   272 000075AB D3E8                <1>     shr eax, cl
-   273 000075AD 3CFF                <1>     cmp al, -1
-   274 000075AF 7406                <1>     je .skipAct
-   275 000075B1 8805(0D040000)      <1>     mov byte [errorAction], al
-   276                              <1> .skipAct:
-   277 000075B7 D3E8                <1>     shr eax, cl
-   278 000075B9 3CFF                <1>     cmp al, -1
-   279 000075BB 7406                <1>     je .exit
-   280 000075BD 8805(0A040000)      <1>     mov byte [errorLocus], al
-   281                              <1> .exit:
-   282 000075C3 5E                  <1>     pop rsi
-   283 000075C4 59                  <1>     pop rcx
-   284 000075C5 5B                  <1>     pop rbx
-   285 000075C6 58                  <1>     pop rax
-   286                              <1>     return
+   250                              <1> setErrorVars:   ;Int 2Fh, AX=1222h
+   251                              <1> ;Looks up the error code in the variable and sets the other error vars
+   252                              <1> ;Called with the lookup table in rsi
+   253                              <1> ;All regs preserved
+   254 00007583 50                  <1>     push rax
+   255 00007584 53                  <1>     push rbx
+   256 00007585 51                  <1>     push rcx
+   257 00007586 56                  <1>     push rsi
+   258 00007587 0FB71D(0B040000)    <1>     movzx ebx, word [errorExCde]
+   259 0000758E B908000000          <1>     mov ecx, 8  ;Use to shift eax efficiently
+   260                              <1> .readEntry:
+   261 00007593 AD                  <1>     lodsd   ;Read the dword table entry into eax
+   262 00007594 3DFFFFFFFF          <1>     cmp eax, -1  ;If the dword is -1, simply exit
+   263 00007599 7428                <1>     je .exit    
+   264 0000759B 38D8                <1>     cmp al, bl  ;Compare the error codes
+   265 0000759D 75F4                <1>     jne .readEntry ;Keep reading entries until we find the one we need
+   266 0000759F D3E8                <1>     shr eax, cl
+   267 000075A1 3CFF                <1>     cmp al, -1
+   268 000075A3 7406                <1>     je .skipClass
+   269 000075A5 8805(0E040000)      <1>     mov byte [errorClass], al
+   270                              <1> .skipClass:
+   271 000075AB D3E8                <1>     shr eax, cl
+   272 000075AD 3CFF                <1>     cmp al, -1
+   273 000075AF 7406                <1>     je .skipAct
+   274 000075B1 8805(0D040000)      <1>     mov byte [errorAction], al
+   275                              <1> .skipAct:
+   276 000075B7 D3E8                <1>     shr eax, cl
+   277 000075B9 3CFF                <1>     cmp al, -1
+   278 000075BB 7406                <1>     je .exit
+   279 000075BD 8805(0A040000)      <1>     mov byte [errorLocus], al
+   280                              <1> .exit:
+   281 000075C3 5E                  <1>     pop rsi
+   282 000075C4 59                  <1>     pop rcx
+   283 000075C5 5B                  <1>     pop rbx
+   284 000075C6 58                  <1>     pop rax
+   285                              <1>     return
     13                              <2> %%_ret:
     14 000075C7 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   287                              <1> checkFail:
-   288                              <1> ;Checks if the error was dealt with by the user with a Fail on a Int 24h
-   289                              <1> ; and swaps the var error code if so
-   290 000075C8 F605(6A040000)FF    <1>     test byte [Int24Fail], -1   ;If zero, skip!
-   291 000075CF 7409                <1>     jz .skipFail
-   292 000075D1 66C705(0B040000)53- <1>     mov word [errorExCde], errFI24  ;Set error to "Fail on Int 24h"
-   292 000075D9 00                  <1>
-   293                              <1> .skipFail:
-   294 000075DA 56                  <1>     push rsi
-   295 000075DB 488D35338BFFFF      <1>     lea rsi, extErrTbl
-   296 000075E2 E89CFFFFFF          <1>     call setErrorVars
-   297 000075E7 5E                  <1>     pop rsi
-   298                              <1>     return
+   286                              <1> checkFail:
+   287                              <1> ;Checks if the error was dealt with by the user with a Fail on a Int 24h
+   288                              <1> ; and swaps the var error code if so
+   289 000075C8 F605(6A040000)FF    <1>     test byte [Int24Fail], -1   ;If zero, skip!
+   290 000075CF 7409                <1>     jz .skipFail
+   291 000075D1 66C705(0B040000)53- <1>     mov word [errorExCde], errFI24  ;Set error to "Fail on Int 24h"
+   291 000075D9 00                  <1>
+   292                              <1> .skipFail:
+   293 000075DA 56                  <1>     push rsi
+   294 000075DB 488D35338BFFFF      <1>     lea rsi, extErrTbl
+   295 000075E2 E89CFFFFFF          <1>     call setErrorVars
+   296 000075E7 5E                  <1>     pop rsi
+   297                              <1>     return
     13                              <2> %%_ret:
     14 000075E8 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   299                              <1> ;========================================:
-   300                              <1> ;      Reentrant Kernel Functions        :
-   301                              <1> ;========================================:
-   302                              <1> ctrlBreakCheck:    ;ah = 33h
-   303 000075E9 3C06                <1>     cmp al, 6
-   304 000075EB 743C                <1>     je .trueVer
-   305 000075ED 3C05                <1>     cmp al, 5
-   306 000075EF 742E                <1>     je .getBtDrv    ;Peel off btdrv req.
-   307 000075F1 84C0                <1>     test al, al
-   308 000075F3 7508                <1>     jnz .cbcget     ;Get the state or other functions
-   309 000075F5 8A15(32040000)      <1>     mov dl, byte [breakFlag]    ;Get the state
-   310 000075FB 48CF                <1>     iretq
-   311                              <1> .cbcget:
-   312 000075FD 3C02                <1>     cmp al, 02h
-   313 000075FF 771A                <1>     ja .cbcBad
-   314 00007601 740D                <1>     jz .cbcxchg ;Function 2
-   315 00007603 52                  <1>     push rdx
-   316 00007604 80E201              <1>     and dl, 1   ;Get only the bottom bit
-   317 00007607 8815(32040000)      <1>     mov byte [breakFlag], dl    ;Set the state
-   318 0000760D 5A                  <1>     pop rdx
-   319 0000760E 48CF                <1>     iretq
-   320                              <1> .cbcxchg:
-   321 00007610 80E201              <1>     and dl, 1
-   322 00007613 8615(32040000)      <1>     xchg byte [breakFlag], dl
-   323 00007619 48CF                <1>     iretq
-   324                              <1> .cbcBad:
-   325 0000761B B0FF                <1>     mov al, -1
-   326 0000761D 48CF                <1>     iretq
-   327                              <1> .getBtDrv:
-   328                              <1> ;Undocumented.
-   329                              <1> ;Might be unreliable so dont document yet.
-   330                              <1> ;Return 1 based boot drive in dl
-   331 0000761F 8A15(10000000)      <1>     mov dl, byte [bootDrive]    ;Get the 0 based bootDrive number
-   332 00007625 FEC2                <1>     inc dl  ;Return a 1 based drive number
-   333 00007627 48CF                <1>     iretq
-   334                              <1> .trueVer:
-   335                              <1> ;Undocumented.
-   336                              <1> ;bx returns true DOS number.
-   337                              <1> ;dl has "revision" number in bits 0-2. 
-   338                              <1> ;dh has various flags. All reserved for future use.
-   339 00007629 66BB0062            <1>     mov bx, dosVerMac
-   340 0000762D 66BA0000            <1>     mov dx, (dosVerFlags << 8) | dosRev
-   341 00007631 48CF                <1>     iretq
-   342                              <1> 
-   343                              <1> setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
-   344 00007633 48891D(1F040000)    <1>     mov qword [currentPSP], rbx ;Set the pointer
-   345 0000763A 48CF                <1>     iretq
-   346                              <1> 
-   347                              <1> getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
-   348 0000763C 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP]
-   349 00007643 48CF                <1>     iretq
-   350                              <1> 
-   351                              <1> getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
-   352 00007645 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP]
-   353 0000764C 48CF                <1>     iretq
-   354                              <1> 
-   355                              <1> setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
-   356 0000764E 8805(E8190000)      <1>     mov byte [lookahead], al    
-   357 00007654 48CF                <1>     iretq
-   358                              <1> 
-   359                              <1> systemServices: ;ah = 61h
-   360                              <1> ;All pointers returned in rdx
-   361                              <1> ;al = 0 -> Get Environment pointer in rdx
-   362                              <1> ;al = 1 -> Get Command Line Arguments Pointer in rdx
-   363                              <1> ;al = 2 -> Get ptr to ASCIIZ FQFN for program in rdx
-   364                              <1> ;       al = 2 can fail. If CF=CY or rdx = 0, cannot use ptr.
-   365                              <1> ;                        Else, rdx -> Filename
-   366 00007656 3C01                <1>     cmp al, 1
-   367 00007658 7453                <1>     je short .getCmdLineArgs
-   368 0000765A 3C02                <1>     cmp al, 2
-   369 0000765C 760C                <1>     jbe .getEnvPtr
-   370 0000765E B801000000          <1>     mov eax, errInvFnc
-   371                              <1> .exitBad:
-   372 00007663 804C241001          <1>     or byte [rsp + 2*8], 1  ;Set CF on
-   373 00007668 48CF                <1>     iretq
-   374                              <1> .getEnvPtr:
-   375                              <1>     ;Gets the environment pointer in rdx
-   376 0000766A 488B15(1F040000)    <1>     mov rdx, qword [currentPSP]
-   377 00007671 488B523E            <1>     mov rdx, qword [rdx + psp.envPtr]   ;Get the environement pointer
-   378 00007675 7541                <1>     jne short .exitOk   ;If it is not equal to 2, exit (since it was 0)
-   379                              <1> ;Here we search for the double 00 and then check if it is 0001 and
-   380                              <1> ; pass the ptr to the word after.
-   381 00007677 FA                  <1>     cli
-   382 00007678 51                  <1>     push rcx
-   383 00007679 31C9                <1>     xor ecx, ecx
-   384 0000767B B9FF7F0000          <1>     mov ecx, 7FFFh  ;Max environment size
-   385                              <1> .gep0:
-   386 00007680 66813A0000          <1>     cmp word [rdx], 0   ;Zero word?
-   387 00007685 740D                <1>     je short .gep1
-   388 00007687 48FFC2              <1>     inc rdx         ;Go to the next byte
-   389 0000768A FFC9                <1>     dec ecx
-   390 0000768C 75F2                <1>     jnz short .gep0
-   391                              <1> .gep00:
-   392                              <1>     ;Failure here if we haven't hit the double null by the end of 32Kb
-   393 0000768E 59                  <1>     pop rcx
-   394 0000768F FB                  <1>     sti
-   395 00007690 31D2                <1>     xor edx, edx    ;Turn it into null pointer
-   396 00007692 EBCF                <1>     jmp short .exitBad
-   397                              <1> .gep1:
-   398 00007694 4881C202000000      <1>     add rdx, 2  ;Skip the double null
-   399 0000769B 66813A0100          <1>     cmp word [rdx], 1   ;Check if one more string in environment
-   400 000076A0 75EC                <1>     jne .gep00
-   401 000076A2 4881C202000000      <1>     add rdx, 2  ;Skip the 0001 word.
-   402 000076A9 59                  <1>     pop rcx
-   403 000076AA FB                  <1>     sti
-   404 000076AB EB0B                <1>     jmp short .exitOk
-   405                              <1> .getCmdLineArgs:
-   406 000076AD 488B15(1F040000)    <1>     mov rdx, qword [currentPSP]
-   407 000076B4 488D525C            <1>     lea rdx, qword [rdx + psp.cmdLineArgPtr]   ;Get the cmdargs pointer
-   408                              <1> .exitOk:
-   409 000076B8 80642410FE          <1>     and byte [rsp + 2*8], ~1    ;Clear CF
-   410 000076BD 48CF                <1>     iretq
+   298                              <1> ;========================================:
+   299                              <1> ;      Reentrant Kernel Functions        :
+   300                              <1> ;========================================:
+   301                              <1> ctrlBreakCheck:    ;ah = 33h
+   302 000075E9 3C06                <1>     cmp al, 6
+   303 000075EB 743C                <1>     je .trueVer
+   304 000075ED 3C05                <1>     cmp al, 5
+   305 000075EF 742E                <1>     je .getBtDrv    ;Peel off btdrv req.
+   306 000075F1 84C0                <1>     test al, al
+   307 000075F3 7508                <1>     jnz .cbcget     ;Get the state or other functions
+   308 000075F5 8A15(32040000)      <1>     mov dl, byte [breakFlag]    ;Get the state
+   309 000075FB 48CF                <1>     iretq
+   310                              <1> .cbcget:
+   311 000075FD 3C02                <1>     cmp al, 02h
+   312 000075FF 771A                <1>     ja .cbcBad
+   313 00007601 740D                <1>     jz .cbcxchg ;Function 2
+   314 00007603 52                  <1>     push rdx
+   315 00007604 80E201              <1>     and dl, 1   ;Get only the bottom bit
+   316 00007607 8815(32040000)      <1>     mov byte [breakFlag], dl    ;Set the state
+   317 0000760D 5A                  <1>     pop rdx
+   318 0000760E 48CF                <1>     iretq
+   319                              <1> .cbcxchg:
+   320 00007610 80E201              <1>     and dl, 1
+   321 00007613 8615(32040000)      <1>     xchg byte [breakFlag], dl
+   322 00007619 48CF                <1>     iretq
+   323                              <1> .cbcBad:
+   324 0000761B B0FF                <1>     mov al, -1
+   325 0000761D 48CF                <1>     iretq
+   326                              <1> .getBtDrv:
+   327                              <1> ;Undocumented.
+   328                              <1> ;Might be unreliable so dont document yet.
+   329                              <1> ;Return 1 based boot drive in dl
+   330 0000761F 8A15(10000000)      <1>     mov dl, byte [bootDrive]    ;Get the 0 based bootDrive number
+   331 00007625 FEC2                <1>     inc dl  ;Return a 1 based drive number
+   332 00007627 48CF                <1>     iretq
+   333                              <1> .trueVer:
+   334                              <1> ;Undocumented.
+   335                              <1> ;bx returns true DOS number.
+   336                              <1> ;dl has "revision" number in bits 0-2. 
+   337                              <1> ;dh has various flags. All reserved for future use.
+   338 00007629 66BB0062            <1>     mov bx, dosVerMac
+   339 0000762D 66BA0000            <1>     mov dx, (dosVerFlags << 8) | dosRev
+   340 00007631 48CF                <1>     iretq
+   341                              <1> 
+   342                              <1> setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+   343 00007633 48891D(1F040000)    <1>     mov qword [currentPSP], rbx ;Set the pointer
+   344 0000763A 48CF                <1>     iretq
+   345                              <1> 
+   346                              <1> getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
+   347 0000763C 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP]
+   348 00007643 48CF                <1>     iretq
+   349                              <1> 
+   350                              <1> getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+   351 00007645 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP]
+   352 0000764C 48CF                <1>     iretq
+   353                              <1> 
+   354                              <1> setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
+   355 0000764E 8805(E8190000)      <1>     mov byte [lookahead], al    
+   356 00007654 48CF                <1>     iretq
+   357                              <1> 
+   358                              <1> systemServices: ;ah = 61h
+   359                              <1> ;All pointers returned in rdx
+   360                              <1> ;al = 0 -> Get Environment pointer in rdx
+   361                              <1> ;al = 1 -> Get Command Line Arguments Pointer in rdx
+   362                              <1> ;al = 2 -> Get ptr to ASCIIZ FQFN for program in rdx
+   363                              <1> ;       al = 2 can fail. If CF=CY or rdx = 0, cannot use ptr.
+   364                              <1> ;                        Else, rdx -> Filename
+   365 00007656 3C01                <1>     cmp al, 1
+   366 00007658 7453                <1>     je short .getCmdLineArgs
+   367 0000765A 3C02                <1>     cmp al, 2
+   368 0000765C 760C                <1>     jbe .getEnvPtr
+   369 0000765E B801000000          <1>     mov eax, errInvFnc
+   370                              <1> .exitBad:
+   371 00007663 804C241001          <1>     or byte [rsp + 2*8], 1  ;Set CF on
+   372 00007668 48CF                <1>     iretq
+   373                              <1> .getEnvPtr:
+   374                              <1>     ;Gets the environment pointer in rdx
+   375 0000766A 488B15(1F040000)    <1>     mov rdx, qword [currentPSP]
+   376 00007671 488B523E            <1>     mov rdx, qword [rdx + psp.envPtr]   ;Get the environement pointer
+   377 00007675 7541                <1>     jne short .exitOk   ;If it is not equal to 2, exit (since it was 0)
+   378                              <1> ;Here we search for the double 00 and then check if it is 0001 and
+   379                              <1> ; pass the ptr to the word after.
+   380 00007677 FA                  <1>     cli
+   381 00007678 51                  <1>     push rcx
+   382 00007679 31C9                <1>     xor ecx, ecx
+   383 0000767B B9FF7F0000          <1>     mov ecx, 7FFFh  ;Max environment size
+   384                              <1> .gep0:
+   385 00007680 66813A0000          <1>     cmp word [rdx], 0   ;Zero word?
+   386 00007685 740D                <1>     je short .gep1
+   387 00007687 48FFC2              <1>     inc rdx         ;Go to the next byte
+   388 0000768A FFC9                <1>     dec ecx
+   389 0000768C 75F2                <1>     jnz short .gep0
+   390                              <1> .gep00:
+   391                              <1>     ;Failure here if we haven't hit the double null by the end of 32Kb
+   392 0000768E 59                  <1>     pop rcx
+   393 0000768F FB                  <1>     sti
+   394 00007690 31D2                <1>     xor edx, edx    ;Turn it into null pointer
+   395 00007692 EBCF                <1>     jmp short .exitBad
+   396                              <1> .gep1:
+   397 00007694 4881C202000000      <1>     add rdx, 2  ;Skip the double null
+   398 0000769B 66813A0100          <1>     cmp word [rdx], 1   ;Check if one more string in environment
+   399 000076A0 75EC                <1>     jne .gep00
+   400 000076A2 4881C202000000      <1>     add rdx, 2  ;Skip the 0001 word.
+   401 000076A9 59                  <1>     pop rcx
+   402 000076AA FB                  <1>     sti
+   403 000076AB EB0B                <1>     jmp short .exitOk
+   404                              <1> .getCmdLineArgs:
+   405 000076AD 488B15(1F040000)    <1>     mov rdx, qword [currentPSP]
+   406 000076B4 488D525C            <1>     lea rdx, qword [rdx + psp.cmdLineArgPtr]   ;Get the cmdargs pointer
+   407                              <1> .exitOk:
+   408 000076B8 80642410FE          <1>     and byte [rsp + 2*8], ~1    ;Clear CF
+   409 000076BD 48CF                <1>     iretq
+   410                              <1> 
    411                              <1> 
-   412                              <1> 
-   413                              <1> ;========================================:
-   414                              <1> ;            Kernel Functions            :
-   415                              <1> ;========================================:
-   416                              <1> diskReset:         ;ah = 0Dh
-   417                              <1> ;Flush all dirty buffers to disk
-   418 000076BF E81BFEFFFF          <1>     call dosCrit1Enter
-   419 000076C4 B0FF                <1>     mov al, -1  ;Mark all drives as flushable
-   420 000076C6 E86290FFFF          <1>     call flushAllBuffersForDrive  
-   421                              <1>     ;Now we free all buffers and set their referenced bit
-   422 000076CB 488B3D(5D000000)    <1>     mov rdi, qword [bufHeadPtr]
-   423                              <1> .drBufferLp:
-   424 000076D2 4881FFFFFFFFFF      <1>     cmp rdi, -1
-   425 000076D9 740B                <1>     je .drExit
-   426 000076DB 66C74708FF20        <1>     mov word [rdi + bufferHdr.driveNumber], freeBuffer | (refBuffer << 8)
-   427 000076E1 488B3F              <1>     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-   428 000076E4 EBEC                <1>     jmp short .drBufferLp
-   429                              <1> .drExit:
-   430 000076E6 E8FEFDFFFF          <1>     call dosCrit1Exit
-   431 000076EB B820110000          <1>     mov eax, 1120h  ;Redirector flush all 
-   432 000076F0 CD2F                <1>     int 2fh
-   433                              <1>     return
+   412                              <1> ;========================================:
+   413                              <1> ;            Kernel Functions            :
+   414                              <1> ;========================================:
+   415                              <1> diskReset:         ;ah = 0Dh
+   416                              <1> ;Flush all dirty buffers to disk
+   417 000076BF E81BFEFFFF          <1>     call dosCrit1Enter
+   418 000076C4 B0FF                <1>     mov al, -1  ;Mark all drives as flushable
+   419 000076C6 E86290FFFF          <1>     call flushAllBuffersForDrive  
+   420                              <1>     ;Now we free all buffers and set their referenced bit
+   421 000076CB 488B3D(5D000000)    <1>     mov rdi, qword [bufHeadPtr]
+   422                              <1> .drBufferLp:
+   423 000076D2 4881FFFFFFFFFF      <1>     cmp rdi, -1
+   424 000076D9 740B                <1>     je .drExit
+   425 000076DB 66C74708FF20        <1>     mov word [rdi + bufferHdr.driveNumber], freeBuffer | (refBuffer << 8)
+   426 000076E1 488B3F              <1>     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
+   427 000076E4 EBEC                <1>     jmp short .drBufferLp
+   428                              <1> .drExit:
+   429 000076E6 E8FEFDFFFF          <1>     call dosCrit1Exit
+   430 000076EB B820110000          <1>     mov eax, 1120h  ;Redirector flush all 
+   431 000076F0 CD2F                <1>     int 2fh
+   432                              <1>     return
     13                              <2> %%_ret:
     14 000076F2 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   434                              <1> 
-   435                              <1> selectDisk:        ;ah = 0Eh
-   436                              <1> ;Called with dl = drive number, 0 = A, 1 = B etc...
-   437 000076F3 88D0                <1>     mov al, dl
-   438 000076F5 FEC0                <1>     inc al  ;Convert to 1-based number to avoid 0 meaning current drive
-   439 000076F7 E883F9FFFF          <1>     call getCDSNotJoin  ;Must make sure provided drive is valid
-   440 000076FC 7206                <1>     jc .skipSettingCurrent  ;Join and network drives cant be current drive!
-   441 000076FE 8805(31040000)      <1>     mov byte [currentDrv], al   ;Set drive as current
-   442                              <1> .skipSettingCurrent:
-   443 00007704 0FB605(78000000)    <1>     movzx eax, byte [lastdrvNum]   ;Return lastdrive as "errorcode"
-   444                              <1>     return
+   433                              <1> 
+   434                              <1> selectDisk:        ;ah = 0Eh
+   435                              <1> ;Called with dl = drive number, 0 = A, 1 = B etc...
+   436 000076F3 88D0                <1>     mov al, dl
+   437 000076F5 FEC0                <1>     inc al  ;Convert to 1-based number to avoid 0 meaning current drive
+   438 000076F7 E883F9FFFF          <1>     call getCDSNotJoin  ;Must make sure provided drive is valid
+   439 000076FC 7206                <1>     jc .skipSettingCurrent  ;Join and network drives cant be current drive!
+   440 000076FE 8805(31040000)      <1>     mov byte [currentDrv], al   ;Set drive as current
+   441                              <1> .skipSettingCurrent:
+   442 00007704 0FB605(78000000)    <1>     movzx eax, byte [lastdrvNum]   ;Return lastdrive as "errorcode"
+   443                              <1>     return
     13                              <2> %%_ret:
     14 0000770B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   445                              <1> 
-   446                              <1> getCurrentDisk:    ;ah = 19h, get current default drive
-   447 0000770C 8A05(31040000)      <1>     mov al, byte [currentDrv]
-   448                              <1>     return
+   444                              <1> 
+   445                              <1> getCurrentDisk:    ;ah = 19h, get current default drive
+   446 0000770C 8A05(31040000)      <1>     mov al, byte [currentDrv]
+   447                              <1>     return
     13                              <2> %%_ret:
     14 00007712 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   449                              <1> 
-   450                              <1> FATinfoDefault:    ;ah = 1Bh
-   451 00007713 30D2                <1>     xor dl, dl
-   452                              <1> FATinfoDevice:     ;ah = 1Ch
-   453                              <1> ;Input: dl = 1 based drive number
-   454                              <1> ;Output:
-   455                              <1> ;al = sectors per cluster (allocation unit), or FFh if invalid drive
-   456                              <1> ;cx = bytes per sector
-   457                              <1> ;edx = total number of clusters
-   458                              <1> ;rbx = Ptr to media ID byte
-   459 00007715 88D0                <1>     mov al, dl  ;Move drive number into al
-   460 00007717 E8D3F9FFFF          <1>     call getCDS    ;Get in workingCDS the cds pointer for drive in al
-   461 0000771C 7307                <1>     jnc .fidCDSFound
-   462 0000771E B80F000000          <1>     mov eax, errBadDrv          ;Invalid drive error
-   463 00007723 EB2E                <1>     jmp short .error 
-   464                              <1> .fidCDSFound:
-   465 00007725 E8BFF8FFFF          <1>     call getDiskData
-   466 0000772A 7227                <1>     jc .error
-   467                              <1> ;Now we have that:
-   468                              <1> ;al = sectors per cluster
-   469                              <1> ;ah = media ID byte
-   470                              <1> ;ebx = total clusters
-   471                              <1> ;cx = bytes per sector
-   472                              <1> ;edx = number of available clusters
-   473 0000772C E82AF9FFFF          <1>     call getUserRegs
-   474 00007731 8825(96070000)      <1>     mov byte [mediaByte], ah    ;Store media ID byte
-   475 00007737 30E4                <1>     xor ah, ah
-   476 00007739 895E18              <1>     mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
-   477 0000773C 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
-   478 00007740 488D1D(96070000)    <1>     lea rbx, mediaByte
-   479 00007747 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Store pointer to mediaByte
-   480 0000774B 806658FE            <1>     and byte [rsi + callerFrame.flags], ~1  ;Clear CF
-   481                              <1> .badExit:
-   482 0000774F 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Store sectors per cluster
-   483                              <1>     return
+   448                              <1> 
+   449                              <1> FATinfoDefault:    ;ah = 1Bh
+   450 00007713 30D2                <1>     xor dl, dl
+   451                              <1> FATinfoDevice:     ;ah = 1Ch
+   452                              <1> ;Input: dl = 1 based drive number
+   453                              <1> ;Output:
+   454                              <1> ;al = sectors per cluster (allocation unit), or FFh if invalid drive
+   455                              <1> ;cx = bytes per sector
+   456                              <1> ;edx = total number of clusters
+   457                              <1> ;rbx = Ptr to media ID byte
+   458 00007715 88D0                <1>     mov al, dl  ;Move drive number into al
+   459 00007717 E8D3F9FFFF          <1>     call getCDS    ;Get in workingCDS the cds pointer for drive in al
+   460 0000771C 7307                <1>     jnc .fidCDSFound
+   461 0000771E B80F000000          <1>     mov eax, errBadDrv          ;Invalid drive error
+   462 00007723 EB2E                <1>     jmp short .error 
+   463                              <1> .fidCDSFound:
+   464 00007725 E8BFF8FFFF          <1>     call getDiskData
+   465 0000772A 7227                <1>     jc .error
+   466                              <1> ;Now we have that:
+   467                              <1> ;al = sectors per cluster
+   468                              <1> ;ah = media ID byte
+   469                              <1> ;ebx = total clusters
+   470                              <1> ;cx = bytes per sector
+   471                              <1> ;edx = number of available clusters
+   472 0000772C E82AF9FFFF          <1>     call getUserRegs
+   473 00007731 8825(96070000)      <1>     mov byte [mediaByte], ah    ;Store media ID byte
+   474 00007737 30E4                <1>     xor ah, ah
+   475 00007739 895E18              <1>     mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
+   476 0000773C 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
+   477 00007740 488D1D(96070000)    <1>     lea rbx, mediaByte
+   478 00007747 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Store pointer to mediaByte
+   479 0000774B 806658FE            <1>     and byte [rsi + callerFrame.flags], ~1  ;Clear CF
+   480                              <1> .badExit:
+   481 0000774F 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Store sectors per cluster
+   482                              <1>     return
     13                              <2> %%_ret:
     14 00007752 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   484                              <1> .error:
-   485 00007753 E8D2FDFFFF          <1>     call extErrExit ;Set rsi to point to callerFrame
-   486 00007758 66B8FFFF            <1>     mov ax, -1
-   487 0000775C EBF1                <1>     jmp short .badExit
-   488                              <1> 
-   489                              <1> setIntVector:      ;ah = 25h
-   490                              <1> ;Called with:
-   491                              <1> ;   rdx = Pointer to interrupt handler
-   492                              <1> ;   al = Interrupt number
-   493 0000775E FA                  <1>     cli ;Halt interrupts
-   494 0000775F 0F010D(CC1A0000)    <1>     sidt [dosIdtPtr]    ;Get the current IDT base pointer
-   495 00007766 0FB6C0              <1>     movzx eax, al
-   496 00007769 48C1E004            <1>     shl rax, 4h     ;Multiply IDT entry number by 16 (Size of IDT entry)
-   497 0000776D 480305(CE1A0000)    <1>     add rax, qword [dosIdtPtr.base]    
-   498 00007774 668910              <1>     mov word [rax], dx  ;Get low word into offset 15...0
-   499 00007777 48C1EA10            <1>     shr rdx, 10h    ;Bring next word low
-   500 0000777B 66895006            <1>     mov word [rax + 6], dx  ;Get low word into offset 31...16
-   501 0000777F 48C1EA10            <1>     shr rdx, 10h    ;Bring last dword low
-   502 00007783 895008              <1>     mov dword [rax + 8], edx
-   503 00007786 FB                  <1>     sti
-   504                              <1>     return
+   483                              <1> .error:
+   484 00007753 E8D2FDFFFF          <1>     call extErrExit ;Set rsi to point to callerFrame
+   485 00007758 66B8FFFF            <1>     mov ax, -1
+   486 0000775C EBF1                <1>     jmp short .badExit
+   487                              <1> 
+   488                              <1> setIntVector:      ;ah = 25h
+   489                              <1> ;Called with:
+   490                              <1> ;   rdx = Pointer to interrupt handler
+   491                              <1> ;   al = Interrupt number
+   492 0000775E FA                  <1>     cli ;Halt interrupts
+   493 0000775F 0F010D(CC1A0000)    <1>     sidt [dosIdtPtr]    ;Get the current IDT base pointer
+   494 00007766 0FB6C0              <1>     movzx eax, al
+   495 00007769 48C1E004            <1>     shl rax, 4h     ;Multiply IDT entry number by 16 (Size of IDT entry)
+   496 0000776D 480305(CE1A0000)    <1>     add rax, qword [dosIdtPtr.base]    
+   497 00007774 668910              <1>     mov word [rax], dx  ;Get low word into offset 15...0
+   498 00007777 48C1EA10            <1>     shr rdx, 10h    ;Bring next word low
+   499 0000777B 66895006            <1>     mov word [rax + 6], dx  ;Get low word into offset 31...16
+   500 0000777F 48C1EA10            <1>     shr rdx, 10h    ;Bring last dword low
+   501 00007783 895008              <1>     mov dword [rax + 8], edx
+   502 00007786 FB                  <1>     sti
+   503                              <1>     return
     13                              <2> %%_ret:
     14 00007787 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   505                              <1> 
-   506                              <1> setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
-   507 00007788 8805(D0030000)      <1>     mov byte [verifyFlag], al
-   508 0000778E 8025(D0030000)01    <1>     and byte [verifyFlag], 1       ;Only save the bottom bit
-   509                              <1>     return
+   504                              <1> 
+   505                              <1> setResetVerify:    ;ah = 2Eh, turns ALL writes to write + verify
+   506 00007788 8805(D0030000)      <1>     mov byte [verifyFlag], al
+   507 0000778E 8025(D0030000)01    <1>     and byte [verifyFlag], 1       ;Only save the bottom bit
+   508                              <1>     return
     13                              <2> %%_ret:
     14 00007795 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   510                              <1> getDOSversion:     ;ah = 30h
-   511 00007796 E8C0F8FFFF          <1>     call getUserRegs
-   512 0000779B 30E4                <1>     xor ah, ah ;Continue the mainline PC-DOS identification line
-   513 0000779D 886609              <1>     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
-   514 000077A0 668B055988FFFF      <1>     mov ax, word [dosVersion] ;Major and minor version in al,ah resp.
-   515 000077A7 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Save ax
-   516                              <1>     return
+   509                              <1> getDOSversion:     ;ah = 30h
+   510 00007796 E8C0F8FFFF          <1>     call getUserRegs
+   511 0000779B 30E4                <1>     xor ah, ah ;Continue the mainline PC-DOS identification line
+   512 0000779D 886609              <1>     mov byte [rsi + callerFrame.rbx + 1], ah    ;Clear bh 
+   513 000077A0 668B055988FFFF      <1>     mov ax, word [dosVersion] ;Major and minor version in al,ah resp.
+   514 000077A7 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Save ax
+   515                              <1>     return
     13                              <2> %%_ret:
     14 000077AA C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   517                              <1> 
-   518                              <1> setDOSversion:  ;Int 2Fh, AX=122Fh - Set DOS verstion to report
-   519                              <1> ;Input: dx = Version number. Value of 0 means true value.
-   520 000077AB 6685D2              <1>     test dx, dx
-   521 000077AE 750A                <1>     jnz .newVal
-   522 000077B0 66C7054788FFFF0062  <1>     mov word [dosVersion], dosVerMac    ;Reset the value
-   523                              <1>     return
+   516                              <1> 
+   517                              <1> setDOSversion:  ;Int 2Fh, AX=122Fh - Set DOS verstion to report
+   518                              <1> ;Input: dx = Version number. Value of 0 means true value.
+   519 000077AB 6685D2              <1>     test dx, dx
+   520 000077AE 750A                <1>     jnz .newVal
+   521 000077B0 66C7054788FFFF0062  <1>     mov word [dosVersion], dosVerMac    ;Reset the value
+   522                              <1>     return
     13                              <2> %%_ret:
     14 000077B9 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   524                              <1> .newVal:
-   525 000077BA 6689153F88FFFF      <1>     mov word [dosVersion], dx    ;Store dx in the value to report.
-   526                              <1>     return
+   523                              <1> .newVal:
+   524 000077BA 6689153F88FFFF      <1>     mov word [dosVersion], dx    ;Store dx in the value to report.
+   525                              <1>     return
     13                              <2> %%_ret:
     14 000077C1 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   527                              <1> 
-   528                              <1> ;AH = 1Fh/32h - GET (current) DISK DPB
-   529                              <1> getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 21h\ah=32h with dl=0
-   530 000077C2 30D2                <1>     xor dl, dl
-   531                              <1> getDeviceDPBptr:   ;ah = 32h
-   532                              <1> ;On entry: dl = Drive number 1-based drive number (0=Default)
-   533                              <1> ;On exit: rbx = DPB pointer
-   534 000077C4 88D0                <1>     mov al, dl
-   535 000077C6 E824F9FFFF          <1>     call getCDS
-   536 000077CB 722C                <1>     jc .bad
-   537 000077CD 488B3D(12070000)    <1>     mov rdi, qword [workingCDS]  ;Get pointer to current CDS in rdi
-   538 000077D4 66F747430080        <1>     test word [rdi + cds.wFlags], cdsRedirDrive ;Is dev a redir drv?
-   539 000077DA 751D                <1>     jnz .bad    ;Redirector Drives have no DPBs!
-   540                              <1>     ;Here ONLY if accessing critical Disk data structures
-   541 000077DC E8FEFCFFFF          <1>     call dosCrit1Enter  ;Enter class 1 critical section
-   542 000077E1 E851F5FFFF          <1>     call getDiskDPB   ;See if the Disk structures are still ok 
-   543 000077E6 E8FEFCFFFF          <1>     call dosCrit1Exit   ;Exit class 1 critical section
-   544 000077EB 720C                <1>     jc .bad
-   545 000077ED E869F8FFFF          <1>     call getUserRegs
-   546 000077F2 48896E08            <1>     mov [rsi + callerFrame.rbx], rbp    ;RBP has DPB pointer
-   547 000077F6 30C0                <1>     xor al, al
-   548                              <1>     return
+   526                              <1> 
+   527                              <1> ;AH = 1Fh/32h - GET (current) DISK DPB
+   528                              <1> getCurrentDPBptr:  ;ah = 1Fh, simply falls in Int 21h\ah=32h with dl=0
+   529 000077C2 30D2                <1>     xor dl, dl
+   530                              <1> getDeviceDPBptr:   ;ah = 32h
+   531                              <1> ;On entry: dl = Drive number 1-based drive number (0=Default)
+   532                              <1> ;On exit: rbx = DPB pointer
+   533 000077C4 88D0                <1>     mov al, dl
+   534 000077C6 E824F9FFFF          <1>     call getCDS
+   535 000077CB 722C                <1>     jc .bad
+   536 000077CD 488B3D(12070000)    <1>     mov rdi, qword [workingCDS]  ;Get pointer to current CDS in rdi
+   537 000077D4 66F747430080        <1>     test word [rdi + cds.wFlags], cdsRedirDrive ;Is dev a redir drv?
+   538 000077DA 751D                <1>     jnz .bad    ;Redirector Drives have no DPBs!
+   539                              <1>     ;Here ONLY if accessing critical Disk data structures
+   540 000077DC E8FEFCFFFF          <1>     call dosCrit1Enter  ;Enter class 1 critical section
+   541 000077E1 E851F5FFFF          <1>     call getDiskDPB   ;See if the Disk structures are still ok 
+   542 000077E6 E8FEFCFFFF          <1>     call dosCrit1Exit   ;Exit class 1 critical section
+   543 000077EB 720C                <1>     jc .bad
+   544 000077ED E869F8FFFF          <1>     call getUserRegs
+   545 000077F2 48896E08            <1>     mov [rsi + callerFrame.rbx], rbp    ;RBP has DPB pointer
+   546 000077F6 30C0                <1>     xor al, al
+   547                              <1>     return
     13                              <2> %%_ret:
     14 000077F8 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   549                              <1> .bad:
-   550 000077F9 B0FF                <1>     mov al, -1
-   551                              <1>     return
+   548                              <1> .bad:
+   549 000077F9 B0FF                <1>     mov al, -1
+   550                              <1>     return
     13                              <2> %%_ret:
     14 000077FB C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   552                              <1> 
-   553                              <1> getInDOSflagPtr:   ;ah = 34h
-   554 000077FC 488D15(08040000)    <1>     lea rdx, inDOS
-   555 00007803 E853F8FFFF          <1>     call getUserRegs
-   556 00007808 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
-   557                              <1>     return
+   551                              <1> 
+   552                              <1> getInDOSflagPtr:   ;ah = 34h
+   553 000077FC 488D15(08040000)    <1>     lea rdx, inDOS
+   554 00007803 E853F8FFFF          <1>     call getUserRegs
+   555 00007808 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx  ;save ptr in rbx
+   556                              <1>     return
     13                              <2> %%_ret:
     14 0000780C C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   558                              <1> 
-   559                              <1> getIntVector:      ;ah = 35h
-   560                              <1> ;Called with:
-   561                              <1> ;   al = Interrupt Number
-   562                              <1> ;Returns:
-   563                              <1> ;   rbx = Pointer to interrupt handler
-   564 0000780D E81BF8FFFF          <1>     call muxGetIntVector    ;Get int vector in rbx, all other regs preserved
-   565 00007812 E844F8FFFF          <1>     call getUserRegs
-   566 00007817 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
-   567                              <1>     return
+   557                              <1> 
+   558                              <1> getIntVector:      ;ah = 35h
+   559                              <1> ;Called with:
+   560                              <1> ;   al = Interrupt Number
+   561                              <1> ;Returns:
+   562                              <1> ;   rbx = Pointer to interrupt handler
+   563 0000780D E81BF8FFFF          <1>     call muxGetIntVector    ;Get int vector in rbx, all other regs preserved
+   564 00007812 E844F8FFFF          <1>     call getUserRegs
+   565 00007817 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Save pointer in rbx
+   566                              <1>     return
     13                              <2> %%_ret:
     14 0000781B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   568                              <1> 
-   569                              <1> getDiskFreeSpace:  ;ah = 36h
-   570                              <1> ;Input: Drive number in dl (0 = Current)
-   571                              <1> ;Output:    ax = sectors per cluster
-   572                              <1> ;           ebx = number of free clusters
-   573                              <1> ;           cx = bytes per sector
-   574                              <1> ;           edx = total clusters on drive
-   575 0000781C 88D0                <1>     mov al, dl
-   576 0000781E E8CCF8FFFF          <1>     call getCDS ;Get CDS pointer in workingCDS var for given drive
-   577 00007823 7310                <1>     jnc .gdfsCDSFound   ;Exit if unable to find/make a CDS for drive
-   578                              <1> ;Else, we at an error.
-   579                              <1> ;Simply return with CY set and error code in al with extended error info
-   580 00007825 B80F000000          <1>     mov eax, errBadDrv
-   581 0000782A E8FBFCFFFF          <1>     call extErrExit ;Call, don't jump, to allow us to set ax to -1
-   582                              <1>     ;extErrExit sets rsi to caller regs
-   583 0000782F 66C706FFFF          <1>     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
-   584                              <1>     return
+   567                              <1> 
+   568                              <1> getDiskFreeSpace:  ;ah = 36h
+   569                              <1> ;Input: Drive number in dl (0 = Current)
+   570                              <1> ;Output:    ax = sectors per cluster
+   571                              <1> ;           ebx = number of free clusters
+   572                              <1> ;           cx = bytes per sector
+   573                              <1> ;           edx = total clusters on drive
+   574 0000781C 88D0                <1>     mov al, dl
+   575 0000781E E8CCF8FFFF          <1>     call getCDS ;Get CDS pointer in workingCDS var for given drive
+   576 00007823 7310                <1>     jnc .gdfsCDSFound   ;Exit if unable to find/make a CDS for drive
+   577                              <1> ;Else, we at an error.
+   578                              <1> ;Simply return with CY set and error code in al with extended error info
+   579 00007825 B80F000000          <1>     mov eax, errBadDrv
+   580 0000782A E8FBFCFFFF          <1>     call extErrExit ;Call, don't jump, to allow us to set ax to -1
+   581                              <1>     ;extErrExit sets rsi to caller regs
+   582 0000782F 66C706FFFF          <1>     mov word [rsi + callerFrame.rax], -1    ;Set ax=FFFFh
+   583                              <1>     return
     13                              <2> %%_ret:
     14 00007834 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   585                              <1> .gdfsCDSFound:
-   586 00007835 E8AFF7FFFF          <1>     call getDiskData
-   587 0000783A 7219                <1>     jc .error
-   588                              <1> ;Now we have that:
-   589                              <1> ;al = sectors per cluster
-   590                              <1> ;ah = media ID byte
-   591                              <1> ;ebx = total clusters
-   592                              <1> ;cx = bytes per sector
-   593                              <1> ;edx = number of available clusters
-   594 0000783C E81AF8FFFF          <1>     call getUserRegs
-   595 00007841 30E4                <1>     xor ah, ah  ;Don't need media byte, zero extend
-   596 00007843 895E18              <1>     mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
-   597 00007846 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
-   598 0000784A 895608              <1>     mov dword [rsi + callerFrame.rbx], edx  ;Store # of Free clusters
-   599 0000784D 806658FE            <1>     and byte [rsi + callerFrame.flags], ~1  ;Clear CF
-   600                              <1> .badExit:
-   601 00007851 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Store sectors per cluster
-   602                              <1>     return
+   584                              <1> .gdfsCDSFound:
+   585 00007835 E8AFF7FFFF          <1>     call getDiskData
+   586 0000783A 7219                <1>     jc .error
+   587                              <1> ;Now we have that:
+   588                              <1> ;al = sectors per cluster
+   589                              <1> ;ah = media ID byte
+   590                              <1> ;ebx = total clusters
+   591                              <1> ;cx = bytes per sector
+   592                              <1> ;edx = number of available clusters
+   593 0000783C E81AF8FFFF          <1>     call getUserRegs
+   594 00007841 30E4                <1>     xor ah, ah  ;Don't need media byte, zero extend
+   595 00007843 895E18              <1>     mov dword [rsi + callerFrame.rdx], ebx  ;Store total clusters
+   596 00007846 66894E10            <1>     mov word [rsi + callerFrame.rcx], cx    ;Store bytes per sector
+   597 0000784A 895608              <1>     mov dword [rsi + callerFrame.rbx], edx  ;Store # of Free clusters
+   598 0000784D 806658FE            <1>     and byte [rsi + callerFrame.flags], ~1  ;Clear CF
+   599                              <1> .badExit:
+   600 00007851 668906              <1>     mov word [rsi + callerFrame.rax], ax    ;Store sectors per cluster
+   601                              <1>     return
     13                              <2> %%_ret:
     14 00007854 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   603                              <1> .error:
-   604 00007855 E8D0FCFFFF          <1>     call extErrExit ;Sets rsi to point to callerFrame
-   605 0000785A 66B8FFFF            <1>     mov ax, -1
-   606 0000785E EBF1                <1>     jmp short .badExit
+   602                              <1> .error:
+   603 00007855 E8D0FCFFFF          <1>     call extErrExit ;Sets rsi to point to callerFrame
+   604 0000785A 66B8FFFF            <1>     mov ax, -1
+   605 0000785E EBF1                <1>     jmp short .badExit
+   606                              <1> 
    607                              <1> 
-   608                              <1> 
-   609                              <1> getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
-   610 00007860 31C0                <1>     xor eax, eax
-   611 00007862 668705(2F040000)    <1>     xchg ax, word [errorLevel]
-   612 00007869 E9AEFCFFFF          <1>     jmp extGoodExit
-   613                              <1> 
-   614                              <1> getSysVarsPtr:     ;ah = 52h
-   615 0000786E 488D15(3B000000)    <1>     lea rdx, sysVarsPtr
-   616 00007875 E8E1F7FFFF          <1>     call getUserRegs
-   617 0000787A 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx
-   618                              <1>     return
+   608                              <1> getRetCodeChild:   ;ah = 4Dh, WAIT, get ret code of subprocess
+   609 00007860 31C0                <1>     xor eax, eax
+   610 00007862 668705(2F040000)    <1>     xchg ax, word [errorLevel]
+   611 00007869 E9AEFCFFFF          <1>     jmp extGoodExit
+   612                              <1> 
+   613                              <1> getSysVarsPtr:     ;ah = 52h
+   614 0000786E 488D15(3B000000)    <1>     lea rdx, sysVarsPtr
+   615 00007875 E8E1F7FFFF          <1>     call getUserRegs
+   616 0000787A 48895608            <1>     mov qword [rsi + callerFrame.rbx], rdx
+   617                              <1>     return
     13                              <2> %%_ret:
     14 0000787E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
+   618                              <1> 
    619                              <1> 
-   620                              <1> 
-   621                              <1> ;AH = 53h - CREATE DPB
-   622                              <1> createDPB:         ;generates a DPB from a given BPB
-   623                              <1> ;Only translates the data that can be garnered from a BPB to the DPB
-   624                              <1> ;This is done so that the other fields of the DPB can be recycled
-   625                              <1> ;Input: rsi = ptr to the BPB
-   626                              <1> ;       rbp = ptr to the DPB
-   627                              <1> ;Leave accessed flag alone! A brand new DPB should have -1 as accessed flag!
-   628                              <1> ;bMediaDescriptor
-   629 0000787F 8A4615              <1>     mov al, byte [rsi + bpb.media]
-   630 00007882 884523              <1>     mov byte [rbp + dpb.bMediaDescriptor], al
-   631                              <1> ;dFirstFreeCluster
-   632 00007885 C7452D00000000      <1>     mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
-   633                              <1> ;dNumberOfFreeClusters
-   634 0000788C C74531FFFFFFFF      <1>     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
-   635                              <1> ;wBytesPerSector
-   636 00007893 0FB7460B            <1>     movzx eax, word [rsi + bpb.bytsPerSec]
-   637 00007897 66894502            <1>     mov word [rbp + dpb.wBytesPerSector], ax
-   638                              <1> ;bMaxSectorInCluster
-   639 0000789B 8A460D              <1>     mov al, byte [rsi + bpb.secPerClus]
-   640 0000789E FEC8                <1>     dec al  ;Subtract one to get the max number of the last sector in a cluster
-   641 000078A0 884504              <1>     mov byte [rbp + dpb.bMaxSectorInCluster], al
-   642                              <1> ;bSectorsPerClusterShift
-   643 000078A3 FEC0                <1>     inc al
-   644 000078A5 30C9                <1>     xor cl, cl
-   645                              <1> .cd2:
-   646 000078A7 D0E8                <1>     shr al, 1
-   647 000078A9 7404                <1>     jz .cd3
-   648 000078AB FEC1                <1>     inc cl
-   649 000078AD EBF8                <1>     jmp short .cd2
-   650                              <1> .cd3:
-   651 000078AF 884D05              <1>     mov byte [rbp + dpb.bSectorsPerClusterShift], cl
-   652                              <1> ;wFAToffset, number of reserved sectors in partition
-   653 000078B2 668B460E            <1>     mov ax, word [rsi + bpb.revdSecCnt]
-   654 000078B6 66894506            <1>     mov word [rbp + dpb.wFAToffset], ax
-   655                              <1> ;bNumberOfFATs
-   656 000078BA 8A4610              <1>     mov al, byte [rsi + bpb.numFATs]
-   657 000078BD 884508              <1>     mov byte [rbp + dpb.bNumberOfFATs], al
-   658                              <1> ;wNumberRootDirEntries
-   659                              <1> ;Gets the number of 32 byte entries in the root directory
-   660                              <1> ;Only valid for FAT 12/16
-   661 000078C0 0FB74611            <1>     movzx eax, word [rsi + bpb.rootEntCnt] ;Must be 0 on FAT 32
-   662 000078C4 66894509            <1>     mov word [rbp + dpb.wNumberRootDirEntries], ax  ;0 for FAT32
-   663                              <1> ;dFATlength, get the FAT length
-   664 000078C8 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
-   665 000078CC 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
-   666 000078CF 85C0                <1>     test eax, eax   ;If FATsz16 = 0, then use FATsz32
-   667 000078D1 0F44C3              <1>     cmovz eax, ebx  ;Only move 32bit value if sz16 was 0
-   668 000078D4 894513              <1>     mov dword [rbp + dpb.dFATlength], eax
-   669                              <1> ;Complex cases below...
-   670                              <1> ;dClusterHeapOffset, start sector of the data area
-   671 000078D7 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
-   672 000078DB 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
-   673 000078DE 85C0                <1>     test eax, eax
-   674 000078E0 0F44C3              <1>     cmovz eax, ebx
-   675                              <1> ;eax = FATsz
-   676 000078E3 0FB75E13            <1>     movzx ebx, word [rsi + bpb.totSec16]
-   677 000078E7 8B4E20              <1>     mov ecx, dword [rsi + bpb.totSec32]
-   678 000078EA 85DB                <1>     test ebx, ebx
-   679 000078EC 0F44D9              <1>     cmovz ebx, ecx 
-   680                              <1> ;ebx = TotSec
-   681 000078EF 8A4E10              <1>     mov cl, byte [rsi + bpb.numFATs]
-   682 000078F2 31D2                <1>     xor edx, edx    ;Use edx = NumFATs * FATsz temporarily
-   683                              <1> .cd4:
-   684 000078F4 01C2                <1>     add edx, eax
-   685 000078F6 FEC9                <1>     dec cl
-   686 000078F8 75FA                <1>     jnz .cd4
-   687 000078FA 89D0                <1>     mov eax, edx    ;Store product in eax
-   688 000078FC 0FB7560E            <1>     movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
-   689 00007900 01D0                <1>     add eax, edx
-   690                              <1>     ;Multiply by 32 and divide by bytes per sector to get number of sectors
-   691 00007902 0FB75509            <1>     movzx edx, word [rbp + dpb.wNumberRootDirEntries]
-   692 00007906 C1E205              <1>     shl edx, 5  ;Bytes in the root directory
-   693 00007909 0FB74D02            <1>     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-   694 0000790D 50                  <1>     push rax    ;Save the current accumulated number of sectors on stack
-   695 0000790E 89D0                <1>     mov eax, edx
-   696 00007910 31D2                <1>     xor edx, edx
-   697 00007912 F7F1                <1>     div ecx
-   698 00007914 89C2                <1>     mov edx, eax
-   699 00007916 58                  <1>     pop rax
-   700 00007917 01D0                <1>     add eax, edx    ;This adds nothing if FAT32
-   701                              <1>     ;eax = BPB_ResvdSecCnt + (BPB_NumFATs * FATSz) + RootDirSectors
-   702                              <1>     ;aka eax = Start sector of the data area in volume
-   703 00007919 89450B              <1>     mov dword [rbp + dpb.dClusterHeapOffset], eax
-   704                              <1> ;dClusterCount
-   705 0000791C 29C3                <1>     sub ebx, eax    ;ebx = Number of sectors in the data area
-   706 0000791E 89D8                <1>     mov eax, ebx    ;Move number of sectors in data area into eax
-   707 00007920 31D2                <1>     xor edx, edx
-   708 00007922 BB01000000          <1>     mov ebx, 1
-   709 00007927 8A4D05              <1>     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
-   710 0000792A D3E3                <1>     shl ebx, cl ;Get sectors per cluster
-   711 0000792C F7F3                <1>     div ebx ;Data area sector / sectors per cluster = cluster count
-   712 0000792E FFC0                <1>     inc eax ;Maximum valid cluster value is eax + 1
-   713 00007930 89450F              <1>     mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
-   714                              <1> ;dFirstUnitOfRootDir
-   715 00007933 3DF5FF0000          <1>     cmp eax, fat16MaxClustCnt  ;If above, its FAT32
-   716 00007938 8B462C              <1>     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
-   717 0000793B 770F                <1>     ja .cd5
-   718                              <1>     ;Else, we need to find the first sector of the root directory
-   719                              <1>     ;Add the number of reserved sectors to the number of FATs*FATsz
-   720 0000793D 0FB74506            <1>     movzx eax, word [rbp + dpb.wFAToffset]  ;Get reserved count
-   721 00007941 0FB64D08            <1>     movzx ecx, byte [rbp + dpb.bNumberOfFATs]
-   722                              <1> .cd51:
-   723 00007945 034513              <1>     add eax, dword [rbp + dpb.dFATlength]
-   724 00007948 FFC9                <1>     dec ecx
-   725 0000794A 75F9                <1>     jnz .cd51
-   726                              <1> .cd5:
-   727 0000794C 894517              <1>     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
-   728 0000794F C64524FF            <1>     mov byte [rbp + dpb.bAccessFlag], -1    ;Denote not yet accessed
-   729                              <1> ;Exit epilogue
-   730 00007953 488B1D(7B040000)    <1>     mov rbx, qword [oldRSP]
-   731 0000795A 8A03                <1>     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
-   732                              <1>     return
+   620                              <1> ;AH = 53h - CREATE DPB
+   621                              <1> createDPB:         ;generates a DPB from a given BPB
+   622                              <1> ;Only translates the data that can be garnered from a BPB to the DPB
+   623                              <1> ;This is done so that the other fields of the DPB can be recycled
+   624                              <1> ;Input: rsi = ptr to the BPB
+   625                              <1> ;       rbp = ptr to the DPB
+   626                              <1> ;Leave accessed flag alone! A brand new DPB should have -1 as accessed flag!
+   627                              <1> ;bMediaDescriptor
+   628 0000787F 8A4615              <1>     mov al, byte [rsi + bpb.media]
+   629 00007882 884523              <1>     mov byte [rbp + dpb.bMediaDescriptor], al
+   630                              <1> ;dFirstFreeCluster
+   631 00007885 C7452D00000000      <1>     mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
+   632                              <1> ;dNumberOfFreeClusters
+   633 0000788C C74531FFFFFFFF      <1>     mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
+   634                              <1> ;wBytesPerSector
+   635 00007893 0FB7460B            <1>     movzx eax, word [rsi + bpb.bytsPerSec]
+   636 00007897 66894502            <1>     mov word [rbp + dpb.wBytesPerSector], ax
+   637                              <1> ;bMaxSectorInCluster
+   638 0000789B 8A460D              <1>     mov al, byte [rsi + bpb.secPerClus]
+   639 0000789E FEC8                <1>     dec al  ;Subtract one to get the max number of the last sector in a cluster
+   640 000078A0 884504              <1>     mov byte [rbp + dpb.bMaxSectorInCluster], al
+   641                              <1> ;bSectorsPerClusterShift
+   642 000078A3 FEC0                <1>     inc al
+   643 000078A5 30C9                <1>     xor cl, cl
+   644                              <1> .cd2:
+   645 000078A7 D0E8                <1>     shr al, 1
+   646 000078A9 7404                <1>     jz .cd3
+   647 000078AB FEC1                <1>     inc cl
+   648 000078AD EBF8                <1>     jmp short .cd2
+   649                              <1> .cd3:
+   650 000078AF 884D05              <1>     mov byte [rbp + dpb.bSectorsPerClusterShift], cl
+   651                              <1> ;wFAToffset, number of reserved sectors in partition
+   652 000078B2 668B460E            <1>     mov ax, word [rsi + bpb.revdSecCnt]
+   653 000078B6 66894506            <1>     mov word [rbp + dpb.wFAToffset], ax
+   654                              <1> ;bNumberOfFATs
+   655 000078BA 8A4610              <1>     mov al, byte [rsi + bpb.numFATs]
+   656 000078BD 884508              <1>     mov byte [rbp + dpb.bNumberOfFATs], al
+   657                              <1> ;wNumberRootDirEntries
+   658                              <1> ;Gets the number of 32 byte entries in the root directory
+   659                              <1> ;Only valid for FAT 12/16
+   660 000078C0 0FB74611            <1>     movzx eax, word [rsi + bpb.rootEntCnt] ;Must be 0 on FAT 32
+   661 000078C4 66894509            <1>     mov word [rbp + dpb.wNumberRootDirEntries], ax  ;0 for FAT32
+   662                              <1> ;dFATlength, get the FAT length
+   663 000078C8 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
+   664 000078CC 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
+   665 000078CF 85C0                <1>     test eax, eax   ;If FATsz16 = 0, then use FATsz32
+   666 000078D1 0F44C3              <1>     cmovz eax, ebx  ;Only move 32bit value if sz16 was 0
+   667 000078D4 894513              <1>     mov dword [rbp + dpb.dFATlength], eax
+   668                              <1> ;Complex cases below...
+   669                              <1> ;dClusterHeapOffset, start sector of the data area
+   670 000078D7 0FB74616            <1>     movzx eax, word [rsi + bpb.FATsz16]
+   671 000078DB 8B5E24              <1>     mov ebx, dword [rsi + bpb32.FATsz32]
+   672 000078DE 85C0                <1>     test eax, eax
+   673 000078E0 0F44C3              <1>     cmovz eax, ebx
+   674                              <1> ;eax = FATsz
+   675 000078E3 0FB75E13            <1>     movzx ebx, word [rsi + bpb.totSec16]
+   676 000078E7 8B4E20              <1>     mov ecx, dword [rsi + bpb.totSec32]
+   677 000078EA 85DB                <1>     test ebx, ebx
+   678 000078EC 0F44D9              <1>     cmovz ebx, ecx 
+   679                              <1> ;ebx = TotSec
+   680 000078EF 8A4E10              <1>     mov cl, byte [rsi + bpb.numFATs]
+   681 000078F2 31D2                <1>     xor edx, edx    ;Use edx = NumFATs * FATsz temporarily
+   682                              <1> .cd4:
+   683 000078F4 01C2                <1>     add edx, eax
+   684 000078F6 FEC9                <1>     dec cl
+   685 000078F8 75FA                <1>     jnz .cd4
+   686 000078FA 89D0                <1>     mov eax, edx    ;Store product in eax
+   687 000078FC 0FB7560E            <1>     movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
+   688 00007900 01D0                <1>     add eax, edx
+   689                              <1>     ;Multiply by 32 and divide by bytes per sector to get number of sectors
+   690 00007902 0FB75509            <1>     movzx edx, word [rbp + dpb.wNumberRootDirEntries]
+   691 00007906 C1E205              <1>     shl edx, 5  ;Bytes in the root directory
+   692 00007909 0FB74D02            <1>     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+   693 0000790D 50                  <1>     push rax    ;Save the current accumulated number of sectors on stack
+   694 0000790E 89D0                <1>     mov eax, edx
+   695 00007910 31D2                <1>     xor edx, edx
+   696 00007912 F7F1                <1>     div ecx
+   697 00007914 89C2                <1>     mov edx, eax
+   698 00007916 58                  <1>     pop rax
+   699 00007917 01D0                <1>     add eax, edx    ;This adds nothing if FAT32
+   700                              <1>     ;eax = BPB_ResvdSecCnt + (BPB_NumFATs * FATSz) + RootDirSectors
+   701                              <1>     ;aka eax = Start sector of the data area in volume
+   702 00007919 89450B              <1>     mov dword [rbp + dpb.dClusterHeapOffset], eax
+   703                              <1> ;dClusterCount
+   704 0000791C 29C3                <1>     sub ebx, eax    ;ebx = Number of sectors in the data area
+   705 0000791E 89D8                <1>     mov eax, ebx    ;Move number of sectors in data area into eax
+   706 00007920 31D2                <1>     xor edx, edx
+   707 00007922 BB01000000          <1>     mov ebx, 1
+   708 00007927 8A4D05              <1>     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+   709 0000792A D3E3                <1>     shl ebx, cl ;Get sectors per cluster
+   710 0000792C F7F3                <1>     div ebx ;Data area sector / sectors per cluster = cluster count
+   711 0000792E FFC0                <1>     inc eax ;Maximum valid cluster value is eax + 1
+   712 00007930 89450F              <1>     mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
+   713                              <1> ;dFirstUnitOfRootDir
+   714 00007933 3DF5FF0000          <1>     cmp eax, fat16MaxClustCnt  ;If above, its FAT32
+   715 00007938 8B462C              <1>     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32
+   716 0000793B 770F                <1>     ja .cd5
+   717                              <1>     ;Else, we need to find the first sector of the root directory
+   718                              <1>     ;Add the number of reserved sectors to the number of FATs*FATsz
+   719 0000793D 0FB74506            <1>     movzx eax, word [rbp + dpb.wFAToffset]  ;Get reserved count
+   720 00007941 0FB64D08            <1>     movzx ecx, byte [rbp + dpb.bNumberOfFATs]
+   721                              <1> .cd51:
+   722 00007945 034513              <1>     add eax, dword [rbp + dpb.dFATlength]
+   723 00007948 FFC9                <1>     dec ecx
+   724 0000794A 75F9                <1>     jnz .cd51
+   725                              <1> .cd5:
+   726 0000794C 894517              <1>     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
+   727 0000794F C64524FF            <1>     mov byte [rbp + dpb.bAccessFlag], -1    ;Denote not yet accessed
+   728                              <1> ;Exit epilogue
+   729 00007953 488B1D(7B040000)    <1>     mov rbx, qword [oldRSP]
+   730 0000795A 8A03                <1>     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
+   731                              <1>     return
     13                              <2> %%_ret:
     14 0000795C C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   733                              <1> 
-   734                              <1> getVerifySetting:  ;ah = 54h
-   735 0000795D 8A05(D0030000)      <1>     mov al, byte [verifyFlag]   ;al is the return value in this case
-   736                              <1>     return
+   732                              <1> 
+   733                              <1> getVerifySetting:  ;ah = 54h
+   734 0000795D 8A05(D0030000)      <1>     mov al, byte [verifyFlag]   ;al is the return value in this case
+   735                              <1>     return
     13                              <2> %%_ret:
     14 00007963 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   737                              <1> 
-   738                              <1> getExtendedError:  ;ah = 59h
-   739 00007964 E8F2F6FFFF          <1>     call getUserRegs
-   740 00007969 668B05(0B040000)    <1>     mov ax, word [errorExCde]
-   741 00007970 8A2D(0A040000)      <1>     mov ch, byte [errorLocus]
-   742 00007976 8A3D(0E040000)      <1>     mov bh, byte [errorClass]
-   743 0000797C 8A1D(0D040000)      <1>     mov bl, byte [errorAction]
-   744 00007982 488B3D(0F040000)    <1>     mov rdi, qword [errorVolLbl]
-   745 00007989 668906              <1>     mov word [rsi + callerFrame.rax], ax
-   746 0000798C 66895E08            <1>     mov word [rsi + callerFrame.rbx], bx
-   747 00007990 886E11              <1>     mov byte [rsi + callerFrame.rcx + 1], ch
-   748 00007993 48897E28            <1>     mov qword [rsi + callerFrame.rdi], rdi
-   749                              <1> noOp:
-   750                              <1>     return
+   736                              <1> 
+   737                              <1> getExtendedError:  ;ah = 59h
+   738 00007964 E8F2F6FFFF          <1>     call getUserRegs
+   739 00007969 668B05(0B040000)    <1>     mov ax, word [errorExCde]
+   740 00007970 8A2D(0A040000)      <1>     mov ch, byte [errorLocus]
+   741 00007976 8A3D(0E040000)      <1>     mov bh, byte [errorClass]
+   742 0000797C 8A1D(0D040000)      <1>     mov bl, byte [errorAction]
+   743 00007982 488B3D(0F040000)    <1>     mov rdi, qword [errorVolLbl]
+   744 00007989 668906              <1>     mov word [rsi + callerFrame.rax], ax
+   745 0000798C 66895E08            <1>     mov word [rsi + callerFrame.rbx], bx
+   746 00007990 886E11              <1>     mov byte [rsi + callerFrame.rcx + 1], ch
+   747 00007993 48897E28            <1>     mov qword [rsi + callerFrame.rdi], rdi
+   748                              <1> noOp:
+   749                              <1>     return
     13                              <2> %%_ret:
     14 00007997 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   751                              <1> ;At some point we will implement the below function but that is
-   752                              <1> ; a low priority as it is not a DOS 3.3 function. 
-   753                              <1> ;getsetDiskSerial:  ;ah = 69h, get/set disk serial number
+   750                              <1> ;At some point we will implement the below function but that is
+   751                              <1> ; a low priority as it is not a DOS 3.3 function. 
+   752                              <1> ;getsetDiskSerial:  ;ah = 69h, get/set disk serial number
     46                                  %include "./src/Kernel/Net/server.asm"
      1                              <1> ;Network functions here
      2                              <1> 

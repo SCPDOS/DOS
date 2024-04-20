@@ -38,7 +38,6 @@ functionDispatch:   ;Int 21h Main function dispatcher
     mov qword [rax + psp.rspPtr], rsp    ;Save rsp on callers stack
     pop rax     ;Get old rax back
     push rax    ;and push it back onto the stack
-.abortEP:
 .charFun0CEP:
 .serverEP:
     lea rsp, critStakTop
