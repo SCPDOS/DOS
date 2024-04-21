@@ -54,13 +54,7 @@ adjInts:
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
 ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
-;Now adjust int 22h and 24h correctly using DOS to get them low
-    lea rdx, OEMHALT ;Get segment start address
-    mov eax, 2522h   ;Int 22h, set vector
-    int 21h
-    lea rdx, OEMHALT ;Get segment start address
-    mov eax, 2524h
-    int 21h
+;
 ;------------------------------------------------;
 ;          Driver Adjustments and inits          ;
 ;------------------------------------------------;
@@ -86,7 +80,6 @@ adjDrivers:
     je short .exit
     add qword [rsi + drvHdr.nxtPtr], rbp    ;Adjust address
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Dont "demand" ctguos headers... 
-    ;add rsi, drvHdr_size   ;... but definitely suggest it for kernel drivers
     jmp short adjDrivers
 .exit:
 ;------------------------------------------------;
@@ -108,7 +101,7 @@ makeMCBChain:
     mov qword fs:[mcbChainPtr], rax     ; and in internal DOS var 
 
     push rbp    ;Save the pointer to DOSSEG on the stack temporarily
-    call OEMMCBINIT ;Build MCB chain
+    call OEMMCBINIT ;Build MCB chain, kernel drvs can allocate... undoc :)
     pop rbp
     jc OEMHALT
 ;------------------------------------------------;
@@ -630,72 +623,6 @@ badMem:
     int 21h
     jmp short hltLbl
 memErr  db "System Memory Error",0Ah,0Dh,"$"
-;--------------------------------
-;       DATA FOR SYSINIT        :
-;--------------------------------
-strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
-badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
-conName db "CON",0
-auxName db "AUX",0
-prnName db "PRN",0
-
-cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
-cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
-
-cmdBlock:   ;Used also for overlay block
-    istruc execProg
-    at execProg.pEnv,       dq 0    ;Is set to point at the above line
-    at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
-    at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
-    at execProg.pfcb2,      dq 0
-    iend
-exceptData:
-    dq i0
-    dq i1
-    dq i2
-    dq i3
-    dq i4
-    dq i5
-    dq i6
-    dq i7
-    dq i8
-    dq i9
-    dq i10
-    dq i11
-    dq i12
-    dq i13
-    dq i14
-    dq i15
-    dq i16
-    dq i17
-    dq i18
-    dq i19
-    dq i20
-    dq i21
-
-intData:
-    dq terminateProcess ;Int 20h
-    dq functionDispatch ;Int 21h
-    dq OEMHALT          ;Int 22h, If sysinit terminates, halt system
-    dq defaultIretq     ;Int 23h, ignore any CTRL+C during init
-    dq dosDefCritErrHdlr 
-    dq absDiskRead      ;Int 25h
-    dq absDiskWrite     ;Int 26h
-    dq terminateRes     ;Int 27h
-    dq defaultIretq     ;Int 28h
-    dq defaultIretq     ;Int 29h
-    dq defaultIretq     ;Int 2Ah
-    dq defaultIretq     ;Int 2Bh
-    dq defaultIretq     ;Int 2Ch
-    dq defaultIretq     ;Int 2Dh
-    dq defaultIretq     ;Int 2Eh
-    dq multiplexHdlr    ;Int 2Fh, multiplex default handler
-nData:
-    dq 0    ;We link here to the head of the OEM driver chain
-    dw 08004h
-    dq nulStrat
-    dq nulIntr
-    db "NUL     " ;Default NUL data
 
 openStreams:
 ;If this returns with CF=CY, an error occured. Halt boot if initial set of streams
@@ -997,7 +924,73 @@ writeIDTEntry:
     pop rax
     ret
 
-; DATA AREA
+;--------------------------------
+;       DATA FOR SYSINIT        :
+;--------------------------------
+strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
+badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
+conName db "CON",0
+auxName db "AUX",0
+prnName db "PRN",0
+
+cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
+cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
+
+cmdBlock:   ;Used also for overlay block
+    istruc execProg
+    at execProg.pEnv,       dq 0    ;Is set to point at the above line
+    at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
+    at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
+    at execProg.pfcb2,      dq 0
+    iend
+exceptData:
+    dq i0
+    dq i1
+    dq i2
+    dq i3
+    dq i4
+    dq i5
+    dq i6
+    dq i7
+    dq i8
+    dq i9
+    dq i10
+    dq i11
+    dq i12
+    dq i13
+    dq i14
+    dq i15
+    dq i16
+    dq i17
+    dq i18
+    dq i19
+    dq i20
+    dq i21
+
+intData:
+    dq terminateProcess ;Int 20h
+    dq functionDispatch ;Int 21h
+    dq OEMHALT          ;Int 22h, If sysinit terminates, halt system
+    dq defaultIretq     ;Int 23h, ignore any CTRL+C during init
+    dq dosDefCritErrHdlr    ;Int 24h, return fail, CF=CY, leading to OEMHALT
+    dq absDiskRead      ;Int 25h
+    dq absDiskWrite     ;Int 26h
+    dq terminateRes     ;Int 27h
+    dq defaultIretq     ;Int 28h
+    dq defaultIretq     ;Int 29h
+    dq defaultIretq     ;Int 2Ah
+    dq defaultIretq     ;Int 2Bh
+    dq defaultIretq     ;Int 2Ch
+    dq defaultIretq     ;Int 2Dh
+    dq defaultIretq     ;Int 2Eh
+    dq multiplexHdlr    ;Int 2Fh, multiplex default handler
+nData:
+    dq 0    ;We link here to the head of the OEM driver chain
+    dw 08004h
+    dq nulStrat
+    dq nulIntr
+    db "NUL     " ;Default NUL data
+
 localIDTpointer: ;Local IDT pointer
     .Limit  dw 0
     .Base   dq 0
