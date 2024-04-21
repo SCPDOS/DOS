@@ -102,9 +102,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Clear up the pointers on the stack frame
     xor ecx, ecx
     mov qword [rbp - execFrame.pPSPBase], rcx
-    ;These two are cleared
-    ;mov qword [rbp - execFrame.pEnvBase], rcx
-    ;mov qword [rbp - execFrame.pProgBase], rcx
+    mov qword [rbp - execFrame.pEnvBase], rcx
+    mov qword [rbp - execFrame.pProgBase], rcx
     mov qword [rbp - execFrame.pPSPBase], rcx
     mov qword [rbp - execFrame.pProgEP], rcx
 
@@ -150,9 +149,6 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov al, errFnf
     jmp .cleanAndFail
 .validDiskFile:
-    xor eax, eax
-    mov qword [rbp - execFrame.pEnvBase], rax   ;Clear pEnv and pProg Bases
-    mov qword [rbp - execFrame.pProgBase], rax
     cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .loadProgram ;If overlay, skip making an environment block
     mov rdi, qword [rbp - execFrame.pParam] ;Get params ptr in rdi

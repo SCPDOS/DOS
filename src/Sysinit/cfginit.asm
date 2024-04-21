@@ -345,9 +345,8 @@ configParse:
 ;   Device Driver Loader here  :
 ;===============================
 .drvLoader:
-    mov rdi, qword [rbp - cfgFrame.linePtr]
-    add rdi, 6  ;Go past DEVICE= to the pathname
-    mov rsi, rdi
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    add rsi, 6  ;Go past DEVICE= to the pathname
     call .skipSeparators
     mov rdi, rsi
     mov rdx, rdi    ;Prepare rdx for the open
@@ -533,8 +532,12 @@ configParse:
     mov r11, mcbOwnerNewDOS ;Set currentPSP for new dos object
     xchg r11, qword fs:[currentPSP] ;Save in r11 old owner
     lea rbx, initDrvBlk
-    mov rax, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
-    mov qword [rbx + initReqPkt.optptr], rax ;and pass to driver!
+    push rsi
+    mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
+    add rsi, 6  ;Go past DEVICE
+    call .skipSeparators    ;Go past equals and any following spaces
+    mov qword [rbx + initReqPkt.optptr], rsi ;and pass to driver!
+    pop rsi
     mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
 .driverInit:
     xchg r12, rbp
