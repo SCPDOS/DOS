@@ -235,6 +235,10 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    test byte [7c02h], 1
+    jnz .msdGenErr
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
     mov rdi, rbx
@@ -256,6 +260,10 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    test byte [7c02h], 2
+    jnz .msdGenErr
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
     mov rdi, rbx
@@ -277,6 +285,10 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    test byte [7c02h], 2
+    jnz .msdGenErr
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
     mov rdi, rbx

@@ -252,6 +252,3 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov qword [rsp + callerFrame.flags], 0202h  ;Mimic safely DOS's ret flags
     call dosPopRegs  ;Pop the stack frame pointed to by rsp
     iretq   ;rsp ends up on the stack of the last entry into DOS
-    ;Caveat: If a task which is its own parent CTRL+C's or "aborts and
-    ; accesses DOS during Int 24h", then rsp on return to the Int22h vector 
-    ; is invalid as it points to rsp within DOS. 

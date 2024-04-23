@@ -161,18 +161,18 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [rdi], -1          ;Free this handle
     pop rdi
 .notOpeningFile:
-    cli ;Disable Interrupts
-    inc byte [critErrFlag]  ;Set flag for critical error
-    dec byte [inDOS]    ;Exiting DOS
-    mov rsp, qword [oldRSP] ;Get the old RSP value
-    xor ebp, ebp    ;Always zeroed
-    int 24h ;Call critical error handler, sets interrupts on again
-    mov qword [oldRSP], rsp     ;Store back the stack pointer
-    mov rsp, qword [xInt24hRSP] ;Return to the stack of the function that failed
+    cli                         
+    inc byte [critErrFlag]      ;Set flag for critical error
+    dec byte [inDOS]            ;Exiting DOS
+    mov rsp, qword [oldRSP]     ;Get the stack ptr after regs were pushed
+    xor ebp, ebp                ;Always zeroed for DOS portability!
+    int 24h                     ;Call crit. err. hdlr. Ints reset on
+    mov qword [oldRSP], rsp     ;Allows user to change reg vals on fail!
+    mov rsp, qword [xInt24hRSP] ;Ret to DOS stack for failing device
     mov byte [critErrFlag], 0   ;Clear critical error flag
-    inc byte [inDOS]    ;Reenter DOS
+    inc byte [inDOS]            ;Reenter DOS
     mov rbp, qword [tmpDPBPtr]
-    sti ;Reenable Interrupts
+    sti                         
     ;Now we check that the response given was allowed, and translate if needed
 .checkResponse:
     cmp al, critIgnore
@@ -219,8 +219,22 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     add di, drvErrShft
     mov word [errorExCde], di ;Save the error code if Abort
     mov eax, edi    ;Make the return error code the Driver Error Code
-    mov byte [exitType], 2    ;We are returning from Abort, ret type 2!
-    mov byte [volIdFlag], 0 ;Clear special vol search byte if set
+    mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
+    mov byte [volIdFlag], 0     ;Clear special vol search byte if set
+    ;Before returning, we need to set the aborting psp.rspPtr back to 
+    ; the oldRSP as a syscall during Int 24h would change this value.
+    ;As a result, the stack frame pointed to would not have a valid SS:RSP
+    ; for the IRETQ at the end of EXIT which would lead to a GP Fault.
+    ;oldRSP remains unchanged in Int24h even if a syscall made, though may 
+    ; point to a new stack as a result of the programmer of Int 24h changing 
+    ; the stack to a new stack of vars. This new stack MUST have a valid 
+    ; CS:RIP, RFLAGS and SS:RSP set at the end, otherwise EXIT could again 
+    ; lead to a GP Fault.
+    push rax
+    mov rdi, qword [currentPSP]
+    mov rax, qword [oldRSP]
+    mov qword [rdi + psp.rspPtr], rax
+    pop rax
     jmp terminateClean.altEP
 
 ctrlBreakHdlr:
@@ -239,7 +253,7 @@ ctrlBreakHdlr:
 	call dosPopRegs ;Get user state back
     mov byte [inDOS], 0 ;Make sure we "exit" DOS 
     mov byte [critErrFlag], 0
-    mov qword [xInt23hRSP], rsp  ;Save user rsp
+    mov qword [xInt23hRSP], rsp  ;Save user rsp. This is the og psp rsp.
     clc
     int 23h ;Call critical error handler
     cli ;Clear interrupts again
@@ -257,7 +271,7 @@ ctrlBreakHdlr:
     jz .returnToDOS ;If yes, subfunction number must be in al
     mov eax, 4c00h  ;Exit without error code
     mov byte [ctrlCExit], -1  ;CTRL+BREAK termination
-    jmp functionDispatch
+    jmp functionDispatch ;When jumping now, rsp will go back into psp.rsp!
 
 ;CPU Exception handlers
 ;If a CPU exception occurs, and inDOS = 0, the default behaviour will be to 

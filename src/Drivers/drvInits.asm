@@ -131,6 +131,9 @@ msdInit:
     ;Use r8 as device counter
     ;Use r15 as the pointer to the next free BPB entry
     ;First set up the two default BPB's if no removable drives
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+    mov byte [7c02h], 0
+;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     push rbx    ;Push the pointer to the driver parameter block
 
     int 31h ;Get number of Int 33h devices in r8b
