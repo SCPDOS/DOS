@@ -223,13 +223,18 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [volIdFlag], 0     ;Clear special vol search byte if set
     ;Before returning, we need to set the aborting psp.rspPtr back to 
     ; the oldRSP as a syscall during Int 24h would change this value.
-    ;As a result, the stack frame pointed to would not have a valid SS:RSP
-    ; for the IRETQ at the end of EXIT which would lead to a GP Fault.
-    ;oldRSP remains unchanged in Int24h even if a syscall made, though may 
-    ; point to a new stack as a result of the programmer of Int 24h changing 
-    ; the stack to a new stack of vars. This new stack MUST have a valid 
-    ; CS:RIP, RFLAGS and SS:RSP set at the end, otherwise EXIT could again 
-    ; lead to a GP Fault.
+    ;This only affects programs which are their own parents as when aborting
+    ; we swap to the parentPSP. This prevents a bug from arising as the 
+    ; stack ptr in psp.rspPtr may have changed since initially entering DOS
+    ; as the Int 24h handler may have made an Int 21h call, meaning if 
+    ; the Int 24h handler plays with the stack too much, the value in 
+    ; psp.rspPtr is no longer pointing at a "valid" stack frame (i.e. 
+    ; with valid SS:RSP). The only sane thing to do is to reset this 
+    ; pointer to the value it had on entry to the initial DOS call which
+    ; triggered the Int 24h (or the equivalent stack frame that was 
+    ; replaced by the Int 24h handler). If the task being aborted is not 
+    ; its own parent the following is a NOP. If it is its own parent, we
+    ; the following prevents a GP. Fault.
     mov rdi, qword [currentPSP]
     mov rbx, qword [oldRSP]
     mov qword [rdi + psp.rspPtr], rbx
