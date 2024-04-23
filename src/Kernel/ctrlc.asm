@@ -230,11 +230,9 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     ; the stack to a new stack of vars. This new stack MUST have a valid 
     ; CS:RIP, RFLAGS and SS:RSP set at the end, otherwise EXIT could again 
     ; lead to a GP Fault.
-    push rax
     mov rdi, qword [currentPSP]
-    mov rax, qword [oldRSP]
-    mov qword [rdi + psp.rspPtr], rax
-    pop rax
+    mov rbx, qword [oldRSP]
+    mov qword [rdi + psp.rspPtr], rbx
     jmp terminateClean.altEP
 
 ctrlBreakHdlr:
