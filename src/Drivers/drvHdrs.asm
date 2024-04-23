@@ -17,8 +17,8 @@ auxHdr:
 prnHdr:
     dq clkHdr
     dw 0A040h
-    dq nulStrat
-    dq nulIntr
+    dq commonStrat
+    dq prnDriver
     db "PRN     "
 clkHdr:
     dq msdHdr
@@ -59,19 +59,19 @@ com4Hdr:
 lpt1Hdr:
     dq lpt2Hdr
     dw 0A040h
-    dq nulStrat
-    dq nulIntr
+    dq commonStrat
+    dq prnDriver
     db "LPT1    "
 lpt2Hdr:
     dq lpt3Hdr
     dw 0A040h
-    dq nulStrat
-    dq nulIntr
+    dq commonStrat
+    dq prnDriver
     db "LPT2    "
 lpt3Hdr:
     dq -1
     dw 0A040h
-    dq nulStrat
-    dq nulIntr
+    dq commonStrat
+    dq prnDriver
     dq "LPT3    "
 reqHdrPtr  dq 0    ;Where the default device drivers store the ReqPtr

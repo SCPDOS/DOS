@@ -492,3 +492,25 @@ comIntr:
     mov word [rbx + rbx + drvReqHdr.status], ax  ;Add the busy bit
     jmp .comExit
 .comDevice   db 0
+
+;Prn Drivers
+prnDriver:
+    push rax
+    push rbx
+    mov rbx, qword [reqHdrPtr]
+    mov al, 03h ;Unknown Command
+    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    ja .prnWriteErrorCode ;If yes, error!
+    mov al, byte [rbx + drvReqHdr.cmdcde]
+    test al, al ;If the command code was Init, return ok!
+    jz .prnExit 
+    ;Everything else, device not ready
+    mov al, drvNotReady
+.prnWriteErrorCode:     ;Jump to with al=Standard Error code
+    mov ah, 80h ;Set error bit
+    mov word [rbx + drvReqHdr.status], ax
+.prnExit:
+    or word [rbx + drvReqHdr.status], drvDonStatus    ;Merge done bit
+    pop rbx
+    pop rax
+    ret
