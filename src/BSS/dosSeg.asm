@@ -326,6 +326,12 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     dirEntry    dd ?  ;32 byte offset in dir for file being searched for
 ;Error DPB 
     tmpDPBPtr   dq ?  ;A DPB for error/temporary situations
+;No clash recycling below var as the vars in SDA are invalid if in CPU 
+; exception hdlr. This var gets cleared on entry to the exception handler. 
+;If it remains clear, the task will Abort. If it gets set, DOS or COMMAND.COM 
+; caused CPU exception or we have an NMI. Then we freeze as we cant guarantee 
+; anything anymore.
+haltDOS:
     mediaByte   db ?  ;Calls 1Bh and 1Ch return ptr to here
     
     renameFFBlk db ffBlock_size dup (?)  ;Source file "find first" block
@@ -346,18 +352,14 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     lookahead   db ?  ;-1 => Lookahead on select Char function calls!
 ;Below is used in create and delete for vol lbl only. Else is -1.
     rebuildDrv  db ?  ;Stores the drive letter of the dpb to reset.
-    haltDOS     db ?  ;Set by DOS exception handler to indicate DOS will halt
     sdaLen      equ     $ - sda 
     sdaDOSLen   equ     $ - sdaDOSSwap
 
 ;Additional variables NOT in the SDA
     serverDispTblPtr    dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
-    xActDrv     db ?  ;0 based number of last drive to transact
     bkupReqHdr  db ioReqPkt_size dup (?)  ;A backup header to allow copying to
     ;for saving the current header when quickly doing a second request
 
-    lastDiskNum db ?  ;Last drive that operated
-    lastOpTime  dw ?  ;Packed Time of last successful disk operation
     ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle

@@ -365,23 +365,24 @@ cpu_exception:
     mov ebx, fatalt0L  ;Get the length
     call .writeExceptionMessage
 
-    cmp byte [inDOS], 1
-    jae .introStop
-    cmp eax, 2
-    je .introStop
+    mov byte [haltDOS], 0   ;Clear first as we are recycling this byte in SDA
+    cmp byte [inDOS], 1     ;Are we in DOS? 
+    jae .introStop          ;Crap out, cant guarantee DOS is stable anymore
+    cmp eax, 2              ;NMI?
+    je .introStop           ;Freeze the PC to stop it from hurting itself...
 
-    mov rbx, qword [currentPSP] ;If a command shell craps out, Halt
-    cmp rbx, qword [rbx + psp.parentPtr]
-    je .introStop
+    mov rbx, qword [currentPSP] ;If self-parent craps out... 
+    cmp rbx, qword [rbx + psp.parentPtr] ;Who do we call? COMSPEC?
+    je .introStop   ;Nah, for now, just hard stop like if DOS is bad.
 
     lea rsi, .fatal1
     mov ebx, fatal1L
     call .writeExceptionMessage
     jmp short .introEnd
 .introStop:
-    mov byte [haltDOS], -1
-    lea rsi, .fatalHalt   ;Get the ptr
-    mov ebx, fatalHaltL  ;Get the length
+    mov byte [haltDOS], -1  ;Set crap out byte...
+    lea rsi, .fatalHalt     ;Get the ptr
+    mov ebx, fatalHaltL     ;Get the length
     call .writeExceptionMessage
 .introEnd:
     lea rdi, extErrByteBuf
@@ -428,7 +429,7 @@ cpu_exception:
     mov byte [errorLocus], eLocUnk
     mov eax, 4cFFh
     mov byte [ctrlCExit], -1
-    ;If a -1 error code and ctrlC exit and the extended error
+    ;If a errGF error code and ctrlC exit and the extended error
     ; setup as above, chances are it was a CPU error
     jmp functionDispatch    ;Call Int 21h politely, clean up resources
 .fatalStop:
