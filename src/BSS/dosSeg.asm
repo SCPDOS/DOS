@@ -1,38 +1,38 @@
 ;This file contains the main DOS data segment
 dosDataArea:
-    anchorMcb   resb mcb_size   ;This is space for the anchor MCB
-    bootDrive   resb 1    ;The logical drive we booted from
-    biosVers    resd 1    ;Indicates BIOS type. Each OEM picks a number
-    biosPtr     resq 1    ;For saving a data ptr to be used by BIOS/drivers
+    anchorMcb   db mcb_size dup (?) ;This is space for the anchor MCB
+    bootDrive   db ?    ;The logical drive we booted from
+    biosVers    dd ?    ;Indicates BIOS type. Each OEM picks a number
+    biosPtr     dq ?    ;For saving a data ptr to be used by BIOS/drivers
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
 ;Both below variables can be edited with Int 21h AX=440Bh
-    validNetNam resw 1    ;Flag if machinename valid, deflt no=0
-    shareCount  resw 1    ;Share Retry Count, number of repeats before fail.
-    shareDelay  resw 1    ;Share Delay, in multiples of ms. (TEMP, just loop)
-                resq 1    ;Unused ptr for future, current disk buffer
-    vConHdlOff  resq 1    ;Ptr into buff to the next char to process in hdl req
+    validNetNam dw ?    ;Flag if machinename valid, deflt no=0
+    shareCount  dw ?    ;Share Retry Count, number of repeats before fail.
+    shareDelay  dw ?    ;Share Delay, in multiples of ms. (TEMP, just loop)
+                dq ?    ;Unused ptr for future, current disk buffer
+    vConHdlOff  dq ?    ;Ptr into buff to the next char to process in hdl req
     ;   A value of 0 means no chars buffered.
-    mcbChainPtr resq 1    ;Pointer to the MCB chain x
+    mcbChainPtr dq ?    ;Pointer to the MCB chain x
 sysVarsPtr:
-    dpbHeadPtr  resq 1    ;Pointer to the first DPB in the DPB chain x
-    sftHeadPtr  resq 1    ;Pointer to the first SFT header in SFT chain
-    clockPtr    resq 1    ;Pointer to the current active CLOCK$ device header x
+    dpbHeadPtr  dq ?    ;Pointer to the first DPB in the DPB chain x
+    sftHeadPtr  dq ?    ;Pointer to the first SFT header in SFT chain
+    clockPtr    dq ?    ;Pointer to the current active CLOCK$ device header x
     ;                    The last driver loaded with the CLOCK$ bit[3] set 
-    vConPtr     resq 1    ;Ptr to the devdrv of the char dev controlling vCon x
+    vConPtr     dq ?    ;Ptr to the devdrv of the char dev controlling vCon x
     ;                    The last driver loaded with the STDIN bit[0] set
-    maxBytesSec resw 1    ;Maximum number of bytes per sector (size of buffers)x
-    bufHeadPtr  resq 1    ;Pointer to the head of the disk buffer chain x
-    cdsHeadPtr  resq 1    ;Pointer to the head of the CDS array x
-    fcbsHeadPtr resq 1    ;Pointer to the head of the System FCB chain
-    numSafeSFCB resw 1    ;Number of protected FCBs (y in FCBS=x,y)
-    numPhysVol  resb 1    ;Number of physical volumes in the system x
-    lastdrvNum  resb 1    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
-    numBuffers  resb 1    ;Buffers=30 default
-    nulDevHdr   resb drvHdr_size
-    numJoinDrv  resb 1    ;Number of Joined Drives
+    maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)x
+    bufHeadPtr  dq ?    ;Pointer to the head of the disk buffer chain x
+    cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array x
+    fcbsHeadPtr dq ?    ;Pointer to the head of the System FCB chain
+    numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
+    numPhysVol  db ?    ;Number of physical volumes in the system x
+    lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
+    numBuffers  db ?    ;Buffers=30 default
+    nulDevHdr   db drvHdr_size dup (?)
+    numJoinDrv  db ?    ;Number of Joined Drives
 ;Additional internal variables
-    numFiles    resb 1    ;FILES=5 default, max 255
+    numFiles    db ?    ;FILES=5 default, max 255
     ;DOSMGR hook functions and variable here
     ;All DOSMGR hooks are 8 byte pointers and have been introduced to allow
     ; an external application to install itself as a multitasker into the
@@ -103,8 +103,8 @@ dosMgrHooks:
     ;Furthermore, if register fails (due to memory or namespace constraints),
     ; it must return CF=CY.
 dllHooks:
-    registerDLL     resq 1  ;Entered with rbp = execFrame
-    unloadDLLHook   resq 1  ;
+    registerDLL     dq ?  ;Entered with rbp = execFrame
+    unloadDLLHook   dq ?  ;
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
     ;Thus ALL offsets from SFT header increase by 4 bytes and each entry
@@ -128,107 +128,107 @@ dllHooks:
     ;           ZF=ZE -> No Files open.
     ;           ZF=NZ -> Some files are open.
 shareHooks:
-    ;markerShare resq 1  ;Marker Share hook
-    openFileCheck   resq 1  ;Check if share record for file exist       DONE
-    openShare   resq 1  ;Share called on open.                          DONE 
-    closeShare  resq 1  ;Share called on close.                         DONE/
-    closeCompShare  resq 1  ;Share to close all files for a machine.    DONE
-    closeTaskShare  resq 1  ;Share to close all files for a task.       DONE
-    closeNameShare  resq 1  ;Share to close file by name.               DONE/
-    lockFileShare   resq 1  ;Share to lock file region.                 DONE
-    unlockFileShare resq 1  ;Share to unlock file region.               DONE
-    checkFileLockShare  resq 1  ;Share to check file region locked.     DONE
-    openFileListShare   resq 1  ;Share to get open file list entry.     DONE
-    updateFCBfromSFTShr resq 1  ;Share to update FCB from the SFT.      UNUSED?
-    fstClstOfFCBShare   resq 1  ;Share to get first cluster of FCB.     UNUSED?
-    closeDupFileShare   resq 1  ;Share to close file if dup for proc.   DONE
-    closeNewHdlShare    resq 1  ;Share to close hdls of rec opened file. DONE
-    updateDirShare      resq 1  ;Share to update dir info in SFT.       DONE 
+    ;markerShare dq ?  ;Marker Share hook
+    openFileCheck   dq ?  ;Check if share record for file exist       DONE
+    openShare   dq ?  ;Share called on open.                          DONE 
+    closeShare  dq ?  ;Share called on close.                         DONE/
+    closeCompShare  dq ?  ;Share to close all files for a machine.    DONE
+    closeTaskShare  dq ?  ;Share to close all files for a task.       DONE
+    closeNameShare  dq ?  ;Share to close file by name.               DONE/
+    lockFileShare   dq ?  ;Share to lock file region.                 DONE
+    unlockFileShare dq ?  ;Share to unlock file region.               DONE
+    checkFileLockShare  dq ?  ;Share to check file region locked.     DONE
+    openFileListShare   dq ?  ;Share to get open file list entry.     DONE
+    updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.      UNUSED?
+    fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.     UNUSED?
+    closeDupFileShare   dq ?  ;Share to close file if dup for proc.   DONE
+    closeNewHdlShare    dq ?  ;Share to close hdls of rec opened file. DONE
+    updateDirShare      dq ?  ;Share to update dir info in SFT.       DONE 
 ;Create SFT header and corresponding array of five default sft entries
-    firstSftHeader  resb sfth_size
-    firstSft    resb sft_size
-    secondSft   resb sft_size
-    thirdSft    resb sft_size
-    fourthSft   resb sft_size
-    fifthSft    resb sft_size
+    firstSftHeader  db sfth_size dup (?)
+    firstSft    db sft_size dup (?)
+    secondSft   db sft_size dup (?)
+    thirdSft    db sft_size dup (?)
+    fourthSft   db sft_size dup (?)
+    fifthSft    db sft_size dup (?)
 
 ;Virtual CONsole Buffers
-    vConCursPos resb 1     ;Keeps track for tabs stops (and var with 7)
+    vConCursPos db ?     ;Keeps track for tabs stops (and var with 7)
     ;Only incremented when CON device runs vCon
 vConBuf:    ;Proper buffer symbol
-    vConCurCnt  resb 1     ;Current count of chars in vConBuffer
-    vConBuffer  resb 128   ;General Buffer for vCon 256 bytes. 
+    vConCurCnt  db ?     ;Current count of chars in vConBuffer
+    vConBuffer  db 128 dup (?)   ;General Buffer for vCon 256 bytes. 
     ;Only 128 bytes at a time if doing CON IO via handle
-    vConInBuf   resb 128   ;vConsole buffer for reads ONLY
-                resb 1     ;Padding Buffer!
+    vConInBuf   db 128 dup (?)   ;vConsole buffer for reads ONLY
+                db ?     ;Padding Buffer!
 
-    printEcho   resb 1  ;If 0, no echo. Non-zero => Echo to PRN
-    verifyFlag  resb 1  ;If set, writes are replaces with write/verify x
-    switchChar  resb 1  ;Editable by 21h/37h. Set to / by default
-    vConErr     resb 1  ;Inc on each char output call
+    printEcho   db ?  ;If 0, no echo. Non-zero => Echo to PRN
+    verifyFlag  db ?  ;If set, writes are replaces with write/verify x
+    switchChar  db ?  ;Editable by 21h/37h. Set to / by default
+    vConErr     db ?  ;Inc on each char output call
     ;Is and-ed with 03h, checks for ^C on every fourth char output
 
-    allocStrat  resb 1  ;Allocation strategy. First, Best or Last fit
+    allocStrat  db ?  ;Allocation strategy. First, Best or Last fit
 ;Server stuff. Default to all zeros (blank)
-    shareFlag   resb 1  ;Sharing flag, set to 0 for now (future expansion)
+    shareFlag   db ?  ;Sharing flag, set to 0 for now (future expansion)
     ;When share is loaded, this flag is set to -1 !!!!!
-    serverCnt   resb 1  ;Increments on each 21h/5E01h call
-    machineName resb 16 ;Machine name (Set via 21h/5E01h) (set to SPC)    
+    serverCnt   db ?  ;Increments on each 21h/5E01h call
+    machineName db 16 dup (?) ;Machine name (Set via 21h/5E01h) (set to SPC)    
 ;Swappable Data Area
-    critPtchTbl resq 4  ;Offsets from DosDataArea addr to the 4 funcs
-                resb 1  ;Alignment byte
+    critPtchTbl dq 4 dup (?)  ;Offsets from DosDataArea addr to the 4 funcs
+                db ?  ;Alignment byte
 sda:    ;Start of Swappable Data Area, this bit can remain static
-    critErrFlag resb 1  ;Critical error flag, set on entry to Int 24h x
-    inDOS       resb 1  ;Inc on each DOS call, dec when leaving x
-    errorDrv    resb 1  ;Drive on which error occured or FFh x
-    errorLocus  resb 1  ;Where the error took place  
-    errorExCde  resw 1  ;Extended Error Code
-    errorAction resb 1  ;Suggested action for error  
-    errorClass  resb 1  ;Error Class
+    critErrFlag db ?  ;Critical error flag, set on entry to Int 24h x
+    inDOS       db ?  ;Inc on each DOS call, dec when leaving x
+    errorDrv    db ?  ;Drive on which error occured or FFh x
+    errorLocus  db ?  ;Where the error took place  
+    errorExCde  dw ?  ;Extended Error Code
+    errorAction db ?  ;Suggested action for error  
+    errorClass  db ?  ;Error Class
     errorVolLbl dq ?    ;Sets a ptr to the volume label of the error disk
-    currentDTA  resq 1  ;Address of the current DTA x
-    currentPSP  resq 1  ;Address of current PSP x
+    currentDTA  dq ?  ;Address of the current DTA x
+    currentPSP  dq ?  ;Address of current PSP x
 
-    xInt23hRSP  resq 1  ;Saves RSP across an Int 23h call
-    errorLevel  resw 1  ;Last return code returned by Int 21h/4Ch x
+    xInt23hRSP  dq ?  ;Saves RSP across an Int 23h call
+    errorLevel  dw ?  ;Last return code returned by Int 21h/4Ch x
     ;Upper byte: 0=Normal, 1=Abort Occured, 2=CtrlC, 3=TSR 21h/31h
     ;Lower byte: User Specified
-    currentDrv  resb 1  ;Default drive x
-    breakFlag   resb 1  ;If set, check for CTRL+C on all DOS calls x
+    currentDrv  db ?  ;Default drive x
+    breakFlag   db ?  ;If set, check for CTRL+C on all DOS calls x
 ;SDA, needs to be replaced between processes
 sdaDOSSwap:
-    oldRAX      resq 1  ;Store rax on entering Int21h or returning Int 23h
-    serverPSP   resq 1  ;PSP of prog making server request, used by net & share
-    machineNum  resw 1  ;for sharing/networking 00h = default number (us)
-    firstMCB    resq 1  ;First fit MCB for request
-    bestMCB     resq 1  ;Best fit MCB for request
-    lastMCB     resq 1  ;Last fit MCB for request
-    dirEntryNum resw 1  ;Offset into directory of entry we are looking for
+    oldRAX      dq ?  ;Store rax on entering Int21h or returning Int 23h
+    serverPSP   dq ?  ;PSP of prog making server request, used by net & share
+    machineNum  dw ?  ;for sharing/networking 00h = default number (us)
+    firstMCB    dq ?  ;First fit MCB for request
+    bestMCB     dq ?  ;Best fit MCB for request
+    lastMCB     dq ?  ;Last fit MCB for request
+    dirEntryNum dw ?  ;Offset into directory of entry we are looking for
     volIdFlag   db ?    ;If set, we are searching for a volume ID
-    xInt24hRSP  resq 1  ;RSP across an Int 24h call
-    Int24bitfld resb 1  ;Copies the bit field given to the Int 24h handler
-    fileDirFlag resb 1  ;File/Directory flag. 0 = Dir, ¬0 = File
-    Int24Fail   resb 1  ;Set if Int 24h returned fail
+    xInt24hRSP  dq ?  ;RSP across an Int 24h call
+    Int24bitfld db ?  ;Copies the bit field given to the Int 24h handler
+    fileDirFlag db ?  ;File/Directory flag. 0 = Dir, ¬0 = File
+    Int24Fail   db ?  ;Set if Int 24h returned fail
 
-    oldoldRSP   resq 1  ;RSP at prev Int 21h entry if called from within Int 21h
-    dosReturn   resq 1  ;Used as a var to return when juggling stack
-    oldRSP      resq 1  ;RSP when entering Int 21h
-    oldRBX      resq 1  ;Temp var to save value of rbx during an Int 21 call
-    dirFlag     resb 1  ;Directory Flag. 0 => Search for Dir, 1 => for File
+    oldoldRSP   dq ?  ;RSP at prev Int 21h entry if called from within Int 21h
+    dosReturn   dq ?  ;Used as a var to return when juggling stack
+    oldRSP      dq ?  ;RSP when entering Int 21h
+    oldRBX      dq ?  ;Temp var to save value of rbx during an Int 21 call
+    dirFlag     db ?  ;Directory Flag. 0 => Search for Dir, 1 => for File
 ;The below flag tells DOS to print ^C in the termination function
-    ctrlCExit   resb 1  ;-1 => CTRL+BREAK termination, 0 otherwise
-    fcbSpaceOk  resb 1  ;If set, we allow embedded spaces in the filenames
+    ctrlCExit   db ?  ;-1 => CTRL+BREAK termination, 0 otherwise
+    fcbSpaceOk  db ?  ;If set, we allow embedded spaces in the filenames
 ;Time stuff
 ;Read the below two as a word
-    dayOfMonth  resb 1  ;01h - 1Fh (1 - 31)
-    monthOfYear resb 1  ;01h - 0Ch (1 - 12)
-    years       resb 1  ;00h - 7Fh (00 = 1980 - 127 = 2107)
-    daysOffset  resw 1  ;Days since 1-1-1980
-    dayOfWeek   resb 1  ;0 = Sunday <-> 6 = Saturday
+    dayOfMonth  db ?  ;01h - 1Fh (1 - 31)
+    monthOfYear db ?  ;01h - 0Ch (1 - 12)
+    years       db ?  ;00h - 7Fh (00 = 1980 - 127 = 2107)
+    daysOffset  dw ?  ;Days since 1-1-1980
+    dayOfWeek   db ?  ;0 = Sunday <-> 6 = Saturday
 
-    vConDrvSwp  resb 1  ;Set if vCon controlled by a different driver to vConPtr
-    int28Flag   resb 1  ;If set, Int 28h should be called, if clear no
-    Int24Trans  resb 1  ;Set to -1 if Abort translated to Fail
+    vConDrvSwp  db ?  ;Set if vCon controlled by a different driver to vConPtr
+    int28Flag   db ?  ;If set, Int 28h should be called, if clear no
+    Int24Trans  db ?  ;Set to -1 if Abort translated to Fail
 ;A request routed through the FCB or handle uses primReqHdr for its main IO.
 ;A secondary header is present to allow simultaneous echoing to console 
 ; without forcing to re-build the whole primary request block.
@@ -237,142 +237,140 @@ sdaDOSSwap:
 ;(i.e the char input functions use the primary for main input and secondary 
 ; for output)
 ;ioReqPkt is the largest possible packet
-    secdReqHdr  resb ioReqPkt_size  ;Secondary, Character IO Request header x
-    primReqHdr  resb ioReqPkt_size  ;Primary Disk AND Char. IO Request header x
-    altRet: ;Accessed as a qword
-    critReqHdr  resb ioReqPkt_size  ;Used for ^C detection!
-    pspCopyFlg  resb 1  ;Set to -1 for child process PSP, 0 for simple PSP copy
+    secdReqHdr  db ioReqPkt_size dup (?) ;Secondary, Char IO Reqhdr
+    primReqHdr  db ioReqPkt_size dup (?) ;Main Drv Reqhdr 
+altRet: ;Accessed as a qword
+    critReqHdr  db ioReqPkt_size dup (?)  ;Used for ^C detection!
+    pspCopyFlg  db ?  ;Set to -1 for child process PSP, 0 for simple PSP copy
 ;Swappable Buffers
-    CLOCKrecrd  resb 6  ;Clock driver record
+    CLOCKrecrd  db 6 dup (?)  ;Clock driver record
     ;We add an additional byte to save ah too
-    singleIObyt resw 1  ;For single IO byte buffers
-    buffer1     resb 128  ;Space for one path and file name
-    buffer2     resb 128  ;Space for a second path and file name
-    fname1Ptr   resq 1  ;Ptr to first filename argument
-    fname2Ptr   resq 1  ;Ptr to second filename argument
-    skipDisk    resb 1  ;Set => Read Disk, Clear => Skip checking on disk
+    singleIObyt dw ?  ;For single IO byte buffers
+extErrByteBuf:  ;Used by DOS execpt hdlr to build strings. Immediate abort!
+exeHdrSpace:    ;This needs 112 bytes in EXEC only, buffer is free for use!
+    buffer1     db 128 dup (?)  ;Space for one path and file name
+sectHdr:        ;This needs 20 bytes in EXEC only
+    buffer2     db 128 dup (?) ;Space for a second path and file name
+    fname1Ptr   dq ?  ;Ptr to first filename argument
+    fname2Ptr   dq ?  ;Ptr to second filename argument
+    skipDisk    db ?  ;Set => Read Disk, Clear => Skip checking on disk
 ;Misc bookkeeping flags and vars
-    dosffblock  resb ffBlock_size   ;Internal search block (fullsize unlike DOS)
-    curDirCopy  resb fatDirEntry_size   ;Copy of directory being accessed
-    tmpCDS      resb cds_size   ;Temp CDS for Server calls that need a tmp CDS
-    fcbName     resb 11+1   ;11 chars for 8.3 ( w/o the dot) and terminating 0
-    wcdFcbName  resb 11+1   ;Used to expand any wildcards for rename
-    fileDirSect resq 1  ;File/Directory starting sector, for each level
-    volIncmpFCB resb 1  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
-    extFCBAttr  resb 1  ;Extended FCB file attribute
-    extFCBFlag  resb 1  ;Set to -1 if Extended FCB
-    searchAttr  resb 1  ;Directory Search attributes
-    fileOpenMd  resb 1  ;Open mode (compat, r/w/rw?)
-    fileFDflg   resb 1  ;01h = File Found!, 04h = File deleted!
-    badNameRen  resb 1  ;Device name or File not found for rename
-    rwFlag      resb 1  ;00h=Read, 1=Write, read/write/share error reporting
-    spliceFlag  resb 1  ;00 = Relative path, !0 = Full path
-    dosInvoke   resb 1  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
+    dosffblock  db ffBlock_size dup (?)  ;FF block (fullsize unlike DOS)
+    curDirCopy  db fatDirEntry_size dup (?)  ;Dir copy
+    tmpCDS      db cds_size dup (?)  ;Temp CDS for Server calls that need a tmp CDS
+    fcbName     db 11+1 dup (?)   ;11 chars for 8.3 ( w/o the dot) and terminating 0
+    wcdFcbName  db 11+1 dup (?)  ;Used to expand any wildcards for rename
+    fileDirSect dq ?  ;File/Directory starting sector, for each level
+    volIncmpFCB db ?  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
+    extFCBAttr  db ?  ;Extended FCB file attribute
+    extFCBFlag  db ?  ;Set to -1 if Extended FCB
+    searchAttr  db ?  ;Directory Search attributes
+    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?)
+    fileFDflg   db ?  ;01h = File Found!, 04h = File deleted!
+    badNameRen  db ?  ;Device name or File not found for rename
+    rwFlag      db ?  ;00h=Read, 1=Write, read/write/share error reporting
+    spliceFlag  db ?  ;00 = Relative path, !0 = Full path
+    dosInvoke   db ?  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
 
-    vConInsert  resb 1  ;Insert mode on 21/0ah (0 = not insert, !0 = insert)
-    fileExist   resb 1  ;-1 if file in pathspec exists (create/open)
-    parDirExist resb 1  ;-1 if parent directory for file exists (create/open)
-    exitType    resb 1  ;Forms the upper byte of the errorlvl
-    openCreate  resb 1  ;If open, set to 0, if Create set to -1
-    delChar     resb 1  ;Char to replace first byte of deleted file's name
-    workingDrv  resb 1  ;Working drive number, 0 based, from DPB
+    vConInsert  db ?  ;Insert mode on 21/0ah (0 = not insert, !0 = insert)
+    fileExist   db ?  ;-1 if file in pathspec exists (create/open)
+    parDirExist db ?  ;-1 if parent directory for file exists (create/open)
+    exitType    db ?  ;Forms the upper byte of the errorlvl
+    openCreate  db ?  ;If open, set to 0, if Create set to -1
+    delChar     db ?  ;Char to replace first byte of deleted file's name
+    workingDrv  db ?  ;Working drive number, 0 based, from DPB
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too
-    workingDPB  resq 1  ;Ptr to the DPB of the drive being accessed
-    workingCDS  resq 1  ;Ptr to the CDS of the drive being accessed
-    workingFCB  resq 1  ;Ptr to the caller FCB for FCB function
+    workingDPB  dq ?  ;Ptr to the DPB of the drive being accessed
+    workingCDS  dq ?  ;Ptr to the CDS of the drive being accessed
+    workingFCB  dq ?  ;Ptr to the caller FCB for FCB function
 ;Below is the symbol for saving the oldSFTptr during a char func
 vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
-    workingSFT  resq 1  ;Temporary SFT (may not be not current) ptr being used
-    curHdlPtr   resq 1  ;Ptr to JFT handle entry in current PSP
-    currentSFT  resq 1  ;Ptr to the SFT of the file being accessed
-    currentNdx  resw 1  ;Used to access the current SFTNdx being opened/created
-    currentHdl  resw 1  ;The current file handle is saved here
-    currBuff    resq 1  ;Ptr to the Current Buffer (hdr) being accessed
+    workingSFT  dq ?  ;Temporary SFT (may not be not current) ptr being used
+    curHdlPtr   dq ?  ;Ptr to JFT handle entry in current PSP
+    currentSFT  dq ?  ;Ptr to the SFT of the file being accessed
+    currentNdx  dw ?  ;Used to access the current SFTNdx being opened/created
+    currentHdl  dw ?  ;The current file handle is saved here
+    currBuff    dq ?  ;Ptr to the Current Buffer (hdr) being accessed
 ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
 ; and 32 byte offset into the sector for directory
-    tempSect    resq 1  ;A scratch sector number
+    tempSect    dq ?  ;A scratch sector number
 sectTfr:    ;Symbol to use this var to hold a counter on disk read/write ops 
 pathLen:    ;Used to store the length of a path string for removal strcmp
-    entry       resw 1  ;32 byte offset into a sector or #fats sectors/fat
+    entry       dw ?  ;32 byte offset into a sector or #fats sectors/fat
 ;***************************************************|
 ; Needs to be set up before any file access         |
 ; These vars keep track of file access properties   |
 ;   and must be used only for such purposes.        |
 ;***************************************************|
-    currClustF  resd 1  ;Relative cluster in file being r/w to/from
-    currClustD  resd 1  ;Current Disk Cluster being r/w to/from
+    currClustF  dd ?  ;Relative cluster in file being r/w to/from
+    currClustD  dd ?  ;Current Disk Cluster being r/w to/from
 
-    currSectF   resd 1  ;Current Sector in File being r/w to/from
-    currSectC   resb 1  ;Current Sector in Cluster being r/w to/from
-    currSectD   resq 1  ;Current absolute Sector number on Disk
+    currSectF   dd ?  ;Current Sector in File being r/w to/from
+    currSectC   db ?  ;Current Sector in Cluster being r/w to/from
+    currSectD   dq ?  ;Current absolute Sector number on Disk
 
-    currByteS   resw 1  ;Current Byte in sector being r/w to/from
-    currByteF   resd 1  ;Current Byte in file being r/w to/from
+    currByteS   dw ?  ;Current Byte in sector being r/w to/from
+    currByteF   dd ?  ;Current Byte in file being r/w to/from
 ;***************************************************|
-    lastClust   resd 1  ;Number of the last (rel) cluster of the file
-    lastClustA  resd 1  ;Number of the last (abs) cluster of file on disk
-    fileGrowing resb 1  ;Flag to indicate the file is growing
-    bytesAppend resd 1  ;Number of bytes by which a file has been extended by
-    tfrLen      resd 1  ;Number of bytes to transfer
-    tfrCntr     resd 1  ;Number of bytes left to transfer
+    lastClust   dd ?  ;Number of the last (rel) cluster of the file
+    lastClustA  dd ?  ;Number of the last (abs) cluster of file on disk
+    fileGrowing db ?  ;Flag to indicate the file is growing
+    bytesAppend dd ?  ;Number of bytes by which a file has been extended by
+    tfrLen      dd ?  ;Number of bytes to transfer
+    tfrCntr     dd ?  ;Number of bytes left to transfer
 ;Directory stuff
-    dirClustPar resd 1  ;Absolute disk cluster of the start of the parent dir
-    dirClustA   resd 1  ;Absolute cluster number of current directory
-    dirSect     resw 1  ;Sector of current directory cluster
-    dirEntry    resd 1  ;32 byte offset in dir for file being searched for
+    dirClustPar dd ?  ;Absolute disk cluster of the start of the parent dir
+    dirClustA   dd ?  ;Absolute cluster number of current directory
+    dirSect     dw ?  ;Sector of current directory cluster
+    dirEntry    dd ?  ;32 byte offset in dir for file being searched for
 ;Error DPB 
-    tmpDPBPtr   resq 1  ;A DPB for error/temporary situations
-    mediaByte   resb 1  ;Calls 1Bh and 1Ch return ptr to here
+    tmpDPBPtr   dq ?  ;A DPB for error/temporary situations
+    mediaByte   db ?  ;Calls 1Bh and 1Ch return ptr to here
     
-    renameFFBlk resb ffBlock_size   ;Source file "find first" block
-    renameDir   resb fatDirEntry_size   ;Build new file dir entry here
+    renameFFBlk db ffBlock_size dup (?)  ;Source file "find first" block
+    renameDir   db fatDirEntry_size dup (?)  ;Build new file dir entry here
 ;Stacks and scratch SFT
     alignb  8
-    critStack   resq 165
-    critStakTop resq 1
+    critStack   dq 165 dup (?)
+    critStakTop dq ?
 
-    scratchSFT  resb sft_size   ;Used in FCB calls to emulate a SFT
+    scratchSFT  db sft_size dup (?)  ;Used in FCB calls to emulate a SFT
     
     alignb  8
-    AuxStack    resq 199
-    AuxStakTop  resq 1  ;Auxilliary stack (Char IO, Int 25h/46h etc)
-    DiskStack   resq 199
-    DiskStakTop resq 1
+    AuxStack    dq 199 dup (?)
+    AuxStakTop  dq ?  ;Auxilliary stack (Char IO, Int 25h/46h etc)
+    DiskStack   dq 199 dup (?)
+    DiskStakTop dq ?
 
     lookahead   db ?  ;-1 => Lookahead on select Char function calls!
+;Below is used in create and delete for vol lbl only. Else is -1.
     rebuildDrv  db ?  ;Stores the drive letter of the dpb to reset.
-    ;The above is used in create and delete for volume labels only. Otherwise is -1.
-;Putting this in SDA as multiple tasks can try to parse EXE's simultaneously
-    exeHdrSpace resb imageFileOptionalHeader_size   ;Use for parsing an EXE hdr
-    sectHdr     resb imageSectionHdr_size   ;Use to load one sctn hdr at a time
-;Exception handler vars in SDA now 
-    byteBuffer  resb 16 ;Used by DOS exception handler to build strings
-    haltDOS     resb 1  ;Set by DOS exception handler to indicate DOS will halt
+    haltDOS     db ?  ;Set by DOS exception handler to indicate DOS will halt
     sdaLen      equ     $ - sda 
     sdaDOSLen   equ     $ - sdaDOSSwap
 
 ;Additional variables NOT in the SDA
-    serverDispTblPtr    resq 1  ;DO NOT MOVE! Used to find server dispatch tbl
-    xActDrv     resb 1  ;0 based number of last drive to transact
-    bkupReqHdr  resb ioReqPkt_size  ;A backup header to allow copying to
+    serverDispTblPtr    dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
+    xActDrv     db ?  ;0 based number of last drive to transact
+    bkupReqHdr  db ioReqPkt_size dup (?)  ;A backup header to allow copying to
     ;for saving the current header when quickly doing a second request
 
-    lastDiskNum resb 1  ;Last drive that operated
-    lastOpTime  resw 1  ;Packed Time of last successful disk operation
+    lastDiskNum db ?  ;Last drive that operated
+    lastOpTime  dw ?  ;Packed Time of last successful disk operation
     ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
-    noPrintTog  resb 1  ;00 = Toggle as usual, 01 = Prevent toggle
-    keybTicks   resw 1  ;Counts the number of cycles spent in a kb loop.
+    noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle
+    keybTicks   dw ?  ;Counts the number of cycles spent in a kb loop.
     ;Every time this overflows, we read the clock and update the DOS internal
     ; copy of the date/time record
     ;The idt doesnt need to be in the SDA as we will halt interrupts
     ; until we get/set the address. Thus the IDT entry returned is the 
     ; correct one AT the time of calling up to "the time it takes to get
     ; to the read IDT routine".
-    dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
-        .limit  dw ?
-        .base   dq ?
+dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
+    .limit  dw ?    ;Overlap this with stack below as no call overlap
+    .base   dq ?
     ;Lseek and IOCTL return data in registers as well as on the caller's 
     ; stack. In Int 2Fh, this could overwrite user data if the functions
     ; were allowed to write to original callers register stack. 

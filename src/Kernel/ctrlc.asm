@@ -384,9 +384,9 @@ cpu_exception:
     mov ebx, fatalHaltL  ;Get the length
     call .writeExceptionMessage
 .introEnd:
-    lea rdi, byteBuffer
+    lea rdi, extErrByteBuf
     call .printbyte ;Store the error code in the byte buffer
-    lea rsi, byteBuffer
+    lea rsi, extErrByteBuf
     mov ebx, 2  ;Print the two nybbles
     call .writeExceptionMessage
 
@@ -397,7 +397,7 @@ cpu_exception:
     cmp cl, 1
     ja .cpuextendederror    ;rax contains error code, or extra cr2 value
 .cpurollprint:
-    lea rdi, byteBuffer
+    lea rdi, extErrByteBuf
     mov rdx, qword [rsp]    ;Get address
 ;Takes whats in rdx, rols left by one byte, prints al
     mov cl, 8    ;8 bytes
@@ -411,7 +411,7 @@ cpu_exception:
     jnz .cpurollprint1
 
     mov ebx, 16 ;Print the 16 nybbles
-    lea rsi, byteBuffer
+    lea rsi, extErrByteBuf
     call .writeExceptionMessage
 
     mov ebx, crlfL
@@ -433,42 +433,20 @@ cpu_exception:
     jmp functionDispatch    ;Call Int 21h politely, clean up resources
 .fatalStop:
 ;This is called if inDOS > 1 or NMI occured
-;Waits 1 minute then reboots
+;Freezes the machine
     mov eax, 8200h  ;Exit all critical sections
     int 2Ah
     call dosCrit1Enter  ;Get the lock to internal DOS structures
-    call dosCrit2Enter  ;Get the lock to end all multitasking
-    call getDateAndTimeOld  ;Get time packed in edx (edx[0:4] = Seconds/2)
-    mov ebx, edx
-    and ebx, 1Fh    ;Save the relevent bits
-.loopForNextSecond:
-    call .getTimeDateCompare
-    je .loopForNextSecond
-.loopTillTimeElapsed:
-    call .getTimeDateCompare
-    jne .loopTillTimeElapsed
-    ;Now we triple fault
-    lidt [.resetIDT] ;Triple fault the machine
-    jmp short .toHell
-.toHell:
-    int 00h ;Call div by 0 to trigger reboot if not somehow failed yet
-    jmp short .toHell
-.resetIDT:
-    dw 0
-    dq 0
-.getTimeDateCompare:
-    push rbx
-    call getDateAndTimeOld
-    pop rbx
-    and edx, 1Fh
-    cmp edx, ebx
-    return
-
+    call dosCrit2Enter  ;Get the lock to drivers
+    cli                 ;Halt all interrupts
+.fatalLp:
+    pause
+    jmp short .fatalLp  ;Stay here forever, we cant guarantee anything anymore!
 .cpuextendederror:
     pop rdx
     dec rcx
     push rcx
-    lea rdi, byteBuffer
+    lea rdi, extErrByteBuf
     mov cl, 2    ;CAN CHANGE TO 4 BYTES IN THE FUTURE
     xchg dl, dh   
 .pr1:
@@ -480,7 +458,7 @@ cpu_exception:
     dec cl
     jnz .pr1
 
-    lea rsi, byteBuffer
+    lea rsi, extErrByteBuf
     mov ebx, 4  ;Print four nybbles
     call .writeExceptionMessage
 
@@ -494,7 +472,7 @@ cpu_exception:
 
     mov cl, 8   ;16 nybbles
     mov rdx, cr2    ;Get page fault address
-    lea rdi, byteBuffer
+    lea rdi, extErrByteBuf
 .pr2:
     rol rdx, 8    ;Print rdx
     mov al, dl
@@ -504,7 +482,7 @@ cpu_exception:
     dec cl
     jnz .pr2
 
-    lea rsi, byteBuffer
+    lea rsi, extErrByteBuf
     mov ebx, 16
     call .writeExceptionMessage
 
