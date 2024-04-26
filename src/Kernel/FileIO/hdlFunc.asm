@@ -186,7 +186,12 @@ deleteFileHdl:     ;ah = 41h, handle function, delete from specified dir
     jmp extGoodExit
 
 lseekHdl:          ;ah = 42h, handle function, LSEEK
-;New pointer passed in edx! ecx will be DOCUMENTED as having to be 0
+;Input: ecx=0, edx=Position to seek to
+;ecx may be non-zero for 64-bit IFS but currently DOS does not natively
+; support them. INT 2Fh filesystems may have a tough time if they wish to
+; use a 64 bit file pointer... They can try though!
+;Output: If CF=NC: edx=0, eax=New position of file handle
+;           Again, if network file, edx = Upper bytes of file hdl!
     call getSFTPtr
     jc extErrExit ;al (eax) has error code for bad file handle
     cmp al, 3
@@ -202,9 +207,11 @@ lseekHdl:          ;ah = 42h, handle function, LSEEK
 .seekset:
 ;Seek from the start (unsigned)
     mov dword [rdi + sft.dCurntOff], edx ;Store the new offset
+    xor edx, edx    ;All FAT files have 0 upper 32 bits! Set to 0!
+    ;We return the file position in eax anyway!
+.seekExit:
     call getUserRegs    ;Get user regs in rsi
     mov dword [rsi + callerFrame.rdx], edx
-.seekExit:
     mov eax, dword [rdi + sft.dCurntOff]  ;Return current offset if all ok!
     jmp extGoodExit2    ;Return OK in eax 
 .seekend:
