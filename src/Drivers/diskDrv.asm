@@ -236,8 +236,8 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
-    test byte [7c02h], 1
-    jnz .msdGenErr
+;    test byte [7c02h], 1
+;    jnz .msdGenErr
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
@@ -261,8 +261,8 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
-    test byte [7c02h], 2
-    jnz .msdGenErr
+;    test byte [7c02h], 2
+;    jnz .msdGenErr
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 
@@ -286,8 +286,8 @@ msdDriver:
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
-    test byte [7c02h], 2
-    jnz .msdGenErr
+;    test byte [7c02h], 2
+;    jnz .msdGenErr
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     call .msdCheckDeviceType
 

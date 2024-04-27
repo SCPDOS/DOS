@@ -562,16 +562,14 @@ getDiskDirectoryEntry:
     mov rbx, qword [currBuff]
     call prepSectorSearch
     ;Above function gets data buffer ptr in rsi
-    movzx eax, word [dirSect]   ;Get the sector in which the offset lies
-    movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-    mul ebx ;Multiply these two words so eax has number of bytes to
-    ; the current sector
-    shr eax, 5  ;Divide by 32 to get the number of dir entries we are skipping
-    mov ebx, dword [dirEntry]   ;Get offset into dir file cluster
-    sub ebx, eax    ;Now ebx has the dir entry offset in the current sector
-    shl ebx, 5  ;Multiply by 32 to get byte offset
-    mov word [entry], bx  ;Save 32 byte offset into sector
-    add rsi, rbx    ;rsi now points to the entry
+    xor edx, edx
+    mov eax, dword [dirEntry]   ;Get offset into dir file cluster
+    shl eax, 5  ;Multiply by 32 to get byte offset
+    ;Make the amount we add to rsi modulo size of bytes per sector
+    movzx ebx, word [rbp + dpb.wBytesPerSector]
+    div ebx ;Divide eax by ebx. Get remainer in dx
+    add rsi, rdx    ;rsi now points to the entry
+    mov word [entry], dx
     pop rbx
     return
 
@@ -629,6 +627,7 @@ growDirectory:
 ;        CF=CY => Something went wrong. Rip. 
     push rbx
     push rcx
+    push rdi
     mov eax, dword [dirClustPar]    ;Get first cluster for directory
     test eax, eax
     jz .exit
@@ -644,6 +643,7 @@ growDirectory:
     jc .exit
     clc
 .exit:
+    pop rdi
     pop rcx
     pop rbx
     return   

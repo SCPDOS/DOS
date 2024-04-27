@@ -103,7 +103,7 @@ searchMoreDir:
     call getBufForDir
     jc searchDir.fnfError
     call prepSectorSearch  ;rbx has the buffer ptr for this dir sector
-    call findInBuffer.getNumberOfEntries    ;Get in ecx # of entries in sector
+    ;Gets also in ecx the # of 32 byte entries a sector
     mov eax, dword [dirEntry]
     and eax, 0Fh    ;Get the value modulo 16
     sub ecx, eax    ;Subtract the offset to get the number of entries left
@@ -112,7 +112,7 @@ searchMoreDir:
     ;We continue AS IF this entry was bad
     ;Now setup al as upon normal entry 
     mov al, byte [searchAttr]  ;Get the search attrib
-    jmp findInBuffer.nextEntry  ;Proceed from within function
+    jmp findInBuffer.nextEntry ;Proceed from within to resume search properly!
     ;The return address on the stack will return to the ep's pushed
 .oldFat:
 ;Old FAT 12/16 root dirs fall thru here only
@@ -179,12 +179,19 @@ searchDir:
     jc .fnfError
     cmp eax, -1
     je .chardev    ;We are at the end of the directory and didnt find the file
-    inc word [dirSect]  ;Goto next sector
+    mov qword [currSectD], rax  ;Store the sector number here
+    inc word [dirSect]  ;Goto next sector in cluster
+    push rax    ;Save the next sector we need to read
     mov eax, dword [dirClustA]  ;Get disk relative cluster
     cmp eax, dword [currClustD] ;Did it change?
+    pop rax
     je .sectorLoop  ;If not, we advanced sectors only
     mov word [dirSect], 0   ;If we did, reset this counter
-    jmp short .sectorLoop 
+    push rax
+    mov eax, dword [currClustD]
+    mov dword [dirClustA], eax  ;Put new cluster number in var
+    pop rax
+    jmp .sectorLoop
 
 .oldRoot:
 ;Different search for FAT 12/16 root directories. We assume we have 
@@ -229,12 +236,12 @@ prepSectorSearch:
 
 findInBuffer:
 ;Input:  rsi = Sector buffer data area
+;        cx = Number of entries to check in the sector
 ;Output: CF=CY => No entries found
 ;        ZF=NE => Keep searching in subsequent directories
 ;        ZF=ZE => End of directory reached early, stop
 ;        CF=NC => Entry found, directory data copied to SDA
 ;        rsi = Points to start of the disk buffer directory entry
-    call .getNumberOfEntries    ;Get in ecx # of entries in sector
     mov al, byte [searchAttr]  ;Get the search attrib
     call adjustSearchAttr   ;Adjust the search attributes, including volid
 .searchMainLp:
@@ -337,13 +344,6 @@ findInBuffer:
     je .ncLp
 .ncExit:
     pop rcx
-    return
-.getNumberOfEntries:
-    push rbp
-    mov rbp, qword [workingDPB]
-    movzx ecx, word [rbp + dpb.wBytesPerSector]
-    shr ecx, 5  ;Divide by 32
-    pop rbp
     return
 adjustSearchAttr:
 ;Converts the byte to a system only if the bit is set

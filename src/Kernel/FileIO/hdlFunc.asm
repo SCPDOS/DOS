@@ -1148,7 +1148,6 @@ renameMain:
     stc
     pop rdi
     jmp short .exit2
-
 .searchForDirSpace:
 ;Input: eax = First directory to search 
     mov dword [dirClustA], eax
