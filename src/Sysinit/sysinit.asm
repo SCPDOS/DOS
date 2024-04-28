@@ -403,6 +403,10 @@ defaultFileHandles:
     mov qword fs:[sftHeadPtr], rdx  ;Start from this SFT header
     mov qword [rdx + sfth.qNextSFTPtr], -1
     mov word [rdx + sfth.wNumFiles], 5  ;This SFTH has space for 5 SFTs
+;Select default drive here so openStreams doesnt fail!
+    movzx edx, byte [DFLTDRIVE]    ;Get the default drive
+    mov ah, 0Eh ;Select drive
+    int 21h
 
     call openStreams
     jc OEMHALT
@@ -429,9 +433,6 @@ setupFrame:
     movzx eax, byte [LASTDRIVE]
     mov qword [rbp - cfgFrame.newLastdrive], rax
 
-    movzx edx, byte [DFLTDRIVE]    ;Get the default drive
-    mov ah, 0Eh ;Select drive
-    int 21h
     lea rdx, cfgspec    ;CONFIG.SYS, must be on bootdrive for now
     mov ah, 3Dh ;Open file for reading
     mov al, ReadAccess

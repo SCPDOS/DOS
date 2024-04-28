@@ -217,7 +217,7 @@ msdInit:
     cmp byte [remDrv], 0  ;Just skip removable init if no rem drives
     jnz .removables
     add byte [physVol], 2 ;Pretend we have two more drives (A: and B:)
-    ret ;and return!
+    jmp short .msdExit  ;And return!
 .removables:
     xor ecx, ecx    ;Read sector 0
     call .readSectorAndAddDataToTables
