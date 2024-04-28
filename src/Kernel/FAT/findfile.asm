@@ -104,11 +104,15 @@ searchMoreDir:
     jc searchDir.fnfError
     call prepSectorSearch  ;rbx has the buffer ptr for this dir sector
     ;Gets also in ecx the # of 32 byte entries a sector
-    mov eax, dword [dirEntry]
-    and eax, 0Fh    ;Get the value modulo 16
-    sub ecx, eax    ;Subtract the offset to get the number of entries left
-    shl eax, 5  ;Multiply by 32 to turn into bytes to add to rsi
-    add rsi, rax    ;rsi points to current entry in the sector.
+    mov eax, dword [dirEntry]   ;Get 32 byte offset into directory
+    ;Need to convert into an offset into this sector
+    push rdx
+    xor edx, edx
+    div ecx     ;Divide dirEntry by max entries in sector. Remainder in edx.
+    sub ecx, edx ;Subtract the offset to get the number of entries left
+    shl edx, 5  ;Multiply by 32 to turn into bytes to add to rsi
+    add rsi, rdx    ;rsi points to current entry in the sector.
+    pop rdx
     ;We continue AS IF this entry was bad
     ;Now setup al as upon normal entry 
     mov al, byte [searchAttr]  ;Get the search attrib
