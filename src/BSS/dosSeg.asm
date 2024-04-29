@@ -295,7 +295,6 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
 ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
 ; and 32 byte offset into the sector for directory
     tempSect    dq ?  ;A scratch sector number
-sectTfr:    ;Symbol to use this var to hold a counter on disk read/write ops 
 pathLen:    ;Used to store the length of a path string for removal strcmp
     entry       dw ?  ;32 byte offset into a sector or #fats sectors/fat
 ;***************************************************|
