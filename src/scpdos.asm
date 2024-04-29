@@ -10,16 +10,25 @@ BITS 64
 %include "./src/Debug/debSym.inc"
 %include "./src/Include/dosError.inc"
 %include "./src/Include/dosExec.inc"
-Segment .text align=1   ;OEMINIT code
-%define currSegVBase 0
-%include "./src/Sysinit/oeminit.asm"
-;SYSINIT code
+Segment otext align=1   
+;OEMINIT code segment
+%include "./src/Oeminit/oeminit.asm"
+Segment odata follows=otext align=1 vfollows=otext valign=1
+;OEMINIT data segment
+Segment stext follows=odata align=1 vfollows=odata valign=1
+;SYSINIT code segment
+%define currSegVBase section.stext.vstart
 %include "./src/Sysinit/sysinit.asm"
 %include "./src/Sysinit/cfginit.asm"
-Segment dSeg nobits align=1 start=0     ;BSS data segment
+Segment sdata follows=stext align=1 vfollows=stext valign=1
+;SYSINIT data segment
+%include "./src/Sysinit/sysdat.asm" 
+Segment dBSS nobits align=1 start=0
+;DOS BSS data segment
 %include "./src/BSS/dosSeg.asm"
-Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
-%define currSegVBase section.resSeg.vstart
+Segment dtext follows=sdata align=1 vfollows=dBSS valign=1 
+;DOS main data/code seg. No separation, as this is a single binary blob
+%define currSegVBase section.dtext.vstart
 %include "./src/Data/staticData.asm"
 %include "./src/Data/dispTbl.asm"
 %if DEBUG
@@ -46,8 +55,8 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./src/Kernel/Net/server.asm"
 %include "./src/Kernel/Net/multiplx.asm"
 %include "./src/Kernel/Net/share.asm"
-resSegL  equ ($-$$)
-Segment kDrvText follows=resSeg vfollows=resSeg align=1 valign=1
+dtextL  equ ($-$$)
+Segment kDrvText follows=dtext vfollows=dtext align=1 valign=1
 ;All drivers are linked into the kDrvText segment
 %define currSegVBase section.kDrvText.vstart
 %include "./src/Drivers/drvHdrs.asm"
@@ -61,4 +70,4 @@ Segment kDrvBSS follows=kDrvDat align=1 nobits
 %include "./src/Drivers/drvBuf.asm"
     alignb 10h  ;Ensure paragraph alignment
 dosEnd: ;Used to compute the size of resident DOS
-dosLen equ kDrvDatL + kDrvTextL + resSegL
+dosLen equ kDrvDatL + kDrvTextL + dtextL
