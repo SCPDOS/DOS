@@ -10,12 +10,12 @@ BITS 64
 %include "./src/Debug/debSym.inc"
 %include "./src/Include/dosError.inc"
 %include "./src/Include/dosExec.inc"
-Segment .text align=1   ;Init code
+Segment .text align=1   ;OEMINIT code
 %define currSegVBase 0
-%include "./src/Sysinit/oemreloc.asm"
+%include "./src/Sysinit/oeminit.asm"
+;SYSINIT code
 %include "./src/Sysinit/sysinit.asm"
 %include "./src/Sysinit/cfginit.asm"
-%include "./src/Sysinit/oeminit.asm"
 Segment dSeg nobits align=1 start=0     ;BSS data segment
 %include "./src/BSS/dosSeg.asm"
 Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
@@ -46,13 +46,19 @@ Segment resSeg follows=.text align=1 vfollows=dSeg valign=1 ;DOS main code seg
 %include "./src/Kernel/Net/server.asm"
 %include "./src/Kernel/Net/multiplx.asm"
 %include "./src/Kernel/Net/share.asm"
-;These driver files are to be written by an OEM.
+resSegL  equ ($-$$)
+Segment kDrvText follows=resSeg vfollows=resSeg align=1 valign=1
+;All drivers are linked into the kDrvText segment
+%define currSegVBase section.kDrvText.vstart
 %include "./src/Drivers/drvHdrs.asm"
 %include "./src/Drivers/charDrv.asm"
 %include "./src/Drivers/diskDrv.asm"
 %include "./src/Drivers/drvInits.asm"
-dosLen  equ ($-$$)  ;Get the length of the Segment
-Segment drvbss follows=resSeg align=1 nobits
+kDrvTextL  equ ($-$$)
+Segment kDrvDat follows=kDrvText vfollows=kDrvText align=1 valign=1
+kDrvDatL  equ ($-$$)
+Segment kDrvBSS follows=kDrvDat align=1 nobits
 %include "./src/Drivers/drvBuf.asm"
     alignb 10h  ;Ensure paragraph alignment
 dosEnd: ;Used to compute the size of resident DOS
+dosLen equ kDrvDatL + kDrvTextL + resSegL

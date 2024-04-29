@@ -1,8 +1,6 @@
 
-sysinit:    ;Control is passed here from OEMINIT
-    call OEMINIT    ;First we call OEMINIT
-    jc OEMHALT      ;If it returns CF=CY, assume halt boot
-;First move the OEMINIT into fs 
+SYSENTRY:    ;Control is passed here from OEMINIT module
+;First move the load address into fs 
     mov ecx, 0C0000100h ;Write FS MSR
     mov rdi, qword [FINALDOSPTR] ;Pointer of the address we loaded at
     mov eax, edi
@@ -404,7 +402,7 @@ defaultFileHandles:
     mov qword [rdx + sfth.qNextSFTPtr], -1
     mov word [rdx + sfth.wNumFiles], 5  ;This SFTH has space for 5 SFTs
 ;Select default drive here so openStreams doesnt fail!
-    movzx edx, byte [DFLTDRIVE]    ;Get the default drive
+    movzx edx, byte [rbp + bootDrive]    ;Get the default drive
     mov ah, 0Eh ;Select drive
     int 21h
 
@@ -439,6 +437,9 @@ setupFrame:
     int 21h
     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
     call configParse ;Else, parse the config file
+;Config.sys mightve made changes to files. Update DOS!
+    movzx eax, byte [FILES]
+    mov byte [rbp + numFiles], al
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
@@ -996,11 +997,9 @@ localIDTpointer: ;Local IDT pointer
     .Limit  dw 0
     .Base   dq 0
 
-FINALDOSPTR dq 0    ;Pointer to where dSeg should be loaded
-DOSENDPTR   dq 0    ;Pointer to the first free byte AFTER DOS
-MCBANCHOR   dq 0    ;Pointer to the Anchor MCB
-
 ;DOS Data given by OEM
+FINALDOSPTR dq 0    ;Pointer to where dSeg should be loaded
+MCBANCHOR   dq 0    ;Pointer to the Anchor MCB
 FILES       db 0    ;Default number of FILES
 BUFFERS     db 0    ;Default number of BUFFERS
 DFLTDRIVE   db 0    ;Default drive number (0-25), this is the boot drive

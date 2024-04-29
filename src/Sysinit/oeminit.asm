@@ -1,11 +1,104 @@
 %use masm
+;SYSINIT doesnt care about the internal structure of the OEMINIT module.
+;Thus, an OEM is free to arrange code and data within the OEMINIT module,
+; as they please. OEMINIT is always the first module linked to in the DOS
+; binary blob file and therefore an OEM can guarantee that the first byte 
+; of the OEMINIT module will be the first byte executed by the machine.
+;SYSINIT starts being invoked only once OEMINIT jumps to the symbol SYSENTRY.
+;OEMINIT can even be an .EXE or .ELF executable if the firmware allows it, 
+; as long as it can link with SYSINIT by EXPORTING and IMPORTING the right
+; symbols, its ok! Also, the DOS linker script requires that the OEMINIT 
+; module be the first thing in the executable file, with the default
+; kernel drivers being the at the end, after the DOS, in the segment
+; kDrvText and kDrvData (no kDrvBSS is allowed)!
+;---------------------------------------------------------------------------;
+;PUBLIC PROCEDURES needed to link with SYSINIT:                             ;
+;---------------------------------------------------------------------------;
+; OEMMCBINIT -> Does MCB chain building as SYSINIT doesn't know how to read ;
+;   any memory maps. Thats on the OEM to parse and build for us.            ;
+; OEMHALT -> If anything goes wrong during the initial phase of SYSINIT,    ;
+;   it will use this routine to print a message and halt the machine.       ;
+; OEMCALLBK -> Used to finalise any setup before xfring control to SHELL=   ;
+;   At this point, DOS is ready to be used.                                 ;
+;---------------------------------------------------------------------------;
+;EXTERN VARS needed to link with SYSINIT:                                   ;
+;---------------------------------------------------------------------------;
+; These vars need to be initialised before jumping to SYSENTRY              ;
+;---------------------------------------------------------------------------;
+;FINALDOSPTR dq ?    ;Pointer to where dSeg should be loaded                ;
+;FILES       db ?    ;Default number of FILES                               ;
+;BUFFERS     db ?    ;Default number of BUFFERS                             ;
+;DFLTDRIVE   db ?    ;Default drive number (0-25), this is the boot drive   ;
+;LASTDRIVE   db ?    ;Default last drive number (0-25)                      ;
+;OEMBIOS     db ?    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS   ;
+;OEMDRVCHAIN dq ?    ;Pointer to the uninitialised device drivers           ;
+;OEMPTR      dq ?    ;Pointer to store at biosPtr                           ;
+;OEMVERSION  dd ?    ;BIOS number, to be used by drivers for id-ing         ;
+;---------------------------------------------------------------------------;
+; These vars are initialised by SYSINIT, to be used in OEMMCBINIT           ;
+; These vars are undefined outside of OEMMCBINIT                            ;
+;---------------------------------------------------------------------------;
+;MCBANCHOR   dq ?    ;Pointer to the Anchor MCB, part of dSEg               ;
+;---------------------------------------------------------------------------;
+; These vars are initialised by SYSINIT, to be used in OEMCALLBK            ;
+; These vars are undefined outside of OEMCALLBK                             ;
+;---------------------------------------------------------------------------;
+;OEMMEMPTR   dq ?    ;Var to save ptr to the 64Kb block passed to OEMCALLBK ;
+;---------------------------------------------------------------------------;
+;
 
-OEMINIT PROC NEAR
-;Sets the Statistical data and adds any page tables that are needed
-;Entered with:
-;           rsi -> BIOS userbase
-;           rdi -> APT load area (page aligned)
-;           r15 -> Boot drive
+OEMRELOC PROC NEAR  ;OEMINIT Entry point from SCP/BIOS
+; We arrive here with the following values in the registers.
+; rbx =  LBA of first Logical Block after SCP/BIOS
+; dx  = Int 33h boot device number
+; fs  = userbase pointer (pointer to first usable block of RAM)
+
+    dw 0AA55h           ;Initial signature
+    movzx r15, dl       ;Save the drive letter in r15
+    mov r14, rbx        ;Save next sector number
+    lea rsi, sysInitldr
+    mov edi, 600h   ;Hardcoded address, 600h
+    mov ecx, 512/8      ;TMP: DOS boot device MUST HAVE 512 byte sectors.
+    rep movsq   ;Copy over
+    mov eax, 600h   ;Push the new address to go to
+    push rax
+    ret ;Jump to this value (600h + whatever the size here is)
+sysInitldr:
+;Now the tough part, load DOS to 800
+    mov esi, 10h    ;Use as a loop counter
+.read:
+    mov dl, r15b    ;Get Drive number
+    mov rbx, 800h   ;Load at next 512 byte marker
+    mov ecx, r14d   ;Get this sector LBA (first sector after BIOS)
+    inc ecx         ;and want the next sector (DOS AND BIOS MUST BE CONTIGUOUS)
+    mov al, 65h     ;Load a large number of sectors (about 51.7k)
+    mov ah, 82h     ;Read LBA
+    int 33h
+    jc .readFail
+    push qword 800h
+    ret   ;No error? Yay, DOS loaded.
+.readFail:
+    dec esi
+    jnz .read
+    lea rbp, .msg   ;Print error message
+    mov eax, 1304h
+    int 30h
+    int 38h ;If an error, fall into SYSDEBUG
+.msg db "SCP/DOS Load Error",0Ah,0Dh,0
+    db 200h-($-$$) dup 90h ;Fill rest of the sector with NOPs
+;END OF FIRST SECTOR!!
+;Now move the alignment of the DOSSEG to 4Kb boundary
+initBegin:
+    cld ;Ensure all writes are done the right way firstly!
+    mov ecx, 0C0000100h ;Read FS MSR
+    rdmsr
+    mov edi, edx        ;Get the hi dword, and clear the upper bytes
+    shl rdi, 20h        ;Shift high
+    mov edi, eax        ;Get the low dword in
+    mov rsi, rdi        ;Save userbase in rsi temporarily
+    and rdi, ~0FFFh
+    add rdi, 1000h      ;Make this pointer 4Kb aligned!
+;Now sets the Statistical data and adds any page tables that are needed
 ;------------------------------------------------;
 ;      Start saving basic DOS data to the        ; 
 ;                OEM Variables                   ;
@@ -117,10 +210,10 @@ pdptLoop:
     out 021h, al
     out 0A1h, al
     sti
-;Ensure that interrupts are still masked
-    ret
+
+    jmp SYSENTRY    ;Now all vars setup, we can proceed!
+OEMSYSINIT ENDP
 aptSize equ 60*4096 ;(APT = Additional Page Tables)
-OEMINIT ENDP
 
 OEMMCBINIT PROC NEAR
     mov eax, 0E820h ;Get memory map
