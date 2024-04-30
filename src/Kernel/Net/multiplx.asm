@@ -66,8 +66,9 @@ multiplexHdlr:          ;Int 2Fh, AH=12h, exposed internal functions
     pop rcx
     mov qword [rsp + 8], rbx
     pop rbx
-    mov rax, qword [rsp + 8*8]  ;Pick the word pushed on the stack before call 
-    return
+    mov rax, qword [rsp + 5*8]  ;Get the old stack pointer from the frame
+    mov rax, qword [rax]        ;Get the argument we pushed on the stack
+    return  ;Now we have no alignement requirements :D 
 
 .retAddr:
     push rbx
