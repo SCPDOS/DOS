@@ -340,6 +340,7 @@ struc ffBlock   ;The structure of the Find First structure at the DTA
     .asciizName db 13 dup (?) ;ASCIIZ name with dot and terminating nul
 endstruc
 
+dfltJFTsize equ 20  ;Default size of PSP JFT
 struc psp
     .return     db 2 dup (?)  ;Should always be CDh 20h, same place as DOS
     .allocSize  dd ?  ;Number of paras in init alloc or when exiting as TSR.
@@ -354,7 +355,7 @@ struc psp
 ;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
 ; always used and jftSize.
     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
-    .jobFileTbl resb dfltJFTsize ;Main File handle array, JFT
+    .jobFileTbl db dfltJFTsize dup (?) ;Main File handle array, JFT
     .envPtr     dq ?  ;Pointer to the environment
     .rspPtr     dq ?  ;Pointer to rsp on entry to Int 21h
     .jftSize    dw ?  ;JFT array size, 20 => PSP JFT in use
@@ -369,8 +370,6 @@ struc psp
     .parmList   db ?   ;Number of characters in command tail
     .progTail   db 127 dup (?) ;Default DTA/Program tail
 endstruc
-
-dfltJFTsize equ 20  ;Default size of PSP JFT
 
 struc clkStruc
     .dateWord   dw ?

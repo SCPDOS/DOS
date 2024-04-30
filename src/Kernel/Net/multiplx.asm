@@ -64,8 +64,13 @@ multiplexHdlr:          ;Int 2Fh, AH=12h, exposed internal functions
     add rbx, rcx
     pop rcx
     mov qword [rsp + 8], rbx
+    mov rbx, qword [rsp + 6*8]  ;Get the stack pointer here
+    and ebx, 0Fh    ;Zero the upper qword, get low nybble
+    jz .okStack
+    mov ebx, 8      ;Add one to deal with alignment
+.okStack:
+    mov rax, qword [rsp + rbx +9*8]  ;Pick the word pushed on the stack before call 
     pop rbx
-    mov rax, qword [rsp + 8*8]  ;Pick the word pushed on the stack before call 
     return
 
 .retAddr:
