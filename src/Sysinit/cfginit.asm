@@ -756,11 +756,9 @@ configParse:
 ;Input: al = Char to UC
 ;Output: al = UC'd char
     push rbx    ;Save on original stack
-    mov rbx, rsp    ;Save across the call.
-    push rax    ;Push two copies in case we get aligned (since we 8byte)
-    push rax
+    push rax    ;Put the word on the stack
     mov eax, 1213h  ;Uppercase the char in al
     int 2fh
-    mov rsp, rbx    ;Bring back stack
-    pop rbx         ;Get back original rbx
+    pop rbx     ;Pop off the word we placed on the stack
+    pop rbx     ;Get back original rbx
     return
