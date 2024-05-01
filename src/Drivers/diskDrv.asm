@@ -147,6 +147,11 @@ msdDriver:
     ;If the BPB makes no sense, claim it was changed, so we can rebuild BPB.
     test byte [rbp + bpb.secPerClus], -1
     jz .mmcChange   ;If the BPB weird, say that it was changed!
+    ;Now set the volume ID appropriately so that if error, we have it ready
+    push rax
+    lea rax, qword [rbp + bpb.volID]    ;Get the volID from the BPB
+    mov qword [rbx + mediaCheckReqPkt.desptr], rax 
+    pop rax
 
     call .msdCheckDeviceType    ;Check and ensure that media type is "swapped"
     jnz .mmcChange  ;Always change if swapping between same phys volume!
@@ -176,8 +181,6 @@ msdDriver:
     je .mmcUnsure
 .mmcChange:
     mov byte [rbx + mediaCheckReqPkt.medret], -1
-    lea rax, .msdDefLabel          ;Temp, ret def label
-    mov qword [rbx + mediaCheckReqPkt.desptr], rax 
     ;Check here if there were any open handles on the device when it was changed
     ret
 .mmcUnsure:
@@ -235,6 +238,7 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
+    call .msdIOSetVolLbl
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
 ;    test byte [7c02h], 1
 ;    jnz .msdGenErr
@@ -260,6 +264,7 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
+    call .msdIOSetVolLbl
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
 ;    test byte [7c02h], 2
 ;    jnz .msdGenErr
@@ -285,6 +290,7 @@ msdDriver:
     mov al, 05h ;Bad request structure length
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
     jne .msdWriteErrorCode
+    call .msdIOSetVolLbl
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
 ;    test byte [7c02h], 2
 ;    jnz .msdGenErr
@@ -501,7 +507,16 @@ msdDriver:
     call .msdInternalSetUnitNumber  ;Set unit number internally
     xor eax, eax
     ret
-
+.msdIOSetVolLbl:
+;Sets the volume label on requests to read, write, write/verify. Medchk does its own
+;Input: rbx -> io request packet
+;       rbp -> BPB to get volume ID from
+;Output: Pointer placed in io request packet
+    push rax
+    lea rax, qword [rbp + bpb.volID]    ;Get the volID from the BPB
+    mov qword [rbx + ioReqPkt.desptr], rax 
+    pop rax
+    ret
 .msdStrike db 0Dh,0Ah,"Insert for drive "
 .msdStrikeLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah
 .msdStrikeL equ $ - .msdStrike
