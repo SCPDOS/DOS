@@ -216,7 +216,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [Int24Trans], -1   ;We are translating a Abort to Fail. Mark it
     jmp short .exit
 .kill:
-    mov eax, edi    ;Make the return error code the Driver Error Code
+    xor eax, eax    ;Default return code to 0. Abort flag will be set later
     mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
     mov byte [volIdFlag], 0     ;Clear special vol search byte if set
     ;Before returning, we need to set the aborting psp.rspPtr back to 
