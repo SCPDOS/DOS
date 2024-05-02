@@ -216,8 +216,6 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [Int24Trans], -1   ;We are translating a Abort to Fail. Mark it
     jmp short .exit
 .kill:
-    add di, drvErrShft
-    mov word [errorExCde], di ;Save the error code if Abort
     mov eax, edi    ;Make the return error code the Driver Error Code
     mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
     mov byte [volIdFlag], 0     ;Clear special vol search byte if set
