@@ -529,7 +529,7 @@ msdDriver:
 .msdSingleDrv   db 0    ;Keeps track of the last single drive used. 
 .msdCurDev   db 0  ;Dev to be used by the driver saved here! (usually 1-1)
 ; Except when single drive in use, in which case Drive A and B refer to device 0
-.msdBIOSmap  db 0, 1, -1, -1, -1 ;Translates DOS drive number to BIOS number
+.msdBIOSmap  db -1, -1, -1, -1, -1 ;Translates DOS drive number to BIOS number
 .msdHdlCnt   db 5 dup (0)    ;Keeps a count of open handles to drive N
 .msdBPBTbl   dq 5 dup (0)    ;BPB pointer table to be returned
 .msdBPBblks  db 5*bpbEx_size dup (0) ;Max 5 bpb records of exFAT bpb size
