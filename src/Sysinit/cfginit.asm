@@ -759,13 +759,14 @@ configParse:
     ;If a sep, a CR or a default switchchar, we are done!
     cmp al, CR
     je .shSpecDone   
-    call isCharSeparator
+    call .isCharSeparator
     je .shSpecDone
     cmp al, dl
     je .shSpecDone
     stosb   ;Else store the char!
     jmp short .shLp
 .shSpecDone:
+    mov byte [rdi], 0   ;Now store the null terminator :)
     mov byte [tempPSP + psp.dta], 0 ;Reset the count of chars in the tail
     lea rdi, tempPSP + psp.dta + 1  ;Now store the tail here
     dec rsi     ;Go back to get the char again

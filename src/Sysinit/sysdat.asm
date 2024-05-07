@@ -2,7 +2,7 @@
 ;       DATA FOR SYSINIT        :
 ;--------------------------------
 strtmsg db "Starting SCP/DOS...",0Ah,0Dh,"$"
-badCom  db "Bad or missing Command interpreter",0Ah,0Dh,"$"
+badCom  db 0Ah,0Dh,"Bad or missing Command interpreter",0Ah,0Dh,"$"
 conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
@@ -98,5 +98,6 @@ tempPSP: ;Points to a 256 byte space that is set up appropriately
     at psp.prevPSP,     dq 0
     at psp.fcb1,        db 16 dup (0)
     at psp.fcb2,        db 20 dup (0)
-    at psp.dta,         db 0, CR, 126 dup (0)   ;Dummy empty command line
+    ;Dummy cmd line for COMMAND.COM
+    at psp.dta,         db 2, "/P",CR,123 dup (0)   
     iend

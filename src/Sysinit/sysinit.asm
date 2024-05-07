@@ -591,10 +591,10 @@ l1:
     mov eax, 4900h  ;Free the memory block
     int 21h
 l2:
-    ;Load Shell now
-    ;Get currentPSP ptr
-    ;mov ah, 62h ;Get current PSP ptr in rbx
-    ;int 21h
+;Load Shell now
+    lea rdx, initBadRet
+    mov eax, 2522h  ;Setup the return address if the top level process dies
+    int 21h
 
     lea rbx, cmdBlock
     lea rsi, tempPSP
@@ -607,6 +607,7 @@ l2:
     lea rdx, cmdSpec
     mov eax, 4B00h  ;Exec Prog
     int 21h
+initBadRet:
     lea rdx, badCom
     mov ah, 09h ;Print message
     int 21h

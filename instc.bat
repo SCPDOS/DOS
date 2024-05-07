@@ -16,4 +16,5 @@ echo dir >> c:\autoexec.bat
 echo buffers=99 > c:\config.sys
 echo files=254 >> c:\config.sys
 echo lastdrive=z >> c:\config.sys
+echo shell=c:\dos\command.com c:\dos /e:2048 /p >> c:\config.sys
 echo Install complete
