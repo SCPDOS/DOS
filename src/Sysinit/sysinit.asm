@@ -418,7 +418,6 @@ defaultFileHandles:
 ;               Load CONFIG.SYS                  ;
 ;------------------------------------------------;
 ;Setup stackframe, workout base 
-setupFrame:
     push rbp
     mov rbp, rsp
     sub rsp, cfgFrame_size
@@ -592,14 +591,10 @@ l1:
     mov eax, 4900h  ;Free the memory block
     int 21h
 l2:
-    ;Load COMMAND.COM
+    ;Load Shell now
     ;Get currentPSP ptr
-    mov ah, 62h ;Get current PSP ptr in rbx
-    int 21h
-    mov ah, 19h ;Get current Drive letter in al
-    int 21h
-    add al, "A"
-    mov byte [cmdLine], al  ;Store drive letter at start of command line
+    ;mov ah, 62h ;Get current PSP ptr in rbx
+    ;int 21h
 
     lea rbx, cmdBlock
     lea rsi, tempPSP
@@ -609,7 +604,7 @@ l2:
     mov qword [rbx + execProg.pfcb2], rax
     lea rax, qword [rsi + psp.dta]  ;Get the dummy command line ptr
     mov qword [rbx + execProg.pCmdLine], rax    ;Store dummy command line here
-    lea rdx, cmdLine
+    lea rdx, cmdSpec
     mov eax, 4B00h  ;Exec Prog
     int 21h
     lea rdx, badCom

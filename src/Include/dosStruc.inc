@@ -306,19 +306,19 @@ struc dpl
 endstruc
 
 struc cfgFrame  ;Frame used for config.sys parsing
-    .oldRBP         dq ?  ;Ptr to DOSSEG
-    .newBuffers     dq ?  ;New buffers value
+    .oldRBP         dq ?    ;Ptr to DOSSEG
+    .newBuffers     dq ?    ;New buffers value
     .newSFTVal      dq ?
     .newFCBSVal     dq ?
-    .newProtFCBSVal dq ?  ;Number of protected FCBS
+    .newProtFCBSVal dq ?    ;Number of protected FCBS
     .newLastdrive   dq ?
-    .newStacks      dq ?  ;Ignored for now
-    .newStackSize   dq ?  ;Ignored for now
-    .cfgHandle      dq ?  ;CONFIG.SYS handle
-    .lastLine       dq ?  ;Set if the last line is current
-    .linePtr        dq ?  ;Ptr to line buffer of line being processed
-    .driverBreak    dq ?  ;Ptr to the pathname terminator 
-    .breakChar      dq ?  ;Char that was replaced by null for terminator
+    .newStacks      dq ?    ;Ignored for now
+    .newStackSize   dq ?    ;Ignored for now
+    .cfgHandle      dq ?    ;CONFIG.SYS handle
+    .lastLine       dq ?    ;Set if the last line is current
+    .linePtr        dq ?    ;Ptr to line buffer of line being processed
+    .driverBreak    dq ?    ;Ptr to the pathname terminator 
+    .breakChar      dq ?    ;Char that was replaced by null for terminator
 endstruc
 
 struc filename

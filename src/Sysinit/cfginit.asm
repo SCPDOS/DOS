@@ -710,7 +710,7 @@ configParse:
 
 .lastdriveHandler:
     mov rsi, qword [rbp - cfgFrame.linePtr]
-    add rsi, 9  ;Go past LASTDRIVE=
+    add rsi, 9  ;Go past LASTDRIVE
     call .skipSeparators
     lodsb   ;Get this char
     movzx eax, al   ;Zero extend to eax
@@ -736,12 +736,55 @@ configParse:
     mov qword [rbp - cfgFrame.newLastdrive], rax
     clc
     return
+
+.shellHandler:
+    mov rsi, qword [rbp - cfgFrame.linePtr]
+    mov rbx, rsi
+    add rsi, 5  ;Go past SHELL
+    call .skipSeparators    ;Spaces, equals sign etc
+    mov rdi, rsi
+    sub rdi, rbx    ;Get the depth into the string we are at
+    mov ecx, 128
+    sub ecx, edi    ;Get remaining valid char count for the string
+    mov rdi, rsi
+    mov eax, CR
+    repne scasb     ;Scan for the terminator
+    jne .badLineErrorMsg    ;If we didn't find it, complain!
+    ;Now we know we are safe, proceed with copy.
+    lea rdi, cmdSpec
+    mov eax, 3700h  ;Get switchchar in dl
+    int 21h
+.shLp:
+    lodsb
+    ;If a sep, a CR or a default switchchar, we are done!
+    cmp al, CR
+    je .shSpecDone   
+    call isCharSeparator
+    je .shSpecDone
+    cmp al, dl
+    je .shSpecDone
+    stosb   ;Else store the char!
+    jmp short .shLp
+.shSpecDone:
+    mov byte [tempPSP + psp.dta], 0 ;Reset the count of chars in the tail
+    lea rdi, tempPSP + psp.dta + 1  ;Now store the tail here
+    dec rsi     ;Go back to get the char again
+    ;This will work with CR especially well
+.shTailLp:
+    lodsb
+    cmp al, CR
+    je .shAllDone
+    stosb
+    inc byte [tempPSP + psp.dta]    ;Inc the char count!
+    jmp short .shTailLp
+.shAllDone: ;Only possible to get here is al=CR
+    stosb   ;Store the terminating CR
 .countryScan:
 .fcbHandler:
-.shellHandler:
 .stacksHandler:
 .drivParm:
 .comment:
+    clc
     return
 
 .cfgExit:

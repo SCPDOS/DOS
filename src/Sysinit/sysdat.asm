@@ -7,16 +7,8 @@ conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
 
-cfgspec db "CONFIG.SYS",0 ;ASCIIZ for CONFIG
-cmdLine db "_:\COMMAND.COM",0   ;ASCIIZ FOR COMMAND.COM
-
-cmdBlock:   ;Used also for overlay block
-    istruc execProg
-    at execProg.pEnv,       dq 0    ;Is set to point at the above line
-    at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
-    at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
-    at execProg.pfcb2,      dq 0
-    iend
+cfgspec db "CONFIG.SYS",0   ;ASCIIZ for CONFIG
+cmdSpec db "COMMAND.COM",0  ;ASCIIZ FOR COMMAND.COM. Overwrite in SHELL
 exceptData:
     dq i0
     dq i1
@@ -83,6 +75,13 @@ OEMPTR      dq 0    ;Pointer to store at biosPtr
 OEMVERSION  dd 0    ;BIOS number, to be used by drivers for id-ing
 
 initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
+cmdBlock:   ;Used also for overlay block for driver loads
+    istruc execProg
+    at execProg.pEnv,       dq 0    ;Is set to point at the above line
+    at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
+    at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
+    at execProg.pfcb2,      dq 0
+    iend
 tempPSP: ;Points to a 256 byte space that is set up appropriately
     istruc psp
     at psp.return,      db 0CDh, 20h
