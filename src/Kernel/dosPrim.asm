@@ -192,7 +192,7 @@ getDiskDPB:
     push rdi    ;Save the CDS ptr
     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
     pop rdi
-    jc .exitBad ;Preserve CF
+    retc
     jnz .exit
     ;Here re-init all CDS's that refer to the dpb if the disk was switched
     movzx ecx, byte [lastdrvNum]
@@ -213,7 +213,6 @@ getDiskDPB:
     jnz .checkCDS
 .exit:
     clc
-.exitBad:
     return
 
 ensureDiskValid:
@@ -281,7 +280,7 @@ ensureDiskValid:
     ;Get a buffer to read BPB into in rdi
     xor eax, eax   ;Dummy read sector 0 in
     call getBufForDOS ;Get a disk buffer for DOS
-    jc short .exitBad    ;Immediately exit with the carry flag set
+    retc    ;Immediately exit with the carry flag set
     lea rdi, qword [rbx + bufferHdr.dataarea]
 .repeatEP:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
@@ -302,7 +301,6 @@ ensureDiskValid:
     mov byte [rbx + bufferHdr.bufFATsize], al
     xor ah, ah    ;Set ZF and clear CF
     mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
-.exitBad:
     return
 .diskDrvCritErr:
 ;Critical Errors fall through here

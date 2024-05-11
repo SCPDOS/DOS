@@ -43,14 +43,13 @@ msdDriver:
     jmp short .msdDriverExit
 .msdIOError:  ;In Read and Write errors, rdi points to the dev struc
     mov rbx, rdi
-    movzx eax, al   ;Number of IO-ed sectors in last request
-    add esi, eax    ;esi Keeps sector count across transfers
     mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
 ;Now fall through to general error
 .msdGenDiskError:   ;DISK DRIVER ERROR HANDLER
     mov rbx, qword [reqHdrPtr]
     mov ah, 01h
     int 33h ;Read status of last operation
+    jc .msdGenErr
     cmp ah, 80h ;Timeout/Media Not Ready response (device not present)
     mov al, 02h ;Give device not ready error (sensibly I think)
     je .msdWriteErrorCode 

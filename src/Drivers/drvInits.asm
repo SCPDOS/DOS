@@ -135,7 +135,6 @@ msdInit:
 ;    mov byte [7c02h], 0
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
     push rbx    ;Push the pointer to the driver parameter block
-
     int 31h ;Get number of Int 33h devices in r8b
     shr r8, 8   ;Isolate bytes 1 and 2 of r8
     mov ax, r8w
@@ -212,7 +211,7 @@ msdInit:
 ;This forces the hard drives to start at C:
     mov r9, r8  ;Save number of next device after fixed drive in r9
     xor dl, dl  ;Start with removable device 0
-    mov r8b, dl ;Once r8b becomes 2, go past the disk drives
+    movzx r8, dl ;Once r8b becomes 2, go past the disk drives
     ;rdi points to the space for the subsequent bpb's
     cmp byte [remDrv], 0  ;Just skip removable init if no rem drives
     jnz .removables
@@ -227,7 +226,7 @@ msdInit:
     je .end
     cmp r8, 2 ;Are we back at drive C: ?
     jne .re0
-    mov r8b, r9b    ;Return to this drive number
+    movzx r8, r9b    ;Return to this drive number
 .re0:
     cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
     jb .removables

@@ -623,7 +623,7 @@ badMem:
 memErr  db "System Memory Error",0Ah,0Dh,"$"
 
 openStreams:
-;If this returns with CF=CY, an error occured. Halt boot if initial set of streams
+;If this returns with CF=CY, an error occured.
     lea rdx, auxName
     mov eax, 3D02h   ;Open read/write
     int 21h
@@ -868,6 +868,18 @@ buildDPBs:
     int 21h
     jc short .badExit
     mov rbp, rax    
+    push rax
+    push rcx
+    push rdi
+    mov ecx, ebx
+    shl rcx, 1  ;Convert to qword from paras.
+    mov rdi, rax
+    xor eax, eax
+    rep stosq       ;memset to 0
+    pop rdi
+    pop rcx
+    pop rax
+    sub rax, mcb_size
     mov byte [rax + mcb.subSysMark], mcbSubDrvDPB  ;Set DPB marker here
     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set DOS owner here
     ;rsi -> Ptr to BPB
