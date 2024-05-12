@@ -3118,77 +3118,65 @@
    868 00000A21 CD21                <1>     int 21h
    869 00000A23 7219                <1>     jc short .badExit
    870 00000A25 4889C5              <1>     mov rbp, rax    
-   871                              <1>     ;push rax
-   872                              <1>     ;push rcx
-   873                              <1>     ;push rdi
-   874                              <1>     ;mov ecx, ebx
-   875                              <1>     ;shl rcx, 1  ;Convert to qword from paras.
-   876                              <1>     ;mov rdi, rax
-   877                              <1>     ;xor eax, eax
-   878                              <1>     ;rep stosq       ;memset to 0
-   879                              <1>     ;pop rdi
-   880                              <1>     ;pop rcx
-   881                              <1>     ;pop rax
-   882                              <1>     ;sub rax, mcb_size
-   883 00000A28 C640FD50            <1>     mov byte [rax + mcb.subSysMark - mcb_size], mcbSubDrvDPB  ;Set DPB marker
-   884 00000A2C 48C740F108000000    <1>     mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
-   885                              <1>     ;rsi -> Ptr to BPB
-   886                              <1> 	;rbp -> Ptr to buffer to hold first DPB
-   887                              <1>     ;rdi -> Ptr to the driver header
-   888 00000A34 E880FEFFFF          <1>     call convertBPBArray    ;Returns rbp -> past last DPB
-   889                              <1> .exit:
-   890 00000A39 5F                  <1>     pop rdi
-   891 00000A3A 5E                  <1>     pop rsi
-   892 00000A3B 5D                  <1>     pop rbp
-   893 00000A3C 5B                  <1>     pop rbx
-   894                              <1>     return
+   871 00000A28 C640FD50            <1>     mov byte [rax + mcb.subSysMark - mcb_size], mcbSubDrvDPB  ;Set DPB marker
+   872 00000A2C 48C740F108000000    <1>     mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
+   873                              <1>     ;rsi -> Ptr to BPB
+   874                              <1> 	;rbp -> Ptr to buffer to hold first DPB
+   875                              <1>     ;rdi -> Ptr to the driver header
+   876 00000A34 E880FEFFFF          <1>     call convertBPBArray    ;Returns rbp -> past last DPB
+   877                              <1> .exit:
+   878 00000A39 5F                  <1>     pop rdi
+   879 00000A3A 5E                  <1>     pop rsi
+   880 00000A3B 5D                  <1>     pop rbp
+   881 00000A3C 5B                  <1>     pop rbx
+   882                              <1>     return
     13                              <2> %%_ret:
     14 00000A3D C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   895                              <1> .badExit:
-   896 00000A3E F9                  <1>     stc
-   897 00000A3F EBF8                <1>     jmp short .exit
-   898                              <1> 
-   899                              <1> setupInterruptBlock:
-   900                              <1> ;Sets up a block of interrupts with pointers provided in a table
-   901                              <1> ;Input:
-   902                              <1> ; al = Start interrupt
-   903                              <1> ; rdi -> Start of pointer table
-   904                              <1> ; cl = Last interrupt + 1
-   905                              <1> ;Assumes rbp points to DOSSEG
-   906 00000A41 0FB6C0              <1>     movzx eax, al
-   907 00000A44 0FB6C9              <1>     movzx ecx, cl
-   908                              <1> .lp:
-   909 00000A47 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
-   910 00000A4A 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
-   911 00000A4D E80E000000          <1>     call writeIDTEntry
-   912 00000A52 4881C708000000      <1>     add rdi, 8  ;Goto next interrupt handler
-   913 00000A59 FFC0                <1>     inc eax     ;Goto next interrupt number
-   914 00000A5B 39C8                <1>     cmp eax, ecx
-   915 00000A5D 75E8                <1>     jne .lp
-   916                              <1>     return
+   883                              <1> .badExit:
+   884 00000A3E F9                  <1>     stc
+   885 00000A3F EBF8                <1>     jmp short .exit
+   886                              <1> 
+   887                              <1> setupInterruptBlock:
+   888                              <1> ;Sets up a block of interrupts with pointers provided in a table
+   889                              <1> ;Input:
+   890                              <1> ; al = Start interrupt
+   891                              <1> ; rdi -> Start of pointer table
+   892                              <1> ; cl = Last interrupt + 1
+   893                              <1> ;Assumes rbp points to DOSSEG
+   894 00000A41 0FB6C0              <1>     movzx eax, al
+   895 00000A44 0FB6C9              <1>     movzx ecx, cl
+   896                              <1> .lp:
+   897 00000A47 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
+   898 00000A4A 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
+   899 00000A4D E80E000000          <1>     call writeIDTEntry
+   900 00000A52 4881C708000000      <1>     add rdi, 8  ;Goto next interrupt handler
+   901 00000A59 FFC0                <1>     inc eax     ;Goto next interrupt number
+   902 00000A5B 39C8                <1>     cmp eax, ecx
+   903 00000A5D 75E8                <1>     jne .lp
+   904                              <1>     return
     13                              <2> %%_ret:
     14 00000A5F C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   917                              <1> 
-   918                              <1> writeIDTEntry:
-   919                              <1> ;Writes the interrupt in the right place in the table
-   920                              <1>     ;al = Interrupt number
-   921                              <1>     ;rbx -> Handler to install
-   922 00000A60 50                  <1>     push rax
-   923 00000A61 53                  <1>     push rbx
-   924 00000A62 0FB6C0              <1>     movzx eax, al
-   925 00000A65 4893                <1>     xchg rbx, rax
-   926 00000A67 48C1E304            <1>     shl rbx, 4h     ;Multiply IDT entry number by 16
-   927 00000A6B 48031D(B4010000)    <1>     add rbx, qword [localIDTpointer.Base]    ;rsx points to IDT entry
-   928 00000A72 668903              <1>     mov word [rbx], ax  ;Get low word into offset 15...0
-   929 00000A75 48C1E810            <1>     shr rax, 10h    ;Bring next word low
-   930 00000A79 66894306            <1>     mov word [rbx + 6], ax  ;Get low word into offset 31...16
-   931 00000A7D 48C1E810            <1>     shr rax, 10h    ;Bring last dword low
-   932 00000A81 894308              <1>     mov dword [rbx + 8], eax
-   933 00000A84 5B                  <1>     pop rbx
-   934 00000A85 58                  <1>     pop rax
-   935 00000A86 C3                  <1>     ret
+   905                              <1> 
+   906                              <1> writeIDTEntry:
+   907                              <1> ;Writes the interrupt in the right place in the table
+   908                              <1>     ;al = Interrupt number
+   909                              <1>     ;rbx -> Handler to install
+   910 00000A60 50                  <1>     push rax
+   911 00000A61 53                  <1>     push rbx
+   912 00000A62 0FB6C0              <1>     movzx eax, al
+   913 00000A65 4893                <1>     xchg rbx, rax
+   914 00000A67 48C1E304            <1>     shl rbx, 4h     ;Multiply IDT entry number by 16
+   915 00000A6B 48031D(B4010000)    <1>     add rbx, qword [localIDTpointer.Base]    ;rsx points to IDT entry
+   916 00000A72 668903              <1>     mov word [rbx], ax  ;Get low word into offset 15...0
+   917 00000A75 48C1E810            <1>     shr rax, 10h    ;Bring next word low
+   918 00000A79 66894306            <1>     mov word [rbx + 6], ax  ;Get low word into offset 31...16
+   919 00000A7D 48C1E810            <1>     shr rax, 10h    ;Bring last dword low
+   920 00000A81 894308              <1>     mov dword [rbx + 8], eax
+   921 00000A84 5B                  <1>     pop rbx
+   922 00000A85 58                  <1>     pop rax
+   923 00000A86 C3                  <1>     ret
     22                                  %include "./src/Sysinit/cfginit.asm"
      1                              <1> ;------------------------------------------------;
      2                              <1> ;              Process CONFIG.SYS                ;
@@ -22168,7 +22156,7 @@
    213 00000823 807B15F9            <1>     cmp byte [rbx + bpb.media], 0F9h    ;5.25" & 720K 3.5" Media Standard
    214 00000827 740C                <1>     je .mbbpb0
    215 00000829 807B15FC            <1>     cmp byte [rbx + bpb.media], 0FCh    ;Very Obsolete Media Standards
-   216 0000082D B007                <1>     mov al, 07h ;Unknown media error code
+   216 0000082D B007                <1>     mov al, drvBadMed ;Unknown media error code
    217 0000082F 0F82F6FEFFFF        <1>     jb .msdWriteErrorCode
    218                              <1> .mbbpb0:
    219 00000835 4887DE              <1>     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)

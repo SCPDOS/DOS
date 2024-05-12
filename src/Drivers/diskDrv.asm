@@ -213,7 +213,7 @@ msdDriver:
     cmp byte [rbx + bpb.media], 0F9h    ;5.25" & 720K 3.5" Media Standard
     je .mbbpb0
     cmp byte [rbx + bpb.media], 0FCh    ;Very Obsolete Media Standards
-    mov al, 07h ;Unknown media error code
+    mov al, drvBadMed ;Unknown media error code
     jb .msdWriteErrorCode
 .mbbpb0:
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
