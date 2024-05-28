@@ -987,21 +987,7 @@ renameMain:
     lea rsi, wcdFcbName ;rsi -> FCBified pattern, rdi -> First char for name
     call FCBToAsciiz
     ;Delete the original directory entry
-    movzx ecx, byte [rbp + dpb.bSectorsPerClusterShift] 
-    inc ecx ;Get sectors/cluster in ecx
-    movzx eax, word [rbp + dpb.wBytesPerSector]
-    mul ecx ;Get bytes per cluster in eax
-    mov ecx, dword [renameFFBlk + ffBlock.dirOffset] ;32 byte offset in cluster
-    shl ecx, 5  ;Get byte offset in cluster
-    xchg ecx, eax
-    div ecx ;Get Sector in cluster in eax and sector offset in edx
-    mov ebx, eax
-    mov eax, dword [dirClustA]  ;Get the current dir cluster, not start cluster
-    call getStartSectorOfCluster    ;Cluster number in eax, sector in rax
-    add rax, rbx    ;Goto the sector for the cluster
-    call getBufForDir ;Get buffer pointer in rbx
-    jc .badExit
-    lea rsi, qword [rbx + bufferHdr.dataarea + rdx] ;Goto byte offset in sector
+    call getDiskDirectoryEntry  ;Vars were setup in getFilePathNoCanon call
     ;rsi points to the file entry
     mov al, byte [delChar]
     mov byte [rsi], al
