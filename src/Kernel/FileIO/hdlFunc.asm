@@ -2039,13 +2039,7 @@ readDiskFile:
     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
 ;Main
 .mainRead:
-    test byte [breakFlag], -1   ;If break flag is set, 
-    jz .mainReadNoBreak
-    push rax
-    call checkBreak
-    pop rax
-.mainReadNoBreak:
-    call getBufForData  ;Get bufHdr ptr in rbx and currBuff var for sector in rax
+    call diskIOGetBuffer
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
@@ -2110,6 +2104,22 @@ readExitOk: ;Disk xfrs always go here. Binary char too but by bouncing!
     mov dword [tfrCntr], ecx    ;Update bytes left to transfer
     call updateCurrentSFT   ;Return with CF=NC and ecx=Bytes transferred
     return 
+
+diskIOGetBuffer:
+;If appropriate, checks if the user has typed a ^C at the console.
+; Then reads the specified sector into a buffer and returns a ptr to 
+; the buffer.
+;Input: rax = Sector to get buffer for. 
+;Output:  If CF=NC: rbx -> bufHdrptr with buffer filled with sector data
+;         Else: Error
+    test byte [breakFlag], -1   ;If break flag is set
+    jz .skipBreak
+    push rax
+    call checkBreak
+    pop rax
+.skipBreak:
+    call getBufForData
+    return
 
 writeBytes:
 ;Writes the bytes from the user buffer
@@ -2272,15 +2282,12 @@ writeDiskFile:
 .proceedWithWrite:
 ;Ensure that all buffers are now unreferenced
     call markBuffersAsUnreferencedWrapper
-    xor ebx, ebx
-    mov dword [bytesAppend], ebx    ;Used for file extends (not writes!)
-    mov byte [fileGrowing], bl   ;Reset the file growth flag!
+    mov byte [fileGrowing], 0   ;Reset the file growth flag!
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
     ;If the start cluster is 0, we create a new cluster chain
     test eax, eax
     jnz .notStart
     call startNewChain  ;Allocate a first cluster! 
-    ;jc .exitPrepHardErr
     retc
     cmp eax, -1
     je writeExit
@@ -2297,24 +2304,18 @@ writeDiskFile:
     jz .skipWalk
 .goToCurrentCluster:
     call readFAT    ;Get in eax the next cluster
-    ;jc .exitPrepHardErr
     retc   ;This can only return Fail
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
-.addCluster:
     ;Here we extend by one cluster
     mov eax, dword [currClustD] ;Get the disk cluster 
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
-    ;jc .exitPrepHardErr
     retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    movzx ecx, word [rbp + dpb.wBytesPerSector]
-    add dword [bytesAppend], ecx    ;Add a bytes per sector to filesize
     mov byte [fileGrowing], -1
     call readFAT    ;Get in eax the new cluster
-    ;jc .exitPrepHardErr
     retc
 .stillInFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
@@ -2331,7 +2332,8 @@ writeDiskFile:
     mov ecx, dword [tfrLen]
     test ecx, ecx   ;If this is not zero, goto write
     jnz .mainWrite  
-;Here we have a zero byte write, so either truncate or have an extend
+;Here we have a zero byte write, so either truncate or have an extend.
+;Zero byte writes do not sanitise! They just allocate which is done above!
     test byte [fileGrowing], -1
     jnz .extend
 ;Here we truncate where needed
@@ -2342,14 +2344,8 @@ writeDiskFile:
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
 .mainWrite:
-    test byte [breakFlag], -1   ;If break flag is set, 
-    jz .mainWriteNoBreak
-    push rax
-    call checkBreak
-    pop rax
-.mainWriteNoBreak:
 ;Must intervene here for direct writes (if the handle specifies no buffering)
-    call getBufForData  ;Get bufHdr ptr in rbx and currBuff var for sector in rax
+    call diskIOGetBuffer
     jc .badExit
     lea rdi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rdi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
@@ -2385,7 +2381,6 @@ writeDiskFile:
     test ecx, ecx  ;Are we at the end yet?
     jz writeExit
     call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
-    ;jc .exitPrepHardErr
     retc
     cmp eax, -1
     jne .noExtend
@@ -2394,14 +2389,10 @@ writeDiskFile:
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
-    ;jc .exitPrepHardErr
     retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    movzx ebx, word [rbp + dpb.wBytesPerSector]
-    add dword [bytesAppend], ebx    ;Add a bytes per sector to filesize
-    mov byte [fileGrowing], -1
+    mov byte [fileGrowing], -1  ;Not strictly necessary here... Remove?
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
-    ;jc .exitPrepHardErr
     retc
     cmp eax, -1
     je .noMoreClusters
@@ -2418,7 +2409,6 @@ writeDiskFile:
     ;Here we future proof for triggering Int 24h.
 .badExit:
     mov eax, errAccDen
-;.exitPrepHardErr:
     stc
     return
 .noByteExit:

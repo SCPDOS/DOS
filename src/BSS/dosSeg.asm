@@ -315,7 +315,6 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     lastClust   dd ?  ;Number of the last (rel) cluster of the file
     lastClustA  dd ?  ;Number of the last (abs) cluster of file on disk
     fileGrowing db ?  ;Flag to indicate the file is growing
-    bytesAppend dd ?  ;Number of bytes by which a file has been extended by
     tfrLen      dd ?  ;Number of bytes to transfer
     tfrCntr     dd ?  ;Number of bytes left to transfer
 ;Directory stuff
