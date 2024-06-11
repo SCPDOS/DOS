@@ -636,6 +636,8 @@ growDirectory:
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
     jc .exit
+    cmp eax, -1 ;Disk full?
+    je .exit
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     call readFAT
     jc .exit

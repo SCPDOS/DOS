@@ -2311,6 +2311,8 @@ writeDiskFile:
     mov ecx, 1  ;Allocate one more cluster
     call allocateClusters   ;ebx has last cluster value
     retc
+    cmp eax, -1     ;If again we are -1, disk full!
+    je .diskFullExit
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     call readFAT    ;Get in eax the new cluster
     retc
@@ -2380,31 +2382,30 @@ writeDiskFile:
     mov ecx, dword [tfrCntr]   ;Get number of bytes left to transfer in ecx
     test ecx, ecx  ;Are we at the end yet?
     jz writeExit
-    call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
-    retc
-    cmp eax, -1
-    jne .noExtend
-    ;Here we need to extend by a cluster
-    mov eax, dword [currClustD] ;Get the disk cluster 
-    mov ebx, eax    ;Setup last cluster value in ebx
-    mov ecx, 1  ;Allocate one more cluster
-    call allocateClusters   ;ebx has last cluster value
-    retc
-    mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    call getNextSectorOfFile    ;Now we walk to chain to the new cluster
-    retc
-    cmp eax, -1
-    je .noMoreClusters
-.noExtend:
     mov word [currByteS], 0 ;We start reading now from the start of the sector
-    mov rax, qword [currSectD]  ;Get the next sector to read from
-    jmp .mainWrite
-.noMoreClusters:
+    call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
+    jc .badExit
+    jnz .mainWrite   ;Else, rax = Next sector to write to
+    ;Here we need to extend by a cluster since we are at the end of the 
+    ; current allocation chain
+    mov ebx, dword [currClustD] ;Setup last cluster value in ebx
+    mov ecx, 1  ;Append one more cluster to it!
+    call allocateClusters
+    jc .badExit
+    cmp eax, -1 ;If we cannot allocate any more clusters, disk full!
+    je .diskFullExit  ;End write in this case!
+;Else we just allocated a new cluster to the chain, so we have a sector to 
+; write to! 
+;The cluster state has not changed due to the allocate clusters call.
+    call getNextSectorOfFile    ;Now we walk to chain to the new cluster
+    jc .badExit
+    jmp .mainWrite    ;rax = Next sector to write to
+.diskFullExit:
     push rsi
     mov rsi, qword [currentSFT]
     test word [rsi + sft.wOpenMode], diskFullFail
     pop rsi
-    jz .noExtend    ;If no trigger Int 24h, return success
+    jz writeExit    ;If no trigger Int 24h, return success
     ;Here we future proof for triggering Int 24h.
 .badExit:
     mov eax, errAccDen

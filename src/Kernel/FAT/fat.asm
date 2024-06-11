@@ -294,14 +294,14 @@ findFreeClusterData:
     jmp short .exit ;Else, we have valid count so just exit
 
 getNextSectorOfFile:
-;This function will read the next sector for a file into a buffer.
+;This function will return the next sector of a file in rax
 ;If the next sector to be read lives in the next cluster, it will update
 ; the vars appropriately
 ;
 ;Input: rbp = dpb pointer
 ;Output:
 ;       CF=NC => rax = Next sector to read into a memory buffer
-; If rax = -1 => [currClustF] = Last Cluster of File. Also ZF=ZE in this case
+;           If ZF=ZE => [currClustF] = Last Cluster of File.
 ;       CF=CY => Critical error occurred and was FAILed
 ;Read next sector. If at last sector in cluster, walk map, get
 ; next cluster and read first sector 
@@ -311,26 +311,29 @@ getNextSectorOfFile:
     je .gotoNextCluster
     ;Goto next sector in same cluster
     inc byte [currSectC]    ;Goto next sector in cluster
-    inc qword [currSectD]  ;Goto next sector on Disk, clears ZF
+    inc qword [currSectD]  ;Goto next sector on Disk
     mov rax, qword [currSectD]
-.exitOK:
-    clc
-.exitFail:
+.exit:
+    push rax
+    xor eax, eax
+    inc eax ;Ensure ZF=NZ
+    pop rax
+    clc     ;And CF=NC
     return
 .gotoNextCluster:
     mov eax, dword [currClustD] ;Get absolute cluster number
     call readFAT
-    jc .exitFail
+    retc
     ;eax now has the next cluster number to read (or -1 if EOF)
-    cmp eax, -1
-    je .exitOK
+    cmp eax, -1 ;ZF=ZE and CF=NC if they are equal
+    rete
 ;Update the new cluster and sector information
     mov dword [currClustD], eax ;Update disk location of next cluster
     inc dword [currClustF]   ;Goto next file cluster
-    call getStartSectorOfCluster    ;Get start sector of Cluster, clears ZF
+    call getStartSectorOfCluster    ;Get start sector of Cluster
     mov qword [currSectD], rax  ;Save it
     mov byte [currSectC], 0      ;We are at sector 0 rel Clust
-    jmp short .exitOK
+    jmp short .exit
 
 unlinkFAT:
 ;Given a cluster number, will free the cluster and walk the FAT until the first

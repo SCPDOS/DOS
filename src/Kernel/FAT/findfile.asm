@@ -179,10 +179,9 @@ searchDir:
     mov rax, qword [rbx + bufferHdr.bufferLBA]
     mov qword [currSectD], rax  
     mov dword [currClustF], 0 ;Use as flag to tell us if cluster has changed
-    call getNextSectorOfFile
+    call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
     jc .fnfError
-    cmp eax, -1
-    je .chardev    ;We are at the end of the directory and didnt find the file
+    jz .chardev    ;We are at the end of the directory and didnt find the file
     mov qword [currSectD], rax  ;Store the sector number here
     inc word [dirSect]  ;Goto next sector in cluster
     push rax    ;Save the next sector we need to read
