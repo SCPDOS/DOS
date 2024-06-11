@@ -2282,7 +2282,6 @@ writeDiskFile:
 .proceedWithWrite:
 ;Ensure that all buffers are now unreferenced
     call markBuffersAsUnreferencedWrapper
-    mov byte [fileGrowing], 0   ;Reset the file growth flag!
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
     ;If the start cluster is 0, we create a new cluster chain
     test eax, eax
@@ -2293,7 +2292,6 @@ writeDiskFile:
     je writeExit
     ;Now eax has the first cluster of chain
     mov dword [rdi + sft.dStartClust], eax  ;Store the start cluster in the sft
-    mov byte [fileGrowing], -1  ;Set to true as this only occurs for new files!
 .notStart:
 ;eax has the start cluster of the file
 ;Now we go to CurntOff
@@ -2314,7 +2312,6 @@ writeDiskFile:
     call allocateClusters   ;ebx has last cluster value
     retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    mov byte [fileGrowing], -1
     call readFAT    ;Get in eax the new cluster
     retc
 .stillInFile:
@@ -2333,12 +2330,15 @@ writeDiskFile:
     test ecx, ecx   ;If this is not zero, goto write
     jnz .mainWrite  
 ;Here we have a zero byte write, so either truncate or have an extend.
-;Zero byte writes do not sanitise! They just allocate which is done above!
-    test byte [fileGrowing], -1
-    jnz .extend
-;Here we truncate where needed
+;Zero byte writes do not sanitise! 
+; If necessary, they just allocate sectors which is done above!
+    mov eax, dword [rdi + sft.dCurntOff]
+    cmp eax, dword [rdi + sft.dFileSize]
+    jae .extend ;CurrentOffset >= Filesize means extend. Else, truncate
+;Here we truncate
     mov eax, dword [currClustD] ;We must free the chain from currClustD
     call truncateFAT    ;Truncate from the current cluster 
+    retc
 .extend:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
@@ -2391,7 +2391,6 @@ writeDiskFile:
     call allocateClusters   ;ebx has last cluster value
     retc
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    mov byte [fileGrowing], -1  ;Not strictly necessary here... Remove?
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
     retc
     cmp eax, -1
