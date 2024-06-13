@@ -2136,8 +2136,11 @@ writeBytes:
     stc
     ret
 .writeable:
+;FCB check file attributes since we can create an RO flag and write to it directly
+; but cannot open a read only file. This is redundant whilst we don't allow for 
+; FCB IO
     test word [rdi + sft.wOpenMode], FCBopenedFile
-    jz .skipAttribCheck ;FCB files don't check file attributes
+    jz .skipAttribCheck
     cmp byte [rdi + sft.bFileAttrib], readOnlyFile
     je .noWrite ;If the file is read only, RIP
 .skipAttribCheck:
@@ -2271,7 +2274,7 @@ writeDiskFile:
     jnz .badExit
     test ecx, ecx
     jnz .nonZeroWrite
-    mov ecx, -1 ;If write cnt is 0 (i.e. truncating file), check for NO locks
+    mov ecx, -1 ;If write cnt is 0, check for no locks
 .nonZeroWrite:
     ;Now do share check here
     call retryShareIODelay
@@ -2280,6 +2283,8 @@ writeDiskFile:
     jnc .nonZeroWrite   ;If returned retry, retry the request
     return  ;Else return with CF=CY
 .proceedWithWrite:
+;Ensure that we update the directory entry after this write
+    and word [rdi + sft.wDeviceInfo], ~(charDevNoEOF|blokNoDTonClose)
 ;Ensure that all buffers are now unreferenced
     call markBuffersAsUnreferencedWrapper
     mov eax, dword [rdi + sft.dStartClust]    ;Get start cluster
@@ -2288,16 +2293,18 @@ writeDiskFile:
     jnz .notStart
     call startNewChain  ;Allocate a first cluster! 
     retc
-    cmp eax, -1
-    je writeExit
+    cmp eax, -1         ;Disk full?
+    je .diskFullExit
     ;Now eax has the first cluster of chain
     mov dword [rdi + sft.dStartClust], eax  ;Store the start cluster in the sft
 .notStart:
 ;eax has the start cluster of the file
 ;Now we go to CurntOff
     mov dword [currClustD], eax ;Store in var
-    xor ebx, ebx
+    ;xor ebx, ebx
+    xor esi, esi    ;Use as a flag for if we are extending!
     mov edx, dword [currClustF] ;Use edx as the counter reg
+    ;breakpoint
     test edx, edx
     jz .skipWalk
 .goToCurrentCluster:
@@ -2305,7 +2312,7 @@ writeDiskFile:
     retc   ;This can only return Fail
     cmp eax, -1 ;Is this cluster the last cluster?
     jne .stillInFile
-    ;Here we extend by one cluster
+;Here we extend by one cluster, only if filepointer is past current alloc
     mov eax, dword [currClustD] ;Get the disk cluster 
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, 1  ;Allocate one more cluster
@@ -2313,13 +2320,26 @@ writeDiskFile:
     retc
     cmp eax, -1     ;If again we are -1, disk full!
     je .diskFullExit
+    dec esi         ;Set the extending flag!
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     call readFAT    ;Get in eax the new cluster
     retc
+    ;Keep adding each cluster to the count in the event we get a full disk
+    ; so that we keep track of the correct amount of allocated space on disk!
+    call getBytesPerCluster         ;Get a lot to add if we exit in error!
+    add dword [dBytesAdd], ecx      ;Add another lot to the count!
 .stillInFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
+    test esi, esi   ;Are we extending?
+    jz .noExt
+    ;Here we have all the clusters so we set the difference between the file
+    ; size and the current file position as the amount added
+    mov esi, dword [currByteF]  
+    sub esi, dword [rdi + sft.dFileSize]
+    mov dword [dBytesAdd], esi  
+.noExt:
 ;Now we fall out
     mov eax, dword [currClustD]
 .skipWalk:
@@ -2334,14 +2354,14 @@ writeDiskFile:
 ;Here we have a zero byte write, so either truncate or have an extend.
 ;Zero byte writes do not sanitise! 
 ; If necessary, they just allocate sectors which is done above!
+    ;breakpoint
     mov eax, dword [rdi + sft.dCurntOff]
     cmp eax, dword [rdi + sft.dFileSize]
-    jae .extend ;CurrentOffset >= Filesize means extend. Else, truncate
+    jae .noByteExit ;CurrentOffset >= Filesize means extend. Else, truncate
 ;Here we truncate
     mov eax, dword [currClustD] ;We must free the chain from currClustD
     call truncateFAT    ;Truncate from the current cluster 
     retc
-.extend:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
@@ -2414,6 +2434,7 @@ writeDiskFile:
 .noByteExit:
     mov eax, 2  ;Update last accessed fields of SFT
     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
+    ;breakpoint
 writeExit:
 ;Advances the bytes on the file pointer
 ;Return: ecx = Number of bytes transferred
@@ -2425,11 +2446,12 @@ writeExit:
     jz .noFlush
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
 .noFlush:
-    mov eax, dword [rdi + sft.dFileSize]
-    cmp dword [rdi + sft.dCurntOff], eax
-    jbe .exit   ;Don't change filesize unless offset is past the Filesize
-    mov eax, dword [rdi + sft.dCurntOff]
-    mov dword [rdi + sft.dFileSize], eax
+    ;mov eax, dword [rdi + sft.dFileSize]
+    ;cmp dword [rdi + sft.dCurntOff], eax
+    ;jbe .exit   ;Don't change filesize unless offset is past the Filesize
+    ;mov eax, dword [rdi + sft.dCurntOff]
+    ;mov dword [rdi + sft.dFileSize], eax
+    add dword [rdi + sft.dFileSize], ecx    ;Adjust the filesize now
 .exit:
     mov eax, 1  ;Give it one last update of the data in the directory!
     call qword [updateDirShare] ;Remember, CF=CY by default!
@@ -2458,21 +2480,26 @@ updateCurrentSFT:
 ;Return: ecx = Actual bytes transferred and CF=NC
     push rdi
     mov rdi, qword [currentSFT]
-    call getBytesTransferred
-    jecxz .exit ;Skip this if ecx = 0
-    ;ecx has bytes transferred
+;Get in ecx the number of bytes we xferred
+    mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
+    neg ecx ;Multiply by -1
+    add ecx, dword [tfrLen]     ;Add total bytes to transfer
+;ecx has bytes transferred
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit
+;Down here for disk files only!
+    add ecx, dword [dBytesAdd]              ;Now add any extension bytes
+    add dword [rdi + sft.dCurntOff], ecx    ;This is where we are in the file!
     push rax
     mov eax, dword [currClustD]
     mov dword [rdi + sft.dAbsClusr], eax
     mov eax, dword [currClustF]
     mov dword [rdi + sft.dRelClust], eax
     pop rax
-    push rcx
-    mov ecx, dword [currByteF]
-    mov dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
-    pop rcx
+    ;push rcx
+    ;mov ecx, dword [currByteF]
+    ;mov dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
+    ;pop rcx
 .exit:
     pop rdi
     clc
@@ -2499,15 +2526,10 @@ setupVarsForTransfer:
     mov dword [tfrLen], ecx ;Save the number of bytes to transfer
     mov dword [tfrCntr], ecx    ;Save the bytes left to transfer
     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
-    jz setupVarsForDiskTransfer
-    clc
-    return
-setupVarsForDiskTransfer:
-;Extension of the above, but for Disk files only
-;Input: ecx = User desired Bytes to transfer
-;       rdi = SFT pointer for the file
-;Output: CF=NC: ecx = Actual Bytes that will be transferred, if it is possible
-;        CF=CY: Error exit
+    retnz   ;Redir and char devices leave here
+;Disk files...
+    xor eax, eax
+    mov dword [dBytesAdd], eax    ;Set the number of bytes we will add count to 0
     mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
     mov dword [currByteF], eax
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
@@ -2531,9 +2553,8 @@ setupVarsForDiskTransfer:
     shr edx, cl ;Convert file relative sector to file relative cluster
     mov dword [currClustF], edx ;Save in var
     mov ecx, eax    ;Return the bytes to tfr in ecx
-.exit:
-    clc
     return 
+
 findFreeSFT:
 ;Returns a pointer to a free SFT if CF=NC. Else, no free SFTs.
 ;Modifies an SFT entry. Must be called in a critical section.
@@ -2677,12 +2698,6 @@ derefSFTPtr:
     call getSFTPtrfromSFTNdx    ;Get SFT pointer in rdi
     pop rbx 
     return
-
-getBytesTransferred:
-    mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
-    neg ecx ;Multiply by -1
-    add ecx, dword [tfrLen]     ;Add total bytes to transfer
-    return ;Return bytes transferred in ecx
 
 getSFTndxInheritable:
 ;Given a SFTndx this function will verify if it is inheritable

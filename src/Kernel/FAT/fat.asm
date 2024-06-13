@@ -6,7 +6,7 @@ getFATtype:
 ;Entry: rbp = DPB to ascertain FAT
 ;Exit: ecx = 0 => FAT 12, ecx = 1 => FAT 16, ecx = 2 => FAT 32
     push rbx
-    mov ebx, dword [rbp + dpb.dClusterCount]
+    mov ebx, dword [rbp + dpb.dMaxClusterAddr]
     mov ecx, 2  ;FAT 32 marker
     cmp ebx, fat16MaxClustCnt
     jae .exit
@@ -28,7 +28,7 @@ clust2FATEntry:
     push rbx
     push rbp
     mov rbp, qword [workingDPB]
-    mov ebx, dword [rbp + dpb.dClusterCount]
+    mov ebx, dword [rbp + dpb.dMaxClusterAddr]
     cmp ebx, fat16MaxClustCnt
     jae .fat32
     cmp ebx, fat12MaxClustCnt
@@ -174,10 +174,10 @@ allocateClusters:
 ;Input: ecx = Number of clusters to allocate in a chain
 ;       ebx = Cluster to link to the new cluster
 ;Output:    
+;   ecx = Number of allocated clusters
 ;   CF=NC => Complete.
 ;   If eax = -1, then no more free clusters. 
 ;   CF=CY => Hard error, exit
-; ecx always has number of allocated clusters
     clc ;Always clear the flags before starting
     push rbx
     push rsi
@@ -235,8 +235,9 @@ findFreeCluster:
     test eax, eax   ;Is this cluster free?
     jz .exit    ;If yes, exit
     lea eax, dword [ebx + 1]    ;Add one to ebx and save in eax
-    cmp eax, dword [rbp + dpb.dClusterCount]
+    cmp eax, dword [rbp + dpb.dMaxClusterAddr]
     jbe .fatLoop
+    mov ebx, -1     ;We are full here...
 .exit:
     mov eax, ebx
     clc
@@ -249,7 +250,7 @@ findFreeCluster:
 findFreeClusterData:
 ;Walks the FAT to find a free cluster and returns the 
 ;   zero extended cluster number in eax (-1 means no free cluster)
-; Also finds NumberOfFreeCLusters, if it is unknown. 
+; Also finds NumberOfFreeClusters, if it is unknown. 
 ; Both fields get filled in the workingDPB
 ;Works on the workingDPB
 ;If returns with CF=CY => Fail set, return immediately to caller
@@ -257,14 +258,13 @@ findFreeClusterData:
     push rdx
     push rbp
     mov rbp, qword [workingDPB]
-    movzx eax, word [rbp + dpb.wFAToffset]  ;Get first FAT sector
     ;Mark dFirstFreeCluster as -1, unknown
     mov dword [rbp + dpb.dFirstFreeCluster], -1
     ;Use readFAT
     ;Starting with cluster number 2, goto to the MAX cluster
     ;If readFAT returns 0 then its a free cluster
-    mov eax, 2  ;Start with cluster 2
-    mov edx, dword [rbp + dpb.dClusterCount]
+    mov eax, 2  ;Start with cluster 2 (which corresponds to cluster 0 = MAX)
+    mov edx, dword [rbp + dpb.dMaxClusterAddr] ;Max clust addr = MAX + 1
 .fatLoop:
     mov ebx, eax    ;Save the current cluster number in ebx
     call readFAT
@@ -278,6 +278,10 @@ findFreeClusterData:
     lea eax, dword [ebx + 1]    ;Add one to ebx and save in eax
     cmp eax, edx
     jbe .fatLoop
+    ;If we get here with no first free cluster, then we have no free clusters!
+    cmp dword [rbp + dpb.dFirstFreeCluster], -1
+    jne .exit
+    mov dword [rbp + dpb.dNumberOfFreeClusters], 0  ;No free clusters!
 .exit:
     mov eax, dword [rbp + dpb.dFirstFreeCluster]  ;Get first free cluster in eax
     clc
@@ -417,14 +421,14 @@ readFAT:
     jz .goToNextClusterFat32
     ;Here we handle FAT16
     movzx eax, word [rbx + bufferHdr.dataarea + rdx]
-    cmp eax, 0FFF6h  ;Valid cluster number?
+    cmp eax, 0FFF7h  ;Valid cluster number?
     jb .exit
-    mov eax, -1 ;If not, set to -1
-    jmp short .exit
+    jmp short .eocExit
 .goToNextClusterFat32:
     mov eax, dword [rbx + bufferHdr.dataarea + rdx]
-    cmp eax, 0FFFFFF6h ;First reserved value. Any Reserved number = EOC
+    cmp eax, 0FFFFFF7h ;First reserved value. Any Reserved number = EOC
     jb .validCluster32   
+.eocExit:
     mov eax, -1 ;Always translate it to -1 and skip zeroing upper nybble
     jmp short .exit
 .validCluster32:
@@ -439,42 +443,53 @@ readFAT:
     pop rbx
     return
 .gotoNextClusterFat12:
-;FAT12 might need two FAT sectors read so we always read two sectors
 ;eax has the sector number of the FAT
 ;edx has byte offset into the sector
 ;edi has current cluster number
 ;rbx has ptr to buffer header
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
     test edi, 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
-    movzx ecx, word [rbp + dpb.wBytesPerSector]
     sub ecx, edx
     dec ecx ;If edx = BytesPerSector - 1 then it crosses, else no
-    jnz .gotoNextClusterFat12NoCross
-    ;Boundary cross, build entry properly
+    jnz .gotoNextClusterFat12OddNoX
+    call .xBndry        ;Boundary cross, build entry properly
+    jc .exitFail    
+    shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
+    jmp short .checkIfLastFAT12Cluster
+.gotoNextClusterFat12OddNoX:
+    movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
+    shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
+    jmp short .checkIfLastFAT12Cluster
+.gotoNextClusterFat12Even:
+    sub ecx, edx
+    dec ecx ;If edx = BytesPerSector - 1 then it crosses, else no
+    jnz .gotoNextClusterFat12EvenNoX
+    call .xBndry    ;Save the lower three nybbles
+    jc .exitFail
+    jmp short .evenCmn
+.gotoNextClusterFat12EvenNoX:
+    ;Here the cluster is even and can't cross a sector boundary
+    movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
+.evenCmn:
+    and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
+.checkIfLastFAT12Cluster:
+    cmp eax, 0FF7h   ;Is it below the first invalid cluster number?
+    jb .exit         ;If so, exit with it in eax (and clear CF)
+    jmp short .eocExit
+.xBndry:
+;Gets a word that goes across a boundary in ax. It is left to the caller it 
+; do what they will with it. If CF=CY on return, something went wrong.
     movzx ebx, byte [rbx + bufferHdr.dataarea + rdx] ;Use ebx as it is free
     inc eax ;Get next FAT sector
     push rbx
     call getBufForFat ;Get buffer Header in ebx
     pop rcx ;Get bl in ecx, the last entry from the previous buffer
-    jc .exitFail
+    retc
     mov eax, ecx    ;Move the entry if all ok
     mov ah, byte [rbx + bufferHdr.dataarea]  ;Read first entry of next sector
-    shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
-    jmp short .checkIfLastFAT12Cluster
-.gotoNextClusterFat12NoCross:
-    movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
-    shr eax, 4   ;Save upper three nybbles of loword, eax has cluster num
-    jmp short .checkIfLastFAT12Cluster
-.gotoNextClusterFat12Even:
-    ;Here the cluster is even and can't cross a sector boundary
-    movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
-    and eax, 0FFFh   ;Save lower three nybbles, eax has cluster num
-.checkIfLastFAT12Cluster:
-    cmp eax, 0FEFh   ;Is it below the first invalid cluster number?
-    jb .exit         ;If so, exit with it in eax (and clear CF)
-    mov eax, -1 ;Else, replace with -1, EOC
-    jmp .exit
+    return
 
 writeFAT:
 ;Given a cluster number to edit in eax and a number in ebx to store in 
@@ -521,16 +536,16 @@ writeFAT:
 ;edx has byte offset into the sector
 ;edi has current cluster number
 ;rbx has ptr to buffer header
+    movzx ecx, word [rbp + dpb.wBytesPerSector]
     and esi, 0FFFh  ;Clear the upper bits. Save only low 12 bits
     test edi, 1  ;Check if cluster is odd
     jz .gotoNextClusterFat12Even
     ;Here the cluster is ODD, and might cross sector boundary
-    movzx ecx, word [rbp + dpb.wBytesPerSector]
     sub ecx, edx
     dec ecx ;If edx = BytesPerSector - 1 then it crosses, else no
-    jnz .gotoNextClusterFat12NoCross
+    jnz .gotoNextClusterFat12OddNoX
     ;Boundary cross, build entry properly
-    ;Replace the high nybble of the low byte 
+    ;Replace the high nybble of the low byte
     movzx ecx, byte [rbx + bufferHdr.dataarea + rdx] ;Use ecx as it is free
     and ecx, 0Fh    ;Clear the high nybble
     shl esi, 4  ;Shift value up by 4 to insert the low nybble in the right place
@@ -544,12 +559,28 @@ writeFAT:
     mov ecx, esi    ;Get the high byte of the entry into cl
     mov byte [rbx + bufferHdr.dataarea], cl  ;Write entry
     jmp short .exit
-.gotoNextClusterFat12NoCross:
+.gotoNextClusterFat12Even:
+    sub ecx, edx
+    dec ecx ;If edx = BytesPerSector - 1 then it crosses, else no
+    jnz .gotoNextClusterFat12EvenNoX
+    mov ecx, esi
+    and ch, 0Fh ;Save only the lower nybble of ch
+    mov byte [rbx + bufferHdr.dataarea + rdx], cl   ;Store the first byte
+    call markBufferDirty
+    inc eax ;Get next FAT sector
+    call getBufForFat
+    jc .exitFail
+    mov cl, byte [rbx + bufferHdr.dataarea] ;Get the first data byte from buffer
+    and cl, 0F0h    ;Clear the lower nybble of this entry
+    or cl, ch       ;Add our entry in
+    mov byte [rbx + bufferHdr.dataarea], cl ;Write it back
+    jmp short .exit    
+.gotoNextClusterFat12OddNoX:
     movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
     and eax, 0Fh    ;Clear the upper three nybbles of entry (the entry)
     shl esi, 4  ;Shift entry up by 4
     jmp short .fat12common
-.gotoNextClusterFat12Even:
+.gotoNextClusterFat12EvenNoX:
     ;Here the cluster is even and can't cross a sector boundary
     movzx eax, word [rbx + bufferHdr.dataarea + rdx]    ;Read the entry
     and eax, 0F000h ;Clear the lower three nybbles of entry (the entry)
@@ -575,4 +606,19 @@ decrementFreeClusterCount:
     dec dword [rbp + dpb.dNumberOfFreeClusters]
 .exit:
     popfq
+    return
+
+getBytesPerCluster:
+;Gets the bytes per cluster
+;Input: rbp -> Current DPB
+;Output: ecx = Total bytes per cluster
+    push rax
+    push rdx
+    movzx eax, word [rbp + dpb.wBytesPerSector]
+    movzx ecx, byte [rbp + dpb.bMaxSectorInCluster]
+    inc ecx
+    mul ecx
+    mov ecx, eax
+    pop rdx
+    pop rax
     return

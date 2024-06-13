@@ -23,7 +23,7 @@ struc dpb        ;Drive Parameter Block
     .bNumberOfFATs           db ?  ;Number of FATs
     .wNumberRootDirEntries   dw ?  ;In 32 byte units, this is 0 for FAT32
     .dClusterHeapOffset      dd ?  ;Start sector of data area
-    .dClusterCount           dd ?  ;Total number of clusters in data area
+    .dMaxClusterAddr         dd ?  ;Max Cluster Addr = # of data clusters + 1
     .dFATlength              dd ?  ;FAT length, in sectors
     .dFirstUnitOfRootDir     dd ?  
     ;Unit=Sector/Cluster of Root Directory (FAT12/16 = Sector, FAT32 = Cluster)

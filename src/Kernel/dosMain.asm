@@ -708,8 +708,8 @@ createDPB:         ;generates a DPB from a given BPB
     mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
     shl ebx, cl ;Get sectors per cluster
     div ebx ;Data area sector / sectors per cluster = cluster count
-    inc eax ;Maximum valid cluster value is eax + 1
-    mov dword [rbp + dpb.dClusterCount], eax    ;eax = Cluster count
+    inc eax ;Maximum valid cluster address is cluster count + 1
+    mov dword [rbp + dpb.dMaxClusterAddr], eax    ;eax = Max cluster address
 ;dFirstUnitOfRootDir
     cmp eax, fat16MaxClustCnt  ;If above, its FAT32
     mov eax, dword [rsi + bpb32.RootClus]   ;Just save this if FAT32

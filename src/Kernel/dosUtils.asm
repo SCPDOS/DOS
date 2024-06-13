@@ -53,8 +53,8 @@ getDiskData:
     mov al, byte [rbp + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
     mov ah, byte [rbp + dpb.bMediaDescriptor]
-    mov ebx, dword [rbp + dpb.dClusterCount]
-    dec ebx ;This is a count of clusters + 1 so subtract 1
+    mov ebx, dword [rbp + dpb.dMaxClusterAddr] ;This is the max cluster address
+    dec ebx ;Get the number of clusters
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Save the value in ecx
     mov edx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Get # free clusters
     clc

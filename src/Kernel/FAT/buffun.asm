@@ -9,7 +9,7 @@ makeBufferMostRecentlyUsed: ;Int 2Fh AX=1207h
 ;Input: rdi = Buffer header to move to the head of the chain
 ;Output: Buffer header set to the head of the chain
     cmp qword [bufHeadPtr], rdi ;Is buffer already at the head?
-    je .exit
+    rete
     push rsi
     mov rsi, qword [bufHeadPtr] ;Go to the head of the pointer
 .mainlp:
@@ -26,7 +26,6 @@ makeBufferMostRecentlyUsed: ;Int 2Fh AX=1207h
     xchg qword [bufHeadPtr], rsi ;Set rsi to head, get new 2nd buf in rsi
     mov qword [rdi + bufferHdr.nextBufPtr], rsi ;Set 2nd buf to rsi
     pop rsi
-.exit:
     return
 
 markBuffersAsUnreferencedWrapper:
@@ -410,7 +409,7 @@ readSectorBuffer:   ;Internal Linkage
     
 findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
-; in rbx and the currBuff variable
+; in rdi and the currBuff variable
 ;Input: Nothing
 ;Output: rdi = Pointer to the buffer hdr to use
 ;       [currBuff] = Pointer to the buffer hdr to use
