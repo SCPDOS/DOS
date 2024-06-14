@@ -2302,43 +2302,30 @@ writeDiskFile:
 ;Now we go to CurntOff
     mov dword [currClustD], eax ;Store in var
     mov edx, dword [currClustF] ;Use edx as the counter reg
-    test edx, edx   ;If the fileptr is in the first cluster, skip this mess!
-    jz .skipWalk
-.goToCurrentCluster:
-    call readFAT    ;Get in eax the next cluster
-    retc   ;This can only return Fail
-    cmp eax, -1 ;Is this cluster the last cluster?
-    jne .stillInFile
-;Here we extend by one cluster, only if filepointer is past current alloc
-    mov eax, dword [currClustD] ;Get the disk cluster 
+    test edx, edx   ;If the fileptr is in the first cluster, already there
+    jz .atCluster
+    call .walkFAT   ;Walks the fat, gets the next cluster in eax
+    retc
+    cmp eax, -1     ;Not EOC, eax = the cluster we need to be at
+    jne .atCluster
+    cmp dword [rbp + dpb.dNumberOfFreeClusters], -1
+    jne .haveFreeClustCnt
+    call findFreeClusterData
+.haveFreeClustCnt:
+    cmp dword [rbp + dpb.dNumberOfFreeClusters], edx
+    jb .diskFullExit
+    ;Here we know we have enough cluster to allocate to the file,
+    ; so just roll with it. 
+    mov eax, dword [currClustD] ;Get the current disk cluster 
     mov ebx, eax    ;Setup last cluster value in ebx
-    mov ecx, 1  ;Allocate one more cluster
+    mov ecx, edx    ;Allocate the remainder of clusters!
     call allocateClusters   ;ebx has last cluster value
     retc
-    cmp eax, -1     ;If again we are -1, disk full!
-    je .diskFullExit
-    mov eax, ebx    ;Walk this next cluster value to get new cluster value
-    call readFAT    ;Get in eax the new cluster
-    retc
-    ;Keep adding each cluster to the count in the event we get a full disk
-    ; so that we keep track of the correct amount of allocated space on disk!
-    call getBytesPerCluster         ;Get a lot to add if we exit in error!
-    add dword [dBytesAdd], ecx      ;Add another lot to the count!
-.stillInFile:
-    mov dword [currClustD], eax    ;Save eax as current cluster
-    dec edx ;Decrement counter
-    jnz .goToCurrentCluster
-    test dword [dBytesAdd], -1   ;Did we extend?
-    jz .noExt
-;Here we have all the clusters to get us to the file position so we set 
-; the difference between the file size and the current file position as the 
-; amount added to the file.
-    mov esi, dword [currByteF]  
-    sub esi, dword [rdi + sft.dFileSize]
-    mov dword [dBytesAdd], esi  ;Overwrite with the difference now!
-.noExt:
-    mov eax, dword [currClustD]
-.skipWalk:
+    mov eax, ebx    ;Move the start sector for the walk back
+    call .walkFAT   ;Walks the fat, gets the next cluster in eax
+    retc    
+.atCluster:
+;Fall here with the sector number in eax
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
     ;Now we add the offset to this
     movzx ebx, byte [currSectC] ;Get the sector offset into the cluster
@@ -2348,18 +2335,35 @@ writeDiskFile:
     test ecx, ecx   ;If this is not zero, goto write
     jnz .mainWrite  
 ;Here we have a zero byte write, so either truncate or have an extend.
-;Zero byte writes do not sanitise! 
-;CurrentOffset < Filesize means truncate. Else, we already extended, proceed!
+;Zero byte writes do not sanitise! Filesize=Filepointer in this case
+;CurrentOffset < Filesize means truncate. Else, we extend.
     mov eax, dword [rdi + sft.dCurntOff]
     cmp eax, dword [rdi + sft.dFileSize]
-    jae .noByteExit
+    jae .extend
 ;Here we truncate!
     mov eax, dword [currClustD] ;We must free the chain from currClustD
     call truncateFAT    ;Truncate from current cluster setting it to EOC
     retc
+.extend:
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
+.walkFAT:
+;Input: eax = Cluster to start walking from
+;Output: If eax = -1: currClustD is the cluster we just read
+;        Else: currClustD = eax is the cluster value we are at
+;       edx = Number of clusters left (0 or #toAllocate)
+;If CF=CY, hard error, fail!
+    call readFAT
+    retc
+    cmp eax, -1 ;Is the next cluster an EOC?
+    je .wFatExit    ;Return if so
+    mov dword [currClustD], eax     ;Else, save eax as current cluster
+    dec edx                         ;Decrement counter
+    jnz .walkFAT                    ;If we still have to walk, do it again!
+.wFatExit:
+    clc ;Dont remove, need this because of the compare above!!
+    return
 .mainWrite:
 ;Must intervene here for direct writes (if the handle specifies no buffering)
     call diskIOGetBuffer
@@ -2438,14 +2442,13 @@ writeExit:
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit   ;These just exit as no filesize!
     test ecx, ecx   ;If no bytes transferred, dont flush
-    jz .noFlush
+    jz .exit
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
-.noFlush:
-;Now we make sure to add any extension bytes (all sectors added)
-    push rcx    ;Save the amount written
-    add ecx, dword [dBytesAdd]              ;Add the extension bytes too
-    add dword [rdi + sft.dFileSize], ecx    ;Adjust the filesize now
-    pop rcx
+;Now replace the filesize with the currentoffset if it is greater
+    mov eax, dword [rdi + sft.dCurntOff]
+    cmp dword [rdi + sft.dFileSize], eax    
+    jae .exit
+    mov dword [rdi + sft.dFileSize], eax
 .exit:
     mov eax, 1  ;Give it one last update of the data in the directory!
     call qword [updateDirShare] ;Remember, CF=CY by default!
@@ -2482,12 +2485,13 @@ updateCurrentSFT:
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit
 ;Down here for disk files only!
-    add dword [rdi + sft.dCurntOff], ecx    ;This is where we are in the file!
     push rax
     mov eax, dword [currClustD]
     mov dword [rdi + sft.dAbsClusr], eax
     mov eax, dword [currClustF]
     mov dword [rdi + sft.dRelClust], eax
+    mov eax, dword [currByteF]
+    mov dword [rdi + sft.dCurntOff], eax
     pop rax
 .exit:
     pop rdi
@@ -2517,8 +2521,6 @@ setupVarsForTransfer:
     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
     retnz   ;Redir and char devices leave here
 ;Disk files...
-    xor eax, eax
-    mov dword [dBytesAdd], eax    ;Set the number of bytes we will add count to 0
     mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
     mov dword [currByteF], eax
     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
