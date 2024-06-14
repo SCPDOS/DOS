@@ -2344,8 +2344,8 @@ writeDiskFile:
     mov eax, dword [currClustD] ;We must free the chain from currClustD
     call truncateFAT    ;Truncate from current cluster setting it to EOC
     retc
-.extend:
     mov eax, dword [rdi + sft.dCurntOff]
+.extend:
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
     jmp .noByteExit ;Exit ok!
 .walkFAT:
