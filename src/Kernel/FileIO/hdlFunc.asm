@@ -2301,11 +2301,8 @@ writeDiskFile:
 ;eax has the start cluster of the file
 ;Now we go to CurntOff
     mov dword [currClustD], eax ;Store in var
-    ;xor ebx, ebx
-    xor esi, esi    ;Use as a flag for if we are extending!
     mov edx, dword [currClustF] ;Use edx as the counter reg
-    ;breakpoint
-    test edx, edx
+    test edx, edx   ;If the fileptr is in the first cluster, skip this mess!
     jz .skipWalk
 .goToCurrentCluster:
     call readFAT    ;Get in eax the next cluster
@@ -2320,7 +2317,6 @@ writeDiskFile:
     retc
     cmp eax, -1     ;If again we are -1, disk full!
     je .diskFullExit
-    dec esi         ;Set the extending flag!
     mov eax, ebx    ;Walk this next cluster value to get new cluster value
     call readFAT    ;Get in eax the new cluster
     retc
@@ -2332,15 +2328,15 @@ writeDiskFile:
     mov dword [currClustD], eax    ;Save eax as current cluster
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
-    test esi, esi   ;Are we extending?
+    test dword [dBytesAdd], -1   ;Did we extend?
     jz .noExt
-    ;Here we have all the clusters so we set the difference between the file
-    ; size and the current file position as the amount added
+;Here we have all the clusters to get us to the file position so we set 
+; the difference between the file size and the current file position as the 
+; amount added to the file.
     mov esi, dword [currByteF]  
     sub esi, dword [rdi + sft.dFileSize]
-    mov dword [dBytesAdd], esi  
+    mov dword [dBytesAdd], esi  ;Overwrite with the difference now!
 .noExt:
-;Now we fall out
     mov eax, dword [currClustD]
 .skipWalk:
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
@@ -2353,14 +2349,13 @@ writeDiskFile:
     jnz .mainWrite  
 ;Here we have a zero byte write, so either truncate or have an extend.
 ;Zero byte writes do not sanitise! 
-; If necessary, they just allocate sectors which is done above!
-    ;breakpoint
+;CurrentOffset < Filesize means truncate. Else, we already extended, proceed!
     mov eax, dword [rdi + sft.dCurntOff]
     cmp eax, dword [rdi + sft.dFileSize]
-    jae .noByteExit ;CurrentOffset >= Filesize means extend. Else, truncate
-;Here we truncate
+    jae .noByteExit
+;Here we truncate!
     mov eax, dword [currClustD] ;We must free the chain from currClustD
-    call truncateFAT    ;Truncate from the current cluster 
+    call truncateFAT    ;Truncate from current cluster setting it to EOC
     retc
     mov eax, dword [rdi + sft.dCurntOff]
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
@@ -2446,12 +2441,11 @@ writeExit:
     jz .noFlush
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
 .noFlush:
-    ;mov eax, dword [rdi + sft.dFileSize]
-    ;cmp dword [rdi + sft.dCurntOff], eax
-    ;jbe .exit   ;Don't change filesize unless offset is past the Filesize
-    ;mov eax, dword [rdi + sft.dCurntOff]
-    ;mov dword [rdi + sft.dFileSize], eax
+;Now we make sure to add any extension bytes (all sectors added)
+    push rcx    ;Save the amount written
+    add ecx, dword [dBytesAdd]              ;Add the extension bytes too
     add dword [rdi + sft.dFileSize], ecx    ;Adjust the filesize now
+    pop rcx
 .exit:
     mov eax, 1  ;Give it one last update of the data in the directory!
     call qword [updateDirShare] ;Remember, CF=CY by default!
@@ -2488,7 +2482,6 @@ updateCurrentSFT:
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit
 ;Down here for disk files only!
-    add ecx, dword [dBytesAdd]              ;Now add any extension bytes
     add dword [rdi + sft.dCurntOff], ecx    ;This is where we are in the file!
     push rax
     mov eax, dword [currClustD]
@@ -2496,10 +2489,6 @@ updateCurrentSFT:
     mov eax, dword [currClustF]
     mov dword [rdi + sft.dRelClust], eax
     pop rax
-    ;push rcx
-    ;mov ecx, dword [currByteF]
-    ;mov dword [rdi + sft.dCurntOff], ecx    ;Add to the current offset in file
-    ;pop rcx
 .exit:
     pop rdi
     clc

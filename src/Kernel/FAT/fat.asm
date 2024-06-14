@@ -339,6 +339,19 @@ getNextSectorOfFile:
     mov byte [currSectC], 0      ;We are at sector 0 rel Clust
     jmp short .exit
 
+
+truncateFAT:
+;Same as below but always sets the cluster we are unlinking at to EOC.
+;Input: eax = Cluster to start unlinking at (zero extended to 32 bits)
+;       rbp = Current DPB to use for disk
+;Output: CF = NC => All ok. CF = CY => Hard Error, exit
+    push rax    ;Save the cluster number to start unlinking at
+    push rsi
+    call freeChainFAT    ;Preserved eax
+    jc unlinkFAT.exit
+    mov esi, -1         ;Preserve the cluster we are freeing from
+    call writeFAT
+    jmp short unlinkFAT.exit    ;Must be like so to not increment the free count!
 unlinkFAT:
 ;Given a cluster number, will free the cluster and walk the FAT until the first
 ; cluster number considered EOC is found. The given cluster number MUST be
@@ -352,7 +365,7 @@ unlinkFAT:
 
     push rax    ;Save the cluster number to start unlinking at
     push rsi
-    call truncateFAT    ;Preserved eax
+    call freeChainFAT    ;Preserved eax
     jc .exit
     xor esi, esi  ;Free first cluster too
     call writeFAT
@@ -363,7 +376,7 @@ unlinkFAT:
     pop rax
     return
 
-truncateFAT:
+freeChainFAT:
 ;Given a cluster number, will set that cluster to EOC and walk the FAT freeing 
 ; each cluster until the firstcluster number considered EOC is found. The given 
 ; cluster number MUST be the start cluster of a chain, or at least the cluster 
