@@ -2433,7 +2433,6 @@ writeDiskFile:
 .noByteExit:
     mov eax, 2  ;Update last accessed fields of SFT
     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
-    ;breakpoint
 writeExit:
 ;Advances the bytes on the file pointer
 ;Return: ecx = Number of bytes transferred
