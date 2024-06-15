@@ -161,7 +161,8 @@ startNewChain:
     je .exit
     mov esi, -1 ;Value to write at eax is EOF
     mov ebx, eax
-    call writeFAT   ;Propagate the CF 
+    call writeFAT
+    jc .exit 
     mov eax, ebx
     call decrementFreeClusterCount
 .exit:
@@ -347,11 +348,15 @@ truncateFAT:
 ;Output: CF = NC => All ok. CF = CY => Hard Error, exit
     push rax    ;Save the cluster number to start unlinking at
     push rsi
-    call freeChainFAT    ;Preserved eax
-    jc unlinkFAT.exit
-    mov esi, -1         ;Preserve the cluster we are freeing from
+    call freeChainFAT   ;Preserved eax, frees the full chain
+    jc .exit
+    mov esi, -1         ;Realloc the cluster we are freeing from as EOC
     call writeFAT
-    jmp short unlinkFAT.exit    ;Must be like so to not increment the free count!
+    call decrementFreeClusterCount  ;Remove it from the free cluster count!
+.exit:
+    pop rsi
+    pop rax
+    return
 unlinkFAT:
 ;Given a cluster number, will free the cluster and walk the FAT until the first
 ; cluster number considered EOC is found. The given cluster number MUST be
@@ -365,16 +370,10 @@ unlinkFAT:
 
     push rax    ;Save the cluster number to start unlinking at
     push rsi
+;The below call decrements the cluster count for the full chain freed including
+; the starting cluster address.
     call freeChainFAT    ;Preserved eax
-    jc .exit
-    xor esi, esi  ;Free first cluster too
-    call writeFAT
-    jc .exit
-    call incrementFreeClusterCount  ;One more cluster freed
-.exit:
-    pop rsi
-    pop rax
-    return
+    jmp short truncateFAT.exit
 
 freeChainFAT:
 ;Given a cluster number, will set that cluster to EOC and walk the FAT freeing 
