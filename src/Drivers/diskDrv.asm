@@ -180,7 +180,6 @@ msdDriver:
     je .mmcUnsure
 .mmcChange:
     mov byte [rbx + mediaCheckReqPkt.medret], -1
-    ;Check here if there were any open handles on the device when it was changed
     ret
 .mmcUnsure:
     mov byte [rbx + mediaCheckReqPkt.medret], 0
@@ -205,6 +204,18 @@ msdDriver:
     mov eax, 8201h  ;LBA Read 1 sector
     int 33h
     jc .msdGenDiskError
+;------------------------------------------------------
+;At this point: 
+;   rsi -> Driver Request Packet
+;   rbx -> New BPB that was been read in
+;   rbp -> Original BPB that is stored in driver
+;------------------------------------------------------
+;Check we have a short jump and NOP at the start of the bootsector.
+    mov al, drvBadMed       ;Default to unknown media error code
+    cmp byte [rbx + bpb.jmpBoot + 2], 090h  ;NOP
+    jne .msdWriteErrorCode
+    cmp byte [rbx + bpb.jmpBoot], 0EBh      ;JMP SHORT
+    jne .msdWriteErrorCode 
 ;Check Media Descriptor, must be F0h or F8h-FFh or unknown media
     cmp byte [rbx + bpb.media], 0F0h    ;3.5" FDD standard
     je .mbbpb0
@@ -213,20 +224,27 @@ msdDriver:
     cmp byte [rbx + bpb.media], 0F9h    ;5.25" & 720K 3.5" Media Standard
     je .mbbpb0
     cmp byte [rbx + bpb.media], 0FCh    ;Very Obsolete Media Standards
-    mov al, drvBadMed ;Unknown media error code
     jb .msdWriteErrorCode
 .mbbpb0:
+;Now test that the BPB makes sense. If the values are bad, don't overwrite 
+; the BPB we have! eax = drvBadMed error code
+    test byte [rbx + bpb.secPerClus], -1 ;Does this BPB makes sense?
+    jz .msdWriteErrorCode   ;If this value is zero, fail!
+;Now reset the open handles in the var count!! This should throw a GP error
+; if the open is being done and this count is not zero. Actually should be a 
+; bad disk change error but this is done by Share(?) so we just need to reset 
+; it in any case.
+    movzx rcx, byte [rsi + bpbBuildReqPkt.unitnm]
+    lea rdi, .msdHdlCnt
+    mov byte [rdi + rcx], 0  ;Reset open hdls!
     xchg rbx, rsi    ;Transf Buf(rbx) <-> ReqHdr(rsi)
     mov rdi, rbp     ;Get pointer to buffer to overwrite
     mov ecx, bpbEx_size/8
     push rsi
     rep movsq   ;Move the BPB data into the right space
     pop rsi
-    test byte [rbp + bpb.secPerClus], -1 ;Does this BPB makes sense?
-    retnz ;If its not zero, we ok
-    ;Else, we error.
-    mov eax, drvNotReady
-    jmp .msdWriteErrorCode
+    return      ;We return with rbx -> Request header as it should be :-)
+
 .msdIOCTLRead:       ;Function 3, returns done
     mov al, drvBadDrvReq
     cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
