@@ -279,11 +279,7 @@ openFileFCB:       ;ah = 0Fh
 
 ;=================================================================
 ;=================================================================
-;These functions will be marked as reserved for future expansion.
-; One idea will be to create a handle based record IO interface.
-; We will be able to do IO on records of predefined length 
-; on a file handle, thus removing the need for an FCB but still
-; maintaining the usefulness of record based IO.
+;These functions are marked as reserved for future expansion.
 ;=================================================================
 ;=================================================================
 closeFileFCB:      ;ah = 10h
