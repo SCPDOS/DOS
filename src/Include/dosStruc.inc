@@ -14,25 +14,25 @@
 ;------------------------------------------------------------------------;
 struc dpb        ;Drive Parameter Block
 
-    .bDriveNumber            db ?  ;Drive number (0=A, 1=B ...)
-    .bUnitNumber             db ?  ;Unit number in device
-    .wBytesPerSector         dw ?  ;min 512, max 4096
-    .bMaxSectorInCluster     db ?  ;(Maximum sector in cluster) - 1
-    .bSectorsPerClusterShift db ?  ;Sectors per cluster exponent
-    .wFAToffset              dw ?  ;Number of reserved sectors in partition
-    .bNumberOfFATs           db ?  ;Number of FATs
-    .wNumberRootDirEntries   dw ?  ;In 32 byte units, this is 0 for FAT32
-    .dClusterHeapOffset      dd ?  ;Start sector of data area
-    .dMaxClusterAddr         dd ?  ;Max Cluster Addr = # of data clusters + 1
-    .dFATlength              dd ?  ;FAT length, in sectors
-    .dFirstUnitOfRootDir     dd ?  
+    .bDriveNumber           db ?  ;Drive number (0=A, 1=B ...)
+    .bUnitNumber            db ?  ;Unit number in device
+    .wBytesPerSector        dw ?  ;min 512, max 4096
+    .bMaxSectorInCluster    db ?  ;(Maximum sector in cluster) - 1
+    .bSecPerClustShift      db ?  ;Sectors per cluster exponent
+    .wFAToffset             dw ?  ;Number of reserved sectors in partition
+    .bNumberOfFATs          db ?  ;Number of FATs
+    .wNumberRootDirEntries  dw ?  ;In 32 byte units, this is 0 for FAT32
+    .dClusterHeapOffset     dd ?  ;Start sector of data area
+    .dMaxClusterAddr        dd ?  ;Max Cluster Addr = # of data clusters + 1
+    .dFATlength             dd ?  ;FAT length, in sectors
+    .dFirstUnitOfRootDir    dd ?  
     ;Unit=Sector/Cluster of Root Directory (FAT12/16 = Sector, FAT32 = Cluster)
-    .qDriverHeaderPtr        dq ?  ;Pointer to device driver header
-    .bMediaDescriptor        db ?  ;Media descriptor
-    .bAccessFlag             db ?  ;Access Flag (0 if accessed, else -1)
-    .qNextDPBPtr             dq ?  ;Pointer to next DPB, -1 if at end
-    .dFirstFreeCluster       dd ?  ;Starting cluster of free space search
-    .dNumberOfFreeClusters   dd ?  ;Number of free clusters, -1 unknown
+    .qDriverHeaderPtr       dq ?  ;Pointer to device driver header
+    .bMediaDescriptor       db ?  ;Media descriptor
+    .bAccessFlag            db ?  ;Access Flag (0 if accessed, else -1)
+    .qNextDPBPtr            dq ?  ;Pointer to next DPB, -1 if at end
+    .dNextFreeClst          dd ?  ;Starting cluster of free space search
+    .dFreeClustCnt          dd ?  ;Number of free clusters, -1 unknown
 
 endstruc
 

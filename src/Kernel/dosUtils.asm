@@ -50,13 +50,16 @@ getDiskData:
     jc .exit
     call findFreeClusterData    ;Get Free Cluster data in DPB
     jc .exit
+    push rbp
+    call flushAllBuffersForDPB  ;To ensure FAT32 FSInfo sectors synced
+    pop rbp
     mov al, byte [rbp + dpb.bMaxSectorInCluster]
     inc al  ;Since bMaxSectorInCluster is one less than the number of sec/clus
     mov ah, byte [rbp + dpb.bMediaDescriptor]
     mov ebx, dword [rbp + dpb.dMaxClusterAddr] ;This is the max cluster address
     dec ebx ;Get the number of clusters
     movzx ecx, word [rbp + dpb.wBytesPerSector] ;Save the value in ecx
-    mov edx, dword [rbp + dpb.dNumberOfFreeClusters]    ;Get # free clusters
+    mov edx, dword [rbp + dpb.dFreeClustCnt]    ;Get # free clusters
     clc
 .exit:
     call dosCrit1Exit

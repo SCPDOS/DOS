@@ -169,6 +169,9 @@ struc FSInfo
     .trailSig   resb 4  ;Should be 0AA550000h
 
 endstruc
+fsInfoSig1  equ 041615252h
+fsInfoSig2  equ 061417272h
+fsInfoSig3  equ 0AA550000h
 
 %macro defaultBPB 0
     db 0E9h

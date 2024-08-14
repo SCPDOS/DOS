@@ -3,7 +3,7 @@ echo Installing SCP/DOS on C:
 format c:
 sys c:
 c:
-mklbl
+label harddisk
 a:
 md c:dos
 @echo on

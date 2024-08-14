@@ -83,7 +83,7 @@ diskDevErr:
     test bl, fatBuffer
     jnz .df1
     or ah, critFAT  ;Add FAT data type bit
-    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Invalidate the count!
+    mov dword [rbp + dpb.dFreeClustCnt], -1 ;Invalidate the count!
     jmp short .df3
 .df1:
     test bl, dirBuffer

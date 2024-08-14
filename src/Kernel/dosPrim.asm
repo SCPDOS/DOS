@@ -64,7 +64,7 @@ setupAbsDiskEntry:
     cld ;Set string ops in the right direction
     call setupPhysicalDiskRequest
     retc    ;Error exit
-    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;We prob. will invalidate
+    mov dword [rbp + dpb.dFreeClustCnt], -1 ;We prob. will invalidate
     push rsi
     push rax
     lea rsi, buffer1  ;Point to one of the pathspaces
@@ -257,7 +257,7 @@ ensureDiskValid:
     jne .checkBuffer        ;Check for this buffer
     ;If we get here, we found no dirty buffers for our drive
     ;We use the reference bit to keep track of which buffers we've gone through
-    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Reset number of free to unknown
+    mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset number of free to unknown
     call markBuffersAsUnreferenced  ;We're going to walk through so clear ref bit
 .dirtyLoop:
     or byte [rdi + bufferHdr.bufferFlags], refBuffer    ;Set this buffer as referenced
@@ -305,7 +305,7 @@ ensureDiskValid:
 .diskDrvCritErr:
 ;Critical Errors fall through here
     ;rbp has dpb ptr, di has status word, rsi points to the driver
-    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Reset freecluster count
+    mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset freecluster count
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
     mov ah, critRead | critFAT | critFailOK | critRetryOK
     mov byte [Int24bitfld], ah  ;Save the permissions in var

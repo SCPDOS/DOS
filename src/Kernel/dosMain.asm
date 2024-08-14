@@ -627,10 +627,10 @@ createDPB:         ;generates a DPB from a given BPB
 ;bMediaDescriptor
     mov al, byte [rsi + bpb.media]
     mov byte [rbp + dpb.bMediaDescriptor], al
-;dFirstFreeCluster
-    mov dword [rbp + dpb.dFirstFreeCluster], 0  ;Start searching from start
-;dNumberOfFreeClusters
-    mov dword [rbp + dpb.dNumberOfFreeClusters], -1 ;Unknown
+;dNextFreeClst
+    mov dword [rbp + dpb.dNextFreeClst], -1  ;Start is default (clust 2)
+;dFreeClustCnt
+    mov dword [rbp + dpb.dFreeClustCnt], -1 ;Start with unknown
 ;wBytesPerSector
     movzx eax, word [rsi + bpb.bytsPerSec]
     mov word [rbp + dpb.wBytesPerSector], ax
@@ -638,7 +638,7 @@ createDPB:         ;generates a DPB from a given BPB
     mov al, byte [rsi + bpb.secPerClus]
     dec al  ;Subtract one to get the max number of the last sector in a cluster
     mov byte [rbp + dpb.bMaxSectorInCluster], al
-;bSectorsPerClusterShift
+;bSecPerClustShift
     inc al
     xor cl, cl
 .cd2:
@@ -647,7 +647,7 @@ createDPB:         ;generates a DPB from a given BPB
     inc cl
     jmp short .cd2
 .cd3:
-    mov byte [rbp + dpb.bSectorsPerClusterShift], cl
+    mov byte [rbp + dpb.bSecPerClustShift], cl
 ;wFAToffset, number of reserved sectors in partition
     mov ax, word [rsi + bpb.revdSecCnt]
     mov word [rbp + dpb.wFAToffset], ax
@@ -705,7 +705,7 @@ createDPB:         ;generates a DPB from a given BPB
     mov eax, ebx    ;Move number of sectors in data area into eax
     xor edx, edx
     mov ebx, 1
-    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    mov cl, byte [rbp + dpb.bSecPerClustShift]
     shl ebx, cl ;Get sectors per cluster
     div ebx ;Data area sector / sectors per cluster = cluster count
     inc eax ;Maximum valid cluster address is cluster count + 1
@@ -725,7 +725,9 @@ createDPB:         ;generates a DPB from a given BPB
 .cd5:
     mov dword [rbp + dpb.dFirstUnitOfRootDir], eax
     mov byte [rbp + dpb.bAccessFlag], -1    ;Denote not yet accessed
+    call readFSInfoSector   ;If FAT32, updates free cluster data with FSinfo
 ;Exit epilogue
+.exit:
     mov rbx, qword [oldRSP]
     mov al, byte [rbx + callerFrame.rax]        ;Return original al value 
     return

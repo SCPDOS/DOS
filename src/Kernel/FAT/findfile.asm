@@ -64,7 +64,7 @@ searchMoreDir:
     cmp dword [dirClustA], 0   ;If we at cluster 0, we are in old style root dir
     je .oldFat
     movzx eax, word [rbp + dpb.wBytesPerSector]
-    movzx ecx, byte [rbp + dpb.bSectorsPerClusterShift]
+    movzx ecx, byte [rbp + dpb.bSecPerClustShift]
     shl eax, cl ;Shift to get bytes per cluster in eax
     mov ecx, eax    ;Move bytes per cluster into ecx
     mov eax, esi    ;Get bytewise file ptr back in eax

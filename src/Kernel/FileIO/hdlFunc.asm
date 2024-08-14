@@ -2308,11 +2308,11 @@ writeDiskFile:
     retc
     cmp eax, -1     ;Not EOC, eax = the cluster we need to be at
     jne .atCluster
-    cmp dword [rbp + dpb.dNumberOfFreeClusters], -1
+    cmp dword [rbp + dpb.dFreeClustCnt], -1
     jne .haveFreeClustCnt
     call findFreeClusterData
 .haveFreeClustCnt:
-    cmp dword [rbp + dpb.dNumberOfFreeClusters], edx
+    cmp dword [rbp + dpb.dFreeClustCnt], edx
     jb .diskFullExit
     ;Here we know we have enough cluster to allocate to the file,
     ; so just roll with it. 
@@ -2539,7 +2539,7 @@ setupVarsForTransfer:
     and al, byte [rbp + dpb.bMaxSectorInCluster]   ;Works with max 64k clusters
     mov byte [currSectC], al    ;Save sector in cluster value in var
     mov eax, ecx    ;Save bytes to tfr in eax
-    mov cl, byte [rbp + dpb.bSectorsPerClusterShift]
+    mov cl, byte [rbp + dpb.bSecPerClustShift]
     shr edx, cl ;Convert file relative sector to file relative cluster
     mov dword [currClustF], edx ;Save in var
     mov ecx, eax    ;Return the bytes to tfr in ecx

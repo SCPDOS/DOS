@@ -709,16 +709,18 @@ convertBPBArray:
     call .findLastDPB
     movzx ecx, cl   ;Use ch as the unit number counter
 .buildNext:
-    push rsi
-    mov rsi, qword [rsi]    ;Get the BPB pointer from the BPB array
-    mov ah, 53h ;Build DPB
-    int 21h
-    pop rsi
     movzx eax, byte fs:[numPhysVol] ;Get current # drives
     mov byte [rbp + dpb.bDriveNumber], al   ;Set it as drvnum
     inc byte fs:[numPhysVol]    ;One more physical volume present!
     mov byte [rbp + dpb.bUnitNumber], ch    ;Set unit number
     mov qword [rbp + dpb.qDriverHeaderPtr], rdi ;Store ptr to driver
+
+    push rsi
+    mov rsi, qword [rsi]    ;Get the BPB pointer from the BPB array
+    mov ah, 53h ;Build DPB
+    int 21h
+    pop rsi
+
     inc ch  ;Goto next unit number
     cmp cl, ch  ;When equal, exit!
     jz short .exit
@@ -866,23 +868,43 @@ buildDPBs:
     mov ebx, eax
     mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
     int 21h
-    jc short .badExit
+    jc short .exit
     mov rbp, rax    
     mov byte [rax + mcb.subSysMark - mcb_size], mcbSubDrvDPB  ;Set DPB marker
     mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
+    ;
+    ;This is a FAT32 specific requirement as 21h/53h now needs a buffer
+    ;for reading the extra FSInfo sector into. We allocate a single
+    ;buffer of max valid sector size.
+    ;
+    mov ebx, 4096/16    ;Max sector size...
+    mov eax, 4800h  ;ALLOC
+    int 21h
+    jc short .exit
+    mov byte [rax + mcb.subSysMark - mcb_size], mcbSubBuffers  
+    mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
+    mov qword fs:[bufHeadPtr], rax
+    mov qword [rax + bufferHdr.nextBufPtr], -1 ;Point to no buffer
+    mov word [rax + bufferHdr.wDrvNumFlg], 00FFh  ;Free buffer and clear flags 
+    push r8     ;Save r8's original value
+    push rax    ;Save the buffer pointer
     ;rsi -> Ptr to BPB
 	;rbp -> Ptr to buffer to hold first DPB
     ;rdi -> Ptr to the driver header
     call convertBPBArray    ;Returns rbp -> past last DPB
+    pop r8      ;Get the buffer pointer back
+    push rax
+    mov eax, 4900h  ;Free this buffer now we are done!
+    int 21h
+    pop rax
+    mov qword fs:[bufHeadPtr], -1   ;Reset this back 
+    pop r8      ;Get back the original r8 value
 .exit:
     pop rdi
     pop rsi
     pop rbp
     pop rbx
     return
-.badExit:
-    stc
-    jmp short .exit
 
 setupInterruptBlock:
 ;Sets up a block of interrupts with pointers provided in a table
