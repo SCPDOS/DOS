@@ -48,100 +48,54 @@ that is no longer needed by the allocation.
 Flat binary drivers are NOT bound by the 64Kb limit that .COM files 
 are bounded by.
 
-Order of OEMINIT and SYSINIT interplay:
+Brief guidelines for writing OEMINIT:
 
-O1) OEMRELOC - Load and relocate DOS to its final resting place.
-				MUST RETURN TO DOS THE VALUE OF THE MAX
-				CONTIUGOUS USABLE MEMORY FROM THE DOSLOAD ADDRESS
-				TO THE FIRST MEMORY HOLE/END OF MEMORY. 
-
-				Please ensure to leave AT LEAST 20Kb of space
-				for DOS to use to build internal data structures
-				within this contiguous region. Failure to do so
-				will result in DOS halting boot.
-
-				Kernel drivers may NOT use more memory than the 
-				end of their initial allocation but may
-				resize their allocation to jettison their init code.
-
-				Thus kernel drivers must be written with all 
-				their work space built in. 
-
-				Jumps to SYSINIT once complete!
-
-O2) OEMINIT - Add page additional tables if needed and any additional
-				OEM specific housekeeping such as providing a 
-				sufficient stack if one is not already available and
-				setting the OEM specific DOS variable defaults.
-
-S1) Interrupt init - SYSINIT will setup the interrupts vectors
-				for DOS now pointing to the routines in the 
-				relocated DOS segment. This includes all CPU exception
-				handlers and the DOS Interrupts.  
-
-S2) Driver init - SYSINIT will initialise the Kernel drivers, giving
-				them enough space unless there is not enough space 
-				available in the current coniguous region or the
-				kernel drivers return that they want to halt in 
-				which case DOS halts init. Kernel drivers can use
-				DOS functions 25h and 35h to install and get 
-				interrupts ONLY and may not use any other DOS functions
-				as DOS is not sufficiently configured at this stage
-				to support this.
-				
-				Please note that only num_disk disk devices are 
-				available until CONFIG.SYS is processed.
-				Also, note that you may jettison the startup code
-				as the file drvinit.asm is placed at the end of the 
-				kernel module.
-
-				Kernel drivers shall halt boot by indicating that
-				they failed to initialise.
-
-				The kernel driver chain must be in the following order:
-				CON->AUX->PRN->CLOCK$->Any block or additional character devices.
-				
-
-O3) MCB init - OEM's must implement the MCB CHAIN starting from the 
-				address provided by DOS to the MCB INIT routine in MCBANCHOR.
-				The MCB INIT routine recieves the first MCB already filled in
-				by DOS, which accounts for DOS and builds the chain from there.
-				Please only allocate space as either FREE or MEMORY_HOLE 
-				respectively.
-
-S3) PSP init - SYSINIT will setup the default Kernel PSP and 
-				additional DOS variables now.
-
-S4) SFT init - SYSINIT will setup the default SFT entries now.
-
-S5) Hook init - SYSINIT will setup the kernel hooks to defaults.
-				These can be overridden by drivers and/or programs
-				that might be loaded in CONFIG.SYS and/or the 
-				COMSPEC= program. We suggest any multitaskers be loaded
-				as COMSPEC= and then load a command interpreter as the
-				child of the multitasker.
-
-----DOS IS NOW COMPLETELY READY FOR USE----
-
-S6) CONFIG.SYS - SYSINIT will process CONFIG.SYS
-
-S7) Welcome - SYSINIT will print a default welcome message
-
-S8) Reset SFT's - SYSINIT will now reopen handles to allow any 
-				replacement drivers for the kernel drivers to take over 
-				the default devices.
-
-O4) OEMCALBK - A final callback as decsribed above. This can be used
-				for example to correct anything that might've been 
-				set in CONFIG.SYS that you don't agree with.
-				You may also HALT system loading here by returning
-				with CF=CY.
-
-S9) Transfer to COMSPEC= - Transfer control to the master 
-				Command interpreter. If one cannot be found, 
-				print an error message and halt the system.
-
-Since OEMINIT is called by SYSINIT immediately after OEMRELOC
-DOS will permit the passing of arguments from one module to the 
-next in registers. No further passing of arguments in registers
-is permitted however.
+;SYSINIT doesnt care about the internal structure of the OEMINIT module.
+;Thus, an OEM is free to arrange code and data within the OEMINIT module,
+; as they please. OEMINIT is always the first module linked to in the DOS
+; binary blob file and therefore an OEM can guarantee that the first byte 
+; of the OEMINIT module will be the first byte executed by the machine.
+;SYSINIT starts being invoked only once OEMINIT jumps to the symbol SYSENTRY.
+;OEMINIT can even be an .EXE or .ELF executable if the firmware allows it, 
+; as long as it can link with SYSINIT by EXPORTING and IMPORTING the right
+; symbols, its ok! Also, the DOS linker script requires that the OEMINIT 
+; module be the first thing in the executable file, with the default
+; kernel drivers being the at the end, after the DOS, in the segment
+; kDrvText, kDrvData and kDrvBSS.
+;OEMINIT has no BSS segment, but has otext and odata where it can link 
+; itself into.
+;---------------------------------------------------------------------------;
+;PUBLIC PROCEDURES needed to link with SYSINIT:                             ;
+;---------------------------------------------------------------------------;
+; OEMMCBINIT -> Does MCB chain building as SYSINIT doesn't know how to read ;
+;   any memory maps. Thats on the OEM to parse and build for us.            ;
+; OEMHALT -> If anything goes wrong during the initial phase of SYSINIT,    ;
+;   it will use this routine to print a message and halt the machine.       ;
+; OEMCALLBK -> Used to finalise any setup before xfring control to SHELL=   ;
+;   At this point, DOS is ready to be used.                                 ;
+;---------------------------------------------------------------------------;
+;EXTERN VARS needed to link with SYSINIT:                                   ;
+;---------------------------------------------------------------------------;
+; These vars need to be initialised before jumping to SYSENTRY              ;
+;---------------------------------------------------------------------------;
+;FINALDOSPTR dq ?    ;Pointer to where dSeg should be loaded                ;
+;FILES       db ?    ;Default number of FILES                               ;
+;BUFFERS     db ?    ;Default number of BUFFERS                             ;
+;DFLTDRIVE   db ?    ;Default drive number (0-25), this is the boot drive   ;
+;LASTDRIVE   db ?    ;Default last drive number (0-25)                      ;
+;OEMBIOS     db ?    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS   ;
+;OEMDRVCHAIN dq ?    ;Pointer to the uninitialised device drivers           ;
+;OEMPTR      dq ?    ;Pointer to store at biosPtr                           ;
+;OEMVERSION  dd ?    ;BIOS number, to be used by drivers for id-ing         ;
+;---------------------------------------------------------------------------;
+; These vars are initialised by SYSINIT, to be used in OEMMCBINIT           ;
+; These vars are undefined outside of OEMMCBINIT                            ;
+;---------------------------------------------------------------------------;
+;MCBANCHOR   dq ?    ;Pointer to the Anchor MCB, part of dSEg               ;
+;---------------------------------------------------------------------------;
+; These vars are initialised by SYSINIT, to be used in OEMCALLBK            ;
+; These vars are undefined outside of OEMCALLBK                             ;
+;---------------------------------------------------------------------------;
+;OEMMEMPTR   dq ?    ;Var to save ptr to the 64Kb block passed to OEMCALLBK ;
+;---------------------------------------------------------------------------;
+;
