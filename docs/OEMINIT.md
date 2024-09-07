@@ -48,7 +48,8 @@ that is no longer needed by the allocation.
 Flat binary drivers are NOT bound by the 64Kb limit that .COM files 
 are bounded by.
 
-Order of OEMINIT and SYSINIT interplay
+Order of OEMINIT and SYSINIT interplay:
+
 O1) OEMRELOC - Load and relocate DOS to its final resting place.
 				MUST RETURN TO DOS THE VALUE OF THE MAX
 				CONTIUGOUS USABLE MEMORY FROM THE DOSLOAD ADDRESS
