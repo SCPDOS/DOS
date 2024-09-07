@@ -48,7 +48,7 @@ that is no longer needed by the allocation.
 Flat binary drivers are NOT bound by the 64Kb limit that .COM files 
 are bounded by.
 
-Brief guidelines for writing OEMINIT:
+# Brief guidelines for writing OEMINIT
 
 SYSINIT doesnt care about the internal structure of the OEMINIT module.
 Thus, an OEM is free to arrange code and data within the OEMINIT module,
