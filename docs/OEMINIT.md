@@ -71,8 +71,9 @@ OEMINIT has no BSS segment, but has otext and odata where it can link itself int
 - OEMCALLBK -> Used to finalise any setup before xfring control to SHELL= . At this point, DOS is ready to be used.
 
 
-# EXTERN VARS needed to link with SYSINIT:
-Note: These vars need to be initialised before jumping to SYSENTRY.
+# EXTERN VARS needed to link with SYSINIT
+<pre>
+The following vars need to be initialised before jumping to SYSENTRY.
 - FINALDOSPTR dq ?    ;Pointer to where dSeg should be loaded
 - FILES       db ?    ;Default number of FILES
 - BUFFERS     db ?    ;Default number of BUFFERS
@@ -88,3 +89,4 @@ These vars are initialised by SYSINIT, to be used in OEMMCBINIT. These vars are 
 
 These vars are initialised by SYSINIT, to be used in OEMCALLBK. These vars are undefined outside of OEMCALLBK.
 - OEMMEMPTR   dq ?    ;Var to save ptr to the 64Kb block passed to OEMCALLBK
+</pre>
