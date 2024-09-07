@@ -93,11 +93,6 @@ functionDispatch:   ;Int 21h Main function dispatcher
     pop rax
 .fdGoToFunction:
     xchg rbx, qword [oldRBX]    ;Put the call addr in oldRBX and get oldRBX back
-    ;Potentially point rbp to caller reg frame for easy access of registers 
-    ;
-    ;IF YOU USE RAX AND DONT NEED A RETURN VALUE IN AL, 
-    ;ENSURE YOU READ AL FROM THE STACK FRAME BEFORE RETURNING TO PRESERVE AL!!!
-    ;
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
 .fdExit:
     cli     ;Redisable interrupts
