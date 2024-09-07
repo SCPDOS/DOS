@@ -42,7 +42,7 @@ drivers all live in the same chain as far as the SYSINIT routine
 is concerned, the pointer returned by the last driver in the chain
 will be used to denote the end of the driver allocation space.
 
-Please note that drivers may be flat binaries or .EXE files. Upon 
+Please note that drivers may be flat binaries or PE executables. Upon 
 completing INIT please return in INIT the pointer to the first byte 
 that is no longer needed by the allocation.
 Flat binary drivers are NOT bound by the 64Kb limit that .COM files 
