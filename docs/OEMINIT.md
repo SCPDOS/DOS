@@ -50,52 +50,41 @@ are bounded by.
 
 Brief guidelines for writing OEMINIT:
 
-;SYSINIT doesnt care about the internal structure of the OEMINIT module.
-;Thus, an OEM is free to arrange code and data within the OEMINIT module,
-; as they please. OEMINIT is always the first module linked to in the DOS
-; binary blob file and therefore an OEM can guarantee that the first byte 
-; of the OEMINIT module will be the first byte executed by the machine.
-;SYSINIT starts being invoked only once OEMINIT jumps to the symbol SYSENTRY.
-;OEMINIT can even be an .EXE or .ELF executable if the firmware allows it, 
-; as long as it can link with SYSINIT by EXPORTING and IMPORTING the right
-; symbols, its ok! Also, the DOS linker script requires that the OEMINIT 
-; module be the first thing in the executable file, with the default
-; kernel drivers being the at the end, after the DOS, in the segment
-; kDrvText, kDrvData and kDrvBSS.
-;OEMINIT has no BSS segment, but has otext and odata where it can link 
-; itself into.
-;---------------------------------------------------------------------------;
-;PUBLIC PROCEDURES needed to link with SYSINIT:                             ;
-;---------------------------------------------------------------------------;
-; OEMMCBINIT -> Does MCB chain building as SYSINIT doesn't know how to read ;
-;   any memory maps. Thats on the OEM to parse and build for us.            ;
-; OEMHALT -> If anything goes wrong during the initial phase of SYSINIT,    ;
-;   it will use this routine to print a message and halt the machine.       ;
-; OEMCALLBK -> Used to finalise any setup before xfring control to SHELL=   ;
-;   At this point, DOS is ready to be used.                                 ;
-;---------------------------------------------------------------------------;
-;EXTERN VARS needed to link with SYSINIT:                                   ;
-;---------------------------------------------------------------------------;
-; These vars need to be initialised before jumping to SYSENTRY              ;
-;---------------------------------------------------------------------------;
-;FINALDOSPTR dq ?    ;Pointer to where dSeg should be loaded                ;
-;FILES       db ?    ;Default number of FILES                               ;
-;BUFFERS     db ?    ;Default number of BUFFERS                             ;
-;DFLTDRIVE   db ?    ;Default drive number (0-25), this is the boot drive   ;
-;LASTDRIVE   db ?    ;Default last drive number (0-25)                      ;
-;OEMBIOS     db ?    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS   ;
-;OEMDRVCHAIN dq ?    ;Pointer to the uninitialised device drivers           ;
-;OEMPTR      dq ?    ;Pointer to store at biosPtr                           ;
-;OEMVERSION  dd ?    ;BIOS number, to be used by drivers for id-ing         ;
-;---------------------------------------------------------------------------;
-; These vars are initialised by SYSINIT, to be used in OEMMCBINIT           ;
-; These vars are undefined outside of OEMMCBINIT                            ;
-;---------------------------------------------------------------------------;
-;MCBANCHOR   dq ?    ;Pointer to the Anchor MCB, part of dSEg               ;
-;---------------------------------------------------------------------------;
-; These vars are initialised by SYSINIT, to be used in OEMCALLBK            ;
-; These vars are undefined outside of OEMCALLBK                             ;
-;---------------------------------------------------------------------------;
-;OEMMEMPTR   dq ?    ;Var to save ptr to the 64Kb block passed to OEMCALLBK ;
-;---------------------------------------------------------------------------;
-;
+SYSINIT doesnt care about the internal structure of the OEMINIT module.
+Thus, an OEM is free to arrange code and data within the OEMINIT module,
+ as they please. OEMINIT is always the first module linked to in the DOS
+ binary blob file and therefore an OEM can guarantee that the first byte 
+ of the OEMINIT module will be the first byte executed by the machine.
+SYSINIT starts being invoked only once OEMINIT jumps to the symbol SYSENTRY.
+OEMINIT can even be an .EXE or .ELF executable if the firmware allows it, 
+ as long as it can link with SYSINIT by EXPORTING and IMPORTING the right
+ symbols, its ok! Also, the DOS linker script requires that the OEMINIT 
+ module be the first thing in the executable file, with the default
+ kernel drivers being the at the end, after the DOS, in the segment
+ kDrvText, kDrvData and kDrvBSS.
+OEMINIT has no BSS segment, but has otext and odata where it can link itself into.
+
+
+# PUBLIC PROCEDURES needed to link with SYSINIT
+- OEMMCBINIT -> Does MCB chain building as SYSINIT doesn't know how to read any memory maps. Thats on the OEM to parse and build for us.
+- OEMHALT -> If anything goes wrong during the initial phase of SYSINIT, it will use this routine to print a message and halt the machine.
+- OEMCALLBK -> Used to finalise any setup before xfring control to SHELL= . At this point, DOS is ready to be used.
+
+
+# EXTERN VARS needed to link with SYSINIT:
+Note: These vars need to be initialised before jumping to SYSENTRY.
+- FINALDOSPTR dq ?    ;Pointer to where dSeg should be loaded
+- FILES       db ?    ;Default number of FILES
+- BUFFERS     db ?    ;Default number of BUFFERS
+- DFLTDRIVE   db ?    ;Default drive number (0-25), this is the boot drive
+- LASTDRIVE   db ?    ;Default last drive number (0-25)
+- OEMBIOS     db ?    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
+- OEMDRVCHAIN dq ?    ;Pointer to the uninitialised device drivers
+- OEMPTR      dq ?    ;Pointer to store at biosPtr
+- OEMVERSION  dd ?    ;BIOS number, to be used by drivers for id-ing
+
+These vars are initialised by SYSINIT, to be used in OEMMCBINIT. These vars are undefined outside of OEMMCBINIT.
+- MCBANCHOR   dq ?    ;Pointer to the Anchor MCB, part of dSEg
+
+These vars are initialised by SYSINIT, to be used in OEMCALLBK. These vars are undefined outside of OEMCALLBK.
+- OEMMEMPTR   dq ?    ;Var to save ptr to the 64Kb block passed to OEMCALLBK
