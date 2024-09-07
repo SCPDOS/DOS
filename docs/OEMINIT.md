@@ -15,22 +15,21 @@ The following routines must be marked as global:
 - OEMCALLBK -> Called after processing CONFIG.SYS. Gives access to an initialised DOS. Can make final modifications to the way that DOS initialised the system.
 
 These symbols must be declared as extern:
-BYTE [DFLTDRIVE] = Default boot drive, between 0 and 25
-BYTE [FILES]	= Default value of FILES, between 1 and 254
-BYTE [BUFFERS]  = Default value of BUFFERS, between 1 and 99
-BYTE [LASTDRIVE] = Default value for LASTDRIVE, between 0 and 25
-QWORD [OEMDRVCHAIN] = Pointer to the kernel driver chain
-QWORD [FINALDOSPTR] = Address of the DOS load address
-BYTE [OEMBIOS] = Set means using non SCP name for BIOS (IO.SYS)
-QWORD [OEMPTR] = Ptr to BIOS/HAL internal data structures to be used by 
-				 drivers/utilities. Set to 0 means No pointer.
-DWORD [OEMVERSION] = Set to indicate type of BIOS/HAL (for drivers)
-					 0 = CSM SCP/BIOS
-					 1 = UEFI Boot services x SCP/BIOS
-					 2 = UEFI Runtime services x SCP/BIOS
-					 3-99 = Reserved by SCP/BIOS
-					 99-2^32-1 = For use by OEMs. Please register 
-					 your allocation with the SCP OEM registry.
+
+- BYTE [DFLTDRIVE] = Default boot drive, between 0 and 25
+- BYTE [FILES]	= Default value of FILES, between 1 and 254
+- BYTE [BUFFERS]  = Default value of BUFFERS, between 1 and 99
+- BYTE [LASTDRIVE] = Default value for LASTDRIVE, between 0 and 25
+- QWORD [OEMDRVCHAIN] = Pointer to the kernel driver chain
+- QWORD [FINALDOSPTR] = Address of the DOS load address
+- BYTE [OEMBIOS] = Set means using non SCP name for BIOS (IO.SYS)
+- QWORD [OEMPTR] = Ptr to BIOS/HAL internal data structures to be used by drivers/utilities. Set to 0 means no pointer.
+- DWORD [OEMVERSION] = Set to indicate type of BIOS/HAL (for drivers):
+	- 0 = CSM SCP/BIOS
+ 	- 1 = UEFI Boot services x SCP/BIOS
+  	- 2 = UEFI Runtime services x SCP/BIOS
+  	- 3-99 = Reserved by SCP/BIOS
+  	- 99-2^32-1 = For use by OEMs. Please register your allocation with the SCP OEM registry.
 
 ======================================================================
 
