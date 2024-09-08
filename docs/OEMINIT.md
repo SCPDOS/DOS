@@ -13,12 +13,10 @@ Please note, OEMINIT MUST NOT use ANY DOS calls at all.
 SYSINIT doesnt care about the internal structure of the OEMINIT module. Thus, an OEM is free to arrange code and data within the OEMINIT module, as they please. OEMINIT is always the first module linked to in the DOS binary blob file. SYSINIT starts being invoked only once OEMINIT jumps to the symbol SYSENTRY. OEMINIT can even be an .EXE or .ELF executable if the firmware allows it, as long as it can link with SYSINIT by EXPORTING and IMPORTING the right symbols, its ok! The DOS linker script will place the OEMINIT module at the start of the output executable file, with the default kernel drivers being the at the end, after the DOS, in the segments kDrvText (code segment), kDrvData (data segment) and kDrvBSS (BSS segment). OEMINIT has no BSS segment, but has otext (code segment) and odata (data segment) segments where it can link itself into. Information on writing replacement kernel drivers can be found in the driver writing guide.
 
 ## PUBLIC PROCEDURES needed to link with SYSINIT
-<pre>
 - SYSENTRY  : Entry point for SYSINIT. Must be jumped to!
 - OEMMCBINIT: Does MCB chain building as SYSINIT doesn't know how to read any memory maps. It is on the OEM to parse and build the MCB chain for us.
 - OEMHALT   : If anything goes wrong during the initial phase of SYSINIT, it will use this routine to print a message and halt the machine.
 - OEMCALLBK : Used to finalise any setup before transferring control to "SHELL= ". At this point, DOS is ready to be used. ALL REGISTERS MUST BE PRESERVED ACROSS THIS CALL.
-</pre>
 
 ## EXTERN VARS needed to link with SYSINIT
 <pre>
