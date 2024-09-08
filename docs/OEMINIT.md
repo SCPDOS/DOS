@@ -15,7 +15,7 @@ SYSINIT doesnt care about the internal structure of the OEMINIT module. Thus, an
 ## PUBLIC PROCEDURES needed to link with SYSINIT
 <pre>
 - SYSENTRY  : Entry point for SYSINIT. Must be jumped to!
-- OEMMCBINIT: Does MCB chain building as SYSINIT doesn't know how to read any memory maps. Thats on the OEM to parse and build for us.
+- OEMMCBINIT: Does MCB chain building as SYSINIT doesn't know how to read any memory maps. It is on the OEM to parse and build the MCB chain for us.
 - OEMHALT   : If anything goes wrong during the initial phase of SYSINIT, it will use this routine to print a message and halt the machine.
 - OEMCALLBK : Used to finalise any setup before transferring control to "SHELL= ". At this point, DOS is ready to be used.
 </pre>
