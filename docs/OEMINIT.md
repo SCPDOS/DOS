@@ -1,11 +1,10 @@
-SCP/DOS OEM Init guide main points:
+##SCP/DOS OEM Init implementers overview guide 
+
 It is assumed that an OEM implementer of SCP/DOS is using a non SCP/BIOS Hardware Abstraction Layer or bootstrap program.
 Thus there are a number of modifications that need to be made to the full SYSINIT routine to allow DOS to load.
 The modifications are herein listed and any directives MUST be followed to allow for easy porting of DOS.
 
 Please note, OEMINIT MUST NOT use ANY DOS calls at all.
-
-MUST, MAY and SHOULD can be defined as usual.
 
 ======================================================================
 
@@ -15,9 +14,9 @@ SYSINIT doesnt care about the internal structure of the OEMINIT module. Thus, an
 
 # PUBLIC PROCEDURES needed to link with SYSINIT
 <pre>
-- SYSENTRY	-> Entry point for SYSINIT. Must be jumped to!
+- SYSENTRY	  -> Entry point for SYSINIT. Must be jumped to!
 - OEMMCBINIT 	-> Does MCB chain building as SYSINIT doesn't know how to read any memory maps. Thats on the OEM to parse and build for us.
-- OEMHALT 	-> If anything goes wrong during the initial phase of SYSINIT, it will use this routine to print a message and halt the machine.
+- OEMHALT 	  -> If anything goes wrong during the initial phase of SYSINIT, it will use this routine to print a message and halt the machine.
 - OEMCALLBK 	-> Used to finalise any setup before transferring control to "SHELL= ". At this point, DOS is ready to be used.
 </pre>
 
