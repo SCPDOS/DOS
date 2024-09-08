@@ -110,7 +110,7 @@ Allows an application to terminate but retain some portion of the main program b
 
 Input: __RDX__-Pointer to the last byte in the current program's memory space to keep.
 
-Will preserve all memory from the PSP[0] to __RDX__.
+Will preserve all memory from PSP[0] to __RDX__.
 
 ## Int 28h - DOS Char IO idle handler
 
