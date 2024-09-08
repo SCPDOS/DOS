@@ -2,6 +2,24 @@
 
 --------------------------------------------------------------------------------
 
+## General comments for programming under SCP/DOS
+
+The following points are necessary for safe operation under SCP/DOS.
+- Programmer! You are operating in Ring-0 and have the ability to effectively make any change to the system you wish. If you wish to do so and/or ignore the below points, you are responsible for any changes that occur to the system and any data and/or physical damage that might occur to your system.
+- Programmers **MAY** use SCP/DOS to bootstrap their own system software. However, by doing so, they may no longer rely on SCP/DOS to operate correctly. It is up to the programmer to ascertain what is available after what changes.
+
+In normal operation, the following rules apply:
+- Programmers **MUST NOT** touch the GDT.
+- Programmers **MUST NOT** touch the IDT directly. IDT manipulation may be done only through DOS functions (21h/25h) and (21h/35h). 
+- Programmers **MUST NOT** manipulate the page tables and assorted management registers such as those registers prefixed with __CR__.
+- Programmers **MUST NOT** attempt to load _any_ segment registers with any other values. These values are set by the operating system. Exceptions to this are the hidden portions of the __FS__ and __GS__ registers, though neither are preserved by DOS.
+
+--------------------------------------------------------------------------------
+
+# DOS API Guide
+
+--------------------------------------------------------------------------------
+
 ## Int 20h - Terminate Program
 
 Calling this interrupt will terminate the current procedure. The parent program will not be table to get any information about the state of the program at termination. 
@@ -115,10 +133,11 @@ This section will be filled in later with details of the multiplexer and 2Fh/12h
 --------------------------------------------------------------------------------
 # Int 21h - General DOS API endpoint
 
-Much like in MS-DOS, SCP/DOS can be invoked from a program using the Int 21h interface or by calling PSP[50h], with the relevant function number being placed in register __AH__ to identify the function the program wishes invoked. Upon calling the operating system, registers __RAX__, __RBX__, __RCX__, __RDX__, __RSI__, __RDI__, __RBP__, __RSP__, __R8__ and __R9__ are saved on the callers stack, and the stack is switched to an internal DOS stack. Thus, the caller must ensure they have enough space for all of the aforementioned registers to be stored. If the caller will run EXEC (21h/4Bh) and needs more registers preserved across said call, it is the callers responsibility to save all non-mentioned registers locally before calling SCP/DOS.
+Much like in MS-DOS, SCP/DOS can be invoked from a program using the Int 21h interface or by calling PSP[50h], with the relevant function number being placed in register __AH__ to identify the function the program wishes invoked. Upon calling the operating system, registers __RAX__, __RBX__, __RCX__, __RDX__, __RSI__, __RDI__, __RBP__, __RSP__, __R8__ and __R9__ are saved on the callers stack, and the stack is switched to an internal DOS stack. Thus, the caller must ensure they have enough space for all of the aforementioned registers to be stored. 
 
 Most system calls have been subtly updated in such a way to allow for ease of porting and to make use of the new architecture. In what follows we briefly describe most which should give a programmer a good idea of how to read the RBIL entries for MS-DOS and translate those requirements for SCP/DOS. In time, this section will be filled with a function-by-function specification.
 
+The following are general instructions for using the DOS API.
 - All functions and subfunction codes are passed in __AH__ and __AL__ respectively.
 - RAX is to be considered trashed after a system call, except for where a system call specifically states a return value in __RAX__, or any part of it. In the partial case, the rest of __RAX__ is undefined.
 - Most system calls which may return an error code, indicate an error by setting the Carry (CF) flag. The remaining FCB functions do so by setting the __AL__ register to -1.
