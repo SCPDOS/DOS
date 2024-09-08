@@ -41,6 +41,16 @@ If a driver needs access to hardware HAL services through a global pointer, but 
 To summarise: 
 - The CALL 5 DOS entry point
 - The PSP allocation size variable.
-- All FCB File I/O functions. Otherwise FCB Create (21h/16h), Open (21h/0Fh), Close (21h/10h), Sequential Read (21h/14h), Sequential Write (21h/15h), Random Read (21h/21h), Random Write (21h/22h), Random Block Read (21h/27h), Random Block Write (21h/28h) and Set Random Record (21h/24h) are all considered reserved and will return an FCB error with error code 05h, Access Denied, if they are called.
+- All FCB File I/O functions are now considered reserved and will return an FCB error with error code 05h, Access Denied, if they are called. Those functions include:
+  - FCB Create (21h/16h)
+  - Open (21h/0Fh)
+  - Close (21h/10h)
+  - Sequential Read (21h/14h)
+  - Sequential Write (21h/15h)
+  - Random Read (21h/21h)
+  - Random Write (21h/22h)
+  - Random Block Read (21h/27h)
+  - Random Block Write (21h/28h)
+  - Set Random Record (21h/24h)
 ### Caveat: FCB Create (21h/16h) and Open (21h/0Fh) can be used for the creation of a file label.
 
