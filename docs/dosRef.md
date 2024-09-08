@@ -1,6 +1,6 @@
 # Main DOS reference file for non-standard aspects of SCP/DOS
-Where DOS is found, it is taken to mean SCP/DOS. All other versions of DOS are referred to by their full names.
-# A comment on driver development and porting of 16-bit device drivers to the 64-bit architecture.
+Where the word DOS is used, it is taken to mean SCP/DOS. All other versions of DOS are referred to by their full names.
+## A comment on driver development and porting of 16-bit device drivers to the 64-bit architecture.
 -The following terminology is standard herein: Device drivers in the driver list that is passed to SYSINIT are called kernel (device) drivers. All other drivers are called installable (device) drivers.
 
 General intro:
