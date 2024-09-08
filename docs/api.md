@@ -157,4 +157,4 @@ Most system calls have been subtly updated in such a way to allow for ease of po
     .progTail   db 127 dup (?) ;Default DTA/Program tail
 endstruc
 </pre>
-- Previously unodcumented DOS structures such as Drive Parameter Blocks (DPB), Current Direct Structures (CDS), System File Table (SFT) entries and disk buffer headers are all documented in the file .DOS/src/Include/dosStruc.inc . Whilst it is _not_ suggested you make heavy use of these structures, if one chooses to, one should use the provided symbols properly, to allow for easy rebuilding of applications should the layouts of these structures change. Symbol names _may_ change, though it is unlikely.
+- Previously undocumented DOS structures such as Drive Parameter Blocks (DPB), Current Direct Structures (CDS), System File Table (SFT) entries and disk buffer headers are all documented in the file ./src/Include/dosStruc.inc . Whilst it is _not_ suggested you make heavy use of these structures, if one chooses to, one should use the provided symbols properly, to allow for easy rebuilding of applications should the layouts of these structures change. Symbol names _may_ change, though it is unlikely.
