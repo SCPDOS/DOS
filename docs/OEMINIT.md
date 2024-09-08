@@ -1,4 +1,4 @@
-##SCP/DOS OEM Init implementers overview guide 
+## SCP/DOS OEM Init implementers overview guide 
 
 It is assumed that an OEM implementer of SCP/DOS is using a non SCP/BIOS Hardware Abstraction Layer or bootstrap program.
 Thus there are a number of modifications that need to be made to the full SYSINIT routine to allow DOS to load.
