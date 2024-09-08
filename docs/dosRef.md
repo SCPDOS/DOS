@@ -53,5 +53,5 @@ To summarise:
   - Random Block Write (21h/28h)
   - Set Random Record (21h/24h)
  
-_Caveat: FCB Create (21h/16h) and Open (21h/0Fh) can be used for the creation of a file label._
+_Caveat: FCB Create (21h/16h) and Open (21h/0Fh) can be used for the creation of a volume label._
 
