@@ -9,11 +9,13 @@ The following points are necessary for safe operation under SCP/DOS.
 - Programmers **MAY** use SCP/DOS to bootstrap their own system software. However, by doing so, they may no longer rely on SCP/DOS to operate correctly. It is up to the programmer to ascertain what is available after what changes.
 
 In normal operation, the following rules apply:
-- Programmers **MUST NOT** touch the GDT.
-- Programmers **MUST NOT** touch the IDT directly. IDT manipulation may be done only through DOS functions (21h/25h) and (21h/35h). 
+- Programmers **MUST NOT** modify the GDT or the GDTR.
+- Programmers **MUST NOT** touch the IDT directly or modify the IDTR. IDT manipulation may be done only through DOS functions (21h/25h) and (21h/35h). 
 - Programmers **MUST NOT** manipulate the page tables and assorted management registers such as those registers prefixed with __CR__.
 - Programmers **MUST NOT** attempt to load _any_ segment registers with any other values. These values are set by the operating system. Exceptions to this are the hidden portions of the __FS__ and __GS__ registers, though neither are preserved by DOS.
-
+- Programmers **MAY** use instructions _CLI_ and _STI_ for turning interrupts off and on. Please try to remain with interrupts off as little as possible.
+- Programmers **MUST** remember; your code is not running on buggy 8088's. You do not need to turn interrupts off for changing the stack pointer!
+  
 --------------------------------------------------------------------------------
 
 # DOS API Guide
