@@ -1,6 +1,6 @@
 
 ##Join experiment
-
+<pre>
 -----------------------------------------------------------------
 Before
 -----------------------------------------------------------------
@@ -84,3 +84,4 @@ directory of A:\TEST and the sCurrentPath is still left at C:\FLOPPY.
 
 
 These are the steps that need to be replicated for SCP/DOS's JOIN.
+</pre>
