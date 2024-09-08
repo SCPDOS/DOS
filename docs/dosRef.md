@@ -21,7 +21,7 @@ Kernel drivers are initialised in a more restricted way when compared to install
 3) Kernel drivers MUST be compiled with all their data allocated in the binary.
 4) Kernel drivers MUST NOT make any DOS calls except for 25h and 35h for interrupt installation, 30h for version checking, 2Ah-2Dh for Date/Time adjustment and 52h for SYSVARS pointer obtaining.
 5) Kernel drivers MUST indicate the amount of memory they wish to eject using the endptr field of initReqPkt to indicate the first free byte after each driver. If there are many drivers in a single linked list, they should all point to the same address; the highest address of all the drivers. Returning a value larger than the end of the device driver module is not permitted.
-6) Kernel drivers MUST NOT attempt to allocate more memory than what is linked into the object file. No uninitialised data sections may be present in a kernel driver.
+6) Kernel drivers MUST NOT attempt to allocate more memory than what is linked into the object file.
 7) Kernel drivers have no command line parameters passed to them. They must
 be loaded with sensible defaults.
 
