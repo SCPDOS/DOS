@@ -135,7 +135,7 @@ This section will be filled in later with details of the multiplexer and 2Fh/12h
 --------------------------------------------------------------------------------
 # Int 21h - General DOS API endpoint
 
-Much like in MS-DOS, SCP/DOS can be invoked from a program using the Int 21h interface or by calling PSP[50h], with the relevant function number being placed in register __AH__ to identify the function the program wishes invoked. Upon calling the operating system, registers __RAX__, __RBX__, __RCX__, __RDX__, __RSI__, __RDI__, __RBP__, __RSP__, __R8__ and __R9__ are saved on the callers stack, and the stack is switched to an internal DOS stack. Thus, the caller must ensure they have enough space for all of the aforementioned registers to be stored. 
+Much like in MS-DOS, SCP/DOS can be invoked from a program using the Int 21h interface or by calling PSP[50h], with the relevant function number being placed in register __AH__ to identify the function the program wishes invoked. Upon calling the operating system, registers __RAX__, __RBX__, __RCX__, __RDX__, __RSI__, __RDI__, __RBP__, __RSP__, __R8__ and __R9__ are saved on the callers stack, in that order after which the stack is switched to an internal DOS stack. Thus, the caller must ensure they have enough space for all of the aforementioned registers to be stored. 
 
 Most system calls have been subtly updated in such a way to allow for ease of porting and to make use of the new architecture. In what follows we briefly describe most which should give a programmer a good idea of how to read the RBIL entries for MS-DOS and translate those requirements for SCP/DOS. In time, this section will be filled with a function-by-function specification.
 
