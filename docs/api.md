@@ -40,7 +40,7 @@ This interrupt __must__ not be called directly. This interrupt is called by DOS 
  
 where RSP refers to the stack pointer upon entering the Int 23h handler. 
 
-!!__WARNING__!!: Because this interrupt handler is entered by invoking an Interrupt instruction, if the stack pointer was not QWORD aligned at the time of the initial DOS system call invokation, upon entering Int 23h, the stack pointer _will_ be forcefully QWORD aligned, causing possible issues if trying to access data from the stack, or even stack corruption. Whilst it is not necessary to have a QWORD aligned stack when invoking DOS it is _highly_ recommended that does so to avoid such issues.
+!!__WARNING__!!: Because this interrupt handler is entered by invoking an Interrupt instruction, if the stack pointer was not QWORD aligned at the time of the initial DOS system call invokation, upon entering Int 23h, the stack pointer _will_ be forcefully QWORD aligned, causing possible issues if trying to access data from the stack, or even stack corruption. Whilst it is not necessary to have a QWORD aligned stack when invoking DOS it is _highly_ recommended that the stack pointer is so to avoid such issues.
 
 A user may exit in one of two ways from this system call. Note that the restart is sensitive to the value in the register __AH__:
 - IRETQ - Execute the DOS call for the function number in __AH__.
