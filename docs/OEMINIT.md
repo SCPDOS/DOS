@@ -1,4 +1,4 @@
-## SCP/DOS OEM Init implementers overview guide 
+# SCP/DOS OEM Init implementers overview guide 
 
 It is assumed that an OEM implementer of SCP/DOS is using a non SCP/BIOS Hardware Abstraction Layer or bootstrap program.
 Thus there are a number of modifications that need to be made to the full SYSINIT routine to allow DOS to load.
@@ -8,11 +8,11 @@ Please note, OEMINIT MUST NOT use ANY DOS calls at all.
 
 ======================================================================
 
-# Brief guidelines for writing OEMINIT
+## Brief guidelines for writing OEMINIT
 
 SYSINIT doesnt care about the internal structure of the OEMINIT module. Thus, an OEM is free to arrange code and data within the OEMINIT module, as they please. OEMINIT is always the first module linked to in the DOS binary blob file. SYSINIT starts being invoked only once OEMINIT jumps to the symbol SYSENTRY. OEMINIT can even be an .EXE or .ELF executable if the firmware allows it, as long as it can link with SYSINIT by EXPORTING and IMPORTING the right symbols, its ok! The DOS linker script will place the OEMINIT module at the start of the output executable file, with the default kernel drivers being the at the end, after the DOS, in the segments kDrvText (code segment), kDrvData (data segment) and kDrvBSS (BSS segment). OEMINIT has no BSS segment, but has otext (code segment) and odata (data segment) segments where it can link itself into. Information on writing replacement kernel drivers can be found in the driver writing guide.
 
-# PUBLIC PROCEDURES needed to link with SYSINIT
+## PUBLIC PROCEDURES needed to link with SYSINIT
 <pre>
 - SYSENTRY	  -> Entry point for SYSINIT. Must be jumped to!
 - OEMMCBINIT 	-> Does MCB chain building as SYSINIT doesn't know how to read any memory maps. Thats on the OEM to parse and build for us.
@@ -20,7 +20,7 @@ SYSINIT doesnt care about the internal structure of the OEMINIT module. Thus, an
 - OEMCALLBK 	-> Used to finalise any setup before transferring control to "SHELL= ". At this point, DOS is ready to be used.
 </pre>
 
-# EXTERN VARS needed to link with SYSINIT
+## EXTERN VARS needed to link with SYSINIT
 <pre>
 The following vars need to be initialised before jumping to SYSENTRY.
 - FINALDOSPTR dq ?    ;Pointer to where dSeg should be loaded
