@@ -143,15 +143,15 @@ The following are general instructions for using the DOS API.
 - All functions and subfunction codes are passed in __AH__ and __AL__ respectively.
 - RAX is to be considered trashed after a system call, except for where a system call specifically states a return value in __RAX__, or any part of it. In the partial case, the rest of __RAX__ is undefined.
 - Most system calls which may return an error code, indicate an error by setting the Carry (CF) flag. The remaining FCB functions do so by setting the __AL__ register to -1.
+- Generally, most system calls have been upgraded from using 16-bit registers to 32-bit registers. Thus where before one might have used __ZX__, this is replaced with __EZX__, where __Z__ is a placeholder. The only exception to this rule are pointers.
 - Handles to files, where once would've been stored in 16-bit registers such as __BX__ and __AX__, are now stored in their corresponding 32-bit registers, __EBX__ and __EAX__. 
 - Pointers to memory, where once would've been stored as far pointers, such as __DS__:__DX__ are now stored as near pointers in the 64-bit extension of the offset. That is to say, __DS__:__DX__ now becomes __RDX__.
-- Pointers to memory segment, such as in FREE (21h/49h) where once mightve been stored in __ES__ are now stored in __R8__. No arguments are ever passed to and from DOS in __R9__.
+- Pointers to memory segment, such as in FREE (21h/49h), where once mightve been stored in __ES__ are now stored as flat pointers in __R8__. No arguments are ever passed to and from DOS in __R9__.
 - When doing file IO, one can transfer up to 4Gb of data in a single transer, using __ECX__ instead of the previous __CX__.
-- Generally, most system calls have been upgraded from using 16-bit registers to 32-bit registers.
-- File pointer manipulation using LSEEK (21h/42h) has an important caveat. Though at present, DOS only knows how to manipulate files which are at most 4Gb in size, using the redirector interface, DOS can in fact manipulate larger files. To facillitate this, LSEEK actually works by manipulating a _64-bit_ file pointer. The upper 32-bits of the file pointer are stored in __ECX__ with the lower 32-bits in __EDX__. Thus, the full pointer is stored in __EDX__:__ECX__.
+- File pointer manipulation using LSEEK (21h/42h) has an important caveat. Though at present, DOS only knows how to manipulate files which are at most 4Gb in size, using the redirector interface, DOS can in fact manipulate larger files. To facillitate this, LSEEK actually works by manipulating a _64-bit_ file pointer. The upper 32-bits of the file pointer are stored in __ECX__ with the lower 32-bits in __EDX__. Thus, the full pointer is stored in __ECX__:__EDX__.
 - All undocumented Int 21h functions are implemented according to the above specification.
 - Time and Date formats and structures remain unchanged.
-- The maximum length of a path is still 64 characters.
+- The maximum length of a path is 64 characters.
 - The maximum length of a fully qualified file name is 67 characters.
 - The PSP structure is considerably different in places. Efforts were made to keep the important documented and well used fields in place. Please refer to the NASM struct below:
 <pre>
