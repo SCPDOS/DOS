@@ -112,7 +112,7 @@ Input: __RDX__-Pointer to the last byte in the current program's memory space to
 
 Will preserve all memory from PSP[0] to __RDX__.
 
-## Int 28h - DOS Char IO idle handler
+## Int 28h - DOS Idle interrupt
 
 This interrupt can be hooked by applications, such as TSR's that need to know when DOS is idle to do processing. This interrupt is called by DOS whenever DOS assertains that it is in an "idle" loop, indicating to hooked processes that there is some time for them to do processing. Please ensure that your hooked function correctly jumps to the next hooked function as failure to do so correctly may result in catastrophic system failure.
 
