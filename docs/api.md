@@ -116,7 +116,9 @@ Will preserve all memory from PSP[0] to __RDX__.
 
 This interrupt can be hooked by applications, such as TSR's that need to know when DOS is idle to do processing. This interrupt is called by DOS whenever DOS assertains that it is in an "idle" loop, indicating to hooked processes that there is some time for them to do processing. Please ensure that your hooked function correctly jumps to the next hooked function as failure to do so correctly may result in catastrophic system failure.
 
-## Int 29h - Reserved
+## Int 29h - Reserved, Fast CON out
+
+This interrupt is marked as reserved, though works exactly as documented in previous versions of DOS. This interrupt is marked as reserved for the endpoint may be obsoleted in future versions.
 
 ## Int 2Ah - Reserved
 
