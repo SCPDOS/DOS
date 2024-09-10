@@ -181,3 +181,20 @@ The following are general instructions for using the DOS API.
 endstruc
 </pre>
 - Previously undocumented DOS structures such as Drive Parameter Blocks (DPB), Current Direct Structures (CDS), System File Table (SFT) entries and disk buffer headers are all documented in the file ./src/Include/dosStruc.inc . Whilst it is _not_ suggested you make heavy use of these structures, if one chooses to, one should use the provided symbols properly, to allow for easy rebuilding of applications should the layouts of these structures change. Symbol names _may_ change, though it is unlikely.
+
+## New Int 21h functions
+
+- AH=61h - System Services
+  -AL=00h: Get pointer to the environment for current process. Returns a pointer to the environment for the current process in __RDX__.
+  -AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to the following struc in __RDX__:
+<pre>
+struc cmdLineArgs  
+  .fcb1       db 16 dup (?)  ;First FCB,    argument 1 
+  .fcb2       db 20 dup (?)  ;Second FCB,   argument 2
+  .dta:   ;Pointer to the default DTA in the PSP
+  .parmList   db ?   ;Number of characters in command tail
+  .progTail   db 127 dup (?) ;Default DTA/Program tail
+endstruc
+</pre> 
+  -AL=02h: Get pointer to the filename of current process. On return: CF=NC : __RDX__ is a pointer to the filename. CF=CY: No filename could be found and __RDX__ is a null pointer.
+  -AL>03h: Reserved.
