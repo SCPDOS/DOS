@@ -185,7 +185,7 @@ endstruc
 ## New Int 21h functions
 
 - AH=61h - Process Management Services
-  - AL=00h: Get pointer to the environment for current process. Returns a pointer to the environment for the current process in __RDX__.
+  - AL=00h: Get pointer to the environment for current process. Returns a pointer to the environment for the current process in __RDX__. This may be a NULL pointer. 
   - AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to a command line arguments structure in __RDX__.
   - AL=02h: Get pointer to the filename of current process.
   <pre>
@@ -200,6 +200,7 @@ struc cmdLineArgs
   .fcb1       db 16 dup (?)  ;First command line argument parsed into FCB
   .fcb2       db 20 dup (?)  ;Second command line argument parsed into FCB
   .tailLen    db ?           ;Number of characters in command tail (up to 127)
-  .progTail   db 127 dup (?) ;Command line tail, always with a terminating CR. CR is one char after tailLen number of chars.
+  .cmdTail    db 127 dup (?) ;Command line tail.
 endstruc
 </pre> 
+The command tail has a maximum length of 127 bytes. This means that a maximum of 126 characters can be passed in the command line tail, as one space is always reserved for a terminating &lt;CR&gt;. This terminating &lt;CR&gt; is always present in the command line.
