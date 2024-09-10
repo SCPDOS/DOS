@@ -196,6 +196,6 @@ struc cmdLineArgs
   .fcb1       db 16 dup (?)  ;First command line argument parsed into FCB
   .fcb2       db 20 dup (?)  ;Second command line argument parsed into FCB
   .tailLen    db ?           ;Number of characters in command tail (up to 127)
-  .progTail   db 127 dup (?) ;Command line tail, always with a terminating CR. CR is one char after tailLen number of chars..
+  .progTail   db 127 dup (?) ;Command line tail, always with a terminating CR. CR is one char after tailLen number of chars.
 endstruc
 </pre> 
