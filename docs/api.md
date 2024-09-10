@@ -188,7 +188,13 @@ endstruc
 
   -AL=00h: Get pointer to the environment for current process. Returns a pointer to the environment for the current process in __RDX__.
   
-  -AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to the following struc in __RDX__:
+  -AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to a command line arguments structure in __RDX__:
+
+  -AL=02h: Get pointer to the filename of current process. On return: CF=NC : __RDX__ is a pointer to the filename. CF=CY: No filename could be found and __RDX__ is a null pointer.
+  
+  -AL>03h: Reserved.
+
+Note for reference, A command line arguments structure:
 <pre>
 struc cmdLineArgs  
   .fcb1       db 16 dup (?)  ;First FCB,    argument 1 
@@ -198,7 +204,3 @@ struc cmdLineArgs
   .progTail   db 127 dup (?) ;Default DTA/Program tail
 endstruc
 </pre> 
-
-  -AL=02h: Get pointer to the filename of current process. On return: CF=NC : __RDX__ is a pointer to the filename. CF=CY: No filename could be found and __RDX__ is a null pointer.
-  
-  -AL>03h: Reserved.
