@@ -185,10 +185,10 @@ endstruc
 ## New Int 21h functions
 
 - AH=61h - System Services
-  -AL=00h: Get pointer to the environment for current process. Returns a pointer to the environment for the current process in __RDX__.
-  -AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to a command line arguments structure in __RDX__:
-  -AL=02h: Get pointer to the filename of current process. On return: CF=NC : __RDX__ is a pointer to the filename. CF=CY: No filename could be found and __RDX__ is a null pointer.
-  -AL>03h: Reserved.
+  - AL=00h: Get pointer to the environment for current process. Returns a pointer to the environment for the current process in __RDX__.
+  - AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to a command line arguments structure in __RDX__:
+  - AL=02h: Get pointer to the filename of current process. On return: CF=NC : __RDX__ is a pointer to the filename. CF=CY: No filename could be found and __RDX__ is a null pointer.
+  - AL>03h: Reserved.
 
 Note for reference, A command line arguments structure:
 <pre>
