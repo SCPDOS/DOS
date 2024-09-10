@@ -193,10 +193,9 @@ endstruc
 Note for reference, A command line arguments structure:
 <pre>
 struc cmdLineArgs  
-  .fcb1       db 16 dup (?)  ;First FCB,    argument 1 
-  .fcb2       db 20 dup (?)  ;Second FCB,   argument 2
-  .dta:   ;Pointer to the default DTA in the PSP
-  .parmList   db ?   ;Number of characters in command tail
-  .progTail   db 127 dup (?) ;Default DTA/Program tail
+  .fcb1       db 16 dup (?)  ;First command line argument parsed into FCB
+  .fcb2       db 20 dup (?)  ;Second command line argument parsed into FCB
+  .tailLen    db ?           ;Number of characters in command tail (up to 127)
+  .progTail   db 127 dup (?) ;Command line tail, always with a terminating CR. CR is one char after tailLen number of chars..
 endstruc
 </pre> 
