@@ -189,8 +189,8 @@ endstruc
   - AL=01h: Get pointer to the command line arguments for the current process. Returns a pointer to a command line arguments structure in __RDX__.
   - AL=02h: Get pointer to the filename of current process.
   <pre>
-      On return: CF=NC : __RDX__ is a pointer to the filename.
-                 CF=CY: No filename could be found and __RDX__ is a null pointer.
+      On return: CF=NC: RDX is a pointer to the filename.
+                 CF=CY: No filename could be found and RDX is a null pointer.
   </pre>
   - AL>03h: Reserved.
 
