@@ -308,18 +308,7 @@ skipOEMName:
 ;------------------------------------------------;
 ;          Find largest sector size              ;
 ;------------------------------------------------;
-sectorSizeSearch:
-;Done by reading DPB's for each drive
-    xor eax, eax
-    mov rdx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
-    ;Go thru each block individually
-.findLargest:
-    cmp ax, word [rdx + dpb.wBytesPerSector]    ;Is current bigger than max?
-    cmovb ax, word [rdx + dpb.wBytesPerSector]  ;Move if so
-    mov rdx, qword [rdx + dpb.qNextDPBPtr]  ;Goto next DPB
-    cmp rdx, -1 ;We at the end?
-    jne short .findLargest  ;If not, keep checking
-    mov word fs:[maxBytesSec], ax
+    call sectorSizeSet
 ;------------------------------------------------;
 ;                CDS array inits                 ;
 ;------------------------------------------------;
@@ -437,8 +426,10 @@ defaultFileHandles:
     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
     call configParse ;Else, parse the config file
 ;Config.sys mightve made changes to files. Update DOS!
-    movzx eax, byte [FILES]
-    mov byte [rbp + numFiles], al
+    movzx eax, byte [rbp - cfgFrame.newSFTVal]
+    mov byte fs:[numFiles], al
+;If a driver installed a new DPB device, check if it's sector size is bigger.
+    call sectorSizeSet  ;This is needed for setting the buffer sizes
 ;------------------------------------------------;
 ;   Setup Final Data Areas With Overrides from   ;
 ;                  CONFIG.SYS                    ;
@@ -621,6 +612,26 @@ badMem:
     int 21h
     jmp short hltLbl
 memErr  db "System Memory Error",0Ah,0Dh,"$"
+
+;--------------------------------------------------------;
+;--------------------------------------------------------;
+;                Procedures for SYSINIT                  ;
+;--------------------------------------------------------;
+;--------------------------------------------------------;
+
+sectorSizeSet:
+;Done by reading DPB's for each drive
+    xor eax, eax
+    mov rdx, qword fs:[dpbHeadPtr]  ;Get ptr to first DPB
+    ;Go thru each block individually
+.findLargest:
+    cmp ax, word [rdx + dpb.wBytesPerSector]    ;Is current bigger than max?
+    cmovb ax, word [rdx + dpb.wBytesPerSector]  ;Move if so
+    mov rdx, qword [rdx + dpb.qNextDPBPtr]  ;Goto next DPB
+    cmp rdx, -1 ;We at the end?
+    jne short .findLargest  ;If not, keep checking
+    mov word fs:[maxBytesSec], ax
+    return
 
 openStreams:
 ;If this returns with CF=CY, an error occured.
