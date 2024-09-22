@@ -264,7 +264,7 @@ kernDrvInit:
     test eax, eax
     jz short skipOEMName
     lea rsi, qword [rbp + dosBIOSName]
-    mov rax, "IO"
+    mov rax, "IO      "
     mov qword [rsi], rax
     mov dword [rsi + 8], ".SYS"
 skipOEMName:
