@@ -34,7 +34,7 @@ Segment kDrvDat follows=kDrvText vfollows=kDrvText align=1 valign=1
 ;  OEM Driver data segment
 ;---------------------------
 
-Segment kDrvBSS bss follows=kDrvDat align=1 nobits
+Segment kDrvBSS bss follows=kDrvDat align=1
 ;---------------------------
 ;  OEM Driver bss segment
 ;---------------------------
