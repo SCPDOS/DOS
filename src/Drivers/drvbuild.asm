@@ -6,7 +6,6 @@ BITS 64
 %include "./src/Include/fatStruc.inc"
 %include "./src/Include/fcbStruc.inc"
 %include "./src/Include/dosStruc.inc"
-%include "./src/Debug/debSym.inc"
 %include "./src/Include/dosError.inc"
 %include "./src/Include/dosExec.inc"
 
@@ -35,7 +34,7 @@ Segment kDrvDat follows=kDrvText vfollows=kDrvText align=1 valign=1
 ;  OEM Driver data segment
 ;---------------------------
 
-Segment kDrvBSS follows=kDrvDat align=1 nobits
+Segment kDrvBSS bss follows=kDrvDat align=1 nobits
 ;---------------------------
 ;  OEM Driver bss segment
 ;---------------------------

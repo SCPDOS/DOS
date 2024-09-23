@@ -2,7 +2,6 @@
 
 ; DOS variables for reloc computations in sysinit
 GLOBAL dSegLen  ;Exported for calculations with dosSeg
-GLOBAL dtextL   ;Exported for calculation of initialised code/data w/o sysinit
 
 ; DOS DATA AREA variables
 GLOBAL nulDevHdr
@@ -17,6 +16,10 @@ GLOBAL shareCount
 GLOBAL shareDelay
 GLOBAL caseMapFunc
 GLOBAL charTableArray
+GLOBAL charTableArray.ucTable
+GLOBAL charTableArray.filenameUCTable
+GLOBAL charTableArray.filenameTerminatingTable
+GLOBAL charTableArray.collatingTable
 GLOBAL serverDispTbl
 GLOBAL machineName
 GLOBAL critPtchTbl
@@ -54,3 +57,37 @@ GLOBAL sftHeadPtr
 GLOBAL numBuffers
 GLOBAL fcbsHeadPtr
 GLOBAL numPhysVol
+
+GLOBAL i0
+GLOBAL i1
+GLOBAL i2
+GLOBAL i3
+GLOBAL i4
+GLOBAL i5
+GLOBAL i6
+GLOBAL i7
+GLOBAL i8
+GLOBAL i9
+GLOBAL i10
+GLOBAL i11
+GLOBAL i12
+GLOBAL i13
+GLOBAL i14
+GLOBAL i15
+GLOBAL i16
+GLOBAL i17
+GLOBAL i18
+GLOBAL i19
+GLOBAL i20
+GLOBAL i21
+
+GLOBAL terminateProcess 
+GLOBAL functionDispatch 
+GLOBAL defaultIretq
+GLOBAL dosDefCritErrHdlr    
+GLOBAL absDiskRead      
+GLOBAL absDiskWrite     
+GLOBAL terminateRes     
+GLOBAL multiplexHdlr
+GLOBAL nulStrat
+GLOBAL nulIntr

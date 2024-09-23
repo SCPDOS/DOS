@@ -6,14 +6,13 @@ BITS 64
 %include "./src/Include/fatStruc.inc"
 %include "./src/Include/fcbStruc.inc"
 %include "./src/Include/dosStruc.inc"
-%include "./src/Debug/debSym.inc"
 %include "./src/Include/dosError.inc"
 %include "./src/Include/dosExec.inc"
 
 ;========================START OF DOS MODULE=========================
 %include "./src/Kernel/dos.inc"
 
-Segment dBSS nobits align=1 start=0
+Segment dBSS bss align=1 start=0
 ;---------------------------
 ;   DOS BSS data segment
 ;---------------------------
@@ -31,9 +30,6 @@ Segment dtext follows=sdata align=1 vfollows=dBSS valign=1
 
 %include "./src/Kernel/Data/staticData.asm"
 %include "./src/Kernel/Data/dispTbl.asm"
-%if DEBUG
-%include "./src/Kernel/Debug/debug.asm"
-%endif
 %include "./src/Kernel/FAT/buffun.asm"
 %include "./src/Kernel/FAT/fat.asm"
 %include "./src/Kernel/FAT/findfile.asm"
@@ -55,6 +51,5 @@ Segment dtext follows=sdata align=1 vfollows=dBSS valign=1
 %include "./src/Kernel/Net/server.asm"
 %include "./src/Kernel/Net/multiplx.asm"
 %include "./src/Kernel/Net/share.asm"
-dtextL  equ ($-$$)
 
 ;=========================END OF DOS MODULE==========================
