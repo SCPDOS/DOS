@@ -1,12 +1,4 @@
 #!/bin/sh
-#############################################################################
-# A WSL makefile to assemble my file, and if successful, write it  
-# to sector 100 (where bootsector is sector 0). We declare the space before 
-# this file as reserved in the FAT, for SCPBIOS!
-#############################################################################
-# Assemble the file
-# -Zp1 forces byte alignment of structures, -Sp1 forces segment byte alignment
-#	cmd.exe /c uasm -Sa -Fl=scpdos.lst -bin scpdos.asm
 
 ASM     := nasm
 BINUTIL := x86_64-w64-mingw32
