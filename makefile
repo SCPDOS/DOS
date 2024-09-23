@@ -24,7 +24,7 @@ assemble:
 
 link:
 #	${LINKER} ${LD_FLAGS} -o ./bin/dos.exe ./bin/tmp/oem.obj ./bin/tmp/sys.obj ./bin/tmp/krn.obj ./bin/tmp/drv.obj
-	${LINKER} ${LD_FLAGS} -o ./bin/dos.exe
+	${LINKER} ${LD_FLAGS} -o ./bin/tmp/dos.exe
 
 #############################################################################
 # OLD FUNCTIONS BELOW
