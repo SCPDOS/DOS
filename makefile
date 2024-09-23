@@ -8,6 +8,13 @@
 # -Zp1 forces byte alignment of structures, -Sp1 forces segment byte alignment
 #	cmd.exe /c uasm -Sa -Fl=scpdos.lst -bin scpdos.asm
 assemble:
+# Build four modules, then link them together, then strip headers.
+# Build with all alignment of 1. Export nothing.
+	nasm 
+#############################################################################
+# OLD FUNCTIONS BELOW
+#############################################################################
+Xassemble:
 	nasm ./src/scpdos.asm -o ./bin/scpdos.sys -f bin -l ./lst/SCPDOS/scpdos.lst -O0v
 	dd if=./bin/scpdos.sys of=./img/MyDiskDOS.ima bs=512 seek=91 conv=notrunc
 	cp ./img/MyDiskDOS.ima ./img/MyDiskDOSMSD.ima

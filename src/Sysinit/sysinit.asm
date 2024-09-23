@@ -12,7 +12,7 @@ SYSENTRY:    ;Control is passed here from OEMINIT module
 ;      Copy DOS to it's final resting ground     ;
 ;------------------------------------------------;  
 dosReloc:
-    lea rsi, section.dtext.start   ;Get pointer to the start of dText
+    lea rsi, section.dtext.start    ;Get pointer to the start of dText
     mov rdi, qword [FINALDOSPTR]    ;Get ptr to where dSeg goes
     add rdi, dSegLen                ;Make this a pointer to the start of dText
     cmp rdi, rsi 

@@ -378,4 +378,3 @@ dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
     ; through the multiplexer we never will read this structure. 
     ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
     mplxRegStack    db callerFrame_size dup (?) 
-    dSegLen     equ     $
