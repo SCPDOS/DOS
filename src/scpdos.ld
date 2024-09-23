@@ -16,11 +16,11 @@ SECTIONS {
     }
 
     /*Addresses start afresh in the module below*/
-    dos$ 0x0: AT(ADDR(sys$) + SIZEOF(sys$)){
+    dos$ 0x0: AT(LOADADDR(sys$) + SIZEOF(sys$)){
         ./bin/tmp/krn.obj(dBSS)
         ./bin/tmp/krn.obj(dtext)
     }
-    drv$ ALIGN(1): AT(LOADADDR(dos$) + SIZEOF(dos$)){
+    drv$ ALIGN(1): {
         /* Ensure the segments in the driver are in the right order*/
         ./bin/tmp/drv.obj(kDrvText)
         ./bin/tmp/drv.obj(kDrvDat)
