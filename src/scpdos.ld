@@ -20,7 +20,7 @@ SECTIONS {
         ./bin/tmp/krn.obj(dBSS)
         ./bin/tmp/krn.obj(dtext)
     }
-    drv$ ALIGN(1): {
+    drv$ ALIGN(1): AT(LOADADDR(dos$) + SIZEOF(dos$)){
         /* Ensure the segments in the driver are in the right order*/
         ./bin/tmp/drv.obj(kDrvText)
         ./bin/tmp/drv.obj(kDrvDat)
