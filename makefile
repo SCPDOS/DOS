@@ -7,6 +7,12 @@ LINKER  := ${BINUTIL}-ld
 #LD_FLAGS := -T ./src/scpdos.ld -r -n -N -nostdlib --section-alignment=1 --file-alignment=1 --image-base=0x0 --enable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
 LD_FLAGS := -T ./src/scpdos.ld --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
 
+all:
+	$(MAKE) assemble
+	$(MAKE) link
+	$(MAKE) dos
+#	$(MAKE) disk
+
 assemble:
 # Build four modules, then link them together, then strip headers.
 # Build with all alignment of 1. Export nothing.
@@ -17,7 +23,6 @@ assemble:
 
 link:
 	${LINKER} ${LD_FLAGS} -o ./bin/tmp/dos.exe
-	rm ./bin/tmp/*.obj
 
 dos:
 	${BINUTIL}-objcopy -O binary --only-section=oem$$ ./bin/tmp/dos.exe ./bin/tmp/oem.bin
@@ -25,16 +30,9 @@ dos:
 	${BINUTIL}-objcopy -O binary --only-section=dos$$ ./bin/tmp/dos.exe ./bin/tmp/krn.bin
 	${BINUTIL}-objcopy -O binary --only-section=drv$$ ./bin/tmp/dos.exe ./bin/tmp/drv.bin
 	cat ./bin/tmp/oem.bin ./bin/tmp/sys.bin ./bin/tmp/krn.bin ./bin/tmp/drv.bin > ./bin/scpdos.sys 
-	rm ./bin/tmp/oem.bin ./bin/tmp/sys.bin ./bin/tmp/krn.bin ./bin/tmp/drv.bin
 
 clean:
-	rm ./bin/tmp/dos.exe
-
-all:
-	$(MAKE) assemble
-	$(MAKE) link
-	$(MAKE) dos
-#	$(MAKE) disk
+	rm ./bin/tmp/*.bin ./bin/tmp/*.obj ./bin/tmp/dos.exe
 
 disk:
 	dd if=./bin/scpdos.sys of=./img/MyDiskDOS.ima bs=512 seek=91 conv=notrunc
