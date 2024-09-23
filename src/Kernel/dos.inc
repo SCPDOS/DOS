@@ -1,5 +1,7 @@
 ;DOS globals
 
+EXTERN dos$_start
+
 ; DOS variables for reloc computations in sysinit
 GLOBAL dSegLen  ;Exported for calculations with dosSeg
 

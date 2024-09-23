@@ -18,7 +18,7 @@ Segment stext align=1 valign=1
 ;   SYSINIT code segment
 ;---------------------------
 ;%define currSegVBase section.stext.vstart
-%define currSegVBase 0
+%define currSegVBase sys$_start
 
 %include "./src/Sysinit/sysinit.asm"
 %include "./src/Sysinit/cfginit.asm"

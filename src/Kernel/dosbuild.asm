@@ -26,7 +26,8 @@ Segment dtext follows=sdata align=1 vfollows=dBSS valign=1
 ;DOS main data/code seg. 
 ;No separation, as this is a single binary blob.
 ;%define currSegVBase section.dtext.vstart
-%define currSegVBase dSegLen
+;%define currSegVBase dSegLen
+%define currSegVBase dos$_start
 
 %include "./src/Kernel/Data/staticData.asm"
 %include "./src/Kernel/Data/dispTbl.asm"

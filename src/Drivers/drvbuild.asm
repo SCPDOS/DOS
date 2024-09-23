@@ -22,7 +22,7 @@ Segment kDrvText align=1 valign=1
 ;---------------------------
 ;All drivers are linked into the kDrvText segment
 ;%define currSegVBase section.kDrvText.vstart
-%define currSegVBase 0
+%define currSegVBase drv$_start
 
 %include "./src/Drivers/drvHdrs.asm"
 %include "./src/Drivers/charDrv.asm"

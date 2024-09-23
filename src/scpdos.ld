@@ -12,7 +12,8 @@ SECTIONS {
         ./bin/tmp/oem.obj
     }
 
-    sys$ BLOCK(1): AT(ADDR(oem$) + SIZEOF(oem$)) {
+    sys$ BLOCK(1): AT(LOADADDR(oem$) + SIZEOF(oem$)) {
+        sys$_start = .;
         ./bin/tmp/sys.obj(stext)
         ./bin/tmp/sys.obj(sdata)
     }
@@ -26,11 +27,13 @@ SECTIONS {
     }
 
     dos$ BLOCK(1) : AT(LOADADDR(sys$) + SIZEOF(sys$)){
+        dos$_start = .;
         ./bin/tmp/krn.obj(dtext)
     }
 
     drv$ BLOCK(1) : AT(LOADADDR(dos$) + SIZEOF(dos$)){
         /* Ensure the segments in the driver are in the right order*/
+        drv$_start = .;
         ./bin/tmp/drv.obj(kDrvText)
         ./bin/tmp/drv.obj(kDrvDat)
         dosResLen = .;          /*End of resident code and data*/

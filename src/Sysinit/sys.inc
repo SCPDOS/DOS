@@ -19,9 +19,10 @@ EXTERN OEMHALT
 EXTERN OEMCALLBK
 
 ;Linker externs
-EXTERN dosEnd   ;Pointer from linker script
-EXTERN dosResLen   ;From linker script
-EXTERN dosResStart ;From linker script
+EXTERN dosEnd       ;Pointer from linker script
+EXTERN dosResLen    ;From linker script
+EXTERN dosResStart  ;From linker script
+EXTERN sys$_start   ;From linker script
 
 ;DOS externs
 EXTERN dSegLen  ;From .bss of DOS
