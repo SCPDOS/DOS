@@ -12,18 +12,18 @@ ASM     := nasm
 BINUTIL := x86_64-w64-mingw32
 LINKER  := ${BINUTIL}-ld 
 
-LD_FLAGS := -T ./src/scpdos.ld --no-leading-underscore --enable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
+#LD_FLAGS := -T ./src/scpdos.ld -r -n -N -nostdlib --section-alignment=1 --file-alignment=1 --image-base=0x0 --enable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
+LD_FLAGS := -T ./src/scpdos.ld --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
 
 assemble:
 # Build four modules, then link them together, then strip headers.
 # Build with all alignment of 1. Export nothing.
-	${ASM} ./src/Oeminit/oembuild.asm -o ./bin/tmp/oem.obj -f win64 -l ./lst/SCPDOS/tmp/oem.lst
-	${ASM} ./src/Sysinit/sysbuild.asm -o ./bin/tmp/sys.obj -f win64 -l ./lst/SCPDOS/tmp/sys.lst
-	${ASM} ./src/Kernel/dosbuild.asm -o ./bin/tmp/krn.obj -f win64 -l ./lst/SCPDOS/tmp/krn.lst
-	${ASM} ./src/Drivers/drvbuild.asm -o ./bin/tmp/drv.obj -f win64 -l ./lst/SCPDOS/tmp/drv.lst
+	${ASM} ./src/Oeminit/oembuild.asm -o ./bin/tmp/oem.obj -f win64 -l ./lst/SCPDOS/tmp/oem.lst -O0v
+	${ASM} ./src/Sysinit/sysbuild.asm -o ./bin/tmp/sys.obj -f win64 -l ./lst/SCPDOS/tmp/sys.lst -O0v
+	${ASM} ./src/Kernel/dosbuild.asm -o ./bin/tmp/krn.obj -f win64 -l ./lst/SCPDOS/tmp/krn.lst -O0v
+	${ASM} ./src/Drivers/drvbuild.asm -o ./bin/tmp/drv.obj -f win64 -l ./lst/SCPDOS/tmp/drv.lst -O0v
 
 link:
-#	${LINKER} ${LD_FLAGS} -o ./bin/dos.exe ./bin/tmp/oem.obj ./bin/tmp/sys.obj ./bin/tmp/krn.obj ./bin/tmp/drv.obj
 	${LINKER} ${LD_FLAGS} -o ./bin/tmp/dos.exe
 
 #############################################################################

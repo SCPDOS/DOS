@@ -12,12 +12,12 @@ SYSENTRY:    ;Control is passed here from OEMINIT module
 ;      Copy DOS to it's final resting ground     ;
 ;------------------------------------------------;  
 dosReloc:
-    lea rsi, dosFileS    ;Get pointer to the start of dText
+    lea rsi, dosResStart    ;Get pointer to the start of dText
     mov rdi, qword [FINALDOSPTR]    ;Get ptr to where dSeg goes
     add rdi, dSegLen                ;Make this a pointer to the start of dText
     cmp rdi, rsi 
     je short skipDOSReloc   ;Skip relocating if DOS is at correct address
-    mov ecx, dosLen         ;Get length of file portion for copy
+    mov ecx, dosResLen      ;Get length of file portion for copy
     add ecx, 7              ;Round up
     shr ecx, 3              ;Divide by 8 to get number of QWORDS for copy
     rep movsq

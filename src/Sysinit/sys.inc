@@ -20,8 +20,8 @@ EXTERN OEMCALLBK
 
 ;Linker externs
 EXTERN dosEnd   ;Pointer from linker script
-EXTERN dosLen   ;From linker script
-EXTERN dosFileS ;From linker script
+EXTERN dosResLen   ;From linker script
+EXTERN dosResStart ;From linker script
 
 ;DOS externs
 EXTERN dSegLen  ;From .bss of DOS
