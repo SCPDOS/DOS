@@ -25,6 +25,15 @@ assemble:
 
 link:
 	${LINKER} ${LD_FLAGS} -o ./bin/tmp/dos.exe
+	rm ./bin/tmp/*.obj
+
+dos:
+	${BINUTIL}-objcopy -O binary --only-section=oem$$ ./bin/tmp/dos.exe ./bin/tmp/oem.bin
+	${BINUTIL}-objcopy -O binary --only-section=sys$$ ./bin/tmp/dos.exe ./bin/tmp/sys.bin
+	${BINUTIL}-objcopy -O binary --only-section=dos$$ ./bin/tmp/dos.exe ./bin/tmp/krn.bin
+	${BINUTIL}-objcopy -O binary --only-section=drv$$ ./bin/tmp/dos.exe ./bin/tmp/drv.bin
+	cat ./bin/tmp/oem.bin ./bin/tmp/sys.bin ./bin/tmp/krn.bin ./bin/tmp/drv.bin > ./bin/tmp/dos.bin 
+	rm ./bin/tmp/oem.bin ./bin/tmp/sys.bin ./bin/tmp/krn.bin ./bin/tmp/drv.bin
 
 #############################################################################
 # OLD FUNCTIONS BELOW
