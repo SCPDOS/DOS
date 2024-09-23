@@ -5,7 +5,7 @@ BINUTIL := x86_64-w64-mingw32
 LINKER  := ${BINUTIL}-ld 
 
 #LD_FLAGS := -T ./src/scpdos.ld -r -n -N -nostdlib --section-alignment=1 --file-alignment=1 --image-base=0x0 --enable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
-LD_FLAGS := -T ./src/scpdos.ld --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
+LD_FLAGS := -T ./src/scpdos.ld --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
 
 all:
 	$(MAKE) assemble
