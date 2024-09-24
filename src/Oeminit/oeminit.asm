@@ -33,7 +33,6 @@
 ;DFLTDRIVE   db ?    ;Default drive number (0-25), this is the boot drive   ;
 ;LASTDRIVE   db ?    ;Default last drive number (0-25)                      ;
 ;OEMBIOS     db ?    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS   ;
-;OEMDRVCHAIN dq ?    ;Pointer to the uninitialised device drivers           ;
 ;OEMPTR      dq ?    ;Pointer to store at biosPtr                           ;
 ;OEMVERSION  dd ?    ;BIOS number, to be used by drivers for id-ing         ;
 ;---------------------------------------------------------------------------;
@@ -159,14 +158,6 @@ pdptLoop:
 
     mov rdi, cr3    ;Reload cr3 to make the system aware of new table entries
     mov cr3, rdi    ;(is this strictly necessary?)
-;------------------------------------------------;
-;       Set Device Driver Chain and Exit         ;
-;------------------------------------------------;  
-;Before we exit, set the device driver chain
-    mov rax, driverChain
-    pop rdi
-    add rax, rdi    ;Add the DOSSEG base address
-    mov qword [OEMDRVCHAIN], rax  ;Store this value here
 
 ;----------------------------------------------------------------
 ;                       PIC Remap procedure                     :

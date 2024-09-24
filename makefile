@@ -2,10 +2,14 @@
 
 ASM     := nasm
 BINUTIL := x86_64-w64-mingw32
+#BINUTIL := 
 LINKER  := ${BINUTIL}-ld 
+OBJCOPY := ${BINUTIL}-objcopy
 
-#LD_FLAGS := -T ./src/scpdos.ld -r -n -N -nostdlib --section-alignment=1 --file-alignment=1 --image-base=0x0 --enable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
 LD_FLAGS := -T ./src/scpdos.ld --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
+#LD_FLAGS := -T ./src/scpdos.ld --no-check-sections -Map=./lst/SCPDOS/tmp/dos.map
+OC_FLAGS := --dump-section
+
 
 all:
 	$(MAKE) assemble
@@ -25,10 +29,10 @@ link:
 	${LINKER} ${LD_FLAGS} -o ./bin/tmp/dos.exe
 
 dos:
-	${BINUTIL}-objcopy --dump-section oem$$=./bin/tmp/oem.bin ./bin/tmp/dos.exe 
-	${BINUTIL}-objcopy --dump-section sys$$=./bin/tmp/sys.bin ./bin/tmp/dos.exe 
-	${BINUTIL}-objcopy --dump-section dos$$=./bin/tmp/krn.bin ./bin/tmp/dos.exe 
-	${BINUTIL}-objcopy --dump-section drv$$=./bin/tmp/drv.bin ./bin/tmp/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} oem$$=./bin/tmp/oem.bin ./bin/tmp/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} sys$$=./bin/tmp/sys.bin ./bin/tmp/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} dos$$=./bin/tmp/krn.bin ./bin/tmp/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} drv$$=./bin/tmp/drv.bin ./bin/tmp/dos.exe 
 	cat ./bin/tmp/oem.bin ./bin/tmp/sys.bin ./bin/tmp/krn.bin ./bin/tmp/drv.bin > ./bin/scpdos.sys 
 
 clean:

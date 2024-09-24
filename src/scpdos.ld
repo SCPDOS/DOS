@@ -12,26 +12,28 @@ SECTIONS {
         ./bin/tmp/oem.obj
     }
 
-    sys$ BLOCK(1): AT(LOADADDR(oem$) + SIZEOF(oem$)) {
+    sys$ BLOCK(1): {
         sys$_start = .;
         ./bin/tmp/sys.obj(stext)
         ./bin/tmp/sys.obj(sdata)
     }
 
+    dosResStart = . ;
+    
     /*--------------------------------------------*/
     /* Addresses start afresh in the module below */
     /*--------------------------------------------*/
 
-    dos$bss 0x0 (NOLOAD): AT(LOADADDR(sys$) + SIZEOF(sys$)) {
+    dos$bss 0x0 (NOLOAD): {
         ./bin/tmp/krn.obj(dBSS)   
     }
 
-    dos$ BLOCK(1) : AT(LOADADDR(sys$) + SIZEOF(sys$)){
+    dos$ BLOCK(1) : {
         dos$_start = .;
         ./bin/tmp/krn.obj(dtext)
     }
 
-    drv$ BLOCK(1) : AT(LOADADDR(dos$) + SIZEOF(dos$)){
+    drv$ BLOCK(1) : {
         /* Ensure the segments in the driver are in the right order*/
         drv$_start = .;
         ./bin/tmp/drv.obj(kDrvText)
@@ -39,10 +41,9 @@ SECTIONS {
         dosResLen = .;          /*End of resident code and data*/
     }
 
-    drv$bss (NOLOAD): AT(LOADADDR(drv$) + SIZEOF(drv$)){
+    drv$bss (NOLOAD):{
         ./bin/tmp/drv.obj(kDrvBSS)
     }
 
-    dosResStart = LOADADDR(dos$);  /*Start of the DOS code in the file*/
-    dosEnd = . ; /*Get the vpointer to the end of the allocation*/
+    dosEnd = ALIGN(.) ; /*Get the para aligned vptr to end of alloc*/
 }

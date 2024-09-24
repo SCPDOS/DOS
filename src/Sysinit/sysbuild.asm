@@ -13,17 +13,16 @@ BITS 64
 %include "./src/Sysinit/sys.inc"
 
 ;Segment stext follows=odata align=1 vfollows=odata valign=1
-Segment stext align=1 valign=1
+Segment stext code private align=1 use64
 ;---------------------------
 ;   SYSINIT code segment
 ;---------------------------
-;%define currSegVBase section.stext.vstart
 %define currSegVBase sys$_start
 
 %include "./src/Sysinit/sysinit.asm"
 %include "./src/Sysinit/cfginit.asm"
 
-Segment sdata follows=stext align=1 vfollows=stext valign=1
+Segment sdata data private align=1
 ;---------------------------
 ;   SYSINIT data segment
 ;---------------------------

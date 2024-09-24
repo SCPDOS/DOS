@@ -70,7 +70,6 @@ DFLTDRIVE   db 0    ;Default drive number (0-25), this is the boot drive
 LASTDRIVE   db 0    ;Default last drive number (0-25)
 OEMBIOS     db 0    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
 OEMMEMPTR:  ;Used to save the allocated 64k block for OEMCALLBK
-OEMDRVCHAIN dq 0    ;Pointer to the uninitialised device drivers
 OEMPTR      dq 0    ;Pointer to store at biosPtr
 OEMVERSION  dd 0    ;BIOS number, to be used by drivers for id-ing
 

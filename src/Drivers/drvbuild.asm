@@ -16,12 +16,11 @@ BITS 64
 %include "./src/Drivers/drv.inc"
 
 ;Segment kDrvText follows=dtext vfollows=dtext align=1 valign=1
-Segment kDrvText align=1 valign=1
+Segment kDrvText code private align=1 use64
 ;---------------------------
 ;  OEM Driver code segment
 ;---------------------------
 ;All drivers are linked into the kDrvText segment
-;%define currSegVBase section.kDrvText.vstart
 %define currSegVBase drv$_start
 
 %include "./src/Drivers/drvHdrs.asm"
@@ -29,12 +28,12 @@ Segment kDrvText align=1 valign=1
 %include "./src/Drivers/diskDrv.asm"
 %include "./src/Drivers/drvInits.asm"
 
-Segment kDrvDat follows=kDrvText vfollows=kDrvText align=1 valign=1
+Segment kDrvDat data private align=1
 ;---------------------------
 ;  OEM Driver data segment
 ;---------------------------
 
-Segment kDrvBSS bss follows=kDrvDat align=1
+Segment kDrvBSS bss private align=1
 ;---------------------------
 ;  OEM Driver bss segment
 ;---------------------------

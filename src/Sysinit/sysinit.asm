@@ -39,6 +39,7 @@ skipDOSReloc:
 ;------------------------------------------------;
 ;Adjust Interrupt Entries Int 00h-15h
 ;Assumes rbp points to DOSSEG
+    breakpoint
     sidt [localIDTpointer]   ;Get the idt pointer here
 adjExceptions:
     lea rdi, exceptData
@@ -68,7 +69,9 @@ adjInts:
     rep movsb   
 
 ;Adjust the addresses in the other driver headers 
-    mov rsi, qword [OEMDRVCHAIN]
+    mov rsi, drv$_start
+    add rsi, qword [FINALDOSPTR]    ;Offset this correctly
+    mov r14, rsi    ;Save this pointer in r14
     mov qword [rbp + nulDevHdr + drvHdr.nxtPtr], rsi  ;Point NUL to the OEM driver chain
 adjDrivers:
 ;Input: rsi = Effective address of driver in DOS segment
@@ -119,7 +122,7 @@ kernDrvInit:
     ;first driver MUST be CON and the fourth MUST be CLOCK$.
     ;This is done to allow the drivers to use DOS CHAR functions and 
     ;GET/SET TIME and GET/SET DATE
-    mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
+    mov rsi, r14    ;Get back the pointer to the copied drivers
     mov rbx, rsi
     mov qword [rbp + vConPtr], rsi  ;Store default CON ptr
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto AUX

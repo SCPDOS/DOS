@@ -12,20 +12,19 @@ BITS 64
 ;========================START OF DOS MODULE=========================
 %include "./src/Kernel/dos.inc"
 
-Segment dBSS bss align=1 start=0
+Segment dBSS bss private align=1
 ;---------------------------
 ;   DOS BSS data segment
 ;---------------------------
 %include "./src/Kernel/BSS/dosSeg.asm"
 dSegLen equ ($-$$)
 
-Segment dtext follows=sdata align=1 vfollows=dBSS valign=1 
+Segment dtext code private align=1 use64
 ;---------------------------
 ;       DOS segment
 ;---------------------------
 ;DOS main data/code seg. 
 ;No separation, as this is a single binary blob.
-;%define currSegVBase section.dtext.vstart
 ;%define currSegVBase dSegLen
 %define currSegVBase dos$_start
 
