@@ -27,11 +27,11 @@ SECTIONS {
         ./bin/tmp/krn.obj(dBSS)   
     }
 
-    dos$ BLOCK(1) : AT(LOADADDR(sys$) + SIZEOF(sys$)){
+    dos$ BLOCK(1) : {
         ./bin/tmp/krn.obj(dtext)
     }
 
-    drv$ BLOCK(1) : AT(LOADADDR(dos$) + SIZEOF(dos$)){
+    drv$ BLOCK(1) : {
         /* Ensure the segments in the driver are in the right order*/
         drv$_start = .; /*Used by SYSINIT to get a ptr to the header*/
         ./bin/tmp/drv.obj(kDrvText)
