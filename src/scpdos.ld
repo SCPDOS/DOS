@@ -45,5 +45,5 @@ SECTIONS {
         ./bin/tmp/drv.obj(kDrvBSS)
     }
 
-    dosEnd = ALIGN(.) ; /*Get the para aligned vptr to end of alloc*/
+    dosEnd = ALIGN(16) ; /*Get the para aligned vptr to end of alloc*/
 }
