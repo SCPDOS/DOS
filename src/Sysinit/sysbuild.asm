@@ -17,8 +17,6 @@ Segment stext code private align=1 use64
 ;---------------------------
 ;   SYSINIT code segment
 ;---------------------------
-%define currSegVBase sys$_start
-
 %include "./src/Sysinit/sysinit.asm"
 %include "./src/Sysinit/cfginit.asm"
 

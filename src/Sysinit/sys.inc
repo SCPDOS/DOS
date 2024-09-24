@@ -22,7 +22,6 @@ EXTERN OEMCALLBK
 EXTERN dosEnd       ;Pointer from linker script
 EXTERN dosResLen    ;From linker script
 EXTERN dosResStart  ;From linker script
-EXTERN sys$_start   ;From linker script
 EXTERN drv$_start   ;From linker script
 
 ;DOS externs

@@ -11,7 +11,6 @@ Segment otext code private align=1 use64
 ;---------------------------
 ;   OEMINIT code segment
 ;---------------------------
-
 %include "./src/Oeminit/oeminit.asm"
 
 Segment odata data private align=1

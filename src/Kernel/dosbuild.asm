@@ -25,9 +25,6 @@ Segment dtext code private align=1 use64
 ;---------------------------
 ;DOS main data/code seg. 
 ;No separation, as this is a single binary blob.
-;%define currSegVBase dSegLen
-%define currSegVBase dos$_start
-
 %include "./src/Kernel/Data/staticData.asm"
 %include "./src/Kernel/Data/dispTbl.asm"
 %include "./src/Kernel/FAT/buffun.asm"

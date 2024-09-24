@@ -13,7 +13,6 @@ SECTIONS {
     }
 
     sys$ BLOCK(1): {
-        sys$_start = .;
         ./bin/tmp/sys.obj(stext)
         ./bin/tmp/sys.obj(sdata)
     }
@@ -28,14 +27,13 @@ SECTIONS {
         ./bin/tmp/krn.obj(dBSS)   
     }
 
-    dos$ BLOCK(1) : {
-        dos$_start = .;
+    dos$ BLOCK(1) : AT(LOADADDR(sys$) + SIZEOF(sys$)){
         ./bin/tmp/krn.obj(dtext)
     }
 
-    drv$ BLOCK(1) : {
+    drv$ BLOCK(1) : AT(LOADADDR(dos$) + SIZEOF(dos$)){
         /* Ensure the segments in the driver are in the right order*/
-        drv$_start = .;
+        drv$_start = .; /*Used by SYSINIT to get a ptr to the header*/
         ./bin/tmp/drv.obj(kDrvText)
         ./bin/tmp/drv.obj(kDrvDat)
         dosResLen = .;          /*End of resident code and data*/

@@ -39,7 +39,6 @@ skipDOSReloc:
 ;------------------------------------------------;
 ;Adjust Interrupt Entries Int 00h-15h
 ;Assumes rbp points to DOSSEG
-    breakpoint
     sidt [localIDTpointer]   ;Get the idt pointer here
 adjExceptions:
     lea rdi, exceptData
@@ -591,7 +590,6 @@ l2:
     lea rdx, initBadRet
     mov eax, 2522h  ;Setup the return address if the top level process dies
     int 21h
-
     lea rbx, cmdBlock
     lea rsi, tempPSP
     lea rax, qword [rsi + psp.fcb1]

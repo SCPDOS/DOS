@@ -17,6 +17,15 @@ all:
 	$(MAKE) dos
 #	$(MAKE) disk
 
+world:
+	$(MAKE) assemble
+	$(MAKE) link
+	$(MAKE) dos
+	$(MAKE) disk
+	$(MAKE) clean
+	./build
+
+
 assemble:
 # Build four modules, then link them together, then strip headers.
 # Build with all alignment of 1. Export nothing.
