@@ -6,7 +6,7 @@ BINUTIL := x86_64-w64-mingw32
 LINKER  := ${BINUTIL}-ld 
 OBJCOPY := ${BINUTIL}-objcopy
 
-LD_FLAGS := -T ./src/scpdos.ld --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/tmp/dos.map
+LD_FLAGS := -T ./src/scpdos.ld --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/scpdos.map
 #LD_FLAGS := -T ./src/scpdos.ld --no-check-sections -Map=./lst/SCPDOS/tmp/dos.map
 OC_FLAGS := --dump-section
 
@@ -29,23 +29,23 @@ world:
 assemble:
 # Build four modules, then link them together, then strip headers.
 # Build with all alignment of 1. Export nothing.
-	${ASM} ./src/Oeminit/oembuild.asm -o ./bin/tmp/oem.obj -f win64 -l ./lst/SCPDOS/tmp/oem.lst -O0v
-	${ASM} ./src/Sysinit/sysbuild.asm -o ./bin/tmp/sys.obj -f win64 -l ./lst/SCPDOS/tmp/sys.lst -O0v
-	${ASM} ./src/Kernel/dosbuild.asm -o ./bin/tmp/krn.obj -f win64 -l ./lst/SCPDOS/tmp/krn.lst -O0v
-	${ASM} ./src/Drivers/drvbuild.asm -o ./bin/tmp/drv.obj -f win64 -l ./lst/SCPDOS/tmp/drv.lst -O0v
+	${ASM} ./src/Oeminit/oembuild.asm -o ./bin/oem.obj -f win64 -l ./lst/SCPDOS/oem.lst -O0v
+	${ASM} ./src/Sysinit/sysbuild.asm -o ./bin/sys.obj -f win64 -l ./lst/SCPDOS/sys.lst -O0v
+	${ASM} ./src/Kernel/dosbuild.asm -o ./bin/krn.obj -f win64 -l ./lst/SCPDOS/krn.lst -O0v
+	${ASM} ./src/Drivers/drvbuild.asm -o ./bin/drv.obj -f win64 -l ./lst/SCPDOS/drv.lst -O0v
 
 link:
-	${LINKER} ${LD_FLAGS} -o ./bin/tmp/dos.exe
+	${LINKER} ${LD_FLAGS} -o ./bin/dos.exe
 
 dos:
-	${OBJCOPY} ${OC_FLAGS} oem$$=./bin/tmp/oem.bin ./bin/tmp/dos.exe 
-	${OBJCOPY} ${OC_FLAGS} sys$$=./bin/tmp/sys.bin ./bin/tmp/dos.exe 
-	${OBJCOPY} ${OC_FLAGS} dos$$=./bin/tmp/krn.bin ./bin/tmp/dos.exe 
-	${OBJCOPY} ${OC_FLAGS} drv$$=./bin/tmp/drv.bin ./bin/tmp/dos.exe 
-	cat ./bin/tmp/oem.bin ./bin/tmp/sys.bin ./bin/tmp/krn.bin ./bin/tmp/drv.bin > ./bin/scpdos.sys 
+	${OBJCOPY} ${OC_FLAGS} oem$$=./bin/oem.bin ./bin/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} sys$$=./bin/sys.bin ./bin/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} dos$$=./bin/krn.bin ./bin/dos.exe 
+	${OBJCOPY} ${OC_FLAGS} drv$$=./bin/drv.bin ./bin/dos.exe 
+	cat ./bin/oem.bin ./bin/sys.bin ./bin/krn.bin ./bin/drv.bin > ./bin/scpdos.sys 
 
 clean:
-	rm ./bin/tmp/*.bin ./bin/tmp/*.obj ./bin/tmp/dos.exe
+	rm ./bin/*.bin ./bin/*.obj ./bin/dos.exe
 
 disk:
 	dd if=./bin/scpdos.sys of=./img/MyDiskDOS.ima bs=512 seek=91 conv=notrunc

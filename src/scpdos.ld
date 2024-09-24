@@ -9,12 +9,12 @@ SECTIONS {
     }
 
     oem$ 0x0: {
-        ./bin/tmp/oem.obj
+        ./bin/oem.obj
     }
 
     sys$ BLOCK(1): {
-        ./bin/tmp/sys.obj(stext)
-        ./bin/tmp/sys.obj(sdata)
+        ./bin/sys.obj(stext)
+        ./bin/sys.obj(sdata)
     }
 
     dosResStart = . ;
@@ -24,23 +24,23 @@ SECTIONS {
     /*--------------------------------------------*/
 
     dos$bss 0x0 (NOLOAD): {
-        ./bin/tmp/krn.obj(dBSS)   
+        ./bin/krn.obj(dBSS)   
     }
 
     dos$ BLOCK(1) : {
-        ./bin/tmp/krn.obj(dtext)
+        ./bin/krn.obj(dtext)
     }
 
     drv$ BLOCK(1) : {
         /* Ensure the segments in the driver are in the right order*/
         drv$_start = .; /*Used by SYSINIT to get a ptr to the header*/
-        ./bin/tmp/drv.obj(kDrvText)
-        ./bin/tmp/drv.obj(kDrvDat)
+        ./bin/drv.obj(kDrvText)
+        ./bin/drv.obj(kDrvDat)
         dosResLen = .;          /*End of resident code and data*/
     }
 
     drv$bss (NOLOAD):{
-        ./bin/tmp/drv.obj(kDrvBSS)
+        ./bin/drv.obj(kDrvBSS)
     }
 
     dosEnd = ALIGN(16) ; /*Get the para aligned vptr to end of alloc*/
