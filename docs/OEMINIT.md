@@ -27,7 +27,6 @@ The following vars need to be initialised before jumping to SYSENTRY.
 - DFLTDRIVE   db ?    ;Default drive number (0-25), this is the boot drive
 - LASTDRIVE   db ?    ;Default last drive number (0-25)
 - OEMBIOS     db ?    ;Set if to use IO.SYS or clear if to use SCPBIOS.SYS
-- OEMDRVCHAIN dq ?    ;Pointer to the uninitialised device drivers
 - OEMPTR      dq ?    ;Pointer to store at biosPtr
 - OEMVERSION  dd ?    ;BIOS number, to be used by drivers for id-ing
 
