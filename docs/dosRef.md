@@ -37,10 +37,9 @@ Otherwise, the driver is simply removed from memory and if there is a next drive
 For both kernel and installable drivers:
 If a driver needs access to hardware HAL services through a global pointer, but is unsure of HAL version and/or otherwise cannot call a HAL system service to obtain a pointer, the driver may call DOS to get the DOS version number and based on that, work out the negative offset to the relevant data from the SYSVARS pointer, based on the structure of the DOS data area. The relevant data in the DOS data area is obtained from OEMINIT.
 
-## CP/M features not present yet in DOS
+## CP/M features not present in DOS
 To summarise: 
-- The CALL 5 DOS entry point
-- The PSP allocation size variable.
+- The CALL 5 DOS entry point.
 - All FCB File I/O functions are now considered reserved and will return an FCB error with error code 05h, Access Denied, if they are called. Those functions include:
   - FCB Create (21h/16h)
   - Open (21h/0Fh)
