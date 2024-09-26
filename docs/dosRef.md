@@ -23,13 +23,13 @@ Kernel drivers:
 Kernel drivers are initialised in a more restricted way when compared to installable drivers due to the fact that they are installed before DOS is completely initialised. As such, they are subject to more restrictions. 
 1) Kernel drivers must be provided as a linkable object file and cannot be written as a flat binary. 
 
-*-* Kernel drivers MUST place all their code in the segment kDrvText.
+    *-* Kernel drivers MUST place all their code in the segment kDrvText.
 
-*-* Kernel drivers MUST place all their allocated data in the segment kDrvDat.  This includes the device driver header. This must be the first piece of data in the data segment.
+    *-* Kernel drivers MUST place all their allocated data in the segment kDrvDat.  This includes the device driver header. This must be the first piece of data in the data segment.
 
-*-* We suggest all driver headers for the drivers in the kernel driver module be placed together in one long table at the start of the segment kDrvDat.
+    *-* We suggest all driver headers for the drivers in the kernel driver module be placed together in one long table at the start of the segment kDrvDat.
 
-*-* Kernel drivers MUST place all their unallocated data in the segment kDrvBSS. Though support for a BSS segment is present, the segment itself is not initialised to 0. If necessary, this may be done during driver initialisation.
+    *-* Kernel drivers MUST place all their unallocated data in the segment kDrvBSS. Though support for a BSS segment is present, the segment itself is not initialised to 0. If necessary, this may be done during driver initialisation.
 
 2) Kernel drivers MUST present at least 5 devices with the driver chain linked as follows:
     CON->AUX->PRN->CLOCK$->Any block or additional character devices.
