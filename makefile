@@ -7,7 +7,7 @@ LINKER  := ${BINUTIL}-ld
 OBJCOPY := ${BINUTIL}-objcopy
 
 LD_FLAGS := -T ./src/scpdos.ld --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/scpdos.map
-#LD_FLAGS := -T ./src/scpdos.ld --no-check-sections -Map=./lst/SCPDOS/tmp/dos.map
+#LD_FLAGS := -T ./src/scpdos.ld --no-check-sections -Map=./lst/SCPDOS/scpdos.map
 OC_FLAGS := --dump-section
 
 
@@ -57,18 +57,18 @@ disk:
 
 #Add a new boot sector to current image
 loader:
-	nasm ./src/Boot/loader.asm -o ./bin/loader.bin -f bin -l ./lst/Boot/loader.lst -O0v
+	${ASM} ./src/Boot/loader.asm -o ./bin/loader.bin -f bin -l ./lst/Boot/loader.lst -O0v
 	dd if=./bin/loader.bin of=./img/MyDiskDOS.ima bs=512 count=1 conv=notrunc
 	cp ./img/MyDiskDOS.ima ./img/MyDiskDOSMSD.ima
 
 mbr:
-	nasm ./src/Boot/mbr.asm -o ./bin/mbr.bin -f bin -l ./lst/Boot/mbr.lst -O0v
+	${ASM} ./src/Boot/mbr.asm -o ./bin/mbr.bin -f bin -l ./lst/Boot/mbr.lst -O0v
 
 #Create a fresh disk image
 fresh:
 	dd if=/dev/zero of=./img/MyDiskDOS.IMA bs=512 count=2880 conv=notrunc
 
-	nasm ./src/Boot/loader.asm -o ./bin/loader.bin -f bin -l ./lst/Boot/loader.lst -O0v
+	${ASM} ./src/Boot/loader.asm -o ./bin/loader.bin -f bin -l ./lst/Boot/loader.lst -O0v
 	dd if=./bin/loader.bin of=./img/MyDiskDOS.ima bs=512 count=1 conv=notrunc
 
 	dd if=./bin/scpbios.sys of=./img/MyDiskDOS.ima bs=512 seek=33 conv=notrunc
@@ -85,6 +85,6 @@ copy:
 
 # Temp, to test Executable files
 tst:
-	nasm ./Utils/EXETEST/tst.asm -o ./Utils/EXETEST/bin/tst.obj -f win64 -l ./Utils/EXETEST/lst/tst.lst -O0v
+	${ASM} ./Utils/EXETEST/tst.asm -o ./Utils/EXETEST/bin/tst.obj -f win64 -l ./Utils/EXETEST/lst/tst.lst -O0v
 #Link using VS Dev Console using good old MASM/VC LINK with 
 #link tst.obj /entry:main /machine:x64

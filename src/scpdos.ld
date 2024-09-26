@@ -34,8 +34,8 @@ SECTIONS {
     drv$ BLOCK(1) : {
         /* Ensure the segments in the driver are in the right order*/
         drv$_start = .; /*Used by SYSINIT to get a ptr to the header*/
-        ./bin/drv.obj(kDrvText)
         ./bin/drv.obj(kDrvDat)
+        ./bin/drv.obj(kDrvText)
         dosResLen = .;          /*End of resident code and data*/
     }
 

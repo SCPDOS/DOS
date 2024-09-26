@@ -20,7 +20,6 @@ Segment kDrvText code private align=1 use64
 ;  OEM Driver code segment
 ;---------------------------
 ;All drivers are linked into the kDrvText segment
-%include "./src/Drivers/drvHdrs.asm"
 %include "./src/Drivers/charDrv.asm"
 %include "./src/Drivers/diskDrv.asm"
 %include "./src/Drivers/drvInits.asm"
@@ -29,6 +28,7 @@ Segment kDrvDat data private align=1
 ;---------------------------
 ;  OEM Driver data segment
 ;---------------------------
+%include "./src/Drivers/drvHdrs.asm"
 
 Segment kDrvBSS bss private align=1
 ;---------------------------
