@@ -12,12 +12,14 @@ SYSENTRY:    ;Control is passed here from OEMINIT module
 ;      Copy DOS to it's final resting ground     ;
 ;------------------------------------------------;  
 dosReloc:
-    lea rsi, section.dtext.start   ;Get pointer to the start of dText
+    lea rsi, dosResStart    ;Get pointer to the start of dText
     mov rdi, qword [FINALDOSPTR]    ;Get ptr to where dSeg goes
     add rdi, dSegLen                ;Make this a pointer to the start of dText
     cmp rdi, rsi 
     je short skipDOSReloc   ;Skip relocating if DOS is at correct address
-    mov ecx, (dosLen + 7)/8
+    mov ecx, dosResLen      ;Get length of file portion for copy
+    add ecx, 7              ;Round up
+    shr ecx, 3              ;Divide by 8 to get number of QWORDS for copy
     rep movsq
 skipDOSReloc:
 ;------------------------------------------------;
@@ -66,7 +68,9 @@ adjInts:
     rep movsb   
 
 ;Adjust the addresses in the other driver headers 
-    mov rsi, qword [OEMDRVCHAIN]
+    mov rsi, drv$_start
+    add rsi, qword [FINALDOSPTR]    ;Offset this correctly
+    mov r14, rsi    ;Save this pointer in r14
     mov qword [rbp + nulDevHdr + drvHdr.nxtPtr], rsi  ;Point NUL to the OEM driver chain
 adjDrivers:
 ;Input: rsi = Effective address of driver in DOS segment
@@ -117,7 +121,7 @@ kernDrvInit:
     ;first driver MUST be CON and the fourth MUST be CLOCK$.
     ;This is done to allow the drivers to use DOS CHAR functions and 
     ;GET/SET TIME and GET/SET DATE
-    mov rsi, qword [OEMDRVCHAIN]    ;Get the first driver in the chain
+    mov rsi, r14    ;Get back the pointer to the copied drivers
     mov rbx, rsi
     mov qword [rbp + vConPtr], rsi  ;Store default CON ptr
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Goto AUX
@@ -586,7 +590,6 @@ l2:
     lea rdx, initBadRet
     mov eax, 2522h  ;Setup the return address if the top level process dies
     int 21h
-
     lea rbx, cmdBlock
     lea rsi, tempPSP
     lea rax, qword [rsi + psp.fcb1]
