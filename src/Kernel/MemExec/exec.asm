@@ -751,8 +751,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rdx, qword [rbp - execFrame.pParam]
     mov qword [rdx + loadProg.initRIP], rax
     movzx eax, bx   ;Return fcb drive status
-    mov qword [rsi], rax    ;Store the FCB status on the top of stack for AH=01h
     sub rsi, 8  ;Now go down one so that we can pop the AX value from the stack
+    mov qword [rsi], rax    ;Store the FCB status on the top of stack for AH=01h
     mov qword [rdx + loadProg.initRSP], rsi
 .overlayExit:
     mov rsp, rbp    ;Reset the stack to its position
