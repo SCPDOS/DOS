@@ -422,8 +422,8 @@ configParse:
     ;eax now has the filesize. 
     mov ecx, eax
     and ecx, ~0Fh   ;Clear lower byte
-    add ecx, 1h     ;... and round up!
     shr ecx, 4      ;Convert to paragraphs
+    inc ecx         ;... and round up!
     cmp ecx, 10000h ;Is it greater than 64k?
     jae .drvFreeMemAndHdl
     jmp .loadCont

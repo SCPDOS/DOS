@@ -769,7 +769,7 @@
    110 0000022C 0F45C3              <1>     cmovnz eax, ebx
    111 0000022F 8805(00000000)      <1>     mov byte [DFLTDRIVE], al    ;Set default drive
    112                              <1> ;Copy DOS to its final resting place
-   113 00000235 48893509040000      <1>     mov qword [biosUBase], rsi  ;Local OEM variable
+   113 00000235 48893508040000      <1>     mov qword [biosUBase], rsi  ;Local OEM variable
    114 0000023C C605(00000000)08    <1>     mov byte [FILES], 8         ;Default 8 files, initially 5 only
    115 00000243 C605(00000000)1E    <1>     mov byte [BUFFERS], 30      ;Default 30 buffers, at start 1
    116 0000024A C605(00000000)05    <1>     mov byte [LASTDRIVE], 5     ;Default Last drive value
@@ -782,7 +782,7 @@
    121 0000026D CD31                <1>     int 31h ;Get number of Int 33h devices in r8b
    122 0000026F 49C1E818            <1>     shr r8, 3*8
    123 00000273 4584C0              <1>     test r8b, r8b
-   124 00000276 0F8484030000        <1>     jz OEMHALT
+   124 00000276 0F8483030000        <1>     jz OEMHALT
    125 0000027C 4889F7              <1>     mov rdi, rsi
    126 0000027F 4881E700F0FFFF      <1>     and rdi, ~0FFFh ;round up to next 4Kb page after biosUBase
    127 00000286 4881C700100000      <1>     add rdi, 1000h
@@ -805,306 +805,305 @@
    143                              <1> ;Now we add every 4kb page to the page directory pointer table
    144                              <1> ;15 4kb pages to consider
    145 000002AA 48893D(00000000)    <1>     mov qword [FINALDOSPTR], rdi ;rdi now points to where dSeg will go
-   146 000002B1 57                  <1>     push rdi
-   147 000002B2 0F20DF              <1>     mov rdi, cr3    ;Get Page level 4 table pointer
-   148 000002B5 488B3F              <1>     mov rdi, qword [rdi] ;Go to next level
-   149 000002B8 4881E700FFFFFF      <1>     and rdi, ~0FFh  ;Strip bottom two nybbles
-   150 000002BF 4881C720000000      <1>     add rdi, 4*8    ;Go to 4th entry
-   151 000002C6 B93C000000          <1>     mov ecx, 60
-   152 000002CB 480D03000000        <1>     or rax, 3h      ;present and r/w
-   153                              <1> pdptLoop:
-   154 000002D1 48AB                <1>     stosq
-   155 000002D3 480500100000        <1>     add rax, 1000h  ;Goto next 4kb page
-   156 000002D9 FFC9                <1>     dec ecx
-   157 000002DB 75F4                <1>     jnz pdptLoop
-   158                              <1> 
-   159 000002DD 0F20DF              <1>     mov rdi, cr3    ;Reload cr3 to make the system aware of new table entries
-   160 000002E0 0F22DF              <1>     mov cr3, rdi    ;(is this strictly necessary?)
-   161                              <1> 
-   162                              <1> ;----------------------------------------------------------------
-   163                              <1> ;                       PIC Remap procedure                     :
-   164                              <1> ;----------------------------------------------------------------
-   165                              <1> ;Remapping the IRQ lines to Interrupts 0F0h - 0FFh
-   166 000002E3 FA                  <1>     cli
-   167 000002E4 B0FF                <1>     mov al, 0FFh    ;Mask all interrupts 
-   168 000002E6 E621                <1>     out 021h, al
-   169 000002E8 E6A1                <1>     out 0A1h, al
-   170 000002EA 0F010D6C030000      <1>     sidt [oemIDTptr]    ;Get the idt here
-   171 000002F1 488B3567030000      <1>     mov rsi, qword [oemIDTptr.Base] ;Get the base ptr
-   172 000002F8 4889F7              <1>     mov rdi, rsi
-   173 000002FB 4881C600020000      <1>     add rsi, 020h*10h
-   174 00000302 4881C7000F0000      <1>     add rdi, 0F0h*10h
-   175 00000309 B920000000          <1>     mov ecx, 2*10h    ;Copy the hardware IRQ pointers high!
-   176 0000030E F348A5              <1>     rep movsq
-   177                              <1> 
-   178 00000311 B011                <1>     mov al, 11h        ;bit 10h and 1h = Start initialisation
-   179 00000313 E620                <1>     out 020h, al
-   180 00000315 E680                <1>     out 080h, al    
-   181 00000317 E6A0                <1>     out 0A0h, al
-   182 00000319 E680                <1>     out 080h, al    
-   183 0000031B B0F0                <1>     mov al, 0F0h       ;PIC1 to take Int 0F0h - F7h
-   184 0000031D E621                <1>     out 021h, al
-   185 0000031F E680                <1>     out 080h, al    
-   186 00000321 0408                <1>     add al, 8        ;PIC2 to take Int  F8h - FFh
-   187 00000323 E6A1                <1>     out 0A1h, al 
-   188 00000325 E680                <1>     out 080h, al    
-   189 00000327 B004                <1>     mov al, 4
-   190 00000329 E621                <1>     out 021h, al    ;Tell PIC 1 that there is a PIC 2 at IRQ2 (00000100)
-   191 0000032B E680                <1>     out 080h, al    
-   192 0000032D FEC8                <1>     dec al
-   193 0000032F FEC8                <1>     dec al
-   194 00000331 E6A1                <1>     out 0A1h, al    ;Tell PIC 2 its cascade identity (00000010)
-   195 00000333 E680                <1>     out 080h, al
-   196 00000335 B001                <1>     mov al, 01h        ;Initialise in 8086 mode
-   197 00000337 E621                <1>     out 021h, al
-   198 00000339 E680                <1>     out 080h, al    
-   199 0000033B E6A1                <1>     out 0A1h, al
-   200 0000033D E680                <1>     out 080h, al    
-   201 0000033F 0F011D17030000      <1>     lidt [oemIDTptr] 
-   202 00000346 31C0                <1>     xor eax, eax    ;Unmask all interrupts 
-   203 00000348 E621                <1>     out 021h, al
-   204 0000034A E6A1                <1>     out 0A1h, al
-   205 0000034C FB                  <1>     sti
-   206                              <1> 
-   207 0000034D E9(00000000)        <1>     jmp SYSENTRY    ;Now all vars setup, we can proceed!
-   208                              <1> OEMSYSINIT ENDP
-   209                              <1> aptSize equ 60*4096 ;(APT = Additional Page Tables)
-   210                              <1> 
-   211                              <1> OEMMCBINIT PROC NEAR
-   212 00000352 B820E80000          <1>     mov eax, 0E820h ;Get memory map
-   213 00000357 CD35                <1>     int 35h ; rsi has pointer to memory map
-   214 00000359 488B05E5020000      <1>     mov rax, qword [biosUBase]
-   215 00000360 E8F6000000          <1>     call .mcbFindAddress
-   216 00000365 7341                <1>     jnc .mcbi1  ;If found, proceed
-   217                              <1>     ;Here, we try use E801h
-   218 00000367 B801E80000          <1>     mov eax, 0E801h
-   219 0000036C CD35                <1>     int 35h
-   220 0000036E 0FB7C0              <1>     movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
-   221 00000371 0FB7DB              <1>     movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
-   222 00000374 85C0                <1>     test eax, eax
-   223 00000376 7417                <1>     jz .worst
-   224 00000378 C1E009              <1>     shl eax, 9      ;Multiply by 9 to get number of bytes
-   225 0000037B C1E310              <1>     shl ebx, 16     ;Multiply by 16 to get number of bytes
-   226 0000037E 8905C9020000        <1>     mov dword [loProtMem], eax
-   227 00000384 891DC7020000        <1>     mov dword [hiProtMem], ebx
-   228 0000038A E919010000          <1>     jmp mcbBuild
-   229                              <1> .worst:
-   230                              <1>     ;Get USERBASE pointer and subtract it from 2Mb
-   231 0000038F B800002000          <1>     mov eax, 200000h
-   232 00000394 488B1DAA020000      <1>     mov rbx, qword [biosUBase]   ;Get userbase
-   233 0000039B 29D8                <1>     sub eax, ebx
-   234 0000039D 8905AA020000        <1>     mov dword [loProtMem], eax  ;The leftover goes here
-   235 000003A3 E900010000          <1>     jmp mcbBuild 
-   236                              <1> .mcbi1:
-   237 000003A8 488B10              <1>     mov rdx, qword [rax]    ;Save the userbase in rdx
-   238 000003AB 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
-   238 000003B4 00                  <1>
-   239 000003B5 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
-   240 000003B9 0F85BC000000        <1>     jne .mcbFail
-   241 000003BF 488B4008            <1>     mov rax, qword [rax + 8]    ;Get arena size in rax
-   242                              <1>     ;PCI hole always exists so this value will always be a dword
-   243 000003C3 890584020000        <1>     mov dword [loProtMem], eax
-   244 000003C9 4889D3              <1>     mov rbx, rdx    ;Get userbase into rbx
-   245 000003CC 4801C3              <1>     add rbx, rax    ;Check if it goes above 16Mb?
-   246 000003CF 4881FB00000001      <1>     cmp rbx, 1000000h  
-   247 000003D6 773A                <1>     ja .skipISA
-   248                              <1> ;Here we deal with ISA hole issues
-   249 000003D8 B820E80000          <1>     mov eax, 0E820h
-   250 000003DD CD35                <1>     int 35h
-   251 000003DF 48B800000001000000- <1>     mov rax, 1000000h
-   251 000003E8 00                  <1>
-   252 000003E9 E86D000000          <1>     call .mcbFindAddress
-   253 000003EE 0F82B4000000        <1>     jc mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
-   254 000003F4 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
-   254 000003FD 00                  <1>
-   255 000003FE 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-   256 00000402 0F85A0000000        <1>     jne mcbBuild  
-   257 00000408 488B5808            <1>     mov rbx, qword [rax + 8]
-   258 0000040C 891D3F020000        <1>     mov dword [hiProtMem], ebx   ;Save data 
-   259                              <1> .skipISA:
-   260 00000412 B820E80000          <1>     mov eax, 0E820h
-   261 00000417 CD35                <1>     int 35h
-   262 00000419 48B800000000010000- <1>     mov rax, 100000000h ;4Gb boundary
-   262 00000422 00                  <1>
-   263 00000423 E833000000          <1>     call .mcbFindAddress
-   264 00000428 727E                <1>     jc mcbBuild    ;If no memory above 4Gb, proceed as normal
-   265 0000042A 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
-   265 00000433 00                  <1>
-   266 00000434 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
-   267 00000438 756E                <1>     jne mcbBuild   
-   268 0000043A 488B5808            <1>     mov rbx, qword [rax + 8]
-   269                              <1>     ;If this size is above 60Gb, store 60Gb as this is max long arena size!
-   270 0000043E 48B9000000000F0000- <1>     mov rcx, 0F00000000h    ;60Gb value
-   270 00000447 00                  <1>
-   271 00000448 4839CB              <1>     cmp rbx, rcx
-   272 0000044B 480F47D9            <1>     cmova rbx, rcx  ;Move the value of rcx into rbx IF it is above
-   273 0000044F 48891DFF010000      <1>     mov qword [longMem], rbx   ;Save data 
-   274 00000456 E94D000000          <1>     jmp mcbBuild
-   275                              <1> .mcbFindAddress:
-   276                              <1> ;Takes an address in rax and tries to find the 24 byte entry in the memory map
-   277                              <1> ;Entry: rax = Address of arena to search for
-   278                              <1> ;       rsi = Pointer to memory map
-   279                              <1> ;       ecx = Number of 24 byte entries
-   280                              <1> ;Exit:  CF=NC : rax = Pointer to 24 byte entry 
-   281                              <1> ;       CF=CY : value in rax not found
-   282 0000045B 56                  <1>     push rsi
-   283 0000045C 51                  <1>     push rcx
-   284 0000045D 50                  <1>     push rax
-   285                              <1> .mfa0:
-   286 0000045E 483B06              <1>     cmp rax, qword [rsi]
-   287 00000461 7410                <1>     je .mcbAddressFound
-   288 00000463 4881C618000000      <1>     add rsi, 24 ;Goto next entry
-   289 0000046A FFC9                <1>     dec ecx
-   290 0000046C 79F0                <1>     jns .mfa0
-   291                              <1> .mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
-   292 0000046E 58                  <1>     pop rax
-   293 0000046F 59                  <1>     pop rcx
-   294 00000470 5E                  <1>     pop rsi
-   295 00000471 F9                  <1>     stc
-   296 00000472 C3                  <1>     ret
-   297                              <1> .mcbAddressFound:
-   298 00000473 4889F0              <1>     mov rax, rsi    ;Save pointer to entry in rax
-   299 00000476 59                  <1>     pop rcx ;Pop old rax value off
-   300 00000477 59                  <1>     pop rcx
-   301 00000478 5E                  <1>     pop rsi
-   302 00000479 F8                  <1>     clc
-   303 0000047A C3                  <1>     ret
-   304                              <1> .mcbFail:
-   305 0000047B 488D2D0C000000      <1>     lea rbp, mcbFailmsg
-   306 00000482 B804130000          <1>     mov eax, 1304h
-   307 00000487 CD30                <1>     int 30h
-   308 00000489 E972010000          <1>     jmp OEMHALT
-   309 0000048E 4D656D6F727920416C- <1> mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
-   309 00000497 6C6F636174696F6E20- <1>
-   309 000004A0 4572726F720A0D00    <1>
-   310                              <1> 
-   311                              <1> mcbBuild:
-   312                              <1> ;Actually build the MCB chain here
-   313                              <1> ;Start by computing the difference between userbase and DOS area
-   314 000004A8 488B1D96010000      <1>     mov rbx, qword [biosUBase]
-   315 000004AF 488B35(00000000)    <1>     mov rsi, qword [MCBANCHOR]  
-   316 000004B6 8B4609              <1>     mov eax, dword [rsi + mcb.blockSize]    ;Get the size of the block
-   317 000004B9 48C1E004            <1>     shl rax, 4      ;Convert to number of allocated bytes
-   318 000004BD 480510000000        <1>     add rax, mcb_size   ;Add the mcb itself to the count
-   319 000004C3 4801F0              <1>     add rax, rsi    ;Add the pointer to the mcb to get pointer to free space
-   320 000004C6 4889C7              <1>     mov rdi, rax    ;Save this value as the pointer to the next MCB
-   321 000004C9 4829D8              <1>     sub rax, rbx    ;Get difference from userbase and first byte after DOS
-   322 000004CC 29057B010000        <1>     sub dword [loProtMem], eax  ;Remove difference from the free bytes count
-   323 000004D2 0F8228010000        <1>     jc OEMHALT                  ;If this carries, fail
-   324 000004D8 813D6B010000008000- <1>     cmp dword [loProtMem], 8000h   ;Need a minimum of 32Kb free space.
-   324 000004E1 00                  <1>
-   325 000004E2 0F8218010000        <1>     jb OEMHALT
-   326 000004E8 C6064D              <1>     mov byte [rsi + mcb.marker], mcbMarkCtn ;Now mark anchor as not end
-   327 000004EB 4889FB              <1>     mov rbx, rdi    ;Get the pointer to the free space back
-   328 000004EE C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd  ;Mark as end of chain
-   329 000004F1 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
-   330 000004F9 31F6                <1>     xor esi, esi
-   331 000004FB 8B354C010000        <1>     mov esi, dword [loProtMem]
-   332 00000501 81EE10000000        <1>     sub esi, mcb_size   ;Now remove one mcb's worth of space
-   333 00000507 C1EE04              <1>     shr esi, 4  ;Shift down by a nybble to get paragraphs
-   334 0000050A 897309              <1>     mov dword [rbx + mcb.blockSize], esi
-   335                              <1> 
-   336                              <1>     ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
-   337 0000050D 813D3A010000000000- <1>     cmp dword [hiProtMem], 0
-   337 00000516 00                  <1>
-   338 00000517 746C                <1>     jz .skipISA
-   339                              <1>     ;Here if an ISA hole exists, place a MCB around it
-   340 00000519 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)    
-   341                              <1>     ;Remove one MCB worth of space from alloc
-   342 00000520 31C9                <1>     xor ecx, ecx
-   343 00000522 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
-   344 00000525 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
-   345 0000052B C1E104              <1>     shl ecx, 4  ;Convert from paragraphs
-   346 0000052E C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn  ;Change marker in anchor
-   347 00000531 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
-   348 00000534 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
-   349 00000537 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
-   350 0000053F 48B900000001000000- <1>     mov rcx, 1000000h   ;Move 16Mb in rcx
-   350 00000548 00                  <1>
-   351 00000549 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
-   352 0000054C 480510000000        <1>     add rax, mcb_size
-   353 00000552 4829C1              <1>     sub rcx, rax    ;Take their difference
-   354 00000555 C1E904              <1>     shr ecx, 4
-   355 00000558 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
-   356 0000055B C1E104              <1>     shl ecx, 4  ;Get bytes again
-   357 0000055E 4881C310000000      <1>     add rbx, mcb_size
-   358 00000565 4801CB              <1>     add rbx, rcx
-   359                              <1>     ;RBX should now be at 16Mb
-   360 00000568 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
-   361 0000056B 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
-   362 00000573 8B0DD8000000        <1>     mov ecx, dword [hiProtMem]
-   363 00000579 C1E904              <1>     shr ecx, 4  ;Get paragraphs
-   364 0000057C 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
-   365 00000582 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
-   366                              <1> .skipISA:
-   367                              <1>     ;Now check the longMem count. If it is 0, skip PCI hole computations.
-   368                              <1>     ;rbx points to a block with "Z" marker
-   369 00000585 813DC6000000000000- <1>     cmp dword [longMem], 0
-   369 0000058E 00                  <1>
-   370 0000058F 746E                <1>     jz .exit
-   371                              <1>     ;Add PCI hole MCB
-   372 00000591 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)
-   373                              <1>     ;Remove one MCB worth of space from alloc
-   374 00000598 31C9                <1>     xor ecx, ecx
-   375 0000059A 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
-   376 0000059D 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
-   377 000005A3 C1E104              <1>     shl ecx, 4  ;Get bytes
-   378 000005A6 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn ;Change marker in prev MCB
-   379 000005A9 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
-   380 000005AC C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
-   381 000005AF 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
-   382 000005B7 48B900000000010000- <1>     mov rcx, 100000000h   ;Move 4Gb in rcx
-   382 000005C0 00                  <1>
-   383 000005C1 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
-   384 000005C4 480510000000        <1>     add rax, mcb_size
-   385 000005CA 4829C1              <1>     sub rcx, rax    ;Take their difference
-   386 000005CD C1E904              <1>     shr ecx, 4
-   387 000005D0 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
-   388 000005D3 C1E104              <1>     shl ecx, 4  ;Get bytes again
-   389 000005D6 4881C310000000      <1>     add rbx, mcb_size
-   390 000005DD 4801CB              <1>     add rbx, rcx
-   391                              <1>     ;RBX should now be at 4Gb
-   392 000005E0 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
-   393 000005E3 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
-   394 000005EB 488B0D63000000      <1>     mov rcx, qword [longMem]
-   395 000005F2 48C1E904            <1>     shr rcx, 4
-   396 000005F6 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
-   397 000005FC 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
-   398                              <1> .exit:
-   399 000005FF C3                  <1>     ret
-   400                              <1> OEMMCBINIT ENDP
-   401                              <1> 
-   402                              <1> OEMHALT PROC    NEAR
-   403                              <1> ;If a critical error occurs during sysinit, fail through here
-   404                              <1> ;Int 22h, 23h and 24h point here during sysinit
-   405 00000600 488D2D0C000000      <1>     lea rbp, hltmsg
-   406 00000607 B804130000          <1>     mov eax, 1304h
-   407 0000060C CD30                <1>     int 30h
-   408                              <1> .ei0:
-   409 0000060E F4                  <1>     hlt
-   410 0000060F F390                <1>     pause
-   411 00000611 EBFB                <1>     jmp short .ei0
-   412 00000613 4572726F7220696E69- <1> hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
-   412 0000061C 7469616C6973696E67- <1>
-   412 00000625 20534350444F532E53- <1>
-   412 0000062E 59532E205379737465- <1>
-   412 00000637 6D2068616C74696E67- <1>
-   412 00000640 2E2E2E00            <1>
-   413                              <1> OEMHALT ENDP
-   414                              <1> 
-   415                              <1> OEMCALLBK PROC NEAR
-   416 00000644 C3                  <1>     ret
-   417                              <1> OEMCALLBK ENDP
-   418                              <1> 
-   419                              <1> ;OEM Only variables are permitted in this file. They are not 
-   420                              <1> ; visible to SYSINIT
-   421 00000645 0000000000000000    <1> biosUBase   dq 0
-   422 0000064D 00000000            <1> loProtMem   dd 0
-   423 00000651 00000000            <1> hiProtMem   dd 0
-   424 00000655 0000000000000000    <1> longMem     dq 0
-   425                              <1> oemIDTptr:      ;Local IDT pointer
-   426 0000065D 0000                <1>     .Limit  dw 0
-   427 0000065F 0000000000000000    <1>     .Base   dq 0
+   146 000002B1 0F20DF              <1>     mov rdi, cr3    ;Get Page level 4 table pointer
+   147 000002B4 488B3F              <1>     mov rdi, qword [rdi] ;Go to next level
+   148 000002B7 4881E700FFFFFF      <1>     and rdi, ~0FFh  ;Strip bottom two nybbles
+   149 000002BE 4881C720000000      <1>     add rdi, 4*8    ;Go to 4th entry
+   150 000002C5 B93C000000          <1>     mov ecx, 60
+   151 000002CA 480D03000000        <1>     or rax, 3h      ;present and r/w
+   152                              <1> pdptLoop:
+   153 000002D0 48AB                <1>     stosq
+   154 000002D2 480500100000        <1>     add rax, 1000h  ;Goto next 4kb page
+   155 000002D8 FFC9                <1>     dec ecx
+   156 000002DA 75F4                <1>     jnz pdptLoop
+   157                              <1> 
+   158 000002DC 0F20DF              <1>     mov rdi, cr3    ;Reload cr3 to make the system aware of new table entries
+   159 000002DF 0F22DF              <1>     mov cr3, rdi    ;(is this strictly necessary?)
+   160                              <1> 
+   161                              <1> ;----------------------------------------------------------------
+   162                              <1> ;                       PIC Remap procedure                     :
+   163                              <1> ;----------------------------------------------------------------
+   164                              <1> ;Remapping the IRQ lines to Interrupts 0F0h - 0FFh
+   165 000002E2 FA                  <1>     cli
+   166 000002E3 B0FF                <1>     mov al, 0FFh    ;Mask all interrupts 
+   167 000002E5 E621                <1>     out 021h, al
+   168 000002E7 E6A1                <1>     out 0A1h, al
+   169 000002E9 0F010D6C030000      <1>     sidt [oemIDTptr]    ;Get the idt here
+   170 000002F0 488B3567030000      <1>     mov rsi, qword [oemIDTptr.Base] ;Get the base ptr
+   171 000002F7 4889F7              <1>     mov rdi, rsi
+   172 000002FA 4881C600020000      <1>     add rsi, 020h*10h
+   173 00000301 4881C7000F0000      <1>     add rdi, 0F0h*10h
+   174 00000308 B920000000          <1>     mov ecx, 2*10h    ;Copy the hardware IRQ pointers high!
+   175 0000030D F348A5              <1>     rep movsq
+   176                              <1> 
+   177 00000310 B011                <1>     mov al, 11h        ;bit 10h and 1h = Start initialisation
+   178 00000312 E620                <1>     out 020h, al
+   179 00000314 E680                <1>     out 080h, al    
+   180 00000316 E6A0                <1>     out 0A0h, al
+   181 00000318 E680                <1>     out 080h, al    
+   182 0000031A B0F0                <1>     mov al, 0F0h       ;PIC1 to take Int 0F0h - F7h
+   183 0000031C E621                <1>     out 021h, al
+   184 0000031E E680                <1>     out 080h, al    
+   185 00000320 0408                <1>     add al, 8        ;PIC2 to take Int  F8h - FFh
+   186 00000322 E6A1                <1>     out 0A1h, al 
+   187 00000324 E680                <1>     out 080h, al    
+   188 00000326 B004                <1>     mov al, 4
+   189 00000328 E621                <1>     out 021h, al    ;Tell PIC 1 that there is a PIC 2 at IRQ2 (00000100)
+   190 0000032A E680                <1>     out 080h, al    
+   191 0000032C FEC8                <1>     dec al
+   192 0000032E FEC8                <1>     dec al
+   193 00000330 E6A1                <1>     out 0A1h, al    ;Tell PIC 2 its cascade identity (00000010)
+   194 00000332 E680                <1>     out 080h, al
+   195 00000334 B001                <1>     mov al, 01h        ;Initialise in 8086 mode
+   196 00000336 E621                <1>     out 021h, al
+   197 00000338 E680                <1>     out 080h, al    
+   198 0000033A E6A1                <1>     out 0A1h, al
+   199 0000033C E680                <1>     out 080h, al    
+   200 0000033E 0F011D17030000      <1>     lidt [oemIDTptr] 
+   201 00000345 31C0                <1>     xor eax, eax    ;Unmask all interrupts 
+   202 00000347 E621                <1>     out 021h, al
+   203 00000349 E6A1                <1>     out 0A1h, al
+   204 0000034B FB                  <1>     sti
+   205                              <1> 
+   206 0000034C E9(00000000)        <1>     jmp SYSENTRY    ;Now all vars setup, we can proceed!
+   207                              <1> OEMSYSINIT ENDP
+   208                              <1> aptSize equ 60*4096 ;(APT = Additional Page Tables)
+   209                              <1> 
+   210                              <1> OEMMCBINIT PROC NEAR
+   211 00000351 B820E80000          <1>     mov eax, 0E820h ;Get memory map
+   212 00000356 CD35                <1>     int 35h ; rsi has pointer to memory map
+   213 00000358 488B05E5020000      <1>     mov rax, qword [biosUBase]
+   214 0000035F E8F6000000          <1>     call .mcbFindAddress
+   215 00000364 7341                <1>     jnc .mcbi1  ;If found, proceed
+   216                              <1>     ;Here, we try use E801h
+   217 00000366 B801E80000          <1>     mov eax, 0E801h
+   218 0000036B CD35                <1>     int 35h
+   219 0000036D 0FB7C0              <1>     movzx eax, ax   ;ax has 1Kb blocks from userbase to ISA hole (if pres)
+   220 00000370 0FB7DB              <1>     movzx ebx, bx   ;cx has 64Kb blocks from 16Mb to PCI hole
+   221 00000373 85C0                <1>     test eax, eax
+   222 00000375 7417                <1>     jz .worst
+   223 00000377 C1E009              <1>     shl eax, 9      ;Multiply by 9 to get number of bytes
+   224 0000037A C1E310              <1>     shl ebx, 16     ;Multiply by 16 to get number of bytes
+   225 0000037D 8905C9020000        <1>     mov dword [loProtMem], eax
+   226 00000383 891DC7020000        <1>     mov dword [hiProtMem], ebx
+   227 00000389 E919010000          <1>     jmp mcbBuild
+   228                              <1> .worst:
+   229                              <1>     ;Get USERBASE pointer and subtract it from 2Mb
+   230 0000038E B800002000          <1>     mov eax, 200000h
+   231 00000393 488B1DAA020000      <1>     mov rbx, qword [biosUBase]   ;Get userbase
+   232 0000039A 29D8                <1>     sub eax, ebx
+   233 0000039C 8905AA020000        <1>     mov dword [loProtMem], eax  ;The leftover goes here
+   234 000003A2 E900010000          <1>     jmp mcbBuild 
+   235                              <1> .mcbi1:
+   236 000003A7 488B10              <1>     mov rdx, qword [rax]    ;Save the userbase in rdx
+   237 000003AA 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
+   237 000003B3 00                  <1>
+   238 000003B4 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, fail boot
+   239 000003B8 0F85BC000000        <1>     jne .mcbFail
+   240 000003BE 488B4008            <1>     mov rax, qword [rax + 8]    ;Get arena size in rax
+   241                              <1>     ;PCI hole always exists so this value will always be a dword
+   242 000003C2 890584020000        <1>     mov dword [loProtMem], eax
+   243 000003C8 4889D3              <1>     mov rbx, rdx    ;Get userbase into rbx
+   244 000003CB 4801C3              <1>     add rbx, rax    ;Check if it goes above 16Mb?
+   245 000003CE 4881FB00000001      <1>     cmp rbx, 1000000h  
+   246 000003D5 773A                <1>     ja .skipISA
+   247                              <1> ;Here we deal with ISA hole issues
+   248 000003D7 B820E80000          <1>     mov eax, 0E820h
+   249 000003DC CD35                <1>     int 35h
+   250 000003DE 48B800000001000000- <1>     mov rax, 1000000h
+   250 000003E7 00                  <1>
+   251 000003E8 E86D000000          <1>     call .mcbFindAddress
+   252 000003ED 0F82B4000000        <1>     jc mcbBuild  ;If address doesnt exist, must not be any memory above 16MB
+   253 000003F3 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
+   253 000003FC 00                  <1>
+   254 000003FD 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+   255 00000401 0F85A0000000        <1>     jne mcbBuild  
+   256 00000407 488B5808            <1>     mov rbx, qword [rax + 8]
+   257 0000040B 891D3F020000        <1>     mov dword [hiProtMem], ebx   ;Save data 
+   258                              <1> .skipISA:
+   259 00000411 B820E80000          <1>     mov eax, 0E820h
+   260 00000416 CD35                <1>     int 35h
+   261 00000418 48B800000000010000- <1>     mov rax, 100000000h ;4Gb boundary
+   261 00000421 00                  <1>
+   262 00000422 E833000000          <1>     call .mcbFindAddress
+   263 00000427 727E                <1>     jc mcbBuild    ;If no memory above 4Gb, proceed as normal
+   264 00000429 48BB01000000010000- <1>     mov rbx, 100000001h ;Valid entry signature
+   264 00000432 00                  <1>
+   265 00000433 48395810            <1>     cmp qword [rax + 16], rbx ;If entry is marked as invalid, ignore domain
+   266 00000437 756E                <1>     jne mcbBuild   
+   267 00000439 488B5808            <1>     mov rbx, qword [rax + 8]
+   268                              <1>     ;If this size is above 60Gb, store 60Gb as this is max long arena size!
+   269 0000043D 48B9000000000F0000- <1>     mov rcx, 0F00000000h    ;60Gb value
+   269 00000446 00                  <1>
+   270 00000447 4839CB              <1>     cmp rbx, rcx
+   271 0000044A 480F47D9            <1>     cmova rbx, rcx  ;Move the value of rcx into rbx IF it is above
+   272 0000044E 48891DFF010000      <1>     mov qword [longMem], rbx   ;Save data 
+   273 00000455 E94D000000          <1>     jmp mcbBuild
+   274                              <1> .mcbFindAddress:
+   275                              <1> ;Takes an address in rax and tries to find the 24 byte entry in the memory map
+   276                              <1> ;Entry: rax = Address of arena to search for
+   277                              <1> ;       rsi = Pointer to memory map
+   278                              <1> ;       ecx = Number of 24 byte entries
+   279                              <1> ;Exit:  CF=NC : rax = Pointer to 24 byte entry 
+   280                              <1> ;       CF=CY : value in rax not found
+   281 0000045A 56                  <1>     push rsi
+   282 0000045B 51                  <1>     push rcx
+   283 0000045C 50                  <1>     push rax
+   284                              <1> .mfa0:
+   285 0000045D 483B06              <1>     cmp rax, qword [rsi]
+   286 00000460 7410                <1>     je .mcbAddressFound
+   287 00000462 4881C618000000      <1>     add rsi, 24 ;Goto next entry
+   288 00000469 FFC9                <1>     dec ecx
+   289 0000046B 79F0                <1>     jns .mfa0
+   290                              <1> .mcbNoAddressFound: ;If ecx changes sign, we have used up all entries
+   291 0000046D 58                  <1>     pop rax
+   292 0000046E 59                  <1>     pop rcx
+   293 0000046F 5E                  <1>     pop rsi
+   294 00000470 F9                  <1>     stc
+   295 00000471 C3                  <1>     ret
+   296                              <1> .mcbAddressFound:
+   297 00000472 4889F0              <1>     mov rax, rsi    ;Save pointer to entry in rax
+   298 00000475 59                  <1>     pop rcx ;Pop old rax value off
+   299 00000476 59                  <1>     pop rcx
+   300 00000477 5E                  <1>     pop rsi
+   301 00000478 F8                  <1>     clc
+   302 00000479 C3                  <1>     ret
+   303                              <1> .mcbFail:
+   304 0000047A 488D2D0C000000      <1>     lea rbp, mcbFailmsg
+   305 00000481 B804130000          <1>     mov eax, 1304h
+   306 00000486 CD30                <1>     int 30h
+   307 00000488 E972010000          <1>     jmp OEMHALT
+   308 0000048D 4D656D6F727920416C- <1> mcbFailmsg db "Memory Allocation Error",0Ah,0Dh,0
+   308 00000496 6C6F636174696F6E20- <1>
+   308 0000049F 4572726F720A0D00    <1>
+   309                              <1> 
+   310                              <1> mcbBuild:
+   311                              <1> ;Actually build the MCB chain here
+   312                              <1> ;Start by computing the difference between userbase and DOS area
+   313 000004A7 488B1D96010000      <1>     mov rbx, qword [biosUBase]
+   314 000004AE 488B35(00000000)    <1>     mov rsi, qword [MCBANCHOR]  
+   315 000004B5 8B4609              <1>     mov eax, dword [rsi + mcb.blockSize]    ;Get the size of the block
+   316 000004B8 48C1E004            <1>     shl rax, 4      ;Convert to number of allocated bytes
+   317 000004BC 480510000000        <1>     add rax, mcb_size   ;Add the mcb itself to the count
+   318 000004C2 4801F0              <1>     add rax, rsi    ;Add the pointer to the mcb to get pointer to free space
+   319 000004C5 4889C7              <1>     mov rdi, rax    ;Save this value as the pointer to the next MCB
+   320 000004C8 4829D8              <1>     sub rax, rbx    ;Get difference from userbase and first byte after DOS
+   321 000004CB 29057B010000        <1>     sub dword [loProtMem], eax  ;Remove difference from the free bytes count
+   322 000004D1 0F8228010000        <1>     jc OEMHALT                  ;If this carries, fail
+   323 000004D7 813D6B010000008000- <1>     cmp dword [loProtMem], 8000h   ;Need a minimum of 32Kb free space.
+   323 000004E0 00                  <1>
+   324 000004E1 0F8218010000        <1>     jb OEMHALT
+   325 000004E7 C6064D              <1>     mov byte [rsi + mcb.marker], mcbMarkCtn ;Now mark anchor as not end
+   326 000004EA 4889FB              <1>     mov rbx, rdi    ;Get the pointer to the free space back
+   327 000004ED C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd  ;Mark as end of chain
+   328 000004F0 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
+   329 000004F8 31F6                <1>     xor esi, esi
+   330 000004FA 8B354C010000        <1>     mov esi, dword [loProtMem]
+   331 00000500 81EE10000000        <1>     sub esi, mcb_size   ;Now remove one mcb's worth of space
+   332 00000506 C1EE04              <1>     shr esi, 4  ;Shift down by a nybble to get paragraphs
+   333 00000509 897309              <1>     mov dword [rbx + mcb.blockSize], esi
+   334                              <1> 
+   335                              <1>     ;Now check the hiProtMem count. If it is 0, skip ISA hole computations.
+   336 0000050C 813D3A010000000000- <1>     cmp dword [hiProtMem], 0
+   336 00000515 00                  <1>
+   337 00000516 746C                <1>     jz .skipISA
+   338                              <1>     ;Here if an ISA hole exists, place a MCB around it
+   339 00000518 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)    
+   340                              <1>     ;Remove one MCB worth of space from alloc
+   341 0000051F 31C9                <1>     xor ecx, ecx
+   342 00000521 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
+   343 00000524 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
+   344 0000052A C1E104              <1>     shl ecx, 4  ;Convert from paragraphs
+   345 0000052D C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn  ;Change marker in anchor
+   346 00000530 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
+   347 00000533 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
+   348 00000536 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
+   349 0000053E 48B900000001000000- <1>     mov rcx, 1000000h   ;Move 16Mb in rcx
+   349 00000547 00                  <1>
+   350 00000548 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
+   351 0000054B 480510000000        <1>     add rax, mcb_size
+   352 00000551 4829C1              <1>     sub rcx, rax    ;Take their difference
+   353 00000554 C1E904              <1>     shr ecx, 4
+   354 00000557 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
+   355 0000055A C1E104              <1>     shl ecx, 4  ;Get bytes again
+   356 0000055D 4881C310000000      <1>     add rbx, mcb_size
+   357 00000564 4801CB              <1>     add rbx, rcx
+   358                              <1>     ;RBX should now be at 16Mb
+   359 00000567 C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
+   360 0000056A 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
+   361 00000572 8B0DD8000000        <1>     mov ecx, dword [hiProtMem]
+   362 00000578 C1E904              <1>     shr ecx, 4  ;Get paragraphs
+   363 0000057B 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
+   364 00000581 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
+   365                              <1> .skipISA:
+   366                              <1>     ;Now check the longMem count. If it is 0, skip PCI hole computations.
+   367                              <1>     ;rbx points to a block with "Z" marker
+   368 00000584 813DC6000000000000- <1>     cmp dword [longMem], 0
+   368 0000058D 00                  <1>
+   369 0000058E 746E                <1>     jz .exit
+   370                              <1>     ;Add PCI hole MCB
+   371 00000590 816B0901000000      <1>     sub dword [rbx + mcb.blockSize], (mcb_size>>4)
+   372                              <1>     ;Remove one MCB worth of space from alloc
+   373 00000597 31C9                <1>     xor ecx, ecx
+   374 00000599 8B4B09              <1>     mov ecx, dword [rbx + mcb.blockSize]
+   375 0000059C 81C101000000        <1>     add ecx, (mcb_size >> 4)    ;Add one as the block starts AFTER the MCB
+   376 000005A2 C1E104              <1>     shl ecx, 4  ;Get bytes
+   377 000005A5 C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn ;Change marker in prev MCB
+   378 000005A8 4801CB              <1>     add rbx, rcx   ;Point rbx to next space
+   379 000005AB C6034D              <1>     mov byte [rbx + mcb.marker], mcbMarkCtn
+   380 000005AE 48C7430107000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerHole
+   381 000005B6 48B900000000010000- <1>     mov rcx, 100000000h   ;Move 4Gb in rcx
+   381 000005BF 00                  <1>
+   382 000005C0 4889D8              <1>     mov rax, rbx    ;Get mcb pointer in rax
+   383 000005C3 480510000000        <1>     add rax, mcb_size
+   384 000005C9 4829C1              <1>     sub rcx, rax    ;Take their difference
+   385 000005CC C1E904              <1>     shr ecx, 4
+   386 000005CF 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx    ;Save the difference
+   387 000005D2 C1E104              <1>     shl ecx, 4  ;Get bytes again
+   388 000005D5 4881C310000000      <1>     add rbx, mcb_size
+   389 000005DC 4801CB              <1>     add rbx, rcx
+   390                              <1>     ;RBX should now be at 4Gb
+   391 000005DF C6035A              <1>     mov byte [rbx + mcb.marker], mcbMarkEnd
+   392 000005E2 48C7430100000000    <1>     mov qword [rbx + mcb.owner], mcbOwnerFree
+   393 000005EA 488B0D63000000      <1>     mov rcx, qword [longMem]
+   394 000005F1 48C1E904            <1>     shr rcx, 4
+   395 000005F5 81E901000000        <1>     sub ecx, (mcb_size>>4)  ;Reserve space for one mcb
+   396 000005FB 894B09              <1>     mov dword [rbx + mcb.blockSize], ecx
+   397                              <1> .exit:
+   398 000005FE C3                  <1>     ret
+   399                              <1> OEMMCBINIT ENDP
+   400                              <1> 
+   401                              <1> OEMHALT PROC    NEAR
+   402                              <1> ;If a critical error occurs during sysinit, fail through here
+   403                              <1> ;Int 22h, 23h and 24h point here during sysinit
+   404 000005FF 488D2D0C000000      <1>     lea rbp, hltmsg
+   405 00000606 B804130000          <1>     mov eax, 1304h
+   406 0000060B CD30                <1>     int 30h
+   407                              <1> .ei0:
+   408 0000060D F4                  <1>     hlt
+   409 0000060E F390                <1>     pause
+   410 00000610 EBFB                <1>     jmp short .ei0
+   411 00000612 4572726F7220696E69- <1> hltmsg  db "Error initialising SCPDOS.SYS. System halting...",0
+   411 0000061B 7469616C6973696E67- <1>
+   411 00000624 20534350444F532E53- <1>
+   411 0000062D 59532E205379737465- <1>
+   411 00000636 6D2068616C74696E67- <1>
+   411 0000063F 2E2E2E00            <1>
+   412                              <1> OEMHALT ENDP
+   413                              <1> 
+   414                              <1> OEMCALLBK PROC NEAR
+   415 00000643 C3                  <1>     ret
+   416                              <1> OEMCALLBK ENDP
+   417                              <1> 
+   418                              <1> ;OEM Only variables are permitted in this file. They are not 
+   419                              <1> ; visible to SYSINIT
+   420 00000644 0000000000000000    <1> biosUBase   dq 0
+   421 0000064C 00000000            <1> loProtMem   dd 0
+   422 00000650 00000000            <1> hiProtMem   dd 0
+   423 00000654 0000000000000000    <1> longMem     dq 0
+   424                              <1> oemIDTptr:      ;Local IDT pointer
+   425 0000065C 0000                <1>     .Limit  dw 0
+   426 0000065E 0000000000000000    <1>     .Base   dq 0
     15                                  
     16                                  Segment odata data private align=1
     17                                  ;---------------------------
