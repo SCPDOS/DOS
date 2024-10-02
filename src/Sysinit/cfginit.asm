@@ -424,7 +424,7 @@ configParse:
     and ecx, ~0Fh   ;Clear lower byte
     shr ecx, 4      ;Convert to paragraphs
     inc ecx         ;... and round up!
-    cmp ecx, 10000h ;Is it greater than 64k?
+    cmp ecx, 1000h ;Is it geq 64k (in paragraphs)?
     jae .drvFreeMemAndHdl
     jmp .loadCont
 .exeDrivers:
@@ -464,7 +464,7 @@ configParse:
     and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
     add ecx, esi    ;Now round upwards!
     shr ecx, 4      ;Convert to number of paragraphs.
-    cmp ecx, 20000000h  ;Drivers cannot be more than 2Gb in size.
+    cmp ecx, 2000000h  ;Drivers cannot be more than 2Gb in size.
     jae .drvFreeMemAndHdl
 .loadCont:
     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
