@@ -130,7 +130,9 @@ kernDrvInit:
     mov qword [rbp + clockPtr], rsi ;Store default CLOCK$ ptr
     mov rsi, rbx     ;Point rsi back to head of device chain
     lea rbx, initDrvBlk
-    ;The following is to mark all kernel driver allocs as new DOS
+    ;The following is to mark all kernel driver allocs as new DOS.
+    ;The only functions available to the kernel drivers are those
+    ; w/o reference to the PSP, hence this being ok!
     mov qword [rbp + currentPSP], mcbOwnerNewDOS
 .init:
     call initDriver         ;Importantly preserves rbp, rsi and rbx
@@ -329,7 +331,7 @@ makeCDSArray:
     shr eax, 4      ;Convert to paragraphs
     xor ebx, ebx
     mov ebx, eax
-    mov eax, 4800h  ;ALLOC  (current owner is mcbOwnerNewDOS)
+    mov eax, 4800h  ;ALLOC, set the owner below
     int 21h
     retc    ;Return if Carry set
     mov rdi, rax            ;Save pointer to MCB in rdi
@@ -375,7 +377,7 @@ initialCDSWritten:
     add ebx, bufferHdr_size             ;add header size for allocation size
     add ebx, 0Fh
     shr ebx, 4  ;Convert to number of paragraphs
-    mov eax, 4800h
+    mov eax, 4800h  ;ALLOC, set the owner below
     int 21h
     jc OEMHALT
     mov qword fs:[bufHeadPtr], rax      ;Save pointer to buffer
@@ -458,7 +460,7 @@ noCfg:
     mov ebx, eax    ;Move the total number of bytes into ebx
     add ebx, 0Fh
     shr ebx, 4      ;And convert it to paragraphs
-    mov eax, 4800h  ;ALLOC
+    mov eax, 4800h  ;ALLOC, set the owner below
     int 21h
     jc short .skipBuffers   ;If it fails to allocate, default to one buffer
     ;Each buffer has no flags, drive number must be -1
@@ -505,7 +507,7 @@ noCfg:
     mov ebx, eax        ;And move into ebx for the syscall
     add ebx, 0Fh        ;Round up to nearest paragraph...
     shr ebx, 4          ;And convert to paragraphs
-    mov eax, 4800h
+    mov eax, 4800h      ;ALLOC, set the owner below
     int 21h
     jc short .skipSFT   ;Skip adding files if this fails. Sorry end user!
     mov rsi, qword fs:[sftHeadPtr]
@@ -532,7 +534,7 @@ noCfg:
     mov ebx, eax        ;And move into ebx for the syscall
     add ebx, 0Fh        ;Round up to nearest paragraph...
     shr ebx, 4          ;And convert to paragraphs
-    mov eax, 4800h
+    mov eax, 4800h      ;ALLOC, set the owner below
     int 21h
     jc short .skipFCBS   ;Skip adding files if this fails. Sorry end user!
     mov qword fs:[fcbsHeadPtr], rax ;This is the FCBS head now
@@ -548,7 +550,7 @@ noCfg:
     jae .skipCDS    ;If user specifies less than 5 drives, dont reallocate
     ;Else, we first free the old CDS and then reallocate
     mov r8, qword fs:[cdsHeadPtr]
-    mov eax, 4900h  ;FREE the old allocation.
+    mov eax, 4900h  ;FREE the old allocation, owned by mcbOwnerDOS.
     int 21h
     jc short .skipCDS
     mov byte fs:[lastdrvNum], cl ;Save this value
@@ -699,7 +701,6 @@ addDriverMarkers:
 .gotoNextBlock:
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     je short .exit
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     shl rcx, 4
     add rsi, mcb.program    

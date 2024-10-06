@@ -527,10 +527,8 @@ configParse:
 .driverPtrAdjustmentDone:
     pop rsi     ;Get back the pointer to the first driver header
     ;Prepare for initialising the drivers in the arena
-    ;EXPERIMENT: USING R9-R11 UNTIL THE END OF THE FUNCTION
+    ;EXPERIMENT: USING R9 and R12 UNTIL THE END OF THE FUNCTION
     mov r9, rsi     ;Save a copy of the driver pointer in r9
-    mov r11, mcbOwnerNewDOS ;Set currentPSP for new dos object
-    xchg r11, qword fs:[currentPSP] ;Save in r11 old owner
     lea rbx, initDrvBlk
     push rsi
     mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
@@ -541,9 +539,21 @@ configParse:
     mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
 .driverInit:
     xchg r12, rbp
+;----------------------------------------------------------------
+;In this region, rbp points back to dosseg
+;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     call initDriver
     jc short .driverBadRbpAdjust
+;Now walk the MCB chain for MCBs owned by the current PSP and set 
+; them all to mcbOwnerNewDOS. 
+    call .drvAdjustMcbOwner
+;Now set the current PSP to mcbOwnerNewDOS and add the driver 
+; markers and set owner to mcbOwnerDOS and switch currentPSP back!
+    push qword [rbp + currentPSP]
+    mov qword [rbp + currentPSP], mcbOwnerNewDOS
     call addDriverMarkers
+    pop qword [rbp + currentPSP]
+;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     xchg r12, rbp
     test word [rsi + drvHdr.attrib], devDrvChar
     jnz short .driverInitialised
@@ -572,7 +582,7 @@ configParse:
 .driverExit:
 ;Exit the init routine if it all works out, WOO!
 ;Return values to original registers/memory locations
-    mov qword fs:[currentPSP], r11
+;    mov qword fs:[currentPSP], r11
     clc
     return
 .driverBadRbpAdjust:
@@ -617,6 +627,34 @@ configParse:
     jmp short .drvBad2
 
 .drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
+
+.drvAdjustMcbOwner:
+;Traverses the MCB chain looking for MCBs owned by the current PSP and 
+; sets them all to mcbOwnerNewDOS.
+;Input: rbp -> DOS Data Area
+    push rcx
+    push rsi
+    push rdi
+    mov rdi, qword [rbp + currentPSP]
+    mov rsi, qword [rbp + mcbChainPtr] ;Points to the MCB chain head
+.checkOwner:
+    cmp qword [rsi + mcb.owner], rdi
+    jne .gotoNextBlock
+    mov qword [rsi + mcb.owner], mcbOwnerNewDOS
+.gotoNextBlock:
+    cmp byte [rsi + mcb.marker], mcbMarkEnd
+    je short .exit
+    mov ecx, dword [rsi + mcb.blockSize]
+    shl rcx, 4
+    add rsi, mcb.program    
+    add rsi, rcx
+    jmp short .checkOwner
+.exit:
+    pop rdi
+    pop rsi
+    pop rcx
+    return
+
 
 .sftHandler:
 ;This reads the line to set the number of FILE to between 1 and 254
