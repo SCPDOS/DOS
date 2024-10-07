@@ -285,7 +285,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
-    mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackReserve]
+    mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackCommit]
     test rax, rax
     jnz .notDefaultStackAlloc
     mov rax, 40000h ;256Kb stack default
