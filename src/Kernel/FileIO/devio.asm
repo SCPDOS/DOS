@@ -5,7 +5,7 @@
 mainCharIO:
 ;This is the main IO clearing function for Char IO.
 ; Uses two tables, as per DOS 3.3 to store parts of the request header
-; Uses only the secdReqHdr and the singleIObyt as the transfer buffer
+; Uses only the secdReqPkt and the singleIObyt as the transfer buffer
 ;
 ;Input: rsi = SFT for the file the IO is being enacted on
 ;       ah = {0,..., 5}, a subfunction number
@@ -55,9 +55,9 @@ mainCharIO:
     ;Setup parts of the req ptr AS IF IT WERE FOR IO
     push rbx    ; PRESERVE THE STATE OF RBX OR GOD HELP YOU ALL!!!!!
     lea rbx, singleIObyt   ;Get lea of return byte pointer
-    mov qword [secdReqHdr + ioReqPkt.bufptr], rbx
+    mov qword [secdReqPkt + ioReqPkt.bufptr], rbx
     pop rbx
-    mov dword [secdReqHdr + ioReqPkt.tfrlen], 1 ;Request 1 byte if read/write
+    mov dword [secdReqPkt + ioReqPkt.tfrlen], 1 ;Request 1 byte if read/write
     mov word [singleIObyt], ax  ;Save al for transfer and ah for preservation
     test word [rsi + sft.wDeviceInfo], devRedirDev
     jnz .notChar
@@ -69,27 +69,27 @@ mainCharIO:
     movzx ecx, ah   ;Get the command code into ecx (zero xtnd rcx)
     shl ecx, 2  ;Multiply by four since DWORD entries
     mov ecx, dword [rbx + rcx]  ;Get entry
-    mov dword [secdReqHdr], ecx ;First three entries map to first three entries
+    mov dword [secdReqPkt], ecx ;First three entries map to first three entries
     ;Now set up cx for status word
     xor ecx, ecx
     cmp ah, 05h ;Did the caller request command 5?
     jne .skipBsySet
     or ecx, drvBsyStatus
 .skipBsySet:
-    xchg cx, word [secdReqHdr + drvReqHdr.status] ;Swap error flags with status
+    xchg cx, word [secdReqPkt + drvReqHdr.status] ;Swap error flags with status
     ;cl has flags, ch has garbage (status is zeroed by xchg)
-    lea rbx, secdReqHdr
+    lea rbx, secdReqPkt
     call goDriverChar   ;GoDriver with an SFT in rsi
-    mov di, word [secdReqHdr + drvReqHdr.status]    ;Get status
+    mov di, word [secdReqPkt + drvReqHdr.status]    ;Get status
     test edi, drvErrStatus
     jnz .error
 .ignoreRet:
-    cmp byte [secdReqHdr + drvReqHdr.cmdcde], drvNONDESTREAD
+    cmp byte [secdReqPkt + drvReqHdr.cmdcde], drvNONDESTREAD
     jne .notNDRead
-    mov al, byte [secdReqHdr + ndInNoWaitPkt.retbyt]    ;Get request byte
+    mov al, byte [secdReqPkt + ndInNoWaitPkt.retbyt]    ;Get request byte
     mov byte [singleIObyt], al  ;Store it here to make algorithm streamlined
 .notNDRead:
-    mov ah, byte [secdReqHdr + drvReqHdr.status + 1]  ;Get hibyte of status word
+    mov ah, byte [secdReqPkt + drvReqHdr.status + 1]  ;Get hibyte of status word
     not ah
     and ah, (drvBsyStatus >> 8) ;Set ZF=ZE if BSY set on for NDRead commands
     call dosPopRegs ;Get back the context
@@ -106,7 +106,7 @@ mainCharIO:
     jmp mainCharIO  ;Retry operation
 .errorIgnore:
     ;Clear the busy bit in the status word
-    and byte [secdReqHdr + drvReqHdr.status + 1], ~(drvBsyStatus >> 8)
+    and byte [secdReqPkt + drvReqHdr.status + 1], ~(drvBsyStatus >> 8)
     jmp short .ignoreRet
 .notChar:
 ;rsi -> SFT to read/write to
@@ -184,14 +184,14 @@ openCloseCommon:
     test word [rdi + drvHdr.attrib], devDrvHdlCTL   ;Can we open/close?
     jz .exit    ;No, exit!
     mov rsi, rdi    ;Save driver header in rsi for the request
-    lea rbx, primReqHdr ;Get the primary request header space in rbx
+    lea rbx, primReqPkt ;Get the primary request header space in rbx
     movzx eax, ax   ;Zero extend (al = unit num if block, ah = cmdcde)
 .retryEP:
     mov dword [rbx + 1], eax    ;Store unitnm (if block), cmdcde and 0 status
     mov byte [rbx], openReqPkt_size ;Same length as closeReqPkt
     push rax    ;Save the dword
     call goDriver
-    movzx edi, word [primReqHdr + drvReqHdr.status] ;Get the status
+    movzx edi, word [primReqPkt + drvReqHdr.status] ;Get the status
     test edi, drvErrStatus
     jz .exitPop
     ;Error here, check if char or block drive

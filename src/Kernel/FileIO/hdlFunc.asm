@@ -1902,7 +1902,7 @@ readCharDev:
     mov rsi, qword [workingDD]  ;Get the working device driver
     call goDriver   ;Make the request
     mov rdx, rdi    ;Save transfer buffer in rdx
-    movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+    movzx edi, word [primReqPkt + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .binNoError
     ;ERROR HERE! Prepare for Int 24h (if SFT allows us to issue Int 24h)
@@ -1923,7 +1923,7 @@ readCharDev:
     return
 .binNoError:
     ;Get number of bytes transferred into 
-    mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
+    mov eax, dword [primReqPkt + ioReqPkt.tfrlen]   ;Get bytes transferred
     neg eax ;make it into -eax
     lea ecx, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
     ;ecx now has bytes left to transfer
@@ -1947,13 +1947,13 @@ readCharDev:
     mov rdx, rdi    ;Save the current buffer pointer position in rdx
     call checkBreak ;Check we don't have a ^C pending on CON
     call goDriver   ;If no ^C found (which exits DOS) Make request!
-    movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+    movzx edi, word [primReqPkt + ioReqPkt.status] ;Get status word in di
     test edi, drvErrStatus  ;Did an error occur?
     jz .asciiNoError
     mov ah, critCharDev | critData
     call charDevErr    ;Call Int 24h, ecx preserved
     ;Now setup number of bytes to transfer to 1 if the user requests retry
-    mov dword [primReqHdr + ioReqPkt.tfrlen], 1
+    mov dword [primReqPkt + ioReqPkt.tfrlen], 1
     mov rdi, rdx    ;Get the buffer position back into rdi
     cmp al, critFail
     je .failExit
@@ -1968,11 +1968,11 @@ readCharDev:
 ;Preserve RBX, RSI
 ;Check EXACTLY 1 char was transferred. Any other value => exit from request
     mov rdi, rdx    ;Get the buffer position back into rdi
-    cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
+    cmp dword [primReqPkt + ioReqPkt.tfrlen], 1
     jne charReadExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
     mov al, byte [rdi]  ;Get byte just input from driver in al
 .asciiIgnoreEP:
-    inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
+    inc qword [primReqPkt + ioReqPkt.bufptr]   ;Goto next char position
     inc rdi ;Also advance register pointer
     cmp al, EOF ;Was the char just read EOF?
     je charReadExitOk   ;Exit if so!
@@ -2181,7 +2181,7 @@ writeCharDev:
     call goDriverChar
     mov rdx, rdi    ;Save buffer ptr in rdx
     mov ah, critCharDev | critData | critWrite
-    movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+    movzx edi, word [primReqPkt + ioReqPkt.status]  ;Get status word
     test edi, drvErrStatus
     jz .binXfrOk
     call charDevErr ;Invoke Int 24h
@@ -2192,7 +2192,7 @@ writeCharDev:
     je .binaryLp
     jmp .exitFail
 .binXfrOk:
-    mov eax, dword [primReqHdr + ioReqPkt.tfrlen]
+    mov eax, dword [primReqPkt + ioReqPkt.tfrlen]
     jmp writeExitChar   ;Exit oki with # bytes xfrd in eax
 .asciiDev:
     test al, charDevConOut
@@ -2215,12 +2215,12 @@ writeCharDev:
     call goDriver
     push rdi
     mov ah, critCharDev | critData | critWrite
-    movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+    movzx edi, word [primReqPkt + ioReqPkt.status]  ;Get status word
     test edi, drvErrStatus
     jz .asciiNoError
     call charDevErr ;Invoke Int 24h
     pop rdi
-    mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
+    mov dword [primReqPkt + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
     cmp al, critRetry
     je .asciiLp
     cmp al, critIgnore
@@ -2228,15 +2228,15 @@ writeCharDev:
     jmp .exitFail
 .asciiNoError:
     pop rdi
-    cmp dword [primReqHdr + ioReqPkt.tfrlen], 0
+    cmp dword [primReqPkt + ioReqPkt.tfrlen], 0
     je .bytesXfrdOk
 .ignoreEp:
     inc edx ;One more char has been xfrd
-    inc dword [primReqHdr + ioReqPkt.bufptr]    ;Increment buffer ptr
+    inc dword [primReqPkt + ioReqPkt.bufptr]    ;Increment buffer ptr
     inc rdi ;And our copy... 
     cmp byte [rdi], EOF ;... to do this!
     je .bytesXfrdOk
-    mov word [primReqHdr + ioReqPkt.status], 0
+    mov word [primReqPkt + ioReqPkt.status], 0
     dec ecx
     jnz .asciiLp
 .bytesXfrdOk:

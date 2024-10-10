@@ -116,7 +116,7 @@ absDiskReadWriteCommon:
 ; and primary request header in rbx
     call absDiskDriverCall
     jz absDiskExit  ;Skip error code checking
-    mov al, byte [primReqHdr + ioReqPkt.status] ;Get low byte into al
+    mov al, byte [primReqPkt + ioReqPkt.status] ;Get low byte into al
     ;DOS uses the following pairs in a table
     ;AH/AL= 80/02, 40/06, 02/0C, 10/04, 04/08, 03/00
     mov ah, 80h ;Attachment failure
@@ -169,14 +169,14 @@ absDiskDriverCall:
 ;       ecx = Number of sectors transferred
     push rsi
     ;Get number of sectors to transfer in ecx (if not in ecx already)
-    mov ecx, dword [primReqHdr + ioReqPkt.tfrlen]
+    mov ecx, dword [primReqPkt + ioReqPkt.tfrlen]
     ;Prepare for goDriver now
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
     call goDriver   ;Make request
     pop rsi
-    mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get actual num tfrd
+    mov eax, dword [primReqPkt + ioReqPkt.tfrlen]   ;Get actual num tfrd
     sub ecx, eax    ;Get positive difference of the two 
-    movzx eax, word [primReqHdr + ioReqPkt.status]
+    movzx eax, word [primReqPkt + ioReqPkt.status]
     test ax, drvErrStatus   ;Is error bit set?
     return
 
@@ -326,7 +326,7 @@ ensureDiskValid:
     jz .errorExitBad    ;Just return fail if bit not set
     ;rbp points to the dpb still
     push rdi
-    mov rdi, qword [primReqHdr + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
+    mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
     pop rdi ;Get back the buffer pointer
     mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
@@ -361,37 +361,37 @@ primReqRWCommon:
 ; ah = Command code
 ; All regs preserved EXCEPT rbx.
 ; Return: rbx = Transfer Address
-    mov qword [primReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
-    mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
-    mov byte [primReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+    mov qword [primReqPkt + ioReqPkt.bufptr], rbx   ;Buffer
+    mov dword [primReqPkt + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
+    mov byte [primReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
     and eax, 0000FF00h  ;Clear the upper word (status word) and al
-    mov dword [primReqHdr + ioReqPkt.unitnm], eax   ;Clear unit number field
+    mov dword [primReqPkt + ioReqPkt.unitnm], eax   ;Clear unit number field
     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
     jz primReqCommonExit    ;If char request, exit!
     ;Disk operations only here!
-    mov qword [primReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
+    mov qword [primReqPkt + ioReqPkt.strtsc], rdx   ;Start sector
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [primReqHdr + ioReqPkt.medesc], al ;Store medesc!
+    mov byte [primReqPkt + ioReqPkt.medesc], al ;Store medesc!
     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
-    mov byte [primReqHdr + ioReqPkt.unitnm], al ;Store the unit number
+    mov byte [primReqPkt + ioReqPkt.unitnm], al ;Store the unit number
 primReqCommonExit:
 ;Returns in rbx the primary request header as these functions
 ; setup the request in the primary request header space
     pop rax
-    lea rbx, primReqHdr ;Put in rbx the primary request header
+    lea rbx, primReqPkt ;Put in rbx the primary request header
     return
 
 primReqMedCheckSetup:
 ;Prepare the diskIO packet for mediacheck
 ;rbp has DPB pointer for device to check media on
     push rax
-    mov byte [primReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [primReqHdr + mediaCheckReqPkt.medesc], al
+    mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [primReqHdr + mediaCheckReqPkt.unitnm], al
-    mov byte [primReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
-    mov word [primReqHdr + mediaCheckReqPkt.status], 0
+    mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
+    mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
+    mov word [primReqPkt + mediaCheckReqPkt.status], 0
     jmp short primReqCommonExit
 
 primReqGetBPBSetup:
@@ -399,14 +399,14 @@ primReqGetBPBSetup:
 ;rdi has sector buffer header pointer for transfer
     push rax
     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
-    mov qword [primReqHdr + bpbBuildReqPkt.bufptr], rdi
-    mov byte [primReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+    mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rdi
+    mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
     mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [primReqHdr + bpbBuildReqPkt.medesc], al
+    mov byte [primReqPkt + bpbBuildReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [primReqHdr + bpbBuildReqPkt.unitnm], al
-    mov byte [primReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-    mov word [primReqHdr + bpbBuildReqPkt.status], 0
+    mov byte [primReqPkt + bpbBuildReqPkt.unitnm], al
+    mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+    mov word [primReqPkt + bpbBuildReqPkt.status], 0
     jmp short primReqCommonExit
 
 primReqOpenSetup:
@@ -419,9 +419,9 @@ primReqCloseSetup:
     push rax
     mov ah, drvCLOSE
 primReqOCcommon:
-    mov byte [primReqHdr + openReqPkt.hdrlen], openReqPkt_size
+    mov byte [primReqPkt + openReqPkt.hdrlen], openReqPkt_size
     cwde   ;Sign extend (but top bit is zero so zero extend)
-    mov dword [primReqHdr + openReqPkt.unitnm], eax
+    mov dword [primReqPkt + openReqPkt.unitnm], eax
     ;Cover unit number (if disk drive, cmdcde and status)
     jmp primReqCommonExit   ;Now simply exit
 
@@ -433,7 +433,7 @@ secdReqCharIOReq:
 ; rdi = Buffer pointer
 ;Output: 
 ; rbx = Transfer Address 
-    lea rbx, secdReqHdr
+    lea rbx, secdReqPkt
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
     mov byte [rbx + ioReqPkt.cmdcde], ah
     mov word [rbx + ioReqPkt.status], 0

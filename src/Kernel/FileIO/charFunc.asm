@@ -262,7 +262,7 @@ swapPrimaryHeader:
     push rdi
     push rcx
     mov rcx, ioReqPkt_size
-    lea rsi, primReqHdr
+    lea rsi, primReqPkt
     lea rdi, bkupReqHdr
     jnc .read
     xchg rsi, rdi   ;If carry flag set, swap pointers
@@ -491,13 +491,13 @@ checkBreak:
     push rsi
     mov rsi, qword [vConPtr] ;Get pointer to Console device driver
     ;Place command code and a zero status word at the same time
-    mov dword [critReqHdr + ndInNoWaitPkt.cmdcde], drvNONDESTREAD
+    mov dword [critReqPkt + ndInNoWaitPkt.cmdcde], drvNONDESTREAD
     ;Place the packet size in the hdrlen field
-    mov byte [critReqHdr + ndInNoWaitPkt.hdrlen], ndInNoWaitPkt_size
-    lea rbx, critReqHdr
+    mov byte [critReqPkt + ndInNoWaitPkt.hdrlen], ndInNoWaitPkt_size
+    lea rbx, critReqPkt
     call goDriver   ;Called with rsi and rbx with appropriate pointers
     ;Check if the busy bit is set (No keystroke available)
-    test word [critReqHdr + ndInNoWaitPkt.status], drvBsyStatus
+    test word [critReqPkt + ndInNoWaitPkt.status], drvBsyStatus
     jz .charFound
 .exit:
     xor al, al
@@ -506,17 +506,17 @@ checkBreak:
     return
 .charFound:
 ;Keystroke available, proceed
-    mov al, byte [critReqHdr + ndInNoWaitPkt.retbyt]    ;Get char
+    mov al, byte [critReqPkt + ndInNoWaitPkt.retbyt]    ;Get char
     cmp al, ETX ;BREAK/^C =ASCII 03h
     jne .exit   ;If not equal exit
 ;Now we pull the char out of the buffer
-    mov dword [critReqHdr + ioReqPkt.cmdcde], drvREAD ;Read command
-    mov byte [critReqHdr + ioReqPkt.hdrlen], ioReqPkt_size  ;Place packet size
+    mov dword [critReqPkt + ioReqPkt.cmdcde], drvREAD ;Read command
+    mov byte [critReqPkt + ioReqPkt.hdrlen], ioReqPkt_size  ;Place packet size
     ;Place pointers and number of chars
-    mov dword [critReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
+    mov dword [critReqPkt + ioReqPkt.tfrlen], 1 ;One char to be read
     ;Use media byte space as the char buffer (to avoid issues & save a byte)
-    lea rax, qword [critReqHdr + ioReqPkt.medesc]
-    mov qword [critReqHdr + ioReqPkt.bufptr], rax
+    lea rax, qword [critReqPkt + ioReqPkt.medesc]
+    mov qword [critReqPkt + ioReqPkt.bufptr], rax
     call goDriver   ;RSI and RBX as before
     jmp ctrlBreakHdlr   ;Read the char and jump to ^C handler
 

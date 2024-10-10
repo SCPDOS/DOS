@@ -229,7 +229,7 @@ sdaDOSSwap:
     vConDrvSwp  db ?  ;Set if vCon controlled by a different driver to vConPtr
     int28Flag   db ?  ;If set, Int 28h should be called, if clear no
     Int24Trans  db ?  ;Set to -1 if Abort translated to Fail
-;A request routed through the FCB or handle uses primReqHdr for its main IO.
+;A request routed through the FCB or handle uses primReqPkt for its main IO.
 ;A secondary header is present to allow simultaneous echoing to console 
 ; without forcing to re-build the whole primary request block.
 ;Thus all disk io uses the primary and CharIO goes through the primary
@@ -237,10 +237,10 @@ sdaDOSSwap:
 ;(i.e the char input functions use the primary for main input and secondary 
 ; for output)
 ;ioReqPkt is the largest possible packet
-    secdReqHdr  db ioReqPkt_size dup (?) ;Secondary, Char IO Reqhdr
-    primReqHdr  db ioReqPkt_size dup (?) ;Main Drv Reqhdr 
+    secdReqPkt  db ioReqPkt_size dup (?) ;Secondary, Char IO Reqhdr
+    primReqPkt  db ioReqPkt_size dup (?) ;Main Drv Reqhdr 
 altRet: ;Accessed as a qword
-    critReqHdr  db ioReqPkt_size dup (?)  ;Used for ^C detection!
+    critReqPkt  db ioReqPkt_size dup (?)  ;Used for ^C detection!
     pspCopyFlg  db ?  ;Set to -1 for child process PSP, 0 for simple PSP copy
 ;Swappable Buffers
     CLOCKrecrd  db 6 dup (?)  ;Clock driver record

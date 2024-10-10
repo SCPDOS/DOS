@@ -93,7 +93,7 @@ ioctrl:            ;ah = 44h, handle function
 ;       ecx = Bytes to transfer
 ;       rdx = Ptr to string to transfer
     movzx esi, bl
-    lea rbx, primReqHdr
+    lea rbx, primReqPkt
     mov byte [errorLocus], eLocUnk
     mov byte [Int24bitfld], 0
 ;Get in rdi the ptr to the SFT for the handle we are looking at
@@ -171,7 +171,7 @@ ioctrl:            ;ah = 44h, handle function
 ;al = 1 -> Get output status
     call derefSFTPtr
     jc .badHandle 
-    lea rbx, primReqHdr
+    lea rbx, primReqPkt
     mov byte [rbx + statusReqPkt.hdrlen], statusReqPkt_size
     mov byte [errorLocus], eLocUnk
     test word [rdi + sft.wDeviceInfo], devRedirDev  ;File cannot be redir!
@@ -264,7 +264,7 @@ ioctrl:            ;ah = 44h, handle function
     mov rdi, qword [workingCDS] ;Get the CDS
     test word [rdi + cds.wFlags], cdsRedirDrive
     jnz .remTestBadDrv
-    lea rbx, primReqHdr
+    lea rbx, primReqPkt
     mov rsi, qword [rdi + cds.qDPBPtr]
     mov al, byte [rsi + dpb.bUnitNumber]    ;Get the unit number
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr in rsi
@@ -328,7 +328,7 @@ ioctrl:            ;ah = 44h, handle function
     mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
     mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
     mov al, byte [rsi + dpb.bUnitNumber]
-    mov byte [primReqHdr + ioctlReqPkt.unitnm], al
+    mov byte [primReqPkt + ioctlReqPkt.unitnm], al
     mov rsi, rdi   ;Get the driver ptr in rsi 
 .ioctlReqMake:
 ;rsi must point to the driver header here
@@ -340,7 +340,7 @@ ioctrl:            ;ah = 44h, handle function
     jmp extErrExit
 .supportsIOCTL:
     ;Setup the request header
-    lea rbx, primReqHdr
+    lea rbx, primReqPkt
     mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
     mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
     mov word [rbx + ioctlReqPkt.status], 0
@@ -360,7 +360,7 @@ ioctrl:            ;ah = 44h, handle function
 
 .getDrvLogicalDevice:
     mov al, bl
-    lea rbx, primReqHdr
+    lea rbx, primReqPkt
     mov byte [rbx + getDevReqPkt.cmdcde], drvGETDRVMAP
     mov byte [rbx + getDevReqPkt.hdrlen], getDevReqPkt_size
     mov word [rbx + getDevReqPkt.status], 0
@@ -386,7 +386,7 @@ ioctrl:            ;ah = 44h, handle function
     return
 .setDrvLogicalDevice:
     mov al, bl
-    lea rbx, primReqHdr
+    lea rbx, primReqPkt
     mov byte [rbx + setDevReqPkt.cmdcde], drvSETDRVMAP
     mov byte [rbx + setDevReqPkt.hdrlen], setDevReqPkt_size
     mov word [rbx + setDevReqPkt.status], 0

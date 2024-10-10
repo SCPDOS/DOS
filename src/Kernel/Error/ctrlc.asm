@@ -8,7 +8,7 @@ diskIOError:
     cmp al, drvBadDskChnge
     jne .doReq
     push rax    ;If a bad disk change, drop the volume label ptr here
-    mov rax, qword [primReqHdr + ioReqPkt.desptr]   ;Get volume label ptr
+    mov rax, qword [primReqPkt + ioReqPkt.desptr]   ;Get volume label ptr
     mov qword [errorVolLbl], rax    ;and save it!
     ;Later versions will include a serial number after the lbl too
     pop rax
@@ -509,19 +509,19 @@ cpu_exception:
 
 
 .readInputChar:
-    mov byte [critReqHdr + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
+    mov byte [critReqPkt + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
     lea rsi, singleIObyt
     mov ebx, 1  ;Read one char
     jmp short .ioException
 .writeExceptionMessage:
 ;Called with ebx=Number of chars to print, rsi -> String to print
-    mov byte [critReqHdr + ioReqPkt.cmdcde], drvWRITE
+    mov byte [critReqPkt + ioReqPkt.cmdcde], drvWRITE
 .ioException:
-    mov byte [critReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
-    mov word [critReqHdr + ioReqPkt.status], 0
-    mov dword [critReqHdr + ioReqPkt.tfrlen], ebx
-    lea rbx, critReqHdr
-    mov qword [critReqHdr + ioReqPkt.bufptr], rsi
+    mov byte [critReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
+    mov word [critReqPkt + ioReqPkt.status], 0
+    mov dword [critReqPkt + ioReqPkt.tfrlen], ebx
+    lea rbx, critReqPkt
+    mov qword [critReqPkt + ioReqPkt.bufptr], rsi
     mov rsi, qword [vConPtr]
     call goDriver
     return
