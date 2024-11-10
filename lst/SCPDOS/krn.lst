@@ -1802,7 +1802,7 @@
    229 00000494 ??                  <1>     vConDrvSwp  db ?  ;Set if vCon controlled by a different driver to vConPtr
    230 00000495 ??                  <1>     int28Flag   db ?  ;If set, Int 28h should be called, if clear no
    231 00000496 ??                  <1>     Int24Trans  db ?  ;Set to -1 if Abort translated to Fail
-   232                              <1> ;A request routed through the FCB or handle uses primReqHdr for its main IO.
+   232                              <1> ;A request routed through the FCB or handle uses primReqPkt for its main IO.
    233                              <1> ;A secondary header is present to allow simultaneous echoing to console 
    234                              <1> ; without forcing to re-build the whole primary request block.
    235                              <1> ;Thus all disk io uses the primary and CharIO goes through the primary
@@ -1810,10 +1810,10 @@
    237                              <1> ;(i.e the char input functions use the primary for main input and secondary 
    238                              <1> ; for output)
    239                              <1> ;ioReqPkt is the largest possible packet
-   240 00000497 <res 2Ah>           <1>     secdReqHdr  db ioReqPkt_size dup (?) ;Secondary, Char IO Reqhdr
-   241 000004C1 <res 2Ah>           <1>     primReqHdr  db ioReqPkt_size dup (?) ;Main Drv Reqhdr 
+   240 00000497 <res 2Ah>           <1>     secdReqPkt  db ioReqPkt_size dup (?) ;Secondary, Char IO Reqhdr
+   241 000004C1 <res 2Ah>           <1>     primReqPkt  db ioReqPkt_size dup (?) ;Main Drv Reqhdr 
    242                              <1> altRet: ;Accessed as a qword
-   243 000004EB <res 2Ah>           <1>     critReqHdr  db ioReqPkt_size dup (?)  ;Used for ^C detection!
+   243 000004EB <res 2Ah>           <1>     critReqPkt  db ioReqPkt_size dup (?)  ;Used for ^C detection!
    244 00000515 ??                  <1>     pspCopyFlg  db ?  ;Set to -1 for child process PSP, 0 for simple PSP copy
    245                              <1> ;Swappable Buffers
    246 00000516 ????????????        <1>     CLOCKrecrd  db 6 dup (?)  ;Clock driver record
@@ -7321,7 +7321,7 @@
      5                              <1> mainCharIO:
      6                              <1> ;This is the main IO clearing function for Char IO.
      7                              <1> ; Uses two tables, as per DOS 3.3 to store parts of the request header
-     8                              <1> ; Uses only the secdReqHdr and the singleIObyt as the transfer buffer
+     8                              <1> ; Uses only the secdReqPkt and the singleIObyt as the transfer buffer
      9                              <1> ;
     10                              <1> ;Input: rsi = SFT for the file the IO is being enacted on
     11                              <1> ;       ah = {0,..., 5}, a subfunction number
@@ -7371,9 +7371,9 @@
     55                              <1>     ;Setup parts of the req ptr AS IF IT WERE FOR IO
     56 000024F1 53                  <1>     push rbx    ; PRESERVE THE STATE OF RBX OR GOD HELP YOU ALL!!!!!
     57 000024F2 488D1D(1C050000)    <1>     lea rbx, singleIObyt   ;Get lea of return byte pointer
-    58 000024F9 48891D(A5040000)    <1>     mov qword [secdReqHdr + ioReqPkt.bufptr], rbx
+    58 000024F9 48891D(A5040000)    <1>     mov qword [secdReqPkt + ioReqPkt.bufptr], rbx
     59 00002500 5B                  <1>     pop rbx
-    60 00002501 C705(AD040000)0100- <1>     mov dword [secdReqHdr + ioReqPkt.tfrlen], 1 ;Request 1 byte if read/write
+    60 00002501 C705(AD040000)0100- <1>     mov dword [secdReqPkt + ioReqPkt.tfrlen], 1 ;Request 1 byte if read/write
     60 00002509 0000                <1>
     61 0000250B 668905(1C050000)    <1>     mov word [singleIObyt], ax  ;Save al for transfer and ah for preservation
     62 00002512 66F746050080        <1>     test word [rsi + sft.wDeviceInfo], devRedirDev
@@ -7386,27 +7386,27 @@
     69 00002536 0FB6CC              <1>     movzx ecx, ah   ;Get the command code into ecx (zero xtnd rcx)
     70 00002539 C1E102              <1>     shl ecx, 2  ;Multiply by four since DWORD entries
     71 0000253C 8B0C0B              <1>     mov ecx, dword [rbx + rcx]  ;Get entry
-    72 0000253F 890D(97040000)      <1>     mov dword [secdReqHdr], ecx ;First three entries map to first three entries
+    72 0000253F 890D(97040000)      <1>     mov dword [secdReqPkt], ecx ;First three entries map to first three entries
     73                              <1>     ;Now set up cx for status word
     74 00002545 31C9                <1>     xor ecx, ecx
     75 00002547 80FC05              <1>     cmp ah, 05h ;Did the caller request command 5?
     76 0000254A 7506                <1>     jne .skipBsySet
     77 0000254C 81C900020000        <1>     or ecx, drvBsyStatus
     78                              <1> .skipBsySet:
-    79 00002552 66870D(9A040000)    <1>     xchg cx, word [secdReqHdr + drvReqHdr.status] ;Swap error flags with status
+    79 00002552 66870D(9A040000)    <1>     xchg cx, word [secdReqPkt + drvReqHdr.status] ;Swap error flags with status
     80                              <1>     ;cl has flags, ch has garbage (status is zeroed by xchg)
-    81 00002559 488D1D(97040000)    <1>     lea rbx, secdReqHdr
+    81 00002559 488D1D(97040000)    <1>     lea rbx, secdReqPkt
     82 00002560 E832480000          <1>     call goDriverChar   ;GoDriver with an SFT in rsi
-    83 00002565 668B3D(9A040000)    <1>     mov di, word [secdReqHdr + drvReqHdr.status]    ;Get status
+    83 00002565 668B3D(9A040000)    <1>     mov di, word [secdReqPkt + drvReqHdr.status]    ;Get status
     84 0000256C F7C700800000        <1>     test edi, drvErrStatus
     85 00002572 752D                <1>     jnz .error
     86                              <1> .ignoreRet:
-    87 00002574 803D(99040000)05    <1>     cmp byte [secdReqHdr + drvReqHdr.cmdcde], drvNONDESTREAD
+    87 00002574 803D(99040000)05    <1>     cmp byte [secdReqPkt + drvReqHdr.cmdcde], drvNONDESTREAD
     88 0000257B 750C                <1>     jne .notNDRead
-    89 0000257D 8A05(A4040000)      <1>     mov al, byte [secdReqHdr + ndInNoWaitPkt.retbyt]    ;Get request byte
+    89 0000257D 8A05(A4040000)      <1>     mov al, byte [secdReqPkt + ndInNoWaitPkt.retbyt]    ;Get request byte
     90 00002583 8805(1C050000)      <1>     mov byte [singleIObyt], al  ;Store it here to make algorithm streamlined
     91                              <1> .notNDRead:
-    92 00002589 8A25(9B040000)      <1>     mov ah, byte [secdReqHdr + drvReqHdr.status + 1]  ;Get hibyte of status word
+    92 00002589 8A25(9B040000)      <1>     mov ah, byte [secdReqPkt + drvReqHdr.status + 1]  ;Get hibyte of status word
     93 0000258F F6D4                <1>     not ah
     94 00002591 80E402              <1>     and ah, (drvBsyStatus >> 8) ;Set ZF=ZE if BSY set on for NDRead commands
     95 00002594 E8FA500000          <1>     call dosPopRegs ;Get back the context
@@ -7426,7 +7426,7 @@
    106 000025B1 E93BFFFFFF          <1>     jmp mainCharIO  ;Retry operation
    107                              <1> .errorIgnore:
    108                              <1>     ;Clear the busy bit in the status word
-   109 000025B6 8025(9B040000)FD    <1>     and byte [secdReqHdr + drvReqHdr.status + 1], ~(drvBsyStatus >> 8)
+   109 000025B6 8025(9B040000)FD    <1>     and byte [secdReqPkt + drvReqHdr.status + 1], ~(drvBsyStatus >> 8)
    110 000025BD EBB5                <1>     jmp short .ignoreRet
    111                              <1> .notChar:
    112                              <1> ;rsi -> SFT to read/write to
@@ -7539,14 +7539,14 @@
    184 0000267C 66F747080008        <1>     test word [rdi + drvHdr.attrib], devDrvHdlCTL   ;Can we open/close?
    185 00002682 7445                <1>     jz .exit    ;No, exit!
    186 00002684 4889FE              <1>     mov rsi, rdi    ;Save driver header in rsi for the request
-   187 00002687 488D1D(C1040000)    <1>     lea rbx, primReqHdr ;Get the primary request header space in rbx
+   187 00002687 488D1D(C1040000)    <1>     lea rbx, primReqPkt ;Get the primary request header space in rbx
    188 0000268E 0FB7C0              <1>     movzx eax, ax   ;Zero extend (al = unit num if block, ah = cmdcde)
    189                              <1> .retryEP:
    190 00002691 894301              <1>     mov dword [rbx + 1], eax    ;Store unitnm (if block), cmdcde and 0 status
    191 00002694 C6030D              <1>     mov byte [rbx], openReqPkt_size ;Same length as closeReqPkt
    192 00002697 50                  <1>     push rax    ;Save the dword
    193 00002698 E8FE460000          <1>     call goDriver
-   194 0000269D 0FB73D(C4040000)    <1>     movzx edi, word [primReqHdr + drvReqHdr.status] ;Get the status
+   194 0000269D 0FB73D(C4040000)    <1>     movzx edi, word [primReqPkt + drvReqHdr.status] ;Get the status
    195 000026A4 F7C700800000        <1>     test edi, drvErrStatus
    196 000026AA 741C                <1>     jz .exitPop
    197                              <1>     ;Error here, check if char or block drive
@@ -8005,7 +8005,7 @@
    263 0000290E 51                  <1>     push rcx
    264 0000290F 48B92A000000000000- <1>     mov rcx, ioReqPkt_size
    264 00002918 00                  <1>
-   265 00002919 488D35(C1040000)    <1>     lea rsi, primReqHdr
+   265 00002919 488D35(C1040000)    <1>     lea rsi, primReqPkt
    266 00002920 488D3D(EA190000)    <1>     lea rdi, bkupReqHdr
    267 00002927 7303                <1>     jnc .read
    268 00002929 4887F7              <1>     xchg rsi, rdi   ;If carry flag set, swap pointers
@@ -8399,14 +8399,14 @@
    491 00002ADE 56                  <1>     push rsi
    492 00002ADF 488B35(53000000)    <1>     mov rsi, qword [vConPtr] ;Get pointer to Console device driver
    493                              <1>     ;Place command code and a zero status word at the same time
-   494 00002AE6 C705(ED040000)0500- <1>     mov dword [critReqHdr + ndInNoWaitPkt.cmdcde], drvNONDESTREAD
+   494 00002AE6 C705(ED040000)0500- <1>     mov dword [critReqPkt + ndInNoWaitPkt.cmdcde], drvNONDESTREAD
    494 00002AEE 0000                <1>
    495                              <1>     ;Place the packet size in the hdrlen field
-   496 00002AF0 C605(EB040000)0E    <1>     mov byte [critReqHdr + ndInNoWaitPkt.hdrlen], ndInNoWaitPkt_size
-   497 00002AF7 488D1D(EB040000)    <1>     lea rbx, critReqHdr
+   496 00002AF0 C605(EB040000)0E    <1>     mov byte [critReqPkt + ndInNoWaitPkt.hdrlen], ndInNoWaitPkt_size
+   497 00002AF7 488D1D(EB040000)    <1>     lea rbx, critReqPkt
    498 00002AFE E898420000          <1>     call goDriver   ;Called with rsi and rbx with appropriate pointers
    499                              <1>     ;Check if the busy bit is set (No keystroke available)
-   500 00002B03 66F705(EE040000)00- <1>     test word [critReqHdr + ndInNoWaitPkt.status], drvBsyStatus
+   500 00002B03 66F705(EE040000)00- <1>     test word [critReqPkt + ndInNoWaitPkt.status], drvBsyStatus
    500 00002B0B 02                  <1>
    501 00002B0C 7405                <1>     jz .charFound
    502                              <1> .exit:
@@ -8419,19 +8419,19 @@
     15                              <2> %assign retOff %%_ret-$$
    507                              <1> .charFound:
    508                              <1> ;Keystroke available, proceed
-   509 00002B13 8A05(F8040000)      <1>     mov al, byte [critReqHdr + ndInNoWaitPkt.retbyt]    ;Get char
+   509 00002B13 8A05(F8040000)      <1>     mov al, byte [critReqPkt + ndInNoWaitPkt.retbyt]    ;Get char
    510 00002B19 3C03                <1>     cmp al, ETX ;BREAK/^C =ASCII 03h
    511 00002B1B 75F1                <1>     jne .exit   ;If not equal exit
    512                              <1> ;Now we pull the char out of the buffer
-   513 00002B1D C705(ED040000)0400- <1>     mov dword [critReqHdr + ioReqPkt.cmdcde], drvREAD ;Read command
+   513 00002B1D C705(ED040000)0400- <1>     mov dword [critReqPkt + ioReqPkt.cmdcde], drvREAD ;Read command
    513 00002B25 0000                <1>
-   514 00002B27 C605(EB040000)2A    <1>     mov byte [critReqHdr + ioReqPkt.hdrlen], ioReqPkt_size  ;Place packet size
+   514 00002B27 C605(EB040000)2A    <1>     mov byte [critReqPkt + ioReqPkt.hdrlen], ioReqPkt_size  ;Place packet size
    515                              <1>     ;Place pointers and number of chars
-   516 00002B2E C705(01050000)0100- <1>     mov dword [critReqHdr + ioReqPkt.tfrlen], 1 ;One char to be read
+   516 00002B2E C705(01050000)0100- <1>     mov dword [critReqPkt + ioReqPkt.tfrlen], 1 ;One char to be read
    516 00002B36 0000                <1>
    517                              <1>     ;Use media byte space as the char buffer (to avoid issues & save a byte)
-   518 00002B38 488D05(F8040000)    <1>     lea rax, qword [critReqHdr + ioReqPkt.medesc]
-   519 00002B3F 488905(F9040000)    <1>     mov qword [critReqHdr + ioReqPkt.bufptr], rax
+   518 00002B38 488D05(F8040000)    <1>     lea rax, qword [critReqPkt + ioReqPkt.medesc]
+   519 00002B3F 488905(F9040000)    <1>     mov qword [critReqPkt + ioReqPkt.bufptr], rax
    520 00002B46 E850420000          <1>     call goDriver   ;RSI and RBX as before
    521 00002B4B E9D43D0000          <1>     jmp ctrlBreakHdlr   ;Read the char and jump to ^C handler
    522                              <1> 
@@ -11953,7 +11953,7 @@
   1902 00004912 488B35(0A070000)    <1>     mov rsi, qword [workingDD]  ;Get the working device driver
   1903 00004919 E87D240000          <1>     call goDriver   ;Make the request
   1904 0000491E 4889FA              <1>     mov rdx, rdi    ;Save transfer buffer in rdx
-  1905 00004921 0FB73D(C4040000)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+  1905 00004921 0FB73D(C4040000)    <1>     movzx edi, word [primReqPkt + ioReqPkt.status] ;Get status word in di
   1906 00004928 F7C700800000        <1>     test edi, drvErrStatus  ;Did an error occur?
   1907 0000492E 7422                <1>     jz .binNoError
   1908                              <1>     ;ERROR HERE! Prepare for Int 24h (if SFT allows us to issue Int 24h)
@@ -11977,7 +11977,7 @@
     15                              <2> %assign retOff %%_ret-$$
   1924                              <1> .binNoError:
   1925                              <1>     ;Get number of bytes transferred into 
-  1926 00004952 8B05(D7040000)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get bytes transferred
+  1926 00004952 8B05(D7040000)      <1>     mov eax, dword [primReqPkt + ioReqPkt.tfrlen]   ;Get bytes transferred
   1927 00004958 F7D8                <1>     neg eax ;make it into -eax
   1928 0000495A 678D0C01            <1>     lea ecx, dword [ecx + eax]  ;ecx has bytes to transfer, -eax has bytes trfrd
   1929                              <1>     ;ecx now has bytes left to transfer
@@ -12001,13 +12001,13 @@
   1947 00004982 4889FA              <1>     mov rdx, rdi    ;Save the current buffer pointer position in rdx
   1948 00004985 E849E1FFFF          <1>     call checkBreak ;Check we don't have a ^C pending on CON
   1949 0000498A E80C240000          <1>     call goDriver   ;If no ^C found (which exits DOS) Make request!
-  1950 0000498F 0FB73D(C4040000)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status] ;Get status word in di
+  1950 0000498F 0FB73D(C4040000)    <1>     movzx edi, word [primReqPkt + ioReqPkt.status] ;Get status word in di
   1951 00004996 F7C700800000        <1>     test edi, drvErrStatus  ;Did an error occur?
   1952 0000499C 7420                <1>     jz .asciiNoError
   1953 0000499E B486                <1>     mov ah, critCharDev | critData
   1954 000049A0 E8DB1D0000          <1>     call charDevErr    ;Call Int 24h, ecx preserved
   1955                              <1>     ;Now setup number of bytes to transfer to 1 if the user requests retry
-  1956 000049A5 C705(D7040000)0100- <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], 1
+  1956 000049A5 C705(D7040000)0100- <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], 1
   1956 000049AD 0000                <1>
   1957 000049AF 4889D7              <1>     mov rdi, rdx    ;Get the buffer position back into rdi
   1958 000049B2 3C03                <1>     cmp al, critFail
@@ -12023,12 +12023,12 @@
   1968                              <1> ;Preserve RBX, RSI
   1969                              <1> ;Check EXACTLY 1 char was transferred. Any other value => exit from request
   1970 000049BE 4889D7              <1>     mov rdi, rdx    ;Get the buffer position back into rdi
-  1971 000049C1 813D(D7040000)0100- <1>     cmp dword [primReqHdr + ioReqPkt.tfrlen], 1
+  1971 000049C1 813D(D7040000)0100- <1>     cmp dword [primReqPkt + ioReqPkt.tfrlen], 1
   1971 000049C9 0000                <1>
   1972 000049CB 0F856C010000        <1>     jne charReadExitOk    ;Exit request if more than 1 char was tranferred (ZF=NZ)
   1973 000049D1 8A07                <1>     mov al, byte [rdi]  ;Get byte just input from driver in al
   1974                              <1> .asciiIgnoreEP:
-  1975 000049D3 48FF05(CF040000)    <1>     inc qword [primReqHdr + ioReqPkt.bufptr]   ;Goto next char position
+  1975 000049D3 48FF05(CF040000)    <1>     inc qword [primReqPkt + ioReqPkt.bufptr]   ;Goto next char position
   1976 000049DA 48FFC7              <1>     inc rdi ;Also advance register pointer
   1977 000049DD 3C1A                <1>     cmp al, EOF ;Was the char just read EOF?
   1978 000049DF 0F8458010000        <1>     je charReadExitOk   ;Exit if so!
@@ -12256,7 +12256,7 @@
   2181 00004BFB E897210000          <1>     call goDriverChar
   2182 00004C00 4889FA              <1>     mov rdx, rdi    ;Save buffer ptr in rdx
   2183 00004C03 B487                <1>     mov ah, critCharDev | critData | critWrite
-  2184 00004C05 0FB73D(C4040000)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+  2184 00004C05 0FB73D(C4040000)    <1>     movzx edi, word [primReqPkt + ioReqPkt.status]  ;Get status word
   2185 00004C0C F7C700800000        <1>     test edi, drvErrStatus
   2186 00004C12 7415                <1>     jz .binXfrOk
   2187 00004C14 E8671B0000          <1>     call charDevErr ;Invoke Int 24h
@@ -12267,7 +12267,7 @@
   2192 00004C22 74C6                <1>     je .binaryLp
   2193 00004C24 E9D5000000          <1>     jmp .exitFail
   2194                              <1> .binXfrOk:
-  2195 00004C29 8B05(D7040000)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]
+  2195 00004C29 8B05(D7040000)      <1>     mov eax, dword [primReqPkt + ioReqPkt.tfrlen]
   2196 00004C2F E9DC020000          <1>     jmp writeExitChar   ;Exit oki with # bytes xfrd in eax
   2197                              <1> .asciiDev:
   2198 00004C34 A802                <1>     test al, charDevConOut
@@ -12290,12 +12290,12 @@
   2215 00004C6E E828210000          <1>     call goDriver
   2216 00004C73 57                  <1>     push rdi
   2217 00004C74 B487                <1>     mov ah, critCharDev | critData | critWrite
-  2218 00004C76 0FB73D(C4040000)    <1>     movzx edi, word [primReqHdr + ioReqPkt.status]  ;Get status word
+  2218 00004C76 0FB73D(C4040000)    <1>     movzx edi, word [primReqPkt + ioReqPkt.status]  ;Get status word
   2219 00004C7D F7C700800000        <1>     test edi, drvErrStatus
   2220 00004C83 741D                <1>     jz .asciiNoError
   2221 00004C85 E8F61A0000          <1>     call charDevErr ;Invoke Int 24h
   2222 00004C8A 5F                  <1>     pop rdi
-  2223 00004C8B C705(D7040000)0100- <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
+  2223 00004C8B C705(D7040000)0100- <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], 1 ;Set tfrlen to 1 byte
   2223 00004C93 0000                <1>
   2224 00004C95 3C01                <1>     cmp al, critRetry
   2225 00004C97 74D0                <1>     je .asciiLp
@@ -12304,16 +12304,16 @@
   2228 00004C9D E95C000000          <1>     jmp .exitFail
   2229                              <1> .asciiNoError:
   2230 00004CA2 5F                  <1>     pop rdi
-  2231 00004CA3 813D(D7040000)0000- <1>     cmp dword [primReqHdr + ioReqPkt.tfrlen], 0
+  2231 00004CA3 813D(D7040000)0000- <1>     cmp dword [primReqPkt + ioReqPkt.tfrlen], 0
   2231 00004CAB 0000                <1>
   2232 00004CAD 741D                <1>     je .bytesXfrdOk
   2233                              <1> .ignoreEp:
   2234 00004CAF FFC2                <1>     inc edx ;One more char has been xfrd
-  2235 00004CB1 FF05(CF040000)      <1>     inc dword [primReqHdr + ioReqPkt.bufptr]    ;Increment buffer ptr
+  2235 00004CB1 FF05(CF040000)      <1>     inc dword [primReqPkt + ioReqPkt.bufptr]    ;Increment buffer ptr
   2236 00004CB7 48FFC7              <1>     inc rdi ;And our copy... 
   2237 00004CBA 803F1A              <1>     cmp byte [rdi], EOF ;... to do this!
   2238 00004CBD 740D                <1>     je .bytesXfrdOk
-  2239 00004CBF 66C705(C4040000)00- <1>     mov word [primReqHdr + ioReqPkt.status], 0
+  2239 00004CBF 66C705(C4040000)00- <1>     mov word [primReqPkt + ioReqPkt.status], 0
   2239 00004CC7 00                  <1>
   2240 00004CC8 FFC9                <1>     dec ecx
   2241 00004CCA 759D                <1>     jnz .asciiLp
@@ -13249,7 +13249,7 @@
     93                              <1> ;       ecx = Bytes to transfer
     94                              <1> ;       rdx = Ptr to string to transfer
     95 00005202 0FB6F3              <1>     movzx esi, bl
-    96 00005205 488D1D(C1040000)    <1>     lea rbx, primReqHdr
+    96 00005205 488D1D(C1040000)    <1>     lea rbx, primReqPkt
     97 0000520C C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
     98 00005213 C605(68040000)00    <1>     mov byte [Int24bitfld], 0
     99                              <1> ;Get in rdi the ptr to the SFT for the handle we are looking at
@@ -13327,7 +13327,7 @@
    171                              <1> ;al = 1 -> Get output status
    172 000052DD E804FEFFFF          <1>     call derefSFTPtr
    173 000052E2 0F82F1FEFFFF        <1>     jc .badHandle 
-   174 000052E8 488D1D(C1040000)    <1>     lea rbx, primReqHdr
+   174 000052E8 488D1D(C1040000)    <1>     lea rbx, primReqPkt
    175 000052EF C6030D              <1>     mov byte [rbx + statusReqPkt.hdrlen], statusReqPkt_size
    176 000052F2 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
    177 000052F9 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev  ;File cannot be redir!
@@ -13429,7 +13429,7 @@
    264 000053F4 488B3D(12070000)    <1>     mov rdi, qword [workingCDS] ;Get the CDS
    265 000053FB 66F747430080        <1>     test word [rdi + cds.wFlags], cdsRedirDrive
    266 00005401 75E7                <1>     jnz .remTestBadDrv
-   267 00005403 488D1D(C1040000)    <1>     lea rbx, primReqHdr
+   267 00005403 488D1D(C1040000)    <1>     lea rbx, primReqPkt
    268 0000540A 488B7745            <1>     mov rsi, qword [rdi + cds.qDPBPtr]
    269 0000540E 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]    ;Get the unit number
    270 00005411 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr in rsi
@@ -13496,7 +13496,7 @@
    328 000054C4 488B7645            <1>     mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
    329 000054C8 488B7E1B            <1>     mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
    330 000054CC 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
-   331 000054CF 8805(C2040000)      <1>     mov byte [primReqHdr + ioctlReqPkt.unitnm], al
+   331 000054CF 8805(C2040000)      <1>     mov byte [primReqPkt + ioctlReqPkt.unitnm], al
    332 000054D5 4889FE              <1>     mov rsi, rdi   ;Get the driver ptr in rsi 
    333                              <1> .ioctlReqMake:
    334                              <1> ;rsi must point to the driver header here
@@ -13508,7 +13508,7 @@
    340 000054EC E91B220000          <1>     jmp extErrExit
    341                              <1> .supportsIOCTL:
    342                              <1>     ;Setup the request header
-   343 000054F1 488D1D(C1040000)    <1>     lea rbx, primReqHdr
+   343 000054F1 488D1D(C1040000)    <1>     lea rbx, primReqPkt
    344 000054F8 C60327              <1>     mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
    345 000054FB C6430213            <1>     mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
    346 000054FF 66C743030000        <1>     mov word [rbx + ioctlReqPkt.status], 0
@@ -13528,7 +13528,7 @@
    360                              <1> 
    361                              <1> .getDrvLogicalDevice:
    362 0000553E 88D8                <1>     mov al, bl
-   363 00005540 488D1D(C1040000)    <1>     lea rbx, primReqHdr
+   363 00005540 488D1D(C1040000)    <1>     lea rbx, primReqPkt
    364 00005547 C6430217            <1>     mov byte [rbx + getDevReqPkt.cmdcde], drvGETDRVMAP
    365 0000554B C6030D              <1>     mov byte [rbx + getDevReqPkt.hdrlen], getDevReqPkt_size
    366 0000554E 66C743030000        <1>     mov word [rbx + getDevReqPkt.status], 0
@@ -13557,7 +13557,7 @@
     15                              <2> %assign retOff %%_ret-$$
    387                              <1> .setDrvLogicalDevice:
    388 0000559E 88D8                <1>     mov al, bl
-   389 000055A0 488D1D(C1040000)    <1>     lea rbx, primReqHdr
+   389 000055A0 488D1D(C1040000)    <1>     lea rbx, primReqPkt
    390 000055A7 C6430218            <1>     mov byte [rbx + setDevReqPkt.cmdcde], drvSETDRVMAP
    391 000055AB C6030D              <1>     mov byte [rbx + setDevReqPkt.hdrlen], setDevReqPkt_size
    392 000055AE 66C743030000        <1>     mov word [rbx + setDevReqPkt.status], 0
@@ -15589,7 +15589,7 @@
      8 0000673A 3C0F                <1>     cmp al, drvBadDskChnge
      9 0000673C 7510                <1>     jne .doReq
     10 0000673E 50                  <1>     push rax    ;If a bad disk change, drop the volume label ptr here
-    11 0000673F 488B05(E3040000)    <1>     mov rax, qword [primReqHdr + ioReqPkt.desptr]   ;Get volume label ptr
+    11 0000673F 488B05(E3040000)    <1>     mov rax, qword [primReqPkt + ioReqPkt.desptr]   ;Get volume label ptr
     12 00006746 488905(0F040000)    <1>     mov qword [errorVolLbl], rax    ;and save it!
     13                              <1>     ;Later versions will include a serial number after the lbl too
     14 0000674D 58                  <1>     pop rax
@@ -16130,20 +16130,20 @@
    509                              <1> 
    510                              <1> 
    511                              <1> .readInputChar:
-   512 00006C2D C605(ED040000)04    <1>     mov byte [critReqHdr + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
+   512 00006C2D C605(ED040000)04    <1>     mov byte [critReqPkt + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
    513 00006C34 488D35(1C050000)    <1>     lea rsi, singleIObyt
    514 00006C3B BB01000000          <1>     mov ebx, 1  ;Read one char
    515 00006C40 EB07                <1>     jmp short .ioException
    516                              <1> .writeExceptionMessage:
    517                              <1> ;Called with ebx=Number of chars to print, rsi -> String to print
-   518 00006C42 C605(ED040000)08    <1>     mov byte [critReqHdr + ioReqPkt.cmdcde], drvWRITE
+   518 00006C42 C605(ED040000)08    <1>     mov byte [critReqPkt + ioReqPkt.cmdcde], drvWRITE
    519                              <1> .ioException:
-   520 00006C49 C605(EB040000)2A    <1>     mov byte [critReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
-   521 00006C50 66C705(EE040000)00- <1>     mov word [critReqHdr + ioReqPkt.status], 0
+   520 00006C49 C605(EB040000)2A    <1>     mov byte [critReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
+   521 00006C50 66C705(EE040000)00- <1>     mov word [critReqPkt + ioReqPkt.status], 0
    521 00006C58 00                  <1>
-   522 00006C59 891D(01050000)      <1>     mov dword [critReqHdr + ioReqPkt.tfrlen], ebx
-   523 00006C5F 488D1D(EB040000)    <1>     lea rbx, critReqHdr
-   524 00006C66 488935(F9040000)    <1>     mov qword [critReqHdr + ioReqPkt.bufptr], rsi
+   522 00006C59 891D(01050000)      <1>     mov dword [critReqPkt + ioReqPkt.tfrlen], ebx
+   523 00006C5F 488D1D(EB040000)    <1>     lea rbx, critReqPkt
+   524 00006C66 488935(F9040000)    <1>     mov qword [critReqPkt + ioReqPkt.bufptr], rsi
    525 00006C6D 488B35(53000000)    <1>     mov rsi, qword [vConPtr]
    526 00006C74 E822010000          <1>     call goDriver
    527                              <1>     return
@@ -16357,7 +16357,7 @@
    116                              <1> ; and primary request header in rbx
    117 00006E8A E859000000          <1>     call absDiskDriverCall
    118 00006E8F 7427                <1>     jz absDiskExit  ;Skip error code checking
-   119 00006E91 8A05(C4040000)      <1>     mov al, byte [primReqHdr + ioReqPkt.status] ;Get low byte into al
+   119 00006E91 8A05(C4040000)      <1>     mov al, byte [primReqPkt + ioReqPkt.status] ;Get low byte into al
    120                              <1>     ;DOS uses the following pairs in a table
    121                              <1>     ;AH/AL= 80/02, 40/06, 02/0C, 10/04, 04/08, 03/00
    122 00006E97 B480                <1>     mov ah, 80h ;Attachment failure
@@ -16413,14 +16413,14 @@
    169                              <1> ;       ecx = Number of sectors transferred
    170 00006EE8 56                  <1>     push rsi
    171                              <1>     ;Get number of sectors to transfer in ecx (if not in ecx already)
-   172 00006EE9 8B0D(D7040000)      <1>     mov ecx, dword [primReqHdr + ioReqPkt.tfrlen]
+   172 00006EE9 8B0D(D7040000)      <1>     mov ecx, dword [primReqPkt + ioReqPkt.tfrlen]
    173                              <1>     ;Prepare for goDriver now
    174 00006EEF 488B751B            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
    175 00006EF3 E8A3FEFFFF          <1>     call goDriver   ;Make request
    176 00006EF8 5E                  <1>     pop rsi
-   177 00006EF9 8B05(D7040000)      <1>     mov eax, dword [primReqHdr + ioReqPkt.tfrlen]   ;Get actual num tfrd
+   177 00006EF9 8B05(D7040000)      <1>     mov eax, dword [primReqPkt + ioReqPkt.tfrlen]   ;Get actual num tfrd
    178 00006EFF 29C1                <1>     sub ecx, eax    ;Get positive difference of the two 
-   179 00006F01 0FB705(C4040000)    <1>     movzx eax, word [primReqHdr + ioReqPkt.status]
+   179 00006F01 0FB705(C4040000)    <1>     movzx eax, word [primReqPkt + ioReqPkt.status]
    180 00006F08 66A90080            <1>     test ax, drvErrStatus   ;Is error bit set?
    181                              <1>     return
     13                              <2> %%_ret:
@@ -16657,7 +16657,7 @@
    326 0000707F 74F0                <1>     jz .errorExitBad    ;Just return fail if bit not set
    327                              <1>     ;rbp points to the dpb still
    328 00007081 57                  <1>     push rdi
-   329 00007082 488B3D(D0040000)    <1>     mov rdi, qword [primReqHdr + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
+   329 00007082 488B3D(D0040000)    <1>     mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
    330 00007089 48893D(0F040000)    <1>     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
    331 00007090 5F                  <1>     pop rdi ;Get back the buffer pointer
    332 00007091 C605(68040000)18    <1>     mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
@@ -16692,24 +16692,24 @@
    361                              <1> ; ah = Command code
    362                              <1> ; All regs preserved EXCEPT rbx.
    363                              <1> ; Return: rbx = Transfer Address
-   364 000070C0 48891D(CF040000)    <1>     mov qword [primReqHdr + ioReqPkt.bufptr], rbx   ;Buffer
-   365 000070C7 890D(D7040000)      <1>     mov dword [primReqHdr + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
-   366 000070CD C605(C1040000)2A    <1>     mov byte [primReqHdr + ioReqPkt.hdrlen], ioReqPkt_size
+   364 000070C0 48891D(CF040000)    <1>     mov qword [primReqPkt + ioReqPkt.bufptr], rbx   ;Buffer
+   365 000070C7 890D(D7040000)      <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
+   366 000070CD C605(C1040000)2A    <1>     mov byte [primReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
    367 000070D4 2500FF0000          <1>     and eax, 0000FF00h  ;Clear the upper word (status word) and al
-   368 000070D9 8905(C2040000)      <1>     mov dword [primReqHdr + ioReqPkt.unitnm], eax   ;Clear unit number field
+   368 000070D9 8905(C2040000)      <1>     mov dword [primReqPkt + ioReqPkt.unitnm], eax   ;Clear unit number field
    369 000070DF 4885ED              <1>     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
    370 000070E2 7419                <1>     jz primReqCommonExit    ;If char request, exit!
    371                              <1>     ;Disk operations only here!
-   372 000070E4 488915(DB040000)    <1>     mov qword [primReqHdr + ioReqPkt.strtsc], rdx   ;Start sector
+   372 000070E4 488915(DB040000)    <1>     mov qword [primReqPkt + ioReqPkt.strtsc], rdx   ;Start sector
    373 000070EB 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   374 000070EE 8805(CE040000)      <1>     mov byte [primReqHdr + ioReqPkt.medesc], al ;Store medesc!
+   374 000070EE 8805(CE040000)      <1>     mov byte [primReqPkt + ioReqPkt.medesc], al ;Store medesc!
    375 000070F4 8A4501              <1>     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
-   376 000070F7 8805(C2040000)      <1>     mov byte [primReqHdr + ioReqPkt.unitnm], al ;Store the unit number
+   376 000070F7 8805(C2040000)      <1>     mov byte [primReqPkt + ioReqPkt.unitnm], al ;Store the unit number
    377                              <1> primReqCommonExit:
    378                              <1> ;Returns in rbx the primary request header as these functions
    379                              <1> ; setup the request in the primary request header space
    380 000070FD 58                  <1>     pop rax
-   381 000070FE 488D1D(C1040000)    <1>     lea rbx, primReqHdr ;Put in rbx the primary request header
+   381 000070FE 488D1D(C1040000)    <1>     lea rbx, primReqPkt ;Put in rbx the primary request header
    382                              <1>     return
     13                              <2> %%_ret:
     14 00007105 C3                  <2>  ret
@@ -16719,13 +16719,13 @@
    385                              <1> ;Prepare the diskIO packet for mediacheck
    386                              <1> ;rbp has DPB pointer for device to check media on
    387 00007106 50                  <1>     push rax
-   388 00007107 C605(C1040000)17    <1>     mov byte [primReqHdr + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+   388 00007107 C605(C1040000)17    <1>     mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
    389 0000710E 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   390 00007111 8805(CE040000)      <1>     mov byte [primReqHdr + mediaCheckReqPkt.medesc], al
+   390 00007111 8805(CE040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
    391 00007117 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
-   392 0000711A 8805(C2040000)      <1>     mov byte [primReqHdr + mediaCheckReqPkt.unitnm], al
-   393 00007120 C605(C3040000)01    <1>     mov byte [primReqHdr + mediaCheckReqPkt.cmdcde], drvMEDCHK
-   394 00007127 66C705(C4040000)00- <1>     mov word [primReqHdr + mediaCheckReqPkt.status], 0
+   392 0000711A 8805(C2040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
+   393 00007120 C605(C3040000)01    <1>     mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
+   394 00007127 66C705(C4040000)00- <1>     mov word [primReqPkt + mediaCheckReqPkt.status], 0
    394 0000712F 00                  <1>
    395 00007130 EBCB                <1>     jmp short primReqCommonExit
    396                              <1> 
@@ -16734,14 +16734,14 @@
    399                              <1> ;rdi has sector buffer header pointer for transfer
    400 00007132 50                  <1>     push rax
    401 00007133 488D4720            <1>     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
-   402 00007137 48893D(CF040000)    <1>     mov qword [primReqHdr + bpbBuildReqPkt.bufptr], rdi
-   403 0000713E C605(C1040000)1E    <1>     mov byte [primReqHdr + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+   402 00007137 48893D(CF040000)    <1>     mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rdi
+   403 0000713E C605(C1040000)1E    <1>     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
    404 00007145 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   405 00007148 8805(CE040000)      <1>     mov byte [primReqHdr + bpbBuildReqPkt.medesc], al
+   405 00007148 8805(CE040000)      <1>     mov byte [primReqPkt + bpbBuildReqPkt.medesc], al
    406 0000714E 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
-   407 00007151 8805(C2040000)      <1>     mov byte [primReqHdr + bpbBuildReqPkt.unitnm], al
-   408 00007157 C605(C3040000)02    <1>     mov byte [primReqHdr + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-   409 0000715E 66C705(C4040000)00- <1>     mov word [primReqHdr + bpbBuildReqPkt.status], 0
+   407 00007151 8805(C2040000)      <1>     mov byte [primReqPkt + bpbBuildReqPkt.unitnm], al
+   408 00007157 C605(C3040000)02    <1>     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+   409 0000715E 66C705(C4040000)00- <1>     mov word [primReqPkt + bpbBuildReqPkt.status], 0
    409 00007166 00                  <1>
    410 00007167 EB94                <1>     jmp short primReqCommonExit
    411                              <1> 
@@ -16755,9 +16755,9 @@
    419 0000716E 50                  <1>     push rax
    420 0000716F B40E                <1>     mov ah, drvCLOSE
    421                              <1> primReqOCcommon:
-   422 00007171 C605(C1040000)0D    <1>     mov byte [primReqHdr + openReqPkt.hdrlen], openReqPkt_size
+   422 00007171 C605(C1040000)0D    <1>     mov byte [primReqPkt + openReqPkt.hdrlen], openReqPkt_size
    423 00007178 98                  <1>     cwde   ;Sign extend (but top bit is zero so zero extend)
-   424 00007179 8905(C2040000)      <1>     mov dword [primReqHdr + openReqPkt.unitnm], eax
+   424 00007179 8905(C2040000)      <1>     mov dword [primReqPkt + openReqPkt.unitnm], eax
    425                              <1>     ;Cover unit number (if disk drive, cmdcde and status)
    426 0000717F E979FFFFFF          <1>     jmp primReqCommonExit   ;Now simply exit
    427                              <1> 
@@ -16769,7 +16769,7 @@
    433                              <1> ; rdi = Buffer pointer
    434                              <1> ;Output: 
    435                              <1> ; rbx = Transfer Address 
-   436 00007184 488D1D(97040000)    <1>     lea rbx, secdReqHdr
+   436 00007184 488D1D(97040000)    <1>     lea rbx, secdReqPkt
    437 0000718B C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
    438 0000718E 886302              <1>     mov byte [rbx + ioReqPkt.cmdcde], ah
    439 00007191 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
