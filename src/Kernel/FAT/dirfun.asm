@@ -193,6 +193,7 @@ removeDIR:         ;ah = 3Ah
     ;Path is ok, now proceed
     call dosCrit1Enter  ;Don't let another DOS task interrupt us!
     mov byte [searchAttr], dirDirectory
+    breakpoint
     lea rdi, buffer1    ;Build the full path here
     call getDirPath     ;Get a Directory path in buffer1, hitting the disk
     jc .pnf             ;Path Doesn't exist
@@ -206,6 +207,8 @@ removeDIR:         ;ah = 3Ah
     lea rdi, buffer1
     call strlen ;Get the length of the full qualified name in ecx
     mov word [pathLen], cx
+    cmp cx, 4   ;Only way to get this after truename is if root dir (i.e. join)
+    jbe .cantDelCD
     ;Now we scan all the CDS's to ensure this path is not the current dir anywhere
     xor eax, eax
 .scanLoop:
