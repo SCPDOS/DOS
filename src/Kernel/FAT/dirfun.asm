@@ -193,7 +193,6 @@ removeDIR:         ;ah = 3Ah
     ;Path is ok, now proceed
     call dosCrit1Enter  ;Don't let another DOS task interrupt us!
     mov byte [searchAttr], dirDirectory
-    breakpoint
     lea rdi, buffer1    ;Build the full path here
     call getDirPath     ;Get a Directory path in buffer1, hitting the disk
     jc .pnf             ;Path Doesn't exist
