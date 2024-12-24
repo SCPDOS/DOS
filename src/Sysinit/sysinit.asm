@@ -600,6 +600,7 @@ l2:
     mov qword [rbx + execProg.pfcb2], rax
     lea rax, qword [rsi + psp.dta]  ;Get the dummy command line ptr
     mov qword [rbx + execProg.pCmdLine], rax    ;Store dummy command line here
+    mov qword [rbx + execProg.pEnv], 0  ;Pass a zero to indicate initial load!
     lea rdx, cmdSpec
     mov eax, 4B00h  ;Exec Prog
     int 21h
