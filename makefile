@@ -72,7 +72,7 @@ fresh:
 	dd if=./bin/loader.bin of=./img/MyDiskDOS.ima bs=512 count=1 conv=notrunc
 
 	dd if=./bin/scpbios.sys of=./img/MyDiskDOS.ima bs=512 seek=33 conv=notrunc
-	$(MAKE) all
+	$(MAKE) world
 
 #Replace BIOS
 bios:

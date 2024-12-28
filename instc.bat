@@ -2,9 +2,7 @@
 echo Installing SCP/DOS on C:
 format c:
 sys c:
-c:
-label harddisk
-a:
+label c:harddisk
 md c:dos
 @echo on
 copy *.com c:dos
