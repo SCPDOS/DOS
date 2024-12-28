@@ -2039,10 +2039,6 @@ readDiskFile:
     mov qword [currSectD], rax  ;Save the current Sector on Disk in var
 ;Main
 .mainRead:
-    cmp rax, 144h
-    jne .nobp1
-    breakpoint
-.nobp1:
     call diskIOGetBuffer
     jc .badExit
     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi

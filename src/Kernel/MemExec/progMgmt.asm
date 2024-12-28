@@ -234,7 +234,6 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov rax, qword [rbx + psp.parentPtr]    ;Get the parent PSP pointer
     mov qword [currentPSP], rax ;and set it to be the current PSP
 .ownParent:
-    breakpoint
     mov al, -1  ;Flush all drive buffers
     call dosCrit1Enter
     call flushAllBuffersForDrive
