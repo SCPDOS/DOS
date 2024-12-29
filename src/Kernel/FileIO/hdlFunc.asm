@@ -2437,7 +2437,7 @@ writeDiskFile:
     stc
     return
 .noByteExit:
-    mov eax, 2  ;Update last accessed fields of SFT
+    mov eax, 2  ;Update all SFTs with the shrinking of the file!
     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
 writeExit:
 ;Advances the bytes on the file pointer
@@ -2445,18 +2445,20 @@ writeExit:
     mov rdi, qword [currentSFT]
     call updateCurrentSFT
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
-    jnz .exit   ;These just exit as no filesize!
-    test ecx, ecx   ;If no bytes transferred, dont flush
+    jnz .exit       ;These just exit as no filesize!
+    test ecx, ecx   ;If no bytes transferred, dont flush, no size change!
     jz .exit
     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
 ;Now replace the filesize with the currentoffset if it is greater
     mov eax, dword [rdi + sft.dCurntOff]
+;--------------------------------------------
     cmp dword [rdi + sft.dFileSize], eax    
-    jae .exit
+    jae .exit   ;This check should be removable, double check.
+;--------------------------------------------
     mov dword [rdi + sft.dFileSize], eax
-.exit:
-    mov eax, 1  ;Give it one last update of the data in the directory!
+    mov eax, 1  ;Update all SFTs with the growth of the file!
     call qword [updateDirShare] ;Remember, CF=CY by default!
+.exit:
     clc
     return
 writeExitChar:

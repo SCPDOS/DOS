@@ -12653,7 +12653,7 @@
     14 00004EC5 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
   2439                              <1> .noByteExit:
-  2440 00004EC6 B802000000          <1>     mov eax, 2  ;Update last accessed fields of SFT
+  2440 00004EC6 B802000000          <1>     mov eax, 2  ;Update all SFTs with the shrinking of the file!
   2441 00004ECB FF15(2F010000)      <1>     call qword [updateDirShare] ;Remember, CF=CY by default so keep xor after
   2442                              <1> writeExit:
   2443                              <1> ;Advances the bytes on the file pointer
@@ -12661,98 +12661,100 @@
   2445 00004ED1 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
   2446 00004ED8 E84A000000          <1>     call updateCurrentSFT
   2447 00004EDD 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
-  2448 00004EE3 7515                <1>     jnz .exit   ;These just exit as no filesize!
-  2449 00004EE5 85C9                <1>     test ecx, ecx   ;If no bytes transferred, dont flush
-  2450 00004EE7 7411                <1>     jz .exit
+  2448 00004EE3 7520                <1>     jnz .exit       ;These just exit as no filesize!
+  2449 00004EE5 85C9                <1>     test ecx, ecx   ;If no bytes transferred, dont flush, no size change!
+  2450 00004EE7 741C                <1>     jz .exit
   2451 00004EE9 66816705BFFF        <1>     and word [rdi + sft.wDeviceInfo], ~blokFileNoFlush ;File has been accessed
   2452                              <1> ;Now replace the filesize with the currentoffset if it is greater
   2453 00004EEF 8B471B              <1>     mov eax, dword [rdi + sft.dCurntOff]
-  2454 00004EF2 394717              <1>     cmp dword [rdi + sft.dFileSize], eax    
-  2455 00004EF5 7303                <1>     jae .exit
-  2456 00004EF7 894717              <1>     mov dword [rdi + sft.dFileSize], eax
-  2457                              <1> .exit:
-  2458 00004EFA B801000000          <1>     mov eax, 1  ;Give it one last update of the data in the directory!
-  2459 00004EFF FF15(2F010000)      <1>     call qword [updateDirShare] ;Remember, CF=CY by default!
-  2460 00004F05 F8                  <1>     clc
-  2461                              <1>     return
+  2454                              <1> ;--------------------------------------------
+  2455 00004EF2 394717              <1>     cmp dword [rdi + sft.dFileSize], eax    
+  2456 00004EF5 730E                <1>     jae .exit   ;This check should be removable, double check.
+  2457                              <1> ;--------------------------------------------
+  2458 00004EF7 894717              <1>     mov dword [rdi + sft.dFileSize], eax
+  2459 00004EFA B801000000          <1>     mov eax, 1  ;Update all SFTs with the growth of the file!
+  2460 00004EFF FF15(2F010000)      <1>     call qword [updateDirShare] ;Remember, CF=CY by default!
+  2461                              <1> .exit:
+  2462 00004F05 F8                  <1>     clc
+  2463                              <1>     return
     13                              <2> %%_ret:
     14 00004F06 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2462                              <1> writeExitChar:
-  2463                              <1> ;Input: eax = Number of chars transferred
-  2464 00004F07 8B0D(73070000)      <1>     mov ecx, dword [tfrLen]
-  2465 00004F0D 29C1                <1>     sub ecx, eax    ;Get chars left to xfr
-  2466 00004F0F 890D(77070000)      <1>     mov dword [tfrCntr], ecx
-  2467 00004F15 EBBA                <1>     jmp short writeExit
-  2468                              <1> ;-----------------------------------:
-  2469                              <1> ;        File Handle routines       :
+  2464                              <1> writeExitChar:
+  2465                              <1> ;Input: eax = Number of chars transferred
+  2466 00004F07 8B0D(73070000)      <1>     mov ecx, dword [tfrLen]
+  2467 00004F0D 29C1                <1>     sub ecx, eax    ;Get chars left to xfr
+  2468 00004F0F 890D(77070000)      <1>     mov dword [tfrCntr], ecx
+  2469 00004F15 EBBA                <1>     jmp short writeExit
   2470                              <1> ;-----------------------------------:
-  2471                              <1> 
-  2472                              <1> setCurrentSFT:
-  2473                              <1> ;Set the pointer in rdi as current SFT 
-  2474 00004F17 48893D(32070000)    <1>     mov qword [currentSFT], rdi
-  2475                              <1>     return 
+  2471                              <1> ;        File Handle routines       :
+  2472                              <1> ;-----------------------------------:
+  2473                              <1> 
+  2474                              <1> setCurrentSFT:
+  2475                              <1> ;Set the pointer in rdi as current SFT 
+  2476 00004F17 48893D(32070000)    <1>     mov qword [currentSFT], rdi
+  2477                              <1>     return 
     13                              <2> %%_ret:
     14 00004F1E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2476                              <1> getCurrentSFT:
-  2477                              <1> ;Get the current SFT pointer in rdi
-  2478 00004F1F 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
-  2479                              <1>     return 
+  2478                              <1> getCurrentSFT:
+  2479                              <1> ;Get the current SFT pointer in rdi
+  2480 00004F1F 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
+  2481                              <1>     return 
     13                              <2> %%_ret:
     14 00004F26 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2480                              <1> updateCurrentSFT:
-  2481                              <1> ;Updates the Current SFT fields before returning from a file handle operation
-  2482                              <1> ;Return: ecx = Actual bytes transferred and CF=NC
-  2483 00004F27 57                  <1>     push rdi
-  2484 00004F28 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
-  2485                              <1> ;Get in ecx the number of bytes we xferred
-  2486 00004F2F 8B0D(77070000)      <1>     mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
-  2487 00004F35 F7D9                <1>     neg ecx ;Multiply by -1
-  2488 00004F37 030D(73070000)      <1>     add ecx, dword [tfrLen]     ;Add total bytes to transfer
-  2489                              <1> ;ecx has bytes transferred
-  2490 00004F3D 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
-  2491 00004F43 751D                <1>     jnz .exit
-  2492                              <1> ;Down here for disk files only!
-  2493 00004F45 50                  <1>     push rax
-  2494 00004F46 8B05(54070000)      <1>     mov eax, dword [currClustD]
-  2495 00004F4C 894723              <1>     mov dword [rdi + sft.dAbsClusr], eax
-  2496 00004F4F 8B05(50070000)      <1>     mov eax, dword [currClustF]
-  2497 00004F55 89471F              <1>     mov dword [rdi + sft.dRelClust], eax
-  2498 00004F58 8B05(67070000)      <1>     mov eax, dword [currByteF]
-  2499 00004F5E 89471B              <1>     mov dword [rdi + sft.dCurntOff], eax
-  2500 00004F61 58                  <1>     pop rax
-  2501                              <1> .exit:
-  2502 00004F62 5F                  <1>     pop rdi
-  2503 00004F63 F8                  <1>     clc
-  2504                              <1>     return 
+  2482                              <1> updateCurrentSFT:
+  2483                              <1> ;Updates the Current SFT fields before returning from a file handle operation
+  2484                              <1> ;Return: ecx = Actual bytes transferred and CF=NC
+  2485 00004F27 57                  <1>     push rdi
+  2486 00004F28 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
+  2487                              <1> ;Get in ecx the number of bytes we xferred
+  2488 00004F2F 8B0D(77070000)      <1>     mov ecx, dword [tfrCntr]   ;Get bytes left to transfer
+  2489 00004F35 F7D9                <1>     neg ecx ;Multiply by -1
+  2490 00004F37 030D(73070000)      <1>     add ecx, dword [tfrLen]     ;Add total bytes to transfer
+  2491                              <1> ;ecx has bytes transferred
+  2492 00004F3D 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
+  2493 00004F43 751D                <1>     jnz .exit
+  2494                              <1> ;Down here for disk files only!
+  2495 00004F45 50                  <1>     push rax
+  2496 00004F46 8B05(54070000)      <1>     mov eax, dword [currClustD]
+  2497 00004F4C 894723              <1>     mov dword [rdi + sft.dAbsClusr], eax
+  2498 00004F4F 8B05(50070000)      <1>     mov eax, dword [currClustF]
+  2499 00004F55 89471F              <1>     mov dword [rdi + sft.dRelClust], eax
+  2500 00004F58 8B05(67070000)      <1>     mov eax, dword [currByteF]
+  2501 00004F5E 89471B              <1>     mov dword [rdi + sft.dCurntOff], eax
+  2502 00004F61 58                  <1>     pop rax
+  2503                              <1> .exit:
+  2504 00004F62 5F                  <1>     pop rdi
+  2505 00004F63 F8                  <1>     clc
+  2506                              <1>     return 
     13                              <2> %%_ret:
     14 00004F64 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2505                              <1> 
-  2506                              <1> setupVarsForTransfer:
-  2507                              <1> ;Computes the actual bytes to be transferred and 
-  2508                              <1> ; sets up internal variables for the transfer. 
-  2509                              <1> ;Works for both reading and writing
-  2510                              <1> ;Input: ecx = User desired Bytes to transfer
-  2511                              <1> ;       rdi = SFT pointer for the file
-  2512                              <1> ;Output: ecx = Actual Bytes that will be transferred 
-  2513                              <1> ;Setup BOTH: tfrLen, tfrCntr, qPtr 
-  2514                              <1> ;      DISK: workingDPB, workingDrv, currByteF/S, currSectF/C, currClustF
-  2515                              <1> ;
-  2516                              <1> ;Note: Does not account for a FULL disk. When writing,
-  2517                              <1> ; if the disk will get full as a result of the write,
-  2518                              <1> ; stop at the last byte before the transfer. If the 
-  2519                              <1> ; file pointer is past the last free byte, write 0
-  2520 00004F65 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get qPtr in rsi
-  2521 00004F69 488935(0A070000)    <1>     mov qword [qPtr], rsi ;Save whatever pointer here (workingDD OR workingDPB)
-  2522 00004F70 8B471B              <1>     mov eax, dword [rdi + sft.dCurntOff]    ;Get current offset into file
-  2523 00004F73 8905(67070000)      <1>     mov dword [currByteF], eax  ;Save Current byte in the file
-  2524 00004F79 890D(73070000)      <1>     mov dword [tfrLen], ecx ;Save the number of bytes to transfer
-  2525 00004F7F 890D(77070000)      <1>     mov dword [tfrCntr], ecx    ;Save the bytes left to transfer
-  2526 00004F85 66F747058080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
-  2527                              <1>     retnz   ;Redir and char devices leave here
+  2507                              <1> 
+  2508                              <1> setupVarsForTransfer:
+  2509                              <1> ;Computes the actual bytes to be transferred and 
+  2510                              <1> ; sets up internal variables for the transfer. 
+  2511                              <1> ;Works for both reading and writing
+  2512                              <1> ;Input: ecx = User desired Bytes to transfer
+  2513                              <1> ;       rdi = SFT pointer for the file
+  2514                              <1> ;Output: ecx = Actual Bytes that will be transferred 
+  2515                              <1> ;Setup BOTH: tfrLen, tfrCntr, qPtr 
+  2516                              <1> ;      DISK: workingDPB, workingDrv, currByteF/S, currSectF/C, currClustF
+  2517                              <1> ;
+  2518                              <1> ;Note: Does not account for a FULL disk. When writing,
+  2519                              <1> ; if the disk will get full as a result of the write,
+  2520                              <1> ; stop at the last byte before the transfer. If the 
+  2521                              <1> ; file pointer is past the last free byte, write 0
+  2522 00004F65 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get qPtr in rsi
+  2523 00004F69 488935(0A070000)    <1>     mov qword [qPtr], rsi ;Save whatever pointer here (workingDD OR workingDPB)
+  2524 00004F70 8B471B              <1>     mov eax, dword [rdi + sft.dCurntOff]    ;Get current offset into file
+  2525 00004F73 8905(67070000)      <1>     mov dword [currByteF], eax  ;Save Current byte in the file
+  2526 00004F79 890D(73070000)      <1>     mov dword [tfrLen], ecx ;Save the number of bytes to transfer
+  2527 00004F7F 890D(77070000)      <1>     mov dword [tfrCntr], ecx    ;Save the bytes left to transfer
+  2528 00004F85 66F747058080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
+  2529                              <1>     retnz   ;Redir and char devices leave here
     45                              <2> cret nz
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -12776,155 +12778,155 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-  2528                              <1> ;Disk files...
-  2529 00004F8E 8B471B              <1>     mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
-  2530 00004F91 8905(67070000)      <1>     mov dword [currByteF], eax
-  2531 00004F97 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
-  2532                              <1>     ;DPB will get updated by reading the disk, no need to force it here
-  2533 00004F9B 48892D(0A070000)    <1>     mov qword [workingDPB], rbp
-  2534 00004FA2 8A5D00              <1>     mov bl, byte [rbp + dpb.bDriveNumber]
-  2535 00004FA5 881D(09070000)      <1>     mov byte [workingDrv], bl   ;Set working drive number
-  2536 00004FAB 8B05(67070000)      <1>     mov eax, dword [currByteF]  ;Get current byte in file
-  2537 00004FB1 0FB75D02            <1>     movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
-  2538 00004FB5 31D2                <1>     xor edx, edx    ;Zero rdx
-  2539 00004FB7 F7F3                <1>     div ebx ;Divide current byte in file by bytes per sector
-  2540                              <1>     ;eax has 0 based file relative sector (cannot grow beyond 03FFFFFh)
-  2541                              <1>     ;edx has the offset into that sector
-  2542 00004FB9 8905(58070000)      <1>     mov dword [currSectF], eax
-  2543 00004FBF 668915(65070000)    <1>     mov word [currByteS], dx ;CurrbyteS is a word!
-  2544 00004FC6 89C2                <1>     mov edx, eax    ;Save file relative sector in edx
-  2545 00004FC8 224504              <1>     and al, byte [rbp + dpb.bMaxSectorInCluster]   ;Works with max 64k clusters
-  2546 00004FCB 8805(5C070000)      <1>     mov byte [currSectC], al    ;Save sector in cluster value in var
-  2547 00004FD1 89C8                <1>     mov eax, ecx    ;Save bytes to tfr in eax
-  2548 00004FD3 8A4D05              <1>     mov cl, byte [rbp + dpb.bSecPerClustShift]
-  2549 00004FD6 D3EA                <1>     shr edx, cl ;Convert file relative sector to file relative cluster
-  2550 00004FD8 8915(50070000)      <1>     mov dword [currClustF], edx ;Save in var
-  2551 00004FDE 89C1                <1>     mov ecx, eax    ;Return the bytes to tfr in ecx
-  2552                              <1>     return 
+  2530                              <1> ;Disk files...
+  2531 00004F8E 8B471B              <1>     mov eax, dword [rdi + sft.dCurntOff] ;Update cur. offset if it was changed
+  2532 00004F91 8905(67070000)      <1>     mov dword [currByteF], eax
+  2533 00004F97 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Get DPB ptr in rbp
+  2534                              <1>     ;DPB will get updated by reading the disk, no need to force it here
+  2535 00004F9B 48892D(0A070000)    <1>     mov qword [workingDPB], rbp
+  2536 00004FA2 8A5D00              <1>     mov bl, byte [rbp + dpb.bDriveNumber]
+  2537 00004FA5 881D(09070000)      <1>     mov byte [workingDrv], bl   ;Set working drive number
+  2538 00004FAB 8B05(67070000)      <1>     mov eax, dword [currByteF]  ;Get current byte in file
+  2539 00004FB1 0FB75D02            <1>     movzx ebx, word [rbp + dpb.wBytesPerSector] ;Get bytes per sector
+  2540 00004FB5 31D2                <1>     xor edx, edx    ;Zero rdx
+  2541 00004FB7 F7F3                <1>     div ebx ;Divide current byte in file by bytes per sector
+  2542                              <1>     ;eax has 0 based file relative sector (cannot grow beyond 03FFFFFh)
+  2543                              <1>     ;edx has the offset into that sector
+  2544 00004FB9 8905(58070000)      <1>     mov dword [currSectF], eax
+  2545 00004FBF 668915(65070000)    <1>     mov word [currByteS], dx ;CurrbyteS is a word!
+  2546 00004FC6 89C2                <1>     mov edx, eax    ;Save file relative sector in edx
+  2547 00004FC8 224504              <1>     and al, byte [rbp + dpb.bMaxSectorInCluster]   ;Works with max 64k clusters
+  2548 00004FCB 8805(5C070000)      <1>     mov byte [currSectC], al    ;Save sector in cluster value in var
+  2549 00004FD1 89C8                <1>     mov eax, ecx    ;Save bytes to tfr in eax
+  2550 00004FD3 8A4D05              <1>     mov cl, byte [rbp + dpb.bSecPerClustShift]
+  2551 00004FD6 D3EA                <1>     shr edx, cl ;Convert file relative sector to file relative cluster
+  2552 00004FD8 8915(50070000)      <1>     mov dword [currClustF], edx ;Save in var
+  2553 00004FDE 89C1                <1>     mov ecx, eax    ;Return the bytes to tfr in ecx
+  2554                              <1>     return 
     13                              <2> %%_ret:
     14 00004FE0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2553                              <1> 
-  2554                              <1> findFreeSFT:
-  2555                              <1> ;Returns a pointer to a free SFT if CF=NC. Else, no free SFTs.
-  2556                              <1> ;Modifies an SFT entry. Must be called in a critical section.
-  2557                              <1> ;Output: CF=NC => rdi = Points to a free SFT entry, bx = SFTndx
-  2558                              <1> ;        CF=CY => eax = errNhl, error exit
-  2559 00004FE1 31DB                <1>     xor ebx, ebx
-  2560                              <1> .mainLp:
-  2561 00004FE3 53                  <1>     push rbx    ;Save the sft ndx
-  2562 00004FE4 E857000000          <1>     call getSFTPtrfromSFTNdx    ;Get ptr to SFT in rdi
-  2563 00004FE9 5B                  <1>     pop rbx
-  2564 00004FEA 7307                <1>     jnc .sftExists
-  2565 00004FEC B804000000          <1>     mov eax, errNhl
-  2566 00004FF1 F9                  <1>     stc
-  2567                              <1>     return
+  2555                              <1> 
+  2556                              <1> findFreeSFT:
+  2557                              <1> ;Returns a pointer to a free SFT if CF=NC. Else, no free SFTs.
+  2558                              <1> ;Modifies an SFT entry. Must be called in a critical section.
+  2559                              <1> ;Output: CF=NC => rdi = Points to a free SFT entry, bx = SFTndx
+  2560                              <1> ;        CF=CY => eax = errNhl, error exit
+  2561 00004FE1 31DB                <1>     xor ebx, ebx
+  2562                              <1> .mainLp:
+  2563 00004FE3 53                  <1>     push rbx    ;Save the sft ndx
+  2564 00004FE4 E857000000          <1>     call getSFTPtrfromSFTNdx    ;Get ptr to SFT in rdi
+  2565 00004FE9 5B                  <1>     pop rbx
+  2566 00004FEA 7307                <1>     jnc .sftExists
+  2567 00004FEC B804000000          <1>     mov eax, errNhl
+  2568 00004FF1 F9                  <1>     stc
+  2569                              <1>     return
     13                              <2> %%_ret:
     14 00004FF2 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2568                              <1> .sftExists:
-  2569 00004FF3 66813F0000          <1>     cmp word [rdi + sft.wNumHandles], 0
-  2570 00004FF8 7427                <1>     je .sftFound
-  2571 00004FFA 66813FFFFF          <1>     cmp word [rdi + sft.wNumHandles], -1    ;Is SFT being alloc'd/free'd?
-  2572 00004FFF 751C                <1>     jne .gotoNextNdx
-  2573                              <1>     ;Here, check that if this sft is owned by the caller and repurpose it.
-  2574 00005001 53                  <1>     push rbx
-  2575 00005002 488B1D(3B040000)    <1>     mov rbx, qword [serverPSP]
-  2576 00005009 48395F45            <1>     cmp qword [rdi + sft.qPSPOwner], rbx
-  2577 0000500D 750B                <1>     jne .netGoToNextNdx
-  2578 0000500F 0FB71D(43040000)    <1>     movzx ebx, word [machineNum]
-  2579 00005016 66395F43            <1>     cmp word [rdi + sft.wMachNum], bx
-  2580                              <1> .netGoToNextNdx:
-  2581 0000501A 5B                  <1>     pop rbx
-  2582 0000501B 7404                <1>     je .sftFound
-  2583                              <1> .gotoNextNdx:
-  2584 0000501D FFC3                <1>     inc ebx
-  2585 0000501F EBC2                <1>     jmp short .mainLp
-  2586                              <1> .sftFound:
-  2587 00005021 53                  <1>     push rbx
-  2588 00005022 66C707FFFF          <1>     mov word [rdi + sft.wNumHandles], -1    ;Mark as repurposing!
-  2589 00005027 488B1D(3B040000)    <1>     mov rbx, qword [serverPSP]
-  2590 0000502E 48895F45            <1>     mov qword [rdi + sft.qPSPOwner], rbx
-  2591 00005032 0FB71D(43040000)    <1>     movzx ebx, word [machineNum]
-  2592 00005039 66895F43            <1>     mov word [rdi + sft.wMachNum], bx
-  2593 0000503D 5B                  <1>     pop rbx
-  2594 0000503E F8                  <1>     clc
-  2595                              <1>     return
+  2570                              <1> .sftExists:
+  2571 00004FF3 66813F0000          <1>     cmp word [rdi + sft.wNumHandles], 0
+  2572 00004FF8 7427                <1>     je .sftFound
+  2573 00004FFA 66813FFFFF          <1>     cmp word [rdi + sft.wNumHandles], -1    ;Is SFT being alloc'd/free'd?
+  2574 00004FFF 751C                <1>     jne .gotoNextNdx
+  2575                              <1>     ;Here, check that if this sft is owned by the caller and repurpose it.
+  2576 00005001 53                  <1>     push rbx
+  2577 00005002 488B1D(3B040000)    <1>     mov rbx, qword [serverPSP]
+  2578 00005009 48395F45            <1>     cmp qword [rdi + sft.qPSPOwner], rbx
+  2579 0000500D 750B                <1>     jne .netGoToNextNdx
+  2580 0000500F 0FB71D(43040000)    <1>     movzx ebx, word [machineNum]
+  2581 00005016 66395F43            <1>     cmp word [rdi + sft.wMachNum], bx
+  2582                              <1> .netGoToNextNdx:
+  2583 0000501A 5B                  <1>     pop rbx
+  2584 0000501B 7404                <1>     je .sftFound
+  2585                              <1> .gotoNextNdx:
+  2586 0000501D FFC3                <1>     inc ebx
+  2587 0000501F EBC2                <1>     jmp short .mainLp
+  2588                              <1> .sftFound:
+  2589 00005021 53                  <1>     push rbx
+  2590 00005022 66C707FFFF          <1>     mov word [rdi + sft.wNumHandles], -1    ;Mark as repurposing!
+  2591 00005027 488B1D(3B040000)    <1>     mov rbx, qword [serverPSP]
+  2592 0000502E 48895F45            <1>     mov qword [rdi + sft.qPSPOwner], rbx
+  2593 00005032 0FB71D(43040000)    <1>     movzx ebx, word [machineNum]
+  2594 00005039 66895F43            <1>     mov word [rdi + sft.wMachNum], bx
+  2595 0000503D 5B                  <1>     pop rbx
+  2596 0000503E F8                  <1>     clc
+  2597                              <1>     return
     13                              <2> %%_ret:
     14 0000503F C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2596                              <1> getSFTPtrfromSFTNdx:    ;Int 2Fh AX=1216h
-  2597                              <1> ;Return a pointer to the SFT entry in rdi
-  2598                              <1> ;Input: rbx = Valid SFT ndx number (byte, zero extended)
-  2599                              <1> ;Output: rdi = SFT pointer
-  2600 00005040 488B3D(43000000)    <1>     mov rdi, qword [sftHeadPtr] ;Get head of SFT pointer
-  2601                              <1> .walk:
-  2602 00005047 663B5F08            <1>     cmp bx, word [rdi + sfth.wNumFiles]
-  2603 0000504B 7212                <1>     jb .thisTable
-  2604 0000504D 662B5F08            <1>     sub bx, word [rdi + sfth.wNumFiles] ;Subtract
-  2605 00005051 488B3F              <1>     mov rdi, qword [rdi + sfth.qNextSFTPtr] ;Goto next table
-  2606 00005054 4881FFFFFFFFFF      <1>     cmp rdi, -1
-  2607 0000505B 75EA                <1>     jne .walk
-  2608 0000505D F9                  <1>     stc
-  2609                              <1>     return
+  2598                              <1> getSFTPtrfromSFTNdx:    ;Int 2Fh AX=1216h
+  2599                              <1> ;Return a pointer to the SFT entry in rdi
+  2600                              <1> ;Input: rbx = Valid SFT ndx number (byte, zero extended)
+  2601                              <1> ;Output: rdi = SFT pointer
+  2602 00005040 488B3D(43000000)    <1>     mov rdi, qword [sftHeadPtr] ;Get head of SFT pointer
+  2603                              <1> .walk:
+  2604 00005047 663B5F08            <1>     cmp bx, word [rdi + sfth.wNumFiles]
+  2605 0000504B 7212                <1>     jb .thisTable
+  2606 0000504D 662B5F08            <1>     sub bx, word [rdi + sfth.wNumFiles] ;Subtract
+  2607 00005051 488B3F              <1>     mov rdi, qword [rdi + sfth.qNextSFTPtr] ;Goto next table
+  2608 00005054 4881FFFFFFFFFF      <1>     cmp rdi, -1
+  2609 0000505B 75EA                <1>     jne .walk
+  2610 0000505D F9                  <1>     stc
+  2611                              <1>     return
     13                              <2> %%_ret:
     14 0000505E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2610                              <1> .thisTable:
-  2611 0000505F 50                  <1>     push rax
-  2612 00005060 52                  <1>     push rdx
-  2613 00005061 B84F000000          <1>     mov eax, sft_size
-  2614 00005066 F7E3                <1>     mul ebx
-  2615 00005068 4801C7              <1>     add rdi, rax    ;Shift rdi to go to SFT entry in current table
-  2616 0000506B 5A                  <1>     pop rdx
-  2617 0000506C 58                  <1>     pop rax
-  2618 0000506D 4881C70A000000      <1>     add rdi, sfth_size  ;Go past the header
-  2619                              <1>     return
+  2612                              <1> .thisTable:
+  2613 0000505F 50                  <1>     push rax
+  2614 00005060 52                  <1>     push rdx
+  2615 00005061 B84F000000          <1>     mov eax, sft_size
+  2616 00005066 F7E3                <1>     mul ebx
+  2617 00005068 4801C7              <1>     add rdi, rax    ;Shift rdi to go to SFT entry in current table
+  2618 0000506B 5A                  <1>     pop rdx
+  2619 0000506C 58                  <1>     pop rax
+  2620 0000506D 4881C70A000000      <1>     add rdi, sfth_size  ;Go past the header
+  2621                              <1>     return
     13                              <2> %%_ret:
     14 00005074 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2620                              <1> getJFTPtr:    ;Int 2Fh AX=1220h
-  2621                              <1> ;Return a zero extended value in rdi for the SFT entry
-  2622                              <1> ;Input: bx = JFT handle (we zero extend)
-  2623                              <1> ;Output: CF=NC => rdi = Points to first SFT ndx or -1 => free space
-  2624                              <1> ;        CF=CY => al = Error code, Fail
-  2625 00005075 0FB7DB              <1>     movzx ebx, bx   ;Ensure we zero extended
-  2626 00005078 488B3D(1F040000)    <1>     mov rdi, qword [currentPSP]
-  2627 0000507F 663B5F4E            <1>     cmp bx, word [rdi + psp.jftSize] ;jftSize is the size of the JFT array
-  2628 00005083 7204                <1>     jb .ok
-  2629 00005085 B006                <1>     mov al, errBadHdl
-  2630 00005087 F9                  <1>     stc
-  2631                              <1>     return
+  2622                              <1> getJFTPtr:    ;Int 2Fh AX=1220h
+  2623                              <1> ;Return a zero extended value in rdi for the SFT entry
+  2624                              <1> ;Input: bx = JFT handle (we zero extend)
+  2625                              <1> ;Output: CF=NC => rdi = Points to first SFT ndx or -1 => free space
+  2626                              <1> ;        CF=CY => al = Error code, Fail
+  2627 00005075 0FB7DB              <1>     movzx ebx, bx   ;Ensure we zero extended
+  2628 00005078 488B3D(1F040000)    <1>     mov rdi, qword [currentPSP]
+  2629 0000507F 663B5F4E            <1>     cmp bx, word [rdi + psp.jftSize] ;jftSize is the size of the JFT array
+  2630 00005083 7204                <1>     jb .ok
+  2631 00005085 B006                <1>     mov al, errBadHdl
+  2632 00005087 F9                  <1>     stc
+  2633                              <1>     return
     13                              <2> %%_ret:
     14 00005088 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2632                              <1> .ok:
-  2633 00005089 66817F4E1400        <1>     cmp word [rdi + psp.jftSize], dfltJFTsize   ;Are we in PSP JFT or external?
-  2634 0000508F 7412                <1>     je .pspJftOk    ;If dfltJFTsize, its a good PSP JFT.
-  2635 00005091 720A                <1>     jb .pspJftBelow ;If < dfltJFTsize, in PSP and needs to be corrected
-  2636 00005093 488B7F2A            <1>     mov rdi, qword [rdi + psp.externalJFTPtr]   ;Get the ptr to the external JFT
-  2637 00005097 488D3C1F            <1>     lea rdi, qword [rdi + rbx]  ;Get pointer into JFT
-  2638 0000509B EB0B                <1>     jmp short .pspOkExit
-  2639                              <1> .pspJftBelow:
-  2640 0000509D 66C7474E1400        <1>     mov word [rdi + psp.jftSize], dfltJFTsize  ;Reset to dfltJFTsize if needed!
-  2641                              <1> .pspJftOk:
-  2642 000050A3 488D7C1F2A          <1>     lea rdi, qword [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
-  2643                              <1> .pspOkExit:
-  2644 000050A8 F8                  <1>     clc
-  2645                              <1>     return
+  2634                              <1> .ok:
+  2635 00005089 66817F4E1400        <1>     cmp word [rdi + psp.jftSize], dfltJFTsize   ;Are we in PSP JFT or external?
+  2636 0000508F 7412                <1>     je .pspJftOk    ;If dfltJFTsize, its a good PSP JFT.
+  2637 00005091 720A                <1>     jb .pspJftBelow ;If < dfltJFTsize, in PSP and needs to be corrected
+  2638 00005093 488B7F2A            <1>     mov rdi, qword [rdi + psp.externalJFTPtr]   ;Get the ptr to the external JFT
+  2639 00005097 488D3C1F            <1>     lea rdi, qword [rdi + rbx]  ;Get pointer into JFT
+  2640 0000509B EB0B                <1>     jmp short .pspOkExit
+  2641                              <1> .pspJftBelow:
+  2642 0000509D 66C7474E1400        <1>     mov word [rdi + psp.jftSize], dfltJFTsize  ;Reset to dfltJFTsize if needed!
+  2643                              <1> .pspJftOk:
+  2644 000050A3 488D7C1F2A          <1>     lea rdi, qword [rdi + psp.jobFileTbl + rbx] ;Use rbx as index in tbl
+  2645                              <1> .pspOkExit:
+  2646 000050A8 F8                  <1>     clc
+  2647                              <1>     return
     13                              <2> %%_ret:
     14 000050A9 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2646                              <1> findFreeJFTEntry:
-  2647                              <1> ;Finds a free JFT entry in the currentPSP.
-  2648                              <1> ;Output: CF=NC => rdi => Ptr to JFT entry, bx = File Handle
-  2649                              <1> ;        CF=CY => al=errNhl
-  2650 000050AA 31DB                <1>     xor ebx, ebx    ;Start searching from offset 0 in the JFT
-  2651                              <1> .searchLp:
-  2652 000050AC E8C4FFFFFF          <1>     call getJFTPtr
-  2653 000050B1 720A                <1>     jc .badExit
-  2654 000050B3 803FFF              <1>     cmp byte [rdi], -1
-  2655                              <1>     rete
+  2648                              <1> findFreeJFTEntry:
+  2649                              <1> ;Finds a free JFT entry in the currentPSP.
+  2650                              <1> ;Output: CF=NC => rdi => Ptr to JFT entry, bx = File Handle
+  2651                              <1> ;        CF=CY => al=errNhl
+  2652 000050AA 31DB                <1>     xor ebx, ebx    ;Start searching from offset 0 in the JFT
+  2653                              <1> .searchLp:
+  2654 000050AC E8C4FFFFFF          <1>     call getJFTPtr
+  2655 000050B1 720A                <1>     jc .badExit
+  2656 000050B3 803FFF              <1>     cmp byte [rdi], -1
+  2657                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -12948,22 +12950,22 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-  2656 000050B9 FFC3                <1>     inc ebx
-  2657 000050BB EBEF                <1>     jmp short .searchLp
-  2658                              <1> .badExit:
-  2659 000050BD B004                <1>     mov al, errNhl
-  2660 000050BF F9                  <1>     stc
-  2661                              <1>     return
+  2658 000050B9 FFC3                <1>     inc ebx
+  2659 000050BB EBEF                <1>     jmp short .searchLp
+  2660                              <1> .badExit:
+  2661 000050BD B004                <1>     mov al, errNhl
+  2662 000050BF F9                  <1>     stc
+  2663                              <1>     return
     13                              <2> %%_ret:
     14 000050C0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2662                              <1> getSFTPtr:
-  2663                              <1> ;This gets the SFT pointer and checks it was opened by this machine
-  2664                              <1> ;Input: bx = JFT handle
-  2665                              <1> ;Output: CF=NC: rdi = SFT pointer
-  2666                              <1> ;        CF=CY: Error, ax=Error code
-  2667 000050C1 E817000000          <1>     call derefSFTPtr
-  2668                              <1>     retc    ;Return if carry
+  2664                              <1> getSFTPtr:
+  2665                              <1> ;This gets the SFT pointer and checks it was opened by this machine
+  2666                              <1> ;Input: bx = JFT handle
+  2667                              <1> ;Output: CF=NC: rdi = SFT pointer
+  2668                              <1> ;        CF=CY: Error, ax=Error code
+  2669 000050C1 E817000000          <1>     call derefSFTPtr
+  2670                              <1>     retc    ;Return if carry
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -12987,11 +12989,11 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-  2669 000050C9 50                  <1>     push rax
-  2670 000050CA 0FB705(43040000)    <1>     movzx eax, word [machineNum]
-  2671 000050D1 663B4743            <1>     cmp ax, word [rdi + sft.wMachNum]
-  2672 000050D5 58                  <1>     pop rax
-  2673                              <1>     rete
+  2671 000050C9 50                  <1>     push rax
+  2672 000050CA 0FB705(43040000)    <1>     movzx eax, word [machineNum]
+  2673 000050D1 663B4743            <1>     cmp ax, word [rdi + sft.wMachNum]
+  2674 000050D5 58                  <1>     pop rax
+  2675                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -13015,128 +13017,128 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-  2674 000050D9 B006                <1>     mov al, errBadHdl   ;Error code
-  2675 000050DB F9                  <1>     stc         ;Reset CF
-  2676                              <1>     return
+  2676 000050D9 B006                <1>     mov al, errBadHdl   ;Error code
+  2677 000050DB F9                  <1>     stc         ;Reset CF
+  2678                              <1>     return
     13                              <2> %%_ret:
     14 000050DC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2677                              <1> 
-  2678                              <1> derefSFTPtr:
-  2679                              <1> ;Walk the whole way from a handle to SFT pointer (for the current process)
-  2680                              <1> ;Input: bx = File handle (gets zero extended)
-  2681                              <1> ;Output: CF=NC: rdi = SFT pointer
-  2682                              <1> ;        CF=CY: Error, ax=Error code
-  2683 000050DD E893FFFFFF          <1>     call getJFTPtr    ;Get the ptr to the value in rdi
-  2684 000050E2 7205                <1>     jb .fail
-  2685 000050E4 803FFF              <1>     cmp byte [rdi], -1  ;Is this JFT entry unassigned?
-  2686 000050E7 7504                <1>     jne .ok
-  2687                              <1> .fail:
-  2688 000050E9 B006                <1>     mov al, errBadHdl
-  2689 000050EB F9                  <1>     stc
-  2690                              <1>     return
+  2679                              <1> 
+  2680                              <1> derefSFTPtr:
+  2681                              <1> ;Walk the whole way from a handle to SFT pointer (for the current process)
+  2682                              <1> ;Input: bx = File handle (gets zero extended)
+  2683                              <1> ;Output: CF=NC: rdi = SFT pointer
+  2684                              <1> ;        CF=CY: Error, ax=Error code
+  2685 000050DD E893FFFFFF          <1>     call getJFTPtr    ;Get the ptr to the value in rdi
+  2686 000050E2 7205                <1>     jb .fail
+  2687 000050E4 803FFF              <1>     cmp byte [rdi], -1  ;Is this JFT entry unassigned?
+  2688 000050E7 7504                <1>     jne .ok
+  2689                              <1> .fail:
+  2690 000050E9 B006                <1>     mov al, errBadHdl
+  2691 000050EB F9                  <1>     stc
+  2692                              <1>     return
     13                              <2> %%_ret:
     14 000050EC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2691                              <1> .ok:
-  2692 000050ED 53                  <1>     push rbx    ;Preserve the JFT handle
-  2693 000050EE 0FB61F              <1>     movzx ebx, byte [rdi]  ;Get byte entry into rbx
-  2694 000050F1 E84AFFFFFF          <1>     call getSFTPtrfromSFTNdx    ;Get SFT pointer in rdi
-  2695 000050F6 5B                  <1>     pop rbx 
-  2696                              <1>     return
+  2693                              <1> .ok:
+  2694 000050ED 53                  <1>     push rbx    ;Preserve the JFT handle
+  2695 000050EE 0FB61F              <1>     movzx ebx, byte [rdi]  ;Get byte entry into rbx
+  2696 000050F1 E84AFFFFFF          <1>     call getSFTPtrfromSFTNdx    ;Get SFT pointer in rdi
+  2697 000050F6 5B                  <1>     pop rbx 
+  2698                              <1>     return
     13                              <2> %%_ret:
     14 000050F7 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2697                              <1> 
-  2698                              <1> getSFTndxInheritable:
-  2699                              <1> ;Given a SFTndx this function will verify if it is inheritable
-  2700                              <1> ;Input: ebx = SFTndx (word)
-  2701                              <1> ;Output: 
-  2702                              <1> ;   ZF=ZE => Inheritable
-  2703                              <1> ;   ZF=NZ => Not Inheritable or bad ndxNumber
-  2704 000050F8 57                  <1>     push rdi
-  2705 000050F9 E842FFFFFF          <1>     call getSFTPtrfromSFTNdx    ;SFT pointer in rdi
-  2706 000050FE 7208                <1>     jc .badNdx
-  2707 00005100 66F747050010        <1>     test word [rdi + sft.wDeviceInfo], devNoInherit
-  2708 00005106 5F                  <1>     pop rdi
-  2709                              <1>     return
+  2699                              <1> 
+  2700                              <1> getSFTndxInheritable:
+  2701                              <1> ;Given a SFTndx this function will verify if it is inheritable
+  2702                              <1> ;Input: ebx = SFTndx (word)
+  2703                              <1> ;Output: 
+  2704                              <1> ;   ZF=ZE => Inheritable
+  2705                              <1> ;   ZF=NZ => Not Inheritable or bad ndxNumber
+  2706 000050F8 57                  <1>     push rdi
+  2707 000050F9 E842FFFFFF          <1>     call getSFTPtrfromSFTNdx    ;SFT pointer in rdi
+  2708 000050FE 7208                <1>     jc .badNdx
+  2709 00005100 66F747050010        <1>     test word [rdi + sft.wDeviceInfo], devNoInherit
+  2710 00005106 5F                  <1>     pop rdi
+  2711                              <1>     return
     13                              <2> %%_ret:
     14 00005107 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2710                              <1> .badNdx:
-  2711 00005108 31FF                <1>     xor edi, edi
-  2712 0000510A FFC7                <1>     inc edi ;Clear the ZF flag if it was set
-  2713 0000510C F8                  <1>     clc
-  2714 0000510D 5F                  <1>     pop rdi
-  2715                              <1>     return
+  2712                              <1> .badNdx:
+  2713 00005108 31FF                <1>     xor edi, edi
+  2714 0000510A FFC7                <1>     inc edi ;Clear the ZF flag if it was set
+  2715 0000510C F8                  <1>     clc
+  2716 0000510D 5F                  <1>     pop rdi
+  2717                              <1>     return
     13                              <2> %%_ret:
     14 0000510E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2716                              <1> 
-  2717                              <1> incrementOpenCount:
-  2718                              <1> ;Given a SFTndx, this function will increment it's open count
-  2719                              <1> ;Output:
-  2720                              <1> ;   CF=NC => sftndx ok, count incremented
-  2721                              <1> ;   CF=CY => Bad ndx
-  2722 0000510F 57                  <1>     push rdi
-  2723 00005110 E82BFFFFFF          <1>     call getSFTPtrfromSFTNdx
-  2724 00005115 7203                <1>     jc .exit
-  2725 00005117 66FF07              <1>     inc word [rdi + sft.wNumHandles]    ;Add one to open count
-  2726                              <1> .exit:
-  2727 0000511A 5F                  <1>     pop rdi
-  2728                              <1>     return
+  2718                              <1> 
+  2719                              <1> incrementOpenCount:
+  2720                              <1> ;Given a SFTndx, this function will increment it's open count
+  2721                              <1> ;Output:
+  2722                              <1> ;   CF=NC => sftndx ok, count incremented
+  2723                              <1> ;   CF=CY => Bad ndx
+  2724 0000510F 57                  <1>     push rdi
+  2725 00005110 E82BFFFFFF          <1>     call getSFTPtrfromSFTNdx
+  2726 00005115 7203                <1>     jc .exit
+  2727 00005117 66FF07              <1>     inc word [rdi + sft.wNumHandles]    ;Add one to open count
+  2728                              <1> .exit:
+  2729 0000511A 5F                  <1>     pop rdi
+  2730                              <1>     return
     13                              <2> %%_ret:
     14 0000511B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2729                              <1> 
-  2730                              <1> decrementOpenCount: ;Int 2Fh AX = 1208h
-  2731                              <1> ;Input: rdi = SFT pointer
-  2732                              <1> ;Output: ax = Original wNumHandles count (zero extended to eax)
-  2733 0000511C 9C                  <1>     pushfq
-  2734 0000511D 0FB707              <1>     movzx eax, word [rdi + sft.wNumHandles]
-  2735 00005120 FFC8                <1>     dec eax     ;Decrement count
-  2736 00005122 7502                <1>     jnz .exit                           ;If the count is not zero, exit
-  2737 00005124 FFC8                <1>     dec eax    ;If it is zero, now we make it -1
-  2738                              <1> .exit:
-  2739 00005126 9D                  <1>     popfq
-  2740 00005127 668707              <1>     xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
-  2741                              <1>     return
+  2731                              <1> 
+  2732                              <1> decrementOpenCount: ;Int 2Fh AX = 1208h
+  2733                              <1> ;Input: rdi = SFT pointer
+  2734                              <1> ;Output: ax = Original wNumHandles count (zero extended to eax)
+  2735 0000511C 9C                  <1>     pushfq
+  2736 0000511D 0FB707              <1>     movzx eax, word [rdi + sft.wNumHandles]
+  2737 00005120 FFC8                <1>     dec eax     ;Decrement count
+  2738 00005122 7502                <1>     jnz .exit                           ;If the count is not zero, exit
+  2739 00005124 FFC8                <1>     dec eax    ;If it is zero, now we make it -1
+  2740                              <1> .exit:
+  2741 00005126 9D                  <1>     popfq
+  2742 00005127 668707              <1>     xchg ax, word [rdi + sft.wNumHandles] ;RBIL says ax returns og num hdls
+  2743                              <1>     return
     13                              <2> %%_ret:
     14 0000512A C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2742                              <1> 
-  2743                              <1> ;Buffer Wrapper
-  2744                              <1> writeThroughBuffersForHandle:
-  2745                              <1> ;Input: qword [currentSFT] = Current SFT pointer
-  2746 0000512B 57                  <1>     push rdi
-  2747 0000512C 55                  <1>     push rbp
-  2748 0000512D 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
-  2749 00005134 66F747058080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
-  2750 0000513A 751C                <1>     jnz .exit
-  2751 0000513C FF35(0A070000)      <1>     push qword [workingDPB]
-  2752 00005142 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
-  2753 00005146 48892D(0A070000)    <1>     mov qword [workingDPB], rbp
-  2754 0000514D E8CAB5FFFF          <1>     call flushAllBuffersForDPB
-  2755 00005152 8F05(0A070000)      <1>     pop qword [workingDPB]
-  2756                              <1> .exit:
-  2757 00005158 5D                  <1>     pop rbp
-  2758 00005159 5F                  <1>     pop rdi
-  2759                              <1>     return
+  2744                              <1> 
+  2745                              <1> ;Buffer Wrapper
+  2746                              <1> writeThroughBuffersForHandle:
+  2747                              <1> ;Input: qword [currentSFT] = Current SFT pointer
+  2748 0000512B 57                  <1>     push rdi
+  2749 0000512C 55                  <1>     push rbp
+  2750 0000512D 488B3D(32070000)    <1>     mov rdi, qword [currentSFT]
+  2751 00005134 66F747058080        <1>     test word [rdi + sft.wDeviceInfo], devRedirDev | devCharDev
+  2752 0000513A 751C                <1>     jnz .exit
+  2753 0000513C FF35(0A070000)      <1>     push qword [workingDPB]
+  2754 00005142 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Ensure the rigth DPB is in
+  2755 00005146 48892D(0A070000)    <1>     mov qword [workingDPB], rbp
+  2756 0000514D E8CAB5FFFF          <1>     call flushAllBuffersForDPB
+  2757 00005152 8F05(0A070000)      <1>     pop qword [workingDPB]
+  2758                              <1> .exit:
+  2759 00005158 5D                  <1>     pop rbp
+  2760 00005159 5F                  <1>     pop rdi
+  2761                              <1>     return
     13                              <2> %%_ret:
     14 0000515A C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  2760                              <1> 
-  2761                              <1> setDPBfromSFT:
-  2762                              <1> ;Sets and updates the DPB from an SFT ptr
-  2763                              <1> ;Input: rdi -> sft
-  2764                              <1> ;Output: CF=NC: workingDPB set
-  2765                              <1> ;        CF=CY: Error fail, exit
-  2766 0000515B 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
-  2767 0000515F 0FB64500            <1>     movzx eax, byte [rbp + dpb.bDriveNumber]
-  2768 00005163 8805(09070000)      <1>     mov byte [workingDrv], al
-  2769 00005169 E828200000          <1>     call setWorkingDPB
-  2770 0000516E E8E31D0000          <1>     call ensureDiskValid
-  2771                              <1>     return
+  2762                              <1> 
+  2763                              <1> setDPBfromSFT:
+  2764                              <1> ;Sets and updates the DPB from an SFT ptr
+  2765                              <1> ;Input: rdi -> sft
+  2766                              <1> ;Output: CF=NC: workingDPB set
+  2767                              <1> ;        CF=CY: Error fail, exit
+  2768 0000515B 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
+  2769 0000515F 0FB64500            <1>     movzx eax, byte [rbp + dpb.bDriveNumber]
+  2770 00005163 8805(09070000)      <1>     mov byte [workingDrv], al
+  2771 00005169 E828200000          <1>     call setWorkingDPB
+  2772 0000516E E8E31D0000          <1>     call ensureDiskValid
+  2773                              <1>     return
     13                              <2> %%_ret:
     14 00005173 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
