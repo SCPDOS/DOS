@@ -116,20 +116,8 @@ dllHooks:
     ;Those suffixed with a ? have their future in question.
     ;Those suffixed with a / are done partially wrt MSDOS.
 
-    ;SCPDOS has an optional handle, openFileCheck. This function can be used 
-    ; to see if there are any open handles. Its implementation is completely
-    ; optional, and an equivalent form of the function is provided for older
-    ; SHARE versions that might be ported that don't have a particular function.
-    ;This function is defined as follows:
-    ; Input: fname1Ptr -> Filename we want to see if there are any open records
-    ;                       for.
-    ; Output: CF=CY -> Handle not supported.
-    ;         CF=NC -> Handle supported. 
-    ;           ZF=ZE -> No Files open.
-    ;           ZF=NZ -> Some files are open.
 shareHooks:
-    ;markerShare dq ?  ;Marker Share hook
-    openFileCheck   dq ?  ;Check if share record for file exist       DONE
+    markerShare dq ?  ;Marker Share hook
     openShare   dq ?  ;Share called on open.                          DONE 
     closeShare  dq ?  ;Share called on close.                         DONE/
     closeCompShare  dq ?  ;Share to close all files for a machine.    DONE

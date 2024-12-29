@@ -242,11 +242,9 @@ kernDrvInit:
 ;------------------------------------------------;
 ;               Setup Share Hooks                ;
 ;------------------------------------------------;
-    lea rdi, qword [rbp + shareHooks]
-    lea rbx, qword [rbp + goodDfltShareHook]
-    lea rax, qword [rbp + badDfltShareHook]
-    stosq   ;Store bad for openFileCheck
-    xchg rax, rbx
+    lea rdi, qword [rbp + shareHooks + 8]   ;Start from openShare
+    lea rax, qword [rbp + goodDfltShareHook]
+    lea rbx, qword [rbp + badDfltShareHook]
     stosq   ;Store good for open
     stosq   ;Store good for close
     xchg rax, rbx

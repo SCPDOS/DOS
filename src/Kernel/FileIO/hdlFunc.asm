@@ -308,7 +308,7 @@ changeFileModeHdl: ;ah = 43h, handle function, CHMOD
     jc extErrExit
     jmp extGoodExit
 .setDiskAttribs:
-    call checkNoOpenHandlesForShareAction
+    call checkExclusiveOwnFile
     jnc .okToSet
     mov eax, errShrVio
     jmp extErrExit
@@ -900,6 +900,9 @@ renameMain:
 .errorExit:
     stc
     jmp .exit2
+.shareError:
+    mov eax, errShrVio  ;Share issue so return failed with share
+    jmp .exit2
 .checkpath2:
     mov eax, dword [buffer2]
     xor al, al
@@ -981,8 +984,8 @@ renameMain:
     movsd
     movsb   ;This is a terminating null if a full 8.3 filename
     pop rdi ;rdi points to first char position
-    call checkNoOpenHandlesForShareAction   ;Now do this, all regs saved!
-    jc .errorExit   ;Propagate the share error code
+    call checkExclusiveOwnFile   ;Now do this, saving ptrs
+    jc .shareError   ;Propagate the share error code
     ;Else return the pattern back to its original position
     lea rsi, wcdFcbName ;rsi -> FCBified pattern, rdi -> First char for name
     call FCBToAsciiz
@@ -1157,25 +1160,30 @@ renameMain:
     stc
     return
 
-
-checkNoOpenHandlesForShareAction:
-;We check that we can proceed. This function will fail IF there are handles
-; open, and thus makes it an ideal candidate for checking in RENAME, for 
-; both filenames, DELETE and SETFILEATTRIBS if we have any open files. If we
-; do, then we should get a Share error and thus it would prevent us from 
-; proceeding.
+checkExclusiveOwnFile:
+;We check that the program carrying out this action owns the file exclusively. 
+; This function will fail IF there are handles open, and thus makes it an 
+; ideal candidate for checking in RENAME, for both filenames, DELETE and 
+; SETFILEATTRIBS if we have any open files. If we do, then we should get 
+; a Share error and thus it would prevent us from proceeding.
 ;
-;If SHARE not loaded, ALL handles must be closed before Rename or Delete.
+;If SHARE not loaded, ALL handles should be closed manually before 
+; Rename or Delete.
 ;Input: SDA fname1Ptr -> Filename we want to consider
 ;       currDirCopy = Directory entry for the file
-    call dosPushRegs    ;Save the context completely
-    cmp byte [openFileCheck], 0 ;Some 16-bit SHAREs set the marker to 0.
-    jz .noOpenFileCheckHandler
-    call qword [openFileCheck]
-    jc .noOpenFileCheckHandler  ;If CF=CY, this function not defined
-    jz .exit    ;If CF=NC && ZF=ZE, Function defined and No open files, proceed.
-    jmp short .errorMain    ;If ZF=NZ -> Have some open files, error out!
-.noOpenFileCheckHandler:
+;Output: Clobbers rcx, rdx.
+    push rax
+    push rbx
+    push rsi
+    push rdi
+
+    ;The below in DOS is passed in by the caller, here we preserve the 
+    ; caller's regs and proceed to set the ptrs ourselves.
+    lea rbx, curDirCopy
+    lea rsi, qword [rbx + fatDirEntry.fstClusLo]
+    ;At this point, the filename is fully normalised due to the 
+    ; way we do path parsing. Thus, we can proceed safely.
+
     ;The following closes most recent shared handles referencing it
     ;Only if sharePSP, shareMachineNumber are equal and openMode not Compat
     ; mode and if there is precisely 1  
@@ -1186,24 +1194,22 @@ checkNoOpenHandlesForShareAction:
     mov eax, RWAccess | CompatShare ;Set open mode
     mov byte [openCreate], 0    ;Make sure we are just opening the file
     ;This is to avoid needing to put the file attributes on the stack
-    push rdi    ;Save the SFT ptr
-    call buildSFTEntry
+    push rdi    ;Save the scratch SFT ptr
+    call buildSFTEntry  ;This will never fail. If it does, shareFile will catch
     pop rdi
-    jc .errorMain
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
     mov word [rdi + sft.wOpenMode], denyRWShare ;Prevent everything temporarily
     call shareFile  ;Puts an sft handle in rdi
-    jc .errorMain
-    mov word [rdi + sft.wNumHandles], 0
-    call closeShareCallWrapper
-.exit:
-    call dosPopRegs
+    jc .exit
+    mov word [rdi + sft.wNumHandles], 0 ;Now free it and close it
+    call closeShareCallWrapper 
     clc
-    return
-.errorMain:
-    call dosPopRegs
-    mov eax, errShrVio  ;Share issue so return failed with share
-    stc
+.exit:
+    pop rdi
+    pop rsi
+    pop rbx
+    pop rax
+    ;mov rbp, qword [workingDPB] ;This seems always set so no need for it.
     return
 
 outerDeleteMain:
@@ -1264,7 +1270,7 @@ deleteMain:
 ;   al = First char of the file that was deleted.
 ;        CF=CY => Error
 ;The dir buffer must be marked as referenced once we are done with it
-    call checkNoOpenHandlesForShareAction   ;Also cannot delete if open handle
+    call checkExclusiveOwnFile   ;Also cannot delete if open handle
     retc    ;Return immediately if CF=CY and propagate error code
     push rbp
     mov rbp, qword [workingDPB] ;Get the working DPB for the disk of this file
@@ -1668,7 +1674,7 @@ buildSFTEntry:
     ;Here if Opening a file. 
     ;Dirs cannot be opened through open, only for renaming.
     ;This is taken care of by openMain.
-    test byte [curDirCopy + fatDirEntry.attribute],dirCharDev
+    test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
     jz .open
 .charDev:
     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
