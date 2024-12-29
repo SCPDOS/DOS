@@ -2443,7 +2443,7 @@ writeExit:
 ;Advances the bytes on the file pointer
 ;Return: ecx = Number of bytes transferred
     mov rdi, qword [currentSFT]
-    call updateCurrentSFT
+    call updateCurrentSFT   ;Updates CurntOff in the SFT
     test word [rdi + sft.wDeviceInfo], devCharDev   ;Char dev?
     jnz .exit       ;These just exit as no filesize!
     test ecx, ecx   ;If no bytes transferred, dont flush, no size change!
