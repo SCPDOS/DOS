@@ -453,5 +453,5 @@ badMCBChain:
 mcbErrHdlr:
     ;Jumped to with eax = error code
     mov byte [errorDrv], -1 ;No drive
-    call extErrExit ;Error thru the unified error handler
-    jmp short verifyIntegrityOfMCBChain  ;Check chain ok if error != errMCBbad
+    call verifyIntegrityOfMCBChain  ;Replaces error code if mcb chain bad
+    jmp extErrExit  ;Else, error thru the unified error handler

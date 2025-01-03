@@ -119,16 +119,16 @@ dllHooks:
 shareHooks:
     markerShare dq ?  ;Marker Share hook
     openShare   dq ?  ;Share called on open.                          DONE 
-    closeShare  dq ?  ;Share called on close.                         DONE/
+    closeShare  dq ?  ;Share called on close.                         DONE
     closeCompShare  dq ?  ;Share to close all files for a machine.    DONE
     closeTaskShare  dq ?  ;Share to close all files for a task.       DONE
-    closeNameShare  dq ?  ;Share to close file by name.               DONE/
+    closeNameShare  dq ?  ;Share to close file by name.               DONE
     lockFileShare   dq ?  ;Share to lock file region.                 DONE
     unlockFileShare dq ?  ;Share to unlock file region.               DONE
     checkFileLockShare  dq ?  ;Share to check file region locked.     DONE
     openFileListShare   dq ?  ;Share to get open file list entry.     DONE
-    updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.      UNUSED?
-    fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.     UNUSED?
+    updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.      UNUSED
+    fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.     UNUSED
     closeDupFileShare   dq ?  ;Share to close file if dup for proc.   DONE
     closeNewHdlShare    dq ?  ;Share to close hdls of rec opened file. DONE
     updateDirShare      dq ?  ;Share to update dir info in SFT.       DONE 
