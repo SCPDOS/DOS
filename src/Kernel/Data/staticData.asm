@@ -6,9 +6,10 @@
 ;This is to avoid mutability of the true number by obtaining a pointer to it.
 ;Initialise the reporting version number of DOS to the true version number
 dosMajor equ 0  ;Version 0
-dosMinor equ 98 ;.98
-dosRev   equ 0  ;Reserved for revision number. Byte at most.
-dosVerFlags equ 0   ;Reserved, byte at most.
+dosMinor equ 99 ;.99
+;Revision and version flags are a Byte at most.
+dosRev   equ 1  ;
+dosVerFlags equ 1   ;First proper testing of kernel (Beta)
 dosVerMac equ (dosMinor << 8) | dosMajor    ;DOS version macro
 
 dosVersion  dw dosVerMac    ;DOS version number
