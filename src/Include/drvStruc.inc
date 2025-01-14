@@ -36,7 +36,7 @@ endstruc
     drvIOCTL        equ 19
     drvGETDRVMAP    equ 23
     drvSETDRVMAP    equ 24
-    
+    drvMAXCMD       equ 24
 ;Driver Error equates 
     drvWPErr        equ 0   ;Write Protect Violation
     drvBadUnit      equ 1   ;Unknown unit

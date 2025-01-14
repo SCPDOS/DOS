@@ -405,6 +405,7 @@
    220 00000008 ????????????????    <1>     .startSector    resb 8  ;Sector to start write at
    221 00000010 ????????????????    <1>     .xferBuffer     resb 8  ;Transfer buffer for data
    222                              <1> endstruc
+   223                              <1> 
      6                                  %include "./src/Include/fatStruc.inc"
      1                              <1> 
      2                              <1> ;-------------------------------------------------------;
@@ -581,31 +582,94 @@
    173                              <1> fsInfoSig2  equ 061417272h
    174                              <1> fsInfoSig3  equ 0AA550000h
    175                              <1> 
-   176                              <1> %macro defaultBPB 0
-   177                              <1>     db 0E9h
-   178                              <1>     db 00h
-   179                              <1>     db 90h
-   180                              <1>     db 'SCPDOSv1'
-   181                              <1>     dw 0200h                       
-   182                              <1>     db 01h                         
-   183                              <1>     dw 0001h                           
-   184                              <1>     db 02h                              
-   185                              <1>     dw 00E0h            
-   186                              <1>     dw 0B40h   
-   187                              <1>     db 0F0h                   
-   188                              <1>     dw 0009h                   
-   189                              <1>     dw 0012h                     
-   190                              <1>     dw 0002h                  
-   191                              <1>     dd 0                 
-   192                              <1>     dd 0 
-   193                              <1>     db 00h
-   194                              <1>     db 00h
-   195                              <1>     db 29h
-   196                              <1>     dd 0
-   197                              <1>     db 'NO NAME    '
-   198                              <1>     db 'FAT12   '
-   199                              <1>     db 58 dup 0 ;Size padding for a FAT12/16 BPB to make it 120 bytes long
-   200                              <1> %endmacro
+   176                              <1> 
+   177                              <1> struc msdTblEntry
+   178                              <1>     ;Header here
+   179 00000000 ????????????????    <1>     .pLink      dq ?    ;Pointer to the next msd table entry
+   180 00000008 ??                  <1>     .bDrvNum    db ?    ;DOS assigned driver letter
+   181 00000009 ??                  <1>     .bBIOSNum   db ?    ;BIOS number
+   182                              <1> ;Core BPB data goes here
+   183 0000000A ????                <1>     .wBpS       dw ?    ;Bytes per sector
+   184 0000000C ??                  <1>     .bSpC       db ?    ;Sectors per cluster
+   185 0000000D ????                <1>     .wResC      dw ?    ;Number of reserved sectors
+   186 0000000F ??                  <1>     .bNumFAT    db ?    ;Number of FATs on media
+   187 00000010 ????                <1>     .wRtCntNum  dw ?    ;Number of entries in Root directory
+   188 00000012 ????                <1>     .wTotSec16  dw ?    ;Number of sectors on medium
+   189 00000014 ??                  <1>     .bMedDesc   db ?    ;Media descriptor byte
+   190 00000015 ????                <1>     .wFATsz16   dw ?    ;Number of sectors per FAT, must be 0 for FAT 32
+   191 00000017 ????                <1>     .wSecPerTrk dw ?    ;Number of sectors per "track"
+   192 00000019 ????                <1>     .wNumHeads  dw ?    ;Number of read "heads"
+   193 0000001B ????????            <1>     .dHiddSec   dd ?    ;Number of hidden sectors
+   194 0000001F ????????            <1>     .dTotSec32  dd ?    ;32 bit count of sectors
+   195                              <1>     bpbCoreL equ $ - .wBpS 
+   196                              <1> ;--------------------------------------------------------------------
+   197 00000023 ??                  <1>     .bBpbFlgs   db ?    ;Flags for this BPB
+   198 00000024 ????                <1>     .wOpenCnt   dw ?    ;Device open count (make dword?)
+   199 00000026 ??                  <1>     .bDevType   db ?    ;Derice type byte (21/440Dh type subcode)
+   200 00000027 ????                <1>     .wDevFlgs   dw ?    ;Flags for this device 
+   201 00000029 ??                  <1>                 db ?
+   202                              <1>     .dAccTime:          ;Last access time if remdev (0 for now)
+   203 0000002A ????????            <1>     .wPtnType   dd ?    
+   204                              <1> ;--------------------------------------------------------------------
+   205                              <1> ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+   206                              <1> ;This section is only meaningful on a FAT32 drive. Zero otherwise
+   207 0000002E ????????            <1>     .FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
+   208 00000032 ????                <1>     .extFlags   dw ?  ;Extended Flags word
+   209 00000034 ????                <1>     .FSver      dw ?  ;File system version word, must be 0
+   210 00000036 ????????            <1>     .RootClus   dd ?  ;First Cluster of Root Directory
+   211 0000003A ????                <1>     .FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
+   212 0000003C ????                <1>     .BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
+   213                              <1> ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   214 0000003E ??                  <1>     .bDrvType   db ?    ;00h or 80h (Rem or Fixed!)
+   215 0000003F ??                  <1>     .reserved1  db ?    ;Reserved byte
+   216 00000040 ??                  <1>     .bootSig    db ?    ;Extended boot signature (29h)
+   217 00000041 ????????            <1>     .volID      dd ?    ;Volume serial number
+   218 00000045 <res Bh>            <1>     .volLab     db 11 dup (?) ;Volume label string
+   219 00000050 ????????????????    <1>     .filSysType db 8 dup (?)  ;File system type string
+   220                              <1> endstruc
+   221                              <1> ;BPB Flag values
+   222                              <1> bpbDskOff   equ 80h ;All Disk accesses return Not Ready (Unrecognised FAT)
+   223                              <1> bpbFat16    equ 40h ;FAT 16 disk
+   224                              <1> bpbFat32    equ 20h ;FAT 32 disk
+   225                              <1> bpbFat12    equ 10h ;FAT 12 disk
+   226                              <1> 
+   227                              <1> ;Device Flag values
+   228                              <1> devFixed    equ 1       ;Set if device 
+   229                              <1> devChgLine  equ 2       ;Always set for us
+   230                              <1> devLockBPB  equ 4       ;Make BuildBPB fail
+   231                              <1> devSameSec  equ 8       ;All sectors in track are same size (always set)
+   232                              <1> devMulti    equ 10h     ;BIOS Drive has many logical units (Partitions/LUNs)
+   233                              <1> devShare    equ 20h     ;Logical drive for shared physical drive (A/B share)
+   234                              <1> devSwap     equ 40h     ;Device change detected
+   235                              <1> devChg      equ 80h     ;Dev params changed (NOT USED, ALWAYS OFF)
+   236                              <1> devFmt      equ 100h    ;Disk reformatted (BPB changed)
+   237                              <1> devAccess   equ 200h    ;Fixed media only, disables reads/writes if set
+   238                              <1> 
+   239                              <1> %macro defaultBPB 0
+   240                              <1>     db 0E9h
+   241                              <1>     db 00h
+   242                              <1>     db 90h
+   243                              <1>     db 'SCPDOSv1'
+   244                              <1>     dw 0200h                       
+   245                              <1>     db 01h                         
+   246                              <1>     dw 0001h                           
+   247                              <1>     db 02h                              
+   248                              <1>     dw 00E0h            
+   249                              <1>     dw 0B40h   
+   250                              <1>     db 0F0h                   
+   251                              <1>     dw 0009h                   
+   252                              <1>     dw 0012h                     
+   253                              <1>     dw 0002h                  
+   254                              <1>     dd 0                 
+   255                              <1>     dd 0 
+   256                              <1>     db 00h
+   257                              <1>     db 00h
+   258                              <1>     db 29h
+   259                              <1>     dd 0
+   260                              <1>     db 'NO NAME    '
+   261                              <1>     db 'FAT12   '
+   262                              <1>     db 58 dup 0 ;Size padding for a FAT12/16 BPB to make it 120 bytes long
+   263                              <1> %endmacro
      7                                  %include "./src/Include/fcbStruc.inc"
      1                              <1> ;FCB related structures
      2                              <1> 
