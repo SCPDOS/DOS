@@ -176,16 +176,17 @@ msdDriver:
     return
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .medChk:          ;Function 1
-;Start by setting the volume ID appropriately so that if error
-; we have it ready
-    push rax
-    lea rax, qword [rbp + drvBlk.volId]    ;Get the volID from the BPB
-    mov qword [rbx + mediaCheckReqPkt.desptr], rax 
-    pop rax
-
-    call .checkDevType    ;Check and ensure that media type is "swapped"
+    test word [rbp + drvBlk.wDevFlgs], devFmt
+    jz .mcNoFormat
+    and word [rbp + drvBlk.wDevFlgs], ~devFmt   ;Clear this bit
+    test word [rbp + drvBlk.wDevFlgs], devFixed ;If fixed, declare changed!
+    jnz .mmcChange
+;For remdevs we now determine if the media was changed. If so, exit!
+    jmp short .mcRem
+.mcNoFormat:
     test word [rbp + drvBlk.wDevFlgs], devFixed
     jnz .mmcNoChange
+.mcRem:
     mov dl, byte [rbp + drvBlk.bBIOSNum]
 ;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
     mov ah, 16h 
@@ -293,7 +294,6 @@ msdDriver:
     mov byte [rbx + drvBlk.bBpbType], dl    ;Save the FAT type
     mov ecx, bpb32_size ;Now copy the BPB over!
     rep movsb   ;Will copy trash for FAT12/16 into FAT32 fields of drvEntry
-    
     
 
 
