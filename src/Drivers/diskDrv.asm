@@ -9,21 +9,20 @@ msdDriver:
     push rbp
     push r8
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
-    movzx esi, byte [rbx + devReqHdr.cmdcde]    ;Get the command code
+    movzx esi, byte [rbx + drvReqHdr.cmdcde]    ;Get the command code
     cmp esi, drvMAXCMD                  ;Command code bigger than max?
-    ja .writeEntryError                 ;If yes, error!
+    ja .errBadCmd                 ;If yes, error!
     lea rbp, .fnTbl
-    lea rdi, qword [rbp + 4*esi]    ;Ptr to table entry
+    lea rdi, qword [rbp + 4*rsi]    ;Ptr to table entry
     movzx esi, word [rdi]   ;Get the offset from table into esi
     test esi, esi           ;If the offset is 0, exit!
     jz .exit
-    movzx ecx, byte [rbx + devReqHdr.hdrLen]       ;Get packet length
+    movzx ecx, byte [rbx + drvReqHdr.hdrlen]       ;Get packet length
     cmp cx, word [rdi + 2]          ;Cmp packet lengths
-    jne .writeEntryError
+    jne .errBadPkt
     add rsi, rbp    ;Add the two to get the pointer!
-    movzx eax, byte [rbx + devReqHdr.unitnm]    ;Get the unit to setup
+    movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the unit to setup
     call .setupDrive    ;Returns rbp -> Table entry
-    mov rbx, rdx    ;Get the req packet into rbx
 ;Goto function! rbp -> Table entry, eax = Drive number. rbx -> Reqpkt
     call rsi 
 .exit:
@@ -39,6 +38,17 @@ msdDriver:
     pop rax
     ret
 
+.errBadCmd:
+    mov eax, drvBadCmd
+    jmp short .writeEntryError
+.errBadPkt:
+    mov eax, drvBadDrvReq
+.writeEntryError:
+;Used for errors in the driver entry
+    call .errorExit
+    jmp short .exit
+
+
 .fnTbl:
 ;Each table entry is 4 bytes to make searching easier. Low word is offset
 ; to function, high word is packet size for check
@@ -52,19 +62,19 @@ msdDriver:
     dw ioReqPkt_size
     dw .read - .fnTbl            ;Function 4
     dw ioReqPkt_size
-    dw 0                            ;Function 5
+    dw 0                         ;Function 5
     dw 0
-    dw 0                            ;Function 6
+    dw 0                         ;Function 6
     dw 0
-    dw 0                            ;Function 7
+    dw 0                         ;Function 7
     dw 0
-    dw .write - .fnTbl              ;Function 8
+    dw .write - .fnTbl           ;Function 8
     dw ioReqPkt_size
-    dw .write - .fnTbl              ;Function 9
+    dw .write - .fnTbl           ;Function 9
     dw ioReqPkt_size
-    dw 0                            ;Function 10
+    dw 0                         ;Function 10
     dw 0
-    dw 0                            ;Function 11
+    dw 0                         ;Function 11
     dw 0
     dw .IOCTLWrite - .fnTbl      ;Function 12
     dw ioReqPkt_size
@@ -74,33 +84,24 @@ msdDriver:
     dw closeReqPkt_size
     dw .remMed - .fnTbl          ;Function 15
     dw remMediaReqPkt_size
-    dw 0                            ;Function 16
+    dw 0                         ;Function 16
     dw 0
-    dw 0                            ;Function 17
+    dw 0                         ;Function 17
     dw 0
-    dw 0                            ;Function 18
+    dw 0                         ;Function 18
     dw 0
     dw .IOCTL - .fnTbl           ;Function 19
     dw ioctlReqPkt_size
-    dw 0                            ;Function 20
+    dw 0                         ;Function 20
     dw 0
-    dw 0                            ;Function 21
+    dw 0                         ;Function 21
     dw 0
-    dw 0                            ;Function 22
+    dw 0                         ;Function 22
     dw 0
     dw .getLogicalDev - .fnTbl   ;Function 23
     dw getDevReqPkt_size
     dw .setLogicalDev - .fnTbl   ;Function 24
     dw setDevReqPkt_size
-.errBadCmd:
-    mov eax, drvBadCmd
-    jmp short .writeEntryError
-.errBadPkt:
-    mov eax, drvBadDrvReq
-.writeEntryError:
-;Used for errors in the driver entry
-    call .errorExit
-    jmp short .exit
 
 ;DISK DRIVER ERROR HANDLER. Errors from within the functions come here!
 .errorXlat:
@@ -178,14 +179,14 @@ msdDriver:
 ;Start by setting the volume ID appropriately so that if error
 ; we have it ready
     push rax
-    lea rax, qword [rbp + msdTblEntry.volID]    ;Get the volID from the BPB
+    lea rax, qword [rbp + drvBlk.volId]    ;Get the volID from the BPB
     mov qword [rbx + mediaCheckReqPkt.desptr], rax 
     pop rax
 
     call .checkDevType    ;Check and ensure that media type is "swapped"
-    test word [rbp + msdTableEntry.wDevFlgs], devFixed
+    test word [rbp + drvBlk.wDevFlgs], devFixed
     jnz .mmcNoChange
-    mov dl, byte [rbp + msdTableEntry.bBIOSNum]
+    mov dl, byte [rbp + drvBlk.bBIOSNum]
 ;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
     mov ah, 16h 
     int 33h
@@ -203,7 +204,7 @@ msdDriver:
 ;Now we test Media Descriptor
     movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
     mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
-    cmp byte [rbp + msdTblEntry.media], dl    ;Compare media descriptor bytes
+    cmp byte [rbp + drvBlk.bMedDesc], dl    ;Compare media descriptor bytes
     je .mmcUnsure
 .mmcChange:
     mov byte [rbx + mediaCheckReqPkt.medret], -1
@@ -219,17 +220,17 @@ msdDriver:
 ;Only build BPB for removable devices and "non-locked" devices.
 ;Start by setting the pointer to the BPB in the reqpkt as this is 
 ; the table entry bpb which we will be returning.
-    mov rsi, qword [rbp + msdTblEntry.bpb]  ;Get BPB ptr in tbl entry
+    mov rsi, qword [rbp + drvBlk.bpb]  ;Get BPB ptr in tbl entry
     mov qword [rbx + bpbBuildReqPkt.bpbptr], rsi    ;Store it!
-    test word [rbp + msdTblEntry.wDevFlgs], devFixed | devLockBPB
+    test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
     retnz 
     mov rsi, rbx    ;Move req ptr to rsi
     mov edi, 5      ;Retry 5 times
 .bbpblp:
-    movzx edx, byte [rbp + msdTblEntry.bBIOSNum]
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
     xor ecx, ecx    ;Read Sector 0...
-    add ecx, dword [rbp + msdTblEntry.hiddSec]      ;Of selected volume!
+    add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
     mov eax, 8201h  ;LBA Read 1 sector
     int 33h
     jnc .bbpbOk
@@ -246,13 +247,13 @@ msdDriver:
 ;   rbp -> msdblEntry for this drive
 ;------------------------------------------------------
 ;Check we if we have a valid bootsector.
-    cmp byte [rbx + bpb.jmpBoot], 069h  ;Direct jump has no NOP
+    cmp byte [rbx ], 069h   ;Direct jump has no NOP
     je .checkMedDesc
-    cmp byte [rbx + bpb.jmpBoot], 0E9h  ;Short jump has no NOP
+    cmp byte [rbx], 0E9h    ;Short jump has no NOP
     je .checkMedDesc
-    cmp byte [rbx + bpb.jmpBoot + 2], 090h  ;NOP
+    cmp byte [rbx + 2], 090h  ;NOP
     jne .oldDisk
-    cmp byte [rbx + bpb.jmpBoot], 0EBh      ;JMP SHORT
+    cmp byte [rbx], 0EBh      ;JMP SHORT
     je .checkMedDesc
 .oldDisk:
 ;--------------------------------------------------------------------
@@ -268,10 +269,10 @@ msdDriver:
     ;jne .bbpbErr   
     ;call .checkBPB
     ;jc .bbpbErr
-;Here the msdTblEntry entry has already been filled in with a BPB for the
+;Here the drvBlk entry has already been filled in with a BPB for the
 ; media byte found. We set the tbl entry to FAT12 immediately.
 ;.plopBpb:
-;    lea rbx, qword [rbp + msdTblEntry.bpb]
+;    lea rbx, qword [rbp + drvBlk.bpb]
 ;    mov qword [rsi + bpbBuildReqPkt.bpbptr], rbx
 ;    return
 .bbpbErr:
@@ -279,27 +280,26 @@ msdDriver:
     mov al, drvBadMed       ;Default to unknown media error code
     jmp .errorExit
 .checkMedDesc:
+    add rbx, 11 ;Now point rbx to the BPB itself
     mov al, byte [rbx + bpb.media]
     call .checkBPB
     jc .bbpbErr
-.mbbpb0:
-;Update the msdTblEntry with info from the BPB.
+;Update the drvBlk with info from the BPB.
 ;rbx points to the disk BPB. May be bad so we need to ensure the values 
 ; are ok before updating the msdTbl entry. 
-    mov rsi, rbx
-    lea rdi, qword [rbp + msdTblEntry.bpb]
-    call .getFATType    ;Type is given in ecx
-    test edx, bpbFat32  ;Was this a FAT32?
-    mov eax, bpbL
-    mov ecx, bpb32L
-    cmovz ecx, eax
-    rep movsb
+    mov rsi, rbx    ;Source from the BPB in disk buffer
+    lea rdi, qword [rbp + drvBlk.bpb]
+    call .getFATType    ;Fat type is given in edx
+    mov byte [rbx + drvBlk.bBpbType], dl    ;Save the FAT type
+    mov ecx, bpb32_size ;Now copy the BPB over!
+    rep movsb   ;Will copy trash for FAT12/16 into FAT32 fields of drvEntry
+    
     
 
 
 
 .getFATType:
-;Computes FAT type. Returns bpb flag in edx
+;Computes FAT type. Returns bpb flag in edx. rbx -> BPB itself
     movzx ecx, word [rbx + bpb.bytsPerSec]
     mov eax, ecx
     dec eax
@@ -327,12 +327,12 @@ msdDriver:
     movzx ecx, byte [rbx + bpb.secPerClus]
     xor edx, edx
     div ecx         ;eax = CountofClusters = DataSec / BPB_SecPerClus;
-    mov edx, bpbFAT12
+    mov edx, bpbFat12
     cmp eax, fat12MaxClustCnt
     retb
     shl edx, 1  ;Move bit into FAT32 position
     cmp eax, fat16MaxClustCnt
-    retae   ;If above or equal, its in FAT32
+    retnb   ;If above or equal, its in FAT32
     shl edx, 1  ;Else move into FAT16 position
     return
 
@@ -394,7 +394,7 @@ msdDriver:
 .ioAdv:
 ;Advances the buffers on successful IO. 
 ;If returns ZF=ZE, we have completed all the IO for the request.
-    movzx eax, word [rbp + msdTblEntry.bytsPerSec] 
+    movzx eax, word [rbp + drvBlk.wBpS] 
     add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
     add qword [rdi + ioReqPkt.bufptr], rax  ;Add one sector
     inc esi
@@ -404,13 +404,13 @@ msdDriver:
 .blkIO:  ;Does block IO
 ;Error handled internally
 ;Sector count handled by caller
-;Called with dh = BIOS function number, rdi -> ioReqPkt, rbp -> msdTblEntry
+;Called with dh = BIOS function number, rdi -> ioReqPkt, rbp -> drvBlk
     push rsi    ;Save sector count
     mov esi, 5  ;Retry counter five times
 .biolp:
-    mov dl, byte [rbp + msdTblEntry.bBIOSNum]
+    mov dl, byte [rbp + drvBlk.bBIOSNum]
     xor ecx, ecx
-    mov ecx, dword [rbp + msdTblEntry.hiddSec]  ;Goto start of volume
+    mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
     mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
     mov ah, dh
@@ -432,20 +432,20 @@ msdDriver:
 
 
 .devOpen:         ;Function 13
-    cmp word [rbp + msdTblEntry.wOpenCnt], -1
+    cmp word [rbp + drvBlk.wOpenCnt], -1
     je .genErrExit  ;Inc past -1 is gen fault!
-    inc word [rbp + msdTblEntry.wOpenCnt]
+    inc word [rbp + drvBlk.wOpenCnt]
     return
 .devClose:        ;Function 14
-    cmp word [rbp + msdTblEntry.wOpenCnt], 0
+    cmp word [rbp + drvBlk.wOpenCnt], 0
     je .genErrExit  ;Dec past zero is gen fault
-    dec word [rbp + msdTblEntry.wOpenCnt]
+    dec word [rbp + drvBlk.wOpenCnt]
     return
 .remMed:  ;Function 15
-    movzx eax, word [rbp + msdTblEntry.wDevFlgs]    ;Get flags
-    and eax, 1  ;Save Bit 0 only
-    shl eax, 9  ;Move bit to position 9
-    mov word [rbx + remMediaReqPkt.status], ax  ;Busy set if fixed!
+;Sets busy bit if fixed drive!
+    test word [rbp + drvBlk.wDevFlgs], devFixed ;Is it fixed?
+    retz
+    mov word [rbx + remMediaReqPkt.status], drvBsyStatus
     return
 
 .IOCTL:    ;Function 19
@@ -459,14 +459,14 @@ msdDriver:
     jz .errorExit
     and cl, 7Fh     ;Clear the upper bit
     cmp cl, 41h     
-    je .gIOCTLwfCommon
+    je .gIOCTLWrite
     cmp cl, 42h
     je .gIOCTLFormat
     cmp cl, 60h
     jne .errorExit  ;Error if not this function with bad command
     ;Get params here
-    movzx edx, byte [rbp + msdTblEntry.bBIOSNum]
-    movzx eax, 8800h ;Read LBA Device Parameters
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    mov eax, 8800h ;Read LBA Device Parameters
     push rbx
     int 33h
     ;Returns:
@@ -486,7 +486,7 @@ msdDriver:
     mov qword [rdx + genioctlGetParamsTable.numSectors], rcx
     return
 
-.gIOCTLwfCommon:
+.gIOCTLWrite:
 ;Write Table:
 ;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
 ;Offset 1:  Number of sectors to write (BYTE)
@@ -520,8 +520,7 @@ msdDriver:
 ;rsi = Driver Packet (usually set to rbx)
 ;rdi = Write/Format packet
     movzx eax, byte [rbx + ioctlReqPkt.unitnm] ;Get the driver unit number
-    lea rdx, .msdBIOSmap
-    mov dl, byte [rdx + rax]    ;Get the BIOS number for the device
+    mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS number for device
     mov rsi, rbx
     mov rdi, qword [rsi + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
     mov al, byte [rdi + genioctlLBAformat.numSectors]
@@ -529,67 +528,85 @@ msdDriver:
     return
 
 .getLogicalDev:   ;Function 23
-
+;Returns 0 if device not multi. Else 1 based number of current drive
+; owner of the BIOS device is returned in getDevReqPkt.unitnm
+    xor eax, eax
+    test word [rbp + drvBlk.wDevFlgs], devMulti
+    jz .gldExit
+    movzx eax, byte [rbp + drvBlk.bBIOSNum] ;Now find owner of this BIOS drv
+    lea rbp, .drvBlkTbl ;Start from head of table :)
+.gldLp:
+    cmp byte [rbp + drvBlk.bBIOSNum], al
+    cmovne rbp, qword [rbp +  drvBlk.pLink] ;If not for BIOS drive, goto next
+    jne .gldLp
+    test word [rbp + drvBlk.wDevFlgs], devOwnMulti
+    cmovz rbp, qword [rbp +  drvBlk.pLink]  ;If not owner goto next
+    jz .gldLp 
+    movzx eax, byte [rbp + drvBlk.bDOSNum]  ;Else get DOS number for owner
+    inc eax ;Make it 1 based
+.gldExit:
+    mov byte [rbx + getDevReqPkt.unitnm], al    ;Return value in unitnum
     return
 
 .setLogicalDev:   ;Function 24
-    mov byte [.bCurDev], al
+    call .checkDevType  ;Set the unit as the owner of this BIOS drive!
     return
 
 .setupDrive:
-;Finds the first entry in the linked list which is for this drive, and
+;Finds the DOS drive in the linked list which is for this drive, and
 ; sets up internal vars according to it. 
-;Input: eax = Zero based drive number
-;Output: .pCurDev setup for us. rbp = Same value
-    lea rbp, .msdTable
+;Input: eax = Zero based DOS drive number
+;Output: .pCurDrv setup for us. rbp = Same value
+    lea rbp, .drvBlkTbl
 .sdChk:
-    cmp byte [rbp + msdTblEntry.bDOSNum], al
+    cmp byte [rbp + drvBlk.bDOSNum], al
     je .sdExit
-    mov rbp, qword [rbp +  msdTblEntry.pLink]
+    mov rbp, qword [rbp +  drvBlk.pLink]
     cmp rbp, -1
     jne .sdChk  ;Keep looping until end of table
     pop rax     ;Rebalance stack from the call
     mov al, drvBadMed
     jmp .errorExit
 .sdExit:
-    mov qword [.pCurDev], rbp
+    mov qword [.pCurDrv], rbp
     return
 
 .checkDevType:
-;Checks if we need to display the swap MSD message and displays it if so.
+;Checks if we need to display the swap drive message and displays it if so.
 ;The device must already be setup in rbp (and var) for this to work.
-;Input: rbx -> Request block. rbp -> msdTbl entry 
-    test word [rbp + msdTblEntry.wDevFlgs], devFixed | devOwnMulti
+;Input: rbx -> Request block. rbp -> drvBlk entry 
+    test word [rbp + drvBlk.wDevFlgs], devFixed | devOwnMulti
     retnz   ;If fixed or already owns drv, don't allow swapping
-    test word [rbp + msdTblEntry.wDevFlgs], devMulti
+    test word [rbp + drvBlk.wDevFlgs], devMulti
     retz    ;If only one drive owns this letter, exit
 ;Else, now we find the current owner of this drive letter :)
-    mov al, byte [rbp + msdTblEntry.bBIOSNum]   ;Cmp by bios numbers
-    mov rdi, qword [.msdTable]
-.cdtlp:
+    mov al, byte [rbp + drvBlk.bBIOSNum]   ;Cmp by bios numbers
+.cdtSetEp:
+    lea rdi, .drvBlkTbl  ;Point to the first drvBlk
+.cdtLp:
     cmp rdi, -1
     je .cdtBadExit
     cmp rdi, rbp    ;Skip the current device pointer
     je .cdtNextEntry
-    cmp byte [rdi + msdTblEntry.bBIOSNum], al   
+    cmp byte [rdi + drvBlk.bBIOSNum], al   
     jne .cdtNextEntry   ;Skip entry if not for device in question.
     ;Now we check if this is the current owner of the device?
-    test word [rdi + msdTableEntry.wDevFlgs], devOwnMulti
+    test word [rdi + drvBlk.wDevFlgs], devOwnMulti
     jnz .cdtDevFnd
 .cdtNextEntry:
-    mov rdi, qword [rdi + msdTableEntry.pLink]
+    mov rdi, qword [rdi + drvBlk.pLink]
     jmp short .cdtLp
 .cdtDevFnd:
 ;Now we swap owners. rdi (current owner) looses ownership, rbp (request
 ; device) gains ownership.
-    and word [rdi + msdTableEntry.wDevFlgs], ~devOwnMulti   ;Clear rdi own
-    or word [rbp + msdTableEntry.wDevFlgs], devOwnMulti     ;Set rbp to own
+    and word [rdi + drvBlk.wDevFlgs], ~devOwnMulti   ;Clear rdi own
+    or word [rbp + drvBlk.wDevFlgs], devOwnMulti     ;Set rbp to own
 ;If a set map request, don't prompt the message!
-    cmp byte [rbx + devReqHdr.unitnm], drvSETDRVMAP
-    je .cdtExit
+    cmp byte [rbx + drvReqHdr.cmdcde], drvSETDRVMAP
+    rete    ;Return if equal (clears CF)
 
 ;THIS BIT IS NOT MULTITASKING FRIENDLY...
-    mov al, byte [rbx + devReqHdr.unitnm]
+    mov al, byte [rdi + drvBlk.bDOSNum]
     add al, "A" ;Convert to a letter
     mov byte [.strikeMsgLetter], al
     lea rsi, .strikeMsg
@@ -603,7 +620,6 @@ msdDriver:
     int 36h ;Blocking wait at the keyboard for a keystroke
 ;THIS BIT IS NOT MULTITASKING FRIENDLY...
 
-.cdtExit:
     clc ;Indicate goodness through CF
     return
 .cdtBadExit:
@@ -613,13 +629,67 @@ msdDriver:
 .ioSetVolLbl:
 ;Sets the volume label on requests to read, write, write/verify. Medchk does its own
 ;Input: rbx -> io request packet
-;       rbp -> msdTblEntry to get volume ID from
+;       rbp -> drvBlk to get volume ID from
 ;Output: Pointer placed in io request packet
     push rax
-    lea rax, qword [rbp + msdTblEntry.volID]    ;Get the volID from the BPB
+    lea rax, qword [rbp + drvBlk.volId]    ;Get the volId from the BPB
     mov qword [rbx + ioReqPkt.desptr], rax 
     pop rax
     ret
+
+.i2fEp:
+;Back door into the block driver :)
+    cmp ah, 08h
+    jne .i2fNotUs
+    test al, al ;AL=00, Install check
+    jz .i2fCheck
+    cmp al, 01  ;AL=01, Add block device
+    je .i2fAddTbl
+    cmp al, 02  ;AL=02, Execute blk drv request
+    je .i2fExec
+    cmp al, 03  ;AL=03, Get tbl ptr
+    je .i2fGivTbl
+.i2fExit:
+    iretq
+.i2fNotUs:
+    jmp qword [.i2fOld]
+.i2fCheck:
+    mov al, -1  ;Indicate installed!
+    iretq
+.i2fAddTbl:
+;Input: rdi -> New drvBlk to link to table (can be multiple!)
+    lea rsi, .drvBlkTbl
+.i2fATLp:
+    cmp qword [rsi + drvBlk.pLink], -1  ;goto the end of the table
+    cmovne rsi, qword [rsi + drvBlk.pLink]
+    jne .i2fATLp
+    mov qword [rsi + drvBlk.pLink], rdi
+    iretq
+.i2fExec:
+;We make a small change in that we clean up the flags from the stack
+; as opposed to DOS which leaves them on the stack. Doing so is fine 
+; as no useful information is ever passed in the flags from a driver
+; so by doing so, any ported applications which do an additional pop
+; from the stack to balance the stack will not be harmed by this.
+    push rax
+    mov eax, 8002h  ;Enter Driver critical section
+    int 2Ah
+
+    push rbx
+    mov qword [reqHdrPtr], rbx  ;Save the ptr in var since we own it now :)
+    call msdDriver  ;And call the driver like from within DOS!
+    pop rbx
+
+    mov eax, 8102h  ;Exit Driver critical section
+    int 2Ah
+    pop rax
+    iretq
+.i2fGivTbl:
+;Output: rdi -> drvBlkTbl
+    lea rdi, .drvBlkTbl
+    iretq
+
+.i2fOld dq 0    ;Original Int 2Fh pointer
 
 .strikeMsg db 0Dh,0Ah,"Insert for drive "
 .strikeMsgLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah
@@ -631,6 +701,6 @@ msdDriver:
 .defLbl     db "NO NAME ",0 ;Default volume label
 .oemName    db "SCPDOSv1",0 ;Default OEM name
 
-.pCurDev    dq 0    ;Pointer to the MSD table for the device we are accessing
+.pCurDrv    dq 0    ;Pointer to the drvBlk for the drv we are accessing
 .dfltBPB     defaultBPB                 ;If no remdev, A and B point here
-.msdTable   db 5*msdTblEntry dup (0)    ;Core MSD data table 
+.drvBlkTbl  db 5*drvBlk dup (0)    ;Main drive data table 

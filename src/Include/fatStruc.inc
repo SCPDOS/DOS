@@ -15,10 +15,7 @@
 ;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
 ;-------------------------------------------------------;
 
-struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
-
-    .jmpBoot    resb 3 
-    .oemName    resb 8  ;OEM name
+struc bpb          ;FAT 12 and 16 BPB
     .bytsPerSec resw 1  ;Bytes per sector
     .secPerClus resb 1  ;Sectors per cluster
     .revdSecCnt resw 1  ;Number of reserved sectors, in volume
@@ -31,22 +28,21 @@ struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
     .numHeads   resw 1  ;Number of read "heads"
     .hiddSec    resd 1  ;Number of hidden sectors, preceeding volume start
     .totSec32   resd 1  ;32 bit count of sectors
-    bpbL    equ $ - bpb
+endstruc
 
-.pExtBs:    ;Pointer to the extended bootsector info
+struc extBs
+;Extended bootsector structure. If present, comes immediately after 
+; BPB in bootsector
     .drvNum     resb 1  ;Logical drive number (00h or 80h)
     .reserved1  resb 1  ;Reserved byte
-    .bootSig    resb 1  ;Extended boot signature (29h)
+    .bootSig    resb 1  ;Extended boot signature
     .volID      resd 1  ;Volume serial number
     .volLab     resb 11 ;Volume label string
     .filSysType resb 8  ;File system type string
-
 endstruc
+extBsSig    equ 29h
 
-struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
-
-    .jmpBoot    resb 3
-    .oemName    resb 8  ;OEM name
+struc bpb32       ;FAT 32 BPB
     .bytsPerSec resw 1  ;Bytes per sector
     .secPerClus resb 1  ;Sectors per cluster
     .revdSecCnt resw 1  ;Number of reserved sectors
@@ -59,7 +55,6 @@ struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
     .numHeads   resw 1  ;Number of read "heads"
     .hiddSec    resd 1  ;Number of hidden sectors
     .totSec32   resd 1  ;32 bit count of sectors
-
     .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
     .extFlags   resw 1  ;Extended Flags word
     .FSver      resw 1  ;File system version word, must be 0
@@ -67,20 +62,91 @@ struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
     .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
     .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
     .reserved   resb 12 ;Reserved 12 bytes
-    bpb32L  equ $ - bpb32
-
-.pExtBs:    ;Pointer to the extended bootsector info
-    .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    .reserved1  resb 1  ;Reserved byte
-    .bootSig    resb 1  ;Extended boot signature (29h)
-    .volID      resd 1  ;Volume serial number
-    .volLab     resb 11 ;Volume label string
-    .filSysType resb 8  ;File system type string
-
 endstruc
-extBsL  equ bpb_size - bpbL     ;Extended bootsector length
-fat12MaxClustCnt    equ 4085    ;Cluster count less than this is FAT12
-fat16MaxClustCnt    equ 65525   ;Cluster count less than this is FAT16
+
+struc FSInfo
+    .leadSig    resb 4  ;Leading Signature, should be 041615252h
+    .reserved1  resb 480
+    .strucSig   resb 4  ;Should be 061417272h
+    .freeCount  resb 4  ;Contains the last known free cluster on volume
+    .nextFree   resb 4  ;Contains the first known free cluster on volume
+    .reserved2  resb 12 ;Should be 0
+    .trailSig   resb 4  ;Should be 0AA550000h
+endstruc
+
+fsInfoSig1  equ 041615252h
+fsInfoSig2  equ 061417272h
+fsInfoSig3  equ 0AA550000h
+
+struc drvBlk
+;--------------------------------------------------------------------
+; Drvblk Header information
+;--------------------------------------------------------------------
+    .pLink      dq ?    ;Pointer to the next drive block
+    .bDOSNum    db ?    ;DOS 0 based drive number, setLogicalDev may change it
+    .bBIOSNum   db ?    ;BIOS number, identifies physical drive
+;--------------------------------------------------------------------
+; In-use BPB for current media in here. Always have space for FAT32 
+;  volume. If FAT12/16, FAT32 fields are undefined (garbage gets 
+;  copied into those fields... not a problem)
+;--------------------------------------------------------------------
+.bpb:
+    .wBpS       dw ?    ;Bytes per sector
+    .bSpC       db ?    ;Sectors per cluster
+    .wResC      dw ?    ;Number of reserved sectors
+    .bNumFAT    db ?    ;Number of FATs on media
+    .wRtCntNum  dw ?    ;Number of entries in Root directory
+    .wTotSec16  dw ?    ;Number of sectors on medium
+    .bMedDesc   db ?    ;Media descriptor byte
+    .wFATsz16   dw ?    ;Number of sectors per FAT, must be 0 for FAT 32
+    .wSecPerTrk dw ?    ;Number of sectors per "track"
+    .wNumHeads  dw ?    ;Number of read "heads"
+    .dHiddSec   dd ?    ;Number of hidden sectors
+    .dTotSec32  dd ?    ;32 bit count of sectors
+ 
+    .FATsz32    dd ?    ;32 bit count of sectors occupied by one FAT
+    .extFlags   dw ?    ;Extended Flags word
+    .FSver      dw ?    ;File system version word, must be 0
+    .RootClus   dd ?    ;First Cluster of Root Directory
+    .FSinfo     dw ?    ;Sector number of FSINFO structure, usually 1
+    .BkBootSec  dw ?    ;Backup Boot sector, either 0 or 6
+;--------------------------------------------------------------------
+; DrvBlk flags
+;--------------------------------------------------------------------
+    .bBpbType   db ?    ;BPB Type indicator (FAT12/16/32 or other)
+    .wOpenCnt   dw ?    ;Device open count (make dword?)
+    .bDevType   db ?    ;Device type byte (21/440Dh type subcode)
+    .wDevFlgs   dw ?    ;Flags for this device 
+    .sMaxBPB    db bpb32_size dup (?)   ;Max capacity BPB for drive
+.dAccTime:          ;Last access time if remdev (0 for now)
+    .wPtnType   dd ?    
+;--------------------------------------------------------------------
+; Volume string and id for the drive described by this drvblk
+;--------------------------------------------------------------------
+    .volId      dd ?            ;Volume serial number
+    .volLabel   db 11 dup (?)   ;Volume label string
+                db ?            ;Null terminator for string
+    .filSysType db 8 dup (?)    ;File system type string
+                db ?            ;Null terminator for string
+endstruc
+
+;FAT type values
+bpbDskOff   equ 80h ;All Disk accesses return Not Ready (Unrecognised FAT)
+bpbFat16    equ 40h ;FAT 16 disk
+bpbFat32    equ 20h ;FAT 32 disk
+bpbFat12    equ 10h ;FAT 12 disk
+
+;Device Flag values
+devFixed    equ 1       ;Set if fixed disk 
+devChgLine  equ 2       ;Always set for us
+devLockBPB  equ 4       ;Make BuildBPB fail
+devSameSec  equ 8       ;All sectors in track are same size (always set)
+devMulti    equ 10h     ;BIOS Drive has many logical units (A/B share)
+devOwnMulti equ 20h     ;Owner for shared physical drive (A/B share)
+devSwap     equ 40h     ;Device change detected
+devChg      equ 80h     ;H/W Dev params changed (NOT USED, ALWAYS OFF)
+devFmt      equ 100h    ;Disk reformatted (BPB changed)
+devAccess   equ 200h    ;Fixed media only, disables reads/writes if set
 
 struc mbr
     .bsCode     resb 440
@@ -164,86 +230,6 @@ struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
     .reserved               resb 7  ;Reserved for alignment
 
 endstruc
-
-struc FSInfo
-
-    .leadSig    resb 4  ;Leading Signature, should be 041615252h
-    .reserved1  resb 480
-    .strucSig   resb 4  ;Should be 061417272h
-    .freeCount  resb 4  ;Contains the last known free cluster on volume
-    .nextFree   resb 4  ;Contains the first known free cluster on volume
-    .reserved2  resb 12 ;Should be 0
-    .trailSig   resb 4  ;Should be 0AA550000h
-
-endstruc
-fsInfoSig1  equ 041615252h
-fsInfoSig2  equ 061417272h
-fsInfoSig3  equ 0AA550000h
-
-
-struc msdTblEntry
-;Table EntryHeader here
-    .pLink      dq ?    ;Pointer to the next msd table entry
-    .bDOSNum    db ?    ;DOS 0 based drive number, setLogicalDev may change it
-    .bBIOSNum   db ?    ;BIOS number, identifies physical drive
-;In-use BPB for current media in here
-    .bpb:
-    .jmpBoot    db 3 dup (?)
-    .oemName    db 8 dup (?) ;OEM name
-    .wBpS       dw ?    ;Bytes per sector
-    .bSpC       db ?    ;Sectors per cluster
-    .wResC      dw ?    ;Number of reserved sectors
-    .bNumFAT    db ?    ;Number of FATs on media
-    .wRtCntNum  dw ?    ;Number of entries in Root directory
-    .wTotSec16  dw ?    ;Number of sectors on medium
-    .bMedDesc   db ?    ;Media descriptor byte
-    .wFATsz16   dw ?    ;Number of sectors per FAT, must be 0 for FAT 32
-    .wSecPerTrk dw ?    ;Number of sectors per "track"
-    .wNumHeads  dw ?    ;Number of read "heads"
-    .dHiddSec   dd ?    ;Number of hidden sectors
-    .dTotSec32  dd ?    ;32 bit count of sectors
- 
-    .FATsz32    dd ?    ;32 bit count of sectors occupied by one FAT
-    .extFlags   dw ?    ;Extended Flags word
-    .FSver      dw ?    ;File system version word, must be 0
-    .RootClus   dd ?    ;First Cluster of Root Directory
-    .FSinfo     dw ?    ;Sector number of FSINFO structure, usually 1
-    .BkBootSec  dw ?    ;Backup Boot sector, either 0 or 6
-;--------------------------------------------------------------------
-    .bBpbType   db ?    ;BPB Type indicator (FAT12/16/32 or other)
-    .wOpenCnt   dw ?    ;Device open count (make dword?)
-    .bDevType   db ?    ;Device type byte (21/440Dh type subcode)
-    .wDevFlgs   dw ?    ;Flags for this device 
-    .sMaxBPB    db bpb32_size dup (?)   ;Max capacity BPB for drive
-    .dAccTime:          ;Last access time if remdev (0 for now)
-    .wPtnType   dd ?    
-;--------------------------------------------------------------------
-
-    .bDrvType   db ?    ;00h or 80h (Rem or Fixed!)
-    .reserved1  db ?    ;Reserved byte
-    .bootSig    db ?    ;Extended boot signature (29h)
-    .volID      dd ?    ;Volume serial number
-    .volLab     db 11 dup (?) ;Volume label string
-    .filSysType db 8 dup (?)  ;File system type string
-endstruc
-
-;BPB Flag values
-bpbDskOff   equ 80h ;All Disk accesses return Not Ready (Unrecognised FAT)
-bpbFat16    equ 40h ;FAT 16 disk
-bpbFat32    equ 20h ;FAT 32 disk
-bpbFat12    equ 10h ;FAT 12 disk
-
-;Device Flag values
-devFixed    equ 1       ;Set if fixed disk 
-devChgLine  equ 2       ;Always set for us
-devLockBPB  equ 4       ;Make BuildBPB fail
-devSameSec  equ 8       ;All sectors in track are same size (always set)
-devMulti    equ 10h     ;BIOS Drive has many logical units (A/B share)
-devOwnMulti equ 20h     ;Owner for shared physical drive (A/B share)
-devSwap     equ 40h     ;Device change detected
-devChg      equ 80h     ;H/W Dev params changed (NOT USED, ALWAYS OFF)
-devFmt      equ 100h    ;Disk reformatted (BPB changed)
-devAccess   equ 200h    ;Fixed media only, disables reads/writes if set
 
 %macro defaultBPB 0
     db 0E9h
