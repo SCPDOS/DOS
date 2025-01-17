@@ -36,7 +36,7 @@ struc extBs
     .drvNum     resb 1  ;Logical drive number (00h or 80h)
     .reserved1  resb 1  ;Reserved byte
     .bootSig    resb 1  ;Extended boot signature
-    .volID      resd 1  ;Volume serial number
+    .volId      resd 1  ;Volume serial number
     .volLab     resb 11 ;Volume label string
     .filSysType resb 8  ;File system type string
 endstruc
@@ -103,7 +103,9 @@ struc drvBlk
     .wNumHeads  dw ?    ;Number of read "heads"
     .dHiddSec   dd ?    ;Number of hidden sectors
     .dTotSec32  dd ?    ;32 bit count of sectors
- 
+;--------------------------------------------------------------------
+; The below vars are only accessed on FAT32 volumes
+;--------------------------------------------------------------------
     .FATsz32    dd ?    ;32 bit count of sectors occupied by one FAT
     .extFlags   dw ?    ;Extended Flags word
     .FSver      dw ?    ;File system version word, must be 0
@@ -124,7 +126,7 @@ struc drvBlk
 ; Volume string and id for the drive described by this drvblk
 ;--------------------------------------------------------------------
     .volId      dd ?            ;Volume serial number
-    .volLabel   db 11 dup (?)   ;Volume label string
+    .volLab     db 11 dup (?)   ;Volume label string
                 db ?            ;Null terminator for string
     .filSysType db 8 dup (?)    ;File system type string
                 db ?            ;Null terminator for string
@@ -143,10 +145,16 @@ devLockBPB  equ 4       ;Make BuildBPB fail
 devSameSec  equ 8       ;All sectors in track are same size (always set)
 devMulti    equ 10h     ;BIOS Drive has many logical units (A/B share)
 devOwnMulti equ 20h     ;Owner for shared physical drive (A/B share)
-devSwap     equ 40h     ;Device change detected
+devSwap     equ 40h     ;Device change detected (If A swapped but B same as A)
 devChg      equ 80h     ;H/W Dev params changed (NOT USED, ALWAYS OFF)
 devFmt      equ 100h    ;Disk reformatted (BPB changed)
-devAccess   equ 200h    ;Fixed media only, disables reads/writes if set
+devUnFmt    equ 200h    ;Fixed media only, disables reads/writes if set
+
+;Media byte bits
+mbTwoHead   equ 1       ;Dual sided if bit set, single sided if not
+mb8Sector   equ 2       ;8 sectors per track if bit set, 9 if not
+mbRemDev    equ 4       ;Removable if set, Fixed if not.
+
 
 struc mbr
     .bsCode     resb 440

@@ -216,89 +216,145 @@ msdDriver:
 .mmcNoChange:
     mov byte [rbx + mediaCheckReqPkt.medret], 1
     return
+.mcGetSwapStatus:
 
+
+    
 .buildBPB:        ;Function 2
 ;Only build BPB for removable devices and "non-locked" devices.
 ;Start by setting the pointer to the BPB in the reqpkt as this is 
 ; the table entry bpb which we will be returning.
     mov rsi, qword [rbp + drvBlk.bpb]  ;Get BPB ptr in tbl entry
     mov qword [rbx + bpbBuildReqPkt.bpbptr], rsi    ;Store it!
-    test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
-    retnz 
+    test word [rbp + drvBlk.wDevFlgs], devFixed
+    retnz
+;------------------------------------------------------
+; Here for removable devices only!!
+;------------------------------------------------------
+    call .resetIds  ;Reset the drvBlk volume ids
     mov rsi, rbx    ;Move req ptr to rsi
-    mov edi, 5      ;Retry 5 times
-.bbpblp:
-    movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer
-    xor ecx, ecx    ;Read Sector 0...
-    add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
-    mov eax, 8201h  ;LBA Read 1 sector
-    int 33h
-    jnc .bbpbOk
-    dec edi         ;Dec the counter
-    jz .errorXlat   ;If we are out of counts, sorry buddy :(
-    mov eax, 0100h  ;Now read status of last error
-    int 33h
-    jmp short .bbpblp    ;And try again
-.bbpbOk:
+    mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer 
+    call .makeBpb   ;Fill the BPB entries in the drvBlk
+    jc .errorXlat   ;Only returns bad for bad disk reads!
+
+.resetIds:
+;We reset the volume id string and label to the default for the 
+; volume before the reset!
+    push rax
+    push rbx
+    push rcx
+    push rsi
+    push rdi
+
+;1) Clear volume Id
+    mov dword [rbp + drvBlk.volId], 0
+;2) Reset the volume label to default
+    lea rsi, .defLbl
+    lea rdi, qword [rbp + drvBlk.volLab]
+    mov ecx, 12
+    rep movsb
+;3) Reset the FAT string
+;Since fat32 indicator is in the middle, compare against it.
+;If dskOff is set instead of FAT16, then FAT16 works as a default value :)
+    lea rsi, .fat32Str
+    lea rax, .fat12Str
+    lea rbx, .fat16Str
+    test byte [rbp + drvBlk.bBpbType], bpbFat32
+    cmova rsi, rbx
+    cmovb rsi, rax
+    lea rdi, qword [rbp + drvBlk.filSysType]
+    mov ecx, 9
+    rep movsb
+
+    pop rdi
+    pop rsi
+    pop rcx
+    pop rbx
+    pop rax
+    return
+
+.makeBpb:
+;Never called on Fixed devs in normal operation.
 ;------------------------------------------------------
-;At this point: 
-;   rsi -> Driver Request Packet
-;   rbx -> New BPB that was been read in
-;   rbp -> msdblEntry for this drive
+;Entered with: 
+;   rbx -> Buffer to read bootsector into
+;   rbp -> drvBlk for this drive
 ;------------------------------------------------------
+    test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
+    retnz  
+.mBpbInit:  ;Entry point for Init
+    call .bbpbReadBS
+    retc
 ;Check we if we have a valid bootsector.
-    cmp byte [rbx ], 069h   ;Direct jump has no NOP
-    je .checkMedDesc
+    cmp byte [rbx], 069h   ;Direct jump has no NOP
+    je .newDisk
     cmp byte [rbx], 0E9h    ;Short jump has no NOP
-    je .checkMedDesc
+    je .newDisk
     cmp byte [rbx + 2], 090h  ;NOP
     jne .oldDisk
     cmp byte [rbx], 0EBh      ;JMP SHORT
-    je .checkMedDesc
+    je .newDisk
 .oldDisk:
-;--------------------------------------------------------------------
-; Temp: Old disks are not considered. For now we need a DOS 3.3 or 
-; greater BPB and a 0F0h or 0F8h media byte in the BPB. Thus we fall 
-; through into the unk med error below.
-;--------------------------------------------------------------------
-;In this case we assume that this sector was a FAT sector of a 
-; Floppy. Read the first word and drop the high nybble.
+    ;call .bbpbReadFAT   ;Read the FAT sector now instead
+    ;retc
     ;mov ax, word [rbx]
     ;and ax, 0FFFh
-    ;cmp ah, 0Fh
-    ;jne .bbpbErr   
-    ;call .checkBPB
-    ;jc .bbpbErr
-;Here the drvBlk entry has already been filled in with a BPB for the
-; media byte found. We set the tbl entry to FAT12 immediately.
-;.plopBpb:
-;    lea rbx, qword [rbp + drvBlk.bpb]
-;    mov qword [rsi + bpbBuildReqPkt.bpbptr], rbx
-;    return
+    ;cmp ah, 0Fh     ;High byte must be 0Fh at this point.
+    ;jne .bbpbErr
+    ;call .bbpbCheckMedByt   ;Checks media byte to be valid
+    ;jnz .bbpbErr
+    ;cmp al, 0F0h    ;0F0h and 0F8h are not acceptable here as they need BPB
+    ;je .bbpbErr
+    ;cmp al, 0F8h
+    ;je .bbpbErr
+
 .bbpbErr:
 ;Bad media bytes go here. Means the media is unknown.
+    pop rax     ;Rebalance the stack and exit error with this error code!
     mov al, drvBadMed       ;Default to unknown media error code
     jmp .errorExit
-.checkMedDesc:
+.newDisk:
     add rbx, 11 ;Now point rbx to the BPB itself
     mov al, byte [rbx + bpb.media]
-    call .checkBPB
-    jc .bbpbErr
+    call .bbpbCheckMedByt
 ;Update the drvBlk with info from the BPB.
 ;rbx points to the disk BPB. May be bad so we need to ensure the values 
 ; are ok before updating the msdTbl entry. 
     mov rsi, rbx    ;Source from the BPB in disk buffer
     lea rdi, qword [rbp + drvBlk.bpb]
-    call .getFATType    ;Fat type is given in edx
+    call .bbpbGetFAT    ;Fat type is given in edx
     mov byte [rbx + drvBlk.bBpbType], dl    ;Save the FAT type
+;Get the correct length to correctly position rsi over the extended bs struct
+; if it is present
+    mov eax, bpb_size
     mov ecx, bpb32_size ;Now copy the BPB over!
-    rep movsb   ;Will copy trash for FAT12/16 into FAT32 fields of drvEntry
-    
+    cmp dl, bpbFat32
+    cmovne ecx, eax     ;If not FAT32, replace move count
+    rep movsb   
+;Now check the BPB for a extBs. If it is present, we copy the information.
+    cmp byte [rdi + extBs.bootSig], extBsSig
+    jne .newDskExit
+;Else, now we copy the volume information from the extended bs info block
+    push rbx
+    mov rbx, rdi
+    mov eax, dword [rbx + extBs.volId]
+    mov dword [rbp + drvBlk.volId]
+    lea rsi, qword [rbx + extBs.volLab]
+    lea rdi, qword [rbp + drvBlk.volLab]
+    mov ecx, 11 ;Copy the volume label
+    rep movsb   
+    ;rsi now points to the filSysType field in the extBs.
+    inc rdi     ;Now move rdi to the filSysType field in the drvBlk.
+    mov ecx, 8  ;Now copy the 8 char string over too
+    rep movsb   
+    pop rbx
+;Clear the devswap bit now as we have a good BPB for this drive
+    and word [rbp + drvBlk.wDevFlgs], ~devSwap
+.newDskExit:
+    clc
+    return
 
-
-
-.getFATType:
+.bbpbGetFAT:
 ;Computes FAT type. Returns bpb flag in edx. rbx -> BPB itself
     movzx ecx, word [rbx + bpb.bytsPerSec]
     mov eax, ecx
@@ -336,25 +392,56 @@ msdDriver:
     shl edx, 1  ;Else move into FAT16 position
     return
 
-.checkBPB:
-    cmp al, 0F0h    ;3.5" FDD standard layout (1.44Mb) [REMDEV]
+.bbpbCheckMedByt:
+;Checks the media byte is of a valid type. Refuse media bytes we don't
+; recognise as this is a sign of an unhealthy volume.
+;Accept values 0FFh - 0F8h and 0F0h.
+;Values 0FAh, 0F8h and 0F0h NEED to come from BPB. If found from FAT, then 
+; do not accept the volume!
+;Input: al = Media byte. 
+;Ouput: ZF=NZ: Bad media byte. ZF=ZE: Ok media byte!
+    cmp al, 0F0h
     rete
-    cmp al, 0F8h    ;Fixed disk standard
-    rete
-;--------------------------------------------------------------------
-; For now, we do not have true FDD support at the BIOS level so we 
-; don't care about media byte based work. To be implemented once the 
-; driver is fixed.
-;--------------------------------------------------------------------
-    ;cmp al, 0F9h    ;5.25" and 720K 3.5" standard
-    ;rete
-    ;ja .pickFake
-;--------------------------------------------------------------------
+    cmp al, 0F8h
+    retb
+    cmp al, al  ;Set ZF
+    return
+
+.bbpbReadBS:
+;Reads the bootsector of media we are playing with.
+;Input: rbx -> Buffer we are xacting on
+    mov edi, 5      ;Retry 5 times
+.bbpbrbsLp:
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    xor ecx, ecx    ;Read Sector 0...
+    add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
+    mov eax, 8201h  ;LBA Read 1 sector
+    int 33h
+    retnc
+    dec edi         ;Dec the counter
+    jz .bbpbrbsErr   ;If we are out of counts, sorry buddy :(
+    mov eax, 0100h  ;Now read status of last error
+    int 33h
+    jmp short .bbpbrbsLp    ;And try again
+.bbpbrbsErr:
     stc
     return
-;.pickFake:
-;For bytes 0FAh-0FFh build a fake BPB in the entry we already have.
-
+.bbpbReadFAT:
+;Reads the first FAT sector of media we are playing with.
+;Input: rbx -> Buffer we are xacting on
+    mov edi, 5      ;Retry 5 times
+.bbpbrfLp:
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    mov ecx, 1  ;Read Sector 1...
+    add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
+    mov eax, 8201h  ;LBA Read 1 sector
+    int 33h
+    retnc
+    dec edi         ;Dec the counter
+    jz .bbpbrbsErr   ;If we are out of counts, sorry buddy :(
+    mov eax, 0100h  ;Now read status of last error
+    int 33h
+    jmp short .bbpbrfLp    ;And try again
 
 .IOCTLRead:       ;Function 3, returns immediately
 .IOCTLWrite:      ;Function 12, returns done
@@ -430,15 +517,14 @@ msdDriver:
     mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
     jmp .ioError
 
-
 .devOpen:         ;Function 13
     cmp word [rbp + drvBlk.wOpenCnt], -1
-    je .genErrExit  ;Inc past -1 is gen fault!
+    rete  ;Inc past -1 does nothing!
     inc word [rbp + drvBlk.wOpenCnt]
     return
 .devClose:        ;Function 14
     cmp word [rbp + drvBlk.wOpenCnt], 0
-    je .genErrExit  ;Dec past zero is gen fault
+    rete    ;Dec past zero does nothing
     dec word [rbp + drvBlk.wOpenCnt]
     return
 .remMed:  ;Function 15
@@ -699,7 +785,6 @@ msdDriver:
 .fat16Str   db "FAT16   ",0
 .fat32Str   db "FAT32   ",0
 .defLbl     db "NO NAME ",0 ;Default volume label
-.oemName    db "SCPDOSv1",0 ;Default OEM name
 
 .pCurDrv    dq 0    ;Pointer to the drvBlk for the drv we are accessing
 .dfltBPB     defaultBPB                 ;If no remdev, A and B point here
