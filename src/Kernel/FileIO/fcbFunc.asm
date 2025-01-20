@@ -277,12 +277,24 @@ openFileFCB:       ;ah = 0Fh
     mov eax, errAccDen
     jmp fcbErrExit
 
+closeFileFCB:      ;ah = 10h
+;This is a minimal function stub which is necessary to "pseudo"-close
+; opens/creates of volume labels via the open/createFCB function.
+; Though those functions close by themselves, I won't document that
+; for future compatibility. Thus, if this function encounters a 
+; open/create volume label FCB, it returns OK. Else it fails.
+    mov qword [workingFCB], rdx     ;Save the FCB ptr
+    cmp byte [rdx + exFcb.extSig], -1
+    jne openFileFCB.exitErr
+    cmp byte [rdx + exFcb.attribute], dirVolumeID
+    jne openFileFCB.exitErr
+    jmp fcbGoodExit
+
 ;=================================================================
 ;=================================================================
 ;These functions are marked as reserved for future expansion.
 ;=================================================================
 ;=================================================================
-closeFileFCB:      ;ah = 10h
 sequentialReadFCB: ;ah = 14h
 sequentialWriteFCB:;ah = 15h
 randomReadFCB:     ;ah = 21h

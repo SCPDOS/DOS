@@ -53,7 +53,8 @@ conInit:
     pop rbx
     pop rax
 devDrvExit:
-    mov word [rbx], drvDonStatus ;Set the drive done status bit
+;Must be jumped to with rbx -> initReqPkt
+    mov word [rbx + initReqPkt.status], drvDonStatus ;Set done bit
     push rax
     lea rax, ejectPoint
     mov qword [rbx + initReqPkt.endptr], rax
@@ -122,175 +123,346 @@ clockInit:
     jmp devDrvExit
 
 msdInit:
-    ;We create a function to deal with BPB parsing etc
-    ;Start with the first primary partition on each hard disk (until max)
-    ;   They dont have to be bootable
-    ;Then go back and look for other partitions partitions. 
-    ;   Add each other primary or logical ptn (until max)
-    ;Then finish with removable devices. First two devs become A: and B: resp.
-    ;Use r8 as device counter
-    ;Use r15 as the pointer to the next free BPB entry
-    ;First set up the two default BPB's if no removable drives
+;Drive letter assignment works as follows:
+; A and B always reserved for removable devices even if none.
+; C,... for as many fixed disk partitions present in system.
+; Any additional removable devices then come after the fixed disks.
+
+
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
 ;    mov byte [7c02h], 0
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
-    push rbx    ;Push the pointer to the driver parameter block
-    int 31h ;Get number of Int 33h devices in r8b
-    shr r8, 8   ;Isolate bytes 1 and 2 of r8
-    mov ax, r8w
-    mov byte [remDrv], ah    ;Save num of phys int 33h rem drives
-    mov byte [fixDrv], al    ;Save number of physical hard drives
-    mov byte [physVol], 0    ;Initialise this byte to 0
 
-    lea r15, [msdDriver.msdBPBblks]    ;Point to the BPB storage place
-    cmp byte [fixDrv], 0 ;Do we have any fixed drives?
-    jz .remInit ;No? Go to removables
-    mov r8, 2   ;Device number 2 = C:
-    mov dl, 80h ;Start with HDD 0
-.primary:
-    cmp byte [physVol], 3  ;Are we at maximum devices (A: B: reserved)?
-    je .remInit
-    xor ecx, ecx    ;Sector 0
-    call .initReadSector ;Sets rbx to msdtempbuffer
-    jc .primaryEpilog
-    ;Here, check MBR or BPB
-    cmp word [rbx + 1FEh], 0AA55h
-    jne .primaryEpilog  ;Not a valid MBR or BPB, skip disk
-    ;Now check if BPB or MBR
-    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-    mov ah, byte [rbx + 2]
-    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-    je .primaryEpilog ;Will process these during Extended Ptn search
-    ;Here with a MBR. Search the MBR for the first Primary Partition
-    ;Look for CHS/LBA types (01h/04h/06h/0Bh/0Ch/0Eh) for primary ptns
-    add rbx, mbr.mbrEntry1 ;Point rbx to mbrEntry1
-    mov cl, 4
-.checkPrimary:
-    mov al, byte [rbx + mbrEntry.ptnType]
-    cmp al, 01
-    je .primaryFound
-    cmp al, 04
-    je .primaryFound
-    cmp al, 06
-    je .primaryFound
-    cmp al, 0Bh
-    je .primaryFound
-    cmp al, 0Ch
-    je .primaryFound
-    cmp al, 0Eh
-    je .primaryFound
-    add rbx, mbrEntry_size  ;Goto next entry byte
-    dec cl
-    jz .primaryEpilog
-    jmp short .checkPrimary
-.primaryFound:
-    ;Copy the first sector of this partition into memory
-    mov ecx, dword [rbx + mbrEntry.lbaStart]    ;Get lba for volume start
-    call .readSectorAndAddDataToTables
-.primaryEpilog:
-    inc dl  ;Goto next BIOS drive
-    mov dh, dl
-    and dh, 7Fh ;Clear bit 7
-    cmp dh, byte [fixDrv]    ;Have we gone thru all hard drives?
-    jne .primary    ;Whilst we have fewer, go back
-.extended:
-;We have gone through all the devices once
-    ;cmp byte [physVol], 3  ;Are we at maximum devices (A: B: reserved)?
-    ;je .remInit ;If yes, get removable devices
-    ;mov dl, 80h ;Go back to hard drive 80h
-    ;xor ecx, ecx    ;Get MBR back
-    ;call .initReadSector
-    ;Now we eventually search MBR for a FAT extended partition
-.remInit:
-;Start by linking the default BPB's in the pointers table in the event that
-; for some reason the removable drives stop working or dont exist.
-    lea rsi, qword [msdDriver.dfltBPB]  ;Point to the default BPB
-    lea rdi, qword [msdDriver.msdBPBTbl]  ;Point to the BPB ptr table
-    mov qword [rdi], rsi    ;Store the pointer in the first two entries
-    mov qword [rdi + 8], rsi
-;This forces the hard drives to start at C:
-    mov r9, r8  ;Save number of next device after fixed drive in r9
-    xor dl, dl  ;Start with removable device 0
-    movzx r8, dl ;Once r8b becomes 2, go past the disk drives
-    ;rdi points to the space for the subsequent bpb's
-    cmp byte [remDrv], 0  ;Just skip removable init if no rem drives
-    jnz .removables
-    add byte [physVol], 2 ;Pretend we have two more drives (A: and B:)
-    jmp short .msdExit  ;And return!
-.removables:
-    xor ecx, ecx    ;Read sector 0
-    call .readSectorAndAddDataToTables
-.removableEpilogue:
-    inc dl  ;Goto next BIOS device now
-    cmp dl, byte [remDrv] ;Are we past last rem dev?
-    je .end
-    cmp r8, 2 ;Are we back at drive C: ?
-    jne .re0
-    movzx r8, r9b    ;Return to this drive number
-.re0:
-    cmp r8b, 5  ;Are we at logical device 5 (F:, not supported)?
-    jb .removables
-.end:
-    cmp byte [remDrv], 1  ;Do we have only 1 removable device?
-    je .singleRemDev
-.msdExit:
-    pop rbx ;rbx points to the parameter block
-    ;Now we set the .optptr, .endptr and .numunt
-    push rax
-    movzx eax, byte [physVol]   ;Get the number of detected volumes
-    mov byte [rbx + initReqPkt.numunt], al
-    lea rax, msdDriver.msdBPBTbl    ;Get the BPB table here
-    mov qword [rbx + initReqPkt.optptr], rax
-    pop rax
-    jmp devDrvExit  ;Sets .endptr and the status word
-.singleRemDev:
-    ;Copy Drive A: BPB pointer and BIOS map data for Drive B:
-    lea rbx, qword [msdDriver.msdBIOSmap]
-    mov dl, byte [msdDriver.msdBIOSmap]   ;Get drive A: BIOS map
-    mov byte [rbx + 1], dl  ;Store in byte for Drive B:
-    lea rbx, qword [msdDriver.msdBPBTbl] 
-    mov rdx, qword [rbx]    ;Get BPB pointer of Drive A:
-    mov qword [rbx + 8], rdx    ;Store in qword for Drive B:
-    mov byte [msdDriver.msdSingleFlag], -1   ;Set this mode on
-    mov byte [msdDriver.msdSingleDrv], 0 ;Start on drive A
-    inc byte [physVol] ;Gotta register the phantom drive!
-    jmp short .msdExit
-.initReadSector:
-;Called with sector number in rcx and BIOS device number in dl
-    mov ah, 82h ;Read
-    mov al, 1   ;One sector
-    lea rbx, qword [msdTempBuffer]  ;Into temporary buffer
+;Start by setting up the link pointers to the load address of the 
+; drive table.
+    mov ecx, 4
+    lea rbp, msdDriver.drvBlkTbl      ;Point to the first drive block
+    mov rsi, rbp
+.dskTblLp:
+    mov rdi, rsi            ;Mov current block to current block
+    add rsi, drvBlk_size    ;Point current block to next block
+    mov qword [rdi], rsi    ;Store current blk in current block
+    dec ecx                 ;Decrement the count
+    jnz .dskTblLp
+;Now get number of Int 33h information packed in r8
+    int 31h
+    ;Returns:
+    ;r8[Byte 0] = Number of COM ports
+    ;r8[Byte 1] = Number of fixed disks
+    ;r8[Byte 2] = Number of units on EHCI bus
+    ;r8[Byte 3] = Number of Int 33h units
+    mov qword [msdTempBuffer], r8   
+    movzx eax, byte [msdTempBuffer + 3]
+    movzx ebx, byte [msdTempBuffer + 1]
+    sub eax, ebx    ;Get remdevs in eax
+    mov byte [remDrv], al    ;Save num of phys int 33h rem drives
+    mov byte [fixDrv], bl    ;Save number of physical hard drives
+    mov byte [physVol], 0    ;Initialise reported volumes to 0
+;Start by doing fixed disks.
+    test ebx, ebx   ;If no fixed disks, proceed with removables
+    jz .doRem
+    mov byte [biosDrv], 80h ;Start from first fixed disk
+    mov byte [dosDrv], 2    ;Start from drive C:
+.hdLp:
+;Read the first sector of the hard drive. If a valid BPB is detected,
+; we read the BPB in. Else, we attempt to interpret the sector as an MBR.
+    xor ecx, ecx    ;Load sector 0 of the disk
+    call .ptnUpdateBpb
+    jc .mbrFnd  ;If CF=NC, this sector has a valid BPB. No MBR.
+;The odd case where there is a BPB on the hard disk :)
+    or word [rbp + drvBlk.wDevFlgs], devFixed
+    call .advDiskPtrs
+    jmp short .fatDiskOk
+.mbrFnd:
+    jne .gotoNextDisk   ;If CF=CY and ZF=NZ, invalid disk! Goto next disk!
+;Now we check if we have a valid MBR signature.
+    cmp word [msdTempBuffer + mbr.mbrSig], 0AA55h
+    jne .gotoNextDisk
+    call .processMbr    ;This disk is done.
+.fatDiskOk:
+    cmp byte [physVol], 3   ;If done 3 volumes, immediately goto remdevs
+    je .doRem
+.gotoNextDisk:
+    inc byte [biosDrv]  ;Goto next fixed disk
+    movzx eax, byte [biosDrv]   ;Get new device
+    and al, ~80h    ;Drop the upper bit
+    cmp al, byte [fixDrv]
+    jne .hdLp
+.doRem:
+    movzx eax, byte [physVol]
+    mov byte [fixPtn], al
+    mov byte [biosDrv], 0   ;Start from drive 0
+    mov byte [dosDrv], 0    ;And give it DOS A:
+    cmp byte [remDrv], 0
+    je .noRems
+.remLp:
+    xor ecx, ecx    ;Load sector 0 of the disk
+    call .ptnUpdateBpb
+    jc .remNext     ;If the BPB was bad, next disk :)
+;Now test if we have a changeline for this device.
+    mov dl, byte [rbp + drvBlk.bBIOSNum]
+    xor ecx, ecx
+    mov eax, 1600h
     int 33h
-    ret
+    jc .remNext
+;Before we blindly test it, we check if the number of our removable
+; device is past that of the EHCI devices. If it is, we don't trust
+; that it has a change line. r8 preserves the value until here.
+    mov rax, r8 ;Get the r8 word into rax
+    shr eax, 16 ;Drop the first two bytes
+    cmp al, byte [remDrv]
+    jae .remNext
+    or word [rbp + drvBlk.wDevFlgs], devChgLine
+.remNext:
+    call .advDiskPtrs           ;Move rbp to the next drive block
+    cmp byte [physVol], 5       ;If we just added our 5th volume, exit! :)
+    je .msdExit
+    inc byte [biosDrv]          ;Else, goto next remdev
+    movzx eax, byte [biosDrv]   ;Get the bios drive number
+    cmp al, byte [remDrv]       ;Once they are equal, we are done!
+    je .msdExit
+    cmp al, 3                   ;Else, did we process two remdevs?
+    jb .remLp                   ;If not, do normal processing.
+;Here we specially now shift the numbers past the hard drive partitions.
+;Keep processing biosDrvs as normal. We just got to update DOS drive letter
+; to go past the letters assigned to the fixed disk.
+    mov al, byte [fixPtn]       ;Get the number of partitions from fixed
+    add al, 2   ;Add two to this number to account for A and B.
+    mov byte [dosDrv], al
+    jmp short .remLp
+.msdExit:
+    cmp byte [remDrv], 1
+    jne .skipSingle
+;Here we do the A: >-< B: jank.
+;We know rbp points to what should the block for B:. The block for A:
+; is right behind it.
+.doSingle:
+    mov rsi, rbp
+    sub rsi, drvBlk_size    ;Go back a drvBlk (yuck!)
+    or word [rsi + drvBlk.wDevFlgs], devMulti  ;Indicate multiple drives now
+    mov byte [rbp + drvBlk.bDOSNum], 1  ;Indicate B: drive
+    lea rdi, qword [rbp + drvBlk.bBIOSNum]
+    add rsi, drvBlk.bBIOSNum
+    mov ecx, (drvBlk_size - 9)  ;8 bytes Link ptr and 1 byte DOS number
+    rep movsb
+    and word [rbp + drvBlk.wDevFlgs], ~devOwnDrv   ;Clear ownership!
+    inc byte [physVol]  ;And add this drive to the count!
+.skipSingle:
+    movzx ebx, byte [physVol]   ;Get the number of detected volumes
+    push rbx    ;Save this count on the stack
+    dec ebx     ;Turn into an offset into the table
+    mov eax, drvBlk_size    ;Get the size of a table entry
+    mul ebx     ;Multiply the size by the offset, get table offset in rax
+    lea rsi, msdDriver.drvBlkTbl    ;Go to the start of the table
+    mov qword [rsi + rax + drvBlk.pLink], -1 ;Cut the table at this entry
+    lea rbx, bpbArray
+.buildBPBArrayLp:
+    lea rdi, qword [rsi + drvBlk.bpb]       ;Get the BPB ptr for this entry
+    movzx eax, byte [rsi + drvBlk.bDOSNum]  ;Get the DOS number for this entry
+    mov qword [rbx + 8*rax], rdi            ;Use as offset into ptr array
+    mov rsi, qword [rsi + drvBlk.pLink]     ;Walk the table
+    cmp rsi, -1 ;Did we read the end of the table?
+    jne .buildBPBArrayLp    ;No... keep going
+    mov rsi, rbx    ;Move the bpbArray pointer into rsi now
+;Now we set the .optptr, .endptr and .numunt in driver request block
+    mov rbx, qword [reqHdrPtr]  ;Get the header pointer back
+    pop rax         ;Get back the number of detected volumes
+    mov byte [rbx + initReqPkt.numunt], al  ;Store number of volumes
+    mov qword [rbx + initReqPkt.optptr], rsi    ;Store the bpbArray here
+    mov word [msdDriver.fnTbl], 0 ;Now prevent init from firing again
+    jmp devDrvExit  ;Sets .endptr and the status word
+.noRems:
+;Pretend we do have something. If we are here, "worst case" we have 
+; three fixed disk partitions. rbp points to the fourth one so pretend
+; we just did the first remdev. This drive gets registered as having
+; no changeline so if somehow this changes, worst case, no changeline.
+    mov rbp, qword [rbp + drvBlk.pLink]
+    inc byte [physVol]  ;Add the pretend A: drive to the count!
+    jmp .doSingle
 
-.readSectorAndAddDataToTables:
-;Input:
-;ecx = Sector number to read
-;r15 -> bpb array entry for the BPB
-;r8 = Logical Drive number (offset into arrays)
-    call .initReadSector
-    retc   ;Goto next device
-    ;Now verify this is a BPB
-    mov al, byte [rbx]  ;rbx is pointed to the temp buffer by initreadsector
-    mov ah, byte [rbx + 2]
-    cmp ax, 090EBh  ;WinDOS and SCP compatible (always generate short jmp)
-    retne   ;If not, skip
-    ;Now copy data to internal tables
-    mov rsi, rbx    ;Point rsi to the temp buffer
-    push rcx
-    mov ecx, bpbEx_size/8   ;Copy BPB
-    mov rdi, r15
-    rep movsq   ;Copy the BPB
-    pop rcx
-    ;Store BIOS map value and BPBblk pointer in bpbTbl
-    lea rbx, qword [msdDriver.msdBIOSmap]
-    add rbx, r8
-    ;Add device count to rbx to point to correct entry
-    mov byte [rbx], dl  ;Store BIOS map value 
-    lea rbx, qword [msdDriver.msdBPBTbl]
-    lea rbx, qword [rbx + 8*r8]
-    mov qword [rbx], r15
-    inc r8  ;Goto next logical drive
-    inc byte [physVol] ;Increment the number of valid drives we have
-    add r15, bpbEx_size  ;Goto next table entry
+;------------------------
+; Procedures for init
+;------------------------
+
+.processMbr:
+;We have an MBR in the MBR table. Now we attempt to interpret it.
+;If we return CF=CY, disk read failed. We skip this disk.
+    call .copyMbr           ;Copy MBR table over from buffer
+    mov byte [mbrEtry], 0   ;Start from the first entry in the MBR
+    lea rsi, mbrE
+.pmbrLp:
+    mov al, byte [rsi + mbrEntry.ptnType]
+    call .checkMbrPtnType
+    jnz .pmbr1  ;Jump if not a valid partition type (includes free ptns)
+    call .checkDataPtn
+    je .pmbrDodata
+    call .processEPtn   ;Here we process EBR
+    retc                ;If this returns CF=CY, read error on disk. Exit!
+    jmp short .pmbrXtrejoin   ;Now go to the next MBR entry
+.pmbrDodata:
+    mov ecx, dword [rsi + mbrEntry.lbaStart] ;And the partition start
+    call .ptnUpdateBpb ;And update the BPB. If this fails, we skip the disk
+    jnc .pmbrOk
+    retnz ;If we had a read error, just exit!
+;Else add the unformatted bit to the flags.
+    or word [rbp + drvBlk.wDevFlgs], devUnFmt  ;Register ptn. Freeze IO.
+.pmbrOk:
+    or word [rbp + drvBlk.wDevFlgs], devFixed
+    movzx eax, byte [rsi + mbrEntry.ptnAtrib]
+    and eax, ptnActive
+    or eax, ptnPrimary
+    mov word [rbp + drvBlk.wPtnType], ax
+    call .advDiskPtrs
+.pmbrXtrejoin:
+    cmp byte [physVol], 3   ;Once here we are done!
+    rete 
+.pmbr1:
+    inc byte [mbrEtry]  ;Increment the counter
+    cmp byte [mbrEtry], 4
+    rete
+    add rsi, mbrEntry_size
+    jmp short .pmbrLp
+
+.processEPtn:
+;Process all logical process in an extended partition. rsi points to
+; the mbr entry in the mbrE table that describes this extended partition.
+;Thus we always know the "root" sector of this extended partition.
+    mov ecx, dword [rsi + mbrEntry.lbaStart]    ;Get the start of extended ptn
+.peplp:
+    call .readSector    ;Read the EBR sector in (sector number in ecx)
+    retc    ;If we cant read the EBR in, assume end of logical partition.
+    call .copyEbr       ;Save the EBR
+;Now we check the saved EBR is valid.
+    movzx eax, byte [ebrE + mbrEntry.ptnType]
+    call .checkEbrPtnType   ;Here we dont allow another extended case
+    jnz .pepNextEbr ;If this is not a valid ptn type, goto next
+    movzx eax, byte [ebrE + mbr_size + mbrEntry.ptnType]    ;Get link ptn type
+    call .checkDataPtn  ;This MUST NOT be a Data ptn
+    je .pepNextEbr  ;If it is a data ptn, we ignore this entry as it is invalid.
+;Now we get the absolute start sector of this partition.
+    add ecx, dword [ebrE + mbrEntry.lbaStart]   ;Add relative start
+    call .ptnUpdateBpb  ;Read and interpret the BPB
+    jnc .pepOk
+    retnz ;If we had a read error, just exit!
+;Else add the unformatted bit to the flags.
+    or word [rbp + drvBlk.wDevFlgs], devUnFmt  ;Register ptn. Freeze IO.
+.pepOk:
+;If here, this partition will be given a CDS entry.
+;Now we go to the next logical partition in the extended partition and
+; move to the next drive
+    or word [rbp + drvBlk.wDevFlgs], devFixed
+    movzx eax, byte [rsi + mbrEntry.ptnAtrib]
+    and eax, ptnActive
+    or eax, ptnPrimary
+    mov word [rbp + drvBlk.wPtnType], ax
+    call .advDiskPtrs
+    cmp byte [physVol], 3   ;Once here we are done!
+    rete 
+.pepNextEbr:
+;Else we now walk the disk linked list.
+    mov ecx, dword [ebrE + mbr_size + mbrEntry.numSectors] ;Get rel strt of ptn
+    test ecx, ecx   ;Is the start sector of the next logical ptn 0?
+    retz    ;Return if so.
+    add ecx, dword [rsi + mbrEntry.lbaStart]    ;Else, make it absolute sector
+    jmp short .peplp
+
+.advDiskPtrs:
+    mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
+    inc byte [dosDrv]       ;Go to the next DOS device
+    inc byte [physVol]
     return
+
+.copyEbr:
+;Copies the EBR from the EBR sector in the buffer
+    push rcx
+    push rsi
+    push rdi
+    lea rdi, mbrE
+    mov ecx, 2*mbrEntry_size
+    jmp short .cpmbr
+.copyMbr:
+;Copies the MBR from the MBR sector in the buffer
+    push rcx
+    push rsi
+    push rdi
+    lea rdi, mbrE
+    mov ecx, 4*mbrEntry_size
+.cpmbr:
+    lea rsi, qword [msdTempBuffer + mbr.mbrEntry1]
+    rep movsb
+    pop rdi
+    pop rsi
+    pop rcx
+    return
+
+.readSector:
+;Input: ecx = Sector to read
+    movzx edx, byte [biosDrv]
+    mov eax, 8201h  ;LBA Read One sector
+    lea rbx, msdTempBuffer
+    int 33h
+    return
+
+.ptnUpdateBpb:
+;Setups up the call for below on the current partition.
+;Input: ecx = Number of hidden sectors
+;Output:
+;   CF=NC: All ok, BPB entry in rbp filled.
+;   CF=CY and ZF=ZE: Bad BPB read.
+;   CF=CY and ZF=NZ: Sector read failed.
+    mov word [rbp + drvBlk.wDevFlgs], 0    ;Clean the flags to start with
+    mov dword [rbp + drvBlk.dHiddSec], ecx
+    movzx eax, byte [dosDrv]
+    mov byte [rbp + drvBlk.bDOSNum], al ;Save the DOS number
+    movzx eax, byte [biosDrv]   ;Get the BIOS drive
+    mov byte [rbp + drvBlk.bBIOSNum], al
+    lea rbx, msdTempBuffer  ;Use Temporary Buffer
+    push rsi    ;Save the mbr entry ptr
+    call msdDriver.updateBpb
+    pop rsi
+    retnc
+    cmp al, 07h ;Bad Partition?
+    stc         ;Ensure we set the CF again
+    return
+
+.checkEbrPtnType:
+;Input: al = Partition type
+;Output: ZF=ZE => Valid partition type found
+;        ZF=NZ => Not a valid partition type (05h and 0Fh not valid)
+    call .checkMbrPtnType
+    retne           ;Bubble up the not equal if not in the partition table
+.checkDataPtn:
+    cmp al, 05h     ;Extended Partition which should use CHS for addressing
+    je .ceptBad
+    cmp al, 0Fh     ;Extended Partition which should use LBA for addressing
+    je .ceptBad
+    cmp eax, eax    ;Set the Zero flag
+    return
+.ceptBad:
+    test eax, eax   ;Clears the Zero flag (as eax is not zero)
+    return
+
+.checkMbrPtnType:
+;Input: al = Partition type
+;Output: ZF=ZE => Valid partition type found
+;        ZF=NZ => Not a valid partition type
+    push rcx
+    push rdi
+    lea rdi, .ptnTbl
+    mov ecx, .ptnTblL
+    repne scasb ;Find the entry in al
+    pop rdi
+    pop rcx
+    return
+
+;Table contents:
+; 01h - FAT 12 Partition. CHS addressing should be used.
+; 04h - FAT 16 Partition up to 32MB. CHS addressing should be used.
+; 05h - Extended Partition in MBR found. CHS addressing should be used.
+; 06h - FAT 16 Partition over 32MB. CHS addressing should be used.
+; 0Bh - FAT 32 Partition. CHS addressing should be used.
+; 0Ch - FAT 32 Partition. LBA addressing should be used.
+; 0Eh - FAT 16 Partition. LBA addressing should be used.
+; 0Fh - Extended Partition in MBR found. LBA addressing should be used.
+.ptnTbl db 01h, 04h, 05h, 06h, 0Bh, 0Ch, 0Dh, 0Eh, 0Fh
+.ptnTblL    equ $ - .ptnTbl 

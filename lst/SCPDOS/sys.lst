@@ -123,7 +123,7 @@
     36                              <1>     drvIOCTL        equ 19
     37                              <1>     drvGETDRVMAP    equ 23
     38                              <1>     drvSETDRVMAP    equ 24
-    39                              <1>     
+    39                              <1>     drvMAXCMD       equ 24
     40                              <1> ;Driver Error equates 
     41                              <1>     drvWPErr        equ 0   ;Write Protect Violation
     42                              <1>     drvBadUnit      equ 1   ;Unknown unit
@@ -405,7 +405,6 @@
    220 00000008 ????????????????    <1>     .startSector    resb 8  ;Sector to start write at
    221 00000010 ????????????????    <1>     .xferBuffer     resb 8  ;Transfer buffer for data
    222                              <1> endstruc
-   223                              <1> 
      6                                  %include "./src/Include/fatStruc.inc"
      1                              <1> 
      2                              <1> ;-------------------------------------------------------;
@@ -424,252 +423,273 @@
     15                              <1> ;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
     16                              <1> ;-------------------------------------------------------;
     17                              <1> 
-    18                              <1> struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
-    19                              <1> 
-    20 00000000 ??????              <1>     .jmpBoot    resb 3 
-    21 00000003 ????????????????    <1>     .oemName    resb 8  ;OEM name
-    22 0000000B ????                <1>     .bytsPerSec resw 1  ;Bytes per sector
-    23 0000000D ??                  <1>     .secPerClus resb 1  ;Sectors per cluster
-    24 0000000E ????                <1>     .revdSecCnt resw 1  ;Number of reserved sectors, in volume
-    25 00000010 ??                  <1>     .numFATs    resb 1  ;Number of FATs on media
-    26 00000011 ????                <1>     .rootEntCnt resw 1  ;Number of 32 byte entries in Root directory
-    27 00000013 ????                <1>     .totSec16   resw 1  ;Number of sectors on medium
-    28 00000015 ??                  <1>     .media      resb 1  ;Media descriptor byte
-    29 00000016 ????                <1>     .FATsz16    resw 1  ;Number of sectors per FAT
-    30 00000018 ????                <1>     .secPerTrk  resw 1  ;Number of sectors per "track"
-    31 0000001A ????                <1>     .numHeads   resw 1  ;Number of read "heads"
-    32 0000001C ????????            <1>     .hiddSec    resd 1  ;Number of hidden sectors, preceeding volume start
-    33 00000020 ????????            <1>     .totSec32   resd 1  ;32 bit count of sectors
-    34                              <1> 
-    35 00000024 ??                  <1>     .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    36 00000025 ??                  <1>     .reserved1  resb 1  ;Reserved byte
-    37 00000026 ??                  <1>     .bootSig    resb 1  ;Extended boot signature (29h)
-    38 00000027 ????????            <1>     .volID      resd 1  ;Volume serial number
-    39 0000002B <res Bh>            <1>     .volLab     resb 11 ;Volume label string
-    40 00000036 ????????????????    <1>     .filSysType resb 8  ;File system type string
-    41                              <1> 
+    18                              <1> struc bpb          ;FAT 12 and 16 BPB
+    19 00000000 ????                <1>     .bytsPerSec dw ?  ;Bytes per sector
+    20 00000002 ??                  <1>     .secPerClus db ?  ;Sectors per cluster
+    21 00000003 ????                <1>     .revdSecCnt dw ?  ;Number of reserved sectors, in volume
+    22 00000005 ??                  <1>     .numFATs    db ?  ;Number of FATs on media
+    23 00000006 ????                <1>     .rootEntCnt dw ?  ;Number of 32 byte entries in Root directory
+    24 00000008 ????                <1>     .totSec16   dw ?  ;Number of sectors on medium
+    25 0000000A ??                  <1>     .media      db ?  ;Media descriptor byte
+    26 0000000B ????                <1>     .FATsz16    dw ?  ;Number of sectors per FAT
+    27 0000000D ????                <1>     .secPerTrk  dw ?  ;Number of sectors per "track"
+    28 0000000F ????                <1>     .numHeads   dw ?  ;Number of read "heads"
+    29 00000011 ????????            <1>     .hiddSec    dd ?  ;Number of hidden sectors, preceeding volume start
+    30 00000015 ????????            <1>     .totSec32   dd ?  ;32 bit count of sectors
+    31                              <1> endstruc
+    32                              <1> 
+    33                              <1> struc extBs
+    34                              <1> ;Extended bootsector structure. If present, comes immediately after 
+    35                              <1> ; BPB in bootsector
+    36 00000000 ??                  <1>     .drvNum     db ?  ;Logical drive number (00h or 80h)
+    37 00000001 ??                  <1>     .reserved1  db ?  ;Reserved byte
+    38 00000002 ??                  <1>     .bootSig    db ?  ;Extended boot signature
+    39 00000003 ????????            <1>     .volId      dd ?  ;Volume serial number
+    40 00000007 <res Bh>            <1>     .volLab     db 11 dup (?) ;Volume label string
+    41 00000012 ????????????????    <1>     .filSysType db 8 dup (?)  ;File system type string
     42                              <1> endstruc
-    43                              <1> 
-    44                              <1> struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
-    45                              <1> 
-    46 00000000 ??????              <1>     .jmpBoot    resb 3
-    47 00000003 ????????????????    <1>     .oemName    resb 8  ;OEM name
-    48 0000000B ????                <1>     .bytsPerSec resw 1  ;Bytes per sector
-    49 0000000D ??                  <1>     .secPerClus resb 1  ;Sectors per cluster
-    50 0000000E ????                <1>     .revdSecCnt resw 1  ;Number of reserved sectors
-    51 00000010 ??                  <1>     .numFATs    resb 1  ;Number of FATs on media
-    52 00000011 ????                <1>     .rootEntCnt resw 1  ;Number of entries in Root directory
-    53 00000013 ????                <1>     .totSec16   resw 1  ;Number of sectors on medium
-    54 00000015 ??                  <1>     .media      resb 1  ;Media descriptor byte
-    55 00000016 ????                <1>     .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
-    56 00000018 ????                <1>     .secPerTrk  resw 1  ;Number of sectors per "track"
-    57 0000001A ????                <1>     .numHeads   resw 1  ;Number of read "heads"
-    58 0000001C ????????            <1>     .hiddSec    resd 1  ;Number of hidden sectors
-    59 00000020 ????????            <1>     .totSec32   resd 1  ;32 bit count of sectors
-    60                              <1> 
-    61 00000024 ????????            <1>     .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
-    62 00000028 ????                <1>     .extFlags   resw 1  ;Extended Flags word
-    63 0000002A ????                <1>     .FSver      resw 1  ;File system version word, must be 0
-    64 0000002C ????????            <1>     .RootClus   resd 1  ;First Cluster of Root Directory
-    65 00000030 ????                <1>     .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
-    66 00000032 ????                <1>     .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
-    67 00000034 <res Ch>            <1>     .reserved   resb 12 ;Reserved 12 bytes
-    68                              <1> 
-    69 00000040 ??                  <1>     .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    70 00000041 ??                  <1>     .reserved1  resb 1  ;Reserved byte
-    71 00000042 ??                  <1>     .bootSig    resb 1  ;Extended boot signature (29h)
-    72 00000043 ????????            <1>     .volID      resd 1  ;Volume serial number
-    73 00000047 <res Bh>            <1>     .volLab     resb 11 ;Volume label string
-    74 00000052 ????????????????    <1>     .filSysType resb 8  ;File system type string
-    75                              <1> 
-    76                              <1> endstruc
-    77                              <1> 
-    78                              <1> struc mbr
-    79 00000000 <res 1B8h>          <1>     .bsCode     resb 440
-    80 000001B8 ????????            <1>     .diskID     resb 4
-    81 000001BC ????                <1>     .reserved   resb 2
-    82 000001BE <res 10h>           <1>     .mbrEntry1  resb 16
-    83 000001CE <res 10h>           <1>     .mbrEntry2  resb 16
-    84 000001DE <res 10h>           <1>     .mbrEntry3  resb 16
-    85 000001EE <res 10h>           <1>     .mbrEntry4  resb 16
-    86 000001FE ????                <1>     .mbrSig     resb 2
-    87                              <1> endstruc
-    88                              <1> 
-    89                              <1> struc mbrEntry
-    90 00000000 ??                  <1>     .ptnAtrib   resb 1  ;80h = active
-    91 00000001 ??????              <1>     .chsStart   resb 3  ;Ignore practically
-    92 00000004 ??                  <1>     .ptnType    resb 1  ;This being 00 means free
-    93 00000005 ??????              <1>     .chsEnd     resb 3  ;Ignore
-    94 00000008 ????????            <1>     .lbaStart   resb 4  ;Start of partition in 32 bit LBA
-    95 0000000C ????????            <1>     .numSectors resb 4  ;Number of sectors in partition
-    96                              <1> endstruc
-    97                              <1> 
-    98                              <1> struc ebr
-    99 00000000 <res 1BEh>          <1>     .bsCode     resb 446    ;Basic 16-bit code to error if launched into
-   100 000001BE <res 10h>           <1>     .ebrVolHdr  resb 16 ;Information about the volume itself
-   101 000001CE <res 10h>           <1>     .ebrLinkHdr resb 16 ;Link header information to next logical volume in ebr
-   102 000001DE <res 20h>           <1>     .reserved   resb 32 ;Reserved
-   103 000001FE ????                <1>     .mbrSig     resb 2
-   104                              <1> endstruc
-   105                              <1> 
-   106                              <1> 
-   107                              <1> struc fatDirEntry
-   108                              <1> 
-   109 00000000 <res Bh>            <1>     .name       resb 11 ;8.3 File Name w/o fullstop
-   110 0000000B ??                  <1>     .attribute  resb 1  ;Usual attributes
-   111 0000000C ??                  <1>     .ntRes      resb 1  ;Reserved 0
-   112 0000000D ??                  <1>     .crtTimeT   resb 1  ;Count of tenths of a second of file creation time <=199
-   113 0000000E ????                <1>     .crtTime    resb 2  ;Creation time, granularity of 2 seconds
-   114 00000010 ????                <1>     .crtDate    resb 2  ;Creation date
-   115 00000012 ????                <1>     .lastAccDat resb 2  ;Last Read/Write date, not 100% supported (consider later)
-   116 00000014 ????                <1>     .fstClusHi  resb 2  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
-   117 00000016 ????                <1>     .wrtTime    resb 2  ;Last modification (write) time
-   118 00000018 ????                <1>     .wrtDate    resb 2  ;Last modification (write) date
-   119 0000001A ????                <1>     .fstClusLo  resb 2  ;Lo word of 1st data cluster for file/dir
-   120 0000001C ????????            <1>     .fileSize   resb 4  ;32-bit quantity with size of file described by entry
-   121                              <1> 
-   122                              <1> endstruc
-   123                              <1> ;Directory attribute equates
-   124                              <1>     dirReadOnly     equ 01h
-   125                              <1>     dirHidden       equ 02h
-   126                              <1>     dirSystem       equ 04h
-   127                              <1>     dirVolumeID     equ 08h
-   128                              <1>     dirDirectory    equ 10h
-   129                              <1>     dirArchive      equ 20h
-   130                              <1>     dirCharDev      equ 40h ;Never written to disk, used to represent a Char Dev
-   131                              <1>     dirLongName     equ dirReadOnly | dirHidden | dirSystem | dirVolumeID
-   132                              <1>     ;If any of the three bits are set, then ALL three bits are set
-   133                              <1>     ; in addition to whatever the user passed to search for.
-   134                              <1>     dirInclusive    equ dirHidden | dirSystem | dirDirectory
-   135                              <1>     dirIncFiles     equ dirHidden | dirSystem
-   136                              <1> 
-   137                              <1> struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
-   138                              <1> 
-   139 00000000 ??????              <1>     .jmpBoot                resb 3 
-   140 00000003 ????????????????    <1>     .oemName                resb 8  ;OEM name
-   141 0000000B <res 35h>           <1>     .MustBeZero             resb 53 ;Must be 0, 53 bytes
-   142 00000040 ????????????????    <1>     .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
-   143 00000048 ????????????????    <1>     .volumeLength           resq 1  ;Volume Length in sectors
-   144 00000050 ????????            <1>     .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
-   145 00000054 ????????            <1>     .FATlength              resd 1  ;FAT length, in sectors
-   146 00000058 ????????            <1>     .clusterHeapOffset      resd 1  ;Start of data area, in sectors
-   147 0000005C ????????            <1>     .clusterCount           resd 1  ;Number of clusters on medium
-   148 00000060 ????????            <1>     .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
-   149 00000064 ????????            <1>     .volumeSerialNum        resd 1  ;Volume Serial Number
-   150 00000068 ????                <1>     .FSrevision             resw 1  ;Should be 0001 (v1.00)
-   151 0000006A ????                <1>     .volumeFlags            resw 1  ;Volume Flags, refer to documentation
-   152 0000006C ??                  <1>     .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
-   153 0000006D ??                  <1>     .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
-   154 0000006E ??                  <1>     .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
-   155 0000006F ??                  <1>     .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
-   156 00000070 ??                  <1>     .percentInUse           resb 1  ;Rounded down. FFh means unknown
-   157 00000071 ??????????????      <1>     .reserved               resb 7  ;Reserved for alignment
-   158                              <1> 
-   159                              <1> endstruc
-   160                              <1> 
-   161                              <1> struc FSInfo
-   162                              <1> 
-   163 00000000 ????????            <1>     .leadSig    resb 4  ;Leading Signature, should be 041615252h
-   164 00000004 <res 1E0h>          <1>     .reserved1  resb 480
-   165 000001E4 ????????            <1>     .strucSig   resb 4  ;Should be 061417272h
-   166 000001E8 ????????            <1>     .freeCount  resb 4  ;Contains the last known free cluster on volume
-   167 000001EC ????????            <1>     .nextFree   resb 4  ;Contains the first known free cluster on volume
-   168 000001F0 <res Ch>            <1>     .reserved2  resb 12 ;Should be 0
-   169 000001FC ????????            <1>     .trailSig   resb 4  ;Should be 0AA550000h
-   170                              <1> 
-   171                              <1> endstruc
-   172                              <1> fsInfoSig1  equ 041615252h
-   173                              <1> fsInfoSig2  equ 061417272h
-   174                              <1> fsInfoSig3  equ 0AA550000h
+    43                              <1> extBsSig    equ 29h
+    44                              <1> 
+    45                              <1> struc bpb32       ;FAT 32 BPB
+    46 00000000 ????                <1>     .bytsPerSec dw ?  ;Bytes per sector
+    47 00000002 ??                  <1>     .secPerClus db ?  ;Sectors per cluster
+    48 00000003 ????                <1>     .revdSecCnt dw ?  ;Number of reserved sectors
+    49 00000005 ??                  <1>     .numFATs    db ?  ;Number of FATs on media
+    50 00000006 ????                <1>     .rootEntCnt dw ?  ;Number of entries in Root directory
+    51 00000008 ????                <1>     .totSec16   dw ?  ;Number of sectors on medium
+    52 0000000A ??                  <1>     .media      db ?  ;Media descriptor byte
+    53 0000000B ????                <1>     .FATsz16    dw ?  ;Number of sectors per FAT, must be 0 for FAT 32
+    54 0000000D ????                <1>     .secPerTrk  dw ?  ;Number of sectors per "track"
+    55 0000000F ????                <1>     .numHeads   dw ?  ;Number of read "heads"
+    56 00000011 ????????            <1>     .hiddSec    dd ?  ;Number of hidden sectors
+    57 00000015 ????????            <1>     .totSec32   dd ?  ;32 bit count of sectors
+    58 00000019 ????????            <1>     .FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
+    59 0000001D ????                <1>     .extFlags   dw ?  ;Extended Flags word
+    60 0000001F ????                <1>     .FSver      dw ?  ;File system version word, must be 0
+    61 00000021 ????????            <1>     .RootClus   dd ?  ;First Cluster of Root Directory
+    62 00000025 ????                <1>     .FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
+    63 00000027 ????                <1>     .BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
+    64 00000029 <res Ch>            <1>     .reserved   db 12 dup (?) ;Reserved 12 bytes
+    65                              <1> endstruc
+    66                              <1> 
+    67                              <1> struc FSInfo
+    68 00000000 ????????            <1>     .leadSig    dd ? ;Leading Signature, should be 041615252h
+    69 00000004 <res 1E0h>          <1>     .reserved1  db 480 dup (?)
+    70 000001E4 ????????            <1>     .strucSig   dd ?  ;Should be 061417272h
+    71 000001E8 ????????            <1>     .freeCount  dd ?  ;Contains the last known free cluster on volume
+    72 000001EC ????????            <1>     .nextFree   dd ?  ;Contains the first known free cluster on volume
+    73 000001F0 <res Ch>            <1>     .reserved2  db 12 dup (?) ;Should be 0
+    74 000001FC ????????            <1>     .trailSig   dd ?  ;Should be 0AA550000h
+    75                              <1> endstruc
+    76                              <1> 
+    77                              <1> fsInfoSig1  equ 041615252h
+    78                              <1> fsInfoSig2  equ 061417272h
+    79                              <1> fsInfoSig3  equ 0AA550000h
+    80                              <1> 
+    81                              <1> struc drvBlk
+    82                              <1> ;--------------------------------------------------------------------
+    83                              <1> ; Drvblk Header information
+    84                              <1> ;--------------------------------------------------------------------
+    85 00000000 ????????????????    <1>     .pLink      dq ?    ;Pointer to the next drive block
+    86 00000008 ??                  <1>     .bDOSNum    db ?    ;DOS 0 based drive number, setLogicalDev may change it
+    87 00000009 ??                  <1>     .bBIOSNum   db ?    ;BIOS number, identifies physical drive
+    88                              <1> ;--------------------------------------------------------------------
+    89                              <1> ; In-use BPB for current media in here. Always have space for FAT32 
+    90                              <1> ;  volume. If FAT12/16, FAT32 fields are undefined (garbage gets 
+    91                              <1> ;  copied into those fields... not a problem)
+    92                              <1> ;--------------------------------------------------------------------
+    93                              <1> .bpb:
+    94 0000000A ????                <1>     .wBpS       dw ?    ;Bytes per sector
+    95 0000000C ??                  <1>     .bSpC       db ?    ;Sectors per cluster
+    96 0000000D ????                <1>     .wResC      dw ?    ;Number of reserved sectors
+    97 0000000F ??                  <1>     .bNumFAT    db ?    ;Number of FATs on media
+    98 00000010 ????                <1>     .wRtCntNum  dw ?    ;Number of entries in Root directory
+    99 00000012 ????                <1>     .wTotSec16  dw ?    ;Number of sectors on medium
+   100 00000014 ??                  <1>     .bMedDesc   db ?    ;Media descriptor byte
+   101 00000015 ????                <1>     .wFATsz16   dw ?    ;Number of sectors per FAT, must be 0 for FAT 32
+   102 00000017 ????                <1>     .wSecPerTrk dw ?    ;Number of sectors per "track"
+   103 00000019 ????                <1>     .wNumHeads  dw ?    ;Number of read "heads"
+   104 0000001B ????????            <1>     .dHiddSec   dd ?    ;Number of hidden sectors
+   105 0000001F ????????            <1>     .dTotSec32  dd ?    ;32 bit count of sectors
+   106                              <1> ;--------------------------------------------------------------------
+   107                              <1> ; The below vars are only accessed on FAT32 volumes
+   108                              <1> ;--------------------------------------------------------------------
+   109 00000023 ????????            <1>     .FATsz32    dd ?    ;32 bit count of sectors occupied by one FAT
+   110 00000027 ????                <1>     .extFlags   dw ?    ;Extended Flags word
+   111 00000029 ????                <1>     .FSver      dw ?    ;File system version word, must be 0
+   112 0000002B ????????            <1>     .RootClus   dd ?    ;First Cluster of Root Directory
+   113 0000002F ????                <1>     .FSinfo     dw ?    ;Sector number of FSINFO structure, usually 1
+   114 00000031 ????                <1>     .BkBootSec  dw ?    ;Backup Boot sector, either 0 or 6
+   115                              <1> ;--------------------------------------------------------------------
+   116                              <1> ; DrvBlk flags
+   117                              <1> ;--------------------------------------------------------------------
+   118 00000033 ??                  <1>     .bBpbType   db ?    ;BPB Type indicator (FAT12/16/32 or other)
+   119 00000034 ????                <1>     .wOpenCnt   dw ?    ;Device open count (make dword?)
+   120 00000036 ??                  <1>     .bDevType   db ?    ;Device type byte (21/440Dh type subcode)
+   121 00000037 ????                <1>     .wDevFlgs   dw ?    ;Flags for this device 
+   122 00000039 <res 35h>           <1>     .sMaxBPB    db bpb32_size dup (?)   ;Max capacity BPB for drive
+   123                              <1> .dAccTime:          ;Last media check time if remdev
+   124 0000006E ????????            <1>     .wPtnType   dd ?    
+   125                              <1> ;--------------------------------------------------------------------
+   126                              <1> ; Volume string and id for the drive described by this drvblk
+   127                              <1> ;--------------------------------------------------------------------
+   128 00000072 ????????            <1>     .volId      dd ?            ;Volume serial number
+   129 00000076 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
+   130 00000081 ??                  <1>                 db ?            ;Null terminator for string
+   131 00000082 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
+   132 0000008A ??                  <1>                 db ?            ;Null terminator for string
+   133                              <1> endstruc
+   134                              <1> 
+   135                              <1> ;FAT type values
+   136                              <1> bpbDskOff   equ 80h ;All Disk accesses return Not Ready (Unrecognised FAT)
+   137                              <1> bpbFat16    equ 40h ;FAT 16 disk
+   138                              <1> bpbFat32    equ 20h ;FAT 32 disk
+   139                              <1> bpbFat12    equ 10h ;FAT 12 disk
+   140                              <1> 
+   141                              <1> ;Device Flag values
+   142                              <1> devFixed    equ 1       ;Set if fixed disk 
+   143                              <1> devChgLine  equ 2       ;Set if the drive has a changeline
+   144                              <1> devLockBPB  equ 4       ;Makes BuildBPB not build a BPB if set
+   145                              <1> ;devSameSec  equ 8       ;All sectors in track are same size
+   146                              <1> devMulti    equ 10h     ;BIOS Drive has many logical units (A/B share)
+   147                              <1> devOwnDrv   equ 20h     ;Owner for possibly shared physical drive (A/B share)
+   148                              <1> devSwap     equ 40h     ;Device change detected (If A swapped and B same as A)
+   149                              <1> devChg      equ 80h     ;H/W Dev params changed (NOT USED, ALWAYS OFF)
+   150                              <1> devFmt      equ 100h    ;Disk reformatted (BPB changed)
+   151                              <1> devUnFmt    equ 200h    ;Fixed media only, disables reads/writes if set
+   152                              <1> 
+   153                              <1> ;Media byte bits
+   154                              <1> mbTwoHead   equ 1       ;Dual sided if bit set, single sided if not
+   155                              <1> mb8Sector   equ 2       ;8 sectors per track if bit set, 9 if not
+   156                              <1> mbRemDev    equ 4       ;Removable if set, Fixed if not.
+   157                              <1> 
+   158                              <1> ;Partition types
+   159                              <1> ptnPrimary  equ 1       ;A primary MBR partition
+   160                              <1> ptnLogical  equ 2       ;A logical MBR partition
+   161                              <1> ptnActive   equ 80h     ;An active partition
+   162                              <1> ptnGpt      equ 4       ;A primary GPT partition
+   163                              <1> ptrUnknown  equ 8000h   ;An unknown partition
+   164                              <1> 
+   165                              <1> struc mbr
+   166 00000000 <res 1B8h>          <1>     .bsCode     db 440 dup (?)
+   167 000001B8 ????????            <1>     .diskID     dd ?
+   168 000001BC ????                <1>     .reserved   dw ?
+   169 000001BE <res 10h>           <1>     .mbrEntry1  db 16 dup (?)
+   170 000001CE <res 10h>           <1>     .mbrEntry2  db 16 dup (?)
+   171 000001DE <res 10h>           <1>     .mbrEntry3  db 16 dup (?)
+   172 000001EE <res 10h>           <1>     .mbrEntry4  db 16 dup (?)
+   173 000001FE ????                <1>     .mbrSig     dw ?
+   174                              <1> endstruc
    175                              <1> 
-   176                              <1> 
-   177                              <1> struc msdTblEntry
-   178                              <1>     ;Header here
-   179 00000000 ????????????????    <1>     .pLink      dq ?    ;Pointer to the next msd table entry
-   180 00000008 ??                  <1>     .bDrvNum    db ?    ;DOS assigned driver letter
-   181 00000009 ??                  <1>     .bBIOSNum   db ?    ;BIOS number
-   182                              <1> ;Core BPB data goes here
-   183 0000000A ????                <1>     .wBpS       dw ?    ;Bytes per sector
-   184 0000000C ??                  <1>     .bSpC       db ?    ;Sectors per cluster
-   185 0000000D ????                <1>     .wResC      dw ?    ;Number of reserved sectors
-   186 0000000F ??                  <1>     .bNumFAT    db ?    ;Number of FATs on media
-   187 00000010 ????                <1>     .wRtCntNum  dw ?    ;Number of entries in Root directory
-   188 00000012 ????                <1>     .wTotSec16  dw ?    ;Number of sectors on medium
-   189 00000014 ??                  <1>     .bMedDesc   db ?    ;Media descriptor byte
-   190 00000015 ????                <1>     .wFATsz16   dw ?    ;Number of sectors per FAT, must be 0 for FAT 32
-   191 00000017 ????                <1>     .wSecPerTrk dw ?    ;Number of sectors per "track"
-   192 00000019 ????                <1>     .wNumHeads  dw ?    ;Number of read "heads"
-   193 0000001B ????????            <1>     .dHiddSec   dd ?    ;Number of hidden sectors
-   194 0000001F ????????            <1>     .dTotSec32  dd ?    ;32 bit count of sectors
-   195                              <1>     bpbCoreL equ $ - .wBpS 
-   196                              <1> ;--------------------------------------------------------------------
-   197 00000023 ??                  <1>     .bBpbFlgs   db ?    ;Flags for this BPB
-   198 00000024 ????                <1>     .wOpenCnt   dw ?    ;Device open count (make dword?)
-   199 00000026 ??                  <1>     .bDevType   db ?    ;Derice type byte (21/440Dh type subcode)
-   200 00000027 ????                <1>     .wDevFlgs   dw ?    ;Flags for this device 
-   201 00000029 ??                  <1>                 db ?
-   202                              <1>     .dAccTime:          ;Last access time if remdev (0 for now)
-   203 0000002A ????????            <1>     .wPtnType   dd ?    
-   204                              <1> ;--------------------------------------------------------------------
-   205                              <1> ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-   206                              <1> ;This section is only meaningful on a FAT32 drive. Zero otherwise
-   207 0000002E ????????            <1>     .FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
-   208 00000032 ????                <1>     .extFlags   dw ?  ;Extended Flags word
-   209 00000034 ????                <1>     .FSver      dw ?  ;File system version word, must be 0
-   210 00000036 ????????            <1>     .RootClus   dd ?  ;First Cluster of Root Directory
-   211 0000003A ????                <1>     .FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
-   212 0000003C ????                <1>     .BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
-   213                              <1> ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   214 0000003E ??                  <1>     .bDrvType   db ?    ;00h or 80h (Rem or Fixed!)
-   215 0000003F ??                  <1>     .reserved1  db ?    ;Reserved byte
-   216 00000040 ??                  <1>     .bootSig    db ?    ;Extended boot signature (29h)
-   217 00000041 ????????            <1>     .volID      dd ?    ;Volume serial number
-   218 00000045 <res Bh>            <1>     .volLab     db 11 dup (?) ;Volume label string
-   219 00000050 ????????????????    <1>     .filSysType db 8 dup (?)  ;File system type string
-   220                              <1> endstruc
-   221                              <1> ;BPB Flag values
-   222                              <1> bpbDskOff   equ 80h ;All Disk accesses return Not Ready (Unrecognised FAT)
-   223                              <1> bpbFat16    equ 40h ;FAT 16 disk
-   224                              <1> bpbFat32    equ 20h ;FAT 32 disk
-   225                              <1> bpbFat12    equ 10h ;FAT 12 disk
-   226                              <1> 
-   227                              <1> ;Device Flag values
-   228                              <1> devFixed    equ 1       ;Set if device 
-   229                              <1> devChgLine  equ 2       ;Always set for us
-   230                              <1> devLockBPB  equ 4       ;Make BuildBPB fail
-   231                              <1> devSameSec  equ 8       ;All sectors in track are same size (always set)
-   232                              <1> devMulti    equ 10h     ;BIOS Drive has many logical units (Partitions/LUNs)
-   233                              <1> devShare    equ 20h     ;Logical drive for shared physical drive (A/B share)
-   234                              <1> devSwap     equ 40h     ;Device change detected
-   235                              <1> devChg      equ 80h     ;Dev params changed (NOT USED, ALWAYS OFF)
-   236                              <1> devFmt      equ 100h    ;Disk reformatted (BPB changed)
-   237                              <1> devAccess   equ 200h    ;Fixed media only, disables reads/writes if set
-   238                              <1> 
-   239                              <1> %macro defaultBPB 0
-   240                              <1>     db 0E9h
-   241                              <1>     db 00h
-   242                              <1>     db 90h
-   243                              <1>     db 'SCPDOSv1'
-   244                              <1>     dw 0200h                       
-   245                              <1>     db 01h                         
-   246                              <1>     dw 0001h                           
-   247                              <1>     db 02h                              
-   248                              <1>     dw 00E0h            
-   249                              <1>     dw 0B40h   
-   250                              <1>     db 0F0h                   
-   251                              <1>     dw 0009h                   
-   252                              <1>     dw 0012h                     
-   253                              <1>     dw 0002h                  
-   254                              <1>     dd 0                 
-   255                              <1>     dd 0 
-   256                              <1>     db 00h
-   257                              <1>     db 00h
-   258                              <1>     db 29h
+   176                              <1> struc ebr   ;A special type of MBR
+   177 00000000 <res 1BEh>          <1>     .bsCode     db 446 dup (?)    ;Basic 16-bit code to error if launched into
+   178 000001BE <res 10h>           <1>     .ebrVolHdr  db 16 dup (?) ;Information about the volume itself
+   179 000001CE <res 10h>           <1>     .ebrLinkHdr db 16 dup (?) ;Link ptr to next logical volume in ebr
+   180 000001DE <res 20h>           <1>     .reserved   db 32 dup (?) ;Reserved
+   181 000001FE ????                <1>     .mbrSig     dw ?
+   182                              <1> endstruc
+   183                              <1> 
+   184                              <1> struc mbrEntry
+   185 00000000 ??                  <1>     .ptnAtrib   db ?  ;80h = active
+   186 00000001 ??????              <1>     .chsStart   db 3 dup (?)  ;Ignore practically
+   187 00000004 ??                  <1>     .ptnType    db ?  ;This being 00 means free
+   188 00000005 ??????              <1>     .chsEnd     db 3 dup (?)  ;Ignore
+   189 00000008 ????????            <1>     .lbaStart   dd ?  ;Start of partition in 32 bit LBA
+   190 0000000C ????????            <1>     .numSectors dd ?  ;Number of sectors in partition
+   191                              <1> endstruc
+   192                              <1> 
+   193                              <1> struc fatDirEntry
+   194 00000000 <res Bh>            <1>     .name       db 11 dup (?) ;8.3 File Name w/o fullstop
+   195 0000000B ??                  <1>     .attribute  db ?  ;Usual attributes
+   196 0000000C ??                  <1>     .ntRes      db ?  ;Reserved 0
+   197 0000000D ??                  <1>     .crtTimeT   db ?  ;Count of tenths of a second of file creation time <=199
+   198 0000000E ????                <1>     .crtTime    dw ?  ;Creation time, granularity of 2 seconds
+   199 00000010 ????                <1>     .crtDate    dw ?  ;Creation date
+   200 00000012 ????                <1>     .lastAccDat dw ?  ;Last Read/Write date, not 100% supported (consider later)
+   201 00000014 ????                <1>     .fstClusHi  dw ?  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
+   202 00000016 ????                <1>     .wrtTime    dw ?  ;Last modification (write) time
+   203 00000018 ????                <1>     .wrtDate    dw ?  ;Last modification (write) date
+   204 0000001A ????                <1>     .fstClusLo  dw ?  ;Lo word of 1st data cluster for file/dir
+   205 0000001C ????????            <1>     .fileSize   dd ?  ;32-bit quantity with size of file described by entry
+   206                              <1> endstruc
+   207                              <1> ;Directory attribute equates
+   208                              <1>     dirReadOnly     equ 01h
+   209                              <1>     dirHidden       equ 02h
+   210                              <1>     dirSystem       equ 04h
+   211                              <1>     dirVolumeID     equ 08h
+   212                              <1>     dirDirectory    equ 10h
+   213                              <1>     dirArchive      equ 20h
+   214                              <1>     dirCharDev      equ 40h ;Never written to disk, used to represent a Char Dev
+   215                              <1>     dirLongName     equ dirReadOnly | dirHidden | dirSystem | dirVolumeID
+   216                              <1>     ;If any of the three bits are set, then ALL three bits are set
+   217                              <1>     ; in addition to whatever the user passed to search for.
+   218                              <1>     dirInclusive    equ dirHidden | dirSystem | dirDirectory
+   219                              <1>     dirIncFiles     equ dirHidden | dirSystem
+   220                              <1> 
+   221                              <1> struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
+   222                              <1> 
+   223                              <1>     ;.jmpBoot                db 3 dup (?)
+   224                              <1>     ;.oemName                db 8 dup (?)  ;OEM name
+   225                              <1> ;BPB starts here
+   226 00000000 <res 35h>           <1>     .MustBeZero             db 53 dup (?) ;Must be 0, 53 bytes
+   227 00000035 ????????????????    <1>     .partitionOffset        dq ?  ;in sectors, 0 means ignore this field
+   228 0000003D ????????????????    <1>     .volumeLength           dq ?  ;Volume Length in sectors
+   229 00000045 ????????            <1>     .FAToffset              dd ?  ;Volume rel offset of first FAT, in sectors
+   230 00000049 ????????            <1>     .FATlength              dd ?  ;FAT length, in sectors
+   231 0000004D ????????            <1>     .clusterHeapOffset      dd ?  ;Start of data area, in sectors
+   232 00000051 ????????            <1>     .clusterCount           dd ?  ;Number of clusters on medium
+   233 00000055 ????????            <1>     .firstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
+   234 00000059 ????????            <1>     .volumeSerialNum        dd ?  ;Volume Serial Number
+   235 0000005D ????                <1>     .FSrevision             dw ?  ;Should be 0001 (v1.00)
+   236 0000005F ????                <1>     .volumeFlags            dw ?  ;Volume Flags, refer to documentation
+   237 00000061 ??                  <1>     .bytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
+   238 00000062 ??                  <1>     .sectorsPerClusterShift db ?  ;Result of log_2(N) for N=sec per clus
+   239 00000063 ??                  <1>     .numberOfFATs           db ?  ;Number of FATs, only 1 or 2
+   240 00000064 ??                  <1>     .driveSelect            db ?  ;Drive Select, 0 or 80h (Int 13h)
+   241 00000065 ??                  <1>     .percentInUse           db ?  ;Rounded down. FFh means unknown
+   242 00000066 ??????????????      <1>     .reserved               db 7 dup (?)  ;Reserved for alignment
+   243                              <1> 
+   244                              <1> endstruc
+   245                              <1> 
+   246                              <1> %macro defaultBigBPB 0
+   247                              <1>     dw 0200h
+   248                              <1>     db 01h
+   249                              <1>     dw 0001h
+   250                              <1>     db 02h
+   251                              <1>     dw 00E0h
+   252                              <1>     dw 0B40h
+   253                              <1>     db 0F0h
+   254                              <1>     dw 0009h
+   255                              <1>     dw 0012h
+   256                              <1>     dw 0002h
+   257                              <1>     dd 0
+   258                              <1>     dd 0 
    259                              <1>     dd 0
-   260                              <1>     db 'NO NAME    '
-   261                              <1>     db 'FAT12   '
-   262                              <1>     db 58 dup 0 ;Size padding for a FAT12/16 BPB to make it 120 bytes long
-   263                              <1> %endmacro
+   260                              <1>     dw 0
+   261                              <1>     dw 0
+   262                              <1>     dd 0
+   263                              <1>     dw 0
+   264                              <1>     dw 0
+   265                              <1> %endmacro
+   266                              <1> 
+   267                              <1> %macro defaultDrv 0
+   268                              <1>     dq -1   ;End of table marker
+   269                              <1>     db -1   ;Bad DOS number
+   270                              <1>     db 0    ;BIOS drive 0
+   271                              <1>     defaultBigBPB  ;Do a FAT12/16 BPB in FAT32 format
+   272                              <1>     ;DrvBlk Flags
+   273                              <1>     dw bpbFat12
+   274                              <1>     dw 0    ;Open count
+   275                              <1>     db 0    ;Dev type byte 
+   276                              <1>     dw devOwnDrv    ;Dev flags, every drive owns itself by default
+   277                              <1>     defaultBigBPB   ;Do the MAX BPB write here too
+   278                              <1>     dd 0    ;Access time of 0
+   279                              <1>     dd 0    ;Vol ID of 0
+   280                              <1>     db "NO NAME    "
+   281                              <1>     db 0
+   282                              <1>     db "FAT12   "
+   283                              <1>     db 0
+   284                              <1> %endmacro
      7                                  %include "./src/Include/fcbStruc.inc"
      1                              <1> ;FCB related structures
      2                              <1> 

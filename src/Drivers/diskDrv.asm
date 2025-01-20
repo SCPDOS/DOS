@@ -52,7 +52,8 @@ msdDriver:
 .fnTbl:
 ;Each table entry is 4 bytes to make searching easier. Low word is offset
 ; to function, high word is packet size for check
-    dw .initShim - .fnTbl        ;Function 0
+    ;dw .initShim - .fnTbl        ;Function 0
+    dw msdInit - .fnTbl
     dw initReqPkt_size
     dw .medChk - .fnTbl          ;Function 1
     dw mediaCheckReqPkt_size
@@ -166,19 +167,17 @@ msdDriver:
     mov word [rbx + drvReqHdr.status], ax
     return      ;Return to set done bit
 
-.initShim:
-    push rbx
-    push r15
-    call msdInit
-    pop r15
-    pop rbx
-    mov word [.fnTbl], 0 ;Now prevent init from firing again
-    return
+.initShim:  ;Init jump off. 
+    ;call msdInit
+    ;mov word [.fnTbl], 0 ;Now prevent init from firing again
+    ;return
+
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .medChk:          ;Function 1
     test word [rbp + drvBlk.wDevFlgs], devFmt
     jz .mcNoFormat
     and word [rbp + drvBlk.wDevFlgs], ~devFmt   ;Clear this bit
+    mov byte [.bLastDsk], -1    ;Formatted so cannot rely on timer logic
     test word [rbp + drvBlk.wDevFlgs], devFixed ;If fixed, declare changed!
     jnz .mmcChange
 ;For remdevs we now determine if the media was changed. If so, exit!
@@ -187,55 +186,82 @@ msdDriver:
     test word [rbp + drvBlk.wDevFlgs], devFixed
     jnz .mmcNoChange
 .mcRem:
+    call .checkDevType
+    test word [rbp + drvBlk.wDevFlgs], devChgLine
+    jnz .mmcNoChangeLine
     mov dl, byte [rbp + drvBlk.bBIOSNum]
-;Now we do a BIOS changeline check. If it returns 80h or 86h then check med desc
+;Now we do a BIOS changeline check. We rely on it for drives with changeline.
+;Start by setting the lastDsk to unknown since this only makes sense for
+; disks without changeline support
+    mov byte [.bLastDsk], -1   
     mov ah, 16h 
     int 33h
-    jc .errorXlat
-    cmp ah, 80h
-    je .mmcNoChangeLine
-    cmp ah, 86h
-    je .mmcNoChangeLine
+    jc .mmcChange
+;    cmp ah, 80h
+;    je .mmcNoChangeLine
+;    cmp ah, 86h
+;    je .mmcNoChangeLine
     test ah, ah ;No change?
     jz .mmcNoChange
-    test ah, 1  ;Neither 80h or 86h have bit 0 set
-    jnz .mmcChange
-;If nothing, fall through and test manually, should never happen though
+    jmp short .mmcChange
+    ;test ah, 1  ;Neither 80h or 86h have bit 0 set
+    ;jnz .mmcChange
 .mmcNoChangeLine:
-;Now we test Media Descriptor
-    movzx rax, byte [rbx + mediaCheckReqPkt.unitnm]
-    mov dl, byte [rbx + mediaCheckReqPkt.medesc]    ;Media descriptor
-    cmp byte [rbp + drvBlk.bMedDesc], dl    ;Compare media descriptor bytes
-    je .mmcUnsure
-.mmcChange:
-    mov byte [rbx + mediaCheckReqPkt.medret], -1
+; If last accessed medchecked disk was this one and the time on this 
+;  disk was more than 2 seconds ago, return unknown, else return ok.
+    mov al, byte [rbp + drvBlk.bDOSNum] ;Get this disk number for the check
+    xchg byte [.bLastDsk], al ;Swap with the old disk number
+    cmp byte [.bLastDsk], al    ;Are they equal? If not, unsure.
+    jne .mmcUnsure
+;Else, now we do the famous time check. 
+    call .checkTime ;Sets CF if unsure. Else stays the same
+    jc .mmcUnsure
+.mmcNoChange:
+    mov byte [rbx + mediaCheckReqPkt.medret], 1
     return
 .mmcUnsure:
     mov byte [rbx + mediaCheckReqPkt.medret], 0
     return
-.mmcNoChange:
-    mov byte [rbx + mediaCheckReqPkt.medret], 1
+.mmcChange:
+;Always store the volume label if we have a volume change.
+    mov byte [.bLastDsk], -1    ;Default to unknown disk if a change occured!
+    lea rdi, qword [rbp + drvBlk.volLab]
+    mov qword [rbx + mediaCheckReqPkt.desptr], rdi
+    mov byte [rbx + mediaCheckReqPkt.medret], -1
     return
-.mcGetSwapStatus:
 
-
-    
 .buildBPB:        ;Function 2
 ;Only build BPB for removable devices and "non-locked" devices.
 ;Start by setting the pointer to the BPB in the reqpkt as this is 
 ; the table entry bpb which we will be returning.
-    mov rsi, qword [rbp + drvBlk.bpb]  ;Get BPB ptr in tbl entry
-    mov qword [rbx + bpbBuildReqPkt.bpbptr], rsi    ;Store it!
     test word [rbp + drvBlk.wDevFlgs], devFixed
-    retnz
+    jnz .bbpbExit
 ;------------------------------------------------------
 ; Here for removable devices only!!
 ;------------------------------------------------------
     call .resetIds  ;Reset the drvBlk volume ids
     mov rsi, rbx    ;Move req ptr to rsi
     mov rbx, qword [rsi + bpbBuildReqPkt.bufptr]    ;Transfer buffer 
-    call .makeBpb   ;Fill the BPB entries in the drvBlk
-    jc .errorXlat   ;Only returns bad for bad disk reads!
+    call .updateBpb       ;Fill the BPB entries in the drvBlk
+    jc .bbpbError
+    call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
+    jnc .bbpbExit
+;Here we will search the root directory for the volume label only!
+;The FS string has been setup and volume ID is set to 0.
+;
+;   TEMP: DO NOTHING. USE DEFAULT STRING IN THIS CASE 
+;
+.bbpbExit:
+    mov rbx, qword [reqHdrPtr]  ;Get the driver ptr
+    movzx eax, byte [rbp + drvBlk.bMedDesc] ;Get the meddesc from the bpb
+    mov byte [rbx + bpbBuildReqPkt.medesc], al
+    add rbp, drvBlk.bpb ;Move the drvBlk ptr to the BPB itself.
+    mov qword [rbx + bpbBuildReqPkt.bpbptr], rbp
+    return
+.bbpbError:
+    cmp al, drvBadMed   ;In case of bad media, just present it.
+    je .errorExit   
+    jmp .errorXlat  ;Else, get error code and xlat it to DOS error.
 
 .resetIds:
 ;We reset the volume id string and label to the default for the 
@@ -273,7 +299,10 @@ msdDriver:
     pop rax
     return
 
-.makeBpb:
+.updateBpb:
+;------------------------------------------------------
+;Updates the BPB fields in drvBlk for the BPB on disk
+; or failing, for the BPB indicated by the media byte.
 ;Never called on Fixed devs in normal operation.
 ;------------------------------------------------------
 ;Entered with: 
@@ -282,7 +311,6 @@ msdDriver:
 ;------------------------------------------------------
     test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
     retnz  
-.mBpbInit:  ;Entry point for Init
     call .bbpbReadBS
     retc
 ;Check we if we have a valid bootsector.
@@ -307,12 +335,11 @@ msdDriver:
     ;je .bbpbErr
     ;cmp al, 0F8h
     ;je .bbpbErr
-
 .bbpbErr:
 ;Bad media bytes go here. Means the media is unknown.
-    pop rax     ;Rebalance the stack and exit error with this error code!
     mov al, drvBadMed       ;Default to unknown media error code
-    jmp .errorExit
+    stc
+    return
 .newDisk:
     add rbx, 11 ;Now point rbx to the BPB itself
     mov al, byte [rbx + bpb.media]
@@ -331,14 +358,20 @@ msdDriver:
     cmp dl, bpbFat32
     cmovne ecx, eax     ;If not FAT32, replace move count
     rep movsb   
+    return
+
+.moveVolIds:
 ;Now check the BPB for a extBs. If it is present, we copy the information.
+;Input: rdi -> End of the BPB. rbx -> BPB in sector. rbp -> drvBlk
+;Output: CF=CY: No volume label in sector found.
+;        CF=NC: Volume Label in sector found and copied.
     cmp byte [rdi + extBs.bootSig], extBsSig
-    jne .newDskExit
+    jne .mviNoSig
 ;Else, now we copy the volume information from the extended bs info block
     push rbx
     mov rbx, rdi
     mov eax, dword [rbx + extBs.volId]
-    mov dword [rbp + drvBlk.volId]
+    mov dword [rbp + drvBlk.volId], eax
     lea rsi, qword [rbx + extBs.volLab]
     lea rdi, qword [rbp + drvBlk.volLab]
     mov ecx, 11 ;Copy the volume label
@@ -350,8 +383,10 @@ msdDriver:
     pop rbx
 ;Clear the devswap bit now as we have a good BPB for this drive
     and word [rbp + drvBlk.wDevFlgs], ~devSwap
-.newDskExit:
     clc
+    return
+.mviNoSig:
+    stc
     return
 
 .bbpbGetFAT:
@@ -407,17 +442,24 @@ msdDriver:
     cmp al, al  ;Set ZF
     return
 
+.bbpbReadFAT:
+;Reads the first FAT sector of media we are playing with.
+;Input: rbx -> Buffer we are xacting on
+    xor ecx, ecx
+    inc ecx         ;Read Sector 1...
+    jmp short .bbpbReadEp
 .bbpbReadBS:
 ;Reads the bootsector of media we are playing with.
 ;Input: rbx -> Buffer we are xacting on
+    xor ecx, ecx    ;Read Sector 0...
+.bbpbReadEp:
     mov edi, 5      ;Retry 5 times
 .bbpbrbsLp:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    xor ecx, ecx    ;Read Sector 0...
     add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
     mov eax, 8201h  ;LBA Read 1 sector
     int 33h
-    retnc
+    jnc .bioExit    ;Exit via the IO exit
     dec edi         ;Dec the counter
     jz .bbpbrbsErr   ;If we are out of counts, sorry buddy :(
     mov eax, 0100h  ;Now read status of last error
@@ -426,22 +468,6 @@ msdDriver:
 .bbpbrbsErr:
     stc
     return
-.bbpbReadFAT:
-;Reads the first FAT sector of media we are playing with.
-;Input: rbx -> Buffer we are xacting on
-    mov edi, 5      ;Retry 5 times
-.bbpbrfLp:
-    movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov ecx, 1  ;Read Sector 1...
-    add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
-    mov eax, 8201h  ;LBA Read 1 sector
-    int 33h
-    retnc
-    dec edi         ;Dec the counter
-    jz .bbpbrbsErr   ;If we are out of counts, sorry buddy :(
-    mov eax, 0100h  ;Now read status of last error
-    int 33h
-    jmp short .bbpbrfLp    ;And try again
 
 .IOCTLRead:       ;Function 3, returns immediately
 .IOCTLWrite:      ;Function 12, returns done
@@ -492,11 +518,12 @@ msdDriver:
 ;Error handled internally
 ;Sector count handled by caller
 ;Called with dh = BIOS function number, rdi -> ioReqPkt, rbp -> drvBlk
+    test word [rbp + drvBlk.wDevFlgs], devUnFmt
+    jnz .bioufmted
     push rsi    ;Save sector count
     mov esi, 5  ;Retry counter five times
 .biolp:
     mov dl, byte [rbp + drvBlk.bBIOSNum]
-    xor ecx, ecx
     mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
     mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
@@ -504,7 +531,11 @@ msdDriver:
     mov al, 01h ;Do one sector at a time 
     int 33h
     jc .bioError
-    pop rsi
+    pop rsi ;Rebalance stack
+.bioExit:
+    mov al, byte [rbp + drvBlk.bDOSNum]
+    mov byte [.bLastDsk], al    ;Last DOS disk accessed
+    call .setTime   ;Set the current time and clear state for successful IO
     return
 .bioError:
     mov eax, 0100h
@@ -516,6 +547,10 @@ msdDriver:
     mov rbx, qword [reqHdrPtr]
     mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
     jmp .ioError
+.bioufmted:
+    pop rax ;Drop ret ptr
+    mov eax, drvBadMed
+    jmp .errorExit
 
 .devOpen:         ;Function 13
     cmp word [rbp + drvBlk.wOpenCnt], -1
@@ -625,7 +660,7 @@ msdDriver:
     cmp byte [rbp + drvBlk.bBIOSNum], al
     cmovne rbp, qword [rbp +  drvBlk.pLink] ;If not for BIOS drive, goto next
     jne .gldLp
-    test word [rbp + drvBlk.wDevFlgs], devOwnMulti
+    test word [rbp + drvBlk.wDevFlgs], devOwnDrv
     cmovz rbp, qword [rbp +  drvBlk.pLink]  ;If not owner goto next
     jz .gldLp 
     movzx eax, byte [rbp + drvBlk.bDOSNum]  ;Else get DOS number for owner
@@ -661,7 +696,7 @@ msdDriver:
 ;Checks if we need to display the swap drive message and displays it if so.
 ;The device must already be setup in rbp (and var) for this to work.
 ;Input: rbx -> Request block. rbp -> drvBlk entry 
-    test word [rbp + drvBlk.wDevFlgs], devFixed | devOwnMulti
+    test word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     retnz   ;If fixed or already owns drv, don't allow swapping
     test word [rbp + drvBlk.wDevFlgs], devMulti
     retz    ;If only one drive owns this letter, exit
@@ -677,7 +712,7 @@ msdDriver:
     cmp byte [rdi + drvBlk.bBIOSNum], al   
     jne .cdtNextEntry   ;Skip entry if not for device in question.
     ;Now we check if this is the current owner of the device?
-    test word [rdi + drvBlk.wDevFlgs], devOwnMulti
+    test word [rdi + drvBlk.wDevFlgs], devOwnDrv
     jnz .cdtDevFnd
 .cdtNextEntry:
     mov rdi, qword [rdi + drvBlk.pLink]
@@ -685,8 +720,8 @@ msdDriver:
 .cdtDevFnd:
 ;Now we swap owners. rdi (current owner) looses ownership, rbp (request
 ; device) gains ownership.
-    and word [rdi + drvBlk.wDevFlgs], ~devOwnMulti   ;Clear rdi own
-    or word [rbp + drvBlk.wDevFlgs], devOwnMulti     ;Set rbp to own
+    and word [rdi + drvBlk.wDevFlgs], ~devOwnDrv   ;Clear rdi own
+    or word [rbp + drvBlk.wDevFlgs], devOwnDrv     ;Set rbp to own
 ;If a set map request, don't prompt the message!
     cmp byte [rbx + drvReqHdr.cmdcde], drvSETDRVMAP
     rete    ;Return if equal (clears CF)
@@ -722,6 +757,56 @@ msdDriver:
     mov qword [rbx + ioReqPkt.desptr], rax 
     pop rax
     ret
+
+.getTime:
+;Gets the current time in a format ready to be used for disk access.
+    xor eax, eax
+    int 3Ah
+    movzx ecx, cx
+    shl edx, 16 ;Move the low word high, fill low word with 0's
+    or ecx, edx ;Store the current time count into ecx
+    test al, al ;Are we rolling over? al tells us how many days...
+    jz .stStore
+    movzx eax, al
+    push rcx    ;Save the current time count
+    mov ecx, 1800B0h    ;A single day's worth of ticks at 55ms
+    mul ecx
+    pop rcx
+    add ecx, eax        ;Add "al" worth of ticks at 55ms to ecx :)
+.stStore:
+    clc
+    return
+
+.setTime:
+;Sets the current time to the disk drive and resets the access counter
+    call .getTime
+    mov dword [rbp + drvBlk.dAccTime], ecx  ;And store it
+    mov byte [.bAccCnt], 0  ;And set the access count back to 0
+    return
+
+.checkTime:
+;Does the time/access count check :)
+;Returns: CF=CY if unknown, CF=NC if no change
+    call .getTime   ;Returns in ecx the current time
+    test ecx, ecx   ;If this is 0 for some reason, use the accesses count  
+    jnz .ctOk
+    inc byte [.bAccCnt]
+    cmp byte [.bAccCnt], maxAcc ;If below, we say ok!
+    jb .ctNoChange
+    dec byte [.bAccCnt] ;Else drop the inc and say unsure
+    jmp short .ctMaybeCh
+.ctOk:
+    mov edx, dword [rbp + drvBlk.dAccTime]  ;Get last disk access time
+;ecx = time of current check, adjusted for day rollovers 
+    sub ecx, edx    
+    cmp ecx, 36 ;Is this leq 36? 36 ticks at 55ms is approx 2 seconds.
+    jbe .ctNoChange
+.ctMaybeCh:
+    stc
+    return
+.ctNoChange:
+    clc
+    return
 
 .i2fEp:
 ;Back door into the block driver :)
@@ -786,6 +871,14 @@ msdDriver:
 .fat32Str   db "FAT32   ",0
 .defLbl     db "NO NAME ",0 ;Default volume label
 
+maxAcc  equ 5       ;Maximum accesses
+.bAccCnt    db 0    ;Counter of 0 time difference media checks
+.bLastDsk   db -1   ;Last disk to be checked for media check.
 .pCurDrv    dq 0    ;Pointer to the drvBlk for the drv we are accessing
-.dfltBPB     defaultBPB                 ;If no remdev, A and B point here
-.drvBlkTbl  db 5*drvBlk dup (0)    ;Main drive data table 
+.drvBlkTbl:
+;Main drive data table 
+    defaultDrv
+    defaultDrv
+    defaultDrv
+    defaultDrv 
+    defaultDrv
