@@ -519,6 +519,7 @@ msdDriver:
     mov dl, byte [rbp + drvBlk.bBIOSNum]
     mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
+    call .bioSanity ;Sanity check ecx here
     mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
     mov ah, dh
     mov al, 01h ;Do one sector at a time 
@@ -542,8 +543,29 @@ msdDriver:
     mov rbx, qword [reqPktPtr]
     mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
     jmp .ioError
+.bioSanity:
+;Input: ecx = Sector we will transact on. rbp -> DrvBlk
+;Output: CF=NC, sector ok to xact on
+;        CF=CY, doesnt return, fails the call
+    push rax
+    push rbx
+    movzx eax, word [rbp + drvBlk.wTotSec16]
+    mov ebx, dword [rbp + drvBlk.dTotSec32] 
+    test eax, eax
+    cmovz eax, ebx  ;The 32 bit count is valid only if 16 bit count is 0
+    cmp ecx, eax    ;This will set CF iff ecx < eax. If eax >= ecx CF=NC.
+    pop rbx
+    pop rax
+    cmc             ;Flip CF from CY to NC if ok and NC to CY if not
+    retnc
+;Now pops the return from the sanity call and falls
+    pop rax ;Pop from sanity call
+.biobadsect:
+    pop rax ;Pop from bio call
+    mov eax, drvSecNotFnd
+    jmp .errorExit
 .bioufmted:
-    pop rax ;Drop ret ptr
+    pop rax ;Pop from bio call
     mov eax, drvBadMed
     jmp .errorExit
 
@@ -733,8 +755,9 @@ msdDriver:
     int 29h ;Print char in al
     dec ecx
     jnz .cdtPrint
-    xor eax, eax
-    int 36h ;Blocking wait at the keyboard for a keystroke
+
+    call .cdtCleanKeyb  ;Clean the buffer!
+    call .cdtAwaitKeyb  ;Await until a char ready in a friendly way :)
 ;THIS BIT IS NOT MULTITASKING FRIENDLY...
 
     clc ;Indicate goodness through CF
@@ -744,6 +767,21 @@ msdDriver:
     mov eax, drvBadMed
     stc ;Indicate badness through CF
     jmp .errorExit
+
+.cdtAwaitKeyb:
+    mov eax, 0100h
+    int 36h ;If return ZF=ZE, we have no char in the buffer. Loop until we do!
+    jz .cdtAwaitKeyb
+    xor eax, eax
+    int 36h ;Now pull the char!
+    return
+.cdtCleanKeyb:
+    mov eax, 0100h
+    int 36h ;If return ZF=NZ we have a char in the buffer, pull it!
+    retz    ;Else ZF=ZE, no char, ready to await the keypress.
+    xor eax, eax    ;Pull the char in the buffer from buffer
+    int 36h
+    jmp short .cdtCleanKeyb
 
 .ioSetVolLbl:
 ;Sets the volume label on requests to read, write, write/verify. Medchk does its own
