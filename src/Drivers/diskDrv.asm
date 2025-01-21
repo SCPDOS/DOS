@@ -9,7 +9,7 @@ msdDriver:
     push rbp
     push r8
     mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
-    movzx esi, byte [rbx + drvReqHdr.cmdcde]    ;Get the command code
+    movzx esi, byte [rbx + drvReqPkt.cmdcde]    ;Get the command code
     cmp esi, drvMAXCMD                  ;Command code bigger than max?
     ja .errBadCmd                 ;If yes, error!
     lea rbp, .fnTbl
@@ -17,17 +17,17 @@ msdDriver:
     movzx esi, word [rdi]   ;Get the offset from table into esi
     test esi, esi           ;If the offset is 0, exit!
     jz .exit
-    movzx ecx, byte [rbx + drvReqHdr.hdrlen]       ;Get packet length
+    movzx ecx, byte [rbx + drvReqPkt.hdrlen]       ;Get packet length
     cmp cx, word [rdi + 2]          ;Cmp packet lengths
     jne .errBadPkt
     add rsi, rbp    ;Add the two to get the pointer!
-    movzx eax, byte [rbx + drvReqHdr.unitnm]    ;Get the unit to setup
+    movzx eax, byte [rbx + drvReqPkt.unitnm]    ;Get the unit to setup
     call .setupDrive    ;Returns rbp -> Table entry
 ;Goto function! rbp -> Table entry, eax = Drive number. rbx -> Reqpkt
     call rsi 
 .exit:
     mov rbx, qword [reqHdrPtr]  ;Get back the req header ptr
-    or word [rbx + drvReqHdr.status], drvDonStatus ;Set done bit
+    or word [rbx + drvReqPkt.status], drvDonStatus ;Set done bit
     pop r8
     pop rbp
     pop rdi
@@ -107,10 +107,10 @@ msdDriver:
 ;DISK DRIVER ERROR HANDLER. Errors from within the functions come here!
 .errorXlat:
     mov rbx, qword [reqHdrPtr]
-.ioError:   ;Jumped to from the blkIO processor with rbx -> reqHdr already
     mov eax, 0100h
     int 33h ;Read status of last operation
     jc .genErrExit
+.ioError:   ;Jumped to from the blkIO processor with rbx -> reqHdr already
     cmp ah, 80h ;Timeout/Media Not Ready response (device not present)
     mov al, 02h ;Give device not ready error (sensibly I think)
     je .errorExit 
@@ -164,13 +164,8 @@ msdDriver:
 .errorExit:     ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
     mov rbx, qword [reqHdrPtr]
-    mov word [rbx + drvReqHdr.status], ax
+    mov word [rbx + drvReqPkt.status], ax
     return      ;Return to set done bit
-
-.initShim:  ;Init jump off. 
-    ;call msdInit
-    ;mov word [.fnTbl], 0 ;Now prevent init from firing again
-    ;return
 
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .medChk:          ;Function 1
@@ -350,7 +345,7 @@ msdDriver:
     mov rsi, rbx    ;Source from the BPB in disk buffer
     lea rdi, qword [rbp + drvBlk.bpb]
     call .bbpbGetFAT    ;Fat type is given in edx
-    mov byte [rbx + drvBlk.bBpbType], dl    ;Save the FAT type
+    mov byte [rbp + drvBlk.bBpbType], dl    ;Save the FAT type
 ;Get the correct length to correctly position rsi over the extended bs struct
 ; if it is present
     mov eax, bpb_size
@@ -358,21 +353,20 @@ msdDriver:
     cmp dl, bpbFat32
     cmovne ecx, eax     ;If not FAT32, replace move count
     rep movsb   
+    clc     ;Ensure if we return here, we return with CF happy :)
     return
 
 .moveVolIds:
 ;Now check the BPB for a extBs. If it is present, we copy the information.
-;Input: rdi -> End of the BPB. rbx -> BPB in sector. rbp -> drvBlk
+;Input: rsi -> End of the BPB in sector. rbx -> BPB in sector. rbp -> drvBlk
 ;Output: CF=CY: No volume label in sector found.
 ;        CF=NC: Volume Label in sector found and copied.
-    cmp byte [rdi + extBs.bootSig], extBsSig
+    cmp byte [rsi + extBs.bootSig], extBsSig
     jne .mviNoSig
 ;Else, now we copy the volume information from the extended bs info block
-    push rbx
-    mov rbx, rdi
-    mov eax, dword [rbx + extBs.volId]
+    mov eax, dword [rsi + extBs.volId]
     mov dword [rbp + drvBlk.volId], eax
-    lea rsi, qword [rbx + extBs.volLab]
+    add rsi, extBs.volLab
     lea rdi, qword [rbp + drvBlk.volLab]
     mov ecx, 11 ;Copy the volume label
     rep movsb   
@@ -380,7 +374,6 @@ msdDriver:
     inc rdi     ;Now move rdi to the filSysType field in the drvBlk.
     mov ecx, 8  ;Now copy the 8 char string over too
     rep movsb   
-    pop rbx
 ;Clear the devswap bit now as we have a good BPB for this drive
     and word [rbp + drvBlk.wDevFlgs], ~devSwap
     clc
@@ -410,8 +403,8 @@ msdDriver:
     movzx edx, word [rbx + bpb.revdSecCnt]
     add ecx, eax    ;ecx = (BPB_NumFATs * FATSz) + RootDirSectors
     add ecx, edx    ;ecx = (BPB_ResvdSecCnt + ecx)
-    movzx eax, word [rbx + bpb.FATsz16]
-    mov edx, dword [rbx + bpb32.FATsz32]
+    movzx eax, word [rbx + bpb.totSec16]
+    mov edx, dword [rbx + bpb32.totSec32]
     test eax, eax
     cmovz eax, edx  ;eax = Totsec
     sub eax, ecx    ;Datasec [eax] = eax - ecx
@@ -535,6 +528,8 @@ msdDriver:
 .bioExit:
     mov al, byte [rbp + drvBlk.bDOSNum]
     mov byte [.bLastDsk], al    ;Last DOS disk accessed
+    test word [rbp + drvBlk.wDevFlgs], devFixed
+    retnz
     call .setTime   ;Set the current time and clear state for successful IO
     return
 .bioError:
@@ -676,8 +671,10 @@ msdDriver:
 .setupDrive:
 ;Finds the DOS drive in the linked list which is for this drive, and
 ; sets up internal vars according to it. 
-;Input: eax = Zero based DOS drive number
+;Input: eax = Zero based DOS drive number. rbx -> Packet
 ;Output: .pCurDrv setup for us. rbp = Same value
+    cmp byte [rbx + drvReqPkt.cmdcde], drvINIT
+    rete
     lea rbp, .drvBlkTbl
 .sdChk:
     cmp byte [rbp + drvBlk.bDOSNum], al
@@ -685,9 +682,8 @@ msdDriver:
     mov rbp, qword [rbp +  drvBlk.pLink]
     cmp rbp, -1
     jne .sdChk  ;Keep looping until end of table
-    pop rax     ;Rebalance stack from the call
     mov al, drvBadMed
-    jmp .errorExit
+    jmp .errorExit  ;Return through this exit
 .sdExit:
     mov qword [.pCurDrv], rbp
     return
@@ -723,11 +719,11 @@ msdDriver:
     and word [rdi + drvBlk.wDevFlgs], ~devOwnDrv   ;Clear rdi own
     or word [rbp + drvBlk.wDevFlgs], devOwnDrv     ;Set rbp to own
 ;If a set map request, don't prompt the message!
-    cmp byte [rbx + drvReqHdr.cmdcde], drvSETDRVMAP
+    cmp byte [rbx + drvReqPkt.cmdcde], drvSETDRVMAP
     rete    ;Return if equal (clears CF)
 
 ;THIS BIT IS NOT MULTITASKING FRIENDLY...
-    mov al, byte [rdi + drvBlk.bDOSNum]
+    mov al, byte [rbp + drvBlk.bDOSNum]
     add al, "A" ;Convert to a letter
     mov byte [.strikeMsgLetter], al
     lea rsi, .strikeMsg
@@ -744,8 +740,10 @@ msdDriver:
     clc ;Indicate goodness through CF
     return
 .cdtBadExit:
+    pop rax
+    mov eax, drvBadMed
     stc ;Indicate badness through CF
-    return
+    jmp .errorExit
 
 .ioSetVolLbl:
 ;Sets the volume label on requests to read, write, write/verify. Medchk does its own
@@ -762,8 +760,8 @@ msdDriver:
 ;Gets the current time in a format ready to be used for disk access.
     xor eax, eax
     int 3Ah
-    movzx ecx, cx
-    shl edx, 16 ;Move the low word high, fill low word with 0's
+    movzx edx, dx
+    shl ecx, 16 ;Move the high word into place, fill low word with 0's
     or ecx, edx ;Store the current time count into ecx
     test al, al ;Are we rolling over? al tells us how many days...
     jz .stStore
@@ -875,10 +873,7 @@ maxAcc  equ 5       ;Maximum accesses
 .bAccCnt    db 0    ;Counter of 0 time difference media checks
 .bLastDsk   db -1   ;Last disk to be checked for media check.
 .pCurDrv    dq 0    ;Pointer to the drvBlk for the drv we are accessing
+
+drvBlkTblL equ 26   ;Space for 26 drive letters!
 .drvBlkTbl:
-;Main drive data table 
-    defaultDrv
-    defaultDrv
-    defaultDrv
-    defaultDrv 
-    defaultDrv
+    db drvBlkTblL*drvBlk_size dup (0)

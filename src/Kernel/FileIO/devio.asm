@@ -76,20 +76,20 @@ mainCharIO:
     jne .skipBsySet
     or ecx, drvBsyStatus
 .skipBsySet:
-    xchg cx, word [secdReqPkt + drvReqHdr.status] ;Swap error flags with status
+    xchg cx, word [secdReqPkt + drvReqPkt.status] ;Swap error flags with status
     ;cl has flags, ch has garbage (status is zeroed by xchg)
     lea rbx, secdReqPkt
     call goDriverChar   ;GoDriver with an SFT in rsi
-    mov di, word [secdReqPkt + drvReqHdr.status]    ;Get status
+    mov di, word [secdReqPkt + drvReqPkt.status]    ;Get status
     test edi, drvErrStatus
     jnz .error
 .ignoreRet:
-    cmp byte [secdReqPkt + drvReqHdr.cmdcde], drvNONDESTREAD
+    cmp byte [secdReqPkt + drvReqPkt.cmdcde], drvNONDESTREAD
     jne .notNDRead
     mov al, byte [secdReqPkt + ndInNoWaitPkt.retbyt]    ;Get request byte
     mov byte [singleIObyt], al  ;Store it here to make algorithm streamlined
 .notNDRead:
-    mov ah, byte [secdReqPkt + drvReqHdr.status + 1]  ;Get hibyte of status word
+    mov ah, byte [secdReqPkt + drvReqPkt.status + 1]  ;Get hibyte of status word
     not ah
     and ah, (drvBsyStatus >> 8) ;Set ZF=ZE if BSY set on for NDRead commands
     call dosPopRegs ;Get back the context
@@ -106,7 +106,7 @@ mainCharIO:
     jmp mainCharIO  ;Retry operation
 .errorIgnore:
     ;Clear the busy bit in the status word
-    and byte [secdReqPkt + drvReqHdr.status + 1], ~(drvBsyStatus >> 8)
+    and byte [secdReqPkt + drvReqPkt.status + 1], ~(drvBsyStatus >> 8)
     jmp short .ignoreRet
 .notChar:
 ;rsi -> SFT to read/write to
@@ -191,7 +191,7 @@ openCloseCommon:
     mov byte [rbx], openReqPkt_size ;Same length as closeReqPkt
     push rax    ;Save the dword
     call goDriver
-    movzx edi, word [primReqPkt + drvReqHdr.status] ;Get the status
+    movzx edi, word [primReqPkt + drvReqPkt.status] ;Get the status
     test edi, drvErrStatus
     jz .exitPop
     ;Error here, check if char or block drive

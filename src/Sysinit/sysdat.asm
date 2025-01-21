@@ -36,7 +36,7 @@ exceptData:
 intData:
     dq terminateProcess ;Int 20h
     dq functionDispatch ;Int 21h
-    dq OEMHALT          ;Int 22h, If sysinit terminates, halt system
+    dq defaultIretq     ;Int 22h, Adjusted during interrupt setup to OEMHALT
     dq defaultIretq     ;Int 23h, ignore any CTRL+C during init
     dq dosDefCritErrHdlr    ;Int 24h, return fail, CF=CY, leading to OEMHALT
     dq absDiskRead      ;Int 25h

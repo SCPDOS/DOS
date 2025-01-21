@@ -48,6 +48,9 @@ adjExceptions:
 ;Adjust Interrupt Entries Int 20h-2Fh
 adjInts:
     lea rdi, intData
+    lea rbx, OEMHALT    ;Add base address of sysinit to the symbol
+    sub rbx, rbp        ;Subtract so that the add in setupInterruptBlock is Ok
+    mov qword [rdi + 2*8], rbx  ;Store this address for Int 22h
     mov eax, 20h            ;Start with interrupt 20h
     mov ecx, 30h
     call setupInterruptBlock

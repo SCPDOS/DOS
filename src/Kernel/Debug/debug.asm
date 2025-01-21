@@ -143,18 +143,42 @@ debDPBptr:
 debDPBBPBptr:
     ;rbp has dpb ptr in it or -1 if no dpb
     ;rsi has bpb ptr in it or -1 if no bpb
+    cmp rbp, -1
+    je .baddpb
+    cmp rsi, -1
+    je .badpbp
     lea rbx, qword [.dpb + 10]   ;Goto first number
     mov rax, rbp
     call overlayQword
     add rbx, 33
     mov rax, rsi
     call overlayQword
+    mov al, byte [rbp + dpb.bDriveNumber]
+    add al, "A"
+    mov byte [.dpbLetter], al
     lea rbp, .dpb
     call debPrintNullString
     ret
 .dpb: 
     db "DPB ptr @ 0000000000000000h from "
-    db "BPB ptr @ 0000000000000000h ",0Ah,0Dh,0
+    db "BPB ptr @ 0000000000000000h for Drive "
+.dpbLetter:
+    db 0Ah,0Dh,0
+.badpbp:
+    lea rbp, .badpbpS
+    call debPrintNullString
+    ret
+.badpbpS:
+    db "BAD BPB PTR",CR,LF,0
+.baddpb:
+    lea rbp, .baddpbS
+    call debPrintNullString
+    cmp rsi, -1
+    je .badpbp
+    ret
+.baddpbS:
+    db "BAD DPB PTR",CR,LF,0
+
 overlayByte:
     ;Called with number in rax
     ;pointer to START of 16 byte space for number in rbx

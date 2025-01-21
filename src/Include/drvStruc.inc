@@ -6,12 +6,12 @@
 
 struc drvHdr  ;Device Driver Header for character and block devices
 
-    .nxtPtr resq 1  ;Pointer to the next driver header, -1 if at the end
-    .attrib resw 1  ;Attribute Word
-    .strPtr resq 1  ;Strategy Entry Pointer
-    .intPtr resq 1  ;Interrupt Entry Pointer
+    .nxtPtr dq ?  ;Pointer to the next driver header, -1 if at the end
+    .attrib dw ?  ;Attribute Word
+    .strPtr dq ?  ;Strategy Entry Pointer
+    .intPtr dq ?  ;Interrupt Entry Pointer
     .drvUnt:        ;Number of units pointer
-    .drvNam resb 8  ;Driver name (Char) or Number of units byte (Block)
+    .drvNam db 8 dup (?)  ;Driver name (Char) or Number of units byte (Block)
 
 endstruc
 
@@ -84,139 +84,139 @@ endstruc
 
 ;Driver structures
 
-%macro drvReqHdrM 0 ;Driver Request Header Macro
+%macro drvReqPktM 0 ;Driver Request Header Macro
 
-    .hdrlen resb 1  ;Length of the request header
-    .unitnm resb 1  ;Unit number, meaningless for character devs
-    .cmdcde resb 1  ;Command code
-    .status resw 1  ;Status word
-    .devptr resq 1  ;Device queue pointer field, reserved for future use
+    .hdrlen db ?  ;Length of the request header
+    .unitnm db ?  ;Unit number, meaningless for character devs
+    .cmdcde db ?  ;Command code
+    .status dw ?  ;Status word
+    .devptr dq ?  ;Device queue pointer field, reserved for future use
 
 %endmacro
 
-struc drvReqHdr
-    drvReqHdrM
+struc drvReqPkt
+    drvReqPktM
 endstruc
 
 struc initReqPkt  ;Init Request Packet
 
-    drvReqHdrM   ;Common Driver Header Macro
-    .numunt resb 1  ;Number of logical units (Block only, 0 for char)
-    .endptr resq 1  ;Pointer to first free byte after driver
-    .optptr resq 1  ;Ptr to BPB array (blkdev) or cmdline args
-    .drvnum resb 1  ;First Drive number
+    drvReqPktM   ;Common Driver Header Macro
+    .numunt db ?  ;Number of logical units (Block only, 0 for char)
+    .endptr dq ?  ;Pointer to first free byte after driver
+    .optptr dq ?  ;Ptr to BPB array (blkdev) or cmdline args
+    .drvnum db ?  ;First Drive number
 
 endstruc
 
 struc mediaCheckReqPkt ;Media Check Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
-    .medesc resb 1  ;DOS media descriptor
-    .medret resb 1  ;Return byte (Has media been changed?)
-    .desptr resq 1  ;Pointer to a valid volume id field
+    drvReqPktM    ;Common Driver Header Macro
+    .medesc db ?  ;DOS media descriptor
+    .medret db ?  ;Return byte (Has media been changed?)
+    .desptr dq ?  ;Pointer to a valid volume id field
 
 endstruc
 
 struc bpbBuildReqPkt  ;Build BPB Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
-    .medesc resb 1  ;DOS media descriptor
-    .bufptr resq 1  ;Transfer buffer
-    .bpbptr resq 1  ;Pointer to the BPB
+    drvReqPktM    ;Common Driver Header Macro
+    .medesc db ?  ;DOS media descriptor
+    .bufptr dq ?  ;Transfer buffer
+    .bpbptr dq ?  ;Pointer to the BPB
 
 endstruc
 
 struc ioReqPkt   ;IO Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
-    .medesc resb 1  ;DOS media descriptor
-    .bufptr resq 1  ;Transfer buffer
-    .tfrlen resd 1  ;Number of Sectors/bytes to transfer
-    .strtsc resq 1  ;Starting sector for transfer
-    .desptr resq 1  ;Pointer to a valid volume id field if error
+    drvReqPktM    ;Common Driver Header Macro
+    .medesc db ?  ;DOS media descriptor
+    .bufptr dq ?  ;Transfer buffer
+    .tfrlen dd ?  ;Number of Sectors/bytes to transfer
+    .strtsc dq ?  ;Starting sector for transfer
+    .desptr dq ?  ;Pointer to a valid volume id field if error
 
 endstruc
 
 struc ndInNoWaitPkt    ;Nondestructive Input No Wait Request Packet
     
-    drvReqHdrM    ;Common Driver Header Macro
-    .retbyt resb 1  ;Byte read non destructively
+    drvReqPktM    ;Common Driver Header Macro
+    .retbyt db ?  ;Byte read non destructively
 
 endstruc
 
 struc statusReqPkt   ;Status Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
 
 endstruc
 
 struc flushReqPkt ;Flush Request Packet, terminate all pending requests
 
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
      
 endstruc
 
 struc openReqPkt ;Open Device Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
      
 endstruc
 
 struc closeReqPkt ;Close Device Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
      
 endstruc
 
 struc remMediaReqPkt ;Removeable Media Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
      
 endstruc
 
 struc ioctlReqPkt    ;Generic IOCTL Request Packet
 
-    drvReqHdrM    ;Common Driver Header Macro  
-    .majfun resb 1  ;Major function number
-    .minfun resb 1  ;Minor function number
-    .rsival resq 1  ;Contents of RSI
-    .rdival resq 1  ;Contents of RDI
-    .ctlptr resq 1  ;Pointer to Generic IOCTL Request Packet
+    drvReqPktM    ;Common Driver Header Macro  
+    .majfun db ?  ;Major function number
+    .minfun db ?  ;Minor function number
+    .rsival dq ?  ;Contents of RSI
+    .rdival dq ?  ;Contents of RDI
+    .ctlptr dq ?  ;Pointer to Generic IOCTL Request Packet
 
 endstruc
 
 struc getDevReqPkt ;Get Logical Device Request Packet
     
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
 
 endstruc
 
 struc setDevReqPkt ;Set Logical Device Request Packet
     
-    drvReqHdrM    ;Common Driver Header Macro
+    drvReqPktM    ;Common Driver Header Macro
 
 endstruc
 
 
 struc genioctlGetParamsTable
-    .size           resb 1
-    .res            resb 7
-    .sectorSize     resb 8  ;Only the lower dword is valid here
-    .numSectors     resb 8
+    .size           db ?
+    .res            db 7 dup (?)
+    .sectorSize     db 8 dup (?)  ;Only the lower dword is valid here
+    .numSectors     db 8 dup (?)
 endstruc
 
 ;THE WRITE STRUCT MUST BE A STRICT SUPERSET OF THE FORMAT STRUCT ALWAYS
 struc genioctlLBAformat
-    .size           resb 1
-    .numSectors     resb 1  ;Number of sectors to format
-    .res            resb 6
-    .startSector    resb 8  ;Sector to start format at
+    .size           db ?
+    .numSectors     db ?  ;Number of sectors to format
+    .res            db 6 dup (?)
+    .startSector    db 8 dup (?)  ;Sector to start format at
 endstruc
 
 struc genioctlLBAwrite
-    .size           resb 1
-    .numSectors     resb 1  ;Number of sectors to write
-    .res            resb 6
-    .startSector    resb 8  ;Sector to start write at
-    .xferBuffer     resb 8  ;Transfer buffer for data
+    .size           db ?
+    .numSectors     db ?  ;Number of sectors to write
+    .res            db 6 dup (?)
+    .startSector    db 8 dup (?)  ;Sector to start write at
+    .xferBuffer     db 8 dup (?)  ;Transfer buffer for data
 endstruc

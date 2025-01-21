@@ -20,7 +20,7 @@ goDriver:   ;Executes the driver packet pointed to by rbx
 
 ;The NUL driver lives here as it is implemented by the Kernel by default!
 nulStrat:
-    mov word [rbx + drvReqHdr.status], drvDonStatus    ;Set done bit directly
+    mov word [rbx + drvReqPkt.status], drvDonStatus    ;Set done bit directly
 nulIntr:
     return
 
@@ -286,11 +286,11 @@ ensureDiskValid:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
     call goDriver   ;Request!
-    movzx edi, word [rbx + mediaCheckReqPkt.status]
+    movzx edi, word [rbx + bpbBuildReqPkt.status]
     test edi, drvErrStatus
     jnz .diskDrvCritErr
     ;Now rebuild the dpb fields for this drive
-    mov rsi, qword [rbx + bpbBuildReqPkt.bufptr]    ;Get ptr to BPB
+    mov rsi, qword [rbx + bpbBuildReqPkt.bpbptr]    ;Get ptr to BPB
     push rbx
     call createDPB  ;Modifies rbx and clears the free cluster count
     pop rbx

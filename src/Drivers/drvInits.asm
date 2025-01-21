@@ -135,15 +135,16 @@ msdInit:
 
 ;Start by setting up the link pointers to the load address of the 
 ; drive table.
-    mov ecx, 4
+    mov ecx, drvBlkTblL - 1
     lea rbp, msdDriver.drvBlkTbl      ;Point to the first drive block
     mov rsi, rbp
 .dskTblLp:
     mov rdi, rsi            ;Mov current block to current block
     add rsi, drvBlk_size    ;Point current block to next block
-    mov qword [rdi], rsi    ;Store current blk in current block
+    mov qword [rdi + drvBlk.pLink], rsi    ;Store next blk ptr in cur block
     dec ecx                 ;Decrement the count
     jnz .dskTblLp
+    mov qword [rsi + drvBlk.pLink], -1     ;Store end of table here
 ;Now get number of Int 33h information packed in r8
     int 31h
     ;Returns:
@@ -170,7 +171,7 @@ msdInit:
     call .ptnUpdateBpb
     jc .mbrFnd  ;If CF=NC, this sector has a valid BPB. No MBR.
 ;The odd case where there is a BPB on the hard disk :)
-    or word [rbp + drvBlk.wDevFlgs], devFixed
+    or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     call .advDiskPtrs
     jmp short .fatDiskOk
 .mbrFnd:
@@ -179,8 +180,10 @@ msdInit:
     cmp word [msdTempBuffer + mbr.mbrSig], 0AA55h
     jne .gotoNextDisk
     call .processMbr    ;This disk is done.
+;If an error reading this disk at some partition, its oki to do the next check
 .fatDiskOk:
-    cmp byte [physVol], 3   ;If done 3 volumes, immediately goto remdevs
+;Now we check if we have saturated fixed partitions? If so, do Removables now
+    call .physCheckEnd   ;If ZF=ZE, then we should end!
     je .doRem
 .gotoNextDisk:
     inc byte [biosDrv]  ;Goto next fixed disk
@@ -188,6 +191,9 @@ msdInit:
     and al, ~80h    ;Drop the upper bit
     cmp al, byte [fixDrv]
     jne .hdLp
+;------------------------------------------------
+;   Here we start doing removable devices
+;------------------------------------------------
 .doRem:
     movzx eax, byte [physVol]
     mov byte [fixPtn], al
@@ -214,8 +220,9 @@ msdInit:
     jae .remNext
     or word [rbp + drvBlk.wDevFlgs], devChgLine
 .remNext:
+    or word [rbp + drvBlk.wDevFlgs], devOwnDrv  ;I OWN MYSELF! :)
     call .advDiskPtrs           ;Move rbp to the next drive block
-    cmp byte [physVol], 5       ;If we just added our 5th volume, exit! :)
+    cmp byte [physVol], drvBlkTblL  ;If we just added our last volume, exit! :)
     je .msdExit
     inc byte [biosDrv]          ;Else, goto next remdev
     movzx eax, byte [biosDrv]   ;Get the bios drive number
@@ -245,7 +252,7 @@ msdInit:
     add rsi, drvBlk.bBIOSNum
     mov ecx, (drvBlk_size - 9)  ;8 bytes Link ptr and 1 byte DOS number
     rep movsb
-    and word [rbp + drvBlk.wDevFlgs], ~devOwnDrv   ;Clear ownership!
+    and word [rbp + drvBlk.wDevFlgs], ~devOwnDrv   ;Clear B:'s ownership!
     inc byte [physVol]  ;And add this drive to the count!
 .skipSingle:
     movzx ebx, byte [physVol]   ;Get the number of detected volumes
@@ -288,12 +295,36 @@ msdInit:
 ;We have an MBR in the MBR table. Now we attempt to interpret it.
 ;If we return CF=CY, disk read failed. We skip this disk.
     call .copyMbr           ;Copy MBR table over from buffer
+;HACK! In the case of disk 80h, we search for the first active primary
+; ptn. We process it, invalidate the entry then start again
+    cmp byte [biosDrv], 80h ;Only do this for the first fixed disk
+    jne .pmbrNoHack
+    lea rsi, mbrE   ;Point to the table
+    mov ecx, 4
+.pmbrHackLp:
+    cmp byte [rsi + mbrEntry.ptnAtrib], 80h    ;If found, do hack
+    je .pmbrHackFnd
+.pmbrHackRet:
+    add rsi, mbrEntry_size  ;Goto next entry
+    dec ecx
+    jnz .pmbrHackLp
+    jmp short .pmbrNoHack   ;If disk one has no active primary, do normal.
+.pmbrHackFnd:
+    movzx eax, byte [rsi + mbrEntry.ptnType]
+    call .checkDataPtn  ;If this is an extended partition, ignore it!
+    jne .pmbrHackRet    ;And keep searching
+    mov byte [mbrEtry], 3   ;Initialise the terminating condition
+    call .pmbrLp ;Call the normal procedure, rsi -> Table entry
+;Ignore any read errors, but we start again.
+    mov byte [rsi + mbrEntry.ptnType], 0    ;Have that we ignore it now
+;Now we fall down and start again
+.pmbrNoHack:
     mov byte [mbrEtry], 0   ;Start from the first entry in the MBR
     lea rsi, mbrE
 .pmbrLp:
     mov al, byte [rsi + mbrEntry.ptnType]
     call .checkMbrPtnType
-    jnz .pmbr1  ;Jump if not a valid partition type (includes free ptns)
+    jnz .pmbrNext  ;Jump if not a valid partition type (includes free ptns)
     call .checkDataPtn
     je .pmbrDodata
     call .processEPtn   ;Here we process EBR
@@ -307,16 +338,16 @@ msdInit:
 ;Else add the unformatted bit to the flags.
     or word [rbp + drvBlk.wDevFlgs], devUnFmt  ;Register ptn. Freeze IO.
 .pmbrOk:
-    or word [rbp + drvBlk.wDevFlgs], devFixed
+    or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     movzx eax, byte [rsi + mbrEntry.ptnAtrib]
     and eax, ptnActive
     or eax, ptnPrimary
     mov word [rbp + drvBlk.wPtnType], ax
     call .advDiskPtrs
 .pmbrXtrejoin:
-    cmp byte [physVol], 3   ;Once here we are done!
+    call .physCheckEnd   ;If ZF=ZE, then we should end!
     rete 
-.pmbr1:
+.pmbrNext:
     inc byte [mbrEtry]  ;Increment the counter
     cmp byte [mbrEtry], 4
     rete
@@ -331,6 +362,11 @@ msdInit:
 .peplp:
     call .readSector    ;Read the EBR sector in (sector number in ecx)
     retc    ;If we cant read the EBR in, assume end of logical partition.
+    cmp word [msdTempBuffer + ebr.mbrSig], 0AA55h
+    je .pep1   ;If this doesnt have a valid ebr signature, end ext ptn parsing.
+    stc
+    return
+.pep1:
     call .copyEbr       ;Save the EBR
 ;Now we check the saved EBR is valid.
     movzx eax, byte [ebrE + mbrEntry.ptnType]
@@ -350,13 +386,13 @@ msdInit:
 ;If here, this partition will be given a CDS entry.
 ;Now we go to the next logical partition in the extended partition and
 ; move to the next drive
-    or word [rbp + drvBlk.wDevFlgs], devFixed
+    or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     movzx eax, byte [rsi + mbrEntry.ptnAtrib]
     and eax, ptnActive
     or eax, ptnPrimary
     mov word [rbp + drvBlk.wPtnType], ax
     call .advDiskPtrs
-    cmp byte [physVol], 3   ;Once here we are done!
+    call .physCheckEnd   ;If ZF=ZE, then we should end!
     rete 
 .pepNextEbr:
 ;Else we now walk the disk linked list.
@@ -365,6 +401,10 @@ msdInit:
     retz    ;Return if so.
     add ecx, dword [rsi + mbrEntry.lbaStart]    ;Else, make it absolute sector
     jmp short .peplp
+
+.physCheckEnd:
+    cmp byte [physVol], drvBlkTblL - 2   ;Once here we are done!
+    return
 
 .advDiskPtrs:
     mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
@@ -419,8 +459,13 @@ msdInit:
     lea rbx, msdTempBuffer  ;Use Temporary Buffer
     push rsi    ;Save the mbr entry ptr
     call msdDriver.updateBpb
+    jc .pubBad
+    call msdDriver.moveVolIds
     pop rsi
-    retnc
+    clc         ;Always clean even if no ids
+    return
+.pubBad:
+    pop rsi
     cmp al, 07h ;Bad Partition?
     stc         ;Ensure we set the CF again
     return
