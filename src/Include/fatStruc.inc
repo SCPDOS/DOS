@@ -83,12 +83,12 @@ struc drvBlk
 ; Drvblk Header information
 ;--------------------------------------------------------------------
     .pLink      dq ?    ;Pointer to the next drive block
-    .bDOSNum    db ?    ;DOS 0 based drive number, setLogicalDev may change it
     .bBIOSNum   db ?    ;BIOS number, identifies physical drive
+    .bDOSNum    db ?    ;DOS 0 based drive number, setLogicalDev may change it
 ;--------------------------------------------------------------------
 ; In-use BPB for current media in here. Always have space for FAT32 
 ;  volume. If FAT12/16, FAT32 fields are undefined (garbage gets 
-;  copied into those fields... not a problem)
+;  left in those fields... not a problem)
 ;--------------------------------------------------------------------
 .bpb:
     .wBpS       dw ?    ;Bytes per sector

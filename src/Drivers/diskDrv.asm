@@ -1,4 +1,58 @@
+; This file contains four main routines:
+; 1) Replacement Int 39h routine (for unhooking interrupts back).
+; 2) Replacement Int 33h routine.
+; 3) Int 33h replacement routine.
+; 4) Driver itself
+; 5) Int 2Fh Driver backdoor routine
 
+i39Org  dq 0    ;Original BIOS Int 39h to replace on Int 39h
+i33Org  dq 0    ;Original BIOS Int 33h to replace on Int 39h.
+i2FNext dq 0    ;Previous Int 2Fh handler
+i33Next dq 0    ;Current disk driver to call.
+
+;Replacement Int 39h routine to replace interrupts these drivers hook.
+dosInt39h:
+;For now, we just replace int 33h and int 39h back and then jump to i39h
+    mov eax, 2533h
+    mov rdx, qword [i33Org]
+    int 21h
+    mov eax, 2539h
+    mov rdx, qword [i39Org]
+    int 21h
+;And now do the actual warm reboot
+    jmp qword [i39Org]
+
+;Replacement Int 33h routine
+dosInt33h:
+;For now, we just call the original Int 33h with no additional processing.
+;Will be used to implement DOS error handling on Int 33h calls
+    test byte [.inInt], -1  ;Spin on this var until we have done Int 33h
+    jnz dosInt33h
+    mov byte [.inInt], -1   ;Set that we are about to enter Int 33h
+    pop qword [.tmp]        ;Pop the original return address off the stack
+    call qword [i33Next]    ;Call previous handler
+    push qword [.tmp]       ;Put the return address on the stack
+    mov byte [.inInt], 0    ;Exit, now permit any waiting tasks to enter 
+    return                  ;And return to the caller :)
+.inInt  db 0    ;Set if we are doing this
+.tmp dq 0
+
+;Int 33h replacement routine
+i2fhSwap33h:
+;Replaces the current int 33h handler and the int 39h replacement handler
+;Input: ah = 13h
+;       rdx -> New Int 33h handler.
+;       rbx -> Value to replace back when system shutdown occurs.
+;Output:
+;       rdx -> Replaced Int 33h handler.
+;       rbx -> Replaced original lowest level Int 33h handler.
+    cmp ah, 13h
+    jne msdDriver.i2fDriver ;Goto the driver backdoor if not this handler 
+    xchg qword [i33Next], rdx
+    xchg qword [i33Org], rbx
+    iretq
+
+; Actual driver here
 msdDriver:
     push rax
     push rbx
@@ -844,7 +898,7 @@ msdDriver:
     clc
     return
 
-.i2fEp:
+.i2fDriver:
 ;Back door into the block driver :)
     cmp ah, 08h
     jne .i2fNotUs
@@ -856,21 +910,37 @@ msdDriver:
     je .i2fExec
     cmp al, 03  ;AL=03, Get tbl ptr
     je .i2fGivTbl
-.i2fExit:
-    iretq
 .i2fNotUs:
-    jmp qword [.i2fOld]
+    jmp qword [i2FNext]
 .i2fCheck:
     mov al, -1  ;Indicate installed!
     iretq
 .i2fAddTbl:
+;Adds a new entry to the drive chain and updates the multiownership bits
+; as it does :)
 ;Input: rdi -> New drvBlk to link to table (can be multiple!)
+;Destroy rax, rbx and rsi
     lea rsi, .drvBlkTbl
+    movzx eax, byte [rdi + drvBlk.bBIOSNum]
 .i2fATLp:
-    cmp qword [rsi + drvBlk.pLink], -1  ;goto the end of the table
-    cmovne rsi, qword [rsi + drvBlk.pLink]
-    jne .i2fATLp
-    mov qword [rsi + drvBlk.pLink], rdi
+    cmp byte [rsi + drvBlk.bBIOSNum], al
+    jne .i2fATNext
+;Set that the two disks are multi owned. New cannot own the drive
+; and make sure that the new drive has the accurate changeline bit set
+    or word [rsi + drvBlk.wDevFlgs], devMulti       ;Both drives now multi!
+    or word [rdi + drvBlk.wDevFlgs], devMulti
+    and word [rdi + drvBlk.wDevFlgs], ~devOwnDrv    ;New cant own drv
+;Changeline check.
+    and word [rdi + drvBlk.wDevFlgs], ~devChgLine   ;Assume no changeline
+    test word [rsi + drvBlk.wDevFlgs], devChgLine   ;Do we really have cline?
+    jz .i2fATNext   ;Skip adding the bit if not
+    or word [rdi + drvBlk.wDevFlgs], devChgLine     ;Add if we do 
+.i2fATNext:
+    cmp qword [rsi + drvBlk.pLink], -1  ;Check if we @ end of table
+    cmovne rsi, qword [rsi + drvBlk.pLink] ;Walk if not
+    jne .i2fATLp    ;And go again if not
+    mov qword [rsi + drvBlk.pLink], rdi ;Else, link rdi onto the end
+    mov qword [rdi + drvBlk.pLink], -1  ;And terminate list @ rdi now :)
     iretq
 .i2fExec:
 ;We make a small change in that we clean up the flags from the stack
@@ -895,8 +965,6 @@ msdDriver:
 ;Output: rdi -> drvBlkTbl
     lea rdi, .drvBlkTbl
     iretq
-
-.i2fOld dq 0    ;Original Int 2Fh pointer
 
 .strikeMsg db 0Dh,0Ah,"Insert for drive "
 .strikeMsgLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah

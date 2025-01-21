@@ -132,8 +132,31 @@ msdInit:
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
 ;    mov byte [7c02h], 0
 ;TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST 
+;Start by setting up the interrupt vectors!
+    mov eax, 3539h  ;Get original Int 39h
+    int 21h
+    mov qword [i39Org], rbx
+    mov eax, 2539h  ;Setup our handler
+    lea rdx, dosInt39h
+    int 21h
 
-;Start by setting up the link pointers to the load address of the 
+    mov eax, 3533h  ;Get original Int 33h
+    int 21h
+    mov qword [i33Org], rbx
+    mov qword [i33Next], rbx    ;This is also the low level handler
+    mov eax, 2533h  ;Setup our handler
+    lea rdx, dosInt33h
+    int 21h
+
+    mov eax, 352Fh  ;Get previous Int 2Fh handler
+    int 21h
+    mov qword [i2FNext], rbx
+    mov eax, 252Fh
+    lea rdx, i2fhSwap33h
+    int 21h
+
+
+;Then set up the link pointers to the load address of the 
 ; drive table.
     mov ecx, drvBlkTblL - 1
     lea rbp, msdDriver.drvBlkTbl      ;Point to the first drive block
@@ -247,10 +270,13 @@ msdInit:
     mov rsi, rbp
     sub rsi, drvBlk_size    ;Go back a drvBlk (yuck!)
     or word [rsi + drvBlk.wDevFlgs], devMulti  ;Indicate multiple drives now
+;Now we transfer the BIOS number and set drive number to 1
+    movzx eax, byte [rsi + drvBlk.bBIOSNum]
+    mov byte [rbp + drvBlk.bBIOSNum], al
     mov byte [rbp + drvBlk.bDOSNum], 1  ;Indicate B: drive
-    lea rdi, qword [rbp + drvBlk.bBIOSNum]
-    add rsi, drvBlk.bBIOSNum
-    mov ecx, (drvBlk_size - 9)  ;8 bytes Link ptr and 1 byte DOS number
+    lea rdi, qword [rbp + drvBlk.bpb]
+    add rsi, drvBlk.bpb
+    mov ecx, (drvBlk_size - 10)  ;8 bytes Link ptr and 2 id bytes
     rep movsb
     and word [rbp + drvBlk.wDevFlgs], ~devOwnDrv   ;Clear B:'s ownership!
     inc byte [physVol]  ;And add this drive to the count!
