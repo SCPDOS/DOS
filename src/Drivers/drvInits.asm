@@ -267,17 +267,24 @@ msdInit:
     lea rdi, qword [rsi + drvBlk.bpb]       ;Get the BPB ptr for this entry
     movzx eax, byte [rsi + drvBlk.bDOSNum]  ;Get the DOS number for this entry
     mov qword [rbx + 8*rax], rdi            ;Use as offset into ptr array
-    mov rsi, qword [rsi + drvBlk.pLink]     ;Walk the table
+    mov rdi, rsi                            ;Save this ptr before walking
+    mov rsi, qword [rsi + drvBlk.pLink]     ;Now walk the table
     cmp rsi, -1 ;Did we read the end of the table?
     jne .buildBPBArrayLp    ;No... keep going
     mov rsi, rbx    ;Move the bpbArray pointer into rsi now
+;
 ;Now we set the .optptr, .endptr and .numunt in driver request block
-    mov rbx, qword [reqHdrPtr]  ;Get the header pointer back
+;
+    mov rbx, qword [reqPktPtr]  ;Get the request packet ptr back
+;All previous drivers return the "worst case" eject pointer. Here we return
+; the real eject pointer
+    add rdi, drvBlk_size    ;Mov rdi past end of last drvBlk 2 first free byte
+    mov qword [rbx + initReqPkt.endptr], rdi    ;save as real eject point
     pop rax         ;Get back the number of detected volumes
     mov byte [rbx + initReqPkt.numunt], al  ;Store number of volumes
     mov qword [rbx + initReqPkt.optptr], rsi    ;Store the bpbArray here
     mov word [msdDriver.fnTbl], 0 ;Now prevent init from firing again
-    jmp devDrvExit  ;Sets .endptr and the status word
+    return
 .noRems:
 ;Pretend we do have something. If we are here, "worst case" we have 
 ; three fixed disk partitions. rbp points to the fourth one so pretend

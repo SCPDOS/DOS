@@ -1,11 +1,11 @@
 commonStrat:
 ;DOS calls this function with rbx=Ptr to request header
-    mov qword [reqHdrPtr], rbx
+    mov qword [reqPktPtr], rbx
     ret
 conDriver:
     push rax
     push rbx
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
     cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .conWriteErrorCode ;If yes, error!
@@ -171,7 +171,7 @@ clkDriver:
     push rdx
     push rsi
     push rbp
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
     cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .clkWriteErrorCode ;If yes, error!
@@ -355,7 +355,7 @@ comIntr:
     push rdx
     push rsi
     push rdi
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
     cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .comWriteErrorCode ;If yes, error!
@@ -503,7 +503,7 @@ comIntr:
 prnDriver:
     push rax
     push rbx
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
     cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .prnWriteErrorCode ;If yes, error!

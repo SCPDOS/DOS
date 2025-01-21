@@ -74,4 +74,4 @@ lpt3Hdr:
     dq commonStrat
     dq prnDriver
     dq "LPT3    "
-reqHdrPtr  dq 0    ;Where the default device drivers store the ReqPtr
+reqPktPtr  dq 0    ;Where the default device drivers store the ReqPtr

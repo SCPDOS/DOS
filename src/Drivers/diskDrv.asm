@@ -8,7 +8,7 @@ msdDriver:
     push rdi
     push rbp
     push r8
-    mov rbx, qword [reqHdrPtr]  ;Get the ptr to the req header in rbx
+    mov rbx, qword [reqPktPtr]  ;Get the ptr to the req header in rbx
     movzx esi, byte [rbx + drvReqPkt.cmdcde]    ;Get the command code
     cmp esi, drvMAXCMD                  ;Command code bigger than max?
     ja .errBadCmd                 ;If yes, error!
@@ -26,7 +26,7 @@ msdDriver:
 ;Goto function! rbp -> Table entry, eax = Drive number. rbx -> Reqpkt
     call rsi 
 .exit:
-    mov rbx, qword [reqHdrPtr]  ;Get back the req header ptr
+    mov rbx, qword [reqPktPtr]  ;Get back the req header ptr
     or word [rbx + drvReqPkt.status], drvDonStatus ;Set done bit
     pop r8
     pop rbp
@@ -106,7 +106,7 @@ msdDriver:
 
 ;DISK DRIVER ERROR HANDLER. Errors from within the functions come here!
 .errorXlat:
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov eax, 0100h
     int 33h ;Read status of last operation
     jc .genErrExit
@@ -163,7 +163,7 @@ msdDriver:
     mov al, 0Ch     ;Everything else is general error
 .errorExit:     ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov word [rbx + drvReqPkt.status], ax
     return      ;Return to set done bit
 
@@ -247,7 +247,7 @@ msdDriver:
 ;   TEMP: DO NOTHING. USE DEFAULT STRING IN THIS CASE 
 ;
 .bbpbExit:
-    mov rbx, qword [reqHdrPtr]  ;Get the driver ptr
+    mov rbx, qword [reqPktPtr]  ;Get the driver ptr
     movzx eax, byte [rbp + drvBlk.bMedDesc] ;Get the meddesc from the bpb
     mov byte [rbx + bpbBuildReqPkt.medesc], al
     add rbp, drvBlk.bpb ;Move the drvBlk ptr to the BPB itself.
@@ -539,7 +539,7 @@ msdDriver:
     jnz .biolp
     pop rsi     ;Rebalance the stack
     pop rbx     ;Drop the return pointer to balance stack
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
     jmp .ioError
 .bioufmted:
@@ -845,7 +845,7 @@ msdDriver:
     int 2Ah
 
     push rbx
-    mov qword [reqHdrPtr], rbx  ;Save the ptr in var since we own it now :)
+    mov qword [reqPktPtr], rbx  ;Save the ptr in var since we own it now :)
     call msdDriver  ;And call the driver like from within DOS!
     pop rbx
 
