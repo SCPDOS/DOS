@@ -527,7 +527,7 @@
    119 00000034 ????                <1>     .wOpenCnt   dw ?    ;Device open count (make dword?)
    120 00000036 ??                  <1>     .bDevType   db ?    ;Device type byte (21/440Dh type subcode)
    121 00000037 ????                <1>     .wDevFlgs   dw ?    ;Flags for this device 
-   122 00000039 <res 35h>           <1>     .sMaxBPB    db bpb32_size dup (?)   ;Max capacity BPB for drive
+   122 00000039 <res 35h>           <1>     .sDfltBPB   db bpb32_size dup (?)   ;Default capacity BPB for drive
    123                              <1> .dAccTime:          ;Last media check time if remdev
    124 0000006E ????????            <1>     .wPtnType   dd ?    
    125                              <1> ;--------------------------------------------------------------------
@@ -4151,7 +4151,7 @@
    191                              <1> ;Read the first sector of the hard drive. If a valid BPB is detected,
    192                              <1> ; we read the BPB in. Else, we attempt to interpret the sector as an MBR.
    193 00001CFC 31C9                <1>     xor ecx, ecx    ;Load sector 0 of the disk
-   194 00001CFE E828030000          <1>     call .ptnUpdateBpb
+   194 00001CFE E82D030000          <1>     call .ptnUpdateBpb
    195 00001D03 720D                <1>     jc .mbrFnd  ;If CF=NC, this sector has a valid BPB. No MBR.
    196                              <1> ;The odd case where there is a BPB on the hard disk :)
    197 00001D05 66814D372100        <1>     or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
@@ -4187,7 +4187,7 @@
    226 00001D64 0F8413010000        <1>     je .noRems
    227                              <1> .remLp:
    228 00001D6A 31C9                <1>     xor ecx, ecx    ;Load sector 0 of the disk
-   229 00001D6C E8BA020000          <1>     call .ptnUpdateBpb
+   229 00001D6C E8BF020000          <1>     call .ptnUpdateBpb
    230 00001D71 7222                <1>     jc .remNext     ;If the BPB was bad, next disk :)
    231                              <1> ;Now test if we have a changeline for this device.
    232 00001D73 8A5508              <1>     mov dl, byte [rbp + drvBlk.bBIOSNum]
@@ -4291,7 +4291,7 @@
    327                              <1> .processMbr:
    328                              <1> ;We have an MBR in the MBR table. Now we attempt to interpret it.
    329                              <1> ;If we return CF=CY, disk read failed. We skip this disk.
-   330 00001E8C E868010000          <1>     call .copyMbr           ;Copy MBR table over from buffer
+   330 00001E8C E86D010000          <1>     call .copyMbr           ;Copy MBR table over from buffer
    331                              <1> ;HACK! In the case of disk 80h, we search for the first active primary
    332                              <1> ; ptn. We process it, invalidate the entry then start again
    333 00001E91 803D(03000000)80    <1>     cmp byte [biosDrv], 80h ;Only do this for the first fixed disk
@@ -4308,7 +4308,7 @@
    344 00001EB6 EB1B                <1>     jmp short .pmbrNoHack   ;If disk one has no active primary, do normal.
    345                              <1> .pmbrHackFnd:
    346 00001EB8 0FB64604            <1>     movzx eax, byte [rsi + mbrEntry.ptnType]
-   347 00001EBC E8AB010000          <1>     call .checkDataPtn  ;If this is an extended partition, ignore it!
+   347 00001EBC E8C6010000          <1>     call .checkDataPtn  ;If this is an extended partition, ignore it!
    348 00001EC1 75E8                <1>     jne .pmbrHackRet    ;And keep searching
    349 00001EC3 C605(05000000)03    <1>     mov byte [mbrEtry], 3   ;Initialise the terminating condition
    350 00001ECA E812000000          <1>     call .pmbrLp ;Call the normal procedure, rsi -> Table entry
@@ -4320,9 +4320,9 @@
    356 00001EDA 488D35(06000000)    <1>     lea rsi, mbrE
    357                              <1> .pmbrLp:
    358 00001EE1 8A4604              <1>     mov al, byte [rsi + mbrEntry.ptnType]
-   359 00001EE4 E891010000          <1>     call .checkMbrPtnType
+   359 00001EE4 E8AC010000          <1>     call .checkMbrPtnType
    360 00001EE9 7548                <1>     jnz .pmbrNext  ;Jump if not a valid partition type (includes free ptns)
-   361 00001EEB E87C010000          <1>     call .checkDataPtn
+   361 00001EEB E897010000          <1>     call .checkDataPtn
    362 00001EF0 740A                <1>     je .pmbrDodata
    363 00001EF2 E855000000          <1>     call .processEPtn   ;Here we process EBR
    364                              <1>     retc                ;If this returns CF=CY, read error on disk. Exit!
@@ -4352,7 +4352,7 @@
    365 00001EFA EB2F                <1>     jmp short .pmbrXtrejoin   ;Now go to the next MBR entry
    366                              <1> .pmbrDodata:
    367 00001EFC 8B4E08              <1>     mov ecx, dword [rsi + mbrEntry.lbaStart] ;And the partition start
-   368 00001EFF E827010000          <1>     call .ptnUpdateBpb ;And update the BPB. If this fails, we skip the disk
+   368 00001EFF E82C010000          <1>     call .ptnUpdateBpb ;And update the BPB. If this fails, we skip the disk
    369 00001F04 7309                <1>     jnc .pmbrOk
    370                              <1>     retnz ;If we had a read error, just exit!
     45                              <2> cret nz
@@ -4449,7 +4449,7 @@
    393                              <1> ;Thus we always know the "root" sector of this extended partition.
    394 00001F4C 8B4E08              <1>     mov ecx, dword [rsi + mbrEntry.lbaStart]    ;Get the start of extended ptn
    395                              <1> .peplp:
-   396 00001F4F E8C1000000          <1>     call .readSector    ;Read the EBR sector in (sector number in ecx)
+   396 00001F4F E8C6000000          <1>     call .readSector    ;Read the EBR sector in (sector number in ecx)
    397                              <1>     retc    ;If we cant read the EBR in, assume end of logical partition.
     57                              <2> cret c
     19                              <3> %%_base:
@@ -4483,17 +4483,17 @@
     14 00001F63 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
    402                              <1> .pep1:
-   403 00001F64 E87F000000          <1>     call .copyEbr       ;Save the EBR
+   403 00001F64 E884000000          <1>     call .copyEbr       ;Save the EBR
    404                              <1> ;Now we check the saved EBR is valid.
    405 00001F69 0FB605(4A000000)    <1>     movzx eax, byte [ebrE + mbrEntry.ptnType]
-   406 00001F70 E8EF000000          <1>     call .checkEbrPtnType   ;Here we dont allow another extended case
+   406 00001F70 E80A010000          <1>     call .checkEbrPtnType   ;Here we dont allow another extended case
    407 00001F75 7548                <1>     jnz .pepNextEbr ;If this is not a valid ptn type, goto next
    408 00001F77 0FB605(4A020000)    <1>     movzx eax, byte [ebrE + mbr_size + mbrEntry.ptnType]    ;Get link ptn type
-   409 00001F7E E8E9000000          <1>     call .checkDataPtn  ;This MUST NOT be a Data ptn
+   409 00001F7E E804010000          <1>     call .checkDataPtn  ;This MUST NOT be a Data ptn
    410 00001F83 743A                <1>     je .pepNextEbr  ;If it is a data ptn, we ignore this entry as it is invalid.
    411                              <1> ;Now we get the absolute start sector of this partition.
    412 00001F85 030D(4E000000)      <1>     add ecx, dword [ebrE + mbrEntry.lbaStart]   ;Add relative start
-   413 00001F8B E89B000000          <1>     call .ptnUpdateBpb  ;Read and interpret the BPB
+   413 00001F8B E8A0000000          <1>     call .ptnUpdateBpb  ;Read and interpret the BPB
    414 00001F90 7309                <1>     jnc .pepOk
    415                              <1>     retnz ;If we had a read error, just exit!
     45                              <2> cret nz
@@ -4595,90 +4595,114 @@
     15                              <2> %assign retOff %%_ret-$$
    441                              <1> 
    442                              <1> .advDiskPtrs:
-   443 00001FD7 488B6D00            <1>     mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
-   444 00001FDB FE05(04000000)      <1>     inc byte [dosDrv]       ;Go to the next DOS device
-   445 00001FE1 FE05(00000000)      <1>     inc byte [physVol]
-   446                              <1>     return
+   443 00001FD7 E88D000000          <1>     call .xfrMaxBpb ;Finish drvBlk init by transfering dfltBPB
+   444 00001FDC 488B6D00            <1>     mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
+   445 00001FE0 FE05(04000000)      <1>     inc byte [dosDrv]       ;Go to the next DOS device
+   446 00001FE6 FE05(00000000)      <1>     inc byte [physVol]
+   447                              <1>     return
     13                              <2> %%_ret:
-    14 00001FE7 C3                  <2>  ret
+    14 00001FEC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   447                              <1> 
-   448                              <1> .copyEbr:
-   449                              <1> ;Copies the EBR from the EBR sector in the buffer
-   450 00001FE8 51                  <1>     push rcx
-   451 00001FE9 56                  <1>     push rsi
-   452 00001FEA 57                  <1>     push rdi
-   453 00001FEB 488D3D(06000000)    <1>     lea rdi, mbrE
-   454 00001FF2 B920000000          <1>     mov ecx, 2*mbrEntry_size
-   455 00001FF7 EB0F                <1>     jmp short .cpmbr
-   456                              <1> .copyMbr:
-   457                              <1> ;Copies the MBR from the MBR sector in the buffer
-   458 00001FF9 51                  <1>     push rcx
-   459 00001FFA 56                  <1>     push rsi
-   460 00001FFB 57                  <1>     push rdi
-   461 00001FFC 488D3D(06000000)    <1>     lea rdi, mbrE
-   462 00002003 B940000000          <1>     mov ecx, 4*mbrEntry_size
-   463                              <1> .cpmbr:
-   464 00002008 488D35(24020000)    <1>     lea rsi, qword [msdTempBuffer + mbr.mbrEntry1]
-   465 0000200F F3A4                <1>     rep movsb
-   466 00002011 5F                  <1>     pop rdi
-   467 00002012 5E                  <1>     pop rsi
-   468 00002013 59                  <1>     pop rcx
-   469                              <1>     return
+   448                              <1> 
+   449                              <1> .copyEbr:
+   450                              <1> ;Copies the EBR from the EBR sector in the buffer
+   451 00001FED 51                  <1>     push rcx
+   452 00001FEE 56                  <1>     push rsi
+   453 00001FEF 57                  <1>     push rdi
+   454 00001FF0 488D3D(06000000)    <1>     lea rdi, mbrE
+   455 00001FF7 B920000000          <1>     mov ecx, 2*mbrEntry_size
+   456 00001FFC EB0F                <1>     jmp short .cpmbr
+   457                              <1> .copyMbr:
+   458                              <1> ;Copies the MBR from the MBR sector in the buffer
+   459 00001FFE 51                  <1>     push rcx
+   460 00001FFF 56                  <1>     push rsi
+   461 00002000 57                  <1>     push rdi
+   462 00002001 488D3D(06000000)    <1>     lea rdi, mbrE
+   463 00002008 B940000000          <1>     mov ecx, 4*mbrEntry_size
+   464                              <1> .cpmbr:
+   465 0000200D 488D35(24020000)    <1>     lea rsi, qword [msdTempBuffer + mbr.mbrEntry1]
+   466 00002014 F3A4                <1>     rep movsb
+   467 00002016 5F                  <1>     pop rdi
+   468 00002017 5E                  <1>     pop rsi
+   469 00002018 59                  <1>     pop rcx
+   470                              <1>     return
     13                              <2> %%_ret:
-    14 00002014 C3                  <2>  ret
+    14 00002019 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   470                              <1> 
-   471                              <1> .readSector:
-   472                              <1> ;Input: ecx = Sector to read
-   473 00002015 0FB615(03000000)    <1>     movzx edx, byte [biosDrv]
-   474 0000201C B801820000          <1>     mov eax, 8201h  ;LBA Read One sector
-   475 00002021 488D1D(66000000)    <1>     lea rbx, msdTempBuffer
-   476 00002028 CD33                <1>     int 33h
-   477                              <1>     return
+   471                              <1> 
+   472                              <1> .readSector:
+   473                              <1> ;Input: ecx = Sector to read
+   474 0000201A 0FB615(03000000)    <1>     movzx edx, byte [biosDrv]
+   475 00002021 B801820000          <1>     mov eax, 8201h  ;LBA Read One sector
+   476 00002026 488D1D(66000000)    <1>     lea rbx, msdTempBuffer
+   477 0000202D CD33                <1>     int 33h
+   478                              <1>     return
     13                              <2> %%_ret:
-    14 0000202A C3                  <2>  ret
+    14 0000202F C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   478                              <1> 
-   479                              <1> .ptnUpdateBpb:
-   480                              <1> ;Setups up the call for below on the current partition.
-   481                              <1> ;Input: ecx = Number of hidden sectors
-   482                              <1> ;Output:
-   483                              <1> ;   CF=NC: All ok, BPB entry in rbp filled.
-   484                              <1> ;   CF=CY and ZF=ZE: Bad BPB read.
-   485                              <1> ;   CF=CY and ZF=NZ: Sector read failed.
-   486 0000202B 66C745370000        <1>     mov word [rbp + drvBlk.wDevFlgs], 0    ;Clean the flags to start with
-   487 00002031 894D1B              <1>     mov dword [rbp + drvBlk.dHiddSec], ecx
-   488 00002034 0FB605(04000000)    <1>     movzx eax, byte [dosDrv]
-   489 0000203B 884509              <1>     mov byte [rbp + drvBlk.bDOSNum], al ;Save the DOS number
-   490 0000203E 0FB605(03000000)    <1>     movzx eax, byte [biosDrv]   ;Get the BIOS drive
-   491 00002045 884508              <1>     mov byte [rbp + drvBlk.bBIOSNum], al
-   492 00002048 488D1D(66000000)    <1>     lea rbx, msdTempBuffer  ;Use Temporary Buffer
-   493 0000204F 56                  <1>     push rsi    ;Save the mbr entry ptr
-   494 00002050 E86CE7FFFF          <1>     call msdDriver.updateBpb
-   495 00002055 7208                <1>     jc .pubBad
-   496 00002057 E8C1E7FFFF          <1>     call msdDriver.moveVolIds
-   497 0000205C 5E                  <1>     pop rsi
-   498 0000205D F8                  <1>     clc         ;Always clean even if no ids
-   499                              <1>     return
-    13                              <2> %%_ret:
-    14 0000205E C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   500                              <1> .pubBad:
-   501 0000205F 5E                  <1>     pop rsi
-   502 00002060 3C07                <1>     cmp al, 07h ;Bad Partition?
-   503 00002062 F9                  <1>     stc         ;Ensure we set the CF again
-   504                              <1>     return
+   479                              <1> 
+   480                              <1> .ptnUpdateBpb:
+   481                              <1> ;Setups up the call for below on the current partition.
+   482                              <1> ;Input: ecx = Number of hidden sectors
+   483                              <1> ;Output:
+   484                              <1> ;   CF=NC: All ok, BPB entry in rbp filled.
+   485                              <1> ;   CF=CY and ZF=ZE: Bad BPB read.
+   486                              <1> ;   CF=CY and ZF=NZ: Sector read failed.
+   487 00002030 66C745370000        <1>     mov word [rbp + drvBlk.wDevFlgs], 0    ;Clean the flags to start with
+   488 00002036 894D1B              <1>     mov dword [rbp + drvBlk.dHiddSec], ecx
+   489 00002039 0FB605(04000000)    <1>     movzx eax, byte [dosDrv]
+   490 00002040 884509              <1>     mov byte [rbp + drvBlk.bDOSNum], al ;Save the DOS number
+   491 00002043 0FB605(03000000)    <1>     movzx eax, byte [biosDrv]   ;Get the BIOS drive
+   492 0000204A 884508              <1>     mov byte [rbp + drvBlk.bBIOSNum], al
+   493 0000204D 488D1D(66000000)    <1>     lea rbx, msdTempBuffer  ;Use Temporary Buffer
+   494 00002054 56                  <1>     push rsi    ;Save the mbr entry ptr
+   495 00002055 E867E7FFFF          <1>     call msdDriver.updateBpb
+   496 0000205A 7208                <1>     jc .pubBad
+   497 0000205C E8BCE7FFFF          <1>     call msdDriver.moveVolIds
+   498 00002061 5E                  <1>     pop rsi
+   499 00002062 F8                  <1>     clc         ;Always clean even if no ids
+   500                              <1>     return
     13                              <2> %%_ret:
     14 00002063 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   505                              <1> 
-   506                              <1> .checkEbrPtnType:
-   507                              <1> ;Input: al = Partition type
-   508                              <1> ;Output: ZF=ZE => Valid partition type found
-   509                              <1> ;        ZF=NZ => Not a valid partition type (05h and 0Fh not valid)
-   510 00002064 E811000000          <1>     call .checkMbrPtnType
-   511                              <1>     retne           ;Bubble up the not equal if not in the partition table
+   501                              <1> .pubBad:
+   502 00002064 5E                  <1>     pop rsi
+   503 00002065 3C07                <1>     cmp al, 07h ;Bad Partition?
+   504 00002067 F9                  <1>     stc         ;Ensure we set the CF again
+   505                              <1>     return
+    13                              <2> %%_ret:
+    14 00002068 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   506                              <1> 
+   507                              <1> .xfrMaxBpb:
+   508                              <1> ;If a drive is removable, we check the BIOS reported values and 
+   509                              <1> ; build a BPB around that. Else, we trust the bpb and blindly copy it.
+   510                              <1> ;
+   511                              <1> ; TEMP TEMP: FOR NOW WE JUST ALWAYS BLINDLY TRUST THE BPB.
+   512                              <1> ;
+   513 00002069 51                  <1>     push rcx
+   514 0000206A 56                  <1>     push rsi
+   515 0000206B 57                  <1>     push rdi
+   516 0000206C 488D750A            <1>     lea rsi, qword [rbp + drvBlk.bpb]
+   517 00002070 488D7D39            <1>     lea rdi, qword [rbp + drvBlk.sDfltBPB]
+   518 00002074 B935000000          <1>     mov ecx, bpb32_size
+   519                              <1> ;Copies garbage into the reserved 12 bytes at the end of the BPB32
+   520                              <1> ; but thats ok since we dont use it and those fields are reserved.
+   521 00002079 F3A4                <1>     rep movsb
+   522 0000207B 5F                  <1>     pop rdi
+   523 0000207C 5E                  <1>     pop rsi
+   524 0000207D 59                  <1>     pop rcx
+   525                              <1>     return
+    13                              <2> %%_ret:
+    14 0000207E C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   526                              <1> 
+   527                              <1> .checkEbrPtnType:
+   528                              <1> ;Input: al = Partition type
+   529                              <1> ;Output: ZF=ZE => Valid partition type found
+   530                              <1> ;        ZF=NZ => Not a valid partition type (05h and 0Fh not valid)
+   531 0000207F E811000000          <1>     call .checkMbrPtnType
+   532                              <1>     retne           ;Bubble up the not equal if not in the partition table
     53                              <2> cret ne
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -4695,57 +4719,57 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00002069 7401                <3>  j%-1 short %%a
+    34 00002084 7401                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 0000206B C3                  <4>  ret
+    14 00002086 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   512                              <1> .checkDataPtn:
-   513 0000206C 3C05                <1>     cmp al, 05h     ;Extended Partition which should use CHS for addressing
-   514 0000206E 7407                <1>     je .ceptBad
-   515 00002070 3C0F                <1>     cmp al, 0Fh     ;Extended Partition which should use LBA for addressing
-   516 00002072 7403                <1>     je .ceptBad
-   517 00002074 39C0                <1>     cmp eax, eax    ;Set the Zero flag
-   518                              <1>     return
+   533                              <1> .checkDataPtn:
+   534 00002087 3C05                <1>     cmp al, 05h     ;Extended Partition which should use CHS for addressing
+   535 00002089 7407                <1>     je .ceptBad
+   536 0000208B 3C0F                <1>     cmp al, 0Fh     ;Extended Partition which should use LBA for addressing
+   537 0000208D 7403                <1>     je .ceptBad
+   538 0000208F 39C0                <1>     cmp eax, eax    ;Set the Zero flag
+   539                              <1>     return
     13                              <2> %%_ret:
-    14 00002076 C3                  <2>  ret
+    14 00002091 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   519                              <1> .ceptBad:
-   520 00002077 85C0                <1>     test eax, eax   ;Clears the Zero flag (as eax is not zero)
-   521                              <1>     return
+   540                              <1> .ceptBad:
+   541 00002092 85C0                <1>     test eax, eax   ;Clears the Zero flag (as eax is not zero)
+   542                              <1>     return
     13                              <2> %%_ret:
-    14 00002079 C3                  <2>  ret
+    14 00002094 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   522                              <1> 
-   523                              <1> .checkMbrPtnType:
-   524                              <1> ;Input: al = Partition type
-   525                              <1> ;Output: ZF=ZE => Valid partition type found
-   526                              <1> ;        ZF=NZ => Not a valid partition type
-   527 0000207A 51                  <1>     push rcx
-   528 0000207B 57                  <1>     push rdi
-   529 0000207C 488D3D0A000000      <1>     lea rdi, .ptnTbl
-   530 00002083 B909000000          <1>     mov ecx, .ptnTblL
-   531 00002088 F2AE                <1>     repne scasb ;Find the entry in al
-   532 0000208A 5F                  <1>     pop rdi
-   533 0000208B 59                  <1>     pop rcx
-   534                              <1>     return
+   543                              <1> 
+   544                              <1> .checkMbrPtnType:
+   545                              <1> ;Input: al = Partition type
+   546                              <1> ;Output: ZF=ZE => Valid partition type found
+   547                              <1> ;        ZF=NZ => Not a valid partition type
+   548 00002095 51                  <1>     push rcx
+   549 00002096 57                  <1>     push rdi
+   550 00002097 488D3D0A000000      <1>     lea rdi, .ptnTbl
+   551 0000209E B909000000          <1>     mov ecx, .ptnTblL
+   552 000020A3 F2AE                <1>     repne scasb ;Find the entry in al
+   553 000020A5 5F                  <1>     pop rdi
+   554 000020A6 59                  <1>     pop rcx
+   555                              <1>     return
     13                              <2> %%_ret:
-    14 0000208C C3                  <2>  ret
+    14 000020A7 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   535                              <1> 
-   536                              <1> ;Table contents:
-   537                              <1> ; 01h - FAT 12 Partition. CHS addressing should be used.
-   538                              <1> ; 04h - FAT 16 Partition up to 32MB. CHS addressing should be used.
-   539                              <1> ; 05h - Extended Partition in MBR found. CHS addressing should be used.
-   540                              <1> ; 06h - FAT 16 Partition over 32MB. CHS addressing should be used.
-   541                              <1> ; 0Bh - FAT 32 Partition. CHS addressing should be used.
-   542                              <1> ; 0Ch - FAT 32 Partition. LBA addressing should be used.
-   543                              <1> ; 0Eh - FAT 16 Partition. LBA addressing should be used.
-   544                              <1> ; 0Fh - Extended Partition in MBR found. LBA addressing should be used.
-   545 0000208D 010405060B0C0D0E0F  <1> .ptnTbl db 01h, 04h, 05h, 06h, 0Bh, 0Ch, 0Dh, 0Eh, 0Fh
-   546                              <1> .ptnTblL    equ $ - .ptnTbl 
+   556                              <1> 
+   557                              <1> ;Table contents:
+   558                              <1> ; 01h - FAT 12 Partition. CHS addressing should be used.
+   559                              <1> ; 04h - FAT 16 Partition up to 32MB. CHS addressing should be used.
+   560                              <1> ; 05h - Extended Partition in MBR found. CHS addressing should be used.
+   561                              <1> ; 06h - FAT 16 Partition over 32MB. CHS addressing should be used.
+   562                              <1> ; 0Bh - FAT 32 Partition. CHS addressing should be used.
+   563                              <1> ; 0Ch - FAT 32 Partition. LBA addressing should be used.
+   564                              <1> ; 0Eh - FAT 16 Partition. LBA addressing should be used.
+   565                              <1> ; 0Fh - Extended Partition in MBR found. LBA addressing should be used.
+   566 000020A8 010405060B0C0D0E0F  <1> .ptnTbl db 01h, 04h, 05h, 06h, 0Bh, 0Ch, 0Dh, 0Eh, 0Fh
+   567                              <1> .ptnTblL    equ $ - .ptnTbl 
     26                                  
     27                                  Segment kDrvDat data private align=1
     28                                  ;---------------------------

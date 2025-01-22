@@ -440,6 +440,7 @@ msdInit:
     return
 
 .advDiskPtrs:
+    call .xfrDfltBpb ;Finish drvBlk init by transfering dfltBPB
     mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
     inc byte [dosDrv]       ;Go to the next DOS device
     inc byte [physVol]
@@ -501,6 +502,26 @@ msdInit:
     pop rsi
     cmp al, 07h ;Bad Partition?
     stc         ;Ensure we set the CF again
+    return
+
+.xfrDfltBpb:
+;If a drive is removable, we check the BIOS reported values and 
+; build a BPB around that. Else, we trust the bpb and blindly copy it.
+;
+; TEMP TEMP: FOR NOW WE JUST ALWAYS BLINDLY TRUST THE BPB.
+;
+    push rcx
+    push rsi
+    push rdi
+    lea rsi, qword [rbp + drvBlk.bpb]
+    lea rdi, qword [rbp + drvBlk.sDfltBPB]
+    mov ecx, bpb32_size
+;Copies garbage into the reserved 12 bytes at the end of the BPB32
+; but thats ok since we dont use it and those fields are reserved.
+    rep movsb
+    pop rdi
+    pop rsi
+    pop rcx
     return
 
 .checkEbrPtnType:

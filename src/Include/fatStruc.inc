@@ -119,7 +119,7 @@ struc drvBlk
     .wOpenCnt   dw ?    ;Device open count (make dword?)
     .bDevType   db ?    ;Device type byte (21/440Dh type subcode)
     .wDevFlgs   dw ?    ;Flags for this device 
-    .sMaxBPB    db bpb32_size dup (?)   ;Max capacity BPB for drive
+    .sDfltBPB   db bpb32_size dup (?)   ;Default capacity BPB for drive
 .dAccTime:          ;Last media check time if remdev
     .wPtnType   dd ?    
 ;--------------------------------------------------------------------
