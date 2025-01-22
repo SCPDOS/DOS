@@ -425,7 +425,8 @@ msdDriver:
     mov ecx, 11 ;Copy the volume label
     rep movsb   
     ;rsi now points to the filSysType field in the extBs.
-    inc rdi     ;Now move rdi to the filSysType field in the drvBlk.
+    ;Move rdi to the filSysType field in the drvBlk.
+    lea rdi, qword [rbp + drvBlk.filSysType]
     mov ecx, 8  ;Now copy the 8 char string over too
     rep movsb   
 ;Clear the devswap bit now as we have a good BPB for this drive
@@ -843,7 +844,7 @@ msdDriver:
 ;       rbp -> drvBlk to get volume ID from
 ;Output: Pointer placed in io request packet
     push rax
-    lea rax, qword [rbp + drvBlk.volId]    ;Get the volId from the BPB
+    lea rax, qword [rbp + drvBlk.volLab]    ;Get the volLbl from the BPB
     mov qword [rbx + ioReqPkt.desptr], rax 
     pop rax
     ret
@@ -983,3 +984,6 @@ maxAcc  equ 5       ;Maximum accesses
 drvBlkTblL equ 26   ;Space for 26 drive letters!
 .drvBlkTbl:
     db drvBlkTblL*drvBlk_size dup (0)
+;    %rep drvBlkTblL
+;        defaultDrv
+;    %endrep
