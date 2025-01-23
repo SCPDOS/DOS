@@ -119,6 +119,8 @@ struc drvBlk
     .wOpenCnt   dw ?    ;Device open count (make dword?)
     .bDevType   db ?    ;Device type byte (21/440Dh type subcode)
     .wDevFlgs   dw ?    ;Flags for this device 
+;The below word is a legacy thing. It is only used in a CHS based IOCTL call.
+    .wNumCyl    dw ?
     .sDfltBPB   db bpb32_size dup (?)   ;Default capacity BPB for drive
 .dAccTime:          ;Last media check time if remdev
     .wPtnType   dd ?    
@@ -274,6 +276,7 @@ endstruc
     dw 0    ;Open count
     db 0    ;Dev type byte 
     dw devOwnDrv    ;Dev flags, every drive owns itself by default
+    dw 63   ;63 Cylinders
     defaultBigBPB   ;Do the MAX BPB write here too
     dd 0    ;Access time of 0
     db "NO NAME    "

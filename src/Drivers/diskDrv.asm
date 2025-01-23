@@ -162,7 +162,7 @@ msdDriver:
 .errorXlat:
     mov rbx, qword [reqPktPtr]
     mov eax, 0100h
-    int 33h ;Read status of last operation
+    call .callI33h ;Read status of last operation
     jc .genErrExit
 .ioError:   ;Jumped to from the blkIO processor with rbx -> reqHdr already
     cmp ah, 80h ;Timeout/Media Not Ready response (device not present)
@@ -244,7 +244,7 @@ msdDriver:
 ; disks without changeline support
     mov byte [.bLastDsk], -1   
     mov ah, 16h 
-    int 33h
+    call .callI33h
     jc .mmcChange
 ;    cmp ah, 80h
 ;    je .mmcNoChangeLine
@@ -506,12 +506,12 @@ msdDriver:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     add ecx, dword [rbp + drvBlk.dHiddSec]      ;Of selected volume!
     mov eax, 8201h  ;LBA Read 1 sector
-    int 33h
+    call .callI33h
     jnc .bioExit    ;Exit via the IO exit
     dec edi         ;Dec the counter
     jz .bbpbrbsErr   ;If we are out of counts, sorry buddy :(
     mov eax, 0100h  ;Now read status of last error
-    int 33h
+    call .callI33h
     jmp short .bbpbrbsLp    ;And try again
 .bbpbrbsErr:
     stc
@@ -526,9 +526,10 @@ msdDriver:
     call .ioSetVolLbl
     call .checkDevType
     mov rdi, rbx
-    xor esi, esi  ;Set sector read counter to zero
+    call .bioSetupRegs
+    retz
 .msdr0:
-    mov dh, 82h ;LBA Read Sectors
+    mov ah, 82h ;LBA Read Sectors
     call .blkIO
     call .ioAdv
     jne .msdr0
@@ -539,13 +540,14 @@ msdDriver:
     call .ioSetVolLbl
     call .checkDevType
     mov rdi, rbx
-    xor esi, esi  ;Set sector read counter to zero
+    call .bioSetupRegs
+    retz
 .msdw0:
-    mov dh, 83h ;LBA Write Sectors
+    mov ah, 83h ;LBA Write Sectors
     call .blkIO
     cmp byte [rdi + ioReqPkt.cmdcde], drvWRITEVERIFY
     jne .msdw1
-    mov dh, 84h ;LBA Verify Sectors
+    mov ah, 84h ;LBA Verify Sectors
     call .blkIO
 .msdw1:
     call .ioAdv
@@ -555,48 +557,91 @@ msdDriver:
 .ioAdv:
 ;Advances the buffers on successful IO. 
 ;If returns ZF=ZE, we have completed all the IO for the request.
+;Input: 
+;       rbx -> Where we just IO'ed to
+;       rcx = LBA sector we just xfred
+;       dl  = BIOS drive number
+;       rdi -> ioReqPkt
+;       rbp -> drvBlk
+;       esi = Number of sectors to xfr
+;Output:
+;       rbx -> Where to IO next sector to/from
+;       rcx = LBA of next sector to xfer
+;       dl  = BIOS drive number
+;       rdi -> ioReqPkt
+;       rbp -> devBlk
+;       esi = Sectors left to xfr.
+;       ZF=ZE if esi is 0. Else ZF=NZ.
+    inc rcx     ;Goto next sector
     movzx eax, word [rbp + drvBlk.wBpS] 
-    add qword [rdi + ioReqPkt.strtsc], rax  ;Add one sector
-    add qword [rdi + ioReqPkt.bufptr], rax  ;Add one sector
-    inc esi
-    cmp esi, dword [rdi + ioReqPkt.tfrlen]
+    add rbx, rax  ;Advance the buffer pointer by 1 sector
+    dec esi     ;Once this hits 0, we stop the xfr
+    return
+
+.bioSetupRegs:
+;Sets up sector to read and buffer ptr in blkIO.
+;If returns ZF=ZE then xfr 0 sectors, exit immediately
+;Output: rdi -> ioReqPkt
+;        rbp -> devBlk
+;        rbx -> Transfer buffer
+;        rcx = Sector to transfer
+;        esi = Number of sectors to transfer
+;        ZF=ZE if esi is 0. Else ZF=NZ.
+    mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
+    add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
+    mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
+    mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS drive number
+    mov esi, dword [rdi + ioReqPkt.tfrlen]  ;Get the tfrlen into esi
+    test esi, esi                           ;If this is 0, avoid IO
     return
 
 .blkIO:  ;Does block IO
-;Error handled internally
-;Sector count handled by caller
-;Called with dh = BIOS function number, rdi -> ioReqPkt, rbp -> drvBlk
+;Error handled internally and return to 
+;Sector count handled by caller.
+;All registers marked as input registers must be preserved across the call
+; except ah and rdi
+;Input: ah = BIOS function number, 
+;       rdi -> ioReqPkt 
+;       rbp -> drvBlk
+;       rbx -> Transfer buffer
+;       rcx = LBA sector to transfer
+;       dl  = BIOS drive number
+;       esi = Sectors left to xfr!
     test word [rbp + drvBlk.wDevFlgs], devUnFmt
     jnz .bioufmted
     push rsi    ;Save sector count
     mov esi, 5  ;Retry counter five times
 .biolp:
-    mov dl, byte [rbp + drvBlk.bBIOSNum]
-    mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
-    add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
     call .bioSanity ;Sanity check ecx here
-    mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
-    mov ah, dh
     mov al, 01h ;Do one sector at a time 
-    int 33h
+    call .callI33h
     jc .bioError
+    cmp al, 1   ;Did we read one sector?
+    jne .bioError
     pop rsi ;Rebalance stack
 .bioExit:
     mov al, byte [rbp + drvBlk.bDOSNum]
     mov byte [.bLastDsk], al    ;Last DOS disk accessed
     test word [rbp + drvBlk.wDevFlgs], devFixed
     retnz
+;Ensure we set the time of the operation w/o modifying the registers.
+;Routine trashes ecx and edx so save!
+    push rcx
+    push rdx
     call .setTime   ;Set the current time and clear state for successful IO
+    pop rdx
+    pop rcx
     return
 .bioError:
+    ;xor eax, eax    ;Reset disk: CRASHES BOCHS
+    push rdx    ;Preserve drive number. All other regs preserved
     mov eax, 0100h
-    int 33h ;Read status of last operation
+    call .callI33h ;Read status of last operation
+    pop rdx     ;Get back drive number.
     dec esi
     jnz .biolp
     pop rsi     ;Rebalance the stack
     pop rbx     ;Drop the return pointer to balance stack
-    mov rbx, qword [reqPktPtr]
-    mov dword [rbx + ioReqPkt.tfrlen], esi ;Save number of IO-ed sectors
     jmp .ioError
 .bioSanity:
 ;Input: ecx = Sector we will transact on. rbp -> DrvBlk
@@ -661,7 +706,7 @@ msdDriver:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8800h ;Read LBA Device Parameters
     push rbx
-    int 33h
+    call .callI33h
     ;Returns:
     ;rbx = Sector size in bytes
     ;rcx = Last LBA block
@@ -690,7 +735,7 @@ msdDriver:
     mov rbx, qword [rdi + genioctlLBAwrite.xferBuffer]
     mov ah, 83h
 .gIOCTLwfCommon:
-    int 33h
+    call .callI33h
     jc .errorXlat
     mov rbx, rsi    ;Geturns rbx to point to the request pointer
     return 
@@ -897,6 +942,22 @@ msdDriver:
     return
 .ctNoChange:
     clc
+    return
+
+.callI33h:
+;Wraps all i33 calls allowing me to preserve all that I need to preserve
+; across these calls.
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rbp
+    int 33h
+    pop rbp
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
     return
 
 .i2fDriver:

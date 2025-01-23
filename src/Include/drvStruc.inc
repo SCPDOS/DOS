@@ -201,8 +201,8 @@ endstruc
 struc genioctlGetParamsTable
     .size           db ?
     .res            db 7 dup (?)
-    .sectorSize     db 8 dup (?)  ;Only the lower dword is valid here
-    .numSectors     db 8 dup (?)
+    .sectorSize     dq ?  ;Only the lower dword is valid here
+    .numSectors     dq ?
 endstruc
 
 ;THE WRITE STRUCT MUST BE A STRICT SUPERSET OF THE FORMAT STRUCT ALWAYS
@@ -210,13 +210,13 @@ struc genioctlLBAformat
     .size           db ?
     .numSectors     db ?  ;Number of sectors to format
     .res            db 6 dup (?)
-    .startSector    db 8 dup (?)  ;Sector to start format at
+    .startSector    dq ?  ;Sector to start format at
 endstruc
 
 struc genioctlLBAwrite
     .size           db ?
     .numSectors     db ?  ;Number of sectors to write
     .res            db 6 dup (?)
-    .startSector    db 8 dup (?)  ;Sector to start write at
-    .xferBuffer     db 8 dup (?)  ;Transfer buffer for data
+    .startSector    dq ?  ;Sector to start write at
+    .xferBuffer     dq ?  ;Transfer buffer for data
 endstruc

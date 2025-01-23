@@ -440,7 +440,8 @@ msdInit:
     return
 
 .advDiskPtrs:
-    call .xfrDfltBpb ;Finish drvBlk init by transfering dfltBPB
+    call .getNumCyl     ;Computes the number of cylinders in the BPB
+    call .xfrDfltBpb    ;Finish drvBlk init by transfering dfltBPB
     mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
     inc byte [dosDrv]       ;Go to the next DOS device
     inc byte [physVol]
@@ -504,6 +505,33 @@ msdInit:
     stc         ;Ensure we set the CF again
     return
 
+.getNumCyl:
+;Computes the number of cylinders on the media. Not really to be used.
+;Input: rbp -> drvBlk
+    push rax
+    push rcx
+    push rdx
+    movzx eax, word [rbp + drvBlk.wNumHeads]
+    movzx ecx, word [rbp + drvBlk.wSecPerTrk]
+    mul ecx ;Get sectors per cylinder in eax. edx = 0
+    mov ecx, eax    ;Save this number in ecx
+    movzx eax, word [rbp + drvBlk.wTotSec16]
+    test eax, eax   ;If this is zero, get the 32 bit count of sectors
+    cmovz eax, dword [rbp + drvBlk.dTotSec32]
+    div ecx     ;sectors/(sectors/cylinder) = whole cylinders in eax
+    test edx, edx
+    jz .gncExit
+    inc eax     ;Inc the cylinder count to account for not whole divide
+.gncExit:
+    mov edx, 0FFFFh   ;A default Max cylinder value, since CHS is for floppies.
+    cmp eax, edx
+    cmova eax, edx
+    mov word [rbp + drvBlk.wNumCyl], ax
+    clc ;Ensure CF is clear
+    pop rdx
+    pop rcx
+    pop rax
+    return
 .xfrDfltBpb:
 ;If a drive is removable, we check the BIOS reported values and 
 ; build a BPB around that. Else, we trust the bpb and blindly copy it.
