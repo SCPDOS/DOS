@@ -175,9 +175,9 @@ msdInit:
     ;r8[Byte 1] = Number of fixed disks
     ;r8[Byte 2] = Number of units on EHCI bus
     ;r8[Byte 3] = Number of Int 33h units
-    mov qword [msdTempBuffer], r8   
-    movzx eax, byte [msdTempBuffer + 3]
-    movzx ebx, byte [msdTempBuffer + 1]
+    mov qword [msdDriver.inBuffer], r8   
+    movzx eax, byte [msdDriver.inBuffer + 3]
+    movzx ebx, byte [msdDriver.inBuffer + 1]
     sub eax, ebx    ;Get remdevs in eax
     mov byte [remDrv], al    ;Save num of phys int 33h rem drives
     mov byte [fixDrv], bl    ;Save number of physical hard drives
@@ -200,7 +200,7 @@ msdInit:
 .mbrFnd:
     jne .gotoNextDisk   ;If CF=CY and ZF=NZ, invalid disk! Goto next disk!
 ;Now we check if we have a valid MBR signature.
-    cmp word [msdTempBuffer + mbr.mbrSig], 0AA55h
+    cmp word [msdDriver.inBuffer + mbr.mbrSig], 0AA55h
     jne .gotoNextDisk
     call .processMbr    ;This disk is done.
 ;If an error reading this disk at some partition, its oki to do the next check
@@ -395,7 +395,7 @@ msdInit:
 .peplp:
     call .readSector    ;Read the EBR sector in (sector number in ecx)
     retc    ;If we cant read the EBR in, assume end of logical partition.
-    cmp word [msdTempBuffer + ebr.mbrSig], 0AA55h
+    cmp word [msdDriver.inBuffer + ebr.mbrSig], 0AA55h
     je .pep1   ;If this doesnt have a valid ebr signature, end ext ptn parsing.
     stc
     return
@@ -463,7 +463,7 @@ msdInit:
     lea rdi, mbrE
     mov ecx, 4*mbrEntry_size
 .cpmbr:
-    lea rsi, qword [msdTempBuffer + mbr.mbrEntry1]
+    lea rsi, qword [msdDriver.inBuffer + mbr.mbrEntry1]
     rep movsb
     pop rdi
     pop rsi
@@ -474,7 +474,7 @@ msdInit:
 ;Input: ecx = Sector to read
     movzx edx, byte [biosDrv]
     mov eax, 8201h  ;LBA Read One sector
-    lea rbx, msdTempBuffer
+    lea rbx, msdDriver.inBuffer
     int 33h
     return
 
@@ -491,7 +491,7 @@ msdInit:
     mov byte [rbp + drvBlk.bDOSNum], al ;Save the DOS number
     movzx eax, byte [biosDrv]   ;Get the BIOS drive
     mov byte [rbp + drvBlk.bBIOSNum], al
-    lea rbx, msdTempBuffer  ;Use Temporary Buffer
+    lea rbx, msdDriver.inBuffer  ;Use Temporary Buffer
     push rsi    ;Save the mbr entry ptr
     call msdDriver.updateBpb
     jc .pubBad

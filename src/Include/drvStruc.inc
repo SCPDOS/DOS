@@ -196,27 +196,58 @@ struc setDevReqPkt ;Set Logical Device Request Packet
     drvReqPktM    ;Common Driver Header Macro
 
 endstruc
+;IOCTL structs
 
-
-struc genioctlGetParamsTable
+struc lbaParamsBlock
     .size           db ?
     .res            db 7 dup (?)
-    .sectorSize     dq ?  ;Only the lower dword is valid here
-    .numSectors     dq ?
+    .sectorSize     dq ?    ;Only the lower word is valid here
+    .numSectors     dq ?    ;Only the lower dword is valid here
 endstruc
 
-;THE WRITE STRUCT MUST BE A STRICT SUPERSET OF THE FORMAT STRUCT ALWAYS
-struc genioctlLBAformat
+struc lbaIOBlock
+    .size           db ?
+    .numSectors     db ?  ;Number of sectors to write
+    .res            db 6 dup (?)
+    .startSector    dq ?  ;Sector to start write at
+    .xferBuffer     dq ?  ;Transfer buffer for data
+endstruc
+
+struc lbaFormatBlock
     .size           db ?
     .numSectors     db ?  ;Number of sectors to format
     .res            db 6 dup (?)
     .startSector    dq ?  ;Sector to start format at
 endstruc
 
-struc genioctlLBAwrite
-    .size           db ?
-    .numSectors     db ?  ;Number of sectors to write
-    .res            db 6 dup (?)
-    .startSector    dq ?  ;Sector to start write at
-    .xferBuffer     dq ?  ;Transfer buffer for data
+struc chsParamsBlock
+    .bSpecFuncs db ?    ;
+    .bDevType   db ?    ;5 if fixed, 7 otherwise
+    .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
+    .wNumCyl    dw ?
+    .bMedTyp    db ?    ;Perma 0 for us, meaningless
+    .deviceBPB  db bpb32_size dup (?)
+    .TrackLayout:
+endstruc
+
+;Used for get and set params. Refer to DOS docs for meaning of bit.
+specFuncBPB equ 1<<0    ;Does BPB stuff
+;Only used in setparams requests. Ignored for getparams 
+specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
+specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
+
+
+struc chsIOBlock
+    .bSpecFuncs     db ?
+    .wStartHead     dw ?
+    .wStartCyl      dw ?
+    .wStartSector   dw ?
+    .wNumSectors    dw ?
+    .pXferBuffer    dq ?
+endstruc
+
+struc chsFormatBlock
+    .bSpecFuncs db ?
+    .wStartHead dw ?
+    .wStartCyl  dw ?
 endstruc
