@@ -226,7 +226,7 @@ struc chsParamsBlock
     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
     .wNumCyl    dw ?
     .bMedTyp    db ?    ;Perma 0 for us, meaningless
-    .deviceBPB  db bpb32_size dup (?)
+    .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
     .TrackLayout:
 endstruc
 
@@ -240,8 +240,8 @@ specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
 struc chsIOBlock
     .bSpecFuncs     db ?
     .wStartHead     dw ?
-    .wStartCyl      dw ?
-    .wStartSector   dw ?
+    .wStartCyl      dw ?    ;Zero based.
+    .wStartSector   dw ?    ;Zero based.
     .wNumSectors    dw ?
     .pXferBuffer    dq ?
 endstruc
@@ -249,5 +249,17 @@ endstruc
 struc chsFormatBlock
     .bSpecFuncs db ?
     .wStartHead dw ?
-    .wStartCyl  dw ?
+    .wStartCyl  dw ?        ;Zero based.
+endstruc
+
+struc accFlgBlk
+    .bSpecFuncs db ?    ;Must be 0
+    .bAccMode   db ?    ;Set if access allowed. Clear if not.
+endstruc
+
+struc idParamBlk
+    .wCallLvl   dw ?    ;Should be zero
+    .volId      dd ?    ;Volume Id
+    .volLab     db 11 dup (?)   ;Volume label string
+    .filSysType db 8 dup (?)    ;File system type string
 endstruc

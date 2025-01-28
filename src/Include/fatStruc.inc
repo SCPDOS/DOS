@@ -61,7 +61,7 @@ struc bpb32       ;FAT 32 BPB
     .RootClus   dd ?  ;First Cluster of Root Directory
     .FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
     .BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
-    ;.reserved   db 12 dup (?) ;Reserved 12 bytes
+    .reserved   db 12 dup (?) ;Reserved 12 bytes
 endstruc
 
 struc FSInfo

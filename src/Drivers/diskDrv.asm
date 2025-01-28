@@ -451,7 +451,7 @@ msdDriver:
     test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
     retnz  
     call .bbpbReadBS    ;Sets up rbx to point to internal disk buffer
-    retc    ;If an error occured, ZF setup according to blkIO
+    retc    ;If an error occured, ZF setup according to block IO
 ;Check we if we have a valid bootsector.
     cmp byte [rbx], 069h   ;Direct jump has no NOP
     je .newDisk
@@ -463,7 +463,7 @@ msdDriver:
     je .newDisk
 .oldDisk:
     ;call .bbpbReadFAT   ;Read the FAT sector now instead
-    ;retc    ;If an error occured, ZF setup according to blkIO
+    ;retc    ;If an error occured, ZF setup according to block IO
     ;mov ax, word [rbx]
     ;and ax, 0FFFh
     ;cmp ah, 0Fh     ;High byte must be 0Fh at this point.
@@ -595,7 +595,7 @@ msdDriver:
     lea rbx, .inBuffer  ;Use the in sector buffer. Ensure ownership.
     add ecx, dword [rbp + drvBlk.dHiddSec]
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov ah, 82h     ;LBA Read function
+    mov eax, 8200h  ;LBA Read function
     jmp .blkIO      ;Does the Block IO, do tail call
 
 .IOCTLRead:         ;Function 3, returns immediately
@@ -610,7 +610,7 @@ msdDriver:
     call .bioSetupRegs
     retz
 .msdr0:
-    mov ah, 82h ;LBA Read Sectors
+    mov eax, 8200h  ;LBA Read function
     call .blkIO
     jc .ioDoErr
     call .ioAdv
@@ -625,12 +625,12 @@ msdDriver:
     call .bioSetupRegs
     retz
 .msdw0:
-    mov ah, 83h ;LBA Write Sectors
+    mov eax, 8300h ;LBA Write Sectors
     call .blkIO
     jc .ioDoErr
     cmp byte [rdi + ioReqPkt.cmdcde], drvWRITEVERIFY
     jne .msdw1
-    mov ah, 84h ;LBA Verify Sectors
+    mov eax, 8400h ;LBA Verify Sectors
     call .blkIO
     jc .ioDoErr
 .msdw1:
@@ -662,17 +662,19 @@ msdDriver:
 ;       rbp -> drvBlk
 ;       esi = Sectors left to xfr.
 ;       ZF=ZE if esi is 0. Else ZF=NZ.
+    push rax
     inc rcx     ;Goto next sector
     movzx eax, word [rbp + drvBlk.wBpS] 
     add rbx, rax  ;Advance the buffer pointer by 1 sector
     dec esi     ;Once this hits 0, we stop the xfr
+    pop rax
     return
 
 .bioSetupRegs:
 ;Sets up sector to read and buffer ptr for block IO call.
 ;If returns ZF=ZE then xfr 0 sectors, exit immediately
 ;Output: rdi -> ioReqPkt
-;        rbp -> devBlk
+;        rbp -> drvBlk
 ;        rbx -> Transfer buffer
 ;        rcx = Sector to transfer
 ;        esi = Number of sectors to transfer
@@ -689,7 +691,8 @@ msdDriver:
 ;Sector count handled by caller.
 ;All registers marked as input registers must be preserved across the call
 ; except ah
-;Input: ah = BIOS function number, 
+;Input: ah = BIOS function number
+;       al = Clear if we should sanity check. Set if not.
 ;       rdi -> ioReqPkt             (Normal Read/Write only)
 ;       rbp -> drvBlk
 ;       rbx -> Transfer buffer
@@ -741,6 +744,8 @@ msdDriver:
 ;Input: ecx = Sector we will transact on. rbp -> DrvBlk
 ;Output: CF=NC, sector ok to xact on
 ;        CF=CY, doesnt return, fails the call
+    test eax, 0FFh  ;If the bottom byte is set, it is a IOCTL call.
+    retnz           ;BIOS checks these for us as IOCTL bypasses partitions.
     push rax
     push rbx
     movzx eax, word [rbp + drvBlk.wTotSec16]
@@ -793,7 +798,7 @@ msdDriver:
     test cl, 60h    ;One of these two bits MUST be set (bits 5 and 6)
     jz .errorExit
     movzx edx, cl
-    and edx, ~F0h   ;Clear the upper bit.
+    and edx, ~80h   ;Clear the upper bit.
     cmp edx, 7
     jne .ioctlNoAccess
     mov edx, 3  ;Move the offset instead into edx
@@ -807,16 +812,22 @@ msdDriver:
 .ioctlNoRead:
     movzx edx, word [rdi]   ;Read the word offset
     pop rdi
-    add rdx, rdi    ;Add the table base
+    add rdi, rdx    ;Add the table base
+    mov rdx, qword [rbx + ioctlReqPkt.ctlptr]
     test cl, 80h    ;Now set the flag for if CHS (ZF=ZE) or LBA (ZF=NZ)
-    jmp rdx
+    jmp rdi ;And enter the function with the ptr to the ctrl block in rdx
 .ioctlTbl:
+;Note: For the CHS IO functions, we translate the CHS requests into LBA
+; requests and then recycle the LBA request code. We do this using the 
+; track table. If the sector size of any table entry is neq the 
+; device sector size, we fail the request. This is because these requests
+; work on a track by track basis.
     dw .ioSetDevParams - .ioctlTbl  ;CL = 40h or CL = C0h, Write IOCTL
     dw .ioGetDevParams - .ioctlTbl  ;CL = 60h or CL = E0h, Read IOCTL
-    dw .ioWriteTrack - .ioctlTbl    ;CL = 41h or CL = C1h, Write IOCTL
-    dw .ioReadTrack - .ioctlTbl     ;CL = 61h or CL = E1h, Read IOCTL
-    dw .ioFormatTrack - .ioctlTbl   ;CL = 42h or CL = C2h, Write IOCTL
-    dw .ioVerifyTrack - .ioctlTbl   ;CL = 62h or CL = E2h, Read IOCTL
+    dw .ioWrite - .ioctlTbl         ;CL = 41h or CL = C1h, Write IOCTL
+    dw .ioRead - .ioctlTbl          ;CL = 61h or CL = E1h, Read IOCTL
+    dw .ioFormat - .ioctlTbl        ;CL = 42h or CL = C2h, Write IOCTL
+    dw .ioVerify - .ioctlTbl        ;CL = 62h or CL = E2h, Read IOCTL
     dw .iobadCmd - .ioctlTbl        ;CL = 43h or CL = C3h, error
     dw .iobadCmd - .ioctlTbl        ;CL = 63h or CL = E3h, error
     dw .iobadCmd - .ioctlTbl        ;CL = 44h or CL = C4h, error
@@ -827,6 +838,291 @@ msdDriver:
     dw .ioGetIds - .ioctlTbl        ;CL = 66h or CL = E6h, Get vol Ids
     dw .ioSetAccessFlag - .ioctlTbl ;CL = 47h or CL = C7h, Write IOCTL
     dw .ioGetAccessFlag - .ioctlTbl ;CL = 67h or CL = E7h, Read IOCTL
+.iobadCmd:
+    mov eax, drvBadCmd
+    jmp .errorExit
+.iobadCmdLen:
+    mov eax, drvBadDrvReq
+    jmp .errorExit
+.iobadMed:
+    mov eax, drvBadMed
+    jmp .errorExit
+;---------------------------------------------------------------------------
+;               Set Device parameters in CHS and LBA here
+;---------------------------------------------------------------------------
+.ioSetDevParams:
+    jnz .lbaSetParams
+;Here we set CHS params. 
+;Before we trust the table, we check that indeed
+; no sector index is past the max sector count and that if the caller
+; claimed that all the sectors are of the same size, they really are.    
+    lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
+    mov rdi, rsi    ;Save the pointer in rdi
+    stosw           ;Get the lead word and adv rsi by 2
+    movzx ecx, ax   ;Get the lead table entry
+    cmp ecx, maxTrackTblSz
+    ja .genErrExit
+    cmp word [rsi], maxTrackTblSz   ;Check the first entry is ok!
+    ja .genErrExit
+.iosdpTblCheckLp:
+    lodsd   ;Go to next entry
+    dec ecx ;And remove from the count
+    jz .iosdpTblCheckEnd
+    cmp word [rsi], maxTrackTblSz   ;Ensure no entry above the max entry value
+    ja .genErrExit
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec ;All same size?
+    jz .iosdpTblCheckLp ;If not, skip this check (always check 1=<i<=n)
+    mov ax, word [rsi + 2]  ;Else get sector size
+    cmp word [rsi - 2], ax  ;And compare with the previous sector size
+    jne .genErrExit
+    jmp short .iosdpTblCheckLp
+.iosdpTblCheckEnd:
+;Now we set the sector size bit if all tracks same size check was passed.
+;If all sectors have the same size but the caller didn't specify this
+; bit, we also don't specify this bit.
+    and word [rbp + drvBlk.wDevFlgs], ~devSameSec    ;Clear bit first
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec
+    jz .iosdpNoSetTrackBit
+;The only way we got here if the bit was set is that the check passed.
+; Set the bit in the device block.
+    or word [rbp + drvBlk.wDevFlgs], devSameSec
+.iosdpNoSetTrackBit:
+;Now we copy the table directly as sector numbers may be purposefully
+; interleaved. NO SORTING!!
+    mov rsi, rdi    ;Get back the track layout pointer 
+    lea rdi, .ioTrackTbl    ;We overwrite our internal track table
+    lodsw   ;Get the table length
+    movzx ecx, ax   ;This many entries
+    stosw
+    rep movsd       ;Move the dword entries over
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncTrk    ;Just tracks?
+    retnz   ;Return if bit set!
+;Now we update the rest of the disk metadata.
+    lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
+    push rsi
+    mov ecx, bpb32_size
+    lea rdi, qword [rbp + drvBlk.sDfltBPB]
+    rep movsb   ;Move the default BPB over
+    pop rbx
+    call .bbpbMoveBpb   ;Now set the real BPB and the lock flag
+    call .moveVolIds    ;And move the volume ids if possible
+;Now setup the lock BPB bit
+    and word [rbp + drvBlk.wDevFlgs], ~devLockBPB
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
+    jz .iosdpNoSetBPBDflt
+    or word [rbp + drvBlk.wDevFlgs], devLockBPB
+.iosdpNoSetBPBDflt:
+;Now copy the rest of the bytes and return
+    movzx eax, word [rdx + chsParamsBlock.wDevFlgs]
+    and eax, devFixed | devChgLine  ;Keep only these two bits
+    and word [rbp + drvBlk.wDevFlgs], ~(devFixed | devChgLine)   ;Clear em
+    or word [rbp + drvBlk.wDevFlgs], ax  ;Add those two bits as set
+    movzx eax, byte [rdx + chsParamsBlock.bDevType]
+    mov byte [rbp + drvBlk.bDevType], al
+    movzx eax, word [rdx + chsParamsBlock.wNumCyl]
+    mov word [rbp + drvBlk.wNumCyl], ax
+    ;movzx eax, byte [rdx + chsParamsBlock.bMedTyp]
+    ;mov byte [rbp + drvBlk.bMedTyp], al
+    return
+
+.lbaSetParams:
+;This only sets the sector size and number of sectors in drvBlk.bpb.
+    mov eax, dword [rbp + lbaParamsBlock.sectorSize]
+    mov word [rbp + drvBlk.wBpS], ax
+    mov ecx, dword [rbp + lbaParamsBlock.numSectors]
+    cmp ecx, 0FFFFh
+    ja .lbaSetBig
+    mov word [rbp + drvBlk.wTotSec16], cx
+    return
+.lbaSetBig:
+    mov dword [rbp + drvBlk.dTotSec32], ecx
+    return
+;---------------------------------------------------------------------------
+;               Get Device parameters in CHS and LBA here
+;---------------------------------------------------------------------------
+.ioGetDevParams:
+    jnz .lbaGetParams
+;Here we get CHS params. Doesn't do a build BPB call to be easy.
+    lea rsi, qword [rbp + drvBlk.sDfltBPB]
+    test byte [rdx + chsParamsBlock.bSpecFuncs], 1  ;Bit 0?
+    jnz .iogdpDflt
+    call .updateBpb ;Gets the BPB to the internal disk buffer
+    jc .ioDoErr ;Errors returned as if from block IO handler
+    call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
+    lea rsi, qword [.inBuffer + 11]
+.iogdpDflt:
+    mov rdi, qword [rdx + chsParamsBlock.deviceBPB]
+    mov ecx, bpb32_size
+    rep movsb
+    mov eax, 5
+    mov ecx, 7
+    test byte [rbp + drvBlk.wDevFlgs], devFixed
+    cmovz eax, ecx  ;eax is set to 7 if the dev is removable
+    mov byte [rdx + chsParamsBlock.bDevType], al
+    movzx eax, word [rbp + drvBlk.wDevFlgs]
+    and eax, devFixed | devChgLine
+    mov word [rdx + chsParamsBlock.wDevFlgs], ax
+    mov byte [rdx + chsParamsBlock.bMedTyp], 0
+    movzx eax, word [rbp + drvBlk.wNumCyl]
+    mov word [rdx + chsParamsBlock.wNumCyl], ax
+    return
+.lbaGetParams:
+    mov rdi, rdx    ;Store the params block ptr in rdi
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    mov eax, 8800h ;Read LBA Device Parameters
+    call .callI33h
+    jc .errorXlat
+;Returns:
+;rbx = Sector size in bytes
+;rcx = Last LBA block
+    mov qword [rdi + lbaParamsBlock.size], lbaParamsBlock_size
+    mov qword [rdi + lbaParamsBlock.sectorSize], rbx
+    mov qword [rdi + lbaParamsBlock.numSectors], rcx
+    return
+;---------------------------------------------------------------------------
+;                    CHS IO requests are structured here
+;---------------------------------------------------------------------------
+.ioWrite:
+    jnz .lbaWrite
+;Here for CHS write tracks. 
+    mov ebx, 8300h  ;Write sectors
+.iochsRW:
+    call .ioChsToLba
+    call .ioChsSanity
+    movzx eax, word [rdi + chsIOBlock.wStartSector]
+    add ecx, eax    ;Add the zero based sector number to start of "track"
+    movzx esi, word [rdi + chsIOBlock.wNumSectors]  ;How many sectors to IO on
+.iochsCmn:
+    mov eax, ebx    ;Move the function number to eax
+    mov rbx, qword [rdi + chsIOBlock.pXferBuffer]   ;And get buffer ptr in rbx
+    jmp .ioEp
+.ioRead:
+    jnz .lbaRead
+;Here for CHS read tracks.
+    mov ebx, 8200h  ;Read sectors
+    jmp short .iochsRW
+.ioFormat:
+    jnz .lbaFmt
+;Here for CHS format track.
+    mov ebx, 8500h  ;Format sectors
+    test byte [rdx + chsFormatBlock.bSpecFuncs], 1  ;If this bit clear do format
+    jz .iochsFmtCmn
+;Else we should respond if the sector table is valid. Since our BIOS is crap
+; we always return OK and let the format call fail. This would possibly be
+; dangerous but its not since the BIOS CHS emulation is very meh.
+    mov byte [rdx + chsFormatBlock.bSpecFuncs], 0   ;All ok!
+    return
+.iochsFmtCmn:
+    call .ioChsToLba    ;Get the LBA of the first sector of the track in ecx
+    movzx esi, word [rbp + drvBlk.wSecPerTrk]   ;Fmt/Verify this many sectors
+    mov eax, ebx    ;Move the function number to eax
+    jmp short .ioEp
+.ioVerify:
+    jnz .lbaVerify
+;Here for CHS verify track.
+    mov ebx, 8400h
+    jmp short .iochsFmtCmn
+
+.ioChsSanity:
+;Checks that the read/write will be on one track and makes sense.
+;Input: ebx = BIOS function to call. Preserved.
+;       ecx = LBA of start sector.
+;       rdi -> chsIOBlock
+;       rbp -> Drive block ptr
+    movzx eax, word [rdi + chsIOBlock.wStartSector] ;Zero based
+    inc eax         ;Make it 1 based for the comparison
+    add ax, word [rdi + chsIOBlock.wNumSectors]
+    cmp ax, word [rbp + drvBlk.wSecPerTrk]  ;Does this surpass num sect/trck?
+    retna
+.ioctlerr:
+    pop rbx ;Pop the ret addr off the stack and tail to the bad media
+    jmp .iobadMed
+.ioChsToLba:
+;Gets the first sector of the track selected by this call.
+;Works with the values set in the bpb of drvBlk which isn't ideal...
+;LBA = (( C x HPC ) + H ) x SPT + S - 1
+;Input: ebx = BIOS Function to call. Preserved.
+;Output: ecx = eax = LBA address for the first sector of the track
+;        rdi -> chsFormatBlock or IOBlock
+    mov rdi, rdx
+    movzx eax, word [rbp + drvBlk.wNumHeads]
+    movzx ecx, word [rdi + chsFormatBlock.wStartCyl]
+    cmp cx, word [rbp + drvBlk.wNumCyl]
+    jae .ioctlerr
+    inc ecx ;Inc as we get it as a zero based number
+    mul ecx
+    movzx ecx, word [rdi + chsFormatBlock.wStartHead]
+    cmp cx, word [rbp + drvBlk.wNumHeads]
+    jae .ioctlerr 
+    add eax, ecx
+    movzx ecx, word [rbp + drvBlk.wSecPerTrk]
+    mul ecx
+    mov ecx, eax
+    return
+;---------------------------------------------------------------------------
+;                    LBA IO requests are structured here
+;---------------------------------------------------------------------------
+.lbaVerify:
+    mov eax, 8400h  ;Verify sectors
+    jmp short .lbaFmtCmn
+.lbaFmt:
+    mov eax, 8500h  ;Format sectors
+.lbaFmtCmn:
+    cmp byte [rdx + lbaIOBlock.size], lbaFormatBlock_size
+    jmp short .lbaCmn
+.lbaRead:
+    mov eax, 8200h  ;Read sectors
+    jmp short .lbaRWCmn
+.lbaWrite:
+    mov eax, 8300h  ;Write sectors
+.lbaRWCmn:
+    mov rbx, qword [rdx + lbaIOBlock.xferBuffer]
+    cmp byte [rdx + lbaIOBlock.size], lbaIOBlock_size
+.lbaCmn:
+    jne .iobadCmdLen
+;Setup the vars for block IO
+    mov rdi, rdx
+    mov esi, dword [rdi + lbaFormatBlock.numSectors]
+    mov rcx, qword [rdi + lbaFormatBlock.startSector]
+    ;mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
+    ;add rcx, qword [rdi + lbaFormatBlock.startSector]
+.ioEp:
+    mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS number for device
+    or eax, 0FFh    ;Set the ignore sanity check bits
+.ioLp:
+    push rax        ;Always preserve the function number we are using
+    call .blkIO
+    pop rax
+    jc .ioDoErr
+    call .ioAdv
+    jnz .ioLp
+    return
+;---------------------------------------------------------------------------
+
+;---------------------------------------------------------------------------
+;                           Misc GENIO routines 
+;---------------------------------------------------------------------------
+.ioSetIds:
+.ioGetIds:
+    jmp .iobadCmd
+.ioSetAccessFlag:
+;Sets/Clears the unformatted bit of a device block.
+    test byte [rdx + accFlgBlk.bAccMode], -1
+    jz .iosafNoAcc
+;Enables access if the access mode is non-zero
+    and word [rbp + drvBlk.wDevFlgs], ~devUnFmt
+    return
+.iosafNoAcc:
+;Disables access if the access mode is zero 
+    or word [rbp + drvBlk.wDevFlgs], devUnFmt
+    return
+.ioGetAccessFlag:
+;Gets the state of the unformatted bit of a device block
+    mov byte [rdx + accFlgBlk.bAccMode], 0  ;Init to clear, no access
+    test word [rbp + drvBlk.wDevFlgs], devUnFmt
+    retnz
+    inc byte [rdx + accFlgBlk.bAccMode] ;If bit clear, set mode to access ok!
+    return
 
 .ioTrackTbl:
     dw maxTrackTblSz    ;Have a maximum of 63 sectors per track
@@ -895,190 +1191,6 @@ msdDriver:
     dw 61, 200h
     dw 62, 200h
     dw 63, 200h
-
-.ioSetDevParams:
-    mov rdx, qword [rbx + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
-    jnz .lbaSetParams
-;Here we set CHS params. 
-;Before we trust the table, we check that indeed
-; no sector index is past the max sector count and that if the caller
-; claimed that all the sectors are of the same size, they really are.    
-    lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
-    mov rdi, rsi    ;Save the pointer in rdi
-    stosw           ;Get the lead word and adv rsi by 2
-    movzx ecx, ax   ;Get the lead table entry
-    cmp ecx, maxTrackTblSz
-    ja .genErrExit
-    cmp word [rsi], maxTrackTblSz   ;Check the first entry is ok!
-    ja .genErrExit
-.iosdpTblCheckLp:
-    lodsd   ;Go to next entry
-    dec ecx ;And remove from the count
-    jz .iosdpTblCheckEnd
-    cmp word [rsi], maxTrackTblSz   ;Ensure no entry above the max entry value
-    ja .genErrExit
-    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec ;All same size?
-    jz .iosdpTblCheckLp ;If not, skip this check (always check 1=<i<=n)
-    mov ax, word [rsi + 2]  ;Else get sector size
-    cmp word [rsi - 2], ax  ;And compare with the previous sector size
-    jne .genErrExit
-    jmp short .iosdpTblCheckLp
-.iosdpTblCheckEnd:
-;Now we set the sector size bit if all tracks same size check was passed.
-;If all sectors have the same size but the caller didn't specify this
-; bit, we also don't specify this bit.
-    and word [rbp + drvBlk.wDevBlk], ~devSameSec    ;Clear bit first
-    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec
-    jz .iosdpNoSetTrackBit
-;The only way we got here if the bit was set is that the check passed.
-; Set the bit in the device block.
-    or word [rbp + drvBlk.wDevBlk], devSameSec
-.iosdpNoSetTrackBit:
-;Now we copy the table directly as sector numbers may be purposefully
-; interleaved. NO SORTING!!
-    mov rsi, rdi    ;Get back the track layout pointer 
-    lea rdi, .ioTrackTbl    ;We overwrite our internal track table
-    lodsw   ;Get the table length
-    movzx ecx, ax   ;This many entries
-    stosw
-    rep movsd       ;Move the dword entries over
-    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncTrk    ;Just tracks?
-    retnz   ;Return if bit set!
-;Now we update the rest of the disk metadata.
-    lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
-    push rsi
-    mov ecx, bpb32_size
-    lea rdi, qword [rbp + drvBlk.sDfltBPB]
-    rep movsb   ;Move the default BPB over
-    pop rbx
-    call .bbpbMoveBpb   ;Now set the real BPB and the lock flag
-    call .moveVolIds    ;And move the volume ids if possible
-;Now setup the lock BPB bit
-    and word [rbp + drvBlk.wDevBlk], ~devLockBPB
-    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
-    jz .iosdpNoSetBPBDflt
-    or word [rbp + drvBlk.wDevBlk], devLockBPB
-.iosdpNoSetBPBDflt:
-;Now copy the rest of the bytes and return
-    movzx eax, word [rdx + chsParamsBlock.wDevFlgs]
-    and eax, devFixed | devChgLine  ;Keep only these two bits
-    and word [rbp + drvBlk.wDevBlk], ~(devFixed | devChgLine)   ;Clear em
-    or word [rbp + drvBlk.wDevBlk], ax  ;Add those two bits as set
-    movzx eax, byte [rdx + chsParamsBlock.bDevType]
-    mov byte [rbp + devBlk.bDevType], al
-    movzx eax, word [rdx + chsParamsBlock.wNumCyl]
-    mov word [rbp + devBlk.wNumCyl], ax
-    movzx eax, byte [rdx + chsParamsBlock.bMedTyp]
-    mov byte [rbp + devBlk.bMedTyp], al
-    return
-
-.lbaSetParams:
-;This only sets the sector size and number of sectors in drvBlk.bpb.
-    mov eax, dword [rbp + lbaParamsBlock.sectorSize]
-    mov word [rbp + drvBlk.wBpS], ax
-    mov ecx, dword [rbp + lbaParamsBlock.numSectors]
-    cmp ecx, 0FFFFh
-    ja .lbaSetBig
-    mov word [rbp + drvBlk.wTotSec16], cx
-    return
-.lbaSetBig:
-    mov dword [rbp + drvBlk.wTotSec32], ecx
-    return
-
-.ioGetDevParams:
-    mov rdx, qword [rbx + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
-    jnz .lbaGetParams
-;Here we get CHS params. Doesn't do a build BPB call to be easy.
-    lea rsi, qword [rbp + drvBlk.sDfltBPB]
-    test byte [rdx + chsParamsBlock.bSpecFuncs], 1  ;Bit 0?
-    jnz .iogdpDflt
-    call .updateBPB ;Gets the BPB to the internal disk buffer
-    jc .ioDoErr ;Errors returned as if from block IO handler
-    call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
-    lea rsi, qword [.inBuffer + 11]
-.iogdpDflt:
-    mov rdi, qword [rdx + chsParamsBlock.deviceBPB]
-    mov ecx, bpb32_size
-    rep movsb
-    mov eax, 5
-    mov ecx, 7
-    test byte [rbp + drvBlk.wDevFlgs], devFixed
-    cmovz eax, ecx  ;eax is set to 7 if the dev is removable
-    mov byte [rdx + chsParamsBlock.bDevType], al
-    movzx eax, word [rbp + drvBlk.wDevFlgs]
-    and eax, devFixed | devChgLine
-    mov word [rdx + chsParamsBlock.wDevFlgs], ax
-    mov byte [rdx + chsParamsBlock.bMedTyp], 0
-    movzx eax, word [rbp + drvBlk.wNumCyl]
-    mov word [rdx + chsParamsBlock.wNumCyl], ax
-    return
-.lbaGetParams:
-    mov rdi, rdx    ;Store the params block ptr in rdi
-    movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov eax, 8800h ;Read LBA Device Parameters
-    call .callI33h
-    jc .errorXlat
-;Returns:
-;rbx = Sector size in bytes
-;rcx = Last LBA block
-    mov qword [rdi + lbaParamsBlock.size], 24
-    mov qword [rdi + lbaParamsBlock.sectorSize], rbx
-    mov qword [rdi + lbaParamsBlock.numSectors], rcx
-    return
-.ioWriteTrack:
-
-.ioReadTrack:
-.ioFormatTrack:
-.ioVerifyTrack:
-.ioSetIds:
-.ioGetIds:
-.ioSetAccessFlag:
-    
-.ioGetAccessFlag:
-.iobadCmd:
-    mov eax, drvBadCmd
-    jmp .errorExit
-
-.gIOCTLWrite:
-;Write Table:
-;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
-;Offset 1:  Number of sectors to write (BYTE)
-;Offset 2:  Reserved, 6 bytes
-;Offset 8:  Sector to start format at (QWORD)
-;Offset 16: Pointer to transfer buffer (QWORD)
-    call .gIOCTLFormatWriteSetup
-    mov rbx, qword [rdi + lbaIOBlock.xferBuffer]
-    mov ah, 83h
-.gIOCTLwfCommon:
-    call .callI33h
-    jc .errorXlat
-    mov rbx, rsi    ;Geturns rbx to point to the request pointer
-    return 
-
-.gIOCTLFormat:
-;Format Table:
-;Offset 0:  Size of the table in bytes (24 bytes) (BYTE)
-;Offset 1:  Number of sectors to format (BYTE)
-;Offset 2:  Reserved, 6 bytes
-;Offset 8:  Sector to start format at (QWORD)
-    call .gIOCTLFormatWriteSetup
-    mov ah, 85h
-    jmp short .gIOCTLwfCommon
-
-.gIOCTLFormatWriteSetup:
-;Sets the following:
-;al = Number of sectors to write/format
-;rcx = Sector to begin transfer at
-;dl = BIOS Drive to do transfer on
-;rsi = Driver Packet (usually set to rbx)
-;rdi = Write/Format packet
-    movzx eax, byte [rbx + ioctlReqPkt.unitnm] ;Get the driver unit number
-    mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS number for device
-    mov rsi, rbx
-    mov rdi, qword [rsi + ioctlReqPkt.ctlptr]   ;Get the req pkt ptr
-    mov al, byte [rdi + lbaFormatBlock.numSectors]
-    mov rcx, qword [rdi + lbaFormatBlock.startSector]
-    return
 
 .getLogicalDev:   ;Function 23
 ;Returns 0 if device not multi. Else 1 based number of current drive
@@ -1362,7 +1474,7 @@ msdDriver:
 ; access. 
 ;Access to this buffer should be mediated through a critical section... 
 ; but this driver doesnt need to be reentrant yet.
-.inBuffer   db 4096 dup (?)  
+.inBuffer   db 4096 dup (0)  
 .drvBlkTbl:
     db drvBlkTblL*drvBlk_size dup (0)
 ;    %rep drvBlkTblL

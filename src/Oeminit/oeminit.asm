@@ -53,6 +53,7 @@ OEMRELOC PROC NEAR  ;OEMINIT Entry point from SCP/BIOS
 ; rbx =  LBA of first Logical Block after SCP/BIOS
 ; dx  = Int 33h boot device number
 ; fs  = userbase pointer (pointer to first usable block of RAM)
+; rsp = 7C00h
 
     dw 0AA55h           ;Initial signature
     movzx r15, dl       ;Save the drive letter in r15
@@ -65,6 +66,7 @@ OEMRELOC PROC NEAR  ;OEMINIT Entry point from SCP/BIOS
     push rax
     ret ;Jump to this value (600h + whatever the size here is)
 sysInitldr:
+    mov rsp, 600h   ;400h-600h is the stack. This is large enough for boot!
 ;Now the tough part, load DOS to 800
     mov esi, 10h    ;Use as a loop counter
 .read:
@@ -72,7 +74,7 @@ sysInitldr:
     mov rbx, 800h   ;Load at next 512 byte marker
     mov ecx, r14d   ;Get this sector LBA (first sector after BIOS)
     inc ecx         ;and want the next sector (DOS AND BIOS MUST BE CONTIGUOUS)
-    mov al, 65h     ;Load a large number of sectors (about 51.7k)
+    mov al, 80h     ;Load a large number of sectors (about 64k)
     mov ah, 82h     ;Read LBA
     int 33h
     jc .readFail
