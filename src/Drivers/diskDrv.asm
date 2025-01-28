@@ -45,7 +45,6 @@ struc drvBlk
     .RootClus   dd ?    ;First Cluster of Root Directory
     .FSinfo     dw ?    ;Sector number of FSINFO structure, usually 1
     .BkBootSec  dw ?    ;Backup Boot sector, either 0 or 6
-bpbL    equ $ - .bpb
 ;--------------------------------------------------------------------
 ; DrvBlk flags
 ;--------------------------------------------------------------------
@@ -82,9 +81,9 @@ devSameSec  equ 8       ;All sectors in track are same size
 devMulti    equ 10h     ;BIOS Drive has many logical units (A/B share)
 devOwnDrv   equ 20h     ;Owner for possibly shared physical drive (A/B share)
 devSwap     equ 40h     ;Device change detected (If A swapped and B same as A)
-devChg      equ 80h     ;H/W Dev params changed (NOT USED, ALWAYS OFF)
+devChg      equ 80h     ;H/W Dev params changed
 devFmt      equ 100h    ;Disk reformatted (BPB changed)
-devUnFmt    equ 200h    ;Fixed media only, disables reads/writes if set
+devUnFmt    equ 200h    ;Disables reads/writes if set (rec. fixed only)
 
 ;Media byte bits
 mbTwoHead   equ 1       ;Dual sided if bit set, single sided if not

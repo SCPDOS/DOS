@@ -521,8 +521,8 @@ msdInit:
     movzx eax, word [rbp + drvBlk.wNumHeads]
     movzx ecx, word [rbp + drvBlk.wSecPerTrk]
     mul ecx ;Get sectors per cylinder in eax. edx = 0
-    test eax, eax   ;If ax is 0, store zero! Phoney data in BPB.
-    jz .gncExitBad
+    test eax, eax   ;If ax is 0, store zero! Phoney CHS data in BPB.
+    jz .gncExit     ;This prevents CHS IOCTL from occuring.
     mov ecx, eax    ;Save this number in ecx
     movzx eax, word [rbp + drvBlk.wTotSec16]
     test eax, eax   ;If this is zero, get the 32 bit count of sectors
@@ -541,10 +541,6 @@ msdInit:
     pop rcx
     pop rax
     return
-.gncExitBad:
-;If the BPB values don't make sense (even CHS), mark this BPB as unformatted
-    or word [rbp + drvBlk.wDevFlgs], devUnFmt   ;Set the unformatted bit
-    jmp short .gncExit
 
 .xfrDfltBpb:
 ;If a drive is removable, we check the BIOS reported values and 
