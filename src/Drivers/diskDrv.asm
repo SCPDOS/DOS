@@ -45,6 +45,7 @@ struc drvBlk
     .RootClus   dd ?    ;First Cluster of Root Directory
     .FSinfo     dw ?    ;Sector number of FSINFO structure, usually 1
     .BkBootSec  dw ?    ;Backup Boot sector, either 0 or 6
+bpbL    equ $ - .bpb
 ;--------------------------------------------------------------------
 ; DrvBlk flags
 ;--------------------------------------------------------------------
@@ -475,7 +476,7 @@ msdDriver:
     ;cmp al, 0F8h
     ;je .bbpbErr
 .bbpbErr:
-;Bad media bytes go here. Means the media is unknown.
+;Bad media bytes or BPB go here. Means the media is unknown.
     mov al, drvBadMed       ;Default to unknown media error code
     test eax, eax           ;Clear ZF so we return the right error code
     stc
@@ -492,14 +493,15 @@ msdDriver:
     mov rsi, rbx    ;Source from the BPB in disk buffer
     lea rdi, qword [rbp + drvBlk.bpb]
     call .bbpbGetFATType    ;Fat type is given in edx
+    jc .bbpbErr ;Only happens if crucial BPB fields are zero 
     mov byte [rbp + drvBlk.bBpbType], dl    ;Save the FAT type
 ;Get the correct length to correctly position rsi over the extended bs struct
 ; if it is present
     mov eax, bpb_size
-    mov ecx, bpb32_size ;Now copy the BPB over!
+    mov ecx, bpb32_size - 12    ;BPB32 minus reserved count
     cmp dl, bpbFat32
     cmovne ecx, eax     ;If not FAT32, replace move count
-    rep movsb   
+    rep movsb        ;Now copy the BPB over!
     clc     ;Ensure if we return here, we return with CF happy :)
     return
 
@@ -533,6 +535,7 @@ msdDriver:
 .bbpbGetFATType:
 ;Computes FAT type. Returns bpb flag in edx. rbx -> BPB itself
     movzx ecx, word [rbx + bpb.bytsPerSec]
+    jrcxz .bbpbGFTErr
     mov eax, ecx
     dec eax
     movzx edx, word [rbx + bpb.rootEntCnt]
@@ -547,7 +550,9 @@ msdDriver:
     cmovz eax, edx
     movzx ecx, byte [rbx + bpb.numFATs]
     mul ecx         ;eax = BPB_NumFATs * FATSz
+    test eax, eax   ;If either BPB_NumFATs or FATSz is 0, fail!
     pop rcx         ;Get RootDirSectors into ecx
+    jz .bbpbGFTErr
     movzx edx, word [rbx + bpb.revdSecCnt]
     add ecx, eax    ;ecx = (BPB_NumFATs * FATSz) + RootDirSectors
     add ecx, edx    ;ecx = (BPB_ResvdSecCnt + ecx)
@@ -557,15 +562,21 @@ msdDriver:
     cmovz eax, edx  ;eax = Totsec
     sub eax, ecx    ;Datasec [eax] = eax - ecx
     movzx ecx, byte [rbx + bpb.secPerClus]
+    jrcxz .bbpbGFTErr
     xor edx, edx
     div ecx         ;eax = CountofClusters = DataSec / BPB_SecPerClus;
     mov edx, bpbFat12
     cmp eax, fat12MaxClustCnt
-    retb
+    jb .bbpbGFTExit
     shl edx, 1  ;Move bit into FAT32 position
     cmp eax, fat16MaxClustCnt
-    retnb   ;If above or equal, its in FAT32
+    jnb .bbpbGFTExit   ;If above or equal, its in FAT32
     shl edx, 1  ;Else move into FAT16 position
+.bbpbGFTExit:
+    clc
+    return
+.bbpbGFTErr:
+    stc
     return
 
 .bbpbCheckMedByt:
@@ -592,11 +603,13 @@ msdDriver:
 ;Reads the bootsector of media we are playing with.
     xor ecx, ecx    ;Read Sector 0...
 .bbpbReadEp:
-    lea rbx, .inBuffer  ;Use the in sector buffer. Ensure ownership.
     add ecx, dword [rbp + drvBlk.dHiddSec]
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8200h  ;LBA Read function
-    jmp .blkIO      ;Does the Block IO, do tail call
+    lea rbx, .inBuffer  ;Use the in sector buffer. Ensure ownership.
+;Do block IO w/o checking the validity of ecx as hidden sectors
+; has already been setup correctly at this point.
+    jmp .blkIODirect     ;Does the Block IO, do tail call
 
 .IOCTLRead:         ;Function 3, returns immediately
 .IOCTLWrite:        ;Function 12, returns done
@@ -687,12 +700,16 @@ msdDriver:
     test esi, esi                           ;If this is 0, avoid IO
     return
 
+.blkIODirect:    ;Does block IO without sanity checking the sector number
+;All registers as below!
+    test word [rbp + drvBlk.wDevFlgs], devUnFmt
+    jnz .bioufmted
+    jmp short .biocmn
 .blkIO:  ;Does block IO
 ;Sector count handled by caller.
 ;All registers marked as input registers must be preserved across the call
 ; except ah
 ;Input: ah = BIOS function number
-;       al = Clear if we should sanity check. Set if not.
 ;       rdi -> ioReqPkt             (Normal Read/Write only)
 ;       rbp -> drvBlk
 ;       rbx -> Transfer buffer
@@ -705,10 +722,11 @@ msdDriver:
 ;           ZF=ZY: Disk error, xlat error code
     test word [rbp + drvBlk.wDevFlgs], devUnFmt
     jnz .bioufmted
+    call .bioSanity ;Sanity check ecx here
+.biocmn:
     push rsi    ;Save sector count
     mov esi, 5  ;Retry counter five times
 .biolp:
-    call .bioSanity ;Sanity check ecx here
     mov al, 01h ;Do one sector at a time 
     call .callI33h
     jc .bioError
@@ -761,8 +779,8 @@ msdDriver:
     pop rax ;Return from block IO with error code in eax below
     mov eax, drvSecNotFnd
 .bioNoDiskErr:
-    stc
     test eax, eax   ;Clear ZF
+    stc
     return
 .bioufmted:
     mov eax, drvBadMed
@@ -1084,14 +1102,11 @@ msdDriver:
     mov rdi, rdx
     mov esi, dword [rdi + lbaFormatBlock.numSectors]
     mov rcx, qword [rdi + lbaFormatBlock.startSector]
-    ;mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
-    ;add rcx, qword [rdi + lbaFormatBlock.startSector]
 .ioEp:
     mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS number for device
-    or eax, 0FFh    ;Set the ignore sanity check bits
 .ioLp:
     push rax        ;Always preserve the function number we are using
-    call .blkIO
+    call .blkIODirect
     pop rax
     jc .ioDoErr
     call .ioAdv
@@ -1476,7 +1491,9 @@ msdDriver:
 ; but this driver doesnt need to be reentrant yet.
 .inBuffer   db 4096 dup (0)  
 .drvBlkTbl:
-    db drvBlkTblL*drvBlk_size dup (0)
+    defaultDrv  ;Have drive A: default to a 1.44Mb partition
+    db (drvBlkTblL - 1)*drvBlk_size dup (0)
+    ;db drvBlkTblL*drvBlk_size dup (0)
 ;    %rep drvBlkTblL
 ;        defaultDrv
 ;    %endrep

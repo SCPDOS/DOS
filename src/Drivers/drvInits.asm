@@ -177,6 +177,8 @@ msdInit:
     ;r8[Byte 3] = Number of Int 33h units
     mov qword [msdDriver.inBuffer], r8   
     movzx eax, byte [msdDriver.inBuffer + 3]
+    test eax, eax
+    jz .noDevs
     movzx ebx, byte [msdDriver.inBuffer + 1]
     sub eax, ebx    ;Get remdevs in eax
     mov byte [remDrv], al    ;Save num of phys int 33h rem drives
@@ -227,7 +229,7 @@ msdInit:
 .remLp:
     xor ecx, ecx    ;Load sector 0 of the disk
     call .ptnUpdateBpb
-    jc .remNext     ;If the BPB was bad, next disk :)
+    jc .remSkipDisk     ;If the BPB was bad, next disk :)
 ;Now test if we have a changeline for this device.
     mov dl, byte [rbp + drvBlk.bBIOSNum]
     xor ecx, ecx
@@ -247,6 +249,7 @@ msdInit:
     call .advDiskPtrs           ;Move rbp to the next drive block
     cmp byte [physVol], drvBlkTblL  ;If we just added our last volume, exit! :)
     je .msdExit
+.remSkipDisk:
     inc byte [biosDrv]          ;Else, goto next remdev
     movzx eax, byte [biosDrv]   ;Get the bios drive number
     cmp al, byte [remDrv]       ;Once they are equal, we are done!
@@ -261,6 +264,8 @@ msdInit:
     mov byte [dosDrv], al
     jmp short .remLp
 .msdExit:
+    test byte [physVol], -1
+    jz .noRems
     cmp byte [remDrv], 1
     jne .skipSingle
 ;Here we do the A: >-< B: jank.
@@ -311,6 +316,8 @@ msdInit:
     mov qword [rbx + initReqPkt.optptr], rsi    ;Store the bpbArray here
     mov word [msdDriver.fnTbl], 0 ;Now prevent init from firing again
     return
+.noDevs:
+;Do the same as below. Copy the saved BPB.
 .noRems:
 ;Pretend we do have something. If we are here, "worst case" we have 
 ; three fixed disk partitions. rbp points to the fourth one so pretend
@@ -318,6 +325,7 @@ msdInit:
 ; no changeline so if somehow this changes, worst case, no changeline.
     mov rbp, qword [rbp + drvBlk.pLink]
     inc byte [physVol]  ;Add the pretend A: drive to the count!
+;Here we setup A: drive to be a pretend 1.44Mb drive
     jmp .doSingle
 
 ;------------------------
@@ -491,7 +499,6 @@ msdInit:
     mov byte [rbp + drvBlk.bDOSNum], al ;Save the DOS number
     movzx eax, byte [biosDrv]   ;Get the BIOS drive
     mov byte [rbp + drvBlk.bBIOSNum], al
-    lea rbx, msdDriver.inBuffer  ;Use Temporary Buffer
     push rsi    ;Save the mbr entry ptr
     call msdDriver.updateBpb
     jc .pubBad
@@ -514,6 +521,8 @@ msdInit:
     movzx eax, word [rbp + drvBlk.wNumHeads]
     movzx ecx, word [rbp + drvBlk.wSecPerTrk]
     mul ecx ;Get sectors per cylinder in eax. edx = 0
+    test eax, eax   ;If ax is 0, store zero! Phoney data in BPB.
+    jz .gncExitBad
     mov ecx, eax    ;Save this number in ecx
     movzx eax, word [rbp + drvBlk.wTotSec16]
     test eax, eax   ;If this is zero, get the 32 bit count of sectors
@@ -532,6 +541,11 @@ msdInit:
     pop rcx
     pop rax
     return
+.gncExitBad:
+;If the BPB values don't make sense (even CHS), mark this BPB as unformatted
+    or word [rbp + drvBlk.wDevFlgs], devUnFmt   ;Set the unformatted bit
+    jmp short .gncExit
+
 .xfrDfltBpb:
 ;If a drive is removable, we check the BIOS reported values and 
 ; build a BPB around that. Else, we trust the bpb and blindly copy it.

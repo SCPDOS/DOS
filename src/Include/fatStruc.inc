@@ -192,6 +192,7 @@ endstruc
     dw devOwnDrv    ;Dev flags, every drive owns itself by default
     dw 63   ;63 Cylinders
     defaultBigBPB   ;Do the MAX BPB write here too
+    db 12 dup (0)   ;Add reserved zeros here too
     dd 0    ;Access time of 0
     db "NO NAME    "
     db 0
