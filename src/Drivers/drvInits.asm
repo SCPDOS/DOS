@@ -376,7 +376,8 @@ msdInit:
     call .ptnUpdateBpb ;And update the BPB. If this fails, we skip the disk
     jnc .pmbrOk
     retnz ;If we had a read error, just exit!
-;Else add the unformatted bit to the flags.
+;Else setup size and start sector and add the unformatted bit to the flags.
+    call .getUfmtSize
     or word [rbp + drvBlk.wDevFlgs], devUnFmt  ;Register ptn. Freeze IO.
 .pmbrOk:
     or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
@@ -418,10 +419,11 @@ msdInit:
     je .pepNextEbr  ;If it is a data ptn, we ignore this entry as it is invalid.
 ;Now we get the absolute start sector of this partition.
     add ecx, dword [ebrE + mbrEntry.lbaStart]   ;Add relative start
-    call .ptnUpdateBpb  ;Read and interpret the BPB
+    call .ptnUpdateBpb  ;Read and interpret the BPB (preserves sector number)
     jnc .pepOk
     retnz ;If we had a read error, just exit!
-;Else add the unformatted bit to the flags.
+;Else setup size and start sector and add the unformatted bit to the flags.
+    call .getUfmtSize
     or word [rbp + drvBlk.wDevFlgs], devUnFmt  ;Register ptn. Freeze IO.
 .pepOk:
 ;If here, this partition will be given a CDS entry.
@@ -430,7 +432,7 @@ msdInit:
     or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     movzx eax, byte [rsi + mbrEntry.ptnAtrib]
     and eax, ptnActive
-    or eax, ptnPrimary
+    or eax, ptnLogical
     mov word [rbp + drvBlk.wPtnType], ax
     call .advDiskPtrs
     call .physCheckEnd   ;If ZF=ZE, then we should end!
@@ -441,7 +443,25 @@ msdInit:
     test ecx, ecx   ;Is the start sector of the next logical ptn 0?
     retz    ;Return if so.
     add ecx, dword [rsi + mbrEntry.lbaStart]    ;Else, make it absolute sector
-    jmp short .peplp
+    jmp .peplp
+
+.getUfmtSize:
+;Moves the partition geometry information into drvBlk from MBR. This is only
+; a necessity if the medium doesn't have a trustworthy BPB. Doesn't touch CHS 
+; stuff because bleugh. That can be computed by FORMAT.
+;Input: rsi -> MBR/EBR entry for this partition
+;       rbp -> drvBlk for this drive we are setting up
+;       rcx = Sector number of the start of the partition
+    mov dword [rbp + drvBlk.dHiddSec], ecx  ;Set again (this time permanently)
+    mov ecx, dword [rsi + mbrEntry.numSectors]
+    cmp ecx, 0FFFFh
+    jbe .gpgSmol
+    mov dword [rbp + drvBlk.dTotSec32], ecx
+    xor ecx, ecx
+.gpgSmol:
+    mov word [rbp + drvBlk.wTotSec16], cx
+    clc
+    return
 
 .physCheckEnd:
     cmp byte [physVol], drvBlkTblL - 2   ;Once here we are done!
@@ -488,7 +508,7 @@ msdInit:
 
 .ptnUpdateBpb:
 ;Setups up the call for below on the current partition.
-;Input: ecx = Number of hidden sectors
+;Input: ecx = Number of hidden sectors (preserved)
 ;Output:
 ;   CF=NC: All ok, BPB entry in rbp filled.
 ;   CF=CY and ZF=ZE: Bad BPB read.
@@ -499,16 +519,19 @@ msdInit:
     mov byte [rbp + drvBlk.bDOSNum], al ;Save the DOS number
     movzx eax, byte [biosDrv]   ;Get the BIOS drive
     mov byte [rbp + drvBlk.bBIOSNum], al
+    push rcx
     push rsi    ;Save the mbr entry ptr
     call msdDriver.updateBpb
     jc .pubBad
     call msdDriver.moveVolIds
     pop rsi
+    pop rcx
     clc         ;Always clean even if no ids
     return
 .pubBad:
     pop rsi
-    cmp al, 07h ;Bad Partition?
+    pop rcx
+    cmp al, drvBadMed ;Bad Partition?
     stc         ;Ensure we set the CF again
     return
 
