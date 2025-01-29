@@ -1235,21 +1235,19 @@ msdDriver:
 ;Finds the DOS drive in the linked list which is for this drive, and
 ; sets up internal vars according to it. 
 ;Input: eax = Zero based DOS drive number. rbx -> Packet
-;Output: .pCurDrv setup for us. rbp = Same value
+;Output: rbp = Points to the drvBlk
     cmp byte [rbx + drvReqPkt.cmdcde], drvINIT
     rete
     lea rbp, .drvBlkTbl
 .sdChk:
     cmp byte [rbp + drvBlk.bDOSNum], al
-    je .sdExit
-    mov rbp, qword [rbp +  drvBlk.pLink]
+    rete
+    mov rbp, qword [rbp + drvBlk.pLink]
     cmp rbp, -1
     jne .sdChk  ;Keep looping until end of table
+    pop rax     ;Pop return address off the stack
     mov al, drvBadMed
-    jmp .errorExit  ;Return through this exit
-.sdExit:
-    mov qword [.pCurDrv], rbp
-    return
+    jmp .writeEntryError
 
 .checkDevType:
 ;Checks if we need to display the swap drive message and displays it if so.
@@ -1261,7 +1259,6 @@ msdDriver:
     retz    ;If only one drive owns this letter, exit
 ;Else, now we find the current owner of this drive letter :)
     mov al, byte [rbp + drvBlk.bBIOSNum]   ;Cmp by bios numbers
-.cdtSetEp:
     lea rdi, .drvBlkTbl  ;Point to the first drvBlk
 .cdtLp:
     cmp rdi, -1
@@ -1482,7 +1479,6 @@ msdDriver:
 
 .bAccCnt    db 0    ;Counter of 0 time difference media checks
 .bLastDsk   db -1   ;Last disk to be checked for media check.
-.pCurDrv    dq 0    ;Pointer to the drvBlk for the drv we are accessing
 
 ;Keep this @ 4096 for hotplugging a 4096 dev that needs 512 byte pseudo
 ; access. 
