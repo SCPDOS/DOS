@@ -15,110 +15,110 @@
 ;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
 ;-------------------------------------------------------;
 
-struc bpb          ;FAT 12 and 16 BPB, SIZE: 62 bytes
-
-    .jmpBoot    resb 3 
-    .oemName    resb 8  ;OEM name
-    .bytsPerSec resw 1  ;Bytes per sector
-    .secPerClus resb 1  ;Sectors per cluster
-    .revdSecCnt resw 1  ;Number of reserved sectors, in volume
-    .numFATs    resb 1  ;Number of FATs on media
-    .rootEntCnt resw 1  ;Number of 32 byte entries in Root directory
-    .totSec16   resw 1  ;Number of sectors on medium
-    .media      resb 1  ;Media descriptor byte
-    .FATsz16    resw 1  ;Number of sectors per FAT
-    .secPerTrk  resw 1  ;Number of sectors per "track"
-    .numHeads   resw 1  ;Number of read "heads"
-    .hiddSec    resd 1  ;Number of hidden sectors, preceeding volume start
-    .totSec32   resd 1  ;32 bit count of sectors
-
-    .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    .reserved1  resb 1  ;Reserved byte
-    .bootSig    resb 1  ;Extended boot signature (29h)
-    .volID      resd 1  ;Volume serial number
-    .volLab     resb 11 ;Volume label string
-    .filSysType resb 8  ;File system type string
-
+struc bpb          ;FAT 12 and 16 BPB
+    .bytsPerSec dw ?  ;Bytes per sector
+    .secPerClus db ?  ;Sectors per cluster
+    .revdSecCnt dw ?  ;Number of reserved sectors, in volume
+    .numFATs    db ?  ;Number of FATs on media
+    .rootEntCnt dw ?  ;Number of 32 byte entries in Root directory
+    .totSec16   dw ?  ;Number of sectors on medium
+    .media      db ?  ;Media descriptor byte
+    .FATsz16    dw ?  ;Number of sectors per FAT
+    .secPerTrk  dw ?  ;Number of sectors per "track"
+    .numHeads   dw ?  ;Number of read "heads"
+    .hiddSec    dd ?  ;Number of hidden sectors, preceeding volume start
+    .totSec32   dd ?  ;32 bit count of sectors
 endstruc
 
-struc bpb32       ;FAT 32 BPB, SIZE: 90 bytes
-
-    .jmpBoot    resb 3
-    .oemName    resb 8  ;OEM name
-    .bytsPerSec resw 1  ;Bytes per sector
-    .secPerClus resb 1  ;Sectors per cluster
-    .revdSecCnt resw 1  ;Number of reserved sectors
-    .numFATs    resb 1  ;Number of FATs on media
-    .rootEntCnt resw 1  ;Number of entries in Root directory
-    .totSec16   resw 1  ;Number of sectors on medium
-    .media      resb 1  ;Media descriptor byte
-    .FATsz16    resw 1  ;Number of sectors per FAT, must be 0 for FAT 32
-    .secPerTrk  resw 1  ;Number of sectors per "track"
-    .numHeads   resw 1  ;Number of read "heads"
-    .hiddSec    resd 1  ;Number of hidden sectors
-    .totSec32   resd 1  ;32 bit count of sectors
-
-    .FATsz32    resd 1  ;32 bit count of sectors occupied by one FAT
-    .extFlags   resw 1  ;Extended Flags word
-    .FSver      resw 1  ;File system version word, must be 0
-    .RootClus   resd 1  ;First Cluster of Root Directory
-    .FSinfo     resw 1  ;Sector number of FSINFO structure, usually 1
-    .BkBootSec  resw 1  ;Backup Boot sector, either 0 or 6
-    .reserved   resb 12 ;Reserved 12 bytes
-
-    .drvNum     resb 1  ;Logical drive number (00h or 80h)
-    .reserved1  resb 1  ;Reserved byte
-    .bootSig    resb 1  ;Extended boot signature (29h)
-    .volID      resd 1  ;Volume serial number
-    .volLab     resb 11 ;Volume label string
-    .filSysType resb 8  ;File system type string
-
+struc extBs
+;Extended bootsector structure. If present, comes immediately after 
+; BPB in bootsector
+    .drvNum     db ?  ;Logical drive number (00h or 80h)
+    .reserved1  db ?  ;Reserved byte
+    .bootSig    db ?  ;Extended boot signature
+    .volId      dd ?  ;Volume serial number
+    .volLab     db 11 dup (?) ;Volume label string
+    .filSysType db 8 dup (?)  ;File system type string
 endstruc
+extBsSig    equ 29h
+
+struc bpb32       ;FAT 32 BPB
+    .bytsPerSec dw ?  ;Bytes per sector
+    .secPerClus db ?  ;Sectors per cluster
+    .revdSecCnt dw ?  ;Number of reserved sectors
+    .numFATs    db ?  ;Number of FATs on media
+    .rootEntCnt dw ?  ;Number of entries in Root directory
+    .totSec16   dw ?  ;Number of sectors on medium
+    .media      db ?  ;Media descriptor byte
+    .FATsz16    dw ?  ;Number of sectors per FAT, must be 0 for FAT 32
+    .secPerTrk  dw ?  ;Number of sectors per "track"
+    .numHeads   dw ?  ;Number of read "heads"
+    .hiddSec    dd ?  ;Number of hidden sectors
+    .totSec32   dd ?  ;32 bit count of sectors
+    .FATsz32    dd ?  ;32 bit count of sectors occupied by one FAT
+    .extFlags   dw ?  ;Extended Flags word
+    .FSver      dw ?  ;File system version word, must be 0
+    .RootClus   dd ?  ;First Cluster of Root Directory
+    .FSinfo     dw ?  ;Sector number of FSINFO structure, usually 1
+    .BkBootSec  dw ?  ;Backup Boot sector, either 0 or 6
+    .reserved   db 12 dup (?) ;Reserved 12 bytes
+endstruc
+
+struc FSInfo
+    .leadSig    dd ? ;Leading Signature, should be 041615252h
+    .reserved1  db 480 dup (?)
+    .strucSig   dd ?  ;Should be 061417272h
+    .freeCount  dd ?  ;Contains the last known free cluster on volume
+    .nextFree   dd ?  ;Contains the first known free cluster on volume
+    .reserved2  db 12 dup (?) ;Should be 0
+    .trailSig   dd ?  ;Should be 0AA550000h
+endstruc
+
+fsInfoSig1  equ 041615252h
+fsInfoSig2  equ 061417272h
+fsInfoSig3  equ 0AA550000h
 
 struc mbr
-    .bsCode     resb 440
-    .diskID     resb 4
-    .reserved   resb 2
-    .mbrEntry1  resb 16
-    .mbrEntry2  resb 16
-    .mbrEntry3  resb 16
-    .mbrEntry4  resb 16
-    .mbrSig     resb 2
+    .bsCode     db 440 dup (?)
+    .diskID     dd ?
+    .reserved   dw ?
+    .mbrEntry1  db 16 dup (?)
+    .mbrEntry2  db 16 dup (?)
+    .mbrEntry3  db 16 dup (?)
+    .mbrEntry4  db 16 dup (?)
+    .mbrSig     dw ?
+endstruc
+
+struc ebr   ;A special type of MBR
+    .bsCode     db 446 dup (?)    ;Basic 16-bit code to error if launched into
+    .ebrVolHdr  db 16 dup (?) ;Information about the volume itself
+    .ebrLinkHdr db 16 dup (?) ;Link ptr to next logical volume in ebr
+    .reserved   db 32 dup (?) ;Reserved
+    .mbrSig     dw ?
 endstruc
 
 struc mbrEntry
-    .ptnAtrib   resb 1  ;80h = active
-    .chsStart   resb 3  ;Ignore practically
-    .ptnType    resb 1  ;This being 00 means free
-    .chsEnd     resb 3  ;Ignore
-    .lbaStart   resb 4  ;Start of partition in 32 bit LBA
-    .numSectors resb 4  ;Number of sectors in partition
+    .ptnAtrib   db ?  ;80h = active
+    .chsStart   db 3 dup (?)  ;Ignore practically
+    .ptnType    db ?  ;This being 00 means free
+    .chsEnd     db 3 dup (?)  ;Ignore
+    .lbaStart   dd ?  ;Start of partition in 32 bit LBA
+    .numSectors dd ?  ;Number of sectors in partition
 endstruc
-
-struc ebr
-    .bsCode     resb 446    ;Basic 16-bit code to error if launched into
-    .ebrVolHdr  resb 16 ;Information about the volume itself
-    .ebrLinkHdr resb 16 ;Link header information to next logical volume in ebr
-    .reserved   resb 32 ;Reserved
-    .mbrSig     resb 2
-endstruc
-
 
 struc fatDirEntry
-
-    .name       resb 11 ;8.3 File Name w/o fullstop
-    .attribute  resb 1  ;Usual attributes
-    .ntRes      resb 1  ;Reserved 0
-    .crtTimeT   resb 1  ;Count of tenths of a second of file creation time <=199
-    .crtTime    resb 2  ;Creation time, granularity of 2 seconds
-    .crtDate    resb 2  ;Creation date
-    .lastAccDat resb 2  ;Last Read/Write date, not 100% supported (consider later)
-    .fstClusHi  resb 2  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
-    .wrtTime    resb 2  ;Last modification (write) time
-    .wrtDate    resb 2  ;Last modification (write) date
-    .fstClusLo  resb 2  ;Lo word of 1st data cluster for file/dir
-    .fileSize   resb 4  ;32-bit quantity with size of file described by entry
-
+    .name       db 11 dup (?) ;8.3 File Name w/o fullstop
+    .attribute  db ?  ;Usual attributes
+    .ntRes      db ?  ;Reserved 0
+    .crtTimeT   db ?  ;Count of tenths of a second of file creation time <=199
+    .crtTime    dw ?  ;Creation time, granularity of 2 seconds
+    .crtDate    dw ?  ;Creation date
+    .lastAccDat dw ?  ;Last Read/Write date, not 100% supported (consider later)
+    .fstClusHi  dw ?  ;Hi word of 1st data cluster for file/dir, 0 on FAT12/16
+    .wrtTime    dw ?  ;Last modification (write) time
+    .wrtDate    dw ?  ;Last modification (write) date
+    .fstClusLo  dw ?  ;Lo word of 1st data cluster for file/dir
+    .fileSize   dd ?  ;32-bit quantity with size of file described by entry
 endstruc
 ;Directory attribute equates
     dirReadOnly     equ 01h
@@ -136,65 +136,67 @@ endstruc
 
 struc bpbEx   ;exFAT BPB, SIZE: 120 bytes
 
-    .jmpBoot                resb 3 
-    .oemName                resb 8  ;OEM name
-    .MustBeZero             resb 53 ;Must be 0, 53 bytes
-    .partitionOffset        resq 1  ;in sectors, 0 means ignore this field
-    .volumeLength           resq 1  ;Volume Length in sectors
-    .FAToffset              resd 1  ;Volume rel offset of first FAT, in sectors
-    .FATlength              resd 1  ;FAT length, in sectors
-    .clusterHeapOffset      resd 1  ;Start of data area, in sectors
-    .clusterCount           resd 1  ;Number of clusters on medium
-    .firstClusterOfRootDir  resd 1  ;First Cluster of Root Directory, min 2
-    .volumeSerialNum        resd 1  ;Volume Serial Number
-    .FSrevision             resw 1  ;Should be 0001 (v1.00)
-    .volumeFlags            resw 1  ;Volume Flags, refer to documentation
-    .bytesPerSectorShift    resb 1  ;min 9 (512 bps), max 12 (4096 bps)
-    .sectorsPerClusterShift resb 1  ;Result of log_2(N) for N=sec per clus
-    .numberOfFATs           resb 1  ;Number of FATs, only 1 or 2
-    .driveSelect            resb 1  ;Drive Select, 0 or 80h (Int 13h)
-    .percentInUse           resb 1  ;Rounded down. FFh means unknown
-    .reserved               resb 7  ;Reserved for alignment
+    ;.jmpBoot                db 3 dup (?)
+    ;.oemName                db 8 dup (?)  ;OEM name
+;BPB starts here
+    .MustBeZero             db 53 dup (?) ;Must be 0, 53 bytes
+    .partitionOffset        dq ?  ;in sectors, 0 means ignore this field
+    .volumeLength           dq ?  ;Volume Length in sectors
+    .FAToffset              dd ?  ;Volume rel offset of first FAT, in sectors
+    .FATlength              dd ?  ;FAT length, in sectors
+    .clusterHeapOffset      dd ?  ;Start of data area, in sectors
+    .clusterCount           dd ?  ;Number of clusters on medium
+    .firstClusterOfRootDir  dd ?  ;First Cluster of Root Directory, min 2
+    .volumeSerialNum        dd ?  ;Volume Serial Number
+    .FSrevision             dw ?  ;Should be 0001 (v1.00)
+    .volumeFlags            dw ?  ;Volume Flags, refer to documentation
+    .bytesPerSectorShift    db ?  ;min 9 (512 bps), max 12 (4096 bps)
+    .sectorsPerClusterShift db ?  ;Result of log_2(N) for N=sec per clus
+    .numberOfFATs           db ?  ;Number of FATs, only 1 or 2
+    .driveSelect            db ?  ;Drive Select, 0 or 80h (Int 13h)
+    .percentInUse           db ?  ;Rounded down. FFh means unknown
+    .reserved               db 7 dup (?)  ;Reserved for alignment
 
 endstruc
 
-struc FSInfo
-
-    .leadSig    resb 4  ;Leading Signature, should be 041615252h
-    .reserved1  resb 480
-    .strucSig   resb 4  ;Should be 061417272h
-    .freeCount  resb 4  ;Contains the last known free cluster on volume
-    .nextFree   resb 4  ;Contains the first known free cluster on volume
-    .reserved2  resb 12 ;Should be 0
-    .trailSig   resb 4  ;Should be 0AA550000h
-
-endstruc
-fsInfoSig1  equ 041615252h
-fsInfoSig2  equ 061417272h
-fsInfoSig3  equ 0AA550000h
-
-%macro defaultBPB 0
-    db 0E9h
-    db 00h
-    db 90h
-    db 'SCPDOSv1'
-    dw 0200h                       
-    db 01h                         
-    dw 0001h                           
-    db 02h                              
-    dw 00E0h            
-    dw 0B40h   
-    db 0F0h                   
-    dw 0009h                   
-    dw 0012h                     
-    dw 0002h                  
-    dd 0                 
-    dd 0 
-    db 00h
-    db 00h
-    db 29h
+%macro defaultBigBPB 0
+    dw 0200h
+    db 01h
+    dw 0001h
+    db 02h
+    dw 00E0h
+    dw 0B40h
+    db 0F0h
+    dw 0009h
+    dw 0012h
+    dw 0002h
     dd 0
-    db 'NO NAME    '
-    db 'FAT12   '
-    db 58 dup 0 ;Size padding for a FAT12/16 BPB to make it 120 bytes long
+    dd 0 
+    dd 0
+    dw 0
+    dw 0
+    dd 0
+    dw 0
+    dw 0
+%endmacro
+
+%macro defaultDrv 0
+    dq -1   ;End of table marker
+    db 0    ;DOS drive number
+    db 0    ;BIOS drive 0
+    defaultBigBPB  ;Do a FAT12/16 BPB in FAT32 format
+    ;DrvBlk Flags
+    dw bpbFat12
+    dw 0    ;Open count
+    db 0    ;Dev type byte 
+    dw devOwnDrv    ;Dev flags, every drive owns itself by default
+    dw 63   ;63 Cylinders
+    defaultBigBPB   ;Do the MAX BPB write here too
+    db 12 dup (0)   ;Add reserved zeros here too
+    dd 0    ;Access time of 0
+    db "NO NAME    "
+    db 0
+    dd 0    ;Vol ID of 0
+    db "FAT12   "
+    db 0
 %endmacro

@@ -1,16 +1,16 @@
 commonStrat:
 ;DOS calls this function with rbx=Ptr to request header
-    mov qword [reqHdrPtr], rbx
+    mov qword [reqPktPtr], rbx
     ret
 conDriver:
     push rax
     push rbx
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
-    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .conWriteErrorCode ;If yes, error!
 
-    mov al, byte [rbx + drvReqHdr.cmdcde]
+    mov al, byte [rbx + drvReqPkt.cmdcde]
     test al, al
     jz .conInit
     cmp al, 4
@@ -30,9 +30,9 @@ conDriver:
     jmp short .conExit  ;All other valid functions return done
 .conWriteErrorCode:     ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
-    mov word [rbx + drvReqHdr.status], ax
+    mov word [rbx + drvReqPkt.status], ax
 .conExit:
-    or word [rbx + drvReqHdr.status], drvDonStatus    ;Merge done bit
+    or word [rbx + drvReqPkt.status], drvDonStatus    ;Merge done bit
     pop rbx
     pop rax
     ret
@@ -47,7 +47,7 @@ conDriver:
 
 .conRead:    ;Function 4
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ioReqPkt_size
     jne .conWriteErrorCode
 
     push rdi
@@ -84,7 +84,7 @@ conDriver:
 
 .conNondestructiveRead:  ;Function 5
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ndInNoWaitPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ndInNoWaitPkt_size
     jne .conWriteErrorCode
     cmp byte [.conBuf], 0
     jnz .cnr2
@@ -107,13 +107,13 @@ conDriver:
 
 .conInputStatus:         ;Function 6
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], statusReqPkt_size
     jne .conWriteErrorCode
     jmp .conExit ;Exit, device ready
 
 .conFlushInputBuffers:   ;Function 7
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], statusReqPkt_size
     jne .conWriteErrorCode
     mov byte [.conBuf], 0   ;Clear buffer
 .cfib0:
@@ -126,7 +126,7 @@ conDriver:
 
 .conWrite:   ;Function 8 and 9
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ioReqPkt_size
     jne .conWriteErrorCode
 
     push rsi
@@ -147,7 +147,7 @@ conDriver:
     jmp .conExit
 .conOutputStatus:   ;Function 0Ah
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], statusReqPkt_size
     jne .conWriteErrorCode
     jmp .conExit
 
@@ -171,12 +171,12 @@ clkDriver:
     push rdx
     push rsi
     push rbp
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
-    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .clkWriteErrorCode ;If yes, error!
 
-    mov al, byte [rbx + drvReqHdr.cmdcde]
+    mov al, byte [rbx + drvReqPkt.cmdcde]
     test al, al
     jz .clkInit
     cmp al, 04h
@@ -194,9 +194,9 @@ clkDriver:
     mov al, 02h ;Device not ready error
 .clkWriteErrorCode:
     mov ah, 80h ;Set error bit
-    mov word [rbx + drvReqHdr.status], ax
+    mov word [rbx + drvReqPkt.status], ax
 .clkExit:
-    or word [rbx + drvReqHdr.status], drvDonStatus ;Merge done bit
+    or word [rbx + drvReqPkt.status], drvDonStatus ;Merge done bit
     pop rbp
     pop rsi
     pop rdx
@@ -215,7 +215,7 @@ clkDriver:
 
 .clkRead:           ;Function 4
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ioReqPkt_size
     jne .clkWriteErrorCode
 
     mov rsi, rbx    ;Save rbx temporarily in rsi
@@ -256,19 +256,19 @@ clkDriver:
 .clkInputStatus:    ;Function 6
 ;Always return ready
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], statusReqPkt_size
     jne .clkWriteErrorCode
     jmp .clkExit
 .clkFlushInputBuffers:  ;Function 7
 ;Always return done immediately
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], flushReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], flushReqPkt_size
     jne .clkWriteErrorCode
     jmp .clkExit
 
 .clkWrite:          ;Functions 8 and 9
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ioReqPkt_size
     jne .clkWriteErrorCode
 
     mov rsi, rbx    ;Save rbx temporarily in rsi
@@ -355,12 +355,12 @@ comIntr:
     push rdx
     push rsi
     push rdi
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
-    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .comWriteErrorCode ;If yes, error!
 
-    mov al, byte [rbx + drvReqHdr.cmdcde]
+    mov al, byte [rbx + drvReqPkt.cmdcde]
     test al, al
     jz short .comExit
     cmp al, 4   ;Read Character(s)
@@ -394,9 +394,9 @@ comIntr:
     mov al, dl      ;Move dl to al to store error code
 .comWriteErrorCode:    ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
-    mov word [rbx + drvReqHdr.status], ax
+    mov word [rbx + drvReqPkt.status], ax
 .comExit:
-    or word [rbx + drvReqHdr.status], drvDonStatus    ;Merge done bit
+    or word [rbx + drvReqPkt.status], drvDonStatus    ;Merge done bit
     pop rdi
     pop rsi
     pop rdx
@@ -407,7 +407,7 @@ comIntr:
 
 .comRead:
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ioReqPkt_size
     jne .comWriteErrorCode
     mov rdi, qword [rbx + ioReqPkt.bufptr]  ;Point rdi to caller buffer
     xor ecx, ecx    ;Zero the char counter
@@ -431,7 +431,7 @@ comIntr:
 
 .comReadInputStatus:
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], statusReqPkt_size
     jne .comWriteErrorCode
     mov word [rbx + statusReqPkt.status], 0 ;Chars ready to read status
     jmp short .comExit
@@ -439,14 +439,14 @@ comIntr:
 .comNondestructiveRead:
 ;The buffer is always empty for now (no keystroke available)
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ndInNoWaitPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ndInNoWaitPkt_size
     jne .comWriteErrorCode
     mov word [rbx + ndInNoWaitPkt.status], 0 ;Busy bit clear
     jmp short .comExit
 
 .comFlushInputBuffers:
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], flushReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], flushReqPkt_size
     jne .comWriteErrorCode
 .cfib0:
     movzx edx, byte [.comDevice]    ;Get transacting com device
@@ -460,7 +460,7 @@ comIntr:
 
 .comWrite:
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], ioReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], ioReqPkt_size
     jne .comWriteErrorCode
 
     mov rsi, qword [rbx + ioReqPkt.bufptr] ;Point rsi to caller buffer 
@@ -483,7 +483,7 @@ comIntr:
 .comOutputStatus:
 ;Read MODEM status
     mov al, 05h ;Bad request structure length?
-    cmp byte [rbx + drvReqHdr.hdrlen], statusReqPkt_size
+    cmp byte [rbx + drvReqPkt.hdrlen], statusReqPkt_size
     jne .comWriteErrorCode
 
     movzx edx, byte [.comDevice]    ;Get transacting com device
@@ -495,7 +495,7 @@ comIntr:
     shl eax, 5   ;Shift it up to bit 9 (busy bit in status word) 
     not eax      ;Bitwise inversion
     and eax, 200h   ;Isolate bit 9
-    mov word [rbx + rbx + drvReqHdr.status], ax  ;Add the busy bit
+    mov word [rbx + rbx + drvReqPkt.status], ax  ;Add the busy bit
     jmp .comExit
 .comDevice   db 0
 
@@ -503,20 +503,20 @@ comIntr:
 prnDriver:
     push rax
     push rbx
-    mov rbx, qword [reqHdrPtr]
+    mov rbx, qword [reqPktPtr]
     mov al, 03h ;Unknown Command
-    cmp byte [rbx + drvReqHdr.cmdcde], 24 ; Command code bigger than 24?
+    cmp byte [rbx + drvReqPkt.cmdcde], 24 ; Command code bigger than 24?
     ja .prnWriteErrorCode ;If yes, error!
-    mov al, byte [rbx + drvReqHdr.cmdcde]
+    mov al, byte [rbx + drvReqPkt.cmdcde]
     test al, al ;If the command code was Init, return ok!
     jz .prnExit 
     ;Everything else, device not ready
     mov al, drvNotReady
 .prnWriteErrorCode:     ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
-    mov word [rbx + drvReqHdr.status], ax
+    mov word [rbx + drvReqPkt.status], ax
 .prnExit:
-    or word [rbx + drvReqHdr.status], drvDonStatus    ;Merge done bit
+    or word [rbx + drvReqPkt.status], drvDonStatus    ;Merge done bit
     pop rbx
     pop rax
     ret

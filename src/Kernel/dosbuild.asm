@@ -8,6 +8,7 @@ BITS 64
 %include "./src/Include/dosStruc.inc"
 %include "./src/Include/dosError.inc"
 %include "./src/Include/dosExec.inc"
+%include "./src/Kernel/Debug/debSym.inc"    ;Always define debug symbols!
 
 ;========================START OF DOS MODULE=========================
 %include "./src/Kernel/dos.inc"
@@ -27,6 +28,9 @@ Segment dtext code private align=1 use64
 ;No separation, as this is a single binary blob.
 %include "./src/Kernel/Data/staticData.asm"
 %include "./src/Kernel/Data/dispTbl.asm"
+%if DEBUG
+%include "./src/Kernel/Debug/debug.asm" ;Only include if debug symbols on!
+%endif
 %include "./src/Kernel/FAT/buffun.asm"
 %include "./src/Kernel/FAT/fat.asm"
 %include "./src/Kernel/FAT/findfile.asm"
