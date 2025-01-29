@@ -264,6 +264,8 @@ msdInit:
     mov byte [dosDrv], al
     jmp short .remLp
 .msdExit:
+    test byte [physVol], -1 ;Did we fail to initialise ANY devices?
+    jz .noDevs  ;If so, we pretend we have two drives and hope defaults work!
     test byte [physVol], -1
     jz .noRems
     cmp byte [remDrv], 1
@@ -316,8 +318,6 @@ msdInit:
     mov qword [rbx + initReqPkt.optptr], rsi    ;Store the bpbArray here
     mov word [msdDriver.fnTbl], 0 ;Now prevent init from firing again
     return
-.noDevs:
-;Do the same as below. Copy the saved BPB.
 .noRems:
 ;Pretend we do have something. If we are here, "worst case" we have 
 ; three fixed disk partitions. rbp points to the fourth one so pretend
@@ -327,7 +327,16 @@ msdInit:
     inc byte [physVol]  ;Add the pretend A: drive to the count!
 ;Here we setup A: drive to be a pretend 1.44Mb drive
     jmp .doSingle
-
+.noDevs:
+;If we have no drives, then suppose we have two default drives
+; A: and B: which are NOT the same!
+    mov byte [physVol], 2   ;Identify entries A and B of system Ok!
+;Now set them as their own owners and not shared status.
+    lea rsi, msdDriver.drvBlkTbl
+    or word [rsi + drvBlk.wDevFlgs], devOwnDrv
+    mov rsi, qword [rsi + drvBlk.pLink]
+    or word [rsi + drvBlk.wDevFlgs], devOwnDrv
+    jmp .skipSingle
 ;------------------------
 ; Procedures for init
 ;------------------------
