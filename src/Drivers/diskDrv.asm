@@ -24,18 +24,101 @@ dosInt39h:
 
 ;Replacement Int 33h routine
 dosInt33h:
-;For now, we just call the original Int 33h with no additional processing.
-;Will be used to implement DOS error handling on Int 33h calls
-    test byte [.inInt], -1  ;Spin on this var until we have done Int 33h
-    jnz dosInt33h
-    mov byte [.inInt], -1   ;Set that we are about to enter Int 33h
-    pop qword [.tmp]        ;Pop the original return address off the stack
-    call qword [i33Next]    ;Call previous handler
-    push qword [.tmp]       ;Put the return address on the stack
-    mov byte [.inInt], 0    ;Exit, now permit any waiting tasks to enter 
-    return                  ;And return to the caller :)
-.inInt  db 0    ;Set if we are doing this
-.tmp dq 0
+;--------------------------------------------------------------------------
+;       This is a wrapper around the BIOS Int 33h handler.
+;--------------------------------------------------------------------------
+;This routine does the following:
+;1) Checks if a media check is being requested, in which case
+;   it will ensure the correct error code is returned (bug in BIOS v0.91)
+;2) Checks if a format request is being made, in which case
+;   it will ensure that the devSetDASD and devChgd bits are set for all 
+;   drives for the BIOS drive in dl to ensure that the DOS driver treats
+;   the DOS drives properly.
+;
+; For the most part (CHS is depreciated so we don't talk about it here):
+;   AH = Function number (05h/85h is FORMAT)
+;   AL = Number of sectors to xact.
+;   RBX -> Points to a xfr buffer.
+;   RCX = Start sector of xft.
+;   DL = BIOS Drive number to xact on.
+;--------------------------------------------------------------------------
+;Enter the DOS driver critical section . When the MSD driver enters this it 
+; already has the lock so this simply incs the count. If a process attempts 
+; to bypass DOS and we are already processing a request it gets put on ice.
+;--------------------------------------------------------------------------
+    mov byte [msdDriver.bLastDsk], -1   ;This gets set by caller on return
+    and byte [rsp + 2*8], ~1    ;Clear CF on entry
+    call .enterCritDrv
+    cmp ah, 16h     ;Do media check?
+    je .doMedCheck
+;Now check that we are not formatting. If we are, we need to set the bit on
+; all DOS drives that use this BIOS drive that it has been formatted and 
+; changed.
+    push rax
+    and ah, 7Fh ;Clear the top bit (as both 05h and 85h are formats)
+    cmp ah, 05h
+    pop rax
+    jne .notFormat
+;Here we register the format request!
+    push rax
+    mov eax, devChgd | devSetDASD   ;Bits to set in flags
+    call msdDriver.setBitsForAllDevs
+    pop rax
+.notFormat:
+    pop qword [.tmp]
+    call qword [i33Next]    ;Call previous handler and exit irq here.
+.exitOk:
+    call .exitCritDrv       ;Preserves flags!
+    jmp qword [.tmp]        ;And got to the next instruction :)
+;Local data for the main IRQ handler
+.tmp    dq 0
+.doMedCheck:
+;SCP/BIOS v0.91 reports CF=NC AH=01h for changed and 
+;                   CF=NC AH=00h for not changed and
+;                   CF=CY AH=80h/86h for error.
+;We need to turn this into an IBM BIOS style report where:
+;                   CF=CY AH=06h for changed and 
+;                   CF=NC AH=00h for not changed and
+;                   CF=CY AH=80h/86h for error.
+    pop qword [.tmp]
+    call qword [i33Next]    ;Call previous handler and exit irq here.
+    pushfq      ;Save the returned flags
+    jnc .dmcOk  ;If returns CF=NC check return val for SCPBIOS v0.91 bug.
+;Else, here we have CF=CY.
+    cmp ah, 06h ;If the call failed like in all later versions, check retcode.
+    jne .dmcExit    ;If not med swap, just bubble the error up.
+    jmp short .dmcDoChg ;Else register swap on all devices :)
+.dmcOk:
+;Here only if CF=NC.
+;If ah = 0, no change so exit.
+;If ah = 1, device changed so set CF.
+    test ah, ah
+    jz .dmcExit
+;Now set CF like IBM BIOS does
+    or byte [rsp], 1
+.dmcDoChg:
+;Here with CF=CY
+    mov eax, devChgd    ;Set the device changed bit for all such devs
+    call msdDriver.setBitsForAllDevs
+    mov eax, 0600h      ;BIOS empty drive/media swapped code
+.dmcExit:
+    popfq   ;Get back the flags we will report to the caller :)
+    jmp short .exitOk
+;--------------------------------
+;Critical section wrappers
+;--------------------------------
+.enterCritDrv:
+    push rax
+    mov eax, 8002h
+    jmp short .ecdcmn
+.exitCritDrv:
+    push rax
+    mov eax, 8102h
+.ecdcmn:
+    int 2ah
+    pop rax
+    return
+;================================
 
 ;Int 33h replacement routine
 i2fhSwap33h:
@@ -223,9 +306,11 @@ msdDriver:
 
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .medChk:          ;Function 1
-    test word [rbp + drvBlk.wDevFlgs], devFmt
+;Did this drive have its parameters swapped since the last time?
+    test word [rbp + drvBlk.wDevFlgs], devNewParms
     jz .mcNoFormat
-    and word [rbp + drvBlk.wDevFlgs], ~devFmt   ;Clear this bit
+;Reset and apply the different logic now :)
+    and word [rbp + drvBlk.wDevFlgs], ~devNewParms   ;Clear this bit
     mov byte [.bLastDsk], -1    ;Formatted so cannot rely on timer logic
     test word [rbp + drvBlk.wDevFlgs], devFixed ;If fixed, declare changed!
     jnz .mmcChange
@@ -242,19 +327,14 @@ msdDriver:
 ;Now we do a BIOS changeline check. We rely on it for drives with changeline.
 ;Start by setting the lastDsk to unknown since this only makes sense for
 ; disks without changeline support
-    mov byte [.bLastDsk], -1   
-    mov ah, 16h 
+    mov byte [.bLastDsk], -1
+    test word [rbp + drvBlk.wDevFlgs], devChgd  ;Was the changed bit set?
+    jnz .mmcChange
+    mov eax, 1600h 
     call .callI33h
-    jc .mmcChange
-;    cmp ah, 80h
-;    je .mmcNoChangeLine
-;    cmp ah, 86h
-;    je .mmcNoChangeLine
-    test ah, ah ;No change?
-    jz .mmcNoChange
-    jmp short .mmcChange
-    ;test ah, 1  ;Neither 80h or 86h have bit 0 set
-    ;jnz .mmcChange
+;Use IBM BIOS style reporting of changeline!
+    jc .mmcChange   ;If an error occurs/dev swapped, report changed!
+    jmp short .mmcNoChange
 .mmcNoChangeLine:
 ; If last accessed medchecked disk was this one and the time on this 
 ;  disk was more than 2 seconds ago, return unknown, else return ok.
@@ -431,8 +511,8 @@ msdDriver:
     lea rdi, qword [rbp + drvBlk.filSysType]
     mov ecx, 8  ;Now copy the 8 char string over too
     rep movsb   
-;Clear the devswap bit now as we have a good BPB for this drive
-    and word [rbp + drvBlk.wDevFlgs], ~devSwap
+;Clear the change bit for this DOS drive as we have here a good BPB
+    and word [rbp + drvBlk.wDevFlgs], ~devChgd
     clc
     return
 .mviNoSig:
@@ -776,6 +856,11 @@ msdDriver:
 ;               Set Device parameters in CHS and LBA here
 ;---------------------------------------------------------------------------
 .ioSetDevParams:
+    pushfq
+;If the parameters are swapped, set the flags and indicate the media 
+; was swapped (even if not).
+    or word [rbp + drvBlk.wDevFlgs], devNewParms | devChgd
+    popfq
     jnz .lbaSetParams
 ;Here we set CHS params. 
 ;Before we trust the table, we check that indeed
@@ -844,6 +929,7 @@ msdDriver:
     or word [rbp + drvBlk.wDevFlgs], ax  ;Add those two bits as set
     movzx eax, byte [rdx + chsParamsBlock.bDevType]
     mov byte [rbp + drvBlk.bDevType], al
+    or word [rbp + drvBlk.wDevFlgs], devSetDASD 
     movzx eax, word [rdx + chsParamsBlock.wNumCyl]
     mov word [rbp + drvBlk.wNumCyl], ax
     ;movzx eax, byte [rdx + chsParamsBlock.bMedTyp]
@@ -856,11 +942,11 @@ msdDriver:
     mov word [rbp + drvBlk.wBpS], ax
     mov ecx, dword [rbp + lbaParamsBlock.numSectors]
     cmp ecx, 0FFFFh
-    ja .lbaSetBig
-    mov word [rbp + drvBlk.wTotSec16], cx
-    return
-.lbaSetBig:
+    jna .lbaSetSmall
     mov dword [rbp + drvBlk.dTotSec32], ecx
+    xor ecx, ecx
+.lbaSetSmall:
+    mov word [rbp + drvBlk.wTotSec16], cx
     return
 ;---------------------------------------------------------------------------
 ;               Get Device parameters in CHS and LBA here
@@ -892,18 +978,52 @@ msdDriver:
     mov word [rdx + chsParamsBlock.wNumCyl], ax
     return
 .lbaGetParams:
+;Gets more "updated" information on partitions.
+    mov eax, drvBadDrvReq
+    cmp qword [rdx + lbaParamsBlock.size], lbaParamsBlock_size
+    jne .errorExit
     mov rdi, rdx    ;Store the params block ptr in rdi
+    test byte [rdi + lbaParamsBlock.bSpecFuncs], 1
+    jz .lgpGetBIOS
+    push rdi    ;Push the param block onto the stack
+    call .updateBpb
+    jc .lgpbpbnotok ;Even if just bad BPB, keep changed bit on!
+    call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
+    pop rdi     ;Pop param block
+    jmp short .lgpbpbok
+.lgpbpbnotok:
+;If no valid BPB found, and the device removable, return BIOS params for the 
+; whole device.
+;If fixed disk, this isnt possible as .updateBpb passes for fixed disks.
+    pop rdi
+    cmp al, drvBadMed   ;If remdev has bad media, get bios attribs.
+    jne .errorExit
+    jmp short .lgpGetBIOS
+.lgpbpbok:
+    lea rsi, qword [.inBuffer + 11]
+    movzx ebx, word [rsi + bpb32.bytsPerSec]
+    movzx ecx, word [rsi + bpb32.totSec16]
+    test ecx, ecx
+    jnz .lgpStor
+    mov ecx, dword [rsi + bpb32.totSec32]
+    jmp short .lgpStor
+.lgpGetBIOS:
+;Care must be taken when called on a fixed disk! Designed really for use
+; on unpartitioned media.
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8800h ;Read LBA Device Parameters
-    call .callI33h
+    int 33h
     jc .errorXlat
-;Returns:
+.lgpStor:
+;Enter with:
 ;rbx = Sector size in bytes
 ;rcx = Last LBA block
-    mov qword [rdi + lbaParamsBlock.size], lbaParamsBlock_size
+    movzx eax, word [rbp + drvBlk.wDevFlgs]
+    and eax, devFixed | devChgLine
+    mov word [rdx + chsParamsBlock.wDevFlgs], ax
     mov qword [rdi + lbaParamsBlock.sectorSize], rbx
     mov qword [rdi + lbaParamsBlock.numSectors], rcx
-    return
+    return 
 ;---------------------------------------------------------------------------
 ;                    CHS IO requests are structured here
 ;---------------------------------------------------------------------------
@@ -927,6 +1047,14 @@ msdDriver:
     mov ebx, 8200h  ;Read sectors
     jmp short .iochsRW
 .ioFormat:
+;DASD TEMP DASD TEMP DASD TEMP DASD TEMP DASD TEMP DASD TEMP DASD TEMP 
+;
+;We start by setting DASD parameters but for now we do nothing so just
+; clear the flag.
+    pushfq
+    and word [rbp + drvBlk.wDevFlgs], ~devSetDASD
+    popfq
+;DASD TEMP DASD TEMP DASD TEMP DASD TEMP DASD TEMP DASD TEMP DASD TEMP 
     jnz .lbaFmt
 ;Here for CHS format track.
     mov ebx, 8500h  ;Format sectors
@@ -941,7 +1069,7 @@ msdDriver:
     call .ioChsToLba    ;Get the LBA of the first sector of the track in ecx
     movzx esi, word [rbp + drvBlk.wSecPerTrk]   ;Fmt/Verify this many sectors
     mov eax, ebx    ;Move the function number to eax
-    jmp short .ioEp
+    jmp .ioEp
 .ioVerify:
     jnz .lbaVerify
 ;Here for CHS verify track.
@@ -1007,8 +1135,9 @@ msdDriver:
     jne .iobadCmdLen
 ;Setup the vars for block IO
     mov rdi, rdx
-    mov esi, dword [rdi + lbaFormatBlock.numSectors]
-    mov rcx, qword [rdi + lbaFormatBlock.startSector]
+    movzx esi, word [rdi + lbaFormatBlock.numSectors]
+    mov ecx, dword [rdi + lbaFormatBlock.startSector]
+    add ecx, dword [rbp + drvBlk.dHiddSec]  ;Point to sector in partition
 .ioEp:
     mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS number for device
 .ioLp:
@@ -1292,7 +1421,7 @@ msdDriver:
 
 .callI33h:
 ;Wraps all i33 calls allowing me to preserve all that I need to preserve
-; across these calls.
+; across these calls. Only allows returning values in ax.
     push rbx
     push rcx
     push rdx
@@ -1306,6 +1435,26 @@ msdDriver:
     pop rdx
     pop rcx
     pop rbx
+    return
+
+.setBitsForAllDevs:
+;Sets the selected bits for all devices with a particular BIOS number.
+;Input: ax = Bits to set in wDevFlgs
+;       dl = BIOS drive number
+    push rbp
+    pushfq
+    lea rbp, .drvBlkTbl
+.sbfadLp:
+    cmp byte [rbp + drvBlk.bBIOSNum], dl
+    jne .sbfadNext
+    or word [rbp + drvBlk.wDevFlgs], ax
+.sbfadNext:
+    mov rbp, qword [rbp + drvBlk.pLink]
+    cmp rbp, -1
+    jne .sbfadLp
+.sbfadExit:
+    popfq
+    pop rbp
     return
 
 .i2fDriver:
@@ -1386,7 +1535,7 @@ msdDriver:
 .defLbl     db "NO NAME ",0 ;Default volume label
 
 .bAccCnt    db 0    ;Counter of 0 time difference media checks
-.bLastDsk   db -1   ;Last disk to be checked for media check.
+.bLastDsk   db -1   ;Last disk to be checked for media check/IO.
 
 ;Keep this @ 4096 for hotplugging a 4096 dev that needs 512 byte pseudo
 ; access. 

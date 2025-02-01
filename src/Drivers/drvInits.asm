@@ -229,13 +229,29 @@ msdInit:
 .remLp:
     xor ecx, ecx    ;Load sector 0 of the disk
     call .ptnUpdateBpb
-    jc .remSkipDisk     ;If the BPB was bad, next disk :)
+    jnc .remBpbOk
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    mov eax, 8800h  ;Get disk parameters
+    int 33h
+    jc .remSkipDisk     ;If cant get BPB and no devparams, goto next disk :)
+    mov dword [rbp + drvBlk.dHiddSec], 0
+    mov word [rbp + drvBlk.wBpS], bx
+    test ecx, 0FFFFh
+    jna .remSmall
+    mov dword [rbp + drvBlk.dTotSec32], ecx
+    xor ecx, ecx
+.remSmall:
+    mov word [rbp + drvBlk.wTotSec16], cx
+.remBpbOk:
 ;Now test if we have a changeline for this device.
     mov dl, byte [rbp + drvBlk.bBIOSNum]
     xor ecx, ecx
     mov eax, 1600h
-    int 33h
-    jc .remNext
+    int 33h ;We have patched Int 33h here! Use IBMBIOS report style.
+    jnc .remChgOk
+    cmp ah, 06h ;If we returned medchanged, this means supported changeline :)
+    jne .remNext
+.remChgOk:
 ;Before we blindly test it, we check if the number of our removable
 ; device is past that of the EHCI devices. If it is, we don't trust
 ; that it has a change line. r8 preserves the value until here.
@@ -262,7 +278,7 @@ msdInit:
     mov al, byte [fixPtn]       ;Get the number of partitions from fixed
     add al, 2   ;Add two to this number to account for A and B.
     mov byte [dosDrv], al
-    jmp short .remLp
+    jmp .remLp
 .msdExit:
     test byte [physVol], -1 ;Did we fail to initialise ANY devices?
     jz .noDevs  ;If so, we pretend we have two drives and hope defaults work!

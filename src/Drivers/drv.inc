@@ -73,12 +73,14 @@ devFixed    equ 1       ;Set if fixed disk
 devChgLine  equ 2       ;Set if the drive has a changeline
 devLockBPB  equ 4       ;Makes BuildBPB not build a BPB if set
 devSameSec  equ 8       ;All sectors in track are same size
-devMulti    equ 10h     ;BIOS Drive has many logical units (A/B share)
+devMulti    equ 10h     ;Physical drive has many logical units (A/B share)
 devOwnDrv   equ 20h     ;Owner for possibly shared physical drive (A/B share)
-devSwap     equ 40h     ;Device change detected (If A swapped and B same as A)
-devChg      equ 80h     ;H/W Dev params changed
-devFmt      equ 100h    ;Disk reformatted (BPB changed)
-devUnFmt    equ 200h    ;Disables reads/writes if set (rec. fixed only)
+devChgd     equ 40h     ;Dev change detected (set on shared physical drives)
+                        ; Can only be set on remdevs with changeline support!
+devSetDASD  equ 80h     ;Set if we need to set drive DASD params before next fmt.
+                        ; Gets set if new parameters are written to drive!
+devNewParms equ 100h    ;Set if new drive parameters set! Set on IOCTL setparms.
+devUnFmt    equ 200h    ;Disables reads/writes if set
 
 ;Media byte bits
 mbTwoHead   equ 1       ;Dual sided if bit set, single sided if not
