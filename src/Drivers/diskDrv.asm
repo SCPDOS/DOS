@@ -68,8 +68,9 @@ dosInt33h:
     pop qword [.tmp]
     call qword [i33Next]    ;Call previous handler and exit irq here.
 .exitOk:
+    push qword [.tmp]   ;Push the next addr on stack to free the var
     call .exitCritDrv       ;Preserves flags!
-    jmp qword [.tmp]        ;And got to the next instruction :)
+    return
 ;Local data for the main IRQ handler
 .tmp    dq 0
 .doMedCheck:
