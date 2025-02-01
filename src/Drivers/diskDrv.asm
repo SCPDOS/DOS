@@ -46,30 +46,41 @@ dosInt33h:
 ; already has the lock so this simply incs the count. If a process attempts 
 ; to bypass DOS and we are already processing a request it gets put on ice.
 ;--------------------------------------------------------------------------
-    mov byte [msdDriver.bLastDsk], -1   ;This gets set by caller on return
-    and byte [rsp + 2*8], ~1    ;Clear CF on entry
-    call .enterCritDrv
-    cmp ah, 16h     ;Do media check?
+;Start by clearing the CF on entry
+    and byte [rsp + 2*8], ~1
+;Enter the device critical section
+    push rax
+    mov eax, 8002h
+    int 2ah
+    pop rax
+;Now put the retaddr in the var we own 
+    pop qword [.tmp]
+;Do we want to do a media check?
+    cmp ah, 16h
     je .doMedCheck
 ;Now check that we are not formatting. If we are, we need to set the bit on
 ; all DOS drives that use this BIOS drive that it has been formatted and 
 ; changed.
-    push rax
+    push rax    ;Push the function number on stack
     and ah, 7Fh ;Clear the top bit (as both 05h and 85h are formats)
     cmp ah, 05h
-    pop rax
     jne .notFormat
 ;Here we register the format request!
-    push rax
     mov eax, devChgd | devSetDASD   ;Bits to set in flags
     call msdDriver.setBitsForAllDevs
-    pop rax
 .notFormat:
-    pop qword [.tmp]
-    call qword [i33Next]    ;Call previous handler and exit irq here.
-.exitOk:
-    push qword [.tmp]   ;Push the next addr on stack to free the var
-    call .exitCritDrv       ;Preserves flags!
+    pop rax     ;Get the function number from stack
+;Call previous handler and exit irq in this call.
+    call qword [i33Next]    
+.exitI33:
+;Replace the retaddr back on the stack
+    push qword [.tmp]
+;Exit the device critical section now
+    push rax
+    mov eax, 8102h
+    int 2ah
+    pop rax
+;And finally go back to the caller :)
     return
 ;Local data for the main IRQ handler
 .tmp    dq 0
@@ -81,7 +92,6 @@ dosInt33h:
 ;                   CF=CY AH=06h for changed and 
 ;                   CF=NC AH=00h for not changed and
 ;                   CF=CY AH=80h/86h for error.
-    pop qword [.tmp]
     call qword [i33Next]    ;Call previous handler and exit irq here.
     pushfq      ;Save the returned flags
     jnc .dmcOk  ;If returns CF=NC check return val for SCPBIOS v0.91 bug.
@@ -104,22 +114,7 @@ dosInt33h:
     mov eax, 0600h      ;BIOS empty drive/media swapped code
 .dmcExit:
     popfq   ;Get back the flags we will report to the caller :)
-    jmp short .exitOk
-;--------------------------------
-;Critical section wrappers
-;--------------------------------
-.enterCritDrv:
-    push rax
-    mov eax, 8002h
-    jmp short .ecdcmn
-.exitCritDrv:
-    push rax
-    mov eax, 8102h
-.ecdcmn:
-    int 2ah
-    pop rax
-    return
-;================================
+    jmp short .exitI33
 
 ;Int 33h replacement routine
 i2fhSwap33h:
