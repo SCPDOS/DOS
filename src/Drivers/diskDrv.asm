@@ -28,9 +28,7 @@ dosInt33h:
 ;       This is a wrapper around the BIOS Int 33h handler.
 ;--------------------------------------------------------------------------
 ;This routine does the following:
-;1) Checks if a media check is being requested, in which case
-;   it will ensure the correct error code is returned (bug in BIOS v0.91)
-;2) Checks if a format request is being made, in which case
+;1) Checks if a format request is being made, in which case
 ;   it will ensure that the devSetDASD and devChgd bits are set for all 
 ;   drives for the BIOS drive in dl to ensure that the DOS driver treats
 ;   the DOS drives properly.
@@ -55,23 +53,36 @@ dosInt33h:
     pop rax
 ;Now put the retaddr in the var we own 
     pop qword [.tmp]
-;Do we want to do a media check?
-    cmp ah, 16h
-    je .doMedCheck
 ;Now check that we are not formatting. If we are, we need to set the bit on
 ; all DOS drives that use this BIOS drive that it has been formatted and 
 ; changed.
     push rax    ;Push the function number on stack
     and ah, 7Fh ;Clear the top bit (as both 05h and 85h are formats)
     cmp ah, 05h
+    je .format
+    cmp ah, 07h ;Undocumented SCSI format?
     jne .notFormat
+.format:
 ;Here we register the format request!
     mov eax, devChgd | devSetDASD   ;Bits to set in flags
     call msdDriver.setBitsForAllDevs
 .notFormat:
     pop rax     ;Get the function number from stack
 ;Call previous handler and exit irq in this call.
+    mov byte [.drv], dl ;Save the drive we are acting on
     call qword [i33Next]    
+    jnc .exitI33
+    cmp ah, 06h     ;Did a swap occur?
+    jne .exitI33    ;All other errors get bubbled up
+;Here we ensure that on all drives with this BIOS number, we 
+; register that the swap occured :)
+    push rax
+    push rdx
+    movzx edx, byte [.drv]
+    mov eax, devChgd    ;Set the device changed bit on all devices
+    call msdDriver.setBitsForAllDevs
+    pop rdx
+    pop rax
 .exitI33:
 ;Replace the retaddr back on the stack
     push qword [.tmp]
@@ -83,38 +94,8 @@ dosInt33h:
 ;And finally go back to the caller :)
     return
 ;Local data for the main IRQ handler
+.drv    db 0    ;Drive we are acting ok
 .tmp    dq 0
-.doMedCheck:
-;SCP/BIOS v0.91 reports CF=NC AH=01h for changed and 
-;                   CF=NC AH=00h for not changed and
-;                   CF=CY AH=80h/86h for error.
-;We need to turn this into an IBM BIOS style report where:
-;                   CF=CY AH=06h for changed and 
-;                   CF=NC AH=00h for not changed and
-;                   CF=CY AH=80h/86h for error.
-    call qword [i33Next]    ;Call previous handler and exit irq here.
-    pushfq      ;Save the returned flags
-    jnc .dmcOk  ;If returns CF=NC check return val for SCPBIOS v0.91 bug.
-;Else, here we have CF=CY.
-    cmp ah, 06h ;If the call failed like in all later versions, check retcode.
-    jne .dmcExit    ;If not med swap, just bubble the error up.
-    jmp short .dmcDoChg ;Else register swap on all devices :)
-.dmcOk:
-;Here only if CF=NC.
-;If ah = 0, no change so exit.
-;If ah = 1, device changed so set CF.
-    test ah, ah
-    jz .dmcExit
-;Now set CF like IBM BIOS does
-    or byte [rsp], 1
-.dmcDoChg:
-;Here with CF=CY
-    mov eax, devChgd    ;Set the device changed bit for all such devs
-    call msdDriver.setBitsForAllDevs
-    mov eax, 0600h      ;BIOS empty drive/media swapped code
-.dmcExit:
-    popfq   ;Get back the flags we will report to the caller :)
-    jmp short .exitI33
 
 ;Int 33h replacement routine
 i2fhSwap33h:
@@ -1009,7 +990,7 @@ msdDriver:
 ;We only come here if on an unformatted removable disk.
 ;Unformatted means with an unrecognisable BPB.
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov eax, 8800h ;Read LBA Device Parameters
+    mov eax, 8800h  ;Read LBA Device Parameters
     int 33h
     jc .errorXlat
     xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media

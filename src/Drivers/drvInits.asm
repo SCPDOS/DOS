@@ -243,22 +243,9 @@ msdInit:
 .remSmall:
     mov word [rbp + drvBlk.wTotSec16], cx
 .remBpbOk:
-;Now test if we have a changeline for this device.
-    mov dl, byte [rbp + drvBlk.bBIOSNum]
-    xor ecx, ecx
-    mov eax, 1600h
-    int 33h ;We have patched Int 33h here! Use IBMBIOS report style.
-    jnc .remChgOk
-    cmp ah, 06h ;If we returned medchanged, this means supported changeline :)
-    jne .remNext
-.remChgOk:
-;Before we blindly test it, we check if the number of our removable
-; device is past that of the EHCI devices. If it is, we don't trust
-; that it has a change line. r8 preserves the value until here.
-    mov rax, r8 ;Get the r8 word into rax
-    shr eax, 16 ;Drop the first two bytes
-    cmp al, byte [remDrv]
-    jae .remNext
+;Now test if we have a changeline for this device. eax has the device flags.
+    test eax, 10h    ;Set if we have changeline support
+    jz .remNext
     or word [rbp + drvBlk.wDevFlgs], devChgLine
 .remNext:
     or word [rbp + drvBlk.wDevFlgs], devOwnDrv  ;I OWN MYSELF! :)
