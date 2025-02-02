@@ -207,6 +207,7 @@ struc lbaParamsBlock
     .res            db 4 dup (?)
     .sectorSize     dq ?    ;Only the lower word is valid here
     .numSectors     dq ?    ;Only the lower dword is valid here
+    .startSector    dq ?    ;Only the lower dword is valid here
 endstruc
 
 struc lbaIOBlock

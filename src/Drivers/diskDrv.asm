@@ -934,6 +934,9 @@ msdDriver:
 
 .lbaSetParams:
 ;This only sets the sector size and number of sectors in drvBlk.bpb.
+    ;Set start sector of partition
+    mov ecx, dword [rdx + lbaParamsBlock.startSector]
+    mov dword [rbp + drvBlk.dHiddSec], ecx
     ;Set sector size
     mov ecx, dword [rdx + lbaParamsBlock.sectorSize]
     mov word [rbp + drvBlk.wBpS], cx
@@ -1009,8 +1012,10 @@ msdDriver:
     mov eax, 8800h ;Read LBA Device Parameters
     int 33h
     jc .errorXlat
+    xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media
     jmp short .lgpStor
 .lgpbpbok:
+    mov edx, dword [rbp + drvBlk.dHiddSec]
     movzx ebx, word [rbp + drvBlk.wBpS]
     movzx ecx, word [rbp + drvBlk.wTotSec16]
     test ecx, ecx
@@ -1020,11 +1025,13 @@ msdDriver:
 ;Enter with:
 ;rbx = Sector size in bytes
 ;rcx = Last LBA block
+;rdx = Hidden sectors
     movzx eax, word [rbp + drvBlk.wDevFlgs]
     and eax, devFixed | devChgLine
     mov word [rdi + lbaParamsBlock.wDevFlgs], ax
     mov qword [rdi + lbaParamsBlock.sectorSize], rbx
     mov qword [rdi + lbaParamsBlock.numSectors], rcx
+    mov qword [rdi + lbaParamsBlock.startSector], rdx
     return 
 ;---------------------------------------------------------------------------
 ;                    CHS IO requests are structured here
