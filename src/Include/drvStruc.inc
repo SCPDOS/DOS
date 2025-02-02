@@ -202,7 +202,7 @@ struc lbaParamsBlock
     .size           db ?
     .bSpecFuncs     db ?    ;Bit[0] clear means get updated drive info. 
                             ;Bit[0] set means get current drive info.
-                            ;
+                            ;Only meaningful on read. Set must have this as 0.
     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
     .res            db 4 dup (?)
     .sectorSize     dq ?    ;Only the lower word is valid here
