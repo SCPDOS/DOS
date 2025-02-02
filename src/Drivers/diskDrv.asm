@@ -935,14 +935,14 @@ msdDriver:
 .lbaSetParams:
 ;This only sets the sector size and number of sectors in drvBlk.bpb.
     ;Set sector size
-    mov ecx, dword [rbp + lbaParamsBlock.sectorSize]
+    mov ecx, dword [rdx + lbaParamsBlock.sectorSize]
     mov word [rbp + drvBlk.wBpS], cx
     ;Set same device flags as in CHS.
-    movzx ecx, byte [rbp + lbaParamsBlock.wDevFlgs]
+    movzx ecx, byte [rdx + lbaParamsBlock.wDevFlgs]
     and cx, devFixed | devChgLine
     or word [rbp + drvBlk.wDevFlgs], cx
     ;Set sector information.
-    mov ecx, dword [rbp + lbaParamsBlock.numSectors]
+    mov ecx, dword [rdx + lbaParamsBlock.numSectors]
     cmp ecx, 0FFFFh
     jna .lbaSetSmall
     mov dword [rbp + drvBlk.dTotSec32], ecx
