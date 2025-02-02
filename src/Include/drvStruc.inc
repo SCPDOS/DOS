@@ -200,8 +200,8 @@ endstruc
 
 struc lbaParamsBlock
     .size           db ?
-    .bSpecFuncs     db ?    ;Bit[0] set means get current info. 
-                            ;Bit[0] clear means get base disk max.
+    .bSpecFuncs     db ?    ;Bit[0] clear means get updated drive info. 
+                            ;Bit[0] set means get current drive info.
                             ;
     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
     .res            db 4 dup (?)

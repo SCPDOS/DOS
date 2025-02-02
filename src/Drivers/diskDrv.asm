@@ -973,14 +973,18 @@ msdDriver:
     movzx eax, word [rbp + drvBlk.wNumCyl]
     mov word [rdx + chsParamsBlock.wNumCyl], ax
     return
+
 .lbaGetParams:
 ;Gets more "updated" information on partitions.
+;The data returned will always be the partition maximum! For remdevs
+; this means up to the whole media size and for fixed disks we are still 
+; restricted to the partition size.
     mov eax, drvBadDrvReq
     cmp qword [rdx + lbaParamsBlock.size], lbaParamsBlock_size
     jne .errorExit
     mov rdi, rdx    ;Store the params block ptr in rdi
     test byte [rdi + lbaParamsBlock.bSpecFuncs], 1
-    jz .lgpGetBIOS
+    jnz .lgpbpbok
     push rdi    ;Push the param block onto the stack
     call .updateBpb
     jc .lgpbpbnotok ;Even if just bad BPB, keep changed bit on!
@@ -989,27 +993,23 @@ msdDriver:
     jmp short .lgpbpbok
 .lgpbpbnotok:
 ;If no valid BPB found, and the device removable, return BIOS params for the 
-; whole device.
-;If fixed disk, this isnt possible as .updateBpb passes for fixed disks.
+; whole device. We never come here for fixed disks as updateBpb always passes.
     pop rdi
     cmp al, drvBadMed   ;If remdev has bad media, get bios attribs.
     jne .errorExit
-    jmp short .lgpGetBIOS
-.lgpbpbok:
-    lea rsi, qword [.inBuffer + 11]
-    movzx ebx, word [rsi + bpb32.bytsPerSec]
-    movzx ecx, word [rsi + bpb32.totSec16]
-    test ecx, ecx
-    jnz .lgpStor
-    mov ecx, dword [rsi + bpb32.totSec32]
-    jmp short .lgpStor
-.lgpGetBIOS:
-;Care must be taken when called on a fixed disk! Designed really for use
-; on unpartitioned media.
+;We only come here if on an unformatted removable disk.
+;Unformatted means with an unrecognisable BPB.
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8800h ;Read LBA Device Parameters
     int 33h
     jc .errorXlat
+    jmp short .lgpStor
+.lgpbpbok:
+    movzx ebx, word [rbp + drvBlk.wBpS]
+    movzx ecx, word [rbp + drvBlk.wTotSec16]
+    test ecx, ecx
+    jnz .lgpStor
+    mov ecx, dword [rbp + drvBlk.dTotSec32]
 .lgpStor:
 ;Enter with:
 ;rbx = Sector size in bytes
