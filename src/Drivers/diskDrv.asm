@@ -993,6 +993,7 @@ msdDriver:
     mov eax, 8800h  ;Read LBA Device Parameters
     int 33h
     jc .errorXlat
+    sub rcx, 2      ;Drop two sectors from the absolute LBA count
     xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media
     jmp short .lgpStor
 .lgpbpbok:
