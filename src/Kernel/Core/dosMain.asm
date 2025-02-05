@@ -668,11 +668,11 @@ createDPB:         ;generates a DPB from a given BPB
     mov byte [rbp + dpb.bMaxSectorInCluster], al
 ;bSecPerClustShift
     inc al
-    xor cl, cl
+    xor ecx, ecx
 .cd2:
     shr al, 1
     jz .cd3
-    inc cl
+    inc ecx
     jmp short .cd2
 .cd3:
     mov byte [rbp + dpb.bSecPerClustShift], cl
@@ -705,12 +705,14 @@ createDPB:         ;generates a DPB from a given BPB
     test ebx, ebx
     cmovz ebx, ecx 
 ;ebx = TotSec
-    mov cl, byte [rsi + bpb.numFATs]
     xor edx, edx    ;Use edx = NumFATs * FATsz temporarily
+    movzx ecx, byte [rsi + bpb.numFATs]
+    jecxz .cd41
 .cd4:
     add edx, eax
-    dec cl
+    dec ecx
     jnz .cd4
+.cd41:
     mov eax, edx    ;Store product in eax
     movzx edx, word [rsi + bpb.revdSecCnt]  ;Get reserved sectors in volume
     add eax, edx
@@ -733,7 +735,7 @@ createDPB:         ;generates a DPB from a given BPB
     mov eax, ebx    ;Move number of sectors in data area into eax
     xor edx, edx
     mov ebx, 1
-    mov cl, byte [rbp + dpb.bSecPerClustShift]
+    movzx ecx, byte [rbp + dpb.bSecPerClustShift]
     shl ebx, cl ;Get sectors per cluster
     div ebx ;Data area sector / sectors per cluster = cluster count
     inc eax ;Maximum valid cluster address is cluster count + 1
@@ -746,6 +748,7 @@ createDPB:         ;generates a DPB from a given BPB
     ;Add the number of reserved sectors to the number of FATs*FATsz
     movzx eax, word [rbp + dpb.wFAToffset]  ;Get reserved count
     movzx ecx, byte [rbp + dpb.bNumberOfFATs]
+    jecxz .cd5
 .cd51:
     add eax, dword [rbp + dpb.dFATlength]
     dec ecx

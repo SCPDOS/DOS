@@ -848,6 +848,7 @@ msdDriver:
     stosw           ;Get the lead word and adv rsi by 2
     movzx ecx, ax   ;Get the lead table entry
     cmp ecx, maxTrackTblSz
+    jz .iosdpNoTrack   ;Don't touch the tracks bit in this case!
     ja .genErrExit
     cmp word [rsi], maxTrackTblSz   ;Check the first entry is ok!
     ja .genErrExit
@@ -884,6 +885,7 @@ msdDriver:
     rep movsd       ;Move the dword entries over
     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncTrk    ;Just tracks?
     retnz   ;Return if bit set!
+.iosdpNoTrack:
 ;Now we update the rest of the disk metadata.
     lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
     push rsi
