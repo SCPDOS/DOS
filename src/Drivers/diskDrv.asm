@@ -918,17 +918,17 @@ msdDriver:
 .lbaSetParams:
 ;This only sets the sector size and number of sectors in drvBlk.bpb.
     ;Set start sector of partition
-    mov ecx, dword [rdx + lbaParamsBlock.startSector]
+    mov ecx, dword [rdx + lbaParamsBlock.qStartSector]
     mov dword [rbp + drvBlk.dHiddSec], ecx
     ;Set sector size
-    mov ecx, dword [rdx + lbaParamsBlock.sectorSize]
+    mov ecx, dword [rdx + lbaParamsBlock.qSectorSize]
     mov word [rbp + drvBlk.wBpS], cx
     ;Set same device flags as in CHS.
     movzx ecx, byte [rdx + lbaParamsBlock.wDevFlgs]
     and cx, devFixed | devChgLine
     or word [rbp + drvBlk.wDevFlgs], cx
     ;Set sector information.
-    mov ecx, dword [rdx + lbaParamsBlock.numSectors]
+    mov ecx, dword [rdx + lbaParamsBlock.qNumSectors]
     cmp ecx, 0FFFFh
     jna .lbaSetSmall
     mov dword [rbp + drvBlk.dTotSec32], ecx
@@ -1013,9 +1013,9 @@ msdDriver:
     movzx eax, word [rbp + drvBlk.wDevFlgs]
     and eax, devFixed | devChgLine
     mov word [rdi + lbaParamsBlock.wDevFlgs], ax
-    mov qword [rdi + lbaParamsBlock.sectorSize], rbx
-    mov qword [rdi + lbaParamsBlock.numSectors], rcx
-    mov qword [rdi + lbaParamsBlock.startSector], rdx
+    mov qword [rdi + lbaParamsBlock.qSectorSize], rbx
+    mov qword [rdi + lbaParamsBlock.qNumSectors], rcx
+    mov qword [rdi + lbaParamsBlock.qStartSector], rdx
     return 
 ;---------------------------------------------------------------------------
 ;                    CHS IO requests are structured here

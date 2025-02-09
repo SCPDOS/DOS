@@ -204,12 +204,13 @@ struc lbaParamsBlock
                             ;Bit[0] set means get current drive info.
                             ;Only meaningful on read. Set must have this as 0.
     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
-    .res            db 4 dup (?)
-    .sectorSize     dq ?    ;Only the lower word is valid here
-    .numSectors     dq ?    ;Only the lower dword is valid here
+    .wFSType        dw ?    ;FS type from drvBlk. If a FAT value, CHS calls ok
+    .wRes           dw ?
+    .qSectorSize    dq ?    ;Only the lower word is valid here
+    .qNumSectors    dq ?    ;Only the lower dword is valid here
 ;The below is the absolute start sector of the partition. It is the 
 ; partition at which to find the BPB.
-    .startSector    dq ?    ;Only the lower dword is valid here.
+    .qStartSector   dq ?    ;Only the lower dword is valid here.
 endstruc
 
 struc lbaIOBlock
