@@ -199,12 +199,13 @@ endstruc
 ;IOCTL structs
 
 struc lbaParamsBlock
-    .size           db ?
+    .bSize          db ?
     .bSpecFuncs     db ?    ;Bit[0] clear means get updated drive info. 
                             ;Bit[0] set means get current drive info.
                             ;Only meaningful on read. Set must have this as 0.
     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
-    .wFSType        dw ?    ;FS type from drvBlk. If a FAT value, CHS calls ok
+    .wFSType        dw ?    ;If one, it is a FAT type. Only valid on getlba.
+                            ; If one, can use CHS functions.
     .wRes           dw ?
     .qSectorSize    dq ?    ;Only the lower word is valid here
     .qNumSectors    dq ?    ;Only the lower dword is valid here

@@ -972,7 +972,7 @@ msdDriver:
 ; this means up to the whole media size and for fixed disks we are still 
 ; restricted to the partition size.
     mov eax, drvBadDrvReq
-    cmp qword [rdx + lbaParamsBlock.size], lbaParamsBlock_size
+    cmp qword [rdx + lbaParamsBlock.bSize], lbaParamsBlock_size
     jne .errorExit
     mov rdi, rdx    ;Store the params block ptr in rdi
     test byte [rdi + lbaParamsBlock.bSpecFuncs], 1
@@ -997,8 +997,15 @@ msdDriver:
     jc .errorXlat
     sub rcx, 2      ;Drop two sectors from the absolute LBA count
     xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media
+    mov eax, edx    ;Set eax to 0 too
     jmp short .lgpStor
 .lgpbpbok:
+    xor eax, eax
+    mov ebx, eax
+    inc ebx
+;Set eax to 0, ebx to 1
+    cmp byte [rbp + drvBlk.bBpbType], bpbDskOff
+    cmovne eax, ebx ;Move if the disk is on
     mov edx, dword [rbp + drvBlk.dHiddSec]
     movzx ebx, word [rbp + drvBlk.wBpS]
     movzx ecx, word [rbp + drvBlk.wTotSec16]
@@ -1007,15 +1014,17 @@ msdDriver:
     mov ecx, dword [rbp + drvBlk.dTotSec32]
 .lgpStor:
 ;Enter with:
+;ax = 0 if unformatted, 1 if any FAT type (means can call CHS function)
 ;rbx = Sector size in bytes
 ;rcx = Last LBA block
 ;rdx = Hidden sectors
-    movzx eax, word [rbp + drvBlk.wDevFlgs]
-    and eax, devFixed | devChgLine
-    mov word [rdi + lbaParamsBlock.wDevFlgs], ax
+    mov word [rdi + lbaParamsBlock.wFSType], ax
     mov qword [rdi + lbaParamsBlock.qSectorSize], rbx
     mov qword [rdi + lbaParamsBlock.qNumSectors], rcx
     mov qword [rdi + lbaParamsBlock.qStartSector], rdx
+    movzx eax, word [rbp + drvBlk.wDevFlgs]
+    and eax, devFixed | devChgLine
+    mov word [rdi + lbaParamsBlock.wDevFlgs], ax
     return 
 ;---------------------------------------------------------------------------
 ;                    CHS IO requests are structured here
@@ -1549,7 +1558,7 @@ msdDriver:
         at .wBpS,       dw 200h
         at .bSpC,       db 01h
         at .wResC,      dw 0001h
-        at .bNumFAT,    db 02h    
+        at .bNumFAT,    db 00h    ;No FATs means uninitialised FS
         at .wRtCntNum,  dw 00E0h    
         at .wTotSec16,  dw 0B40h    
         at .bMedDesc,   db 0F0h    
@@ -1570,7 +1579,7 @@ msdDriver:
         at .wOpenCnt,   dw 0
         at .bDevType,   db 0
         at .wDevFlgs,   dw 0
-        at .wNumCyl,    dw 63   ;63 Cylinders
+        at .wNumCyl,    dw 63   ;63 Cylinders emulated on fixed disks
         istruc bpb32
             at .bytsPerSec, dw 200h
             at .secPerClus, db 01h
