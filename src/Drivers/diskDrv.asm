@@ -975,7 +975,10 @@ msdDriver:
     cmp qword [rdx + lbaParamsBlock.bSize], lbaParamsBlock_size
     jne .errorExit
     mov rdi, rdx    ;Store the params block ptr in rdi
-    test byte [rdi + lbaParamsBlock.bSpecFuncs], 1
+    cmp byte [rdi + lbaParamsBlock.bSpecFuncs], 2   ;Check get phys call.
+    ja .errorExit   ;If above 2, error with bad request!
+    je .lgpbpbGetPhys
+    test byte [rdi + lbaParamsBlock.bSpecFuncs], 1  ;Check if we update BPB.
     jnz .lgpbpbok
     push rdi    ;Push the param block onto the stack
     call .updateBpb
@@ -989,23 +992,25 @@ msdDriver:
     pop rdi
     cmp al, drvBadMed   ;If remdev has bad media, get bios attribs.
     jne .errorExit
-;We only come here if on an unformatted removable disk.
+;We only fall here if on an unformatted removable disk.
 ;Unformatted means with an unrecognisable BPB.
+.lgpbpbGetPhys:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8800h  ;Read LBA Device Parameters
     int 33h
     jc .errorXlat
     sub rcx, 2      ;Drop two sectors from the absolute LBA count
     xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media
-    mov eax, edx    ;Set eax to 0 too
+;eax = 0 since either not formatted or values may not be ok for CHS calls
+    mov eax, edx     
     jmp short .lgpStor
 .lgpbpbok:
     xor eax, eax
     mov ebx, eax
     inc ebx
-;Set eax to 0, ebx to 1
-    cmp byte [rbp + drvBlk.bBpbType], bpbDskOff
-    cmovne eax, ebx ;Move if the disk is on
+;Here eax=0 and ebx=1.
+    test byte [rbp + drvBlk.bNumFAT], -1    ;If 0 FATs, the FAT is invalid!
+    cmovnz eax, ebx                         ;Set if we have a FAT
     mov edx, dword [rbp + drvBlk.dHiddSec]
     movzx ebx, word [rbp + drvBlk.wBpS]
     movzx ecx, word [rbp + drvBlk.wTotSec16]

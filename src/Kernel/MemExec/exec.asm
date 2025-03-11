@@ -151,33 +151,22 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .validDiskFile:
     cmp qword [rbp - execFrame.bSubFunc], execOverlay
     je .loadProgram ;If overlay, skip making an environment block
+;If we get an instruction to copy parent env, we do that. If the 
+; parent ptr is a special NULL value, then we leave the NULL value
+; in place in the execFrame envPtr var. Else, we use the parent
+; env pointer as the source of our copy.
     mov rdi, qword [rbp - execFrame.pParam] ;Get params ptr in rdi
     mov rax, qword [rdi + execProg.pEnv]
-    test rax, rax   ;Is this 0? (i.e. inherit parent env ptr)
+    test rax, rax   ;Is this 0? (i.e. copy parent env)
     jnz short .copyEnvironmentBlock
     mov rsi, qword [currentPSP] ;Get current PSP address in rsi
-    mov rax, qword [rsi + psp.envPtr]   ;Get the environment ptr
-    mov qword [rbp - execFrame.pEnvBase], rax   ;Store the parent ptr
-    test rax, rax   ;Was the parent pointer 0? If so, skip
+    mov rax, qword [rsi + psp.envPtr]   ;Get ptr to env src from parent env
+    test rax, rax   ;Was parent ptr 0? If so, skip allocing new env.
     jz short .loadProgram ;This is used by the boot process!!
 .copyEnvironmentBlock:
     mov rdi, rax    ;Point rdi to the source of the environment
-    ;Get the length of the environment
-    mov ecx, 7fffh  ;Arbitrary 32kb DOS limit, consider increasing to 64Kb
-;    cmp byte [rdi - mcb_size + mcb.marker], mcbMarkCtn
-;    je .envMCBFound
-;    cmp byte [rdi - mcb_size + mcb.marker], mcbMarkEnd
-;    jne .invalidEnvironmentError
-;.envMCBFound:
-    ;The env block mcb size must be between 160 and 32768 bytes.
-    ;Get the length of the environment from the MCB itself!
-;    xor ecx, ecx
-;    mov ecx, dword [rdi - mcb_size + mcb.blockSize]
-;    shl ecx, 4  ;Convert to bytes from paragraphs
-;    cmp ecx, 7FF0h  ;Is it above 32Kb?
-;    ja .invalidEnvironmentError ;Error out!
-;    cmp ecx, 0A0h   ;Is the environment less than 160 bytes?
-;    jb .invalidEnvironmentError ;Error out!
+;Get the length of the environment
+    mov ecx, 7fffh  ;32kb limit for env size
     xor eax, eax
     mov rbx, rdi    ;Use rbx as the base ptr of the scan
 .envVerifyLp:
@@ -670,12 +659,13 @@ loadExecChild:     ;ah = 4Bh, EXEC
     pop rbp
     pop rdx
 
-    ;Now copy the environment block over if rax != 0
+;Now copy the environment block ptr over. 
+;Stores the null ptr that is our pointer (special init case)
     mov rbx, qword [rbp - execFrame.pEnvBase]
-    test rbx, rbx
-    jz short .skipEnvCopy
+;    test rbx, rbx
+;    jz short .skipEnvCopy
     mov qword [rdx + psp.envPtr], rbx
-.skipEnvCopy:
+;.skipEnvCopy:
     ;Now set Current PSP to our PSP and set current DTA to command line
     mov qword [currentPSP], rdx
     call dosCrit1Enter

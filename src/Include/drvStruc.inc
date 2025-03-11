@@ -200,13 +200,14 @@ endstruc
 
 struc lbaParamsBlock
     .bSize          db ?
-    .bSpecFuncs     db ?    ;Bit[0] clear means get updated drive info. 
-                            ;Bit[0] set means get current drive info.
-                            ;Only meaningful on read. Set must have this as 0.
+    .bSpecFuncs     db ?    ;0 = Update drive info from medium and return that
+                            ;1 = Get current saved drive info w/o updating
+                            ;2 = Get physical parameters of the medium
+                            ;Only meaningful on get. Set must have this as 0
     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
-    .wFSType        dw ?    ;If one, it is a FAT type. Only valid on getlba.
-                            ; If one, can use CHS functions.
-    .wRes           dw ?
+    .wFSType        dw ?    ;If one, it is a FAT type. Only valid on getlba
+                            ; If one, can use CHS functions with returned vals
+    .wRes           dw ?    ;Reserved word
     .qSectorSize    dq ?    ;Only the lower word is valid here
     .qNumSectors    dq ?    ;Only the lower dword is valid here
 ;The below is the absolute start sector of the partition. It is the 
