@@ -63,10 +63,17 @@ struc drvBlk
 endstruc
 
 ;FAT type values
-bpbDskOff   equ 80h ;All Disk accesses return Not Ready (Unrecognised FAT)
+bpbUnknown  equ 80h ;Unknown FAT
 bpbFat16    equ 40h ;FAT 16 disk
 bpbFat32    equ 20h ;FAT 32 disk
 bpbFat12    equ 10h ;FAT 12 disk
+
+;Device Type flags
+type48TPI   equ 0   ;Small floppy format, depreciated
+type96TPI   equ 1   ;Large floppy format, depreciated
+typeSmall   equ 2   ;Super large floppy format, depreciated
+typeHard    equ 5   ;Hard drive
+typeGenRem  equ 7   ;Generic removable medium, default
 
 ;Device Flag values
 devFixed    equ 1       ;Set if fixed disk 

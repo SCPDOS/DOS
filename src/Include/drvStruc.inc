@@ -32,7 +32,7 @@ endstruc
     drvOPEN         equ 13
     drvCLOSE        equ 14
     drvREMMEDCHECK  equ 15
-    drvOUTTILBUSY   equ 16  ;Not implemented
+    drvOUTTILBUSY   equ 16
     drvIOCTL        equ 19
     drvGETDRVMAP    equ 23
     drvSETDRVMAP    equ 24
@@ -59,15 +59,17 @@ endstruc
     drvBsyStatus    equ 0200h
 
 ;Driver Attribute Word bit meanings
-    devDrvConIn    equ 1h  ;If set, device is CON input
-    devDrvConOut   equ 2h  ;If set, device is CON output
-    devDrvNulDev   equ 4h  ;If set, device is NULL device
-    devDrvClockDev equ 8h  ;If set, device is CLOCK device
-    devDrvFastOut  equ 10h ;If set, device supports Int 29h
-    devDrvIOCTL    equ 40h ;If set, IOCTL and GET/SET suported
-    devDrvHdlCTL   equ 800h ;If set, Open, Close and Rem media supported
-    devDrvIOCTLRW  equ 4000h ;If set, IOCTL Read/Write supported
-    devDrvChar     equ 8000h ;If set, Char device
+    devDrvConIn     equ 1h  ;If set, device is CON input
+    devDrvConOut    equ 2h  ;If set, device is CON output
+    devDrvNulDev    equ 4h  ;If set, device is NULL device
+    devDrvClockDev  equ 8h  ;If set, device is CLOCK device
+    devDrvFastOut   equ 10h ;If set, device supports Int 29h
+    devDrvIOCTL     equ 40h ;If set, IOCTL and GET/SET suported
+    devDrvHdlCTL    equ 800h ;If set, Open, Close and Rem media supported
+    devDrvNotIBM    equ 2000h ;If set, buffer in Build BPB is scratch space
+    devDrvOutToBsy  equ 2000h ;If set, char dev supports output until busy
+    devDrvIOCTLRW   equ 4000h ;If set, IOCTL Read/Write supported
+    devDrvChar      equ 8000h ;If set, Char device
 ;Bit 0 1=console input
 ;    1 1=console output (character devices)
 ;    2 1=NUL device

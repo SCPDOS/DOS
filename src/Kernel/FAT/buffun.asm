@@ -66,12 +66,16 @@ findUnreferencedBuffer: ;Int 2Fh AX=1210h
 ;Input: rdi = Buffer header to start searching at
 ;Output: ZF=NZ => rdi = Unreferenced Buffer Header
 ;        ZF=ZE => No unreferenced buffer found
+    cmp rdi, -1 ;Start by checking rdi is not at the end of the list already :)
+    rete    ;Return preserving ZF is so
     test byte [rdi + bufferHdr.bufferFlags], refBuffer
-    jnz .exit
+    jz .exit    ;Unreferenced buffer found!
     mov rdi, qword [rdi + bufferHdr.nextBufPtr]
-    cmp rdi, -1
-    jne findUnreferencedBuffer  ;Check next buffer unless rdi = -1
+    jmp short findUnreferencedBuffer  ;Check next buffer
 .exit:
+    push rax
+    or eax, 1   ;Clear ZF
+    pop rax
     return
 
 flushAllBuffersForDPB:  ;External linkage

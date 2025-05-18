@@ -15,6 +15,11 @@
 ;  IMPORTANT!!! IMPORTANT!!! IMPORTANT!!! IMPORTANT!!!  ;
 ;-------------------------------------------------------;
 
+struc oemHeader
+    .jump       db 3 dup (?)    ;Jump instruction
+    .oemString  db 8 dup (?)    ;OEM string
+endstruc
+
 struc bpb          ;FAT 12 and 16 BPB
     .bytsPerSec dw ?  ;Bytes per sector
     .secPerClus db ?  ;Sectors per cluster

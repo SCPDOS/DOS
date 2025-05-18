@@ -231,32 +231,42 @@ ensureDiskValid:
     xchg byte [rbp + dpb.bAccessFlag], ah   ;Clear access flag, get old flag
     cmp byte [rebuildDrv], al   ;Do we need to rebuild this drive?
     jne .notForce
-    ;Here we are forced to rebuild the DPB. In principle, the medium has
-    ; not changed but the new volume needs to be updated. 
-    ;The driver can use this opportunity to synchronise its BPB with the 
-    ; new label.  
-    mov byte [rebuildDrv], -1   ;Now reset this flag as we are doing our job.
-    jmp .resetDPB   ;Don't need to flush as the disk is the same.
+;Here we are forced to rebuild the DPB. In principle, the medium has
+; not changed but the volume label must be updated. 
+;The driver can use this opportunity to synchronise its BPB with the 
+; new label.
+;We jump directly to skip buffer checking as the rebuilding of the BPB is not
+; such that we invalidate the buffers.
+    mov byte [rebuildDrv], -1   ;Reset this flag as we are doing our job.
+    jmp .resetDPB
 .notForce:
-    or byte [rbx + mediaCheckReqPkt.medret], ah ;Carry flag always cleared!
-    js short .invalidateBuffers  ;If either byte is -1, freebuffers and buildbpb
-    retnz ;If zero, check for dirty buffers for drv, if found, exit
-    ;Here we check for any dirty buffers
-    ;If dirty buffer found, dont get new DPB
+;Note dpb access flag is either 1 or 0.
+;If either the check media byte or the dpb access flag is -1, rebuild bpb.
+;Else assume here access flag is 0. If medret is neq 0, return. Else, 
+; check buffers.
+    or ah, byte [rbx + mediaCheckReqPkt.medret] ;Carry flag always cleared!
+    js .mediaChanged      ;If either byte is -1, media changed
+    retnz                       ;If not zero, we return. Media not changed!
+;Here we check for any dirty buffers. If dirty buffer found, dont get new BPB.
     mov rdi, qword [bufHeadPtr]
-.checkBuffer:
-    cmp al, byte [rdi + bufferHdr.driveNumber]              ;IS this buffer for us?
+.findDirtyBuffer:
+    cmp al, byte [rdi + bufferHdr.driveNumber]              ;Is buffer for us?
     jne .gotoNextBuffer ;If no, goto next buffer
-    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is this buffer dirty?
+    test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is buffer dirty?
     jz .gotoNextBuffer  ;If no, goto next buffer
     clc 
     return
 .gotoNextBuffer:
     mov rdi, qword [rdi]    ;Get buffer link pointer
     cmp rdi, -1
-    jne .checkBuffer        ;Check for this buffer
-    ;If we get here, we found no dirty buffers for our drive
-    ;We use the reference bit to keep track of which buffers we've gone through
+    jne .findDirtyBuffer        ;Now check the next buffer
+;If we found no dirty buffers for this drive we assume the media has changed.
+;Don't skip the below as it will put a "clean" buffer at the head
+; of the chain for us.
+.mediaChanged:
+;If we have changed media, check for dirty buffers. If we have any
+; we must throw an error to tell the user to replace the media back.
+;Now use the reference bit to keep track of which buffers we've gone through.
     mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset number of free to unknown
     call markBuffersAsUnreferenced  ;We're going to walk through so clear ref bit
 .dirtyLoop:
@@ -264,24 +274,29 @@ ensureDiskValid:
     cmp al, byte [rdi + bufferHdr.driveNumber]          ;Is this buffer for us?
     jne .skipDirtyCheck
     test byte [rdi + bufferHdr.bufferFlags], dirtyBuffer    ;Is this dirty?
-    je .dirtyBufferError
-    ;Set reference bit and drive to free
+    jnz .dirtyBufferError   ;Signal bad disk change if so!
+;Set reference bit and drive to free
     mov word [rdi + bufferHdr.driveNumber], (refBuffer << 8) | freeBuffer 
     call makeBufferMostRecentlyUsedGetNext  ;Move this up, get next buffer
 .skipDirtyCheck:
     call findUnreferencedBuffer ;Get the next unreferenced buffer
     jnz .dirtyLoop  ;Now repeat for this buffer too
-.exit:
-    return
-.invalidateBuffers:    ;Invalidate all buffers on all drives using this dpb
-    call freeBuffersForDrive    ;Free all the buffers with the DPB in rbp
-.resetDPB:    ;If no buffers found, skip freeing them as theres nothing to free!
-    mov byte [rbp + dpb.bAccessFlag], -1 ;Mark DPB as inaccurate now
-    ;Get a buffer to read BPB into in rdi
-    xor eax, eax   ;Dummy read sector 0 in
-    call getBufForDOS ;Get a disk buffer for DOS
-    retc    ;Immediately exit with the carry flag set
-    lea rdi, qword [rbx + bufferHdr.dataarea]
+.resetDPB:
+;Start by checking if the MSD is ``IBM" style or normal
+    mov rdi, qword [rbp + dpb.qDriverHeaderPtr]
+    test word [rdi + drvHdr.attrib], devDrvNotIBM
+    jnz .dpbNotIbm
+;Read the FAT into buffer
+    mov eax, 1              ;Read sector 1 into a buffer
+    call getBufForFat       ;Point rbx to the buffer
+    retc
+    mov rdi, rbx
+    jmp short .repeatEP              
+.dpbNotIbm:
+;Get a buffer for the driver to use as scratch space
+    lea rdi, qword [bufferHdr]
+    call flushAndFreeBuffer
+    retc
 .repeatEP:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
@@ -298,7 +313,7 @@ ensureDiskValid:
     mov eax, dword [rbp + dpb.dFATlength]
     mov dword [rbx + bufferHdr.bufFATsize], eax
     mov al, byte [rbp + dpb.bNumberOfFATs]
-    mov byte [rbx + bufferHdr.bufFATsize], al
+    mov byte [rbx + bufferHdr.bufFATcopy], al
     xor ah, ah    ;Set ZF and clear CF
     mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
     return
@@ -319,6 +334,8 @@ ensureDiskValid:
     return  ;And exit
 
 .dirtyBufferError:
+;We can only enter this error if we returned media changed.
+;We will never enter here if we returned media unknown.
     push rbp
     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
     test word [rbp + drvHdr.attrib], devDrvHdlCTL
@@ -386,11 +403,12 @@ primReqMedCheckSetup:
 ;rbp has DPB pointer for device to check media on
     push rax
     mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+    mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
+.cmn:
     mov al, byte [rbp + dpb.bMediaDescriptor]
     mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
     mov al, byte [rbp + dpb.bDriveNumber]
     mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
-    mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
     mov word [primReqPkt + mediaCheckReqPkt.status], 0
     jmp short primReqCommonExit
 
@@ -401,13 +419,8 @@ primReqGetBPBSetup:
     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
     mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rdi
     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
-    mov al, byte [rbp + dpb.bMediaDescriptor]
-    mov byte [primReqPkt + bpbBuildReqPkt.medesc], al
-    mov al, byte [rbp + dpb.bDriveNumber]
-    mov byte [primReqPkt + bpbBuildReqPkt.unitnm], al
     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-    mov word [primReqPkt + bpbBuildReqPkt.status], 0
-    jmp short primReqCommonExit
+    jmp short primReqMedCheckSetup.cmn
 
 primReqOpenSetup:
 ;al = unit number if a disk device. Undefined otherwise

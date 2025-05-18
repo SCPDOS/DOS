@@ -196,11 +196,14 @@ msdInit:
     call .ptnUpdateBpb
     jc .mbrFnd  ;If CF=NC, this sector has a valid BPB. No MBR.
 ;The odd case where there is a BPB on the hard disk :)
+    mov byte [rbp + drvBlk.bDevType], typeHard  ;The media type is hard drive
     or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     call .advDiskPtrs
     jmp short .fatDiskOk
 .mbrFnd:
     jne .gotoNextDisk   ;If CF=CY and ZF=NZ, invalid disk! Goto next disk!
+;Now reread sector 0 (it might have been overwritten by a attempted FAT read)
+    call msdDriver.bbpbReadBS
 ;Now we check if we have a valid MBR signature.
     cmp word [msdDriver.inBuffer + mbr.mbrSig], 0AA55h
     jne .gotoNextDisk
@@ -227,24 +230,13 @@ msdInit:
     cmp byte [remDrv], 0
     je .noRems
 .remLp:
-    xor ecx, ecx    ;Load sector 0 of the disk
-    call .ptnUpdateBpb
-    jnc .remBpbOk
+    xor ecx, ecx        ;Load sector 0 of the disk
+    call .ptnUpdateBpb  ;If can't get a BPB, its ok. Remdevs here :)
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov eax, 8800h  ;Get disk parameters
+    mov eax, 8800h      ;Get disk parameters for changeline status in eax
     int 33h
-    jc .remSkipDisk     ;If cant get BPB and no devparams, goto next disk :)
-    mov dword [rbp + drvBlk.dHiddSec], 0
-    mov word [rbp + drvBlk.wBpS], bx
-    test ecx, 0FFFFh
-    jna .remSmall
-    mov dword [rbp + drvBlk.dTotSec32], ecx
-    xor ecx, ecx
-.remSmall:
-    mov word [rbp + drvBlk.wTotSec16], cx
-.remBpbOk:
-;Now test if we have a changeline for this device. eax has the device flags.
-    test eax, 10h    ;Set if we have changeline support
+    jc .remSkipDisk     ;If we cant query the drive, then we skip this.
+    test eax, 10h       ;Set if we have changeline support
     jz .remNext
     or word [rbp + drvBlk.wDevFlgs], devChgLine
 .remNext:
@@ -393,6 +385,7 @@ msdInit:
     or word [rbp + drvBlk.wDevFlgs], devUnFmt  ;Register ptn. Freeze IO.
 .pmbrOk:
     or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
+    mov byte [rbp + drvBlk.bDevType], typeHard  ;The media type is hard drive
     movzx eax, byte [rsi + mbrEntry.ptnAtrib]
     and eax, ptnActive
     or eax, ptnPrimary
@@ -442,6 +435,7 @@ msdInit:
 ;Now we go to the next logical partition in the extended partition and
 ; move to the next drive
     or word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
+    mov byte [rbp + drvBlk.bDevType], typeHard  ;The media type is hard drive
     movzx eax, byte [rsi + mbrEntry.ptnAtrib]
     and eax, ptnActive
     or eax, ptnLogical
@@ -461,10 +455,22 @@ msdInit:
 ;Moves the partition geometry information into drvBlk from MBR. This is only
 ; a necessity if the medium doesn't have a trustworthy BPB. Doesn't touch CHS 
 ; stuff because bleugh. That can be computed by FORMAT.
+;
+;This is done so that unformatted partitions are mounted by DOS. They cannot 
+; be used, and so needs to be FORMATed. Thus, NumFAT=0 should only really 
+; happen on hard drive partitions at boot.
+;
 ;Input: rsi -> MBR/EBR entry for this partition
 ;       rbp -> drvBlk for this drive we are setting up
 ;       rcx = Sector number of the start of the partition
-    mov dword [rbp + drvBlk.dHiddSec], ecx  ;Set again (this time permanently)
+;
+;Output: The following fields in the drvBlk are filled in
+;       bNumFAT = Number of FATs on partition (0 as unformatted)
+;       dHiddSec = Starting sector of the partition
+;       dTotSec32 = 32 bit size of partition (if large enough)
+;       wTotSec16 = 16 bit size of partition or 0 if 32 bit in use
+    mov byte [rbp + drvBlk.bNumFAT], 0 ;Indicate no FATs on ufmt ptn.
+    mov dword [rbp + drvBlk.dHiddSec], ecx  ;Set start sector of partition
     mov ecx, dword [rsi + mbrEntry.numSectors]
     cmp ecx, 0FFFFh
     jbe .gpgSmol

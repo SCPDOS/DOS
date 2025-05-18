@@ -299,7 +299,7 @@ msdDriver:
 .mcRem:
     call .checkDevType
     test word [rbp + drvBlk.wDevFlgs], devChgLine
-    jnz .mmcNoChangeLine
+    jz .mmcNoChangeLine
     mov dl, byte [rbp + drvBlk.bBIOSNum]
 ;Now we do a BIOS changeline check. We rely on it for drives with changeline.
 ;Start by setting the lastDsk to unknown since this only makes sense for
@@ -412,52 +412,134 @@ msdDriver:
 ;Entered with: 
 ;   rbp -> drvBlk for this drive
 ;------------------------------------------------------
-
     test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
     retnz  
     call .bbpbReadBS    ;Sets up rbx to point to internal disk buffer
     retc    ;If an error occured, ZF setup according to block IO
 ;Check we if we have a valid bootsector.
-    cmp byte [rbx], 069h   ;Direct jump has no NOP
-    je .newDisk
-    cmp byte [rbx], 0E9h    ;Short jump has no NOP
-    je .newDisk
-    cmp byte [rbx + 2], 090h  ;NOP
-    jne .oldDisk
-    cmp byte [rbx], 0EBh      ;JMP SHORT
-    je .newDisk
-.oldDisk:
-    ;call .bbpbReadFAT   ;Read the FAT sector now instead
-    ;retc    ;If an error occured, ZF setup according to block IO
-    ;mov ax, word [rbx]
-    ;and ax, 0FFFh
-    ;cmp ah, 0Fh     ;High byte must be 0Fh at this point.
-    ;jne .bbpbErr
-    ;call .bbpbCheckMedByt   ;Checks media byte to be valid
-    ;jnz .bbpbErr
-    ;cmp al, 0F0h    ;0F0h and 0F8h are not acceptable here as they need BPB
-    ;je .bbpbErr
-    ;cmp al, 0F8h
-    ;je .bbpbErr
-.bbpbErr:
+    cmp byte [rbx + oemHeader.jump], 069h       ;Direct jump has no NOP
+    je .ubpbCheckMedOk
+    cmp byte [rbx + oemHeader.jump], 0E9h       ;Near jump has no NOP
+    je .ubpbCheckMedOk
+    cmp byte [rbx + oemHeader.jump], 0EBh       ;Short jump has a NOP
+    jne .ubpbOldDisk
+    cmp byte [rbx + oemHeader.jump + 2], 090h   ;NOP should be here
+    jne .ubpbOldDisk
+.ubpbCheckMedOk:
+    mov al, byte [rbx + oemHeader_size + bpb.media] ;Get medbyte from BPB
+    call .checkMedByt   ;Check if it is 0F0h or geq 0F8h
+    jnz .ubpbOldDisk    ;If it is not, don't trust the BPB. Read the FAT sector
+;Now we do the pre DOS 3.2 single sided check and kludge.
+    test al, 1  ;Double sided bit set on media byte?
+    jnz .ubpbNormalDisk ;If set, proceed as normal.
+;Here if we have a "single-sided" formatted media.
+;Check the OEM string. We filter out SCPDOS disks first.
+    cmp dword [rbx + oemHeader.oemString], "SCPD"
+    jne .ubpbNotSCP
+    cmp word [rbx + oemHeader.oemString + 4], "OS"
+    je .ubpbNormalDisk
+.ubpbNotSCP:
+;Now blind check version numbers for 16-bit DOS OEM strings.
+;Search for DOS 2.0, 3.1 and 3.2. These versions have ID's such that 
+; the version number starts at position 5.
+;Usually, these BPBs have MSDOS or IBM<SPC><SPC> or OEM<SPC><SPC>
+; as the OEM string. OEM stands for any three characters used by an
+; OEM to identify disks they formatted, follows by "x.y" for a major
+; and minor version number.
+;Since we cannot enumerate all the OEM strings and can't guarantee
+; that they have the bug, we will simply check the version number @
+; position 5 in the string which seems to have been an unofficial 
+; standard for placing the version number in the OEM string at the 
+; time. 
+;The dot in the check helps "guarantee" the number is a version number 
+; we are possibly interested in.
+    cmp word [rbx + oemHeader.oemString + 5], "3."  ;DOS 3?
+    jb .ubpbAdjustSPC  ;If below, must be "2." or "1." which has bug. Adjust.
+    cmp byte [rbx + oemHeader.oemString + 7], "2"   ;DOS 3.2?
+    jae .ubpbNormalDisk ;If above or equal 3.2, no need for adjustment.
+.ubpbAdjustSPC:
+;Here we must be pre 16-bit DOS 3.2. Adjust the BPB in memory to have 
+; a spc value of 1.
+    mov byte [rbx + oemHeader_size + bpb.secPerClus], 1
+    jmp .ubpbNormalDisk ;Now proceed as a normal disk
+.checkMedByt:
+;Checks the media byte is of a valid type. Refuse media bytes we don't
+; recognise as this is a sign of an unhealthy volume.
+;Accept values 0FFh - 0F8h and 0F0h.
+;Input: al = Media byte. 
+;Ouput: ZF=NZ: Bad media byte. ZF=ZE: Ok media byte!
+    cmp al, 0F0h
+    rete
+    cmp al, 0F8h
+    retb
+    cmp al, al  ;Set ZF if greater than F8h
+    return
+.ubpbOldDisk:
+;We accept media bytes 0F9h-0FFh now. 0F8h and 0F0h make no sense here.
+    call .bbpbReadFAT   ;Read the FAT sector now instead
+    retc    ;If an error occured, ZF setup according to block IO
+    movzx eax, word [rbx]   ;Clear upper bytes
+    and eax, 0FFFh
+    cmp eax, 0FF9h    ;Cannot accept less than 0F9h as we dont know how to handle
+    jb .ubpbErr
+    jne .ubpbOldest ;If not equal to 0F9h, it must be a "normal" disk.
+;The only way to check which 0F9h we have, is to read the FAT and try to 
+; find the second FAT, as they are at different "known" sectors. 
+;First we read sector 4. If we find the 12 bytes 0FFF9h then use the first entry
+; in the 0F9h table. 
+;Else, read sector 8. If we find the 12 bytes 0FFF9h there, then use the 
+; second entry in the 0F9h table.
+    lea rbx, .drvBpbTblF9
+    call .upbpFindF9
+    retc                ;If the sector read failed, exit!
+    je .ubpbMoveBpb     ;If second FAT found, proceed with this bpb!
+    add rbx, bpb_size   ;Else, goto next entry
+    call .upbpFindF9    ;And try with this BPB
+    retc                ;If the sector read failed, exit!
+    je .ubpbMoveBpb     ;If second FAT found, proceed with this bpb!
+;Else fall through as we don't know what 0F9h means here.
+.ubpbErr:               
 ;Bad media bytes or BPB go here. Means the media is unknown.
-    mov al, drvBadMed       ;Default to unknown media error code
+    mov al, drvBadMed       ;Default to unknown media error code (07h)
     test eax, eax           ;Clear ZF so we return the right error code
     stc
     return
-.newDisk:
-    add rbx, 11 ;Now point rbx to the BPB itself
-    mov al, byte [rbx + bpb.media]
-    call .bbpbCheckMedByt
-    jnz .bbpbErr
+.upbpFindF9:
+;Reads the supposed start of the second FAT sector to search for a FF9h 
+;Call with rbx -> Table entry for this drive
+;Returns:   CF=NC and ZF=ZE: Second boot sector found. Use the bpb in rbx.
+;           CF=NC and ZF=NZ: Second boot sector not found. Goto next entry.
+;           CF=CY: Disk read failed.
+    movzx ecx, word [rbx + bpb.FATsz16] ;Get number of fat sectors in a FAT
+    inc ecx     ;Add one for the reserved sector to get sector !
+    push rbx
+    call .bbpbReadEp
+    movzx eax, word [rbx]   ;Read the first word
+    pop rbx
+    retc
+    and eax, 0FFFh  ;Scan off the upper nybble to get low meaningful 12 bytes
+    cmp eax, 0FF9h  ;Is this FF9h as it should be?
+    clc             ;Since eax can be a random word, force clear CF here.
+    return
+.ubpbOldest:
+;Here we build a pretend BPB in the sector buffer pointed to by rbx.
+;This will then be used to build the internal data structure. 
+    lea rbx, .drvBpbTbl
+    sub al, 0FAh    ;Get the offset into the bpb table
+    mov ecx, bpb_size
+    mul ecx         ;Get byte offset into the bpb table
+    add rbx, rax    ;Point rbx to this bpb in the table
+    jmp short .ubpbMoveBpb
+.ubpbNormalDisk:
+    add rbx, oemHeader_size ;Now point rbx to the BPB itself
 ;Update the drvBlk with info from the BPB.
 ;rbx points to the disk BPB. May be bad so we need to ensure the values 
 ; are ok before updating the msdTbl entry. 
-.bbpbMoveBpb:
+.ubpbMoveBpb:
     mov rsi, rbx    ;Source from the BPB in disk buffer
     lea rdi, qword [rbp + drvBlk.bpb]
-    call .bbpbGetFATType    ;Fat type is given in edx
-    jc .bbpbErr ;Only happens if crucial BPB fields are zero 
+    call .getFATType    ;Fat type is given in edx
+    jc .ubpbErr ;Only happens if crucial BPB fields are zero 
     mov byte [rbp + drvBlk.bBpbType], dl    ;Save the FAT type
 ;Get the correct length to correctly position rsi over the extended bs struct
 ; if it is present
@@ -496,7 +578,7 @@ msdDriver:
     stc
     return
 
-.bbpbGetFATType:
+.getFATType:
 ;Computes FAT type. Returns bpb flag in edx. rbx -> BPB itself
     movzx ecx, word [rbx + bpb.bytsPerSec]
     jrcxz .bbpbGFTErr
@@ -541,21 +623,6 @@ msdDriver:
     return
 .bbpbGFTErr:
     stc
-    return
-
-.bbpbCheckMedByt:
-;Checks the media byte is of a valid type. Refuse media bytes we don't
-; recognise as this is a sign of an unhealthy volume.
-;Accept values 0FFh - 0F8h and 0F0h.
-;Values 0FAh, 0F8h and 0F0h NEED to come from BPB. If found from FAT, then 
-; do not accept the volume!
-;Input: al = Media byte. 
-;Ouput: ZF=NZ: Bad media byte. ZF=ZE: Ok media byte!
-    cmp al, 0F0h
-    rete
-    cmp al, 0F8h
-    retb
-    cmp al, al  ;Set ZF if greater than F8h
     return
 
 .bbpbReadFAT:
@@ -893,7 +960,7 @@ msdDriver:
     lea rdi, qword [rbp + drvBlk.sDfltBPB]
     rep movsb   ;Move the default BPB over
     pop rbx
-    call .bbpbMoveBpb   ;Now set the real BPB and the lock flag
+    call .ubpbMoveBpb   ;Now set the real BPB
     call .moveVolIds    ;And move the volume ids if possible
 ;Now setup the lock BPB bit
     and word [rbp + drvBlk.wDevFlgs], ~devLockBPB
@@ -953,8 +1020,8 @@ msdDriver:
     mov rdi, qword [rdx + chsParamsBlock.deviceBPB]
     mov ecx, bpb32_size
     rep movsb
-    mov eax, 5
-    mov ecx, 7
+    mov eax, typeHard
+    mov ecx, typeGenRem
     test byte [rbp + drvBlk.wDevFlgs], devFixed
     cmovz eax, ecx  ;eax is set to 7 if the dev is removable
     mov byte [rdx + chsParamsBlock.bDevType], al
@@ -1550,9 +1617,129 @@ msdDriver:
 ; but this driver doesnt need to be reentrant yet.
 .inBuffer   db 4096 dup (0)  
 
+.drvBpbTbl:
+;Table of BPBs from FAh-FFh
+    istruc bpb
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 1    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 112  ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 640  ;Number of sectors on medium
+        at .media,      db 0FAh ;Media descriptor byte
+        at .FATsz16,    dw 1    ;Number of sectors per FAT
+        at .secPerTrk,  dw 8    ;Number of sectors per "track"
+        at .numHeads,   dw 1    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+    istruc bpb
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 2    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 112  ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 1280 ;Number of sectors on medium
+        at .media,      db 0FBh ;Media descriptor byte
+        at .FATsz16,    dw 2    ;Number of sectors per FAT
+        at .secPerTrk,  dw 8    ;Number of sectors per "track"
+        at .numHeads,   dw 2    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+    istruc bpb
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 1    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 64   ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 360  ;Number of sectors on medium
+        at .media,      db 0FCh ;Media descriptor byte
+        at .FATsz16,    dw 2    ;Number of sectors per FAT
+        at .secPerTrk,  dw 9    ;Number of sectors per "track"
+        at .numHeads,   dw 1    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+    istruc bpb
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 2    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 112  ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 720  ;Number of sectors on medium
+        at .media,      db 0FDh ;Media descriptor byte
+        at .FATsz16,    dw 2    ;Number of sectors per FAT
+        at .secPerTrk,  dw 9    ;Number of sectors per "track"
+        at .numHeads,   dw 2    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+    istruc bpb
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 1    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 64   ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 320  ;Number of sectors on medium
+        at .media,      db 0FEh ;Media descriptor byte
+        at .FATsz16,    dw 1    ;Number of sectors per FAT
+        at .secPerTrk,  dw 8    ;Number of sectors per "track"
+        at .numHeads,   dw 1    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+    istruc bpb
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 2    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 112  ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 640  ;Number of sectors on medium
+        at .media,      db 0FFh ;Media descriptor byte
+        at .FATsz16,    dw 1    ;Number of sectors per FAT
+        at .secPerTrk,  dw 8    ;Number of sectors per "track"
+        at .numHeads,   dw 2    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+.drvBpbTblF9:
+;Contains the special F9 BPBs
+    istruc bpb  ;720Kb 3.5" floppies
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 2    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 112  ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 1440 ;Number of sectors on medium
+        at .media,      db 0F9h ;Media descriptor byte
+        at .FATsz16,    dw 3    ;Number of sectors per FAT
+        at .secPerTrk,  dw 9    ;Number of sectors per "track"
+        at .numHeads,   dw 2    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+    istruc bpb  ;1.2Mb 5.25" floppies
+        at .bytsPerSec, dw 512  ;Bytes per sector
+        at .secPerClus, db 1    ;Sectors per cluster
+        at .revdSecCnt, dw 1    ;Number of reserved sectors, in volume
+        at .numFATs,    db 2    ;Number of FATs on media
+        at .rootEntCnt, dw 224  ;Number of 32 byte entries in Root directory
+        at .totSec16,   dw 2400 ;Number of sectors on medium
+        at .media,      db 0F9h ;Media descriptor byte
+        at .FATsz16,    dw 7    ;Number of sectors per FAT
+        at .secPerTrk,  dw 15   ;Number of sectors per "track"
+        at .numHeads,   dw 2    ;Number of read "heads"
+        at .hiddSec,    dd 0    ;Number of hidden sectors
+        at .totSec32,   dd 0    ;32 bit count of sectors
+    iend
+
 .drvBlkTbl:
-    ;db drvBlkTblL*drvBlk_size dup (0)
-;Have all drives default to a 1.44Mb partition
+;All drives start with Sectors/Cluster as -1 to indicate not initialised.
+;All drives start with Media Descripter as 0 (invalid type)
+;All drives start with dAccTime at -1 to force "uncertain" read for remdevs
+;All drives present 63 Cylinders (only valid as a field on fixed disks)
+;All drives have as an alt BPB, a 1.44Mb 3.5" Floppy.
     %assign i 0
     %rep drvBlkTblL
     istruc drvBlk
@@ -1561,12 +1748,12 @@ msdDriver:
         at .bDOSNum,    db i    ;BIOS drives default to removable
 ;Do a FAT12/16 BPB in FAT32 format
         at .wBpS,       dw 200h
-        at .bSpC,       db 01h
+        at .bSpC,       db -1       
         at .wResC,      dw 0001h
-        at .bNumFAT,    db 00h    ;No FATs means uninitialised FS
+        at .bNumFAT,    db 02h
         at .wRtCntNum,  dw 00E0h    
         at .wTotSec16,  dw 0B40h    
-        at .bMedDesc,   db 0F0h    
+        at .bMedDesc,   db 00h    
         at .wFATsz16,   dw 0009h    
         at .wSecPerTrk, dw 0012h    
         at .wNumHeads,  dw 0002h    
@@ -1582,9 +1769,9 @@ msdDriver:
 ;DrvBlk Flags
         at .bBpbType,   db bpbFat12
         at .wOpenCnt,   dw 0
-        at .bDevType,   db 0
+        at .bDevType,   db typeGenRem   ;Init to generic removable device
         at .wDevFlgs,   dw 0
-        at .wNumCyl,    dw 63   ;63 Cylinders emulated on fixed disks
+        at .wNumCyl,    dw 63   
         istruc bpb32
             at .bytsPerSec, dw 200h
             at .secPerClus, db 01h
@@ -1606,7 +1793,7 @@ msdDriver:
             at .BkBootSec,  dw 0
             at .reserved,   db 12 dup (0) 
         iend
-        at .dAccTime,   dd 0
+        at .dAccTime,   dd -1 
         at .volLab,     db "NO NAME    ",0
         at .volId,      dd 0    ;Vol ID of 0
         at .filSysType, db "FAT12   ",0
