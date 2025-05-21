@@ -835,28 +835,24 @@ msdDriver:
     return
 
 .IOCTL:    ;Function 19
-;Need to spend some time to implement proper IOCTL with LBA instead of CHS.
-;Implement two undoc functions 80h|42h (format) and 80h|60h (get LBA params).
+;Implements LBA versions of the CHS functions by setting the high bit
+; in the minor code.
     mov eax, drvBadCmd
     movzx ecx, word [rbx + ioctlReqPkt.majfun]  ;Get CH and CL in one read
     cmp ch, 08h     ;Disk Drive Major Code?
     jne .errorExit  ;If not, exit bad
 ;Disk Drive IOCTL here
-    test cl, 12h    ;If either bits 2 or 4 set, fail the call
+    test cl, 18h    ;If either bits 3 or 4 set, fail the call
     jnz .errorExit
     test cl, 60h    ;One of these two bits MUST be set (bits 5 and 6)
     jz .errorExit
     movzx edx, cl
-    and edx, ~80h   ;Clear the upper bit.
-    cmp edx, 7
-    jne .ioctlNoAccess
-    mov edx, 3  ;Move the offset instead into edx
-.ioctlNoAccess:
+    and edx, ~0F8h   ;Clear bits 3-7 to get table offset
     lea rdi, .ioctlTbl
     push rdi
     lea rdi, qword [rdi + 4*rdx]
     test cl, 20h
-    jne .ioctlNoRead
+    jz .ioctlNoRead
     add rdi, 2  ;If we are doing the read function, goto the next instruction
 .ioctlNoRead:
     movzx edx, word [rdi]   ;Read the word offset
