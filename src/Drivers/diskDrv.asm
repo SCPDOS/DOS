@@ -1035,7 +1035,7 @@ msdDriver:
 ; this means up to the whole media size and for fixed disks we are still 
 ; restricted to the partition size.
     mov eax, drvBadDrvReq
-    cmp qword [rdx + lbaParamsBlock.bSize], lbaParamsBlock_size
+    cmp byte [rdx + lbaParamsBlock.bSize], lbaParamsBlock_size
     jne .errorExit
     mov rdi, rdx    ;Store the params block ptr in rdi
     cmp byte [rdi + lbaParamsBlock.bSpecFuncs], 2   ;Check get phys call.

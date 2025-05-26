@@ -294,7 +294,7 @@ ensureDiskValid:
     jmp short .repeatEP              
 .dpbNotIbm:
 ;Get a buffer for the driver to use as scratch space
-    lea rdi, qword [bufferHdr]
+    mov rdi, qword [bufHeadPtr]
     call flushAndFreeBuffer
     retc
 .repeatEP:
