@@ -115,6 +115,14 @@ makeMCBChain:
     mov byte [rbp + dayOfMonth], 01     ;Set 1st of Jan
     mov byte [rbp + monthOfYear], 01
 ;------------------------------------------------;
+;     Set OEM ID number and ptr for drivers      ;
+;------------------------------------------------;
+    mov eax, dword [OEMVERSION]
+    mov dword [rbp + biosVers], eax
+
+    mov rax, qword [OEMPTR]
+    mov qword [rbp + biosPtr], rax
+;------------------------------------------------;
 ;              Kernel Driver inits               ;
 ;------------------------------------------------;
 kernDrvInit:
@@ -275,12 +283,6 @@ kernDrvInit:
     mov qword [rsi], rax
     mov dword [rsi + 8], ".SYS"
 skipOEMName:
-    mov eax, dword [OEMVERSION]
-    mov dword [rbp + biosVers], eax
-
-    mov rax, qword [OEMPTR]
-    mov qword [rbp + biosPtr], rax
-
     movzx eax, byte [DFLTDRIVE]
     xor ebx, ebx
     cmp eax, 25
