@@ -1084,7 +1084,7 @@ msdDriver:
 ;Enter with:
 ;ax = 0 if unformatted, 1 if any FAT type (means can call CHS function)
 ;rbx = Sector size in bytes
-;rcx = Last LBA block
+;rcx = Last LBA block address + 1 (Count of sectors)
 ;rdx = Hidden sectors
     mov word [rdi + lbaParamsBlock.wFSType], ax
     mov qword [rdi + lbaParamsBlock.qSectorSize], rbx
