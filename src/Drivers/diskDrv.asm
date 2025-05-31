@@ -896,6 +896,7 @@ msdDriver:
 ;               Set Device parameters in CHS and LBA here
 ;---------------------------------------------------------------------------
 .ioSetDevParams:
+    ;breakpoint
     pushfq
 ;If the parameters are swapped, set the flags and indicate the media 
 ; was swapped (even if not).
@@ -908,8 +909,8 @@ msdDriver:
 ; claimed that all the sectors are of the same size, they really are.    
     lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
     mov rdi, rsi    ;Save the pointer in rdi
-    stosw           ;Get the lead word and adv rsi by 2
-    movzx ecx, ax   ;Get the lead table entry
+    lodsw           ;Get the lead word and adv rsi by 2
+    movzx ecx, ax   ;Get the lead table entry into ax
     cmp ecx, maxTrackTblSz
     jz .iosdpNoTrack   ;Don't touch the tracks bit in this case!
     ja .genErrExit
@@ -1013,7 +1014,8 @@ msdDriver:
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
     lea rsi, qword [.inBuffer + 11]
 .iogdpDflt:
-    mov rdi, qword [rdx + chsParamsBlock.deviceBPB]
+    ;breakpoint
+    lea rdi, qword [rdx + chsParamsBlock.deviceBPB]
     mov ecx, bpb32_size
     rep movsb
     mov eax, typeHard
