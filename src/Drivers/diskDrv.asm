@@ -412,7 +412,7 @@ msdDriver:
 ;Entered with: 
 ;   rbp -> drvBlk for this drive
 ;------------------------------------------------------
-    test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBPB
+    test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBpb
     retnz  
     call .bbpbReadBS    ;Sets up rbx to point to internal disk buffer
     retc    ;If an error occured, ZF setup according to block IO
@@ -951,20 +951,6 @@ msdDriver:
     retnz   ;Return if bit set!
 .iosdpNoTrack:
 ;Now we update the rest of the disk metadata.
-    lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
-    push rsi
-    mov ecx, bpb32_size
-    lea rdi, qword [rbp + drvBlk.sDfltBPB]
-    rep movsb   ;Move the default BPB over
-    pop rbx
-    call .ubpbMoveBpb   ;Now set the real BPB
-    call .moveVolIds    ;And move the volume ids if possible
-;Now setup the lock BPB bit
-    and word [rbp + drvBlk.wDevFlgs], ~devLockBPB
-    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
-    jz .iosdpNoSetBPBDflt
-    or word [rbp + drvBlk.wDevFlgs], devLockBPB
-.iosdpNoSetBPBDflt:
 ;Now copy the rest of the bytes and return
     movzx eax, word [rdx + chsParamsBlock.wDevFlgs]
     and eax, devFixed | devChgLine  ;Keep only these two bits
@@ -975,8 +961,41 @@ msdDriver:
     or word [rbp + drvBlk.wDevFlgs], devSetDASD 
     movzx eax, word [rdx + chsParamsBlock.wNumCyl]
     mov word [rbp + drvBlk.wNumCyl], ax
-    ;movzx eax, byte [rdx + chsParamsBlock.bMedTyp]
-    ;mov byte [rbp + drvBlk.bMedTyp], al
+;Finally, here we do the BPB magic.
+;
+;The logic here is that in a format operation, we first update the driver 
+; devBlk bpb fields with the new format and set the devLockBpb flag. 
+; This is so the bpb isn't updated from the disk when a disk operation is 
+; enacted and that the parameters we passed in this call are what are
+; reported to DOS whilst the bootsector hasn't been synchronised with 
+; the disk.
+;
+;We then write the bootsector with the new bpb to disk, thus synchronising
+; the new bpb parameter block with what is on disk.
+;
+;Then we call this again, this time, to clear the locking flag as the disk
+; is now sychronised with the accurate bpb. We also here can get rid of 
+; the old backup bpb and so the second call will replace the backup
+; with whatever we pass it (ideally, the same bpb).
+;
+;This procedure protects us from accidentally making the drive unusable if
+; we somehow fail to write the BPB by having updated the drvBlk. The 
+; protection occurs by allowing us to restore the backup bpb as the devBlk 
+; bpb if the disk synchronisation of the new parameters failed.
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
+    jnz .iosdpSetBPB    ;If bit set, lock the bpb
+;Else we update the backup bpb and unlock the main bpb
+    lea rdi, qword [rbp + drvBlk.sBkupBPB]
+    mov ecx, bpb32_size
+    and word [rbp + drvBlk.wDevFlgs], ~devLockBpb   ;Now allow update bpb 
+    jmp short .iosdpCopy
+.iosdpSetBPB:
+    lea rdi, qword [rbp + drvBlk.bpb]   ;Default to the normal BPB in drvblk
+    mov ecx, drvBlkBpb_size
+    or word [rbp + drvBlk.wDevFlgs], devLockBpb ;Lock the BPB now
+.iosdpCopy:
+    lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
+    rep movsb
     return
 
 .lbaSetParams:
@@ -1005,16 +1024,19 @@ msdDriver:
 ;---------------------------------------------------------------------------
 .ioGetDevParams:
     jnz .lbaGetParams
-;Here we get CHS params. Doesn't do a build BPB call to be easy.
-    lea rsi, qword [rbp + drvBlk.sDfltBPB]
-    test byte [rdx + chsParamsBlock.bSpecFuncs], 1  ;Bit 0?
-    jnz .iogdpDflt
-    call .updateBpb ;Gets the BPB to the internal disk buffer
+;Here we get CHS params. 
+    lea rsi, qword [rbp + drvBlk.sBkupBPB]
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
+    jnz .iogdpBkup  ;If set, return the backup bpb data.
+    call .updateBpb ;Else, gets the BPB from the disk
     jc .ioDoErr ;Errors returned as if from block IO handler
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
     lea rsi, qword [.inBuffer + 11]
-.iogdpDflt:
+.iogdpBkup:
     ;breakpoint
+;The caller block in memory must have a bpb32_size'ed space for the BPB
+; even if it is a FAT16/12 drive. The caller has to assertain the 
+; type of BPB it is based information in the common part of the BPB.
     lea rdi, qword [rdx + chsParamsBlock.deviceBPB]
     mov ecx, bpb32_size
     rep movsb

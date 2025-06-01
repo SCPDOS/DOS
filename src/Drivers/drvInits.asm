@@ -487,7 +487,7 @@ msdInit:
 
 .advDiskPtrs:
     call .getNumCyl     ;Computes the number of cylinders in the BPB
-    call .xfrDfltBpb    ;Finish drvBlk init by transfering dfltBPB
+    call .xfrBkupBpb    ;Finish drvBlk init by transfering dfltBPB
     mov rbp, qword [rbp + drvBlk.pLink]    ;Go to the next disk entry.
     inc byte [dosDrv]       ;Go to the next DOS device
     inc byte [physVol]
@@ -583,20 +583,14 @@ msdInit:
     pop rax
     return
 
-.xfrDfltBpb:
-;If a drive is removable, we check the BIOS reported values and 
-; build a BPB around that. Else, we trust the bpb and blindly copy it.
-;
-; TEMP TEMP: FOR NOW WE JUST ALWAYS BLINDLY TRUST THE BPB.
-;
+.xfrBkupBpb:
+;Makes a copy of the reported bpb in the drvBlk for formatting backups
     push rcx
     push rsi
     push rdi
     lea rsi, qword [rbp + drvBlk.bpb]
-    lea rdi, qword [rbp + drvBlk.sDfltBPB]
-    mov ecx, bpb32_size
-;Copies garbage into the reserved 12 bytes at the end of the BPB32
-; but thats ok since we dont use it and those fields are reserved.
+    lea rdi, qword [rbp + drvBlk.sBkupBPB]
+    mov ecx, drvBlkBpb_size
     rep movsb
     pop rdi
     pop rsi

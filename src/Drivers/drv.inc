@@ -40,6 +40,7 @@ struc drvBlk
     .RootClus   dd ?    ;First Cluster of Root Directory
     .FSinfo     dw ?    ;Sector number of FSINFO structure, usually 1
     .BkBootSec  dw ?    ;Backup Boot sector, either 0 or 6
+.endBpb:
 ;--------------------------------------------------------------------
 ; DrvBlk flags
 ;--------------------------------------------------------------------
@@ -49,7 +50,7 @@ struc drvBlk
     .wDevFlgs   dw ?    ;Flags for this device 
 ;The below word is a legacy thing. It is only used in a CHS based IOCTL call.
     .wNumCyl    dw ?
-    .sDfltBPB   db bpb32_size dup (?)   ;Default capacity BPB for drive
+    .sBkupBPB   db bpb32_size dup (?)   ;Backup of BPB used during format
 .dAccTime:          ;Last media check time if remdev
     .wPtnType   dd ?    
 ;--------------------------------------------------------------------
@@ -61,6 +62,7 @@ struc drvBlk
     .filSysType db 8 dup (?)    ;File system type string
                 db ?            ;Null terminator for string
 endstruc
+drvBlkBpb_size equ drvBlk.endBpb - drvBlk.bpb
 
 ;FAT type values
 bpbUnknown  equ 80h ;Unknown FAT
@@ -78,7 +80,7 @@ typeGenRem  equ 7   ;Generic removable medium, default
 ;Device Flag values
 devFixed    equ 1       ;Set if fixed disk 
 devChgLine  equ 2       ;Set if the drive has a changeline
-devLockBPB  equ 4       ;Makes BuildBPB not build a BPB if set
+devLockBpb  equ 4       ;Set if we are not to update BPB on updateBPB calls
 devSameSec  equ 8       ;All sectors in track are same size
 devMulti    equ 10h     ;Physical drive has many logical units (A/B share)
 devOwnDrv   equ 20h     ;Owner for possibly shared physical drive (A/B share)
