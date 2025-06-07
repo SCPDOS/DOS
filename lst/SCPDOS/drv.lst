@@ -3474,59 +3474,58 @@
    896                              <1> ;               Set Device parameters in CHS and LBA here
    897                              <1> ;---------------------------------------------------------------------------
    898                              <1> .ioSetDevParams:
-   899                              <1>     ;breakpoint
-   900 00000BBC 9C                  <1>     pushfq
-   901                              <1> ;If the parameters are swapped, set the flags and indicate the media 
-   902                              <1> ; was swapped (even if not).
-   903 00000BBD 66814D374001        <1>     or word [rbp + drvBlk.wDevFlgs], devNewParms | devChgd
-   904 00000BC3 9D                  <1>     popfq
-   905 00000BC4 0F85C8000000        <1>     jnz .lbaSetParams
-   906                              <1> ;Here we set CHS params. 
-   907                              <1> ;Before we trust the table, we check that indeed
-   908                              <1> ; no sector index is past the max sector count and that if the caller
-   909                              <1> ; claimed that all the sectors are of the same size, they really are.    
-   910 00000BCA 488D723C            <1>     lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
-   911 00000BCE 4889F7              <1>     mov rdi, rsi    ;Save the pointer in rdi
-   912 00000BD1 66AD                <1>     lodsw           ;Get the lead word and adv rsi by 2
-   913 00000BD3 0FB7C8              <1>     movzx ecx, ax   ;Get the lead table entry into ax
-   914 00000BD6 81F93F000000        <1>     cmp ecx, maxTrackTblSz
-   915 00000BDC 7460                <1>     jz .iosdpNoTrack   ;Don't touch the tracks bit in this case!
-   916 00000BDE 0F87EFFAFFFF        <1>     ja .genErrExit
-   917 00000BE4 66813E3F00          <1>     cmp word [rsi], maxTrackTblSz   ;Check the first entry is ok!
-   918 00000BE9 0F87E4FAFFFF        <1>     ja .genErrExit
-   919                              <1> .iosdpTblCheckLp:
-   920 00000BEF AD                  <1>     lodsd   ;Go to next entry
-   921 00000BF0 FFC9                <1>     dec ecx ;And remove from the count
-   922 00000BF2 7420                <1>     jz .iosdpTblCheckEnd
-   923 00000BF4 66813E3F00          <1>     cmp word [rsi], maxTrackTblSz   ;Ensure no entry above the max entry value
-   924 00000BF9 0F87D4FAFFFF        <1>     ja .genErrExit
-   925 00000BFF F60204              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec ;All same size?
-   926 00000C02 74EB                <1>     jz .iosdpTblCheckLp ;If not, skip this check (always check 1=<i<=n)
-   927 00000C04 668B4602            <1>     mov ax, word [rsi + 2]  ;Else get sector size
-   928 00000C08 663946FE            <1>     cmp word [rsi - 2], ax  ;And compare with the previous sector size
-   929 00000C0C 0F85C1FAFFFF        <1>     jne .genErrExit
-   930 00000C12 EBDB                <1>     jmp short .iosdpTblCheckLp
-   931                              <1> .iosdpTblCheckEnd:
-   932                              <1> ;Now we set the sector size bit if all tracks same size check was passed.
-   933                              <1> ;If all sectors have the same size but the caller didn't specify this
-   934                              <1> ; bit, we also don't specify this bit.
-   935 00000C14 66816537F7FF        <1>     and word [rbp + drvBlk.wDevFlgs], ~devSameSec    ;Clear bit first
-   936 00000C1A F60204              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec
-   937 00000C1D 7406                <1>     jz .iosdpNoSetTrackBit
-   938                              <1> ;The only way we got here if the bit was set is that the check passed.
-   939                              <1> ; Set the bit in the device block.
-   940 00000C1F 66814D370800        <1>     or word [rbp + drvBlk.wDevFlgs], devSameSec
-   941                              <1> .iosdpNoSetTrackBit:
-   942                              <1> ;Now we copy the table directly as sector numbers may be purposefully
-   943                              <1> ; interleaved. NO SORTING!!
-   944 00000C25 4889FE              <1>     mov rsi, rdi    ;Get back the track layout pointer 
-   945 00000C28 488D3DA2020000      <1>     lea rdi, .ioTrackTbl    ;We overwrite our internal track table
-   946 00000C2F 66AD                <1>     lodsw   ;Get the table length
-   947 00000C31 0FB7C8              <1>     movzx ecx, ax   ;This many entries
-   948 00000C34 66AB                <1>     stosw
-   949 00000C36 F3A5                <1>     rep movsd       ;Move the dword entries over
-   950 00000C38 F60202              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncTrk    ;Just tracks?
-   951                              <1>     retnz   ;Return if bit set!
+   899 00000BBC 9C                  <1>     pushfq
+   900                              <1> ;If the parameters are swapped, set the flags and indicate the media 
+   901                              <1> ; was swapped (even if not).
+   902 00000BBD 66814D374001        <1>     or word [rbp + drvBlk.wDevFlgs], devNewParms | devChgd
+   903 00000BC3 9D                  <1>     popfq
+   904 00000BC4 0F85C8000000        <1>     jnz .lbaSetParams
+   905                              <1> ;Here we set CHS params. 
+   906                              <1> ;Before we trust the table, we check that indeed
+   907                              <1> ; no sector index is past the max sector count and that if the caller
+   908                              <1> ; claimed that all the sectors are of the same size, they really are.    
+   909 00000BCA 488D723C            <1>     lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
+   910 00000BCE 4889F7              <1>     mov rdi, rsi    ;Save the pointer in rdi
+   911 00000BD1 66AD                <1>     lodsw           ;Get the lead word and adv rsi by 2
+   912 00000BD3 0FB7C8              <1>     movzx ecx, ax   ;Get the lead table entry into ax
+   913 00000BD6 81F93F000000        <1>     cmp ecx, maxTrackTblSz
+   914 00000BDC 7460                <1>     jz .iosdpNoTrack   ;Don't touch the tracks bit in this case!
+   915 00000BDE 0F87EFFAFFFF        <1>     ja .genErrExit
+   916 00000BE4 66813E3F00          <1>     cmp word [rsi], maxTrackTblSz   ;Check the first entry is ok!
+   917 00000BE9 0F87E4FAFFFF        <1>     ja .genErrExit
+   918                              <1> .iosdpTblCheckLp:
+   919 00000BEF AD                  <1>     lodsd   ;Go to next entry
+   920 00000BF0 FFC9                <1>     dec ecx ;And remove from the count
+   921 00000BF2 7420                <1>     jz .iosdpTblCheckEnd
+   922 00000BF4 66813E3F00          <1>     cmp word [rsi], maxTrackTblSz   ;Ensure no entry above the max entry value
+   923 00000BF9 0F87D4FAFFFF        <1>     ja .genErrExit
+   924 00000BFF F60204              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec ;All same size?
+   925 00000C02 74EB                <1>     jz .iosdpTblCheckLp ;If not, skip this check (always check 1=<i<=n)
+   926 00000C04 668B4602            <1>     mov ax, word [rsi + 2]  ;Else get sector size
+   927 00000C08 663946FE            <1>     cmp word [rsi - 2], ax  ;And compare with the previous sector size
+   928 00000C0C 0F85C1FAFFFF        <1>     jne .genErrExit
+   929 00000C12 EBDB                <1>     jmp short .iosdpTblCheckLp
+   930                              <1> .iosdpTblCheckEnd:
+   931                              <1> ;Now we set the sector size bit if all tracks same size check was passed.
+   932                              <1> ;If all sectors have the same size but the caller didn't specify this
+   933                              <1> ; bit, we also don't specify this bit.
+   934 00000C14 66816537F7FF        <1>     and word [rbp + drvBlk.wDevFlgs], ~devSameSec    ;Clear bit first
+   935 00000C1A F60204              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec
+   936 00000C1D 7406                <1>     jz .iosdpNoSetTrackBit
+   937                              <1> ;The only way we got here if the bit was set is that the check passed.
+   938                              <1> ; Set the bit in the device block.
+   939 00000C1F 66814D370800        <1>     or word [rbp + drvBlk.wDevFlgs], devSameSec
+   940                              <1> .iosdpNoSetTrackBit:
+   941                              <1> ;Now we copy the table directly as sector numbers may be purposefully
+   942                              <1> ; interleaved. NO SORTING!!
+   943 00000C25 4889FE              <1>     mov rsi, rdi    ;Get back the track layout pointer 
+   944 00000C28 488D3DA2020000      <1>     lea rdi, .ioTrackTbl    ;We overwrite our internal track table
+   945 00000C2F 66AD                <1>     lodsw   ;Get the table length
+   946 00000C31 0FB7C8              <1>     movzx ecx, ax   ;This many entries
+   947 00000C34 66AB                <1>     stosw
+   948 00000C36 F3A5                <1>     rep movsd       ;Move the dword entries over
+   949 00000C38 F60202              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncTrk    ;Just tracks?
+   950                              <1>     retnz   ;Return if bit set!
     45                              <2> cret nz
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3550,92 +3549,93 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   952                              <1> .iosdpNoTrack:
-   953                              <1> ;Now we update the rest of the disk metadata.
-   954                              <1> ;Now copy the rest of the bytes and return
-   955 00000C3E 0FB74202            <1>     movzx eax, word [rdx + chsParamsBlock.wDevFlgs]
-   956 00000C42 2503000000          <1>     and eax, devFixed | devChgLine  ;Keep only these two bits
-   957 00000C47 66816537FCFF        <1>     and word [rbp + drvBlk.wDevFlgs], ~(devFixed | devChgLine)   ;Clear em
-   958 00000C4D 66094537            <1>     or word [rbp + drvBlk.wDevFlgs], ax  ;Add those two bits as set
-   959 00000C51 0FB64201            <1>     movzx eax, byte [rdx + chsParamsBlock.bDevType]
-   960 00000C55 884536              <1>     mov byte [rbp + drvBlk.bDevType], al
-   961 00000C58 66814D378000        <1>     or word [rbp + drvBlk.wDevFlgs], devSetDASD 
-   962 00000C5E 0FB74204            <1>     movzx eax, word [rdx + chsParamsBlock.wNumCyl]
-   963 00000C62 66894539            <1>     mov word [rbp + drvBlk.wNumCyl], ax
-   964                              <1> ;Finally, here we do the BPB magic.
-   965                              <1> ;
-   966                              <1> ;The logic here is that in a format operation, we first update the driver 
-   967                              <1> ; devBlk bpb fields with the new format and set the devLockBpb flag. 
-   968                              <1> ; This is so the bpb isn't updated from the disk when a disk operation is 
-   969                              <1> ; enacted and that the parameters we passed in this call are what are
-   970                              <1> ; reported to DOS whilst the bootsector hasn't been synchronised with 
-   971                              <1> ; the disk.
-   972                              <1> ;
-   973                              <1> ;We then write the bootsector with the new bpb to disk, thus synchronising
-   974                              <1> ; the new bpb parameter block with what is on disk.
-   975                              <1> ;
-   976                              <1> ;Then we call this again, this time, to clear the locking flag as the disk
-   977                              <1> ; is now sychronised with the accurate bpb. We also here can get rid of 
-   978                              <1> ; the old backup bpb and so the second call will replace the backup
-   979                              <1> ; with whatever we pass it (ideally, the same bpb).
-   980                              <1> ;
-   981                              <1> ;This procedure protects us from accidentally making the drive unusable if
-   982                              <1> ; we somehow fail to write the BPB by having updated the drvBlk. The 
-   983                              <1> ; protection occurs by allowing us to restore the backup bpb as the devBlk 
-   984                              <1> ; bpb if the disk synchronisation of the new parameters failed.
-   985 00000C66 F60201              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
-   986 00000C69 7511                <1>     jnz .iosdpSetBPB    ;If bit set, lock the bpb
-   987                              <1> ;Else we update the backup bpb and unlock the main bpb
-   988 00000C6B 488D7D3B            <1>     lea rdi, qword [rbp + drvBlk.sBkupBPB]
-   989 00000C6F B935000000          <1>     mov ecx, bpb32_size
-   990 00000C74 66816537FBFF        <1>     and word [rbp + drvBlk.wDevFlgs], ~devLockBpb   ;Now allow update bpb 
-   991 00000C7A EB0F                <1>     jmp short .iosdpCopy
-   992                              <1> .iosdpSetBPB:
-   993 00000C7C 488D7D0A            <1>     lea rdi, qword [rbp + drvBlk.bpb]   ;Default to the normal BPB in drvblk
-   994 00000C80 B929000000          <1>     mov ecx, drvBlkBpb_size
-   995 00000C85 66814D370400        <1>     or word [rbp + drvBlk.wDevFlgs], devLockBpb ;Lock the BPB now
-   996                              <1> .iosdpCopy:
-   997 00000C8B 488D7207            <1>     lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
-   998 00000C8F F3A4                <1>     rep movsb
-   999                              <1>     return
+   951                              <1> .iosdpNoTrack:
+   952                              <1> ;Now we update the rest of the disk metadata.
+   953                              <1> ;Now copy the rest of the bytes and return
+   954 00000C3E 0FB74202            <1>     movzx eax, word [rdx + chsParamsBlock.wDevFlgs]
+   955 00000C42 2503000000          <1>     and eax, devFixed | devChgLine  ;Keep only these two bits
+   956 00000C47 66816537FCFF        <1>     and word [rbp + drvBlk.wDevFlgs], ~(devFixed | devChgLine)   ;Clear em
+   957 00000C4D 66094537            <1>     or word [rbp + drvBlk.wDevFlgs], ax  ;Add those two bits as set
+   958 00000C51 0FB64201            <1>     movzx eax, byte [rdx + chsParamsBlock.bDevType]
+   959 00000C55 884536              <1>     mov byte [rbp + drvBlk.bDevType], al
+   960 00000C58 66814D378000        <1>     or word [rbp + drvBlk.wDevFlgs], devSetDASD 
+   961 00000C5E 0FB74204            <1>     movzx eax, word [rdx + chsParamsBlock.wNumCyl]
+   962 00000C62 66894539            <1>     mov word [rbp + drvBlk.wNumCyl], ax
+   963                              <1> ;Finally, here we do the BPB magic.
+   964                              <1> ;
+   965                              <1> ;The logic here is that in a format operation, we first update the driver 
+   966                              <1> ; devBlk bpb fields with the new format and set the devLockBpb flag. 
+   967                              <1> ; This is so the bpb isn't updated from the disk when a disk operation is 
+   968                              <1> ; enacted and that the parameters we passed in this call are what are
+   969                              <1> ; reported to DOS whilst the bootsector hasn't been synchronised with 
+   970                              <1> ; the disk.
+   971                              <1> ;
+   972                              <1> ;We then write the bootsector with the new bpb to disk, thus synchronising
+   973                              <1> ; the new bpb parameter block with what is on disk.
+   974                              <1> ;
+   975                              <1> ;Then we call this again, this time, to clear the locking flag as the disk
+   976                              <1> ; is now sychronised with the accurate bpb. We also here can get rid of 
+   977                              <1> ; the old backup bpb and so the second call will replace the backup
+   978                              <1> ; with whatever we pass it (ideally, the same bpb).
+   979                              <1> ;
+   980                              <1> ;This procedure protects us from accidentally making the drive unusable if
+   981                              <1> ; we somehow fail to write the BPB by having updated the drvBlk. The 
+   982                              <1> ; protection occurs by allowing us to restore the backup bpb as the devBlk 
+   983                              <1> ; bpb if the disk synchronisation of the new parameters failed.
+   984 00000C66 F60201              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
+   985 00000C69 7511                <1>     jnz .iosdpSetBPB    ;If bit set, lock the bpb
+   986                              <1> ;Else we update the backup bpb and unlock the main bpb
+   987 00000C6B 488D7D3B            <1>     lea rdi, qword [rbp + drvBlk.sBkupBPB]
+   988 00000C6F B935000000          <1>     mov ecx, bpb32_size
+   989 00000C74 66816537FBFF        <1>     and word [rbp + drvBlk.wDevFlgs], ~devLockBpb   ;Now allow update bpb 
+   990 00000C7A EB0F                <1>     jmp short .iosdpCopy
+   991                              <1> .iosdpSetBPB:
+   992 00000C7C 488D7D0A            <1>     lea rdi, qword [rbp + drvBlk.bpb]   ;Default to the normal BPB in drvblk
+   993 00000C80 B929000000          <1>     mov ecx, drvBlkBpb_size
+   994 00000C85 66814D370400        <1>     or word [rbp + drvBlk.wDevFlgs], devLockBpb ;Lock the BPB now
+   995                              <1> .iosdpCopy:
+   996 00000C8B 488D7207            <1>     lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
+   997 00000C8F F3A4                <1>     rep movsb
+   998                              <1>     return
     13                              <2> %%_ret:
     14 00000C91 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1000                              <1> 
-  1001                              <1> .lbaSetParams:
-  1002                              <1> ;This only sets the sector size and number of sectors in drvBlk.bpb.
-  1003                              <1>     ;Set start sector of partition
-  1004 00000C92 8B4A18              <1>     mov ecx, dword [rdx + lbaParamsBlock.qStartSector]
-  1005 00000C95 894D1B              <1>     mov dword [rbp + drvBlk.dHiddSec], ecx
-  1006                              <1>     ;Set sector size
-  1007 00000C98 8B4A08              <1>     mov ecx, dword [rdx + lbaParamsBlock.qSectorSize]
-  1008 00000C9B 66894D0A            <1>     mov word [rbp + drvBlk.wBpS], cx
-  1009                              <1>     ;Set same device flags as in CHS.
-  1010 00000C9F 0FB64A02            <1>     movzx ecx, byte [rdx + lbaParamsBlock.wDevFlgs]
-  1011 00000CA3 6681E10300          <1>     and cx, devFixed | devChgLine
-  1012 00000CA8 66094D37            <1>     or word [rbp + drvBlk.wDevFlgs], cx
-  1013                              <1>     ;Set sector information.
-  1014 00000CAC 8B4A10              <1>     mov ecx, dword [rdx + lbaParamsBlock.qNumSectors]
-  1015 00000CAF 81F9FFFF0000        <1>     cmp ecx, 0FFFFh
-  1016 00000CB5 7605                <1>     jna .lbaSetSmall
-  1017 00000CB7 894D1F              <1>     mov dword [rbp + drvBlk.dTotSec32], ecx
-  1018 00000CBA 31C9                <1>     xor ecx, ecx
-  1019                              <1> .lbaSetSmall:
-  1020 00000CBC 66894D12            <1>     mov word [rbp + drvBlk.wTotSec16], cx
-  1021                              <1>     return
+   999                              <1> 
+  1000                              <1> .lbaSetParams:
+  1001                              <1> ;This only sets the sector size and number of sectors in drvBlk.bpb.
+  1002                              <1>     ;Set start sector of partition
+  1003 00000C92 8B4A18              <1>     mov ecx, dword [rdx + lbaParamsBlock.qStartSector]
+  1004 00000C95 894D1B              <1>     mov dword [rbp + drvBlk.dHiddSec], ecx
+  1005                              <1>     ;Set sector size
+  1006 00000C98 8B4A08              <1>     mov ecx, dword [rdx + lbaParamsBlock.qSectorSize]
+  1007 00000C9B 66894D0A            <1>     mov word [rbp + drvBlk.wBpS], cx
+  1008                              <1>     ;Set same device flags as in CHS.
+  1009 00000C9F 0FB64A02            <1>     movzx ecx, byte [rdx + lbaParamsBlock.wDevFlgs]
+  1010 00000CA3 6681E10300          <1>     and cx, devFixed | devChgLine
+  1011 00000CA8 66094D37            <1>     or word [rbp + drvBlk.wDevFlgs], cx
+  1012                              <1>     ;Set sector information.
+  1013 00000CAC 8B4A10              <1>     mov ecx, dword [rdx + lbaParamsBlock.qNumSectors]
+  1014 00000CAF 81F9FFFF0000        <1>     cmp ecx, 0FFFFh
+  1015 00000CB5 7605                <1>     jna .lbaSetSmall
+  1016 00000CB7 894D1F              <1>     mov dword [rbp + drvBlk.dTotSec32], ecx
+  1017 00000CBA 31C9                <1>     xor ecx, ecx
+  1018                              <1> .lbaSetSmall:
+  1019 00000CBC 66894D12            <1>     mov word [rbp + drvBlk.wTotSec16], cx
+  1020                              <1>     return
     13                              <2> %%_ret:
     14 00000CC0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-  1022                              <1> ;---------------------------------------------------------------------------
-  1023                              <1> ;               Get Device parameters in CHS and LBA here
-  1024                              <1> ;---------------------------------------------------------------------------
-  1025                              <1> .ioGetDevParams:
-  1026 00000CC1 7559                <1>     jnz .lbaGetParams
-  1027                              <1> ;Here we get CHS params. 
-  1028 00000CC3 488D753B            <1>     lea rsi, qword [rbp + drvBlk.sBkupBPB]
+  1021                              <1> ;---------------------------------------------------------------------------
+  1022                              <1> ;               Get Device parameters in CHS and LBA here
+  1023                              <1> ;---------------------------------------------------------------------------
+  1024                              <1> .ioGetDevParams:
+  1025 00000CC1 7559                <1>     jnz .lbaGetParams
+  1026                              <1> ;Here we get CHS params. 
+  1027                              <1>     ;breakpoint
+  1028 00000CC3 488D750A            <1>     lea rsi, qword [rbp + drvBlk.bpb]
   1029 00000CC7 F60201              <1>     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
-  1030 00000CCA 7517                <1>     jnz .iogdpBkup  ;If set, return the backup bpb data.
-  1031 00000CCC E838FBFFFF          <1>     call .updateBpb ;Else, gets the BPB from the disk
+  1030 00000CCA 7517                <1>     jnz .iogdpBkup  ;If set, return the bpb data as is.
+  1031 00000CCC E838FBFFFF          <1>     call .updateBpb ;Else, gets the BPB from the disk.
   1032 00000CD1 0F826FFDFFFF        <1>     jc .ioDoErr ;Errors returned as if from block IO handler
   1033 00000CD7 E843FCFFFF          <1>     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
   1034 00000CDC 488D3590050000      <1>     lea rsi, qword [.inBuffer + 11]

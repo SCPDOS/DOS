@@ -896,7 +896,6 @@ msdDriver:
 ;               Set Device parameters in CHS and LBA here
 ;---------------------------------------------------------------------------
 .ioSetDevParams:
-    ;breakpoint
     pushfq
 ;If the parameters are swapped, set the flags and indicate the media 
 ; was swapped (even if not).
@@ -1025,10 +1024,11 @@ msdDriver:
 .ioGetDevParams:
     jnz .lbaGetParams
 ;Here we get CHS params. 
-    lea rsi, qword [rbp + drvBlk.sBkupBPB]
+    ;breakpoint
+    lea rsi, qword [rbp + drvBlk.bpb]
     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
-    jnz .iogdpBkup  ;If set, return the backup bpb data.
-    call .updateBpb ;Else, gets the BPB from the disk
+    jnz .iogdpBkup  ;If set, return the bpb data as is.
+    call .updateBpb ;Else, gets the BPB from the disk.
     jc .ioDoErr ;Errors returned as if from block IO handler
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
     lea rsi, qword [.inBuffer + 11]
