@@ -549,9 +549,9 @@ noCfg:
 .skipFCBS:
 ;And CDS now
     mov rcx, qword [rbp - cfgFrame.newLastdrive]
-    cmp byte fs:[lastdrvNum], cl
-    jae .skipCDS    ;If user specifies less than 5 drives, dont reallocate
-    ;Else, we first free the old CDS and then reallocate
+    ;First free the old CDS and then reallocate. If nothing changed, DOS
+    ; will reallocate this space. This is done to create CDS's for any newly
+    ; installed drives from CONFIG.SYS
     mov r8, qword fs:[cdsHeadPtr]
     mov eax, 4900h  ;FREE the old allocation, owned by mcbOwnerDOS.
     int 21h
@@ -736,7 +736,7 @@ convertBPBArray:
 
     push rsi
     mov rsi, qword [rsi]    ;Get the BPB pointer from the BPB array
-    mov ah, 53h ;Build DPB
+    mov eax, 5300h ;Build DPB
     int 21h
     pop rsi
 
@@ -894,17 +894,12 @@ buildDPBs:
     ;
     ;This is a FAT32 specific requirement as 21h/53h now needs a buffer
     ;for reading the extra FSInfo sector into. We allocate a single
-    ;buffer of max valid sector size.
+    ;temporary buffer of max valid sector size.
     ;
     mov ebx, 4096/16    ;Max sector size...
     mov eax, 4800h  ;ALLOC
     int 21h
     jc short .exit
-    mov byte [rax + mcb.subSysMark - mcb_size], mcbSubBuffers  
-    mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
-    mov qword fs:[bufHeadPtr], rax
-    mov qword [rax + bufferHdr.nextBufPtr], -1 ;Point to no buffer
-    mov word [rax + bufferHdr.wDrvNumFlg], 00FFh  ;Free buffer and clear flags 
     push r8     ;Save r8's original value
     push rax    ;Save the buffer pointer
     ;rsi -> Ptr to BPB
@@ -916,7 +911,6 @@ buildDPBs:
     mov eax, 4900h  ;Free this buffer now we are done!
     int 21h
     pop rax
-    mov qword fs:[bufHeadPtr], -1   ;Reset this back 
     pop r8      ;Get back the original r8 value
 .exit:
     pop rdi
