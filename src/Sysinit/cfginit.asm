@@ -595,6 +595,7 @@ configParse:
     ;MSD devices need to have something placed in there
     mov rax, "MSD dev "
     stosq   ;Store the 8 chars here
+    jmp short .driverBadPrint
 .driverCharBad:
     lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
     movsq   ;Move all 8 chars over from device driver name
