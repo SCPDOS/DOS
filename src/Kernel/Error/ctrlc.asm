@@ -258,20 +258,20 @@ ctrlBreakHdlr:
     clc
     int 23h ;Call critical error handler
     cli ;Clear interrupts again
-    mov qword [oldRAX], rax ;Save rax
-    pushfq  ;Get flags in rax
+    mov qword [oldRAX], rax     ;Save eax (has DOS fn to do if not terminate)
+    pushfq                      ;Get returned flags in rax
     pop rax 
-    cmp rsp, qword [xInt23hRSP] ;Did the user return with ret 8?
-    jne .checkCF
-.returnToDOS:
-    mov rax, qword [oldRAX]
-    jmp functionDispatch    ;Goto int 21h
+    cmp rsp, qword [xInt23hRSP] ;Did the user return with ret/ret 8?
+    jne .checkCF                ;If yes, check the returned CF flag.
+.returnToDOS:                   ;Else, execute the DOS function in eax.
+    mov rax, qword [oldRAX]     ;Get the function number to execute
+    jmp functionDispatch        ;Goto int 21h
 .checkCF:
-    mov rsp, qword [xInt23hRSP]  ;Account for the flags and SS:RSP left on stack
-    test al, 1  ;CF set?
-    jz .returnToDOS ;If yes, subfunction number must be in al
-    mov eax, 4c00h  ;Exit without error code
-    mov byte [ctrlCExit], -1  ;CTRL+BREAK termination
+    mov rsp, qword [xInt23hRSP]  ;Reset the stack pointer to pre int 23h
+    test al, 1      ;Was CF=CY returned?
+    jz .returnToDOS ;If CF=NC, DOS function in eax
+    mov eax, 4c00h  ;Else, exit with default error code (00h)
+    mov byte [ctrlCExit], -1  ;Signal CTRL+BREAK termination
     jmp functionDispatch ;When jumping now, rsp will go back into psp.rsp!
 
 ;CPU Exception handlers
