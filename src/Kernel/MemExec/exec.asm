@@ -133,9 +133,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rdi, rdx
     call strlen ;Get string length in cx
     mov word [rbp - execFrame.wNameLen], cx   ;Get the string length  
-    ;Now open the file we wanna yeet to
+;Now open the file we wanna launch
     xor eax, eax    ;al = 0 => Normal program attributes to search for
     push rbp    ;Preserve local frame ptr
+    mov ecx, 23h    ;Tell server to open for exec. No writing or sharing!
     call openFileHdl
     pop rbp
     jc .badExit ;Exit preserving error code in al
