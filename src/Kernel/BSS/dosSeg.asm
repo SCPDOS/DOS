@@ -216,7 +216,7 @@ sdaDOSSwap:
 
     vConDrvSwp  db ?  ;Set if vCon controlled by a different driver to vConPtr
     int28Flag   db ?  ;If set, Int 28h should be called, if clear no
-    Int24Trans  db ?  ;Set to -1 if Abort translated to Fail
+    procExiting db ?  ;Set to -1 if in process termination
 ;A request routed through the FCB or handle uses primReqPkt for its main IO.
 ;A secondary header is present to allow simultaneous echoing to console 
 ; without forcing to re-build the whole primary request block.
