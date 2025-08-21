@@ -347,7 +347,11 @@ ensureDiskValid:
     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
     pop rdi ;Get back the buffer pointer
     mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
-    mov byte [rwFlag], 1    ;A write was the cause of the error
+;Do not touch the read/write flag as this is set by the read/write operation.
+;It is meaningless in the error here, but may affect the message
+; that comes up on the handler (not a big deal). Since we report a bad
+; media change here, it should be obvious not to include the read/write 
+; string.
     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
     call diskDevErr
     cmp al, critFail    ;Did the user select fail?

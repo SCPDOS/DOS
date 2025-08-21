@@ -94,7 +94,7 @@ dosInt33h:
 ;And finally go back to the caller :)
     return
 ;Local data for the main IRQ handler
-.drv    db 0    ;Drive we are acting ok
+.drv    db 0    ;Drive we are acting on
 .tmp    dq 0
 
 ;Int 33h replacement routine
@@ -173,8 +173,8 @@ msdDriver:
     dw mediaCheckReqPkt_size
     dw .buildBPB - .fnTbl        ;Function 2
     dw bpbBuildReqPkt_size
-    dw .IOCTLRead - .fnTbl       ;Function 3
-    dw ioReqPkt_size
+    dw 0                         ;Function 3
+    dw 0
     dw .read - .fnTbl            ;Function 4
     dw ioReqPkt_size
     dw 0                         ;Function 5
@@ -191,8 +191,8 @@ msdDriver:
     dw 0
     dw 0                         ;Function 11
     dw 0
-    dw .IOCTLWrite - .fnTbl      ;Function 12
-    dw ioReqPkt_size
+    dw 0                         ;Function 12
+    dw 0
     dw .devOpen - .fnTbl         ;Function 13
     dw openReqPkt_size
     dw .devClose - .fnTbl        ;Function 14
@@ -220,31 +220,32 @@ msdDriver:
 
 ;DISK DRIVER ERROR HANDLER. Errors from within the functions come here!
 .errorXlat:
-    mov rbx, qword [reqPktPtr]
+;Jumped to with ah = BIOS error code as reported on function call
+    lea rdi, .biosErrTbl
+    mov al, ah
+    mov ecx, errTblLen
+    repne scasb
+    jne .exNotFnd
+    mov al, byte [rdi + errTblLen - 1] ;Get entry in DOS table now
+    jmp short .errorExit
+.exNotFnd:
+;Come here if the BIOS supplied code was not mapped to anything.
+; We now get the SCSI code. Only a few cases make sense so
+; we try and decypher. Else, general fault.
     mov eax, 0100h
-    call .callI33h ;Read status of last operation
-    jc .genErrExit
-.ioError:   ;Jumped to from the block IO proc with rbx -> reqHdr already
-    cmp ah, 80h ;Timeout/Media Not Ready response (device not present)
-    mov al, 02h ;Give device not ready error (sensibly I think)
-    je .errorExit 
-    mov al, 0Ch ;Preliminary General Error Faults
-    cmp ah, -1  ;Sense operation failed
-    je .errorExit 
-    cmp ah, 20h ;Gen. ctrlr. failure. Consider new error code to halt system.
-    je .errorExit
+    call .callI33h
 ;Device Not Ready
-    mov al, 02h  ;Device not ready code
+    mov eax, drvNotReady  ;Device not ready code
     cmp r8b, al  ;SCSI Not ready commands start with 2
     je .errorExit
     shr r8, 8       ;Remove Sense Key
     movzx ecx, r8w  ;Get ASC and ASCQ in cl and ch bzw.
 ;Write Protected
-    xor al, al
+    mov eax, drvWPErr
     cmp cx, 0027h   ;Write protected error
     je .errorExit
 ;CRC Error
-    mov al, 04h     ;CRC error code
+    mov eax, drvCRCErr     ;CRC error code
     cmp cx, 0308h   ;LU comms CRC error (UDMA/32)
     je .errorExit
     cmp cx, 0010h   ;ID CRC or ECC error
@@ -252,34 +253,50 @@ msdDriver:
     cmp cx, 0147h   ;Data phase CRC error detected
     je .errorExit
 ;Seek Error
-    mov al, 06h     ;Seek error code
+    mov eax, drvBadSeek 
     cmp cl, 02h     ;No Seek Complete
     je .errorExit
 ;Unknown Hardware Media (Shouldn't happen with Flash Drives)
 ;This error should only be called if BPB not recognised for Flash Drives
-    mov al, 07h
+    mov eax, drvBadMed
     cmp cl, 30h   ;All issues with media returns unknown media
     je .errorExit
 ;Sector Not Found
-    mov al, 08h     ;Sector not found code
+    mov eax, drvSecNotFnd     ;Sector not found code
     cmp cl, 21h     ;Illegal Request - Invalid LBA
     je .errorExit
 ;Write faults
-    mov al, 0Ah     ;Write fault
+    mov eax, drvWriteFault     ;Write fault
     cmp cl, 0Ch     ;Write Error ASC code
     je .errorExit
 ;Read faults
-    mov al, 0Bh     ;Read fault
+    mov eax, drvReadFault     ;Read fault
     cmp cl, 11h     ;Read error
     je .errorExit
 ;General Errors
 .genErrExit:
-    mov al, drvGenFault     ;Everything else is general error
+    mov eax, drvGenFault     ;Everything else is general error
 .errorExit:     ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit
     mov rbx, qword [reqPktPtr]
     mov word [rbx + drvReqPkt.status], ax
     return      ;Return to set done bit
+;The xlat table is used for simple error codes.
+;The more complex stuff requires a further callout to int 33h for the SCSI
+; error code.
+.biosErrTbl:
+    db 04h  ;Sector not found
+    db 06h  ;Media changed or removed
+    db 10h  ;ECC/CRC error
+    db 40h  ;Seek error
+    db 80h  ;Timeout error
+errTblLen equ $ - .biosErrTbl
+.dosErrTbl:
+    db drvSecNotFnd
+    db drvBadDskChnge
+    db drvCRCErr
+    db drvBadSeek
+    db drvNotReady
 
 ;All functions have the request packet ptr in rbx and the bpb pointer in rbp
 .medChk:          ;Function 1
@@ -289,12 +306,12 @@ msdDriver:
 ;Reset and apply the different logic now :)
     and word [rbp + drvBlk.wDevFlgs], ~devNewParms   ;Clear this bit
     mov byte [.bLastDsk], -1    ;Formatted so cannot rely on timer logic
-    test word [rbp + drvBlk.wDevFlgs], devFixed ;If fixed, declare changed!
+    call .checkDevFixed ;If fixed, declare changed!
     jnz .mmcChange
 ;For remdevs we now determine if the media was changed. If so, exit!
     jmp short .mcRem
 .mcNoFormat:
-    test word [rbp + drvBlk.wDevFlgs], devFixed
+    call .checkDevFixed
     jnz .mmcNoChange
 .mcRem:
     call .checkDevType
@@ -305,7 +322,7 @@ msdDriver:
 ;Start by setting the lastDsk to unknown since this only makes sense for
 ; disks without changeline support
     mov byte [.bLastDsk], -1
-    test word [rbp + drvBlk.wDevFlgs], devChgd  ;Was the changed bit set?
+    call .checkMediaChange
     jnz .mmcChange
     mov eax, 1600h 
     call .callI33h
@@ -340,7 +357,7 @@ msdDriver:
 ;Only build BPB for removable devices and "non-locked" devices.
 ;Start by setting the pointer to the BPB in the reqpkt as this is 
 ; the table entry bpb which we will be returning.
-    test word [rbp + drvBlk.wDevFlgs], devFixed
+    call .checkDevFixed
     jnz .bbpbExit
 ;------------------------------------------------------
 ; Here for removable devices only!!
@@ -412,10 +429,21 @@ msdDriver:
 ;Entered with: 
 ;   rbp -> drvBlk for this drive
 ;------------------------------------------------------
+;Exited with:
+;   If CF=NC:
+;       rbx -> The start of the BPB
+;       rsi -> End of the BPB. Points to the extSig
+;               if present.
+;   Else:
+;       If ZF=NZ: 
+;           eax = DOS error code (Invalid BPB detected)
+;       Else:
+;           eax = BIOS error code
+;------------------------------------------------------
     test word [rbp + drvBlk.wDevFlgs], devFixed | devLockBpb
     retnz  
     call .bbpbReadBS    ;Sets up rbx to point to internal disk buffer
-    retc    ;If an error occured, ZF setup according to block IO
+    retc    ;If an error occured, return ZF=ZE
 ;Check we if we have a valid bootsector.
     cmp byte [rbx + oemHeader.jump], 069h       ;Direct jump has no NOP
     je .ubpbCheckMedOk
@@ -477,7 +505,7 @@ msdDriver:
 .ubpbOldDisk:
 ;We accept media bytes 0F9h-0FFh now. 0F8h and 0F0h make no sense here.
     call .bbpbReadFAT   ;Read the FAT sector now instead
-    retc    ;If an error occured, ZF setup according to block IO
+    retc    ;If an error occured, return ZF=ZE
     movzx eax, word [rbx]   ;Clear upper bytes
     and eax, 0FFFh
     cmp eax, 0FF9h    ;Cannot accept less than 0F9h as we dont know how to handle
@@ -491,18 +519,18 @@ msdDriver:
 ; second entry in the 0F9h table.
     lea rbx, .drvBpbTblF9
     call .upbpFindF9
-    retc                ;If the sector read failed, exit!
+    retc                ;If the sector read failed, exit with ZF=ZE!
     je .ubpbMoveBpb     ;If second FAT found, proceed with this bpb!
     add rbx, bpb_size   ;Else, goto next entry
     call .upbpFindF9    ;And try with this BPB
-    retc                ;If the sector read failed, exit!
+    retc                ;If the sector read failed, exit with ZF=ZE!
     je .ubpbMoveBpb     ;If second FAT found, proceed with this bpb!
 ;Else fall through as we don't know what 0F9h means here.
 .ubpbErr:               
 ;Bad media bytes or BPB go here. Means the media is unknown.
     mov al, drvBadMed       ;Default to unknown media error code (07h)
-    test eax, eax           ;Clear ZF so we return the right error code
-    stc
+    test eax, eax           ;Set ZF=NZ so we indicate a DOS error code!
+    stc                     ;And set CF=CY to always return error!
     return
 .upbpFindF9:
 ;Reads the supposed start of the second FAT sector to search for a FF9h 
@@ -516,7 +544,7 @@ msdDriver:
     call .bbpbReadEp
     movzx eax, word [rbx]   ;Read the first word
     pop rbx
-    retc
+    retc            ;If an error occured, return ZF=ZE
     and eax, 0FFFh  ;Scan off the upper nybble to get low meaningful 12 bytes
     cmp eax, 0FF9h  ;Is this FF9h as it should be?
     clc             ;Since eax can be a random word, force clear CF here.
@@ -636,21 +664,27 @@ msdDriver:
 .bbpbReadEp:
     add ecx, dword [rbp + drvBlk.dHiddSec]
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
-    mov eax, 8200h  ;LBA Read function
     lea rbx, .inBuffer  ;Use the in sector buffer. Ensure ownership.
-;Do block IO w/o checking the validity of ecx as hidden sectors
-; has already been setup correctly at this point.
-    jmp .blkIODirect     ;Does the Block IO, do tail call
-
-.IOCTLRead:         ;Function 3, returns immediately
-.IOCTLWrite:        ;Function 12, returns done
+    mov esi, 5
+.bbpbReadLp:
+    mov eax, 8201h  ;LBA Read function (read 1 sector)
+    call .callI33h
+    jnc .bioExit
+;Here if an error. AH has the BIOS error code. Return with
+; ZF=ZE to indicate we are returning a BIOS code!
+    call .bioReset  ;Reset the drive. WARNING: CRASHES BOCHS
+    dec esi
+    jnz .bbpbReadLp
+    stc
     return
 
 .read:              ;Function 4
 ;Will read one sector at a time.
     call .ioSetVolLbl
     call .checkDevType
-    mov rdi, rbx
+    call .checkSwap 
+    jc .ioDoErr
+    mov rdi, rbx    ;Move ioreqpktptr to rdi
     call .bioSetupRegs
     retz
 .msdr0:
@@ -665,7 +699,9 @@ msdDriver:
 ;Will write and optionally verify one sector at a time.
     call .ioSetVolLbl
     call .checkDevType
-    mov rdi, rbx
+    call .checkSwap 
+    jc .ioDoErr
+    mov rdi, rbx    ;Move ioreqpktptr to rdi
     call .bioSetupRegs
     retz
 .msdw0:
@@ -685,7 +721,7 @@ msdDriver:
 ;Come here if after an error in block IO handler.
 ;If ZF=ZE, disk error occured, the error needs translation so do it.
 ;Else just return the error code in al
-    jz .ioError
+    jz .errorXlat
     jmp .errorExit
 
 .ioAdv:
@@ -717,6 +753,8 @@ msdDriver:
 .bioSetupRegs:
 ;Sets up sector to read and buffer ptr for block IO call.
 ;If returns ZF=ZE then xfr 0 sectors, exit immediately
+;Input: rdi -> ioReqPkt
+;       rbp -> drvBlk
 ;Output: rdi -> ioReqPkt
 ;        rbp -> drvBlk
 ;        rbx -> Transfer buffer
@@ -734,9 +772,9 @@ msdDriver:
 .blkIODirect:    ;Does block IO without sanity checking the sector number
 ;All registers as below!
     test word [rbp + drvBlk.wDevFlgs], devUnFmt
-    jnz .bioufmted
+    jnz .bioUfmted
     jmp short .biocmn
-.blkIO:  ;Does block IO
+.blkIO:  ;Does block IO for one sector
 ;Sector count handled by caller.
 ;All registers marked as input registers must be preserved across the call
 ; except ah
@@ -747,52 +785,69 @@ msdDriver:
 ;       rcx = LBA sector to transfer
 ;       dl  = BIOS drive number
 ;       esi = Sectors left to xfr!  (Normal Read/Write only)
-;Output: CF=NC: Sector xferred.
+;Output: CF=NC: esi number of sectors xferred.
 ;        CF=CY: An error ocured. 
-;           ZF=NZ: Non-disk error, return the error code in eax
-;           ZF=ZY: Disk error, xlat error code
+;           ZF=NZ: Non-disk error, return the DOS error code in eax
+;           ZF=ZE: Disk error, xlat BIOS error code in ah
     test word [rbp + drvBlk.wDevFlgs], devUnFmt
-    jnz .bioufmted
+    jnz .bioUfmted
     call .bioSanity ;Sanity check ecx here
 .biocmn:
     push rsi    ;Save sector count
     mov esi, 5  ;Retry counter five times
 .biolp:
-    mov al, 01h ;Do one sector at a time 
-    call .callI33h
+    mov al, 01h ;Do one sector 
+    call .callI33h  ;Preserves all passed regs except eax
     jc .bioError
-    cmp al, 1   ;Did we read one sector?
-    jne .bioError
+    cmp al, 1   ;Did we do one sector?
+    jne .bioNoIO    ;No, try again without calling BIOS error handling
     pop rsi ;Rebalance stack
 .bioExit:
-    mov al, byte [rbp + drvBlk.bDOSNum]
-    mov byte [.bLastDsk], al    ;Last DOS disk accessed
-    test word [rbp + drvBlk.wDevFlgs], devFixed
+    ;mov dl, byte [rbp + drvBlk.bDOSNum]
+    mov byte [.bLastDsk], dl    ;Last DOS disk accessed
+    call .checkDevFixed
     retnz
-;Ensure we set the time of the operation w/o modifying the registers.
-;Routine trashes ecx and edx so save!
-    push rcx
-    push rdx
+;Below routine saves the registers it trashes
     call .setTime   ;Set the current time and clear state for successful IO
-    pop rdx
-    pop rcx
+    return
+.bioNoIO:
+    dec esi ;Decrement the retry counter
+    jnz .biolp  ;and try again if we still have retries to do
+    pop rsi ;Now rebalance the stack
+;Here we return as if our request was successful but we set esi to zero
+; to stop IO processing as the operation isn't reading/writing the sector
+; for no erroring reason (should never actually happen as the sanity check 
+; should handle this case but _just in case_ ).
+    xor esi, esi
     return
 .bioError:
-    ;xor eax, eax    ;Reset disk: CRASHES BOCHS
-    push rdx    ;Preserve drive number. All other regs preserved
-    mov eax, 0100h
-    call .callI33h ;Read status of last operation
-    pop rdx     ;Get back drive number.
+;Jumped to with ah = BIOS error code
+    call .checkSwapIO
+    call .bioReset  ;Reset the drive. WARNING: CRASHES BOCHS. Does E9h check
     dec esi
     jnz .biolp
     pop rsi ;Pop the sector count off the stack
     ;ZF=ZE set now as esi counted down
     stc
     return
+.bioReset:
+;Resets the drive system for the drive in dl
+    push rax
+    in al, 0E9h
+    cmp al, 0E9h
+    je .bioResetSkip
+    xor eax, eax    ;Do reset
+    call .callI33h  ;Ignore any errors
+    mov byte [.bLastDsk], -1    ;Reset the last disk accessed
+.bioResetSkip:
+    pop rax
+    return
 .bioSanity:
 ;Input: ecx = Sector we will transact on. rbp -> DrvBlk
 ;Output: CF=NC, sector ok to xact on
-;        CF=CY, doesnt return, fails the call
+;        CF=CY, doesnt return, fails the call. ZF=ZE always (have DOS code)
+;        If the sector fails check, we return from the top level with ZF=ZE
+;           to indicate a DOS error code in eax.
     test eax, 0FFh  ;If the bottom byte is set, it is a IOCTL call.
     retnz           ;BIOS checks these for us as IOCTL bypasses partitions.
     push rax
@@ -813,7 +868,9 @@ msdDriver:
     test eax, eax   ;Clear ZF
     stc
     return
-.bioufmted:
+.bioUfmted:
+;Returns the DOS error code bad media to caller. 
+;Returns CF=CY and ZF=ZE (with eax = DOS error code)
     mov eax, drvBadMed
     jmp short .bioNoDiskErr
 
@@ -829,7 +886,7 @@ msdDriver:
     return
 .remMed:  ;Function 15
 ;Sets busy bit if fixed drive!
-    test word [rbp + drvBlk.wDevFlgs], devFixed ;Is it fixed?
+    call .checkDevFixed ;Is it fixed?
     retz
     mov word [rbx + remMediaReqPkt.status], drvBsyStatus
     return
@@ -1024,7 +1081,6 @@ msdDriver:
 .ioGetDevParams:
     jnz .lbaGetParams
 ;Here we get CHS params. 
-    ;breakpoint
     lea rsi, qword [rbp + drvBlk.bpb]
     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
     jnz .iogdpBkup  ;If set, return the bpb data as is.
@@ -1033,7 +1089,6 @@ msdDriver:
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
     lea rsi, qword [.inBuffer + 11]
 .iogdpBkup:
-    ;breakpoint
 ;The caller block in memory must have a bpb32_size'ed space for the BPB
 ; even if it is a FAT16/12 drive. The caller has to assertain the 
 ; type of BPB it is based information in the common part of the BPB.
@@ -1380,6 +1435,145 @@ msdDriver:
     mov al, drvBadMed
     jmp .writeEntryError
 
+.checkSwapIO:
+;Checks if the reason for an error mid IO operation was
+; really media being swapped.
+    call .checkDevFixed ;If the dev is fixed, skip checking swap
+    retnz
+    cmp ah, 06h         ;ah = 06 is BIOS Drive changed error code 
+    retne
+;Here the BIOS is reporting that the media was swapped. Check the media
+; to see if the drive really was swapped. 
+;We start by checking the open count. If it is zero, we never report
+; an illegal disk swap. This prevents this error from being thrown
+; if no files are open.
+    call .checkOpen ;If opcnt = 0, ignore this error.
+    retz
+;Here, if we determine that a media swap occured, we must report a 
+; bad disk change. That means, unsure or no swap simply return the 
+; error code. 
+    movzx eax, byte [rbp + drvBlk.bMedDesc] ;Get original meddesc byte
+    push rax                                ;and save it on the stack
+    call .csiogetbpb    ;Now get new bpb
+    jc .csiogetbpberr   ;If error in getting the BPB, bubble it up
+    pop rax             ;Get back the FAT byte in al
+    call .checkFATSame  ;Returns status in eax
+    js .csioBadDskChg
+.csioExit:
+    mov ah, 06h         ;Maintain the BIOS error code here
+    return
+.csioBadDskChg:
+;Restore the stack to return directly to DOS and not caller. 
+;Place DOS error code into al
+    pop rax
+    pop rax
+    mov eax, drvBadDskChnge
+    jmp .errorExit
+.csiogetbpberr:
+;Return the error code from getbpb
+;Drop the saved media byte from the stack
+    add rsp, 8
+    stc
+    return      ;and return with rax = Error code from updatebpb
+.csiogetbpb:
+;Saves the IO registers for use across the updatebpb call and calls
+; the get bpb function
+    push rbx    
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    call .updateBpb ;Update the BPB
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    return
+    
+.checkSwap:
+;Checks if the media represented by drvBlk has been swapped when it 
+; shouldn't've been swapped.
+;Input: rbp -> drvBlk to check for
+;Output: CF=NC: All ok.
+;        CF=CY: Error in getting updated BPB. 
+;               AL = BIOS error code
+;   If an illegal disk swap is detected, then this call returns directly
+;   and doesnt bubble up to the caller. 
+    call .checkDevFixed ;If the dev is fixed, skip checking swap
+    retnz
+    ;cmp byte [0700h], -1
+    ;je .dbg
+    call .checkOpen
+    retz
+    call .checkMediaChange
+    retz
+;Since the open count is non-zero and a media swap has been seen (since
+; the flag was set) we update the BPB and check if the media is the 
+; same as the previous media. 
+    call .updateBpb     ;Update the BPB
+    retc
+    call .checkVolumeSame
+    retns   ;If the sign bit is not set (i.e. unsure or no change) return ok
+;.dbg:
+;Else, we now return a bad disk change!
+    pop rax ;Pop original return address off the stack
+    mov al, drvBadDskChnge  ;Driver error code
+    jmp .errorExit  ;Place error code in packet and return
+
+.checkFATSame:
+;At this point, we are unsure of the media swap status. 
+    cmp al, byte [rbp + drvBlk.bMedDesc]
+    jne .cvsChange  ;If they are not equal, there mustve been a change
+;The FAT media byte is the same so how about literally anything else?
+.checkVolumeSame:
+;If the volume has an extended BPB, we check the serial number. If they are 
+; the same, we then say no change. Else, the volume has changed. 
+;Else, we report unknown. 
+;----------------------------------------------------------------------------
+;TODO: In the outer else, replace with a read of the filesystem volume label
+;      and implement in buildBPB a routine to read the volume label from the
+;      root directory of whatever drive.
+;----------------------------------------------------------------------------
+    xor eax, eax    ;Set eax = 0, unsure
+    cmp byte [rsi + extBs.bootSig], extBsSig
+    retne
+;Here if we have an extended boot signature. 
+; Check the volume ids are equal
+    push rax
+    mov eax, dword [rsi + extBs.volId]
+    cmp dword [rbp + drvBlk.volId], eax
+    pop rax
+    jne .cvsChange
+.cvsNoChange:
+    inc eax ;Make eax = 1, no change
+    return
+.cvsChange:
+    dec eax ;Make eax = -1, change
+    mov byte [.bLastDsk], -1    ;Ensure we do a media check next time
+    return
+
+.checkDevFixed:
+;Input: rbp -> drvBlk to check if fixed media or not
+;Output: ZF=ZE: Not fixed
+;        ZF=NZ: Fixed
+    test word [rbp + drvBlk.wDevFlgs], devFixed
+    return
+
+.checkMediaChange:
+;Input: rbp -> drvBlk to check changed flag for
+;Output: ZF=ZE: No change
+;        ZF=NZ: Change
+    test word [rbp + drvBlk.wDevFlgs], devChgd
+    return
+
+.checkOpen:
+;Input: rbp -> drvBlk to check open count for
+;Output: ZF=ZE: Open count is 0
+;        ZF=NZ: Open count geq 0
+    cmp word [rbp + drvBlk.wOpenCnt], 0
+    return
+
 .checkDevType:
 ;Checks if we need to display the swap drive message and displays it if so.
 ;The device must already be setup in rbp (and var) for this to work.
@@ -1412,6 +1606,18 @@ msdDriver:
 ;If a set map request, don't prompt the message!
     cmp byte [rbx + drvReqPkt.cmdcde], drvSETDRVMAP
     rete    ;Return if equal (clears CF)
+
+;Broadcast the disk-swap message for multitaskers to hook
+; and issue message (and skip the "not multitasking friendly"
+; section below)
+    mov dh, byte [rdi + drvBlk.bDOSNum] ;Unit that has lost ownership
+    mov dl, byte [rbp + drvBlk.bDOSNum] ;Unit that has gained ownership
+    xor ecx, ecx
+    mov eax, 4A00h
+    int 2Fh         ;If either ecx or cx = -1, return
+    movsx ecx, cx   ;Convert 16-bit responses to 32-bit
+    inc ecx         ;If ecx = -1, we return
+    retz
 
 ;THIS BIT IS NOT MULTITASKING FRIENDLY...
     mov al, byte [rbp + drvBlk.bDOSNum]
@@ -1484,9 +1690,16 @@ msdDriver:
 
 .setTime:
 ;Sets the current time to the disk drive and resets the access counter
-    call .getTime
+;Preserves all registers and edits .bAccCnt and .dAccTime for rbp -> drvBlk
+    push rax
+    push rcx
+    push rdx
+    call .getTime   ;Return in ecx the time. eax and edx trashed.
     mov dword [rbp + drvBlk.dAccTime], ecx  ;And store it
     mov byte [.bAccCnt], 0  ;And set the access count back to 0
+    pop rdx
+    pop rcx
+    pop rax
     return
 
 .checkTime:
@@ -1619,7 +1832,7 @@ msdDriver:
     lea rdi, .drvBlkTbl
     iretq
 
-.strikeMsg db 0Dh,0Ah,"Insert for drive "
+.strikeMsg db 0Dh,0Ah,"Insert disk for drive "
 .strikeMsgLetter db "A: and strike",0Dh,0Ah,"any key when ready",0Dh,0Ah,0Ah
 .strikeMsgL equ $ - .strikeMsg
 
