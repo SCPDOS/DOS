@@ -1151,6 +1151,11 @@ renameMain:
     mov eax, dword [dirClustPar]
     test byte [curDirCopy + fatDirEntry.attribute], directoryFile
     jnz .sfdsDirSkip 
+;Now check, if the parent dir of the is null. IF it is, the clust
+; wouldn't've been setup as we dont "search" for the root in the same
+; way (though if we search for A:\, we DO setup the cluster info. Ew.)
+    test eax, eax
+    jz .sfdsDirSkip
     movzx edx, word [curDirCopy + fatDirEntry.fstClusHi]
     movzx eax, word [curDirCopy + fatDirEntry.fstClusLo]
     shl edx, 10h
