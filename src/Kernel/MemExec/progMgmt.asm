@@ -165,7 +165,7 @@ terminateClean:    ;ah = 4Ch, EXIT
 
     mov ah, 82h ;Cancel all critical sections 0-7
     int 2Ah
-    mov byte [Int24Trans], -1   ;Aborts now get translated temporarily
+    mov byte [procExiting], -1  ;Critical errors now just return!
     mov eax, 1122h              ;Net redir, Process Termination Hook
     mov r8, qword [currentPSP]  ;Use r8 instead of DS
     int 2Fh
@@ -178,26 +178,31 @@ terminateClean:    ;ah = 4Ch, EXIT
     cmp byte [exitType], 3  ;TSR exit?
     je .freeOk   ;Skip resource freeing if so as TSR exit resizes memory alloc.
 
-    cmp byte [exitType], 2  ;Abort type exit?
-    jne .skipAbortNetClose  ;Skip the following
-    mov eax, 111Dh  ; Close all remote files for process on Abort!
-    int 2Fh
-.skipAbortNetClose:
-    call qword [closeTaskShare] ;Close all shared files for this task
-    call qword [unloadDLLHook]  ;Now free exported function for this task
 ;Now close file handles
+;Close handles in reverse to preserve std handles for if an error again
+; happens.
     mov rdi, qword [currentPSP]
-    movzx ecx, word [rdi + psp.jftSize] ;Number of entries in current JFT
-    xor ebx, ebx    ;Start from handle 0
+    movzx ebx, word [rdi + psp.jftSize] ;Number of entries in current JFT
+    test ebx, ebx   ;If its zero, close nothing
+    jz .hdlEnd
 .hdlLp:
+    dec ebx
     push rbx
-    push rcx
     call closeFileHdl
-    pop rcx
     pop rbx
-    inc ebx ;Goto next handle to close
-    cmp ebx, ecx
-    jne .hdlLp   ;Keep looping for all entries in the JFT 
+    test ebx, ebx   ;If we're not yet zero, keep closing
+    jnz .hdlLp
+;Now close all network files.
+    mov eax, 111Dh  ;Signal termination of process! Kill all net files!
+    int 2Fh
+;Now free share resources for this process
+    call qword [closeTaskShare] ;Free all share resources for this process
+.hdlEnd:
+;Now remove routines exported by this task from internal tables 
+; (or pause exit until all programs referencing importing the routines
+;  provided by this DLL have also terminated.)
+    call qword [unloadDLLHook]  
+    
 ;Now free MCB's owned by task
     mov rbx, qword [currentPSP] ;Get back the current psp
     ;Now we must walk the MCB chain and find all paragraphs
@@ -239,7 +244,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     call flushAllBuffersForDrive
     call dosCrit1Exit
     cli
-    mov byte [Int24Trans], 0    
+    mov byte [procExiting], 0    ;We have exited now!
     mov byte [inDOS], 0     ;Exiting DOS now
     mov byte [errorDrv], -1 ;Reset error drive
     mov rbx, qword [currentPSP]

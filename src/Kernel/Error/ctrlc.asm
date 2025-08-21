@@ -151,7 +151,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     cmp byte [critErrFlag], 1
     jb .noIntError  ;If not 0, enter
     mov al, critFail    ;Else, return Fail always
-    jmp short .exit     ;Don't translate fail to abort
+    jmp short .setFail
 .noIntError:
     mov qword [xInt24hRSP], rsp ;Save our critical error stack
     cmp word  [currentNdx], -1  ;If this is -1, we are not opening a file
@@ -212,13 +212,13 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     call vConRetDriver  ;Always reset the driver flag on abort
 ;If a network request requests abort, translate to fail
     cmp byte [dosInvoke], -1
-    jne .kill   ;If this is zero, local invokation
-    mov byte [Int24Trans], -1   ;We are translating a Abort to Fail. Mark it
-    jmp short .exit
-.kill:
+    je .exit
+;If already terminating, dont start terminating again!
+    test byte [procExiting], -1
+    jnz .exit
     xor eax, eax    ;Default return code to 0. Abort flag will be set later
     mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
-    mov byte [volIdFlag], 0     ;Clear special vol search byte if set
+    mov byte [volIdFlag], al     ;Clear special vol search byte if set
     ;Before returning, we need to set the aborting psp.rspPtr back to 
     ; the oldRSP as a syscall during Int 24h would change this value.
     ;This only affects programs which are their own parents as when aborting
