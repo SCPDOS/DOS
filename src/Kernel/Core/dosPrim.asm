@@ -291,13 +291,13 @@ ensureDiskValid:
     call getBufForFat       ;Point rbx to the buffer
     retc
     mov rdi, rbx
-    jmp short .repeatEP              
+    jmp short .buildGetBPB              
 .dpbNotIbm:
 ;Get a buffer for the driver to use as scratch space
     mov rdi, qword [bufHeadPtr]
     call flushAndFreeBuffer
     retc
-.repeatEP:
+.buildGetBPB:
     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
     call goDriver   ;Request!
@@ -355,8 +355,9 @@ ensureDiskValid:
     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
     call diskDevErr
     cmp al, critFail    ;Did the user select fail?
-    je .errorExitBad    ;If so, exit with CF set
-    jmp getDiskDPB  ;Now we try again
+    jne ensureDiskValid  ;If not, try again!
+    mov eax, errIDC     ;Else, report an invalid disk swap error!
+    jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
@@ -421,7 +422,7 @@ primReqGetBPBSetup:
 ;rdi has sector buffer header pointer for transfer
     push rax
     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
-    mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rdi
+    mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rax
     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
     jmp short primReqMedCheckSetup.cmn

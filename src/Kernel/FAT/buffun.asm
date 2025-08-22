@@ -39,7 +39,7 @@ markBuffersAsUnreferencedWrapper:
 markBuffersAsUnreferenced:  ;Int 2Fh AX=120Eh
 ;Marks all buffers as unreferenced (clears the reference bit from all buffers)
 ;Output: rdi = First disk buffer
-    mov rdi, [bufHeadPtr]
+    mov rdi, qword [bufHeadPtr]
     push rdi
 .lp:
     and byte [rdi + bufferHdr.bufferFlags], ~refBuffer

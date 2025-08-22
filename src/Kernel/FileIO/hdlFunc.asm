@@ -2801,5 +2801,7 @@ setDPBfromSFT:
     movzx eax, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], al
     call setWorkingDPB
+    push rdi    ;Save the SFT pointer
     call ensureDiskValid
+    pop rdi
     return
