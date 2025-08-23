@@ -174,7 +174,6 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov rbp, qword [tmpDPBPtr]
     sti                         
     ;Now we check that the response given was allowed, and translate if needed
-.checkResponse:
     cmp al, critIgnore
     je .checkIgnore
     cmp al, critRetry

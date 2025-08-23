@@ -2917,7 +2917,7 @@
    168 000007BD 746B                <1>     jz .fbFreeExit  ;Skip write to disk if data not modified
    169 000007BF 3A05(09040000)      <1>     cmp al, byte [errorDrv] ;Was this drive the error drive?    
    170 000007C5 7463                <1>     je .fbFreeExit  ;Skip write if this disk has caused an error
-   171 000007C7 C605(68040000)18    <1>     mov byte [Int24bitfld], critRetryOK | critFailOK
+   171 000007C7 C605(68040000)19    <1>     mov byte [Int24bitfld], critWrite | critRetryOK | critFailOK
    172 000007CE F6C408              <1>     test ah, dataBuffer
    173 000007D1 7407                <1>     jz .fbWriteSetup
    174 000007D3 800D(68040000)20    <1>     or byte [Int24bitfld], critIgnorOK  ;If this is a data buffer, we can ignore too
@@ -3167,7 +3167,7 @@
    400                              <1> ; is under no thread of being reallocated.
    401                              <1> ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
    402 00000959 66C74708FF00        <1>     mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer and clear dirty/ref bits
-   403 0000095F C605(68040000)00    <1>     mov byte [Int24bitfld], critRead    ;Set the initial bitfield to read req
+   403 0000095F C605(68040000)18    <1>     mov byte [Int24bitfld], critRead | critFailOK | critRetryOK
    404 00000966 E8EF5D0000          <1>     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
    405 0000096B 3C01                <1>     cmp al, critRetry
    406 0000096D 7509                <1>     jne .fail   ;Else we fail (Ignore=Fail here)
@@ -15891,22 +15891,21 @@
    174 000068A5 488B2D(89070000)    <1>     mov rbp, qword [tmpDPBPtr]
    175 000068AC FB                  <1>     sti                         
    176                              <1>     ;Now we check that the response given was allowed, and translate if needed
-   177                              <1> .checkResponse:
-   178 000068AD 3C00                <1>     cmp al, critIgnore
-   179 000068AF 743F                <1>     je .checkIgnore
-   180 000068B1 3C01                <1>     cmp al, critRetry
-   181 000068B3 7446                <1>     je .checkRetry
-   182 000068B5 3C03                <1>     cmp al, critFail
-   183 000068B7 754D                <1>     jne .abort   ;Must be abort
-   184                              <1> .setFail:   ;Here is for fail
-   185 000068B9 B003                <1>     mov al, critFail    ;Reset al to contain fail (even if Int24 responded Fail)
-   186 000068BB FE05(6A040000)      <1>     inc byte [Int24Fail]        ;Inc the fail counter!
-   187 000068C1 F605(68040000)08    <1>     test byte [Int24bitfld], critFailOK
-   188 000068C8 743C                <1>     jz .abort  ;If bit not set, fail not permitted, abort
-   189                              <1> .exit:
-   190 000068CA C605(09040000)FF    <1>     mov byte [errorDrv], -1 ;Unknown drive (to be set)
-   191 000068D1 803D(3A070000)FF    <1>     cmp byte [currentNdx], -1   ;Is there a file that needs handling?
-   192                              <1>     rete    ;Only if this is not equal
+   177 000068AD 3C00                <1>     cmp al, critIgnore
+   178 000068AF 743F                <1>     je .checkIgnore
+   179 000068B1 3C01                <1>     cmp al, critRetry
+   180 000068B3 7446                <1>     je .checkRetry
+   181 000068B5 3C03                <1>     cmp al, critFail
+   182 000068B7 754D                <1>     jne .abort   ;Must be abort
+   183                              <1> .setFail:   ;Here is for fail
+   184 000068B9 B003                <1>     mov al, critFail    ;Reset al to contain fail (even if Int24 responded Fail)
+   185 000068BB FE05(6A040000)      <1>     inc byte [Int24Fail]        ;Inc the fail counter!
+   186 000068C1 F605(68040000)08    <1>     test byte [Int24bitfld], critFailOK
+   187 000068C8 743C                <1>     jz .abort  ;If bit not set, fail not permitted, abort
+   188                              <1> .exit:
+   189 000068CA C605(09040000)FF    <1>     mov byte [errorDrv], -1 ;Unknown drive (to be set)
+   190 000068D1 803D(3A070000)FF    <1>     cmp byte [currentNdx], -1   ;Is there a file that needs handling?
+   191                              <1>     rete    ;Only if this is not equal
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -15930,397 +15929,397 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   193                              <1>     ;In that case, we set the jft entry to its initial value, whatever it was
-   194 000068DB 50                  <1>     push rax
-   195 000068DC 57                  <1>     push rdi
-   196 000068DD 0FB705(3A070000)    <1>     movzx eax, word [currentNdx]
-   197 000068E4 488B3D(2A070000)    <1>     mov rdi, qword [curHdlPtr]
-   198 000068EB 8807                <1>     mov byte [rdi], al
-   199 000068ED 5F                  <1>     pop rdi
-   200 000068EE 58                  <1>     pop rax
-   201                              <1>     return
+   192                              <1>     ;In that case, we set the jft entry to its initial value, whatever it was
+   193 000068DB 50                  <1>     push rax
+   194 000068DC 57                  <1>     push rdi
+   195 000068DD 0FB705(3A070000)    <1>     movzx eax, word [currentNdx]
+   196 000068E4 488B3D(2A070000)    <1>     mov rdi, qword [curHdlPtr]
+   197 000068EB 8807                <1>     mov byte [rdi], al
+   198 000068ED 5F                  <1>     pop rdi
+   199 000068EE 58                  <1>     pop rax
+   200                              <1>     return
     13                              <2> %%_ret:
     14 000068EF C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   202                              <1> .checkIgnore:
-   203 000068F0 F605(68040000)20    <1>     test byte [Int24bitfld], critIgnorOK
-   204 000068F7 75D1                <1>     jnz .exit
-   205 000068F9 EBBE                <1>     jmp short .setFail  ;If ignore not permitted, return Fail
-   206                              <1> .checkRetry:
-   207 000068FB F605(68040000)10    <1>     test byte [Int24bitfld], critRetryOK
-   208 00006902 75C6                <1>     jnz .exit   
-   209 00006904 EBB3                <1>     jmp short .setFail  ;If retry not permitted, return Fail
-   210                              <1> .abort:
-   211                              <1> ;Prepare to abort. We abort from within!
-   212 00006906 E86EC2FFFF          <1>     call vConRetDriver  ;Always reset the driver flag on abort
-   213                              <1> ;If a network request requests abort, translate to fail
-   214 0000690B 803D(02070000)FF    <1>     cmp byte [dosInvoke], -1
-   215 00006912 74B6                <1>     je .exit
-   216                              <1> ;If already terminating, dont start terminating again!
-   217 00006914 F605(96040000)FF    <1>     test byte [procExiting], -1
-   218 0000691B 75AD                <1>     jnz .exit
-   219 0000691D 31C0                <1>     xor eax, eax    ;Default return code to 0. Abort flag will be set later
-   220 0000691F C605(06070000)02    <1>     mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
-   221 00006926 8805(5F040000)      <1>     mov byte [volIdFlag], al     ;Clear special vol search byte if set
-   222                              <1>     ;Before returning, we need to set the aborting psp.rspPtr back to 
-   223                              <1>     ; the oldRSP as a syscall during Int 24h would change this value.
-   224                              <1>     ;This only affects programs which are their own parents as when aborting
-   225                              <1>     ; we swap to the parentPSP. This prevents a bug from arising as the 
-   226                              <1>     ; stack ptr in psp.rspPtr may have changed since initially entering DOS
-   227                              <1>     ; as the Int 24h handler may have made an Int 21h call, meaning if 
-   228                              <1>     ; the Int 24h handler plays with the stack too much, the value in 
-   229                              <1>     ; psp.rspPtr is no longer pointing at a "valid" stack frame (i.e. 
-   230                              <1>     ; with valid SS:RSP). The only sane thing to do is to reset this 
-   231                              <1>     ; pointer to the value it had on entry to the initial DOS call which
-   232                              <1>     ; triggered the Int 24h (or the equivalent stack frame that was 
-   233                              <1>     ; replaced by the Int 24h handler). If the task being aborted is not 
-   234                              <1>     ; its own parent the following is a NOP. If it is its own parent, we
-   235                              <1>     ; the following prevents a GP. Fault.
-   236 0000692C 488B3D(1F040000)    <1>     mov rdi, qword [currentPSP]
-   237 00006933 488B1D(7B040000)    <1>     mov rbx, qword [oldRSP]
-   238 0000693A 48895F46            <1>     mov qword [rdi + psp.rspPtr], rbx
-   239 0000693E E988F3FFFF          <1>     jmp terminateClean.altEP
-   240                              <1> 
-   241                              <1> ctrlBreakHdlr:
-   242 00006943 B003                <1>     mov al, 03h ;Always guarantee a ^C will be printed
-   243 00006945 E85CC1FFFF          <1>     call printCaretASCII
-   244 0000694A E887C1FFFF          <1>     call printCRLF
-   245                              <1>     ;Reset the console back to 0
-   246 0000694F E825C2FFFF          <1>     call vConRetDriver
-   247                              <1> ;Handles a control break, juggles stacks and enters int 21h 
-   248                              <1> .exceptEP:
-   249                              <1> ;If return via RET/RET 8 with CF set, DOS will abort program with errorlevel 0
-   250                              <1> ;Else (RET/RET 8 with CF clear or IRET with CF ignored)
-   251                              <1> ;   interrupted DOS call is restarted
-   252 00006954 FA                  <1> 	cli
-   253 00006955 488B25(7B040000)    <1> 	mov rsp, qword [oldRSP]	;Get registers frame
-   254 0000695C E84D0D0000          <1> 	call dosPopRegs ;Get user state back
-   255 00006961 C605(08040000)00    <1>     mov byte [inDOS], 0 ;Make sure we "exit" DOS 
-   256 00006968 C605(07040000)00    <1>     mov byte [critErrFlag], 0
-   257 0000696F 488925(27040000)    <1>     mov qword [xInt23hRSP], rsp  ;Save user rsp. This is the og psp rsp.
-   258 00006976 F8                  <1>     clc
-   259 00006977 CD23                <1>     int 23h ;Call critical error handler
-   260 00006979 FA                  <1>     cli ;Clear interrupts again
-   261 0000697A 488905(33040000)    <1>     mov qword [oldRAX], rax     ;Save eax (has DOS fn to do if not terminate)
-   262 00006981 9C                  <1>     pushfq                      ;Get returned flags in rax
-   263 00006982 58                  <1>     pop rax 
-   264 00006983 483B25(27040000)    <1>     cmp rsp, qword [xInt23hRSP] ;Did the user return with ret/ret 8?
-   265 0000698A 750C                <1>     jne .checkCF                ;If yes, check the returned CF flag.
-   266                              <1> .returnToDOS:                   ;Else, execute the DOS function in eax.
-   267 0000698C 488B05(33040000)    <1>     mov rax, qword [oldRAX]     ;Get the function number to execute
-   268 00006993 E9BC0B0000          <1>     jmp functionDispatch        ;Goto int 21h
-   269                              <1> .checkCF:
-   270 00006998 488B25(27040000)    <1>     mov rsp, qword [xInt23hRSP]  ;Reset the stack pointer to pre int 23h
-   271 0000699F A801                <1>     test al, 1      ;Was CF=CY returned?
-   272 000069A1 74E9                <1>     jz .returnToDOS ;If CF=NC, DOS function in eax
-   273 000069A3 B8004C0000          <1>     mov eax, 4c00h  ;Else, exit with default error code (00h)
-   274 000069A8 C605(8C040000)FF    <1>     mov byte [ctrlCExit], -1  ;Signal CTRL+BREAK termination
-   275 000069AF E9A00B0000          <1>     jmp functionDispatch ;When jumping now, rsp will go back into psp.rsp!
-   276                              <1> 
-   277                              <1> ;CPU Exception handlers
-   278                              <1> ;If a CPU exception occurs, and inDOS = 0, the default behaviour will be to 
-   279                              <1> ; CTRL+C exit.
-   280                              <1> ; If inDOS > 0, then we assume the error is within DOS and thus we halt the
-   281                              <1> ; system.
-   282                              <1> ; Also halt if the application is it's own parent.
-   283                              <1> ;An application should hook these interupts if they wish to not 
-   284                              <1> ; CTRL+C exit, and instead return to DOS.
-   285                              <1> i0:
-   286 000069B4 31C0                <1>     xor eax, eax
-   287 000069B6 E9AB000000          <1>     jmp cpu_2args
-   288                              <1> i1:
-   289 000069BB B801000000          <1>     mov eax, 1
-   290 000069C0 E9A1000000          <1>     jmp cpu_2args
-   291                              <1> i2:
-   292 000069C5 B802000000          <1>     mov eax, 2
-   293 000069CA E997000000          <1>     jmp cpu_2args
-   294                              <1> i3:
-   295 000069CF B803000000          <1>     mov eax, 3
-   296 000069D4 E98D000000          <1>     jmp cpu_2args
-   297                              <1> i4:
-   298 000069D9 B804000000          <1>     mov eax, 4
-   299 000069DE E983000000          <1>     jmp cpu_2args
-   300                              <1> i5:
-   301 000069E3 B805000000          <1>     mov eax, 5
-   302 000069E8 EB7C                <1>     jmp short cpu_2args
-   303                              <1> i6:
-   304 000069EA B806000000          <1>     mov eax, 6
-   305 000069EF EB75                <1>     jmp short cpu_2args
-   306                              <1> i7:
-   307 000069F1 B807000000          <1>     mov eax, 7
-   308 000069F6 EB6E                <1>     jmp short cpu_2args
-   309                              <1> i8:
-   310 000069F8 B808000000          <1>     mov eax, 8
-   311 000069FD EB60                <1>     jmp short cpu_3args
-   312                              <1> i9:
-   313 000069FF B809000000          <1>     mov eax, 9
-   314 00006A04 EB60                <1>     jmp short cpu_2args
-   315                              <1> i10:
-   316 00006A06 B80A000000          <1>     mov eax, 0Ah
-   317 00006A0B EB52                <1>     jmp short cpu_3args
-   318                              <1> i11:
-   319 00006A0D B80B000000          <1>     mov eax, 0Bh
-   320 00006A12 EB4B                <1>     jmp short cpu_3args
-   321                              <1> i12:
-   322 00006A14 B80C000000          <1>     mov eax, 0Ch
-   323 00006A19 EB44                <1>     jmp short cpu_3args
-   324                              <1> i13:
-   325 00006A1B B80D000000          <1>     mov eax, 0Dh
-   326 00006A20 EB3D                <1>     jmp short cpu_3args
-   327                              <1> i14:
-   328 00006A22 B80E000000          <1>     mov eax, 0Eh
-   329 00006A27 EB2F                <1>     jmp short cpu_4args
-   330                              <1> i15:
-   331 00006A29 B80F000000          <1>     mov eax, 0Fh
-   332 00006A2E EB36                <1>     jmp short cpu_2args
-   333                              <1> i16:
-   334 00006A30 B810000000          <1>     mov eax, 10h
-   335 00006A35 EB2F                <1>     jmp short cpu_2args
-   336                              <1> i17:
-   337 00006A37 B811000000          <1>     mov eax, 11h
-   338 00006A3C EB21                <1>     jmp short cpu_3args
-   339                              <1> i18:
-   340 00006A3E B812000000          <1>     mov eax, 12h
-   341 00006A43 EB21                <1>     jmp short cpu_2args
-   342                              <1> i19:
-   343 00006A45 B813000000          <1>     mov eax, 13h
-   344 00006A4A EB1A                <1>     jmp short cpu_2args
-   345                              <1> i20:
-   346 00006A4C B814000000          <1>     mov eax, 14h
-   347 00006A51 EB13                <1>     jmp short cpu_2args
-   348                              <1> i21:
-   349 00006A53 B815000000          <1>     mov eax, 15h
-   350                              <1> cpu_4args:
-   351 00006A58 B903000000          <1>     mov ecx, 3
-   352 00006A5D EB0C                <1>     jmp short cpu_exception
-   353                              <1> cpu_3args:
-   354 00006A5F B902000000          <1>     mov ecx, 2
-   355 00006A64 EB05                <1>     jmp short cpu_exception
-   356                              <1> cpu_2args:
-   357 00006A66 B901000000          <1>     mov ecx, 1
-   358                              <1> cpu_exception:
-   359                              <1> ;Enter with:
-   360                              <1> ; eax = Exception number in binary
-   361                              <1> ; ecx = Number of arguments to print and pop from stack - 1 
-   362 00006A6B 488D3537020000      <1>     lea rsi, .fatalt0   ;Get the ptr
-   363 00006A72 BB29000000          <1>     mov ebx, fatalt0L  ;Get the length
-   364 00006A77 E8E5010000          <1>     call .writeExceptionMessage
-   365                              <1> 
-   366 00006A7C C605(91070000)00    <1>     mov byte [haltDOS], 0   ;Clear first as we are recycling this byte in SDA
-   367 00006A83 803D(08040000)01    <1>     cmp byte [inDOS], 1     ;Are we in DOS? 
-   368 00006A8A 7327                <1>     jae .introStop          ;Crap out, cant guarantee DOS is stable anymore
-   369 00006A8C 3D02000000          <1>     cmp eax, 2              ;NMI?
-   370 00006A91 7420                <1>     je .introStop           ;Freeze the PC to stop it from hurting itself...
-   371                              <1> 
-   372 00006A93 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP] ;If self-parent craps out... 
-   373 00006A9A 483B5B22            <1>     cmp rbx, qword [rbx + psp.parentPtr] ;Who do we call? COMSPEC?
-   374 00006A9E 7413                <1>     je .introStop   ;Nah, for now, just hard stop like if DOS is bad.
-   375                              <1> 
-   376 00006AA0 488D352B020000      <1>     lea rsi, .fatal1
-   377 00006AA7 BBC1000000          <1>     mov ebx, fatal1L
-   378 00006AAC E8B0010000          <1>     call .writeExceptionMessage
-   379 00006AB1 EB18                <1>     jmp short .introEnd
-   380                              <1> .introStop:
-   381 00006AB3 C605(91070000)FF    <1>     mov byte [haltDOS], -1  ;Set crap out byte...
-   382 00006ABA 488D35D5020000      <1>     lea rsi, .fatalHalt     ;Get the ptr
-   383 00006AC1 BB19000000          <1>     mov ebx, fatalHaltL     ;Get the length
-   384 00006AC6 E896010000          <1>     call .writeExceptionMessage
-   385                              <1> .introEnd:
-   386 00006ACB 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
-   387 00006AD2 E858010000          <1>     call .printbyte ;Store the error code in the byte buffer
-   388 00006AD7 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
-   389 00006ADE BB02000000          <1>     mov ebx, 2  ;Print the two nybbles
-   390 00006AE3 E879010000          <1>     call .writeExceptionMessage
-   391                              <1> 
-   392 00006AE8 488D35A4020000      <1>     lea rsi, .fatal2
-   393 00006AEF BB03000000          <1>     mov ebx, fatal2L  ;Print the colon string
-   394 00006AF4 E868010000          <1>     call .writeExceptionMessage
-   395                              <1> 
-   396 00006AF9 80F901              <1>     cmp cl, 1
-   397 00006AFC 0F8793000000        <1>     ja .cpuextendederror    ;rax contains error code, or extra cr2 value
-   398                              <1> .cpurollprint:
-   399 00006B02 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
-   400 00006B09 488B1424            <1>     mov rdx, qword [rsp]    ;Get address
-   401                              <1> ;Takes whats in rdx, rols left by one byte, prints al
-   402 00006B0D B108                <1>     mov cl, 8    ;8 bytes
-   403                              <1> .cpurollprint1:
-   404 00006B0F 48C1C208            <1>     rol rdx, 8
-   405 00006B13 88D0                <1>     mov al, dl
-   406 00006B15 52                  <1>     push rdx
-   407 00006B16 E814010000          <1>     call .printbyte
-   408 00006B1B 5A                  <1>     pop rdx
-   409 00006B1C FEC9                <1>     dec cl
-   410 00006B1E 75EF                <1>     jnz .cpurollprint1
-   411                              <1> 
-   412 00006B20 BB10000000          <1>     mov ebx, 16 ;Print the 16 nybbles
-   413 00006B25 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
-   414 00006B2C E830010000          <1>     call .writeExceptionMessage
-   415                              <1> 
-   416 00006B31 BB03000000          <1>     mov ebx, crlfL
-   417 00006B36 488D3572020000      <1>     lea rsi, .crlf
-   418 00006B3D E81F010000          <1>     call .writeExceptionMessage    
-   419                              <1> 
-   420 00006B42 F605(91070000)FF    <1>     test byte [haltDOS], -1
-   421 00006B49 7534                <1>     jnz .fatalStop
-   422 00006B4B E8FC000000          <1>     call .readInputChar
-   423                              <1>     ;Set error code to General Failure
-   424 00006B50 66C705(0B040000)1F- <1>     mov word [errorExCde], errGF
-   424 00006B58 00                  <1>
-   425 00006B59 C605(0D040000)04    <1>     mov byte [errorAction], eActAbt
-   426 00006B60 C605(0E040000)07    <1>     mov byte [errorClass], eClsAppFlt
-   427 00006B67 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
-   428 00006B6E B8FF4C0000          <1>     mov eax, 4cFFh
-   429 00006B73 C605(8C040000)FF    <1>     mov byte [ctrlCExit], -1
-   430                              <1>     ;If a errGF error code and ctrlC exit and the extended error
-   431                              <1>     ; setup as above, chances are it was a CPU error
-   432 00006B7A E9D5090000          <1>     jmp functionDispatch    ;Call Int 21h politely, clean up resources
-   433                              <1> .fatalStop:
-   434                              <1> ;This is called if inDOS > 1 or NMI occured
-   435                              <1> ;Freezes the machine
-   436 00006B7F B800820000          <1>     mov eax, 8200h  ;Exit all critical sections
-   437 00006B84 CD2A                <1>     int 2Ah
-   438 00006B86 E8510B0000          <1>     call dosCrit1Enter  ;Get the lock to internal DOS structures
-   439 00006B8B E8600B0000          <1>     call dosCrit2Enter  ;Get the lock to drivers
-   440 00006B90 FA                  <1>     cli                 ;Halt all interrupts
-   441                              <1> .fatalLp:
-   442 00006B91 F390                <1>     pause
-   443 00006B93 EBFC                <1>     jmp short .fatalLp  ;Stay here forever, we cant guarantee anything anymore!
-   444                              <1> .cpuextendederror:
-   445 00006B95 5A                  <1>     pop rdx
-   446 00006B96 48FFC9              <1>     dec rcx
-   447 00006B99 51                  <1>     push rcx
-   448 00006B9A 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
-   449 00006BA1 B102                <1>     mov cl, 2    ;CAN CHANGE TO 4 BYTES IN THE FUTURE
-   450 00006BA3 86D6                <1>     xchg dl, dh   
-   451                              <1> .pr1:
-   452 00006BA5 88D0                <1>     mov al, dl
-   453 00006BA7 52                  <1>     push rdx
-   454 00006BA8 E882000000          <1>     call .printbyte
-   455 00006BAD 5A                  <1>     pop rdx
-   456 00006BAE C1CA08              <1>     ror edx, 8    ;Print just dx for now
-   457 00006BB1 FEC9                <1>     dec cl
-   458 00006BB3 75F0                <1>     jnz .pr1
-   459                              <1> 
-   460 00006BB5 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
-   461 00006BBC BB04000000          <1>     mov ebx, 4  ;Print four nybbles
-   462 00006BC1 E89B000000          <1>     call .writeExceptionMessage
-   463                              <1> 
-   464 00006BC6 488D35C6010000      <1>     lea rsi, .fatal2
-   465 00006BCD BB03000000          <1>     mov ebx, fatal2L  ;Print the colon string
-   466 00006BD2 E88A000000          <1>     call .writeExceptionMessage
-   467                              <1> 
-   468 00006BD7 59                  <1>     pop rcx    ;Bring the comparison value back into rcx
-   469 00006BD8 48FFC9              <1>     dec rcx
-   470 00006BDB 0F8421FFFFFF        <1>     jz .cpurollprint
-   471                              <1> 
-   472 00006BE1 B108                <1>     mov cl, 8   ;16 nybbles
-   473 00006BE3 0F20D2              <1>     mov rdx, cr2    ;Get page fault address
-   474 00006BE6 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
-   475                              <1> .pr2:
-   476 00006BED 48C1C208            <1>     rol rdx, 8    ;Print rdx
-   477 00006BF1 88D0                <1>     mov al, dl
-   478 00006BF3 52                  <1>     push rdx
-   479 00006BF4 E836000000          <1>     call .printbyte
-   480 00006BF9 5A                  <1>     pop rdx
-   481 00006BFA FEC9                <1>     dec cl
-   482 00006BFC 75EF                <1>     jnz .pr2
-   483                              <1> 
-   484 00006BFE 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
-   485 00006C05 BB10000000          <1>     mov ebx, 16
-   486 00006C0A E852000000          <1>     call .writeExceptionMessage
-   487                              <1> 
-   488 00006C0F 488D357D010000      <1>     lea rsi, .fatal2
-   489 00006C16 BB03000000          <1>     mov ebx, fatal2L  ;Print the colon string
-   490 00006C1B E841000000          <1>     call .writeExceptionMessage
-   491                              <1> 
-   492 00006C20 E9DDFEFFFF          <1>     jmp .cpurollprint
+   201                              <1> .checkIgnore:
+   202 000068F0 F605(68040000)20    <1>     test byte [Int24bitfld], critIgnorOK
+   203 000068F7 75D1                <1>     jnz .exit
+   204 000068F9 EBBE                <1>     jmp short .setFail  ;If ignore not permitted, return Fail
+   205                              <1> .checkRetry:
+   206 000068FB F605(68040000)10    <1>     test byte [Int24bitfld], critRetryOK
+   207 00006902 75C6                <1>     jnz .exit   
+   208 00006904 EBB3                <1>     jmp short .setFail  ;If retry not permitted, return Fail
+   209                              <1> .abort:
+   210                              <1> ;Prepare to abort. We abort from within!
+   211 00006906 E86EC2FFFF          <1>     call vConRetDriver  ;Always reset the driver flag on abort
+   212                              <1> ;If a network request requests abort, translate to fail
+   213 0000690B 803D(02070000)FF    <1>     cmp byte [dosInvoke], -1
+   214 00006912 74B6                <1>     je .exit
+   215                              <1> ;If already terminating, dont start terminating again!
+   216 00006914 F605(96040000)FF    <1>     test byte [procExiting], -1
+   217 0000691B 75AD                <1>     jnz .exit
+   218 0000691D 31C0                <1>     xor eax, eax    ;Default return code to 0. Abort flag will be set later
+   219 0000691F C605(06070000)02    <1>     mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
+   220 00006926 8805(5F040000)      <1>     mov byte [volIdFlag], al     ;Clear special vol search byte if set
+   221                              <1>     ;Before returning, we need to set the aborting psp.rspPtr back to 
+   222                              <1>     ; the oldRSP as a syscall during Int 24h would change this value.
+   223                              <1>     ;This only affects programs which are their own parents as when aborting
+   224                              <1>     ; we swap to the parentPSP. This prevents a bug from arising as the 
+   225                              <1>     ; stack ptr in psp.rspPtr may have changed since initially entering DOS
+   226                              <1>     ; as the Int 24h handler may have made an Int 21h call, meaning if 
+   227                              <1>     ; the Int 24h handler plays with the stack too much, the value in 
+   228                              <1>     ; psp.rspPtr is no longer pointing at a "valid" stack frame (i.e. 
+   229                              <1>     ; with valid SS:RSP). The only sane thing to do is to reset this 
+   230                              <1>     ; pointer to the value it had on entry to the initial DOS call which
+   231                              <1>     ; triggered the Int 24h (or the equivalent stack frame that was 
+   232                              <1>     ; replaced by the Int 24h handler). If the task being aborted is not 
+   233                              <1>     ; its own parent the following is a NOP. If it is its own parent, we
+   234                              <1>     ; the following prevents a GP. Fault.
+   235 0000692C 488B3D(1F040000)    <1>     mov rdi, qword [currentPSP]
+   236 00006933 488B1D(7B040000)    <1>     mov rbx, qword [oldRSP]
+   237 0000693A 48895F46            <1>     mov qword [rdi + psp.rspPtr], rbx
+   238 0000693E E988F3FFFF          <1>     jmp terminateClean.altEP
+   239                              <1> 
+   240                              <1> ctrlBreakHdlr:
+   241 00006943 B003                <1>     mov al, 03h ;Always guarantee a ^C will be printed
+   242 00006945 E85CC1FFFF          <1>     call printCaretASCII
+   243 0000694A E887C1FFFF          <1>     call printCRLF
+   244                              <1>     ;Reset the console back to 0
+   245 0000694F E825C2FFFF          <1>     call vConRetDriver
+   246                              <1> ;Handles a control break, juggles stacks and enters int 21h 
+   247                              <1> .exceptEP:
+   248                              <1> ;If return via RET/RET 8 with CF set, DOS will abort program with errorlevel 0
+   249                              <1> ;Else (RET/RET 8 with CF clear or IRET with CF ignored)
+   250                              <1> ;   interrupted DOS call is restarted
+   251 00006954 FA                  <1> 	cli
+   252 00006955 488B25(7B040000)    <1> 	mov rsp, qword [oldRSP]	;Get registers frame
+   253 0000695C E84D0D0000          <1> 	call dosPopRegs ;Get user state back
+   254 00006961 C605(08040000)00    <1>     mov byte [inDOS], 0 ;Make sure we "exit" DOS 
+   255 00006968 C605(07040000)00    <1>     mov byte [critErrFlag], 0
+   256 0000696F 488925(27040000)    <1>     mov qword [xInt23hRSP], rsp  ;Save user rsp. This is the og psp rsp.
+   257 00006976 F8                  <1>     clc
+   258 00006977 CD23                <1>     int 23h ;Call critical error handler
+   259 00006979 FA                  <1>     cli ;Clear interrupts again
+   260 0000697A 488905(33040000)    <1>     mov qword [oldRAX], rax     ;Save eax (has DOS fn to do if not terminate)
+   261 00006981 9C                  <1>     pushfq                      ;Get returned flags in rax
+   262 00006982 58                  <1>     pop rax 
+   263 00006983 483B25(27040000)    <1>     cmp rsp, qword [xInt23hRSP] ;Did the user return with ret/ret 8?
+   264 0000698A 750C                <1>     jne .checkCF                ;If yes, check the returned CF flag.
+   265                              <1> .returnToDOS:                   ;Else, execute the DOS function in eax.
+   266 0000698C 488B05(33040000)    <1>     mov rax, qword [oldRAX]     ;Get the function number to execute
+   267 00006993 E9BC0B0000          <1>     jmp functionDispatch        ;Goto int 21h
+   268                              <1> .checkCF:
+   269 00006998 488B25(27040000)    <1>     mov rsp, qword [xInt23hRSP]  ;Reset the stack pointer to pre int 23h
+   270 0000699F A801                <1>     test al, 1      ;Was CF=CY returned?
+   271 000069A1 74E9                <1>     jz .returnToDOS ;If CF=NC, DOS function in eax
+   272 000069A3 B8004C0000          <1>     mov eax, 4c00h  ;Else, exit with default error code (00h)
+   273 000069A8 C605(8C040000)FF    <1>     mov byte [ctrlCExit], -1  ;Signal CTRL+BREAK termination
+   274 000069AF E9A00B0000          <1>     jmp functionDispatch ;When jumping now, rsp will go back into psp.rsp!
+   275                              <1> 
+   276                              <1> ;CPU Exception handlers
+   277                              <1> ;If a CPU exception occurs, and inDOS = 0, the default behaviour will be to 
+   278                              <1> ; CTRL+C exit.
+   279                              <1> ; If inDOS > 0, then we assume the error is within DOS and thus we halt the
+   280                              <1> ; system.
+   281                              <1> ; Also halt if the application is it's own parent.
+   282                              <1> ;An application should hook these interupts if they wish to not 
+   283                              <1> ; CTRL+C exit, and instead return to DOS.
+   284                              <1> i0:
+   285 000069B4 31C0                <1>     xor eax, eax
+   286 000069B6 E9AB000000          <1>     jmp cpu_2args
+   287                              <1> i1:
+   288 000069BB B801000000          <1>     mov eax, 1
+   289 000069C0 E9A1000000          <1>     jmp cpu_2args
+   290                              <1> i2:
+   291 000069C5 B802000000          <1>     mov eax, 2
+   292 000069CA E997000000          <1>     jmp cpu_2args
+   293                              <1> i3:
+   294 000069CF B803000000          <1>     mov eax, 3
+   295 000069D4 E98D000000          <1>     jmp cpu_2args
+   296                              <1> i4:
+   297 000069D9 B804000000          <1>     mov eax, 4
+   298 000069DE E983000000          <1>     jmp cpu_2args
+   299                              <1> i5:
+   300 000069E3 B805000000          <1>     mov eax, 5
+   301 000069E8 EB7C                <1>     jmp short cpu_2args
+   302                              <1> i6:
+   303 000069EA B806000000          <1>     mov eax, 6
+   304 000069EF EB75                <1>     jmp short cpu_2args
+   305                              <1> i7:
+   306 000069F1 B807000000          <1>     mov eax, 7
+   307 000069F6 EB6E                <1>     jmp short cpu_2args
+   308                              <1> i8:
+   309 000069F8 B808000000          <1>     mov eax, 8
+   310 000069FD EB60                <1>     jmp short cpu_3args
+   311                              <1> i9:
+   312 000069FF B809000000          <1>     mov eax, 9
+   313 00006A04 EB60                <1>     jmp short cpu_2args
+   314                              <1> i10:
+   315 00006A06 B80A000000          <1>     mov eax, 0Ah
+   316 00006A0B EB52                <1>     jmp short cpu_3args
+   317                              <1> i11:
+   318 00006A0D B80B000000          <1>     mov eax, 0Bh
+   319 00006A12 EB4B                <1>     jmp short cpu_3args
+   320                              <1> i12:
+   321 00006A14 B80C000000          <1>     mov eax, 0Ch
+   322 00006A19 EB44                <1>     jmp short cpu_3args
+   323                              <1> i13:
+   324 00006A1B B80D000000          <1>     mov eax, 0Dh
+   325 00006A20 EB3D                <1>     jmp short cpu_3args
+   326                              <1> i14:
+   327 00006A22 B80E000000          <1>     mov eax, 0Eh
+   328 00006A27 EB2F                <1>     jmp short cpu_4args
+   329                              <1> i15:
+   330 00006A29 B80F000000          <1>     mov eax, 0Fh
+   331 00006A2E EB36                <1>     jmp short cpu_2args
+   332                              <1> i16:
+   333 00006A30 B810000000          <1>     mov eax, 10h
+   334 00006A35 EB2F                <1>     jmp short cpu_2args
+   335                              <1> i17:
+   336 00006A37 B811000000          <1>     mov eax, 11h
+   337 00006A3C EB21                <1>     jmp short cpu_3args
+   338                              <1> i18:
+   339 00006A3E B812000000          <1>     mov eax, 12h
+   340 00006A43 EB21                <1>     jmp short cpu_2args
+   341                              <1> i19:
+   342 00006A45 B813000000          <1>     mov eax, 13h
+   343 00006A4A EB1A                <1>     jmp short cpu_2args
+   344                              <1> i20:
+   345 00006A4C B814000000          <1>     mov eax, 14h
+   346 00006A51 EB13                <1>     jmp short cpu_2args
+   347                              <1> i21:
+   348 00006A53 B815000000          <1>     mov eax, 15h
+   349                              <1> cpu_4args:
+   350 00006A58 B903000000          <1>     mov ecx, 3
+   351 00006A5D EB0C                <1>     jmp short cpu_exception
+   352                              <1> cpu_3args:
+   353 00006A5F B902000000          <1>     mov ecx, 2
+   354 00006A64 EB05                <1>     jmp short cpu_exception
+   355                              <1> cpu_2args:
+   356 00006A66 B901000000          <1>     mov ecx, 1
+   357                              <1> cpu_exception:
+   358                              <1> ;Enter with:
+   359                              <1> ; eax = Exception number in binary
+   360                              <1> ; ecx = Number of arguments to print and pop from stack - 1 
+   361 00006A6B 488D3537020000      <1>     lea rsi, .fatalt0   ;Get the ptr
+   362 00006A72 BB29000000          <1>     mov ebx, fatalt0L  ;Get the length
+   363 00006A77 E8E5010000          <1>     call .writeExceptionMessage
+   364                              <1> 
+   365 00006A7C C605(91070000)00    <1>     mov byte [haltDOS], 0   ;Clear first as we are recycling this byte in SDA
+   366 00006A83 803D(08040000)01    <1>     cmp byte [inDOS], 1     ;Are we in DOS? 
+   367 00006A8A 7327                <1>     jae .introStop          ;Crap out, cant guarantee DOS is stable anymore
+   368 00006A8C 3D02000000          <1>     cmp eax, 2              ;NMI?
+   369 00006A91 7420                <1>     je .introStop           ;Freeze the PC to stop it from hurting itself...
+   370                              <1> 
+   371 00006A93 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP] ;If self-parent craps out... 
+   372 00006A9A 483B5B22            <1>     cmp rbx, qword [rbx + psp.parentPtr] ;Who do we call? COMSPEC?
+   373 00006A9E 7413                <1>     je .introStop   ;Nah, for now, just hard stop like if DOS is bad.
+   374                              <1> 
+   375 00006AA0 488D352B020000      <1>     lea rsi, .fatal1
+   376 00006AA7 BBC1000000          <1>     mov ebx, fatal1L
+   377 00006AAC E8B0010000          <1>     call .writeExceptionMessage
+   378 00006AB1 EB18                <1>     jmp short .introEnd
+   379                              <1> .introStop:
+   380 00006AB3 C605(91070000)FF    <1>     mov byte [haltDOS], -1  ;Set crap out byte...
+   381 00006ABA 488D35D5020000      <1>     lea rsi, .fatalHalt     ;Get the ptr
+   382 00006AC1 BB19000000          <1>     mov ebx, fatalHaltL     ;Get the length
+   383 00006AC6 E896010000          <1>     call .writeExceptionMessage
+   384                              <1> .introEnd:
+   385 00006ACB 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
+   386 00006AD2 E858010000          <1>     call .printbyte ;Store the error code in the byte buffer
+   387 00006AD7 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
+   388 00006ADE BB02000000          <1>     mov ebx, 2  ;Print the two nybbles
+   389 00006AE3 E879010000          <1>     call .writeExceptionMessage
+   390                              <1> 
+   391 00006AE8 488D35A4020000      <1>     lea rsi, .fatal2
+   392 00006AEF BB03000000          <1>     mov ebx, fatal2L  ;Print the colon string
+   393 00006AF4 E868010000          <1>     call .writeExceptionMessage
+   394                              <1> 
+   395 00006AF9 80F901              <1>     cmp cl, 1
+   396 00006AFC 0F8793000000        <1>     ja .cpuextendederror    ;rax contains error code, or extra cr2 value
+   397                              <1> .cpurollprint:
+   398 00006B02 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
+   399 00006B09 488B1424            <1>     mov rdx, qword [rsp]    ;Get address
+   400                              <1> ;Takes whats in rdx, rols left by one byte, prints al
+   401 00006B0D B108                <1>     mov cl, 8    ;8 bytes
+   402                              <1> .cpurollprint1:
+   403 00006B0F 48C1C208            <1>     rol rdx, 8
+   404 00006B13 88D0                <1>     mov al, dl
+   405 00006B15 52                  <1>     push rdx
+   406 00006B16 E814010000          <1>     call .printbyte
+   407 00006B1B 5A                  <1>     pop rdx
+   408 00006B1C FEC9                <1>     dec cl
+   409 00006B1E 75EF                <1>     jnz .cpurollprint1
+   410                              <1> 
+   411 00006B20 BB10000000          <1>     mov ebx, 16 ;Print the 16 nybbles
+   412 00006B25 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
+   413 00006B2C E830010000          <1>     call .writeExceptionMessage
+   414                              <1> 
+   415 00006B31 BB03000000          <1>     mov ebx, crlfL
+   416 00006B36 488D3572020000      <1>     lea rsi, .crlf
+   417 00006B3D E81F010000          <1>     call .writeExceptionMessage    
+   418                              <1> 
+   419 00006B42 F605(91070000)FF    <1>     test byte [haltDOS], -1
+   420 00006B49 7534                <1>     jnz .fatalStop
+   421 00006B4B E8FC000000          <1>     call .readInputChar
+   422                              <1>     ;Set error code to General Failure
+   423 00006B50 66C705(0B040000)1F- <1>     mov word [errorExCde], errGF
+   423 00006B58 00                  <1>
+   424 00006B59 C605(0D040000)04    <1>     mov byte [errorAction], eActAbt
+   425 00006B60 C605(0E040000)07    <1>     mov byte [errorClass], eClsAppFlt
+   426 00006B67 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
+   427 00006B6E B8FF4C0000          <1>     mov eax, 4cFFh
+   428 00006B73 C605(8C040000)FF    <1>     mov byte [ctrlCExit], -1
+   429                              <1>     ;If a errGF error code and ctrlC exit and the extended error
+   430                              <1>     ; setup as above, chances are it was a CPU error
+   431 00006B7A E9D5090000          <1>     jmp functionDispatch    ;Call Int 21h politely, clean up resources
+   432                              <1> .fatalStop:
+   433                              <1> ;This is called if inDOS > 1 or NMI occured
+   434                              <1> ;Freezes the machine
+   435 00006B7F B800820000          <1>     mov eax, 8200h  ;Exit all critical sections
+   436 00006B84 CD2A                <1>     int 2Ah
+   437 00006B86 E8510B0000          <1>     call dosCrit1Enter  ;Get the lock to internal DOS structures
+   438 00006B8B E8600B0000          <1>     call dosCrit2Enter  ;Get the lock to drivers
+   439 00006B90 FA                  <1>     cli                 ;Halt all interrupts
+   440                              <1> .fatalLp:
+   441 00006B91 F390                <1>     pause
+   442 00006B93 EBFC                <1>     jmp short .fatalLp  ;Stay here forever, we cant guarantee anything anymore!
+   443                              <1> .cpuextendederror:
+   444 00006B95 5A                  <1>     pop rdx
+   445 00006B96 48FFC9              <1>     dec rcx
+   446 00006B99 51                  <1>     push rcx
+   447 00006B9A 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
+   448 00006BA1 B102                <1>     mov cl, 2    ;CAN CHANGE TO 4 BYTES IN THE FUTURE
+   449 00006BA3 86D6                <1>     xchg dl, dh   
+   450                              <1> .pr1:
+   451 00006BA5 88D0                <1>     mov al, dl
+   452 00006BA7 52                  <1>     push rdx
+   453 00006BA8 E882000000          <1>     call .printbyte
+   454 00006BAD 5A                  <1>     pop rdx
+   455 00006BAE C1CA08              <1>     ror edx, 8    ;Print just dx for now
+   456 00006BB1 FEC9                <1>     dec cl
+   457 00006BB3 75F0                <1>     jnz .pr1
+   458                              <1> 
+   459 00006BB5 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
+   460 00006BBC BB04000000          <1>     mov ebx, 4  ;Print four nybbles
+   461 00006BC1 E89B000000          <1>     call .writeExceptionMessage
+   462                              <1> 
+   463 00006BC6 488D35C6010000      <1>     lea rsi, .fatal2
+   464 00006BCD BB03000000          <1>     mov ebx, fatal2L  ;Print the colon string
+   465 00006BD2 E88A000000          <1>     call .writeExceptionMessage
+   466                              <1> 
+   467 00006BD7 59                  <1>     pop rcx    ;Bring the comparison value back into rcx
+   468 00006BD8 48FFC9              <1>     dec rcx
+   469 00006BDB 0F8421FFFFFF        <1>     jz .cpurollprint
+   470                              <1> 
+   471 00006BE1 B108                <1>     mov cl, 8   ;16 nybbles
+   472 00006BE3 0F20D2              <1>     mov rdx, cr2    ;Get page fault address
+   473 00006BE6 488D3D(1E050000)    <1>     lea rdi, extErrByteBuf
+   474                              <1> .pr2:
+   475 00006BED 48C1C208            <1>     rol rdx, 8    ;Print rdx
+   476 00006BF1 88D0                <1>     mov al, dl
+   477 00006BF3 52                  <1>     push rdx
+   478 00006BF4 E836000000          <1>     call .printbyte
+   479 00006BF9 5A                  <1>     pop rdx
+   480 00006BFA FEC9                <1>     dec cl
+   481 00006BFC 75EF                <1>     jnz .pr2
+   482                              <1> 
+   483 00006BFE 488D35(1E050000)    <1>     lea rsi, extErrByteBuf
+   484 00006C05 BB10000000          <1>     mov ebx, 16
+   485 00006C0A E852000000          <1>     call .writeExceptionMessage
+   486                              <1> 
+   487 00006C0F 488D357D010000      <1>     lea rsi, .fatal2
+   488 00006C16 BB03000000          <1>     mov ebx, fatal2L  ;Print the colon string
+   489 00006C1B E841000000          <1>     call .writeExceptionMessage
+   490                              <1> 
+   491 00006C20 E9DDFEFFFF          <1>     jmp .cpurollprint
+   492                              <1> 
    493                              <1> 
-   494                              <1> 
-   495                              <1> .char:    ;Print a single character
-   496 00006C25 488D1D6D000000      <1>     lea rbx, .ascii
-   497 00006C2C D7                  <1>     xlatb    ;point al to entry in ascii table, using al as offset into table
-   498 00006C2D AA                  <1>     stosb   ;Store the byte in the buffer and inc rdi
-   499 00006C2E C3                  <1>     ret
-   500                              <1> .printbyte:
-   501 00006C2F 88C2                <1>     mov dl, al            ;save byte in dl
-   502 00006C31 6625F000            <1>     and ax, 00F0h        ;Hi nybble
-   503 00006C35 6681E20F00          <1>     and dx, 000Fh        ;Lo nybble
-   504 00006C3A 66C1E804            <1>     shr ax, 4            ;shift one hex place value pos right
-   505 00006C3E E8E2FFFFFF          <1>     call .char
-   506 00006C43 6689D0              <1>     mov ax, dx            ;mov lo nybble, to print
-   507 00006C46 E8DAFFFFFF          <1>     call .char
-   508 00006C4B C3                  <1>     ret        
+   494                              <1> .char:    ;Print a single character
+   495 00006C25 488D1D6D000000      <1>     lea rbx, .ascii
+   496 00006C2C D7                  <1>     xlatb    ;point al to entry in ascii table, using al as offset into table
+   497 00006C2D AA                  <1>     stosb   ;Store the byte in the buffer and inc rdi
+   498 00006C2E C3                  <1>     ret
+   499                              <1> .printbyte:
+   500 00006C2F 88C2                <1>     mov dl, al            ;save byte in dl
+   501 00006C31 6625F000            <1>     and ax, 00F0h        ;Hi nybble
+   502 00006C35 6681E20F00          <1>     and dx, 000Fh        ;Lo nybble
+   503 00006C3A 66C1E804            <1>     shr ax, 4            ;shift one hex place value pos right
+   504 00006C3E E8E2FFFFFF          <1>     call .char
+   505 00006C43 6689D0              <1>     mov ax, dx            ;mov lo nybble, to print
+   506 00006C46 E8DAFFFFFF          <1>     call .char
+   507 00006C4B C3                  <1>     ret        
+   508                              <1> 
    509                              <1> 
-   510                              <1> 
-   511                              <1> .readInputChar:
-   512 00006C4C C605(ED040000)04    <1>     mov byte [critReqPkt + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
-   513 00006C53 488D35(1C050000)    <1>     lea rsi, singleIObyt
-   514 00006C5A BB01000000          <1>     mov ebx, 1  ;Read one char
-   515 00006C5F EB07                <1>     jmp short .ioException
-   516                              <1> .writeExceptionMessage:
-   517                              <1> ;Called with ebx=Number of chars to print, rsi -> String to print
-   518 00006C61 C605(ED040000)08    <1>     mov byte [critReqPkt + ioReqPkt.cmdcde], drvWRITE
-   519                              <1> .ioException:
-   520 00006C68 C605(EB040000)2A    <1>     mov byte [critReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
-   521 00006C6F 66C705(EE040000)00- <1>     mov word [critReqPkt + ioReqPkt.status], 0
-   521 00006C77 00                  <1>
-   522 00006C78 891D(01050000)      <1>     mov dword [critReqPkt + ioReqPkt.tfrlen], ebx
-   523 00006C7E 488D1D(EB040000)    <1>     lea rbx, critReqPkt
-   524 00006C85 488935(F9040000)    <1>     mov qword [critReqPkt + ioReqPkt.bufptr], rsi
-   525 00006C8C 488B35(53000000)    <1>     mov rsi, qword [vConPtr]
-   526 00006C93 E822010000          <1>     call goDriver
-   527                              <1>     return
+   510                              <1> .readInputChar:
+   511 00006C4C C605(ED040000)04    <1>     mov byte [critReqPkt + ioReqPkt.cmdcde], drvREAD    ;Wait for a char!
+   512 00006C53 488D35(1C050000)    <1>     lea rsi, singleIObyt
+   513 00006C5A BB01000000          <1>     mov ebx, 1  ;Read one char
+   514 00006C5F EB07                <1>     jmp short .ioException
+   515                              <1> .writeExceptionMessage:
+   516                              <1> ;Called with ebx=Number of chars to print, rsi -> String to print
+   517 00006C61 C605(ED040000)08    <1>     mov byte [critReqPkt + ioReqPkt.cmdcde], drvWRITE
+   518                              <1> .ioException:
+   519 00006C68 C605(EB040000)2A    <1>     mov byte [critReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
+   520 00006C6F 66C705(EE040000)00- <1>     mov word [critReqPkt + ioReqPkt.status], 0
+   520 00006C77 00                  <1>
+   521 00006C78 891D(01050000)      <1>     mov dword [critReqPkt + ioReqPkt.tfrlen], ebx
+   522 00006C7E 488D1D(EB040000)    <1>     lea rbx, critReqPkt
+   523 00006C85 488935(F9040000)    <1>     mov qword [critReqPkt + ioReqPkt.bufptr], rsi
+   524 00006C8C 488B35(53000000)    <1>     mov rsi, qword [vConPtr]
+   525 00006C93 E822010000          <1>     call goDriver
+   526                              <1>     return
     13                              <2> %%_ret:
     14 00006C98 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
+   527                              <1> 
    528                              <1> 
-   529                              <1> 
-   530                              <1> ;Error messages
-   531 00006C99 303132333435363738- <1> .ascii:    db '0123456789ABCDEF'
-   531 00006CA2 39414243444546      <1>
-   532 00006CA9 0D0A0A202020202020- <1> .fatalt0:  db CR,LF,LF,"        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
-   532 00006CB2 20205343502F444F53- <1>
-   532 00006CBB 20455843455054494F- <1>
-   532 00006CC4 4E2044455445435445- <1>
-   532 00006CCD 44210D0A0A          <1>
-   533                              <1> fatalt0L   equ $ - .fatalt0
-   534                              <1> 
-   535                              <1> .fatal1:   
-   536 00006CD2 202020204120706F74- <1>     db "    A potentially fatal error has been detected",CR,LF
-   536 00006CDB 656E7469616C6C7920- <1>
-   536 00006CE4 666174616C20657272- <1>
-   536 00006CED 6F7220686173206265- <1>
-   536 00006CF6 656E20646574656374- <1>
-   536 00006CFF 65640D0A            <1>
-   537 00006D03 20202020616E642074- <1>     db "    and the current application must be terminated.",CR,LF,LF
-   537 00006D0C 68652063757272656E- <1>
-   537 00006D15 74206170706C696361- <1>
-   537 00006D1E 74696F6E206D757374- <1>
-   537 00006D27 206265207465726D69- <1>
-   537 00006D30 6E617465642E0D0A0A  <1>
-   538 00006D39 202020205072657373- <1>     db "    Press any key to continue or CTRL+ALT+DEL to restart the machine."
-   538 00006D42 20616E79206B657920- <1>
-   538 00006D4B 746F20636F6E74696E- <1>
-   538 00006D54 7565206F7220435452- <1>
-   538 00006D5D 4C2B414C542B44454C- <1>
-   538 00006D66 20746F207265737461- <1>
-   538 00006D6F 727420746865206D61- <1>
-   538 00006D78 6368696E652E        <1>
-   539 00006D7E 0D0A0A202020205359- <1>     db CR,LF, LF,"    SYSTEM ERROR: "   ;Print standard Error message here
-   539 00006D87 5354454D204552524F- <1>
-   539 00006D90 523A20              <1>
-   540                              <1> fatal1L equ $ - .fatal1
-   541                              <1> 
-   542 00006D93 203A20              <1> .fatal2:   db " : "
-   543                              <1> fatal2L    equ $ - .fatal2
-   544                              <1> 
-   545                              <1> ;The below error is displayed is inDOS > 1 or NMI occured
-   546 00006D96 202020205343502F44- <1> .fatalHalt: db "    SCP/DOS SYSTEM STOP: "
-   546 00006D9F 4F532053595354454D- <1>
-   546 00006DA8 2053544F503A20      <1>
-   547                              <1> fatalHaltL equ $ - .fatalHalt
-   548 00006DAF 0D0A0A              <1> .crlf:  db CR,LF,LF
-   549                              <1> crlfL  equ $ - .crlf
+   529                              <1> ;Error messages
+   530 00006C99 303132333435363738- <1> .ascii:    db '0123456789ABCDEF'
+   530 00006CA2 39414243444546      <1>
+   531 00006CA9 0D0A0A202020202020- <1> .fatalt0:  db CR,LF,LF,"        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
+   531 00006CB2 20205343502F444F53- <1>
+   531 00006CBB 20455843455054494F- <1>
+   531 00006CC4 4E2044455445435445- <1>
+   531 00006CCD 44210D0A0A          <1>
+   532                              <1> fatalt0L   equ $ - .fatalt0
+   533                              <1> 
+   534                              <1> .fatal1:   
+   535 00006CD2 202020204120706F74- <1>     db "    A potentially fatal error has been detected",CR,LF
+   535 00006CDB 656E7469616C6C7920- <1>
+   535 00006CE4 666174616C20657272- <1>
+   535 00006CED 6F7220686173206265- <1>
+   535 00006CF6 656E20646574656374- <1>
+   535 00006CFF 65640D0A            <1>
+   536 00006D03 20202020616E642074- <1>     db "    and the current application must be terminated.",CR,LF,LF
+   536 00006D0C 68652063757272656E- <1>
+   536 00006D15 74206170706C696361- <1>
+   536 00006D1E 74696F6E206D757374- <1>
+   536 00006D27 206265207465726D69- <1>
+   536 00006D30 6E617465642E0D0A0A  <1>
+   537 00006D39 202020205072657373- <1>     db "    Press any key to continue or CTRL+ALT+DEL to restart the machine."
+   537 00006D42 20616E79206B657920- <1>
+   537 00006D4B 746F20636F6E74696E- <1>
+   537 00006D54 7565206F7220435452- <1>
+   537 00006D5D 4C2B414C542B44454C- <1>
+   537 00006D66 20746F207265737461- <1>
+   537 00006D6F 727420746865206D61- <1>
+   537 00006D78 6368696E652E        <1>
+   538 00006D7E 0D0A0A202020205359- <1>     db CR,LF, LF,"    SYSTEM ERROR: "   ;Print standard Error message here
+   538 00006D87 5354454D204552524F- <1>
+   538 00006D90 523A20              <1>
+   539                              <1> fatal1L equ $ - .fatal1
+   540                              <1> 
+   541 00006D93 203A20              <1> .fatal2:   db " : "
+   542                              <1> fatal2L    equ $ - .fatal2
+   543                              <1> 
+   544                              <1> ;The below error is displayed is inDOS > 1 or NMI occured
+   545 00006D96 202020205343502F44- <1> .fatalHalt: db "    SCP/DOS SYSTEM STOP: "
+   545 00006D9F 4F532053595354454D- <1>
+   545 00006DA8 2053544F503A20      <1>
+   546                              <1> fatalHaltL equ $ - .fatalHalt
+   547 00006DAF 0D0A0A              <1> .crlf:  db CR,LF,LF
+   548                              <1> crlfL  equ $ - .crlf
     49                                  %include "./src/Kernel/Core/dosPrim.asm"
      1                              <1> ;Driver Primitives, functions for Disk IO and calling a device driver
      2                              <1> ; are placed here (Int 25h Int 26h and goDriver)
@@ -16735,13 +16734,14 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   293 0000702C 4889DF              <1>     mov rdi, rbx
-   294 0000702F EB0F                <1>     jmp short .buildGetBPB              
-   295                              <1> .dpbNotIbm:
-   296                              <1> ;Get a buffer for the driver to use as scratch space
-   297 00007031 488B3D(5D000000)    <1>     mov rdi, qword [bufHeadPtr]
-   298 00007038 E86A97FFFF          <1>     call flushAndFreeBuffer
-   299                              <1>     retc
+   293                              <1>     ;mov byte [rbx + bufferHdr.wDrvNumFlg], freeBuffer
+   294 0000702C 4889DF              <1>     mov rdi, rbx
+   295 0000702F EB0F                <1>     jmp short .buildGetBPB              
+   296                              <1> .dpbNotIbm:
+   297                              <1> ;Get a buffer for the driver to use as scratch space
+   298 00007031 488B3D(5D000000)    <1>     mov rdi, qword [bufHeadPtr]
+   299 00007038 E86A97FFFF          <1>     call flushAndFreeBuffer
+   300                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -16765,186 +16765,187 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   300                              <1> .buildGetBPB:
-   301 00007040 E823010000          <1>     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
-   302 00007045 488B751B            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
-   303 00007049 E86CFDFFFF          <1>     call goDriver   ;Request!
-   304 0000704E 0FB77B03            <1>     movzx edi, word [rbx + bpbBuildReqPkt.status]
-   305 00007052 F7C700800000        <1>     test edi, drvErrStatus
-   306 00007058 751D                <1>     jnz .diskDrvCritErr
-   307                              <1>     ;Now rebuild the dpb fields for this drive
-   308 0000705A 488B7316            <1>     mov rsi, qword [rbx + bpbBuildReqPkt.bpbptr]    ;Get ptr to BPB
-   309 0000705E 53                  <1>     push rbx
-   310 0000705F E8180A0000          <1>     call createDPB  ;Modifies rbx and clears the free cluster count
-   311 00007064 5B                  <1>     pop rbx
-   312                              <1>     ;Adjust the buffer header information
-   313 00007065 8B4513              <1>     mov eax, dword [rbp + dpb.dFATlength]
-   314 00007068 894313              <1>     mov dword [rbx + bufferHdr.bufFATsize], eax
-   315 0000706B 8A4508              <1>     mov al, byte [rbp + dpb.bNumberOfFATs]
-   316 0000706E 884312              <1>     mov byte [rbx + bufferHdr.bufFATcopy], al
-   317 00007071 30E4                <1>     xor ah, ah    ;Set ZF and clear CF
-   318 00007073 886524              <1>     mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
-   319                              <1>     return
+   301                              <1> .buildGetBPB:
+   302 00007040 E823010000          <1>     call primReqGetBPBSetup  ;Prepare to get BPB, get request header in rbx
+   303 00007045 488B751B            <1>     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rsi to driverhdr
+   304 00007049 E86CFDFFFF          <1>     call goDriver   ;Request!
+   305 0000704E 0FB77B03            <1>     movzx edi, word [rbx + bpbBuildReqPkt.status]
+   306 00007052 F7C700800000        <1>     test edi, drvErrStatus
+   307 00007058 751D                <1>     jnz .diskDrvCritErr
+   308                              <1>     ;Now rebuild the dpb fields for this drive
+   309 0000705A 488B7316            <1>     mov rsi, qword [rbx + bpbBuildReqPkt.bpbptr]    ;Get ptr to BPB
+   310 0000705E 53                  <1>     push rbx
+   311 0000705F E8180A0000          <1>     call createDPB  ;Modifies rbx and clears the free cluster count
+   312 00007064 5B                  <1>     pop rbx
+   313                              <1>     ;Adjust the buffer header information
+   314 00007065 8B4513              <1>     mov eax, dword [rbp + dpb.dFATlength]
+   315 00007068 894313              <1>     mov dword [rbx + bufferHdr.bufFATsize], eax
+   316 0000706B 8A4508              <1>     mov al, byte [rbp + dpb.bNumberOfFATs]
+   317 0000706E 884312              <1>     mov byte [rbx + bufferHdr.bufFATcopy], al
+   318 00007071 30E4                <1>     xor ah, ah    ;Set ZF and clear CF
+   319 00007073 886524              <1>     mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
+   320                              <1>     return
     13                              <2> %%_ret:
     14 00007076 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   320                              <1> .diskDrvCritErr:
-   321                              <1> ;Critical Errors fall through here
-   322                              <1>     ;rbp has dpb ptr, di has status word, rsi points to the driver
-   323 00007077 C74531FFFFFFFF      <1>     mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset freecluster count
-   324 0000707E 48892D(89070000)    <1>     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-   325 00007085 B41A                <1>     mov ah, critRead | critFAT | critFailOK | critRetryOK
-   326 00007087 8825(68040000)      <1>     mov byte [Int24bitfld], ah  ;Save the permissions in var
-   327 0000708D 400FB6FF            <1>     movzx edi, dil  ;Clear the upper bytes, save only error code
-   328 00007091 E890F7FFFF          <1>     call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
-   329 00007096 488B2D(89070000)    <1>     mov rbp, qword [tmpDPBPtr]
-   330 0000709D 3C01                <1>     cmp al, critRetry
-   331 0000709F 0F84D9FEFFFF        <1>     je ensureDiskValid
-   332                              <1> .errorExitBad:
-   333 000070A5 F9                  <1>     stc     ;Set error flag to indicate fail
-   334                              <1>     return  ;And exit
+   321                              <1> .diskDrvCritErr:
+   322                              <1> ;Critical Errors fall through here
+   323                              <1>     ;rbp has dpb ptr, di has status word, rsi points to the driver
+   324 00007077 C74531FFFFFFFF      <1>     mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset freecluster count
+   325 0000707E 48892D(89070000)    <1>     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
+   326                              <1>     ;mov ah, critRead | critFAT | critFailOK | critRetryOK
+   327 00007085 B418                <1>     mov ah, critRead | critDOS | critFailOK | critRetryOK
+   328 00007087 8825(68040000)      <1>     mov byte [Int24bitfld], ah  ;Save the permissions in var
+   329 0000708D 400FB6FF            <1>     movzx edi, dil  ;Clear the upper bytes, save only error code
+   330 00007091 E890F7FFFF          <1>     call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
+   331 00007096 488B2D(89070000)    <1>     mov rbp, qword [tmpDPBPtr]
+   332 0000709D 3C01                <1>     cmp al, critRetry
+   333 0000709F 0F84D9FEFFFF        <1>     je ensureDiskValid
+   334                              <1> .errorExitBad:
+   335 000070A5 F9                  <1>     stc     ;Set error flag to indicate fail
+   336                              <1>     return  ;And exit
     13                              <2> %%_ret:
     14 000070A6 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   335                              <1> 
-   336                              <1> .dirtyBufferError:
-   337                              <1> ;We can only enter this error if we returned media changed.
-   338                              <1> ;We will never enter here if we returned media unknown.
-   339 000070A7 55                  <1>     push rbp
-   340 000070A8 488B6D1B            <1>     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
-   341 000070AC 66F745080008        <1>     test word [rbp + drvHdr.attrib], devDrvHdlCTL
-   342 000070B2 5D                  <1>     pop rbp
-   343 000070B3 74F0                <1>     jz .errorExitBad    ;Just return fail if bit not set
-   344                              <1>     ;rbp points to the dpb still
-   345 000070B5 57                  <1>     push rdi
-   346 000070B6 488B3D(D0040000)    <1>     mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
-   347 000070BD 48893D(0F040000)    <1>     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
-   348 000070C4 5F                  <1>     pop rdi ;Get back the buffer pointer
-   349 000070C5 C605(68040000)18    <1>     mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
-   350                              <1> ;Do not touch the read/write flag as this is set by the read/write operation.
-   351                              <1> ;It is meaningless in the error here, but may affect the message
-   352                              <1> ; that comes up on the handler (not a big deal). Since we report a bad
-   353                              <1> ; media change here, it should be obvious not to include the read/write 
-   354                              <1> ; string.
-   355 000070CC B80F000000          <1>     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
-   356 000070D1 E8E6F6FFFF          <1>     call diskDevErr
-   357 000070D6 3C03                <1>     cmp al, critFail    ;Did the user select fail?
-   358 000070D8 0F85A0FEFFFF        <1>     jne ensureDiskValid  ;If not, try again!
-   359 000070DE B822000000          <1>     mov eax, errIDC     ;Else, report an invalid disk swap error!
-   360 000070E3 E9BDFFFFFF          <1>     jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
-   361                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
-   362                              <1> ;           Primitive Driver Requests
+   337                              <1> 
+   338                              <1> .dirtyBufferError:
+   339                              <1> ;We can only enter this error if we returned media changed.
+   340                              <1> ;We will never enter here if we returned media unknown.
+   341 000070A7 55                  <1>     push rbp
+   342 000070A8 488B6D1B            <1>     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
+   343 000070AC 66F745080008        <1>     test word [rbp + drvHdr.attrib], devDrvHdlCTL
+   344 000070B2 5D                  <1>     pop rbp
+   345 000070B3 74F0                <1>     jz .errorExitBad    ;Just return fail if bit not set
+   346                              <1>     ;rbp points to the dpb still
+   347 000070B5 57                  <1>     push rdi
+   348 000070B6 488B3D(D0040000)    <1>     mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
+   349 000070BD 48893D(0F040000)    <1>     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
+   350 000070C4 5F                  <1>     pop rdi ;Get back the buffer pointer
+   351 000070C5 C605(68040000)18    <1>     mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
+   352                              <1> ;Do not touch the read/write flag as this is set by the read/write operation.
+   353                              <1> ;It is meaningless in the error here, but may affect the message
+   354                              <1> ; that comes up on the handler (not a big deal). Since we report a bad
+   355                              <1> ; media change here, it should be obvious not to include the read/write 
+   356                              <1> ; string.
+   357 000070CC B80F000000          <1>     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
+   358 000070D1 E8E6F6FFFF          <1>     call diskDevErr
+   359 000070D6 3C03                <1>     cmp al, critFail    ;Did the user select fail?
+   360 000070D8 0F85A0FEFFFF        <1>     jne ensureDiskValid  ;If not, try again!
+   361 000070DE B822000000          <1>     mov eax, errIDC     ;Else, report an invalid disk swap error!
+   362 000070E3 E9BDFFFFFF          <1>     jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
    363                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
-   364                              <1> ;First are Disk requests, then Char device requests
-   365                              <1> ;All Disk Driver Requests come with at least rbp pointing to DPB
-   366                              <1> ;All Char Requests come with rsi pointing to the Char device driver
-   367                              <1> 
-   368                              <1> primReqWriteSetup:
-   369 000070E8 50                  <1>     push rax
-   370 000070E9 B408                <1>     mov ah, drvWRITE    ;Command code
-   371 000070EB 0225(D0030000)      <1>     add ah, byte [verifyFlag]   ;Add verify if needed to be added
-   372 000070F1 EB03                <1>     jmp short primReqRWCommon
-   373                              <1> primReqReadSetup:
-   374 000070F3 50                  <1>     push rax
-   375 000070F4 B404                <1>     mov ah, drvREAD
-   376                              <1> primReqRWCommon:
-   377                              <1> ;Sets up the IO request packet with:
-   378                              <1> ; rbp = DPB ptr | NullPtr if a char dev
-   379                              <1> ; rbx = Data storage buffer ptr
-   380                              <1> ; ecx = Number of sectors to transfer
-   381                              <1> ; rdx = Starting sector to read/write from/to | Undefined if a char dev
-   382                              <1> ; ~~~~ Set by entry function ~~~~ 
-   383                              <1> ; ah = Command code
-   384                              <1> ; All regs preserved EXCEPT rbx.
-   385                              <1> ; Return: rbx = Transfer Address
-   386 000070F6 48891D(CF040000)    <1>     mov qword [primReqPkt + ioReqPkt.bufptr], rbx   ;Buffer
-   387 000070FD 890D(D7040000)      <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
-   388 00007103 C605(C1040000)2A    <1>     mov byte [primReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
-   389 0000710A 2500FF0000          <1>     and eax, 0000FF00h  ;Clear the upper word (status word) and al
-   390 0000710F 8905(C2040000)      <1>     mov dword [primReqPkt + ioReqPkt.unitnm], eax   ;Clear unit number field
-   391 00007115 4885ED              <1>     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
-   392 00007118 7419                <1>     jz primReqCommonExit    ;If char request, exit!
-   393                              <1>     ;Disk operations only here!
-   394 0000711A 488915(DB040000)    <1>     mov qword [primReqPkt + ioReqPkt.strtsc], rdx   ;Start sector
-   395 00007121 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   396 00007124 8805(CE040000)      <1>     mov byte [primReqPkt + ioReqPkt.medesc], al ;Store medesc!
-   397 0000712A 8A4501              <1>     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
-   398 0000712D 8805(C2040000)      <1>     mov byte [primReqPkt + ioReqPkt.unitnm], al ;Store the unit number
-   399                              <1> primReqCommonExit:
-   400                              <1> ;Returns in rbx the primary request header as these functions
-   401                              <1> ; setup the request in the primary request header space
-   402 00007133 58                  <1>     pop rax
-   403 00007134 488D1D(C1040000)    <1>     lea rbx, primReqPkt ;Put in rbx the primary request header
-   404                              <1>     return
+   364                              <1> ;           Primitive Driver Requests
+   365                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
+   366                              <1> ;First are Disk requests, then Char device requests
+   367                              <1> ;All Disk Driver Requests come with at least rbp pointing to DPB
+   368                              <1> ;All Char Requests come with rsi pointing to the Char device driver
+   369                              <1> 
+   370                              <1> primReqWriteSetup:
+   371 000070E8 50                  <1>     push rax
+   372 000070E9 B408                <1>     mov ah, drvWRITE    ;Command code
+   373 000070EB 0225(D0030000)      <1>     add ah, byte [verifyFlag]   ;Add verify if needed to be added
+   374 000070F1 EB03                <1>     jmp short primReqRWCommon
+   375                              <1> primReqReadSetup:
+   376 000070F3 50                  <1>     push rax
+   377 000070F4 B404                <1>     mov ah, drvREAD
+   378                              <1> primReqRWCommon:
+   379                              <1> ;Sets up the IO request packet with:
+   380                              <1> ; rbp = DPB ptr | NullPtr if a char dev
+   381                              <1> ; rbx = Data storage buffer ptr
+   382                              <1> ; ecx = Number of sectors to transfer
+   383                              <1> ; rdx = Starting sector to read/write from/to | Undefined if a char dev
+   384                              <1> ; ~~~~ Set by entry function ~~~~ 
+   385                              <1> ; ah = Command code
+   386                              <1> ; All regs preserved EXCEPT rbx.
+   387                              <1> ; Return: rbx = Transfer Address
+   388 000070F6 48891D(CF040000)    <1>     mov qword [primReqPkt + ioReqPkt.bufptr], rbx   ;Buffer
+   389 000070FD 890D(D7040000)      <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
+   390 00007103 C605(C1040000)2A    <1>     mov byte [primReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
+   391 0000710A 2500FF0000          <1>     and eax, 0000FF00h  ;Clear the upper word (status word) and al
+   392 0000710F 8905(C2040000)      <1>     mov dword [primReqPkt + ioReqPkt.unitnm], eax   ;Clear unit number field
+   393 00007115 4885ED              <1>     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
+   394 00007118 7419                <1>     jz primReqCommonExit    ;If char request, exit!
+   395                              <1>     ;Disk operations only here!
+   396 0000711A 488915(DB040000)    <1>     mov qword [primReqPkt + ioReqPkt.strtsc], rdx   ;Start sector
+   397 00007121 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   398 00007124 8805(CE040000)      <1>     mov byte [primReqPkt + ioReqPkt.medesc], al ;Store medesc!
+   399 0000712A 8A4501              <1>     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
+   400 0000712D 8805(C2040000)      <1>     mov byte [primReqPkt + ioReqPkt.unitnm], al ;Store the unit number
+   401                              <1> primReqCommonExit:
+   402                              <1> ;Returns in rbx the primary request header as these functions
+   403                              <1> ; setup the request in the primary request header space
+   404 00007133 58                  <1>     pop rax
+   405 00007134 488D1D(C1040000)    <1>     lea rbx, primReqPkt ;Put in rbx the primary request header
+   406                              <1>     return
     13                              <2> %%_ret:
     14 0000713B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   405                              <1> 
-   406                              <1> primReqMedCheckSetup:
-   407                              <1> ;Prepare the diskIO packet for mediacheck
-   408                              <1> ;rbp has DPB pointer for device to check media on
-   409 0000713C 50                  <1>     push rax
-   410 0000713D C605(C1040000)17    <1>     mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
-   411 00007144 C605(C3040000)01    <1>     mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
-   412                              <1> .cmn:
-   413 0000714B 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   414 0000714E 8805(CE040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
-   415 00007154 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
-   416 00007157 8805(C2040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
-   417 0000715D 66C705(C4040000)00- <1>     mov word [primReqPkt + mediaCheckReqPkt.status], 0
-   417 00007165 00                  <1>
-   418 00007166 EBCB                <1>     jmp short primReqCommonExit
-   419                              <1> 
-   420                              <1> primReqGetBPBSetup:
-   421                              <1> ;rbp has DPB pointer for device
-   422                              <1> ;rdi has sector buffer header pointer for transfer
-   423 00007168 50                  <1>     push rax
-   424 00007169 488D4720            <1>     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
-   425 0000716D 488905(CF040000)    <1>     mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rax
-   426 00007174 C605(C1040000)1E    <1>     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
-   427 0000717B C605(C3040000)02    <1>     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-   428 00007182 EBC7                <1>     jmp short primReqMedCheckSetup.cmn
-   429                              <1> 
-   430                              <1> primReqOpenSetup:
-   431                              <1> ;al = unit number if a disk device. Undefined otherwise
-   432 00007184 50                  <1>     push rax
-   433 00007185 B40D                <1>     mov ah, drvOPEN
-   434 00007187 EB03                <1>     jmp short primReqOCcommon
-   435                              <1> primReqCloseSetup:
-   436                              <1> ;al = unit number if a disk device. Undefined otherwise
-   437 00007189 50                  <1>     push rax
-   438 0000718A B40E                <1>     mov ah, drvCLOSE
-   439                              <1> primReqOCcommon:
-   440 0000718C C605(C1040000)0D    <1>     mov byte [primReqPkt + openReqPkt.hdrlen], openReqPkt_size
-   441 00007193 98                  <1>     cwde   ;Sign extend (but top bit is zero so zero extend)
-   442 00007194 8905(C2040000)      <1>     mov dword [primReqPkt + openReqPkt.unitnm], eax
-   443                              <1>     ;Cover unit number (if disk drive, cmdcde and status)
-   444 0000719A E994FFFFFF          <1>     jmp primReqCommonExit   ;Now simply exit
-   445                              <1> 
-   446                              <1> secdReqCharIOReq:
-   447                              <1> ;Sets up the request packet to transfer 1 byte to/from the singleIOByt buffer.
-   448                              <1> ;Input:
-   449                              <1> ; ah =  Data Request code (Read/Write/Write with Verify)
-   450                              <1> ; ecx = Length of buffer
-   451                              <1> ; rdi = Buffer pointer
-   452                              <1> ;Output: 
-   453                              <1> ; rbx = Transfer Address 
-   454 0000719F 488D1D(97040000)    <1>     lea rbx, secdReqPkt
-   455 000071A6 C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-   456 000071A9 886302              <1>     mov byte [rbx + ioReqPkt.cmdcde], ah
-   457 000071AC 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
-   458 000071B2 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
-   459 000071B6 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
-   460                              <1>     return
+   407                              <1> 
+   408                              <1> primReqMedCheckSetup:
+   409                              <1> ;Prepare the diskIO packet for mediacheck
+   410                              <1> ;rbp has DPB pointer for device to check media on
+   411 0000713C 50                  <1>     push rax
+   412 0000713D C605(C1040000)17    <1>     mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+   413 00007144 C605(C3040000)01    <1>     mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
+   414                              <1> .cmn:
+   415 0000714B 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   416 0000714E 8805(CE040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
+   417 00007154 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
+   418 00007157 8805(C2040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
+   419 0000715D 66C705(C4040000)00- <1>     mov word [primReqPkt + mediaCheckReqPkt.status], 0
+   419 00007165 00                  <1>
+   420 00007166 EBCB                <1>     jmp short primReqCommonExit
+   421                              <1> 
+   422                              <1> primReqGetBPBSetup:
+   423                              <1> ;rbp has DPB pointer for device
+   424                              <1> ;rdi has sector buffer header pointer for transfer
+   425 00007168 50                  <1>     push rax
+   426 00007169 488D4720            <1>     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
+   427 0000716D 488905(CF040000)    <1>     mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rax
+   428 00007174 C605(C1040000)1E    <1>     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+   429 0000717B C605(C3040000)02    <1>     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+   430 00007182 EBC7                <1>     jmp short primReqMedCheckSetup.cmn
+   431                              <1> 
+   432                              <1> primReqOpenSetup:
+   433                              <1> ;al = unit number if a disk device. Undefined otherwise
+   434 00007184 50                  <1>     push rax
+   435 00007185 B40D                <1>     mov ah, drvOPEN
+   436 00007187 EB03                <1>     jmp short primReqOCcommon
+   437                              <1> primReqCloseSetup:
+   438                              <1> ;al = unit number if a disk device. Undefined otherwise
+   439 00007189 50                  <1>     push rax
+   440 0000718A B40E                <1>     mov ah, drvCLOSE
+   441                              <1> primReqOCcommon:
+   442 0000718C C605(C1040000)0D    <1>     mov byte [primReqPkt + openReqPkt.hdrlen], openReqPkt_size
+   443 00007193 98                  <1>     cwde   ;Sign extend (but top bit is zero so zero extend)
+   444 00007194 8905(C2040000)      <1>     mov dword [primReqPkt + openReqPkt.unitnm], eax
+   445                              <1>     ;Cover unit number (if disk drive, cmdcde and status)
+   446 0000719A E994FFFFFF          <1>     jmp primReqCommonExit   ;Now simply exit
+   447                              <1> 
+   448                              <1> secdReqCharIOReq:
+   449                              <1> ;Sets up the request packet to transfer 1 byte to/from the singleIOByt buffer.
+   450                              <1> ;Input:
+   451                              <1> ; ah =  Data Request code (Read/Write/Write with Verify)
+   452                              <1> ; ecx = Length of buffer
+   453                              <1> ; rdi = Buffer pointer
+   454                              <1> ;Output: 
+   455                              <1> ; rbx = Transfer Address 
+   456 0000719F 488D1D(97040000)    <1>     lea rbx, secdReqPkt
+   457 000071A6 C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+   458 000071A9 886302              <1>     mov byte [rbx + ioReqPkt.cmdcde], ah
+   459 000071AC 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
+   460 000071B2 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
+   461 000071B6 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
+   462                              <1>     return
     13                              <2> %%_ret:
     14 000071B9 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   461                              <1> ;If the device which will process this request is a disk device
-   462                              <1> ; then we will be requesting 1 sector of data to a disk buffer.
-   463                              <1> ;Then we will read the appropriate byte from that buffer to the 
-   464                              <1> ; singleIOByt buffer.
-   465                              <1> ;Such a request will require additional setup with the following fields:
-   466                              <1> ; .unitnm, .medesc, .bufptr, .strtsc
+   463                              <1> ;If the device which will process this request is a disk device
+   464                              <1> ; then we will be requesting 1 sector of data to a disk buffer.
+   465                              <1> ;Then we will read the appropriate byte from that buffer to the 
+   466                              <1> ; singleIOByt buffer.
+   467                              <1> ;Such a request will require additional setup with the following fields:
+   468                              <1> ; .unitnm, .medesc, .bufptr, .strtsc
     50                                  %include "./src/Kernel/Core/dosUtils.asm"
      1                              <1> ;DOS utility functions 
      2                              <1> 

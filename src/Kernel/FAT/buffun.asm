@@ -168,7 +168,7 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     jz .fbFreeExit  ;Skip write to disk if data not modified
     cmp al, byte [errorDrv] ;Was this drive the error drive?    
     je .fbFreeExit  ;Skip write if this disk has caused an error
-    mov byte [Int24bitfld], critRetryOK | critFailOK
+    mov byte [Int24bitfld], critWrite | critRetryOK | critFailOK
     test ah, dataBuffer
     jz .fbWriteSetup
     or byte [Int24bitfld], critIgnorOK  ;If this is a data buffer, we can ignore too
@@ -400,7 +400,7 @@ readSectorBuffer:   ;Internal Linkage
 ; is under no thread of being reallocated.
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
     mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer and clear dirty/ref bits
-    mov byte [Int24bitfld], critRead    ;Set the initial bitfield to read req
+    mov byte [Int24bitfld], critRead | critFailOK | critRetryOK
     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry
     jne .fail   ;Else we fail (Ignore=Fail here)

@@ -290,6 +290,7 @@ ensureDiskValid:
     mov eax, 1              ;Read sector 1 into a buffer
     call getBufForFat       ;Point rbx to the buffer
     retc
+    ;mov byte [rbx + bufferHdr.wDrvNumFlg], freeBuffer
     mov rdi, rbx
     jmp short .buildGetBPB              
 .dpbNotIbm:
@@ -322,7 +323,8 @@ ensureDiskValid:
     ;rbp has dpb ptr, di has status word, rsi points to the driver
     mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset freecluster count
     mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    mov ah, critRead | critFAT | critFailOK | critRetryOK
+    ;mov ah, critRead | critFAT | critFailOK | critRetryOK
+    mov ah, critRead | critDOS | critFailOK | critRetryOK
     mov byte [Int24bitfld], ah  ;Save the permissions in var
     movzx edi, dil  ;Clear the upper bytes, save only error code
     call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
