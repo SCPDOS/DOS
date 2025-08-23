@@ -1177,11 +1177,15 @@ errTblLen equ $ - .biosErrTbl
     jmp short .bioNoDiskErr
 
 .devOpen:         ;Function 13
+    test word [rbp + drvBlk.wDevFlgs], devChgLine
+    retz    ;Only modify the open and closed counts is a changeline present!
     cmp word [rbp + drvBlk.wOpenCnt], -1
     rete  ;Inc past -1 does nothing!
     inc word [rbp + drvBlk.wOpenCnt]
     return
 .devClose:        ;Function 14
+    test word [rbp + drvBlk.wDevFlgs], devChgLine
+    retz
     cmp word [rbp + drvBlk.wOpenCnt], 0
     rete    ;Dec past zero does nothing
     dec word [rbp + drvBlk.wOpenCnt]
