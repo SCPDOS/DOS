@@ -206,7 +206,9 @@ getDiskDPB:
     jnz .next
     cmp qword [rdi + cds.qDPBPtr], rbp  ;If the dpb ptr matches, reset
     jne .next   ;Else, goto next
-    mov dword [rdi + cds.dStartCluster], -1  ;Reset start cluster!
+    mov dword [rdi + cds.dStartCluster], 0     ;Reset start cluster!
+    mov byte [rdi + cds.sCurrentPath + 3], 0    ;Reset the path too :)
+    mov word [rdi + cds.wBackslashOffset], 2
 .next:
     add rdi, cds_size
     dec ecx
