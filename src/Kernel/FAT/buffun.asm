@@ -399,11 +399,11 @@ readSectorBuffer:   ;Internal Linkage
 ;This function is called in a critical section so the buffer pointer
 ; is under no thread of being reallocated.
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer and clear dirty/ref bits
+    mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer
     mov byte [Int24bitfld], critRead | critFailOK | critRetryOK
     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry
-    jne .fail   ;Else we fail (Ignore=Fail here)
+    jne .fail   ;Else we fail
     movzx eax, byte [rbp + dpb.bDriveNumber]    ;Get drv num to put back
     mov byte [rdi + bufferHdr.driveNumber], al ;Put it back (buffer type bits set)
     jmp short .rsRequest0

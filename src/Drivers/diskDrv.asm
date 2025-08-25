@@ -822,8 +822,6 @@ errTblLen equ $ - .biosErrTbl
 ;rbx points to the disk BPB. May be bad so we need to ensure the values 
 ; are ok before updating the msdTbl entry. 
 .ubpbMoveBpb:
-    mov rsi, rbx    ;Source from the BPB in disk buffer
-    lea rdi, qword [rbp + drvBlk.bpb]
     call .getFATType    ;Fat type is given in edx
     jc .ubpbErr ;Only happens if crucial BPB fields are zero 
     mov byte [rbp + drvBlk.bBpbType], dl    ;Save the FAT type
@@ -833,6 +831,8 @@ errTblLen equ $ - .biosErrTbl
     mov ecx, bpb32_size - 12    ;BPB32 minus reserved count
     cmp dl, bpbFat32
     cmovne ecx, eax     ;If not FAT32, replace move count
+    mov rsi, rbx    ;Source from the BPB in disk buffer
+    lea rdi, qword [rbp + drvBlk.bpb]
     rep movsb        ;Now copy the BPB over!
     clc     ;Ensure if we return here, we return with CF happy :)
     return

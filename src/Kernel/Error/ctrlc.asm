@@ -3,7 +3,7 @@ diskIOError:
 ;Called in Binary Disk Read/Write if getting access to shared resource fails
 ;Input: rwFlag = 0 or 1 for read/write
 ;       eax = Status word
-;       rdi -> disk pointer
+;       rdi -> buffer pointer
 ;       rbp -> DPB ptr
     cmp al, drvBadDskChnge
     jne .doReq
@@ -13,7 +13,7 @@ diskIOError:
     ;Later versions will include a serial number after the lbl too
     pop rax
 .doReq:
-    call diskDevErr ;Preserves the disk pointer
+    call diskDevErr ;Preserves rdi on stack and rbp in tmpDPBPtr
     return
 xlatHardError:
 ;Translates a hard error code to a generic DOS error
@@ -64,7 +64,7 @@ diskDevErr:
     je .skipbufferread  ;Jump if so, since share lock issues occur on data io
     mov bl, byte [rdi + bufferHdr.bufferFlags]  ;Else get the buffer data type
 .skipbufferread:
-    push rdi        ;Save the buffer pointer
+    push rdi        ;Save the disk buffer pointer
     movzx edi, al   ;Store status code in dil, zero extend
     cmp edi, drvWPErr
     jne .notReset

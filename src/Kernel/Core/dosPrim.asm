@@ -186,7 +186,8 @@ getDiskDPB:
 ;Called with rdi pointing to the CDS
 ;CF=NC => RBP=WorkingDPB=DPBptr, CF=CY => Error exit
     mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get 0 based drive number
+.cmn:
+    movzx eax, byte [rbp + dpb.bDriveNumber]   ;Get 0 based drive number
     mov [workingDrv], al    ;Save working drive number in working drive variable
     call setWorkingDPB
     push rdi    ;Save the CDS ptr
@@ -195,10 +196,9 @@ getDiskDPB:
     retc
     jnz .exit
     ;Here re-init all CDS's that refer to the dpb if the disk was switched
+    push rcx
     movzx ecx, byte [lastdrvNum]
-    xor eax, eax
-    dec eax ; -1 means start of root dir and never accessed (i.e. reset path)!
-    mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
+    mov rsi, qword [workingDPB]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
 .checkCDS:
 ;Redir are skipped as they are not associated with a DPB
@@ -206,11 +206,12 @@ getDiskDPB:
     jnz .next
     cmp qword [rdi + cds.qDPBPtr], rsi  ;If the dpb ptr matches, reset
     jne .next   ;Else, goto next
-    mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
+    mov dword [rdi + cds.dStartCluster], -1  ;Reset start cluster!
 .next:
     add rdi, cds_size
     dec ecx
     jnz .checkCDS
+    pop rcx
 .exit:
     clc
     return
@@ -290,7 +291,6 @@ ensureDiskValid:
     mov eax, 1              ;Read sector 1 into a buffer
     call getBufForFat       ;Point rbx to the buffer
     retc
-    ;mov byte [rbx + bufferHdr.wDrvNumFlg], freeBuffer
     mov rdi, rbx
     jmp short .buildGetBPB              
 .dpbNotIbm:
