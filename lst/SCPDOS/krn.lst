@@ -7233,10 +7233,8 @@
    604                              <1> ;Input: rdi -> SFT
    605                              <1> ;Output: CF=NC: rsi -> Updated dir entry in buffer
    606                              <1> ;               rdi -> SFT
-   607                              <1>     ;push qword [rdi + sft.qDirSect] ;Get the directory sector for this file
-   608 00002449 E83E2D0000          <1>     call setDPBfromSFT
-   609                              <1>     ;pop rax
-   610                              <1>     retc
+   607 00002449 E83E2D0000          <1>     call setDPBfromSFT
+   608                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -7260,11 +7258,11 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   611 00002451 488B4727            <1>     mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
-   612 00002455 C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
-   613 0000245C C605(68040000)18    <1>     mov byte [Int24bitfld], critFailOK | critRetryOK
-   614 00002463 E898E5FFFF          <1>     call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
-   615                              <1>     retc    ;If an error is to be returned from, we skip the rest of this
+   609 00002451 488B4727            <1>     mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
+   610 00002455 C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
+   611 0000245C C605(68040000)18    <1>     mov byte [Int24bitfld], critFailOK | critRetryOK
+   612 00002463 E898E5FFFF          <1>     call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
+   613                              <1>     retc    ;If an error is to be returned from, we skip the rest of this
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -7288,93 +7286,93 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   616 0000246B 488B3D(32070000)    <1>     mov rdi, qword [currentSFT] ;Reobtain the SFT ptr
-   617 00002472 488D7320            <1>     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Goto data area
-   618 00002476 0FB65F2F            <1>     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
-   619 0000247A C1E305              <1>     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
-   620 0000247D 4801DE              <1>     add rsi, rbx    ;Move rsi to point to the directory entry
-   621                              <1>     return
+   614 0000246B 488B3D(32070000)    <1>     mov rdi, qword [currentSFT] ;Reobtain the SFT ptr
+   615 00002472 488D7320            <1>     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Goto data area
+   616 00002476 0FB65F2F            <1>     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
+   617 0000247A C1E305              <1>     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
+   618 0000247D 4801DE              <1>     add rsi, rbx    ;Move rsi to point to the directory entry
+   619                              <1>     return
     13                              <2> %%_ret:
     14 00002480 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   622                              <1> 
-   623                              <1> growDirectory:
-   624                              <1> ;Input: dword [dirClustPar] must have the first cluster number of the directory
-   625                              <1> ;Output: CF=NC => All ok, directory grew by 1 sector
-   626                              <1> ;                 eax = New Cluster number
-   627                              <1> ;               TWO NON CF ERROR CASES.
-   628                              <1> ;               If eax = -1 => disk full!
-   629                              <1> ;               If eax = 0 => Trying to grow FAT12/16 root dir. Bad.
-   630                              <1> ;        CF=CY => Something went wrong. Rip. 
-   631 00002481 53                  <1>     push rbx
-   632 00002482 51                  <1>     push rcx
-   633 00002483 57                  <1>     push rdi
-   634 00002484 8B05(7B070000)      <1>     mov eax, dword [dirClustPar]    ;Get first cluster for directory
-   635 0000248A 85C0                <1>     test eax, eax
-   636 0000248C 742B                <1>     jz .exit
-   637 0000248E E81FE6FFFF          <1>     call getLastClusterInChain  ;Get last cluster in chain in eax
-   638 00002493 89C3                <1>     mov ebx, eax    ;Setup last cluster value in ebx
-   639 00002495 B901000000          <1>     mov ecx, 1  ;Allocate one more cluster
-   640 0000249A E892E6FFFF          <1>     call allocateClusters   ;ebx has last cluster value
-   641 0000249F 7218                <1>     jc .exit
-   642 000024A1 3DFFFFFFFF          <1>     cmp eax, -1 ;Disk full?
-   643 000024A6 7411                <1>     je .exit
-   644 000024A8 89D8                <1>     mov eax, ebx    ;Walk this next cluster value to get new cluster value
-   645 000024AA E868E8FFFF          <1>     call readFAT
-   646 000024AF 7208                <1>     jc .exit
-   647 000024B1 E807000000          <1>     call sanitiseCluster    ;Preserves all regs, sanitises the cluster for use
-   648 000024B6 7201                <1>     jc .exit
-   649 000024B8 F8                  <1>     clc
-   650                              <1> .exit:
-   651 000024B9 5F                  <1>     pop rdi
-   652 000024BA 59                  <1>     pop rcx
-   653 000024BB 5B                  <1>     pop rbx
-   654                              <1>     return   
+   620                              <1> 
+   621                              <1> growDirectory:
+   622                              <1> ;Input: dword [dirClustPar] must have the first cluster number of the directory
+   623                              <1> ;Output: CF=NC => All ok, directory grew by 1 sector
+   624                              <1> ;                 eax = New Cluster number
+   625                              <1> ;               TWO NON CF ERROR CASES.
+   626                              <1> ;               If eax = -1 => disk full!
+   627                              <1> ;               If eax = 0 => Trying to grow FAT12/16 root dir. Bad.
+   628                              <1> ;        CF=CY => Something went wrong. Rip. 
+   629 00002481 53                  <1>     push rbx
+   630 00002482 51                  <1>     push rcx
+   631 00002483 57                  <1>     push rdi
+   632 00002484 8B05(7B070000)      <1>     mov eax, dword [dirClustPar]    ;Get first cluster for directory
+   633 0000248A 85C0                <1>     test eax, eax
+   634 0000248C 742B                <1>     jz .exit
+   635 0000248E E81FE6FFFF          <1>     call getLastClusterInChain  ;Get last cluster in chain in eax
+   636 00002493 89C3                <1>     mov ebx, eax    ;Setup last cluster value in ebx
+   637 00002495 B901000000          <1>     mov ecx, 1  ;Allocate one more cluster
+   638 0000249A E892E6FFFF          <1>     call allocateClusters   ;ebx has last cluster value
+   639 0000249F 7218                <1>     jc .exit
+   640 000024A1 3DFFFFFFFF          <1>     cmp eax, -1 ;Disk full?
+   641 000024A6 7411                <1>     je .exit
+   642 000024A8 89D8                <1>     mov eax, ebx    ;Walk this next cluster value to get new cluster value
+   643 000024AA E868E8FFFF          <1>     call readFAT
+   644 000024AF 7208                <1>     jc .exit
+   645 000024B1 E807000000          <1>     call sanitiseCluster    ;Preserves all regs, sanitises the cluster for use
+   646 000024B6 7201                <1>     jc .exit
+   647 000024B8 F8                  <1>     clc
+   648                              <1> .exit:
+   649 000024B9 5F                  <1>     pop rdi
+   650 000024BA 59                  <1>     pop rcx
+   651 000024BB 5B                  <1>     pop rbx
+   652                              <1>     return   
     13                              <2> %%_ret:
     14 000024BC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   655                              <1> sanitiseCluster:
-   656                              <1> ;Sanitises the cluster in eax to all zeros
-   657                              <1> ;Does not move file pointers
-   658                              <1> ;Currently, is only called to sanitise subdirectory clusters
-   659                              <1> ;Input: eax = Cluster number
-   660                              <1> ;       qword [workingDPB] = DPB of drive whose cluster we are sanitising
-   661                              <1> ;Output: If CF=NC => eax = Sanitised Cluster number
-   662                              <1> ;        If CF=CY => Error, exit
-   663 000024BD 50                  <1>     push rax
-   664 000024BE 53                  <1>     push rbx
-   665 000024BF 51                  <1>     push rcx
-   666 000024C0 52                  <1>     push rdx
-   667 000024C1 56                  <1>     push rsi
-   668 000024C2 55                  <1>     push rbp
-   669 000024C3 488B2D(0A070000)    <1>     mov rbp, qword [workingDPB]
-   670 000024CA E8B6E5FFFF          <1>     call getStartSectorOfCluster    ;Needs DPB in rbp
-   671 000024CF 0FB65504            <1>     movzx edx, byte [rbp + dpb.bMaxSectorInCluster] 
-   672 000024D3 FFC2                <1>     inc edx ;Make it a count of sectors
-   673                              <1> .getSectorInCluster:
-   674 000024D5 E826E5FFFF          <1>     call getBufForDir  ;Get a generic data buffer in rbx
-   675 000024DA 721E                <1>     jc .exitBad
-   676 000024DC 488D7B20            <1>     lea rdi, qword [rbx + bufferHdr.dataarea]
-   677 000024E0 0FB74D02            <1>     movzx ecx, word [rbp + dpb.wBytesPerSector]
-   678 000024E4 31C0                <1>     xor eax, eax
-   679 000024E6 F3AA                <1>     rep stosb   ;Store one sectorful of zeros
-   680 000024E8 E8AEE3FFFF          <1>     call markBufferDirty ;We wrote to this buffer
-   681                              <1> 
-   682 000024ED FFCA                <1>     dec edx     ;One less sector in the cluster to sanitise!
-   683 000024EF 740A                <1>     jz .exit    ;Jump if we done
-   684 000024F1 488B430A            <1>     mov rax, qword [rbx + bufferHdr.bufferLBA] ;Get current sector number
-   685 000024F5 48FFC0              <1>     inc rax ;Goto next sector in cluster
-   686 000024F8 EBDB                <1>     jmp short .getSectorInCluster
-   687                              <1> .exitBad:
-   688 000024FA F9                  <1>     stc
-   689                              <1> .exit:
-   690 000024FB 5D                  <1>     pop rbp
-   691 000024FC 5E                  <1>     pop rsi
-   692 000024FD 5A                  <1>     pop rdx
-   693 000024FE 59                  <1>     pop rcx
-   694 000024FF 5B                  <1>     pop rbx
-   695 00002500 58                  <1>     pop rax
-   696                              <1>     return
+   653                              <1> sanitiseCluster:
+   654                              <1> ;Sanitises the cluster in eax to all zeros
+   655                              <1> ;Does not move file pointers
+   656                              <1> ;Currently, is only called to sanitise subdirectory clusters
+   657                              <1> ;Input: eax = Cluster number
+   658                              <1> ;       qword [workingDPB] = DPB of drive whose cluster we are sanitising
+   659                              <1> ;Output: If CF=NC => eax = Sanitised Cluster number
+   660                              <1> ;        If CF=CY => Error, exit
+   661 000024BD 50                  <1>     push rax
+   662 000024BE 53                  <1>     push rbx
+   663 000024BF 51                  <1>     push rcx
+   664 000024C0 52                  <1>     push rdx
+   665 000024C1 56                  <1>     push rsi
+   666 000024C2 55                  <1>     push rbp
+   667 000024C3 488B2D(0A070000)    <1>     mov rbp, qword [workingDPB]
+   668 000024CA E8B6E5FFFF          <1>     call getStartSectorOfCluster    ;Needs DPB in rbp
+   669 000024CF 0FB65504            <1>     movzx edx, byte [rbp + dpb.bMaxSectorInCluster] 
+   670 000024D3 FFC2                <1>     inc edx ;Make it a count of sectors
+   671                              <1> .getSectorInCluster:
+   672 000024D5 E826E5FFFF          <1>     call getBufForDir  ;Get a generic data buffer in rbx
+   673 000024DA 721E                <1>     jc .exitBad
+   674 000024DC 488D7B20            <1>     lea rdi, qword [rbx + bufferHdr.dataarea]
+   675 000024E0 0FB74D02            <1>     movzx ecx, word [rbp + dpb.wBytesPerSector]
+   676 000024E4 31C0                <1>     xor eax, eax
+   677 000024E6 F3AA                <1>     rep stosb   ;Store one sectorful of zeros
+   678 000024E8 E8AEE3FFFF          <1>     call markBufferDirty ;We wrote to this buffer
+   679                              <1> 
+   680 000024ED FFCA                <1>     dec edx     ;One less sector in the cluster to sanitise!
+   681 000024EF 740A                <1>     jz .exit    ;Jump if we done
+   682 000024F1 488B430A            <1>     mov rax, qword [rbx + bufferHdr.bufferLBA] ;Get current sector number
+   683 000024F5 48FFC0              <1>     inc rax ;Goto next sector in cluster
+   684 000024F8 EBDB                <1>     jmp short .getSectorInCluster
+   685                              <1> .exitBad:
+   686 000024FA F9                  <1>     stc
+   687                              <1> .exit:
+   688 000024FB 5D                  <1>     pop rbp
+   689 000024FC 5E                  <1>     pop rsi
+   690 000024FD 5A                  <1>     pop rdx
+   691 000024FE 59                  <1>     pop rcx
+   692 000024FF 5B                  <1>     pop rbx
+   693 00002500 58                  <1>     pop rax
+   694                              <1>     return
     13                              <2> %%_ret:
     14 00002501 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
@@ -13266,13 +13264,6 @@
   2799                              <1> ;        CF=CY: Error fail, exit
   2800 0000518C 488B6F07            <1>     mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
   2801 00005190 E9891D0000          <1>     jmp getDiskDPB.sftEp  ;Doing this will nullify CDS paths on disk swaps!
-  2802                              <1> ;    movzx eax, byte [rbp + dpb.bDriveNumber]
-  2803                              <1> ;    mov byte [workingDrv], al
-  2804                              <1> ;    call setWorkingDPB
-  2805                              <1> ;    push rdi    ;Save the SFT pointer
-  2806                              <1> ;    call ensureDiskValid
-  2807                              <1> ;    pop rdi
-  2808                              <1> ;    return
     43                                  %include "./src/Kernel/FileIO/ioctl.asm"
      1                              <1> ioctrl:            ;ah = 44h, handle function
      2                              <1> ;Possible subfunctions

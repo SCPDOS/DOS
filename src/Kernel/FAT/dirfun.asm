@@ -604,9 +604,7 @@ getAndUpdateDirSectorForFile:
 ;Input: rdi -> SFT
 ;Output: CF=NC: rsi -> Updated dir entry in buffer
 ;               rdi -> SFT
-    ;push qword [rdi + sft.qDirSect] ;Get the directory sector for this file
     call setDPBfromSFT
-    ;pop rax
     retc
     mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
     mov byte [errorLocus], eLocDsk
