@@ -365,6 +365,7 @@ msdDriver:
 ;Come here if the BIOS supplied code was not mapped to anything.
 ; We now get the SCSI code. Only a few cases make sense so
 ; we try and decypher. Else, general fault.
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 0100h
     call .callI33h
 ;Device Not Ready
@@ -450,12 +451,12 @@ errTblLen equ $ - .biosErrTbl
     call .checkDevFixed
     jnz .mmcNoChange
 .mcRem:
-    call .checkDevType
+    call .setDrvOwner
     test word [rbp + drvBlk.wDevFlgs], devChgLine
     jz .mmcNoChangeLine
-    mov dl, byte [rbp + drvBlk.bBIOSNum]
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
 ;Now we do a BIOS changeline check. 
-    call .checkMediaChange  ;If we know w
+    call .checkMediaChange  ;If we know we changed, skip the check
     jnz .mmcVolCheck
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
@@ -983,14 +984,13 @@ errTblLen equ $ - .biosErrTbl
 .read:              ;Function 4
 ;Will read one sector at a time.
     call .ioSetVolLbl
-    call .checkDevType
+    call .setDrvOwner
     call .checkSwap 
     jc .ioDoErr
-    mov rdi, rbx    ;Move ioreqpktptr to rdi
     call .bioSetupRegs
     retz
 .msdr0:
-    mov eax, 8200h  ;LBA Read function
+    mov dh, 82h  ;LBA Read function
     call .blkIO
     jc .ioDoErr
     call .ioAdv
@@ -1000,19 +1000,18 @@ errTblLen equ $ - .biosErrTbl
 .write:             ;Function 8/9
 ;Will write and optionally verify one sector at a time.
     call .ioSetVolLbl
-    call .checkDevType
+    call .setDrvOwner
     call .checkSwap 
     jc .ioDoErr
-    mov rdi, rbx    ;Move ioreqpktptr to rdi
     call .bioSetupRegs
     retz
 .msdw0:
-    mov eax, 8300h ;LBA Write Sectors
+    mov dh, 83h ;LBA Write Sectors
     call .blkIO
     jc .ioDoErr
     cmp byte [rdi + ioReqPkt.cmdcde], drvWRITEVERIFY
     jne .msdw1
-    mov eax, 8400h ;LBA Verify Sectors
+    mov dh, 84h ;LBA Verify Sectors
     call .blkIO
     jc .ioDoErr
 .msdw1:
@@ -1026,21 +1025,33 @@ errTblLen equ $ - .biosErrTbl
     jz .errorXlat
     jmp .errorExit
 
+.ioAdvIOCTL:
+;Increments the count of sectors transferred in LBA IOCTL operations
+;Input/Output: As below except for rdi -> lbaFormatBlock (or lbaIOBlock)
+;               Remember, lbaIOBlock is a superset of lbaFormatBlock 
+    inc byte [rdi + lbaIOBlock.numSectors]
+    jmp short .ioAdvCmn
 .ioAdv:
-;Advances the buffers on successful IO. 
+;Increments the count of sectors transferred in normal read/writes
+;Input/Output: As below except for rdi -> ioReqPkt only
+    inc dword [rdi + ioReqPkt.tfrlen]    ;One more sector xfred ok!
+.ioAdvCmn:
+;Advances the buffers on successful IO.
 ;If returns ZF=ZE, we have completed all the IO for the request.
 ;Input: 
 ;       rbx -> Where we just IO'ed to
 ;       rcx = LBA sector we just xfred
+;       dh  = BIOS function number
 ;       dl  = BIOS drive number
-;       rdi -> ioReqPkt
+;       rdi -> ioReqPkt / lbaFormatBlock / lbaIOBlock
 ;       rbp -> drvBlk
 ;       esi = Number of sectors to xfr
 ;Output:
 ;       rbx -> Where to IO next sector to/from
 ;       rcx = LBA of next sector to xfer
+;       dh  = BIOS function number
 ;       dl  = BIOS drive number
-;       rdi -> ioReqPkt
+;       rdi -> ioReqPkt / lbaFormatBlock / lbaIOBlock
 ;       rbp -> drvBlk
 ;       esi = Sectors left to xfr.
 ;       ZF=ZE if esi is 0. Else ZF=NZ.
@@ -1055,20 +1066,23 @@ errTblLen equ $ - .biosErrTbl
 .bioSetupRegs:
 ;Sets up sector to read and buffer ptr for block IO call.
 ;If returns ZF=ZE then xfr 0 sectors, exit immediately
-;Input: rdi -> ioReqPkt
-;       rbp -> drvBlk
+;Input: rbp -> drvBlk
 ;Output: rdi -> ioReqPkt
 ;        rbp -> drvBlk
 ;        rbx -> Transfer buffer
 ;        rcx = Sector to transfer
+;        dl  = BIOS Drive number
+;        dword [rdi + ioReqPkt.tfrlen] set to 0
 ;        esi = Number of sectors to transfer
 ;        ZF=ZE if esi is 0. Else ZF=NZ.
+    mov rdi, qword [reqPktPtr]  ;Get ioreqpktptr in rdi
     mov ecx, dword [rbp + drvBlk.dHiddSec]  ;Goto start of volume
     add rcx, qword [rdi + ioReqPkt.strtsc]  ;Get sector in volume
     mov rbx, qword [rdi + ioReqPkt.bufptr]  ;Get Memory Buffer
-    mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS drive number
-    mov esi, dword [rdi + ioReqPkt.tfrlen]  ;Get the tfrlen into esi
-    test esi, esi                           ;If this is 0, avoid IO
+    movzx edx, byte [rbp + drvBlk.bBIOSNum] ;Get BIOS drive number
+    xor esi, esi   ;Setup esi to 0 to init tfrlen to 0
+    xchg esi, dword [rdi + ioReqPkt.tfrlen]  ;Get the tfrlen into esi
+    test esi, esi   ;If esi is still 0, avoid doing IO
     return
 
 .blkIODirect:    ;Does block IO without sanity checking the sector number
@@ -1085,6 +1099,7 @@ errTblLen equ $ - .biosErrTbl
 ;       rbp -> drvBlk
 ;       rbx -> Transfer buffer
 ;       rcx = LBA sector to transfer
+;       dh  = BIOS function number
 ;       dl  = BIOS drive number
 ;       esi = Sectors left to xfr!  (Normal Read/Write only)
 ;Output: CF=NC: esi number of sectors xferred.
@@ -1098,14 +1113,14 @@ errTblLen equ $ - .biosErrTbl
     push rsi    ;Save sector count
     mov esi, 5  ;Retry counter five times
 .biolp:
-    mov al, 01h ;Do one sector 
-    call .callI33h  ;Preserves all passed regs except eax
+    mov al, 01h ;Do one sector
+    mov ah, dh  ;Get the function number into its proper place
+    call .callI33h  ;Preserves all passed regs except eax. eax trashed
     jc .bioError
     cmp al, 1   ;Did we do one sector?
     jne .bioNoIO    ;No, try again without calling BIOS error handling
     pop rsi ;Rebalance stack
 .bioExit:
-    ;mov dl, byte [rbp + drvBlk.bDOSNum]
     mov byte [.bLastDsk], dl    ;Last DOS disk accessed
     call .checkDevFixed
     retnz
@@ -1445,7 +1460,7 @@ errTblLen equ $ - .biosErrTbl
 .lgpbpbGetPhys:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8800h  ;Read LBA Device Parameters
-    int 33h
+    call .callI33h
     jc .errorXlat
     inc rcx         ;Turn into an absolute count of sectors
     xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media
@@ -1590,17 +1605,20 @@ errTblLen equ $ - .biosErrTbl
     jne .iobadCmdLen
 ;Setup the vars for block IO
     mov rdi, rdx
-    movzx esi, word [rdi + lbaFormatBlock.numSectors]
+;Formally numSectors is a byte and will only be treated as a byte but
+; we reserve the following three bytes for future updates to allow
+; up to a dword of contiguous sectors to be written in one go.
+    xor esi, esi
+    xchg esi, dword [rdi + lbaFormatBlock.numSectors]
     mov ecx, dword [rdi + lbaFormatBlock.startSector]
     add ecx, dword [rbp + drvBlk.dHiddSec]  ;Point to sector in partition
 .ioEp:
+    mov edx, eax    ;Move the function number into dh (and zero dl)
     mov dl, byte [rbp + drvBlk.bBIOSNum]    ;Get BIOS number for device
 .ioLp:
-    push rax        ;Always preserve the function number we are using
     call .blkIODirect
-    pop rax
     jc .ioDoErr
-    call .ioAdv
+    call .ioAdvIOCTL
     jnz .ioLp
     return
 ;---------------------------------------------------------------------------
@@ -1720,7 +1738,7 @@ errTblLen equ $ - .biosErrTbl
     return
 
 .setLogicalDev:   ;Function 24
-    call .checkDevType  ;Set the unit as the owner of this BIOS drive!
+    call .setDrvOwner  ;Set the unit as the owner of this BIOS drive!
     return
 
 .setupDrive:
@@ -1758,44 +1776,40 @@ errTblLen equ $ - .biosErrTbl
 ;Here, if we determine that a media swap occured, we must report a 
 ; bad disk change. That means, unsure or no swap simply return the 
 ; error code. 
-    movzx eax, byte [rbp + drvBlk.bMedDesc] ;Get original meddesc byte
-    push rax                                ;and save it on the stack
-    call .csiogetbpb    ;Now get new bpb
-    jc .csiogetbpberr   ;If error in getting the BPB, bubble it up
-    pop rax             ;Get back the FAT byte in al
-    call .checkFATSame  ;Returns status in eax
-    js .csioBadDskChg
-.csioExit:
-    mov ah, 06h         ;Maintain the BIOS error code here
-    return
-.csioBadDskChg:
-;Restore the stack to return directly to DOS and not caller. 
-;Place DOS error code into al
-    pop rax
-    pop rax
-    mov eax, drvBadDskChnge
-    jmp .errorExit
-.csiogetbpberr:
-;Return the error code from getbpb
-;Drop the saved media byte from the stack
-    add rsp, 8
-    stc
-    return      ;and return with rax = Error code from updatebpb
-.csiogetbpb:
-;Saves the IO registers for use across the updatebpb call and calls
-; the get bpb function
-    push rbx    
+    push rbx
     push rcx
     push rdx
     push rsi
     push rdi
-    call .updateBpb ;Update the BPB
+    movzx eax, byte [rbp + drvBlk.bMedDesc] ;Get original meddesc byte
+    push rax                                ;and save it on the stack
+    call .updateBpb     ;Update the BPB, if ok, rsi -> extBS  
+    jc .csiogetbpberr   ;If error in getting the BPB, bubble it up
+    pop rax             ;Get back the FAT byte in al
+    call .checkFATSame  ;Returns status in eax
+    test eax, eax       ;Set sign bit to exit via bad disk change exit
+    mov eax, 0600h      ;Else, return Changeline detected (ah = 06h)
+.csioExit:
     pop rdi
     pop rsi
     pop rdx
     pop rcx
     pop rbx
-    return
+;Return if returning disk swap status unsure or no swap!
+;Return if updateBPB failed. Error code for this in ah
+    retns
+;Fall through if disk swap check returns swapped! Bad Disk change error!
+;Restore the stack to return directly to driver error handler and not caller. 
+;Place DOS error code into al
+    pop rax ;Pop check io swap return address
+    pop rax ;Pop do io function return address
+    mov eax, drvBadDskChnge
+    jmp .errorExit
+.csiogetbpberr:
+;Return the error code from updateBPB
+    pop rbx             ;Pop the FAT byte off the stack, preserving ah = error
+    xor ebx, ebx        ;Clear SF
+    jmp short .csioExit ;and return with rax = Error code from updatebpb
     
 .checkSwap:
 ;Checks if the media represented by drvBlk has been swapped when it 
@@ -1815,15 +1829,20 @@ errTblLen equ $ - .biosErrTbl
 ;Since the open count is non-zero and a media swap has been seen (since
 ; the flag was set) we update the BPB and check if the media is the 
 ; same as the previous media. 
-    call .updateBpb     ;Update the BPB
+    call .updateBpb     ;Update the BPB. Destroys rbx and rsi!
     retc
     call .checkVolumeSame
+    test eax, eax
     retns   ;If the sign bit is not set (i.e. unsure or no change) return ok
 ;Else, we now return a bad disk change!
     pop rax ;Pop original return address off the stack
-    mov al, drvBadDskChnge  ;Driver error code
+    mov eax, drvBadDskChnge  ;Driver error code
     jmp .errorExit  ;Place error code in packet and return
 
+;Input for the below two functions:
+;   rsi -> extBS of the BPB that was just read in!
+;Output: eax = 0 means unsure, eax = 1 means no change, eax = -1 means change!
+;           Do not rely on flags as extBsSig may be something random!
 .checkFATSame:
 ;At this point, we are unsure of the media swap status. 
     cmp al, byte [rbp + drvBlk.bMedDesc]
@@ -1838,7 +1857,7 @@ errTblLen equ $ - .biosErrTbl
 ;      and implement in buildBPB a routine to read the volume label from the
 ;      root directory of whatever drive.
 ;----------------------------------------------------------------------------
-    xor eax, eax    ;Set eax = 0, unsure
+    xor eax, eax    ;Start off unsure
     cmp byte [rsi + extBs.bootSig], extBsSig
     retne
 ;Here if we have an extended boot signature. 
@@ -1849,7 +1868,7 @@ errTblLen equ $ - .biosErrTbl
     pop rax
     jne .cvsChange
 .cvsNoChange:
-    inc eax ;Make eax = 1, no change
+    inc eax         ;Make eax = 1, no change
     jmp .clearMediaChange    ;Exit tail calling through this function
 .cvsChange:
     dec eax ;Make eax = -1, change
@@ -1898,9 +1917,11 @@ errTblLen equ $ - .biosErrTbl
     cmp word [rbp + drvBlk.wOpenCnt], 0
     return
 
-.checkDevType:
-;Checks if we need to display the swap drive message and displays it if so.
-;The device must already be setup in rbp (and var) for this to work.
+.setDrvOwner:
+;If the drive is shared and the DOS drive pointed to by rbp is not the owner
+; of the BIOS drive, makes the DOS drive the owner.
+;Displays the swap drive message unless intercepted by the 2Fh/4A00h callback.
+;The device must already be setup in rbp for this to work.
 ;Input: rbx -> Request block. rbp -> drvBlk entry 
     test word [rbp + drvBlk.wDevFlgs], devFixed | devOwnDrv
     retnz   ;If fixed or already owns drv, don't allow swapping

@@ -410,64 +410,73 @@
    217 00000018 ????????????????    <1>     .qStartSector   dq ?    ;Only the lower dword is valid here.
    218                              <1> endstruc
    219                              <1> 
-   220                              <1> struc lbaIOBlock
-   221 00000000 ??                  <1>     .size           db ?
-   222 00000001 ??                  <1>     .numSectors     db ?  ;Number of sectors to write
-   223 00000002 ????????????        <1>     .res            db 6 dup (?)
-   224 00000008 ????????????????    <1>     .startSector    dq ?  ;Sector to start write at
-   225 00000010 ????????????????    <1>     .xferBuffer     dq ?  ;Transfer buffer for data
-   226                              <1> endstruc
-   227                              <1> 
-   228                              <1> struc lbaFormatBlock
-   229 00000000 ??                  <1>     .size           db ?
-   230 00000001 ??                  <1>     .numSectors     db ?  ;Number of sectors to format
-   231 00000002 ????????????        <1>     .res            db 6 dup (?)
-   232 00000008 ????????????????    <1>     .startSector    dq ?  ;Sector to start format at
-   233                              <1> endstruc
-   234                              <1> 
-   235                              <1> struc chsParamsBlock
-   236 00000000 ??                  <1>     .bSpecFuncs db ?    ;
-   237 00000001 ??                  <1>     .bDevType   db ?    ;5 if fixed, 7 otherwise
-   238 00000002 ????                <1>     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
-   239 00000004 ????                <1>     .wNumCyl    dw ?
-   240 00000006 ??                  <1>     .bMedTyp    db ?    ;Perma 0 for us, meaningless. Reserved.
-   241 00000007 <res 35h>           <1>     .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
-   242                              <1>     .TrackLayout:
-   243                              <1> endstruc
-   244                              <1> 
-   245                              <1> ;Used for get and set params. Refer to DOS docs for meaning of bit.
-   246                              <1> specFuncBPB equ 1<<0    ;Does BPB stuff
-   247                              <1> ;Only used in setparams requests. Ignored for getparams 
-   248                              <1> specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
-   249                              <1> specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
-   250                              <1> 
+   220                              <1> %macro lbIOCmnM 0   ;IOCTL LBA request common portion macro
+   221                              <1>     .size           db ?
+   222                              <1>     .numSectors     db ?  ;# sectors to act on. Returns sectors acted on
+   223                              <1>     .res            db 6 dup (?)
+   224                              <1>     .startSector    dq ?  ;Sector to start action on
+   225                              <1> %endmacro
+   226                              <1> 
+   227                              <1> struc lbaIOBlock
+   228                              <1>     lbIOCmnM
+   221 00000000 ??                  <2>  .size db ?
+   222 00000001 ??                  <2>  .numSectors db ?
+   223 00000002 ????????????        <2>  .res db 6 dup (?)
+   224 00000008 ????????????????    <2>  .startSector dq ?
+   229 00000010 ????????????????    <1>     .xferBuffer     dq ?  ;Transfer buffer for data
+   230                              <1> endstruc
+   231                              <1> 
+   232                              <1> struc lbaFormatBlock
+   233                              <1>     lbIOCmnM
+   221 00000000 ??                  <2>  .size db ?
+   222 00000001 ??                  <2>  .numSectors db ?
+   223 00000002 ????????????        <2>  .res db 6 dup (?)
+   224 00000008 ????????????????    <2>  .startSector dq ?
+   234                              <1> endstruc
+   235                              <1> 
+   236                              <1> struc chsParamsBlock
+   237 00000000 ??                  <1>     .bSpecFuncs db ?    ;
+   238 00000001 ??                  <1>     .bDevType   db ?    ;5 if fixed, 7 otherwise
+   239 00000002 ????                <1>     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
+   240 00000004 ????                <1>     .wNumCyl    dw ?
+   241 00000006 ??                  <1>     .bMedTyp    db ?    ;Perma 0 for us, meaningless. Reserved.
+   242 00000007 <res 35h>           <1>     .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
+   243                              <1>     .TrackLayout:
+   244                              <1> endstruc
+   245                              <1> 
+   246                              <1> ;Used for get and set params. Refer to DOS docs for meaning of bit.
+   247                              <1> specFuncBPB equ 1<<0    ;Does BPB stuff
+   248                              <1> ;Only used in setparams requests. Ignored for getparams 
+   249                              <1> specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
+   250                              <1> specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
    251                              <1> 
-   252                              <1> struc chsIOBlock
-   253 00000000 ??                  <1>     .bSpecFuncs     db ?
-   254 00000001 ????                <1>     .wStartHead     dw ?
-   255 00000003 ????                <1>     .wStartCyl      dw ?    ;Zero based.
-   256 00000005 ????                <1>     .wStartSector   dw ?    ;Zero based.
-   257 00000007 ????                <1>     .wNumSectors    dw ?
-   258 00000009 ????????????????    <1>     .pXferBuffer    dq ?
-   259                              <1> endstruc
-   260                              <1> 
-   261                              <1> struc chsFormatBlock
-   262 00000000 ??                  <1>     .bSpecFuncs db ?
-   263 00000001 ????                <1>     .wStartHead dw ?
-   264 00000003 ????                <1>     .wStartCyl  dw ?        ;Zero based.
-   265                              <1> endstruc
-   266                              <1> 
-   267                              <1> struc accFlgBlk
-   268 00000000 ??                  <1>     .bSpecFuncs db ?    ;Must be 0
-   269 00000001 ??                  <1>     .bAccMode   db ?    ;Set if access allowed. Clear if not.
-   270                              <1> endstruc
-   271                              <1> 
-   272                              <1> struc idParamBlk
-   273 00000000 ????                <1>     .wCallLvl   dw ?    ;Should be zero
-   274 00000002 ????????            <1>     .volId      dd ?    ;Volume Id
-   275 00000006 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
-   276 00000011 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
-   277                              <1> endstruc
+   252                              <1> 
+   253                              <1> struc chsIOBlock
+   254 00000000 ??                  <1>     .bSpecFuncs     db ?
+   255 00000001 ????                <1>     .wStartHead     dw ?
+   256 00000003 ????                <1>     .wStartCyl      dw ?    ;Zero based.
+   257 00000005 ????                <1>     .wStartSector   dw ?    ;Zero based.
+   258 00000007 ????                <1>     .wNumSectors    dw ?
+   259 00000009 ????????????????    <1>     .pXferBuffer    dq ?
+   260                              <1> endstruc
+   261                              <1> 
+   262                              <1> struc chsFormatBlock
+   263 00000000 ??                  <1>     .bSpecFuncs db ?
+   264 00000001 ????                <1>     .wStartHead dw ?
+   265 00000003 ????                <1>     .wStartCyl  dw ?        ;Zero based.
+   266                              <1> endstruc
+   267                              <1> 
+   268                              <1> struc accFlgBlk
+   269 00000000 ??                  <1>     .bSpecFuncs db ?    ;Must be 0
+   270 00000001 ??                  <1>     .bAccMode   db ?    ;Set if access allowed. Clear if not.
+   271                              <1> endstruc
+   272                              <1> 
+   273                              <1> struc idParamBlk
+   274 00000000 ????                <1>     .wCallLvl   dw ?    ;Should be zero
+   275 00000002 ????????            <1>     .volId      dd ?    ;Volume Id
+   276 00000006 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
+   277 00000011 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
+   278                              <1> endstruc
      6                                  %include "./src/Include/fatStruc.inc"
      1                              <1> 
      2                              <1> ;-------------------------------------------------------;
