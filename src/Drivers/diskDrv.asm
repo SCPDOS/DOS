@@ -367,7 +367,7 @@ msdDriver:
 ; we try and decypher. Else, general fault.
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 0100h
-    call .callI33h
+    int 33h     ;No need to preserve regs across this call 
 ;Device Not Ready
     mov eax, drvNotReady  ;Device not ready code
     cmp r8b, al  ;SCSI Not ready commands start with 2
@@ -1460,7 +1460,7 @@ errTblLen equ $ - .biosErrTbl
 .lgpbpbGetPhys:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 8800h  ;Read LBA Device Parameters
-    call .callI33h
+    int 33h         ;Need a naked call as params returned in regs!
     jc .errorXlat
     inc rcx         ;Turn into an absolute count of sectors
     xor edx, edx    ;0 Hidden sectors on remdevs/unformatted media
