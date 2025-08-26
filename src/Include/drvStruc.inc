@@ -217,19 +217,20 @@ struc lbaParamsBlock
     .qStartSector   dq ?    ;Only the lower dword is valid here.
 endstruc
 
-struc lbaIOBlock
+%macro lbIOCmnM 0   ;IOCTL LBA request common portion macro
     .size           db ?
-    .numSectors     db ?  ;Number of sectors to write
+    .numSectors     db ?  ;# sectors to act on. Returns sectors acted on
     .res            db 6 dup (?)
-    .startSector    dq ?  ;Sector to start write at
+    .startSector    dq ?  ;Sector to start action on
+%endmacro
+
+struc lbaIOBlock
+    lbIOCmnM
     .xferBuffer     dq ?  ;Transfer buffer for data
 endstruc
 
 struc lbaFormatBlock
-    .size           db ?
-    .numSectors     db ?  ;Number of sectors to format
-    .res            db 6 dup (?)
-    .startSector    dq ?  ;Sector to start format at
+    lbIOCmnM
 endstruc
 
 struc chsParamsBlock

@@ -291,14 +291,14 @@ configParse:
     ja .bufHandlerErr
     inc ecx ;Increment char counter
     lodsb   ;Get second char
-    call .bufHandlerTermCheck
+    call .termCheck
     je .bufHandlerProcess   ;If it is a terminating char, exit
     cmp al, "0"
     jb .bufHandlerErr
     cmp al, "9"
     ja .bufHandlerErr
     lodsb   ;Check no more chars!
-    call .bufHandlerTermCheck
+    call .termCheck
     jne .bufHandlerErr
 .bufHandlerProcess:
     xor edx, edx    ;Accumulate value in edx
@@ -307,7 +307,8 @@ configParse:
     lodsb   ;Get the digit
     sub al, "0" ;Convert to ASCII
     movzx eax, al
-    jecxz .bufHandlerPrepExit   ;Exit if this is the only digit
+    dec ecx
+    jz .bufHandlerPrepExit   ;Exit if this is the only digit
     shl eax, 1  ;Multiply by 2
     lea edx, dword [4*eax + eax]    ;Multiply (2*eax) by 5
     lodsb   ;Get the next digit
@@ -330,17 +331,6 @@ configParse:
 .bufHandlerErr:
     call .badLineErrorMsg
     return
-.bufHandlerTermCheck:
-    cmp al, SPC
-    rete
-    cmp al, TAB
-    rete
-    cmp al, CR
-    rete
-    cmp al, LF
-    rete
-    return
-
 ;===============================
 ;   Device Driver Loader here  :
 ;===============================
@@ -672,7 +662,7 @@ configParse:
     ja .sftHandlerErr
     inc ecx ;Increment char counter
     lodsb   ;Get second char
-    call .sftHandlerTermCheck
+    call .termCheck
     je .sftHandlerProcess   ;If it is a terminating char, exit
     cmp al, "0"
     jb .sftHandlerErr
@@ -680,14 +670,14 @@ configParse:
     ja .sftHandlerErr
     inc ecx ;Increment char counter
     lodsb   ;Get third char
-    call .sftHandlerTermCheck
+    call .termCheck
     je .sftHandlerProcess   ;If it is a terminating char, exit
     cmp al, "0"
     jb .sftHandlerErr
     cmp al, "9"
     ja .sftHandlerErr
     lodsb   ;Check no more chars!
-    call .sftHandlerTermCheck
+    call .termCheck
     jne .sftHandlerErr
     inc ecx ;Increment char counter
 .sftHandlerProcess:
@@ -735,16 +725,6 @@ configParse:
     return
 .sftHandlerErr:
     call .badLineErrorMsg
-    return
-.sftHandlerTermCheck:
-    cmp al, SPC
-    rete
-    cmp al, TAB
-    rete
-    cmp al, CR
-    rete
-    cmp al, LF
-    rete
     return
 
 .lastdriveHandler:
@@ -844,4 +824,20 @@ configParse:
     int 2fh
     pop rbx     ;Pop off the word we placed on the stack
     pop rbx     ;Get back original rbx
+    return
+
+.termCheck:
+;Input: al = Char to check if it is a command line terminator
+;Output: ZF=ZE if terminator. ZF=NZ if not.
+    cmp al, SPC
+    jb .bhtcspecial
+    rete
+    cmp al, TAB
+    rete
+    cmp al, CR
+    rete
+    cmp al, LF
+    return
+.bhtcspecial:
+    cmp al, al  ;Set ZF=ZE
     return

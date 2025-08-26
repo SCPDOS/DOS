@@ -184,35 +184,39 @@ getDiskDPB:
 ;Gets the disk DPB if the Disk is valid
 ;Otherwise will return a pointer to the drive DPB
 ;Called with rdi pointing to the CDS
-;CF=NC => RBP=WorkingDPB=DPBptr, CF=CY => Error exit
+;Output:
+;   CF=NC => RBP=WorkingDPB=DPBptr, CF=CY => Error exit
     mov rbp, qword [rdi + cds.qDPBPtr]  ;Get current DPB pointer
-    mov al, byte [rbp + dpb.bDriveNumber]   ;Get 0 based drive number
+.sftEp:   ;Entry point if updating DPB for an SFT entry!
+    push rdi    ;Save the CDS/SFT ptr
+    movzx eax, byte [rbp + dpb.bDriveNumber]   ;Get 0 based drive number
     mov [workingDrv], al    ;Save working drive number in working drive variable
     call setWorkingDPB
-    push rdi    ;Save the CDS ptr
     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
-    pop rdi
-    retc
-    jnz .exit
-    ;Here re-init all CDS's that refer to the dpb if the disk was switched
+    mov rbp, qword [workingDPB] ;If a driver didn't save rbp, get it back!
+    jc .exit
+    jnz .exit   ;If we jump, CF=NC!
+    ;Here re-init all CDS's that refer to the dpb if the disk was switched.
+    push rcx
     movzx ecx, byte [lastdrvNum]
-    xor eax, eax
-    dec eax ; -1 means start of root dir and never accessed (i.e. reset path)!
-    mov rsi, qword [rdi + cds.qDPBPtr]  ;Get DPB ptr
     mov rdi, qword [cdsHeadPtr] ;Get start of CDS array
 .checkCDS:
 ;Redir are skipped as they are not associated with a DPB
     test word [rdi + cds.wFlags], cdsRedirDrive
     jnz .next
-    cmp qword [rdi + cds.qDPBPtr], rsi  ;If the dpb ptr matches, reset
+    cmp qword [rdi + cds.qDPBPtr], rbp  ;If the dpb ptr matches, reset
     jne .next   ;Else, goto next
-    mov dword [rdi + cds.dStartCluster], eax  ;Reset start cluster!
+    mov dword [rdi + cds.dStartCluster], 0     ;Reset start cluster!
+    mov byte [rdi + cds.sCurrentPath + 3], 0    ;Reset the path too :)
+    mov word [rdi + cds.wBackslashOffset], 2
 .next:
     add rdi, cds_size
     dec ecx
     jnz .checkCDS
+    pop rcx
+    clc     ;Clear CF (rare but the cmp + add combo might set CF)
 .exit:
-    clc
+    pop rdi     ;Get back the CDS/SFT ptr
     return
 
 ensureDiskValid:
@@ -220,6 +224,7 @@ ensureDiskValid:
 ;On entry: rbp = DPB (and working DPB = DPB)
 ;On exit: CF=NC => Passed, CF=CY => Fail
 ; IF CF=NC => ZF=ZE=> DPB Rebuilt, ZF=NZ => DPB not rebuilt
+;   rbp preserved!
     call primReqMedCheckSetup    ;Prepare disk io packet for media check
 ;Return in rbx the req hdr address
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Now point rdx to driverhdr
@@ -290,7 +295,6 @@ ensureDiskValid:
     mov eax, 1              ;Read sector 1 into a buffer
     call getBufForFat       ;Point rbx to the buffer
     retc
-    ;mov byte [rbx + bufferHdr.wDrvNumFlg], freeBuffer
     mov rdi, rbx
     jmp short .buildGetBPB              
 .dpbNotIbm:

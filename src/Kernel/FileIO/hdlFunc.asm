@@ -2798,10 +2798,4 @@ setDPBfromSFT:
 ;Output: CF=NC: workingDPB set
 ;        CF=CY: Error fail, exit
     mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
-    movzx eax, byte [rbp + dpb.bDriveNumber]
-    mov byte [workingDrv], al
-    call setWorkingDPB
-    push rdi    ;Save the SFT pointer
-    call ensureDiskValid
-    pop rdi
-    return
+    jmp getDiskDPB.sftEp  ;Doing this will nullify CDS paths on disk swaps!

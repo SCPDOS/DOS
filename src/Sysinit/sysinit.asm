@@ -151,7 +151,7 @@ kernDrvInit:
     call addDriverMarkers   ;Preserves all registers
     test word [rsi + drvHdr.attrib], devDrvChar
     jnz short .notMSD
-    call buildDPBs          ;Preserves rbp, rsi and rbx
+    call buildKernDPBs          ;Preserves rbp, rsi and rbx
     jc OEMHALT
 .notMSD:
     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Now point rsi to that header
@@ -866,6 +866,36 @@ initDriver:
     mov byte [rsi + drvHdr.drvUnt], al ;Store this byte permanently here
     ret
 
+buildKernDPBs:
+;This is a wrapper for the below to be used ONLY FOR LOADING KERNEL DRIVERS. 
+; If at boot time a FAT32 partition is detected, this otherwise would cause 
+; the system to crash as build dpb requires at least one buffer in the buffer
+; chain. So here we allocate one 4Kb buffer and place it in the chain. Once we 
+; are done, we free this buffer.
+    push rax
+    push r8
+    mov eax, 4800h  ;ALLOC, get ptr in rax
+    push rbx
+;100h for 4Kb + space for a buffer header!
+    mov ebx, 100h + ((bufferHdr_size + 0Fh) >> 4)
+    int 21h
+    pop rbx
+    jc .exit
+    mov r8, rax
+    ;Setup MCB metadata
+    mov byte [r8 + mcb.subSysMark - mcb_size], mcbSubBuffers
+    ;Setup Buffer
+    mov qword [r8 + bufferHdr.nextBufPtr], -1
+    mov qword [r8 + bufferHdr.wDrvNumFlg], freeBuffer
+    mov qword [rbp + bufHeadPtr], r8
+    call buildDPBs  ;Call function
+    mov qword [rbp + bufHeadPtr], -1    ;Now empty the buffer pointer
+    mov eax, 4900h  ;Free the ptr in r8
+    int 21h
+.exit:
+    pop r8
+    pop rax
+    return
 buildDPBs:
     ;Here we specially handle MSD drivers, building DPBs
     ;If return with CF=CY, fail. Else, all done and setup
@@ -891,27 +921,10 @@ buildDPBs:
     mov rbp, rax    
     mov byte [rax + mcb.subSysMark - mcb_size], mcbSubDrvDPB  ;Set DPB marker
     mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
-    ;
-    ;This is a FAT32 specific requirement as 21h/53h now needs a buffer
-    ;for reading the extra FSInfo sector into. We allocate a single
-    ;temporary buffer of max valid sector size.
-    ;
-    mov ebx, 4096/16    ;Max sector size...
-    mov eax, 4800h  ;ALLOC
-    int 21h
-    jc short .exit
-    push r8     ;Save r8's original value
-    push rax    ;Save the buffer pointer
-    ;rsi -> Ptr to BPB
+    ;rsi -> Ptr to BPB array
 	;rbp -> Ptr to buffer to hold first DPB
     ;rdi -> Ptr to the driver header
     call convertBPBArray    ;Returns rbp -> past last DPB
-    pop r8      ;Get the buffer pointer back
-    push rax
-    mov eax, 4900h  ;Free this buffer now we are done!
-    int 21h
-    pop rax
-    pop r8      ;Get back the original r8 value
 .exit:
     pop rdi
     pop rsi

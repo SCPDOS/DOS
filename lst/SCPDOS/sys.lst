@@ -410,64 +410,73 @@
    217 00000018 ????????????????    <1>     .qStartSector   dq ?    ;Only the lower dword is valid here.
    218                              <1> endstruc
    219                              <1> 
-   220                              <1> struc lbaIOBlock
-   221 00000000 ??                  <1>     .size           db ?
-   222 00000001 ??                  <1>     .numSectors     db ?  ;Number of sectors to write
-   223 00000002 ????????????        <1>     .res            db 6 dup (?)
-   224 00000008 ????????????????    <1>     .startSector    dq ?  ;Sector to start write at
-   225 00000010 ????????????????    <1>     .xferBuffer     dq ?  ;Transfer buffer for data
-   226                              <1> endstruc
-   227                              <1> 
-   228                              <1> struc lbaFormatBlock
-   229 00000000 ??                  <1>     .size           db ?
-   230 00000001 ??                  <1>     .numSectors     db ?  ;Number of sectors to format
-   231 00000002 ????????????        <1>     .res            db 6 dup (?)
-   232 00000008 ????????????????    <1>     .startSector    dq ?  ;Sector to start format at
-   233                              <1> endstruc
-   234                              <1> 
-   235                              <1> struc chsParamsBlock
-   236 00000000 ??                  <1>     .bSpecFuncs db ?    ;
-   237 00000001 ??                  <1>     .bDevType   db ?    ;5 if fixed, 7 otherwise
-   238 00000002 ????                <1>     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
-   239 00000004 ????                <1>     .wNumCyl    dw ?
-   240 00000006 ??                  <1>     .bMedTyp    db ?    ;Perma 0 for us, meaningless. Reserved.
-   241 00000007 <res 35h>           <1>     .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
-   242                              <1>     .TrackLayout:
-   243                              <1> endstruc
-   244                              <1> 
-   245                              <1> ;Used for get and set params. Refer to DOS docs for meaning of bit.
-   246                              <1> specFuncBPB equ 1<<0    ;Does BPB stuff
-   247                              <1> ;Only used in setparams requests. Ignored for getparams 
-   248                              <1> specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
-   249                              <1> specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
-   250                              <1> 
+   220                              <1> %macro lbIOCmnM 0   ;IOCTL LBA request common portion macro
+   221                              <1>     .size           db ?
+   222                              <1>     .numSectors     db ?  ;# sectors to act on. Returns sectors acted on
+   223                              <1>     .res            db 6 dup (?)
+   224                              <1>     .startSector    dq ?  ;Sector to start action on
+   225                              <1> %endmacro
+   226                              <1> 
+   227                              <1> struc lbaIOBlock
+   228                              <1>     lbIOCmnM
+   221 00000000 ??                  <2>  .size db ?
+   222 00000001 ??                  <2>  .numSectors db ?
+   223 00000002 ????????????        <2>  .res db 6 dup (?)
+   224 00000008 ????????????????    <2>  .startSector dq ?
+   229 00000010 ????????????????    <1>     .xferBuffer     dq ?  ;Transfer buffer for data
+   230                              <1> endstruc
+   231                              <1> 
+   232                              <1> struc lbaFormatBlock
+   233                              <1>     lbIOCmnM
+   221 00000000 ??                  <2>  .size db ?
+   222 00000001 ??                  <2>  .numSectors db ?
+   223 00000002 ????????????        <2>  .res db 6 dup (?)
+   224 00000008 ????????????????    <2>  .startSector dq ?
+   234                              <1> endstruc
+   235                              <1> 
+   236                              <1> struc chsParamsBlock
+   237 00000000 ??                  <1>     .bSpecFuncs db ?    ;
+   238 00000001 ??                  <1>     .bDevType   db ?    ;5 if fixed, 7 otherwise
+   239 00000002 ????                <1>     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
+   240 00000004 ????                <1>     .wNumCyl    dw ?
+   241 00000006 ??                  <1>     .bMedTyp    db ?    ;Perma 0 for us, meaningless. Reserved.
+   242 00000007 <res 35h>           <1>     .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
+   243                              <1>     .TrackLayout:
+   244                              <1> endstruc
+   245                              <1> 
+   246                              <1> ;Used for get and set params. Refer to DOS docs for meaning of bit.
+   247                              <1> specFuncBPB equ 1<<0    ;Does BPB stuff
+   248                              <1> ;Only used in setparams requests. Ignored for getparams 
+   249                              <1> specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
+   250                              <1> specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
    251                              <1> 
-   252                              <1> struc chsIOBlock
-   253 00000000 ??                  <1>     .bSpecFuncs     db ?
-   254 00000001 ????                <1>     .wStartHead     dw ?
-   255 00000003 ????                <1>     .wStartCyl      dw ?    ;Zero based.
-   256 00000005 ????                <1>     .wStartSector   dw ?    ;Zero based.
-   257 00000007 ????                <1>     .wNumSectors    dw ?
-   258 00000009 ????????????????    <1>     .pXferBuffer    dq ?
-   259                              <1> endstruc
-   260                              <1> 
-   261                              <1> struc chsFormatBlock
-   262 00000000 ??                  <1>     .bSpecFuncs db ?
-   263 00000001 ????                <1>     .wStartHead dw ?
-   264 00000003 ????                <1>     .wStartCyl  dw ?        ;Zero based.
-   265                              <1> endstruc
-   266                              <1> 
-   267                              <1> struc accFlgBlk
-   268 00000000 ??                  <1>     .bSpecFuncs db ?    ;Must be 0
-   269 00000001 ??                  <1>     .bAccMode   db ?    ;Set if access allowed. Clear if not.
-   270                              <1> endstruc
-   271                              <1> 
-   272                              <1> struc idParamBlk
-   273 00000000 ????                <1>     .wCallLvl   dw ?    ;Should be zero
-   274 00000002 ????????            <1>     .volId      dd ?    ;Volume Id
-   275 00000006 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
-   276 00000011 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
-   277                              <1> endstruc
+   252                              <1> 
+   253                              <1> struc chsIOBlock
+   254 00000000 ??                  <1>     .bSpecFuncs     db ?
+   255 00000001 ????                <1>     .wStartHead     dw ?
+   256 00000003 ????                <1>     .wStartCyl      dw ?    ;Zero based.
+   257 00000005 ????                <1>     .wStartSector   dw ?    ;Zero based.
+   258 00000007 ????                <1>     .wNumSectors    dw ?
+   259 00000009 ????????????????    <1>     .pXferBuffer    dq ?
+   260                              <1> endstruc
+   261                              <1> 
+   262                              <1> struc chsFormatBlock
+   263 00000000 ??                  <1>     .bSpecFuncs db ?
+   264 00000001 ????                <1>     .wStartHead dw ?
+   265 00000003 ????                <1>     .wStartCyl  dw ?        ;Zero based.
+   266                              <1> endstruc
+   267                              <1> 
+   268                              <1> struc accFlgBlk
+   269 00000000 ??                  <1>     .bSpecFuncs db ?    ;Must be 0
+   270 00000001 ??                  <1>     .bAccMode   db ?    ;Set if access allowed. Clear if not.
+   271                              <1> endstruc
+   272                              <1> 
+   273                              <1> struc idParamBlk
+   274 00000000 ????                <1>     .wCallLvl   dw ?    ;Should be zero
+   275 00000002 ????????            <1>     .volId      dd ?    ;Volume Id
+   276 00000006 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
+   277 00000011 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
+   278                              <1> endstruc
      6                                  %include "./src/Include/fatStruc.inc"
      1                              <1> 
      2                              <1> ;-------------------------------------------------------;
@@ -1671,7 +1680,7 @@
     44 0000005C 488D3D(60000000)    <1>     lea rdi, exceptData
     45 00000063 31C0                <1>     xor eax, eax             ;Start with interrupt 0
     46 00000065 B915000000          <1>     mov ecx, 21
-    47 0000006A E8180A0000          <1>     call setupInterruptBlock
+    47 0000006A E8460A0000          <1>     call setupInterruptBlock
     48                              <1> ;Adjust Interrupt Entries Int 20h-2Fh
     49                              <1> adjInts:
     50 0000006F 488D3D(10010000)    <1>     lea rdi, intData
@@ -1680,7 +1689,7 @@
     53 00000080 48895F10            <1>     mov qword [rdi + 2*8], rbx  ;Store this address for Int 22h
     54 00000084 B820000000          <1>     mov eax, 20h            ;Start with interrupt 20h
     55 00000089 B930000000          <1>     mov ecx, 30h
-    56 0000008E E8F4090000          <1>     call setupInterruptBlock
+    56 0000008E E8220A0000          <1>     call setupInterruptBlock
     57                              <1> ;++++++++++++++++++++++++++++++++++++++++++++++++;
     58                              <1> ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
     59                              <1> ;++++++++++++++++++++++++++++++++++++++++++++++++;
@@ -1782,7 +1791,7 @@
    151 000001A5 E8D6060000          <1>     call addDriverMarkers   ;Preserves all registers
    152 000001AA 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
    153 000001B0 750B                <1>     jnz short .notMSD
-   154 000001B2 E870080000          <1>     call buildDPBs          ;Preserves rbp, rsi and rbx
+   154 000001B2 E870080000          <1>     call buildKernDPBs          ;Preserves rbp, rsi and rbx
    155 000001B7 0F82(00000000)      <1>     jc OEMHALT
    156                              <1> .notMSD:
    157 000001BD 488B36              <1>     mov rsi, qword [rsi + drvHdr.nxtPtr]    ;Now point rsi to that header
@@ -2103,7 +2112,7 @@
    433 00000563 B000                <1>     mov al, ReadAccess
    434 00000565 CD21                <1>     int 21h
    435 00000567 7216                <1>     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
-   436 00000569 E85F050000          <1>     call configParse ;Else, parse the config file
+   436 00000569 E88D050000          <1>     call configParse ;Else, parse the config file
    437                              <1> ;Config.sys mightve made changes to files. Update DOS!
    438 0000056E 0FB645F0            <1>     movzx eax, byte [rbp - cfgFrame.newSFTVal]
    439 00000572 64880425[00000000]  <1>     mov byte fs:[numFiles], al
@@ -2770,102 +2779,119 @@
    866 00000A23 88461A              <1>     mov byte [rsi + drvHdr.drvUnt], al ;Store this byte permanently here
    867 00000A26 C3                  <1>     ret
    868                              <1> 
-   869                              <1> buildDPBs:
-   870                              <1>     ;Here we specially handle MSD drivers, building DPBs
-   871                              <1>     ;If return with CF=CY, fail. Else, all done and setup
-   872                              <1>     ;Input: rbx -> Points to sysinit request packet
-   873                              <1>     ;       rsi -> Driver header
-   874                              <1>     ;       rbp -> DOSSEG pointer
-   875                              <1>     ;Preserves those registers
-   876 00000A27 53                  <1>     push rbx
-   877 00000A28 55                  <1>     push rbp
-   878 00000A29 56                  <1>     push rsi
-   879 00000A2A 57                  <1>     push rdi
-   880 00000A2B 4889F7              <1>     mov rdi, rsi    ;SAVE THE DRIVER HEADER!
-   881 00000A2E 0FB64E1A            <1>     movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
-   882 00000A32 488B7316            <1>     mov rsi, qword [rbx + initReqPkt.optptr]
-   883 00000A36 B835000000          <1>     mov eax, dpb_size
-   884 00000A3B F7E1                <1>     mul ecx         ;Get the number of bytes for all the dpb's into eax
-   885 00000A3D 050F000000          <1>     add eax, 0Fh    ;Round up if not precisely on para boundry
-   886 00000A42 C1E804              <1>     shr eax, 4      ;Convert to paragraphs
-   887 00000A45 89C3                <1>     mov ebx, eax
-   888 00000A47 B800480000          <1>     mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
-   889 00000A4C CD21                <1>     int 21h
-   890 00000A4E 7232                <1>     jc short .exit
-   891 00000A50 4889C5              <1>     mov rbp, rax    
-   892 00000A53 C640FD50            <1>     mov byte [rax + mcb.subSysMark - mcb_size], mcbSubDrvDPB  ;Set DPB marker
-   893 00000A57 48C740F108000000    <1>     mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
-   894                              <1>     ;
-   895                              <1>     ;This is a FAT32 specific requirement as 21h/53h now needs a buffer
-   896                              <1>     ;for reading the extra FSInfo sector into. We allocate a single
-   897                              <1>     ;temporary buffer of max valid sector size.
-   898                              <1>     ;
-   899 00000A5F BB00010000          <1>     mov ebx, 4096/16    ;Max sector size...
-   900 00000A64 B800480000          <1>     mov eax, 4800h  ;ALLOC
-   901 00000A69 CD21                <1>     int 21h
-   902 00000A6B 7215                <1>     jc short .exit
-   903 00000A6D 4150                <1>     push r8     ;Save r8's original value
-   904 00000A6F 50                  <1>     push rax    ;Save the buffer pointer
-   905                              <1>     ;rsi -> Ptr to BPB
-   906                              <1> 	;rbp -> Ptr to buffer to hold first DPB
-   907                              <1>     ;rdi -> Ptr to the driver header
-   908 00000A70 E86AFEFFFF          <1>     call convertBPBArray    ;Returns rbp -> past last DPB
-   909 00000A75 4158                <1>     pop r8      ;Get the buffer pointer back
-   910 00000A77 50                  <1>     push rax
-   911 00000A78 B800490000          <1>     mov eax, 4900h  ;Free this buffer now we are done!
-   912 00000A7D CD21                <1>     int 21h
-   913 00000A7F 58                  <1>     pop rax
-   914 00000A80 4158                <1>     pop r8      ;Get back the original r8 value
-   915                              <1> .exit:
-   916 00000A82 5F                  <1>     pop rdi
-   917 00000A83 5E                  <1>     pop rsi
-   918 00000A84 5D                  <1>     pop rbp
-   919 00000A85 5B                  <1>     pop rbx
-   920                              <1>     return
+   869                              <1> buildKernDPBs:
+   870                              <1> ;This is a wrapper for the below to be used ONLY FOR LOADING KERNEL DRIVERS. 
+   871                              <1> ; If at boot time a FAT32 partition is detected, this otherwise would cause 
+   872                              <1> ; the system to crash as build dpb requires at least one buffer in the buffer
+   873                              <1> ; chain. So here we allocate one 4Kb buffer and place it in the chain. Once we 
+   874                              <1> ; are done, we free this buffer.
+   875 00000A27 50                  <1>     push rax
+   876 00000A28 4150                <1>     push r8
+   877 00000A2A B800480000          <1>     mov eax, 4800h  ;ALLOC, get ptr in rax
+   878 00000A2F 53                  <1>     push rbx
+   879                              <1> ;100h for 4Kb + space for a buffer header!
+   880 00000A30 BB02010000          <1>     mov ebx, 100h + ((bufferHdr_size + 0Fh) >> 4)
+   881 00000A35 CD21                <1>     int 21h
+   882 00000A37 5B                  <1>     pop rbx
+   883 00000A38 7235                <1>     jc .exit
+   884 00000A3A 4989C0              <1>     mov r8, rax
+   885                              <1>     ;Setup MCB metadata
+   886 00000A3D 41C640FD42          <1>     mov byte [r8 + mcb.subSysMark - mcb_size], mcbSubBuffers
+   887                              <1>     ;Setup Buffer
+   888 00000A42 49C700FFFFFFFF      <1>     mov qword [r8 + bufferHdr.nextBufPtr], -1
+   889 00000A49 49C74008FF000000    <1>     mov qword [r8 + bufferHdr.wDrvNumFlg], freeBuffer
+   890 00000A51 4C8985[00000000]    <1>     mov qword [rbp + bufHeadPtr], r8
+   891 00000A58 E816000000          <1>     call buildDPBs  ;Call function
+   892 00000A5D 48C785[00000000]FF- <1>     mov qword [rbp + bufHeadPtr], -1    ;Now empty the buffer pointer
+   892 00000A65 FFFFFF              <1>
+   893 00000A68 B800490000          <1>     mov eax, 4900h  ;Free the ptr in r8
+   894 00000A6D CD21                <1>     int 21h
+   895                              <1> .exit:
+   896 00000A6F 4158                <1>     pop r8
+   897 00000A71 58                  <1>     pop rax
+   898                              <1>     return
     13                              <2> %%_ret:
-    14 00000A86 C3                  <2>  ret
+    14 00000A72 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   921                              <1> 
-   922                              <1> setupInterruptBlock:
-   923                              <1> ;Sets up a block of interrupts with pointers provided in a table
-   924                              <1> ;Input:
-   925                              <1> ; al = Start interrupt
-   926                              <1> ; rdi -> Start of pointer table
-   927                              <1> ; cl = Last interrupt + 1
-   928                              <1> ;Assumes rbp points to DOSSEG
-   929 00000A87 0FB6C0              <1>     movzx eax, al
-   930 00000A8A 0FB6C9              <1>     movzx ecx, cl
-   931                              <1> .lp:
-   932 00000A8D 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
-   933 00000A90 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
-   934 00000A93 E80E000000          <1>     call writeIDTEntry
-   935 00000A98 4881C708000000      <1>     add rdi, 8  ;Goto next interrupt handler
-   936 00000A9F FFC0                <1>     inc eax     ;Goto next interrupt number
-   937 00000AA1 39C8                <1>     cmp eax, ecx
-   938 00000AA3 75E8                <1>     jne .lp
-   939                              <1>     return
+   899                              <1> buildDPBs:
+   900                              <1>     ;Here we specially handle MSD drivers, building DPBs
+   901                              <1>     ;If return with CF=CY, fail. Else, all done and setup
+   902                              <1>     ;Input: rbx -> Points to sysinit request packet
+   903                              <1>     ;       rsi -> Driver header
+   904                              <1>     ;       rbp -> DOSSEG pointer
+   905                              <1>     ;Preserves those registers
+   906 00000A73 53                  <1>     push rbx
+   907 00000A74 55                  <1>     push rbp
+   908 00000A75 56                  <1>     push rsi
+   909 00000A76 57                  <1>     push rdi
+   910 00000A77 4889F7              <1>     mov rdi, rsi    ;SAVE THE DRIVER HEADER!
+   911 00000A7A 0FB64E1A            <1>     movzx ecx, byte [rsi + drvHdr.drvUnt]  ;Get # of units reported by driver
+   912 00000A7E 488B7316            <1>     mov rsi, qword [rbx + initReqPkt.optptr]
+   913 00000A82 B835000000          <1>     mov eax, dpb_size
+   914 00000A87 F7E1                <1>     mul ecx         ;Get the number of bytes for all the dpb's into eax
+   915 00000A89 050F000000          <1>     add eax, 0Fh    ;Round up if not precisely on para boundry
+   916 00000A8E C1E804              <1>     shr eax, 4      ;Convert to paragraphs
+   917 00000A91 89C3                <1>     mov ebx, eax
+   918 00000A93 B800480000          <1>     mov eax, 4800h  ;ALLOC (marked as owned by DOS for now)
+   919 00000A98 CD21                <1>     int 21h
+   920 00000A9A 7214                <1>     jc short .exit
+   921 00000A9C 4889C5              <1>     mov rbp, rax    
+   922 00000A9F C640FD50            <1>     mov byte [rax + mcb.subSysMark - mcb_size], mcbSubDrvDPB  ;Set DPB marker
+   923 00000AA3 48C740F108000000    <1>     mov qword [rax + mcb.owner - mcb_size], mcbOwnerDOS    ;Set DOS owner
+   924                              <1>     ;rsi -> Ptr to BPB array
+   925                              <1> 	;rbp -> Ptr to buffer to hold first DPB
+   926                              <1>     ;rdi -> Ptr to the driver header
+   927 00000AAB E82FFEFFFF          <1>     call convertBPBArray    ;Returns rbp -> past last DPB
+   928                              <1> .exit:
+   929 00000AB0 5F                  <1>     pop rdi
+   930 00000AB1 5E                  <1>     pop rsi
+   931 00000AB2 5D                  <1>     pop rbp
+   932 00000AB3 5B                  <1>     pop rbx
+   933                              <1>     return
     13                              <2> %%_ret:
-    14 00000AA5 C3                  <2>  ret
+    14 00000AB4 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   940                              <1> 
-   941                              <1> writeIDTEntry:
-   942                              <1> ;Writes the interrupt in the right place in the table
-   943                              <1>     ;al = Interrupt number
-   944                              <1>     ;rbx -> Handler to install
-   945 00000AA6 50                  <1>     push rax
-   946 00000AA7 53                  <1>     push rbx
-   947 00000AA8 0FB6C0              <1>     movzx eax, al
-   948 00000AAB 4893                <1>     xchg rbx, rax
-   949 00000AAD 48C1E304            <1>     shl rbx, 4h     ;Multiply IDT entry number by 16
-   950 00000AB1 48031D(B4010000)    <1>     add rbx, qword [localIDTpointer.Base]    ;rsx points to IDT entry
-   951 00000AB8 668903              <1>     mov word [rbx], ax  ;Get low word into offset 15...0
-   952 00000ABB 48C1E810            <1>     shr rax, 10h    ;Bring next word low
-   953 00000ABF 66894306            <1>     mov word [rbx + 6], ax  ;Get low word into offset 31...16
-   954 00000AC3 48C1E810            <1>     shr rax, 10h    ;Bring last dword low
-   955 00000AC7 894308              <1>     mov dword [rbx + 8], eax
-   956 00000ACA 5B                  <1>     pop rbx
-   957 00000ACB 58                  <1>     pop rax
-   958 00000ACC C3                  <1>     ret
+   934                              <1> 
+   935                              <1> setupInterruptBlock:
+   936                              <1> ;Sets up a block of interrupts with pointers provided in a table
+   937                              <1> ;Input:
+   938                              <1> ; al = Start interrupt
+   939                              <1> ; rdi -> Start of pointer table
+   940                              <1> ; cl = Last interrupt + 1
+   941                              <1> ;Assumes rbp points to DOSSEG
+   942 00000AB5 0FB6C0              <1>     movzx eax, al
+   943 00000AB8 0FB6C9              <1>     movzx ecx, cl
+   944                              <1> .lp:
+   945 00000ABB 488B1F              <1>     mov rbx, qword [rdi]    ;Get address pointed to by rdi
+   946 00000ABE 4801EB              <1>     add rbx, rbp            ;Add the relocated base to rbx
+   947 00000AC1 E80E000000          <1>     call writeIDTEntry
+   948 00000AC6 4881C708000000      <1>     add rdi, 8  ;Goto next interrupt handler
+   949 00000ACD FFC0                <1>     inc eax     ;Goto next interrupt number
+   950 00000ACF 39C8                <1>     cmp eax, ecx
+   951 00000AD1 75E8                <1>     jne .lp
+   952                              <1>     return
+    13                              <2> %%_ret:
+    14 00000AD3 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   953                              <1> 
+   954                              <1> writeIDTEntry:
+   955                              <1> ;Writes the interrupt in the right place in the table
+   956                              <1>     ;al = Interrupt number
+   957                              <1>     ;rbx -> Handler to install
+   958 00000AD4 50                  <1>     push rax
+   959 00000AD5 53                  <1>     push rbx
+   960 00000AD6 0FB6C0              <1>     movzx eax, al
+   961 00000AD9 4893                <1>     xchg rbx, rax
+   962 00000ADB 48C1E304            <1>     shl rbx, 4h     ;Multiply IDT entry number by 16
+   963 00000ADF 48031D(B4010000)    <1>     add rbx, qword [localIDTpointer.Base]    ;rsx points to IDT entry
+   964 00000AE6 668903              <1>     mov word [rbx], ax  ;Get low word into offset 15...0
+   965 00000AE9 48C1E810            <1>     shr rax, 10h    ;Bring next word low
+   966 00000AED 66894306            <1>     mov word [rbx + 6], ax  ;Get low word into offset 31...16
+   967 00000AF1 48C1E810            <1>     shr rax, 10h    ;Bring last dword low
+   968 00000AF5 894308              <1>     mov dword [rbx + 8], eax
+   969 00000AF8 5B                  <1>     pop rbx
+   970 00000AF9 58                  <1>     pop rax
+   971 00000AFA C3                  <1>     ret
     21                                  %include "./src/Sysinit/cfginit.asm"
      1                              <1> ;------------------------------------------------;
      2                              <1> ;              Process CONFIG.SYS                ;
@@ -2916,129 +2942,129 @@
     47                              <1> ;-------------------------------------------------------------------------;
     48                              <1> ;Start CONFIG.SYS parsing here
     49                              <1> configParse:
-    50 00000ACD 488945C0            <1>     mov qword [rbp - cfgFrame.cfgHandle], rax
-    51 00000AD1 48C745B800000000    <1>     mov qword [rbp - cfgFrame.lastLine], 0
-    52 00000AD9 48C745B0FFFFFFFF    <1>     mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
-    53 00000AE1 B800480000          <1>     mov eax, 4800h
-    54 00000AE6 BB10000000          <1>     mov ebx, 10h    ;Request 16 paragraphs (256 bytes)
-    55 00000AEB CD21                <1>     int 21h
-    56 00000AED 0F825D010000        <1>     jc .stopProcessError
-    57 00000AF3 488945B0            <1>     mov qword [rbp - cfgFrame.linePtr], rax
-    58 00000AF7 4889C2              <1>     mov rdx, rax    ;Move the pointer to rdx
-    59 00000AFA 482D10000000        <1>     sub rax, mcb_size 
-    60 00000B00 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set owner to DOS
-    61 00000B08 31C0                <1>     xor eax, eax
+    50 00000AFB 488945C0            <1>     mov qword [rbp - cfgFrame.cfgHandle], rax
+    51 00000AFF 48C745B800000000    <1>     mov qword [rbp - cfgFrame.lastLine], 0
+    52 00000B07 48C745B0FFFFFFFF    <1>     mov qword [rbp - cfgFrame.linePtr], -1   ;Default buffer
+    53 00000B0F B800480000          <1>     mov eax, 4800h
+    54 00000B14 BB10000000          <1>     mov ebx, 10h    ;Request 16 paragraphs (256 bytes)
+    55 00000B19 CD21                <1>     int 21h
+    56 00000B1B 0F825D010000        <1>     jc .stopProcessError
+    57 00000B21 488945B0            <1>     mov qword [rbp - cfgFrame.linePtr], rax
+    58 00000B25 4889C2              <1>     mov rdx, rax    ;Move the pointer to rdx
+    59 00000B28 482D10000000        <1>     sub rax, mcb_size 
+    60 00000B2E 48C7400108000000    <1>     mov qword [rax + mcb.owner], mcbOwnerDOS    ;Set owner to DOS
+    61 00000B36 31C0                <1>     xor eax, eax
     62                              <1> .nextChar:
-    63 00000B0A 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into ebx
-    64 00000B0E 6681FBFFFF          <1>     cmp bx, -1
-    65 00000B13 0F8437010000        <1>     je .stopProcessError
-    66 00000B19 B8003F0000          <1>     mov eax, 3F00h  ;Read handle
-    67 00000B1E B901000000          <1>     mov ecx, 1  ;Read one byte
-    68 00000B23 CD21                <1>     int 21h
-    69 00000B25 0F8225010000        <1>     jc .stopProcessError
-    70 00000B2B 85C0                <1>     test eax, eax	;If this is zero, EOF reached, take command
-    71 00000B2D 741B                <1>     jz .endOfFile
+    63 00000B38 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into ebx
+    64 00000B3C 6681FBFFFF          <1>     cmp bx, -1
+    65 00000B41 0F8437010000        <1>     je .stopProcessError
+    66 00000B47 B8003F0000          <1>     mov eax, 3F00h  ;Read handle
+    67 00000B4C B901000000          <1>     mov ecx, 1  ;Read one byte
+    68 00000B51 CD21                <1>     int 21h
+    69 00000B53 0F8225010000        <1>     jc .stopProcessError
+    70 00000B59 85C0                <1>     test eax, eax	;If this is zero, EOF reached, take command
+    71 00000B5B 741B                <1>     jz .endOfFile
     72                              <1> .notEOF:
-    73 00000B2F 0FB602              <1>     movzx eax, byte [rdx]
-    74 00000B32 3C0D                <1>     cmp al, CR
-    75 00000B34 741F                <1>     je short .endOfLine
-    76 00000B36 3C0A                <1>     cmp al, LF
-    77 00000B38 7418                <1>     je short .endOfLineChange   ;Continue, but replace with standard EOL char (CR)
-    78 00000B3A 3C1A                <1>     cmp al, EOF
-    79 00000B3C 740C                <1>     je short .endOfFile
-    80 00000B3E E8F4070000          <1>     call .ucChar    ;Uppercase the char
-    81 00000B43 8802                <1>     mov byte [rdx], al  ;Replace the char with the capitalised form
+    73 00000B5D 0FB602              <1>     movzx eax, byte [rdx]
+    74 00000B60 3C0D                <1>     cmp al, CR
+    75 00000B62 741F                <1>     je short .endOfLine
+    76 00000B64 3C0A                <1>     cmp al, LF
+    77 00000B66 7418                <1>     je short .endOfLineChange   ;Continue, but replace with standard EOL char (CR)
+    78 00000B68 3C1A                <1>     cmp al, EOF
+    79 00000B6A 740C                <1>     je short .endOfFile
+    80 00000B6C E8CB070000          <1>     call .ucChar    ;Uppercase the char
+    81 00000B71 8802                <1>     mov byte [rdx], al  ;Replace the char with the capitalised form
     82                              <1> .notChar:
-    83 00000B45 48FFC2              <1>     inc rdx ;Now move our local pointer to the next byte
-    84 00000B48 EBC0                <1>     jmp short .nextChar
+    83 00000B73 48FFC2              <1>     inc rdx ;Now move our local pointer to the next byte
+    84 00000B76 EBC0                <1>     jmp short .nextChar
     85                              <1> .endOfFile:
-    86 00000B4A 48C745B8FFFFFFFF    <1>     mov qword [rbp - cfgFrame.lastLine], -1	;Mark EOF and End of line
+    86 00000B78 48C745B8FFFFFFFF    <1>     mov qword [rbp - cfgFrame.lastLine], -1	;Mark EOF and End of line
     87                              <1> .endOfLineChange:
-    88 00000B52 C6020D              <1>     mov byte [rdx], CR  ;Store a terminating char at the end of the command
+    88 00000B80 C6020D              <1>     mov byte [rdx], CR  ;Store a terminating char at the end of the command
     89                              <1> .endOfLine:
     90                              <1> ;rdx points to terminating char
     91                              <1> ;First find the length of the instruction word
-    92 00000B55 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+    92 00000B83 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
     93                              <1> ;If this is a 1 char line, skip processing (as it is CR), and goto next line
-    94 00000B59 4839F2              <1>     cmp rdx, rsi
-    95 00000B5C 7473                <1>     je .cmdPrepNew
-    96 00000B5E E8D5000000          <1>     call .skipSeparators  ;Skip any standard leading separators
-    97 00000B63 31C9                <1>     xor ecx, ecx
+    94 00000B87 4839F2              <1>     cmp rdx, rsi
+    95 00000B8A 7473                <1>     je .cmdPrepNew
+    96 00000B8C E8D5000000          <1>     call .skipSeparators  ;Skip any standard leading separators
+    97 00000B91 31C9                <1>     xor ecx, ecx
     98                              <1> .cmdNameLenGet:
-    99 00000B65 AC                  <1>     lodsb
-   100 00000B66 E8B6000000          <1>     call .isCharSeparator
-   101 00000B6B 740A                <1>     jz short .endOfCommandFound
-   102 00000B6D FFC1                <1>     inc ecx
-   103 00000B6F 81F90A000000        <1>     cmp ecx, 10 ;If shorter than longest command, keep looping
-   104 00000B75 72EE                <1>     jb short .cmdNameLenGet
+    99 00000B93 AC                  <1>     lodsb
+   100 00000B94 E8B6000000          <1>     call .isCharSeparator
+   101 00000B99 740A                <1>     jz short .endOfCommandFound
+   102 00000B9B FFC1                <1>     inc ecx
+   103 00000B9D 81F90A000000        <1>     cmp ecx, 10 ;If shorter than longest command, keep looping
+   104 00000BA3 72EE                <1>     jb short .cmdNameLenGet
    105                              <1> ;Else, fall through in error
    106                              <1> .endOfCommandFound:
    107                              <1> ;ecx has the length of the command
-   108 00000B77 81F90A000000        <1>     cmp ecx, 10
-   109 00000B7D 0F84C3000000        <1>     je .badLineHandle
-   110 00000B83 488D3D69010000      <1>     lea rdi, .keyTbl ;Put rdi at the table to search for
+   108 00000BA5 81F90A000000        <1>     cmp ecx, 10
+   109 00000BAB 0F84C3000000        <1>     je .badLineHandle
+   110 00000BB1 488D3D69010000      <1>     lea rdi, .keyTbl ;Put rdi at the table to search for
    111                              <1> .cmdSearch:
-   112 00000B8A 803FFF              <1>     cmp byte [rdi], -1
-   113 00000B8D 0F84B3000000        <1>     je .badLineHandle
-   114 00000B93 380F                <1>     cmp byte [rdi], cl
-   115 00000B95 757A                <1>     jne short .gotoNextCmd
+   112 00000BB8 803FFF              <1>     cmp byte [rdi], -1
+   113 00000BBB 0F84B3000000        <1>     je .badLineHandle
+   114 00000BC1 380F                <1>     cmp byte [rdi], cl
+   115 00000BC3 757A                <1>     jne short .gotoNextCmd
    116                              <1>     ;Candidate command found, check said command is the command we want
-   117 00000B97 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   118 00000B9B 4881FEFFFFFFFF      <1>     cmp rsi, -1 ;Error?
-   119 00000BA2 0F84A8000000        <1>     je .stopProcessError
-   120 00000BA8 57                  <1>     push rdi
-   121 00000BA9 51                  <1>     push rcx
-   122 00000BAA 48FFC7              <1>     inc rdi ;Go to next char
-   123 00000BAD F3A6                <1>     repe cmpsb  ;Compare whilst the strings are equal
-   124 00000BAF 59                  <1>     pop rcx
-   125 00000BB0 5F                  <1>     pop rdi
-   126 00000BB1 755E                <1>     jne short .gotoNextCmd    ;If not equal, just goto next command
+   117 00000BC5 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   118 00000BC9 4881FEFFFFFFFF      <1>     cmp rsi, -1 ;Error?
+   119 00000BD0 0F84A8000000        <1>     je .stopProcessError
+   120 00000BD6 57                  <1>     push rdi
+   121 00000BD7 51                  <1>     push rcx
+   122 00000BD8 48FFC7              <1>     inc rdi ;Go to next char
+   123 00000BDB F3A6                <1>     repe cmpsb  ;Compare whilst the strings are equal
+   124 00000BDD 59                  <1>     pop rcx
+   125 00000BDE 5F                  <1>     pop rdi
+   126 00000BDF 755E                <1>     jne short .gotoNextCmd    ;If not equal, just goto next command
    127                              <1>     ;Else, rdi points to the table entry from the head of the table
    128                              <1>     ;      rcx has the length of the name field
    129                              <1>     ;rdx points to the terminating char of the line 
-   130 00000BB3 488D3539010000      <1>     lea rsi, .keyTbl
-   131 00000BBA 4889F0              <1>     mov rax, rsi    ;Keep a copy in rax
-   132 00000BBD 480FB7740F01        <1>     movzx rsi, word [rdi + rcx + 1]
-   133 00000BC3 4801C6              <1>     add rsi, rax    ;So add the EA of the head of the tbl before calling
-   134 00000BC6 F8                  <1>     clc ;Ensure flags are happy before entering
-   135 00000BC7 55                  <1>     push rbp
-   136 00000BC8 FFD6                <1>     call rsi    ;Call this function
-   137 00000BCA 5D                  <1>     pop rbp
-   138 00000BCB 0F8284000000        <1>     jc .stopProcessErrorNoPrint    ;If the function returns CF=CY, error exit
+   130 00000BE1 488D3539010000      <1>     lea rsi, .keyTbl
+   131 00000BE8 4889F0              <1>     mov rax, rsi    ;Keep a copy in rax
+   132 00000BEB 480FB7740F01        <1>     movzx rsi, word [rdi + rcx + 1]
+   133 00000BF1 4801C6              <1>     add rsi, rax    ;So add the EA of the head of the tbl before calling
+   134 00000BF4 F8                  <1>     clc ;Ensure flags are happy before entering
+   135 00000BF5 55                  <1>     push rbp
+   136 00000BF6 FFD6                <1>     call rsi    ;Call this function
+   137 00000BF8 5D                  <1>     pop rbp
+   138 00000BF9 0F8284000000        <1>     jc .stopProcessErrorNoPrint    ;If the function returns CF=CY, error exit
    139                              <1> .cmdPrepNew:
-   140 00000BD1 48F745B8FFFFFFFF    <1>     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
-   141 00000BD9 0F8541070000        <1>     jnz .cfgExit
-   142 00000BDF 488B55B0            <1>     mov rdx, qword [rbp - cfgFrame.linePtr] ;Start reading afresh
+   140 00000BFF 48F745B8FFFFFFFF    <1>     test qword [rbp - cfgFrame.lastLine], -1 ;If we concluded at EOF, exit
+   141 00000C07 0F8518070000        <1>     jnz .cfgExit
+   142 00000C0D 488B55B0            <1>     mov rdx, qword [rbp - cfgFrame.linePtr] ;Start reading afresh
    143                              <1>     ;Read the next char. 
    144                              <1>     ;If EOF, exit.
    145                              <1>     ;Else if, LF, proceed to read line routine.
    146                              <1>     ;Else, advance ptr by one and proceed to process char
    147                              <1> .endCommandClear:
-   148 00000BE3 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into rbx
-   149 00000BE7 B8003F0000          <1>     mov eax, 3F00h  ;Read handle
-   150 00000BEC B901000000          <1>     mov ecx, 1  ;Read one byte to clear the LF from the file
-   151 00000BF1 CD21                <1>     int 21h
-   152 00000BF3 725B                <1>     jc .stopProcessError
-   153 00000BF5 85C0                <1>     test eax, eax   ;If no chars were read, exit!
-   154 00000BF7 0F8423070000        <1>     jz .cfgExit
+   148 00000C11 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle]   ;Move the handle into rbx
+   149 00000C15 B8003F0000          <1>     mov eax, 3F00h  ;Read handle
+   150 00000C1A B901000000          <1>     mov ecx, 1  ;Read one byte to clear the LF from the file
+   151 00000C1F CD21                <1>     int 21h
+   152 00000C21 725B                <1>     jc .stopProcessError
+   153 00000C23 85C0                <1>     test eax, eax   ;If no chars were read, exit!
+   154 00000C25 0F84FA060000        <1>     jz .cfgExit
    155                              <1>     ;Do a trash check
-   156 00000BFD 8A02                <1>     mov al, byte [rdx]
-   157 00000BFF 3C1A                <1>     cmp al, EOF
-   158 00000C01 0F8419070000        <1>     je .cfgExit
-   159 00000C07 3C0A                <1>     cmp al, LF
-   160 00000C09 0F84FBFEFFFF        <1>     je .nextChar
-   161 00000C0F EBD2                <1>     jmp short .endCommandClear  ;Loop out trailing spaces, crap chars and CR
+   156 00000C2B 8A02                <1>     mov al, byte [rdx]
+   157 00000C2D 3C1A                <1>     cmp al, EOF
+   158 00000C2F 0F84F0060000        <1>     je .cfgExit
+   159 00000C35 3C0A                <1>     cmp al, LF
+   160 00000C37 0F84FBFEFFFF        <1>     je .nextChar
+   161 00000C3D EBD2                <1>     jmp short .endCommandClear  ;Loop out trailing spaces, crap chars and CR
    162                              <1> ;CONFIG.SYS utility functions
    163                              <1> .gotoNextCmd:
-   164 00000C11 0FB607              <1>     movzx eax, byte [rdi]
-   165 00000C14 0503000000          <1>     add eax, 3
-   166 00000C19 4801C7              <1>     add rdi, rax
-   167 00000C1C E969FFFFFF          <1>     jmp .cmdSearch
+   164 00000C3F 0FB607              <1>     movzx eax, byte [rdi]
+   165 00000C42 0503000000          <1>     add eax, 3
+   166 00000C47 4801C7              <1>     add rdi, rax
+   167 00000C4A E969FFFFFF          <1>     jmp .cmdSearch
    168                              <1> .isCharSeparator:
    169                              <1> ;Input: AL = Char to check
    170                              <1> ;Output: ZF=ZE -> Char terminal
    171                              <1> ;        ZF=NZ -> Char not terminal
-   172 00000C21 3C3D                <1>     cmp al, "="
+   172 00000C4F 3C3D                <1>     cmp al, "="
    173                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
@@ -3056,14 +3082,14 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000C23 7501                <3>  j%-1 short %%a
+    34 00000C51 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000C25 C3                  <4>  ret
+    14 00000C53 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   174 00000C26 3C20                <1>     cmp al, SPC
+   174 00000C54 3C20                <1>     cmp al, SPC
    175                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
@@ -3081,14 +3107,14 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000C28 7501                <3>  j%-1 short %%a
+    34 00000C56 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000C2A C3                  <4>  ret
+    14 00000C58 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   176 00000C2B 3C09                <1>     cmp al, TAB
+   176 00000C59 3C09                <1>     cmp al, TAB
    177                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
@@ -3106,14 +3132,14 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000C2D 7501                <3>  j%-1 short %%a
+    34 00000C5B 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000C2F C3                  <4>  ret
+    14 00000C5D C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   178 00000C30 3C3B                <1>     cmp al, ";"
+   178 00000C5E 3C3B                <1>     cmp al, ";"
    179                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
@@ -3131,201 +3157,745 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000C32 7501                <3>  j%-1 short %%a
+    34 00000C60 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000C34 C3                  <4>  ret
+    14 00000C62 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   180 00000C35 3C2C                <1>     cmp al, ","
+   180 00000C63 3C2C                <1>     cmp al, ","
    181                              <1>     return
     13                              <2> %%_ret:
-    14 00000C37 C3                  <2>  ret
+    14 00000C65 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
    182                              <1> .skipSeparators:
    183                              <1> ;Input: rsi -> Start of string
    184                              <1> ;Output: rsi -> First non-terminator char after string of terminators
-   185 00000C38 50                  <1>     push rax
+   185 00000C66 50                  <1>     push rax
    186                              <1> .stl1:
-   187 00000C39 AC                  <1>     lodsb   ;Get char
-   188 00000C3A E8E2FFFFFF          <1>     call .isCharSeparator    ;Is it terminal?
-   189 00000C3F 74F8                <1>     jz .stl1    ;Yes, keep going
-   190 00000C41 58                  <1>     pop rax
-   191 00000C42 48FFCE              <1>     dec rsi
+   187 00000C67 AC                  <1>     lodsb   ;Get char
+   188 00000C68 E8E2FFFFFF          <1>     call .isCharSeparator    ;Is it terminal?
+   189 00000C6D 74F8                <1>     jz .stl1    ;Yes, keep going
+   190 00000C6F 58                  <1>     pop rax
+   191 00000C70 48FFCE              <1>     dec rsi
    192                              <1>     return
     13                              <2> %%_ret:
-    14 00000C45 C3                  <2>  ret
+    14 00000C73 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
    193                              <1> 
    194                              <1> .badLineHandle:
    195                              <1> ;If the command was unrecognised, goto next line! Do not halt!
-   196 00000C46 E84B000000          <1>     call .badLineErrorMsg
-   197 00000C4B E981FFFFFF          <1>     jmp  .cmdPrepNew
+   196 00000C74 E84B000000          <1>     call .badLineErrorMsg
+   197 00000C79 E981FFFFFF          <1>     jmp  .cmdPrepNew
    198                              <1> 
    199                              <1> .stopProcessError:
    200                              <1> ;Print the hard error message and reset the system values
-   201 00000C50 E836000000          <1>     call .hardErrorMsg
+   201 00000C7E E836000000          <1>     call .hardErrorMsg
    202                              <1> .stopProcessErrorNoPrint:
    203                              <1> ;Reset all values to OEM defaults
-   204 00000C55 0FB605(CD010000)    <1>     movzx eax, byte [BUFFERS]
-   205 00000C5C 488945F8            <1>     mov qword [rbp - cfgFrame.newBuffers], rax
-   206 00000C60 0FB605(CC010000)    <1>     movzx eax, byte [FILES]
-   207 00000C67 488945F0            <1>     mov qword [rbp - cfgFrame.newSFTVal], rax
-   208 00000C6B 48C745E804000000    <1>     mov qword [rbp - cfgFrame.newFCBSVal], fcbsDefault
-   209 00000C73 48C745E000000000    <1>     mov qword [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
-   210 00000C7B 0FB605(CF010000)    <1>     movzx eax, byte [LASTDRIVE]
-   211 00000C82 488945D8            <1>     mov qword [rbp - cfgFrame.newLastdrive], rax
-   212 00000C86 E995060000          <1>     jmp .cfgExit
+   204 00000C83 0FB605(CD010000)    <1>     movzx eax, byte [BUFFERS]
+   205 00000C8A 488945F8            <1>     mov qword [rbp - cfgFrame.newBuffers], rax
+   206 00000C8E 0FB605(CC010000)    <1>     movzx eax, byte [FILES]
+   207 00000C95 488945F0            <1>     mov qword [rbp - cfgFrame.newSFTVal], rax
+   208 00000C99 48C745E804000000    <1>     mov qword [rbp - cfgFrame.newFCBSVal], fcbsDefault
+   209 00000CA1 48C745E000000000    <1>     mov qword [rbp - cfgFrame.newProtFCBSVal], safeFcbsDeflt
+   210 00000CA9 0FB605(CF010000)    <1>     movzx eax, byte [LASTDRIVE]
+   211 00000CB0 488945D8            <1>     mov qword [rbp - cfgFrame.newLastdrive], rax
+   212 00000CB4 E96C060000          <1>     jmp .cfgExit
    213                              <1> .hardErrorMsg:
    214                              <1> ;Prints an error message and TERMINATE parsing
-   215 00000C8B 50                  <1>     push rax
-   216 00000C8C 52                  <1>     push rdx
-   217 00000C8D 488D1515000000      <1>     lea rdx, .hdLine
-   218 00000C94 EB09                <1>     jmp short .errorCmn
+   215 00000CB9 50                  <1>     push rax
+   216 00000CBA 52                  <1>     push rdx
+   217 00000CBB 488D1515000000      <1>     lea rdx, .hdLine
+   218 00000CC2 EB09                <1>     jmp short .errorCmn
    219                              <1> .badLineErrorMsg:
    220                              <1> ;Prints an error message BUT DOES NOT TERMINATE PARSING
-   221 00000C96 50                  <1>     push rax
-   222 00000C97 52                  <1>     push rdx
-   223 00000C98 488D152D000000      <1>     lea rdx, .speLine
+   221 00000CC4 50                  <1>     push rax
+   222 00000CC5 52                  <1>     push rdx
+   223 00000CC6 488D152D000000      <1>     lea rdx, .speLine
    224                              <1> .errorCmn:
-   225 00000C9F B800090000          <1>     mov eax, 0900h
-   226 00000CA4 CD21                <1>     int 21h
-   227 00000CA6 5A                  <1>     pop rdx
-   228 00000CA7 58                  <1>     pop rax
+   225 00000CCD B800090000          <1>     mov eax, 0900h
+   226 00000CD2 CD21                <1>     int 21h
+   227 00000CD4 5A                  <1>     pop rdx
+   228 00000CD5 58                  <1>     pop rax
    229                              <1>     return
     13                              <2> %%_ret:
-    14 00000CA8 C3                  <2>  ret
+    14 00000CD6 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   230 00000CA9 0D0A4572726F722069- <1> .hdLine:    db CR,LF,"Error in processing CONFIG.SYS",CR,LF,"$"
-   230 00000CB2 6E2070726F63657373- <1>
-   230 00000CBB 696E6720434F4E4649- <1>
-   230 00000CC4 472E5359530D0A24    <1>
-   231 00000CCC 0D0A556E7265636F67- <1> .speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
-   231 00000CD5 6E6973656420636F6D- <1>
-   231 00000CDE 6D616E6420696E2043- <1>
-   231 00000CE7 4F4E4649472E535953- <1>
-   231 00000CF0 0D0A24              <1>
+   230 00000CD7 0D0A4572726F722069- <1> .hdLine:    db CR,LF,"Error in processing CONFIG.SYS",CR,LF,"$"
+   230 00000CE0 6E2070726F63657373- <1>
+   230 00000CE9 696E6720434F4E4649- <1>
+   230 00000CF2 472E5359530D0A24    <1>
+   231 00000CFA 0D0A556E7265636F67- <1> .speLine:   db CR,LF,"Unrecognised command in CONFIG.SYS",CR,LF,"$"
+   231 00000D03 6E6973656420636F6D- <1>
+   231 00000D0C 6D616E6420696E2043- <1>
+   231 00000D15 4F4E4649472E535953- <1>
+   231 00000D1E 0D0A24              <1>
    232                              <1> .keyTbl: 
-   233 00000CF3 05425245414B        <1>     db 5, "BREAK"           ;DONE
-   234 00000CF9 6300                <1> 	dw .breakHandler - .keyTbl
-   235 00000CFB 0742554646455253    <1>     db 7, "BUFFERS"         ;DONE
-   236 00000D03 9900                <1> 	dw .bufHandler - .keyTbl
-   237 00000D05 07434F554E545259    <1> 	db 7, "COUNTRY"         ;Ignored for now
-   238 00000D0D 2B06                <1> 	dw .countryScan - .keyTbl
-   239 00000D0F 06444556494345      <1> 	db 6, "DEVICE"          ;DONE
-   240 00000D16 2401                <1> 	dw .drvLoader - .keyTbl
-   241 00000D18 0446434253          <1> 	db 4, "FCBS"            ;Ignored for now
-   242 00000D1D 2B06                <1> 	dw .fcbHandler - .keyTbl
-   243 00000D1F 0546494C4553        <1> 	db 5, "FILES"           ;DONE
-   244 00000D25 A404                <1> 	dw .sftHandler - .keyTbl
-   245 00000D27 094C41535444524956- <1> 	db 9, "LASTDRIVE"       ;DONE
-   245 00000D30 45                  <1>
-   246 00000D31 6B05                <1> 	dw .lastdriveHandler - .keyTbl
-   247 00000D33 055348454C4C        <1> 	db 5, "SHELL"           ;Ignored for now
-   248 00000D39 B705                <1> 	dw .shellHandler - .keyTbl
-   249 00000D3B 06535441434B53      <1> 	db 6, "STACKS"          ;Ignored for now
-   250 00000D42 2B06                <1> 	dw .stacksHandler - .keyTbl
-   251 00000D44 08445249565041524D  <1>     db 8, "DRIVPARM"
-   252 00000D4D 2B06                <1>     dw .drivParm - .keyTbl  ;Ignored for now
+   233 00000D21 05425245414B        <1>     db 5, "BREAK"           ;DONE
+   234 00000D27 6300                <1> 	dw .breakHandler - .keyTbl
+   235 00000D29 0742554646455253    <1>     db 7, "BUFFERS"         ;DONE
+   236 00000D31 9900                <1> 	dw .bufHandler - .keyTbl
+   237 00000D33 07434F554E545259    <1> 	db 7, "COUNTRY"         ;Ignored for now
+   238 00000D3B 0206                <1> 	dw .countryScan - .keyTbl
+   239 00000D3D 06444556494345      <1> 	db 6, "DEVICE"          ;DONE
+   240 00000D44 1001                <1> 	dw .drvLoader - .keyTbl
+   241 00000D46 0446434253          <1> 	db 4, "FCBS"            ;Ignored for now
+   242 00000D4B 0206                <1> 	dw .fcbHandler - .keyTbl
+   243 00000D4D 0546494C4553        <1> 	db 5, "FILES"           ;DONE
+   244 00000D53 9004                <1> 	dw .sftHandler - .keyTbl
+   245 00000D55 094C41535444524956- <1> 	db 9, "LASTDRIVE"       ;DONE
+   245 00000D5E 45                  <1>
+   246 00000D5F 4205                <1> 	dw .lastdriveHandler - .keyTbl
+   247 00000D61 055348454C4C        <1> 	db 5, "SHELL"           ;Ignored for now
+   248 00000D67 8E05                <1> 	dw .shellHandler - .keyTbl
+   249 00000D69 06535441434B53      <1> 	db 6, "STACKS"          ;Ignored for now
+   250 00000D70 0206                <1> 	dw .stacksHandler - .keyTbl
+   251 00000D72 08445249565041524D  <1>     db 8, "DRIVPARM"
+   252 00000D7B 0206                <1>     dw .drivParm - .keyTbl  ;Ignored for now
    253                              <1>     ;The following three are to not cause issues with empty lines/EOF chars
-   254 00000D4F 0352454D            <1>     db 3, "REM"
-   255 00000D53 2B06                <1>     dw .comment - .keyTbl
-   256 00000D55 FF                  <1> 	db -1	;End of table marker
+   254 00000D7D 0352454D            <1>     db 3, "REM"
+   255 00000D81 0206                <1>     dw .comment - .keyTbl
+   256 00000D83 FF                  <1> 	db -1	;End of table marker
    257                              <1> 
    258                              <1> .breakHandler:
-   259 00000D56 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   260 00000D5A 4881C605000000      <1>     add rsi, 5  ;Go past BREAK
+   259 00000D84 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   260 00000D88 4881C605000000      <1>     add rsi, 5  ;Go past BREAK
    261                              <1>     ;This must be the word ON or OFF 
-   262 00000D61 E8D2FEFFFF          <1>     call .skipSeparators
-   263 00000D66 31D2                <1>     xor edx, edx    ;Clear CF and default to OFF
-   264 00000D68 66813E4F4E          <1>     cmp word [rsi], "ON"
-   265 00000D6D 7413                <1>     je .breakOn
-   266 00000D6F 66813E4F46          <1>     cmp word [rsi], "OF"
-   267 00000D74 7506                <1>     jne .breakBad
-   268 00000D76 807E0246            <1>     cmp byte [rsi + 2], "F"
-   269 00000D7A 7408                <1>     je .breakCommon
+   262 00000D8F E8D2FEFFFF          <1>     call .skipSeparators
+   263 00000D94 31D2                <1>     xor edx, edx    ;Clear CF and default to OFF
+   264 00000D96 66813E4F4E          <1>     cmp word [rsi], "ON"
+   265 00000D9B 7413                <1>     je .breakOn
+   266 00000D9D 66813E4F46          <1>     cmp word [rsi], "OF"
+   267 00000DA2 7506                <1>     jne .breakBad
+   268 00000DA4 807E0246            <1>     cmp byte [rsi + 2], "F"
+   269 00000DA8 7408                <1>     je .breakCommon
    270                              <1> .breakBad:
-   271 00000D7C E815FFFFFF          <1>     call .badLineErrorMsg
+   271 00000DAA E815FFFFFF          <1>     call .badLineErrorMsg
    272                              <1>     return
     13                              <2> %%_ret:
-    14 00000D81 C3                  <2>  ret
+    14 00000DAF C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
    273                              <1> .breakOn:
-   274 00000D82 FFC2                <1>     inc edx ;Go from OFF to ON  (keeps CF=NC)
+   274 00000DB0 FFC2                <1>     inc edx ;Go from OFF to ON  (keeps CF=NC)
    275                              <1> .breakCommon:
-   276 00000D84 B801330000          <1>     mov eax, 3301h  ;Set break to value in dl
-   277 00000D89 CD21                <1>     int 21h
+   276 00000DB2 B801330000          <1>     mov eax, 3301h  ;Set break to value in dl
+   277 00000DB7 CD21                <1>     int 21h
    278                              <1>     return
     13                              <2> %%_ret:
-    14 00000D8B C3                  <2>  ret
+    14 00000DB9 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
    279                              <1> 
    280                              <1> .bufHandler:
-   281 00000D8C 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   282 00000D90 4881C607000000      <1>     add rsi, 7  ;Go past BUFFERS=
+   281 00000DBA 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   282 00000DBE 4881C607000000      <1>     add rsi, 7  ;Go past BUFFERS=
    283                              <1>     ;This must be at most three digits, anything else is a failure
-   284 00000D97 E89CFEFFFF          <1>     call .skipSeparators
-   285 00000D9C 4889F7              <1>     mov rdi, rsi    ;Save the start in rdi
-   286 00000D9F 31C9                <1>     xor ecx, ecx
-   287 00000DA1 AC                  <1>     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
-   288 00000DA2 3C30                <1>     cmp al, "0"
-   289 00000DA4 7256                <1>     jb .bufHandlerErr
-   290 00000DA6 3C39                <1>     cmp al, "9"
-   291 00000DA8 7752                <1>     ja .bufHandlerErr
-   292 00000DAA FFC1                <1>     inc ecx ;Increment char counter
-   293 00000DAC AC                  <1>     lodsb   ;Get second char
-   294 00000DAD E850000000          <1>     call .bufHandlerTermCheck
-   295 00000DB2 7410                <1>     je .bufHandlerProcess   ;If it is a terminating char, exit
-   296 00000DB4 3C30                <1>     cmp al, "0"
-   297 00000DB6 7244                <1>     jb .bufHandlerErr
-   298 00000DB8 3C39                <1>     cmp al, "9"
-   299 00000DBA 7740                <1>     ja .bufHandlerErr
-   300 00000DBC AC                  <1>     lodsb   ;Check no more chars!
-   301 00000DBD E840000000          <1>     call .bufHandlerTermCheck
-   302 00000DC2 7538                <1>     jne .bufHandlerErr
+   284 00000DC5 E89CFEFFFF          <1>     call .skipSeparators
+   285 00000DCA 4889F7              <1>     mov rdi, rsi    ;Save the start in rdi
+   286 00000DCD 31C9                <1>     xor ecx, ecx
+   287 00000DCF AC                  <1>     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
+   288 00000DD0 3C30                <1>     cmp al, "0"
+   289 00000DD2 7257                <1>     jb .bufHandlerErr
+   290 00000DD4 3C39                <1>     cmp al, "9"
+   291 00000DD6 7753                <1>     ja .bufHandlerErr
+   292 00000DD8 FFC1                <1>     inc ecx ;Increment char counter
+   293 00000DDA AC                  <1>     lodsb   ;Get second char
+   294 00000DDB E868050000          <1>     call .termCheck
+   295 00000DE0 7410                <1>     je .bufHandlerProcess   ;If it is a terminating char, exit
+   296 00000DE2 3C30                <1>     cmp al, "0"
+   297 00000DE4 7245                <1>     jb .bufHandlerErr
+   298 00000DE6 3C39                <1>     cmp al, "9"
+   299 00000DE8 7741                <1>     ja .bufHandlerErr
+   300 00000DEA AC                  <1>     lodsb   ;Check no more chars!
+   301 00000DEB E858050000          <1>     call .termCheck
+   302 00000DF0 7539                <1>     jne .bufHandlerErr
    303                              <1> .bufHandlerProcess:
-   304 00000DC4 31D2                <1>     xor edx, edx    ;Accumulate value in edx
-   305 00000DC6 4889FE              <1>     mov rsi, rdi    ;Go back to the first number
+   304 00000DF2 31D2                <1>     xor edx, edx    ;Accumulate value in edx
+   305 00000DF4 4889FE              <1>     mov rsi, rdi    ;Go back to the first number
    306                              <1> .bufHandlerLp:
-   307 00000DC9 AC                  <1>     lodsb   ;Get the digit
-   308 00000DCA 2C30                <1>     sub al, "0" ;Convert to ASCII
-   309 00000DCC 0FB6C0              <1>     movzx eax, al
-   310 00000DCF 67E30E              <1>     jecxz .bufHandlerPrepExit   ;Exit if this is the only digit
-   311 00000DD2 D1E0                <1>     shl eax, 1  ;Multiply by 2
-   312 00000DD4 678D1480            <1>     lea edx, dword [4*eax + eax]    ;Multiply (2*eax) by 5
-   313 00000DD8 AC                  <1>     lodsb   ;Get the next digit
-   314 00000DD9 2C30                <1>     sub al, "0"
-   315 00000DDB 0FB6C0              <1>     movzx eax, al
-   316 00000DDE 01D0                <1>     add eax, edx    ;Add the tens to the unit
-   317                              <1> .bufHandlerPrepExit:
-   318 00000DE0 0FB60D(CD010000)    <1>     movzx ecx, byte [BUFFERS]
-   319 00000DE7 85C0                <1>     test eax, eax
-   320 00000DE9 0F44C1              <1>     cmovz eax, ecx  ;Replace zero with default if the user specified 0 buffers
-   321 00000DEC 488945F8            <1>     mov qword [rbp - cfgFrame.newBuffers], rax
-   322 00000DF0 F8                  <1>     clc
-   323                              <1>     return
+   307 00000DF7 AC                  <1>     lodsb   ;Get the digit
+   308 00000DF8 2C30                <1>     sub al, "0" ;Convert to ASCII
+   309 00000DFA 0FB6C0              <1>     movzx eax, al
+   310 00000DFD FFC9                <1>     dec ecx
+   311 00000DFF 740E                <1>     jz .bufHandlerPrepExit   ;Exit if this is the only digit
+   312 00000E01 D1E0                <1>     shl eax, 1  ;Multiply by 2
+   313 00000E03 678D1480            <1>     lea edx, dword [4*eax + eax]    ;Multiply (2*eax) by 5
+   314 00000E07 AC                  <1>     lodsb   ;Get the next digit
+   315 00000E08 2C30                <1>     sub al, "0"
+   316 00000E0A 0FB6C0              <1>     movzx eax, al
+   317 00000E0D 01D0                <1>     add eax, edx    ;Add the tens to the unit
+   318                              <1> .bufHandlerPrepExit:
+   319 00000E0F 0FB60D(CD010000)    <1>     movzx ecx, byte [BUFFERS]
+   320 00000E16 85C0                <1>     test eax, eax
+   321 00000E18 0F44C1              <1>     cmovz eax, ecx  ;Replace zero with default if the user specified 0 buffers
+   322 00000E1B 488945F8            <1>     mov qword [rbp - cfgFrame.newBuffers], rax
+   323 00000E1F F8                  <1>     clc
+   324                              <1>     return
     13                              <2> %%_ret:
-    14 00000DF1 C3                  <2>  ret
+    14 00000E20 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   324                              <1> .bufHandlerMul:
-   325 00000DF2 2C30                <1>     sub al, "0" ;Convert to a binary value
-   326 00000DF4 F6E1                <1>     mul cl  ;Multiply al by cl, answer in ax
-   327 00000DF6 0FB7C0              <1>     movzx eax, ax
-   328 00000DF9 01C2                <1>     add edx, eax
-   329                              <1>     return
+   325                              <1> .bufHandlerMul:
+   326 00000E21 2C30                <1>     sub al, "0" ;Convert to a binary value
+   327 00000E23 F6E1                <1>     mul cl  ;Multiply al by cl, answer in ax
+   328 00000E25 0FB7C0              <1>     movzx eax, ax
+   329 00000E28 01C2                <1>     add edx, eax
+   330                              <1>     return
     13                              <2> %%_ret:
-    14 00000DFB C3                  <2>  ret
+    14 00000E2A C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   330                              <1> .bufHandlerErr:
-   331 00000DFC E895FEFFFF          <1>     call .badLineErrorMsg
-   332                              <1>     return
+   331                              <1> .bufHandlerErr:
+   332 00000E2B E894FEFFFF          <1>     call .badLineErrorMsg
+   333                              <1>     return
     13                              <2> %%_ret:
-    14 00000E01 C3                  <2>  ret
+    14 00000E30 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   333                              <1> .bufHandlerTermCheck:
-   334 00000E02 3C20                <1>     cmp al, SPC
-   335                              <1>     rete
+   334                              <1> ;===============================
+   335                              <1> ;   Device Driver Loader here  :
+   336                              <1> ;===============================
+   337                              <1> .drvLoader:
+   338 00000E31 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   339 00000E35 4881C606000000      <1>     add rsi, 6  ;Go past DEVICE= to the pathname
+   340 00000E3C E825FEFFFF          <1>     call .skipSeparators
+   341 00000E41 4889F7              <1>     mov rdi, rsi
+   342 00000E44 4889FA              <1>     mov rdx, rdi    ;Prepare rdx for the open
+   343                              <1> ;Now search for the first char after pathname. 
+   344                              <1> .drvFindEndOfFileName:
+   345 00000E47 AC                  <1>     lodsb ;Get char from string name
+   346                              <1>     ;Was the char a primitive string terminator?
+   347 00000E48 3C20                <1>     cmp al, SPC
+   348 00000E4A 740C                <1>     je short .fileNameFound
+   349 00000E4C 3C1A                <1>     cmp al, EOF
+   350 00000E4E 7408                <1>     je short .fileNameFound
+   351 00000E50 3C0D                <1>     cmp al, CR
+   352 00000E52 7404                <1>     je short .fileNameFound
+   353 00000E54 3C0A                <1>     cmp al, LF
+   354 00000E56 75EF                <1>     jne short .drvFindEndOfFileName
+   355                              <1> .fileNameFound:
+   356 00000E58 48FFCE              <1>     dec rsi ;Point rsi to the space itself
+   357 00000E5B 488975A8            <1>     mov qword [rbp - cfgFrame.driverBreak], rsi
+   358 00000E5F 0FB606              <1>     movzx eax, byte [rsi]   ;Get the original breakchar
+   359 00000E62 488945A0            <1>     mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
+   360 00000E66 C60600              <1>     mov byte [rsi], 0   ;Null terminate the path to the file
+   361                              <1>     ;rdx -> Filename
+   362                              <1>     ;Here open the file to attempt to see how much space to 
+   363                              <1>     ; allocate to the file for loading. 
+   364                              <1>     ;Consider using the 4B01h loading mode instead and swapping back
+   365                              <1>     ; the current DTA and PSP to DOS default? This gives each driver a PSP
+   366                              <1>     ; which would allow for opening of files independently of calling programs'
+   367                              <1>     ; file table... maybe try it after getting 4B03h load to work first!
+   368 00000E69 B8003D0000          <1>     mov eax, 3D00h  ;Read only file
+   369 00000E6E CD21                <1>     int 21h
+   370 00000E70 0F82C4020000        <1>     jc .drvBad
+   371 00000E76 0FB7D8              <1>     movzx ebx, ax   ;Get the handle in ebx
+   372 00000E79 31D2                <1>     xor edx, edx    ;Move the handle to the end of the file
+   373 00000E7B B802420000          <1>     mov eax, 4202h  ;LSEEK to SEEK_END
+   374 00000E80 CD21                <1>     int 21h
+   375 00000E82 89C6                <1>     mov esi, eax    ;Save the file size in esi
+   376 00000E84 31D2                <1>     xor edx, edx    ;Move the handle to the start of the file
+   377 00000E86 B800420000          <1>     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
+   378 00000E8B CD21                <1>     int 21h
+   379 00000E8D 53                  <1>     push rbx        ;Push the file handle on the stack
+   380 00000E8E BB06000000          <1>     mov ebx, 6      ;6 paragraphs (96 bytes)
+   381 00000E93 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
+   382 00000E98 CD21                <1>     int 21h
+   383 00000E9A 5B                  <1>     pop rbx         ;Get the handle back in rbx
+   384 00000E9B 0F82A9020000        <1>     jc .drvMemClose
+   385 00000EA1 4889C2              <1>     mov rdx, rax    ;Get pointer to memory in rdx
+   386 00000EA4 B940000000          <1>     mov ecx, imageDosHdr_size
+   387 00000EA9 B8003F0000          <1>     mov eax, 3F00h  ;READ
+   388 00000EAE CD21                <1>     int 21h
+   389 00000EB0 4989D0              <1>     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
+   390 00000EB3 4889D7              <1>     mov rdi, rdx    ;Get pointer to the EXE header
+   391 00000EB6 730C                <1>     jnc short .headerReadOK
+   392                              <1> .drvFreeMemAndHdl: ;Frees the block and then handle
+   393                              <1>     ;r8 must point to the block to free
+   394 00000EB8 B800490000          <1>     mov eax, 4900h  ;Free the block first!
+   395 00000EBD CD21                <1>     int 21h
+   396 00000EBF E96F020000          <1>     jmp .drvBadClose
+   397                              <1> .headerReadOK:
+   398                              <1> ;Use register r10 as the indicator for .COM or .EXE. Set if COM.
+   399 00000EC4 4889D7              <1>     mov rdi, rdx    ;Save the pointer in rdi
+   400                              <1>     ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
+   401 00000EC7 66813F4D5A          <1>     cmp word [rdi], dosMagicSignature
+   402 00000ECC 742C                <1>     je short .exeDrivers
+   403 00000ECE 66813F5A4D          <1>     cmp word [rdi], dosMagicSignature2
+   404 00000ED3 7425                <1>     je short .exeDrivers
+   405                              <1> ;.COM drivers come down here
+   406                              <1>     ;Get File Image Allocation Size in ecx here.
+   407                              <1>     ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
+   408 00000ED5 31C9                <1>     xor ecx, ecx
+   409 00000ED7 31D2                <1>     xor edx, edx
+   410 00000ED9 B802420000          <1>     mov eax, 4202h  ;LSEEK from the end of the file
+   411 00000EDE CD21                <1>     int 21h
+   412                              <1>     ;eax now has the filesize. 
+   413 00000EE0 89C1                <1>     mov ecx, eax
+   414 00000EE2 81E1F0FFFFFF        <1>     and ecx, ~0Fh   ;Clear lower byte
+   415 00000EE8 C1E904              <1>     shr ecx, 4      ;Convert to paragraphs
+   416 00000EEB FFC1                <1>     inc ecx         ;... and round up!
+   417 00000EED 81F900100000        <1>     cmp ecx, 1000h ;Is it geq 64k (in paragraphs)?
+   418 00000EF3 73C3                <1>     jae .drvFreeMemAndHdl
+   419 00000EF5 E978000000          <1>     jmp .loadCont
+   420                              <1> .exeDrivers:
+   421                              <1>     ;Get the file pointer for file header
+   422 00000EFA 8B573C              <1>     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
+   423 00000EFD 31C9                <1>     xor ecx, ecx
+   424 00000EFF B800420000          <1>     mov eax, 4200h  ;LSEEK from the start of the file
+   425 00000F04 CD21                <1>     int 21h
+   426                              <1>     ;Now read in imageFileHeader here
+   427 00000F06 4889FA              <1>     mov rdx, rdi    ;Overwrite the 16-bit header
+   428 00000F09 B918000000          <1>     mov ecx, imageFileHeader_size   ;Read the header
+   429 00000F0E B8003F0000          <1>     mov eax, 3F00h  ;READ
+   430 00000F13 CD21                <1>     int 21h
+   431 00000F15 72A1                <1>     jc short .drvFreeMemAndHdl
+   432 00000F17 3D18000000          <1>     cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
+   433 00000F1C 729A                <1>     jb short .drvFreeMemAndHdl
+   434 00000F1E 813F50450000        <1>     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
+   435 00000F24 7592                <1>     jne .drvFreeMemAndHdl
+   436 00000F26 66817F046486        <1>     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
+   437 00000F2C 758A                <1>     jne .drvFreeMemAndHdl
+   438 00000F2E 66817F143C00        <1>     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 60
+   439 00000F34 7282                <1>     jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
+   440                              <1>     ;Now read the first 60 bytes of the optional header here. rdx points to buffer
+   441 00000F36 B93C000000          <1>     mov ecx, 60     ;Read only 60 bytes
+   442 00000F3B B8003F0000          <1>     mov eax, 3F00h  ;READ
+   443 00000F40 CD21                <1>     int 21h
+   444 00000F42 0F8270FFFFFF        <1>     jc .drvFreeMemAndHdl   ;If something goes wrong, skip
+   445 00000F48 3D38000000          <1>     cmp eax, 56
+   446 00000F4D 0F8265FFFFFF        <1>     jb .drvFreeMemAndHdl   ;If fewer than 60 bytes read, skip
+   447                              <1>     ;Round up size requirement.
+   448                              <1>     ;If .EXE, round up to nearest section alignment
+   449 00000F53 8B4F38              <1>     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
+   450 00000F56 8B4720              <1>     mov eax, dword [rdi + imageFileOptionalHeader.dSectionAlignment]
+   451 00000F59 89C6                <1>     mov esi, eax    ;Save in esi the alignment requirement
+   452 00000F5B FFC8                <1>     dec eax         ;Set bits to strip, clear all other bits
+   453 00000F5D F7D0                <1>     not eax         ;Flip the set and clear bits
+   454 00000F5F 21C1                <1>     and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
+   455 00000F61 01F1                <1>     add ecx, esi    ;Now round upwards!
+   456 00000F63 C1E904              <1>     shr ecx, 4      ;Convert to number of paragraphs.
+   457 00000F66 81F900000002        <1>     cmp ecx, 2000000h  ;Drivers cannot be more than 2Gb in size.
+   458 00000F6C 0F8346FFFFFF        <1>     jae .drvFreeMemAndHdl
+   459                              <1> .loadCont:
+   460 00000F72 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
+   461 00000F77 CD21                <1>     int 21h ;r8 has the pointer to the block for freeing
+   462                              <1>     ;Now close the file
+   463 00000F79 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
+   464 00000F7E CD21                <1>     int 21h
+   465 00000F80 89CB                <1>     mov ebx, ecx    ;Put the number of paragraphs in ebx
+   466 00000F82 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
+   467 00000F87 CD21                <1>     int 21h         ;rax gets the pointer to load the program into
+   468 00000F89 0F82BB010000        <1>     jc .drvMemClose
+   469                              <1>     ;Now set the subsystem marker and the owner to DOS
+   470 00000F8F C640FD44            <1>     mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
+   471 00000F93 48C740F109000000    <1>     mov qword [rax - mcb_size + mcb.owner], mcbOwnerNewDOS
+   472                              <1>     ;Build the overlay command block
+   473 00000F9B 488D1D(FC010000)    <1>     lea rbx, cmdBlock
+   474 00000FA2 488903              <1>     mov qword [rbx + loadOvly.pLoadLoc], rax
+   475 00000FA5 48894308            <1>     mov qword [rbx + loadOvly.qRelocFct], rax
+   476 00000FA9 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
+   477 00000FAD 4881C606000000      <1>     add rsi, 6  ;Go past DEVICE= to the null terminated pathname
+   478 00000FB4 E8ADFCFFFF          <1>     call .skipSeparators
+   479 00000FB9 4889F2              <1>     mov rdx, rsi
+   480 00000FBC B8034B0000          <1>     mov eax, 4B03h  ;Load overlay!
+   481 00000FC1 CD21                <1>     int 21h
+   482 00000FC3 733E                <1>     jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
+   483                              <1> .badDriverLoad:
+   484 00000FC5 4C8B05(FC010000)    <1>     mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
+   485 00000FCC B800490000          <1>     mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
+   486 00000FD1 CD21                <1>     int 21h
+   487 00000FD3 488D1508000000      <1>     lea rdx, .drvMemMsg
+   488 00000FDA B800090000          <1>     mov eax, 0900h
+   489 00000FDF CD21                <1>     int 21h
+   490                              <1>     return
+    13                              <2> %%_ret:
+    14 00000FE1 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   491 00000FE2 0D0A4E6F7420656E6F- <1> .drvMemMsg: db CR,LF,"Not enough memory for driver",CR,LF,"$" 
+   491 00000FEB 756768206D656D6F72- <1>
+   491 00000FF4 7920666F7220647269- <1>
+   491 00000FFD 7665720D0A24        <1>
+   492                              <1> .loadOk:
+   493                              <1>     ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
+   494 00001003 488B33              <1>     mov rsi, qword [rbx + loadOvly.pLoadLoc]
+   495 00001006 4989F0              <1>     mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
+   496                              <1>     ;Reset the command line to have a space at the null terminator
+   497 00001009 488B45A8            <1>     mov rax, qword [rbp - cfgFrame.driverBreak]
+   498 0000100D 53                  <1>     push rbx
+   499 0000100E 8A5DA0              <1>     mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
+   500 00001011 8818                <1>     mov byte [rax], bl  ;and replace the null terminator
+   501 00001013 5B                  <1>     pop rbx
+   502                              <1>     ;Remember, the first byte of the overlay is the driver header. 
+   503                              <1>     ;Hence, rsi points to that byte!
+   504                              <1>     ;Pointers of each header need adjustment relative to their load address,
+   505                              <1>     ; and linking into the main driver chain after NUL.
+   506                              <1>     ;r11 = Local var, if no drivers in file passed init, free allocation.
+   507                              <1>     ;                 Else, free using kernel eject routine.
+   508 00001014 56                  <1>     push rsi    ;Save the pointer to the first pointer to adjust
+   509                              <1> .driverPtrAdjustment:
+   510 00001015 4801760A            <1>     add qword [rsi + drvHdr.strPtr], rsi
+   511 00001019 48017612            <1>     add qword [rsi + drvHdr.intPtr], rsi
+   512 0000101D 48813EFFFFFFFF      <1>     cmp qword [rsi + drvHdr.nxtPtr], -1
+   513 00001024 7408                <1>     je short .driverPtrAdjustmentDone
+   514 00001026 480136              <1>     add qword [rsi + drvHdr.nxtPtr], rsi
+   515 00001029 488B36              <1>     mov rsi, qword [rsi + drvHdr.nxtPtr]
+   516 0000102C EBE7                <1>     jmp short .driverPtrAdjustment
+   517                              <1> .driverPtrAdjustmentDone:
+   518 0000102E 5E                  <1>     pop rsi     ;Get back the pointer to the first driver header
+   519                              <1>     ;Prepare for initialising the drivers in the arena
+   520                              <1>     ;EXPERIMENT: USING R9 and R12 UNTIL THE END OF THE FUNCTION
+   521 0000102F 4989F1              <1>     mov r9, rsi     ;Save a copy of the driver pointer in r9
+   522 00001032 488D1D(DD010000)    <1>     lea rbx, initDrvBlk
+   523 00001039 56                  <1>     push rsi
+   524 0000103A 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
+   525 0000103E 4881C606000000      <1>     add rsi, 6  ;Go past DEVICE
+   526 00001045 E81CFCFFFF          <1>     call .skipSeparators    ;Go past equals and any following spaces
+   527 0000104A 48897316            <1>     mov qword [rbx + initReqPkt.optptr], rsi ;and pass to driver!
+   528 0000104E 5E                  <1>     pop rsi
+   529 0000104F 4C8B6500            <1>     mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
+   530                              <1> .driverInit:
+   531 00001053 4C87E5              <1>     xchg r12, rbp
+   532                              <1> ;----------------------------------------------------------------
+   533                              <1> ;In this region, rbp points back to dosseg
+   534                              <1> ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+   535 00001056 E85DF9FFFF          <1>     call initDriver
+   536 0000105B 7271                <1>     jc short .driverBadRbpAdjust
+   537                              <1> ;Now walk the MCB chain for MCBs owned by the current PSP and set 
+   538                              <1> ; them all to mcbOwnerNewDOS. 
+   539 0000105D E814010000          <1>     call .drvAdjustMcbOwner
+   540                              <1> ;Now set the current PSP to mcbOwnerNewDOS and add the driver 
+   541                              <1> ; markers and set owner to mcbOwnerDOS and switch currentPSP back!
+   542 00001062 FFB5[00000000]      <1>     push qword [rbp + currentPSP]
+   543 00001068 48C785[00000000]09- <1>     mov qword [rbp + currentPSP], mcbOwnerNewDOS
+   543 00001070 000000              <1>
+   544 00001073 E808F8FFFF          <1>     call addDriverMarkers
+   545 00001078 8F85[00000000]      <1>     pop qword [rbp + currentPSP]
+   546                              <1> ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   547 0000107E 4C87E5              <1>     xchg r12, rbp
+   548 00001081 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
+   549 00001087 7507                <1>     jnz short .driverInitialised
+   550 00001089 E8E5F9FFFF          <1>     call buildDPBs          ;Preserves rbp, rsi and rbx
+   551 0000108E 7241                <1>     jc short .driverBad
+   552                              <1> .driverInitialised:
+   553 00001090 48813EFFFFFFFF      <1>     cmp qword [rsi + drvHdr.nxtPtr], -1     ;We at the end of the chain?
+   554 00001097 480F4536            <1>     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
+   555 0000109B 75B6                <1>     jne short .driverInit ;If not, goto next driver
+   556                              <1> ;Now we eject the init routines for the driver
+   557                              <1> ;r8 points to the MCB data area already
+   558 0000109D 31DB                <1>     xor ebx, ebx
+   559 0000109F 418B58F9            <1>     mov ebx, dword [r8 - mcb_size + mcb.blockSize] ;Get the size of the arena in paragraphs
+   560 000010A3 48C1E304            <1>     shl rbx, 4  ;Turn into number of bytes
+   561 000010A7 4981E810000000      <1>     sub r8, mcb_size    ;Point to the mcb header proper
+   562 000010AE 498D5C1810          <1>     lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
+   563 000010B3 E8AEF8FFFF          <1>     call ejectKernelInit    ;Ignore any errors in ejection.
+   564                              <1>     ;Link into main driver chain, 
+   565                              <1>     ;r9 points to first driver in block
+   566                              <1>     ;rsi points to last driver in block
+   567 000010B8 488B7D00            <1>     mov rdi, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG ptr
+   568 000010BC 488DBF[00000000]    <1>     lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
+   569 000010C3 488B07              <1>     mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
+   570 000010C6 4C890F              <1>     mov qword [rdi + drvHdr.nxtPtr], r9     ;Link new drivers in
+   571 000010C9 488906              <1>     mov qword [rsi + drvHdr.nxtPtr], rax    ;Link end to old chain
+   572                              <1> .driverExit:
+   573                              <1> ;Exit the init routine if it all works out, WOO!
+   574                              <1> ;Return values to original registers/memory locations
+   575                              <1> ;    mov qword fs:[currentPSP], r11
+   576 000010CC F8                  <1>     clc
+   577                              <1>     return
+    13                              <2> %%_ret:
+    14 000010CD C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   578                              <1> .driverBadRbpAdjust:
+   579 000010CE 4C89E5              <1>     mov rbp, r12
+   580                              <1> .driverBad:
+   581                              <1>     ;Form the string to print
+   582 000010D1 488D3D50000000      <1>     lea rdi, .driverBad2    ;Store the name here
+   583 000010D8 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
+   584 000010DE 750E                <1>     jnz short .driverCharBad    ;If not, exit
+   585                              <1>     ;MSD devices need to have something placed in there
+   586 000010E0 48B84D534420646576- <1>     mov rax, "MSD dev "
+   586 000010E9 20                  <1>
+   587 000010EA 48AB                <1>     stosq   ;Store the 8 chars here
+   588 000010EC EB06                <1>     jmp short .driverBadPrint
+   589                              <1> .driverCharBad:
+   590 000010EE 488D761A            <1>     lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
+   591 000010F2 48A5                <1>     movsq   ;Move all 8 chars over from device driver name
+   592                              <1> .driverBadPrint:
+   593 000010F4 488D1510000000      <1>     lea rdx, .driverBad1
+   594 000010FB B800090000          <1>     mov eax, 0900h  ;Print the string!
+   595 00001100 CD21                <1>     int 21h
+   596 00001102 B800490000          <1>     mov eax, 4900h  ;Attempt to deallocate the driver now
+   597 00001107 CD21                <1>     int 21h
+   598 00001109 EBC1                <1>     jmp short .driverExit
+   599 0000110B 0D0A4572726F722069- <1> .driverBad1 db CR,LF,"Error initialising driver: "
+   599 00001114 6E697469616C697369- <1>
+   599 0000111D 6E6720647269766572- <1>
+   599 00001126 3A20                <1>
+   600 00001128 20202020202020200D- <1> .driverBad2 db "        ",CR,LF,"$"
+   600 00001131 0A24                <1>
+   601                              <1> ;------------------
+   602                              <1> ;Bad exit cases
+   603                              <1> ;------------------
+   604                              <1> .drvBadClose:
+   605 00001133 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
+   606 00001138 CD21                <1>     int 21h
+   607                              <1> .drvBad:
+   608 0000113A 488D1519000000      <1>     lea rdx, .drvBadMsg
+   609                              <1> .drvBad2:
+   610 00001141 B800090000          <1>     mov eax, 0900h
+   611 00001146 CD21                <1>     int 21h
+   612 00001148 F8                  <1>     clc ;Never return with CF=CY
+   613                              <1>     return
+    13                              <2> %%_ret:
+    14 00001149 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   614                              <1> .drvMemClose:
+   615 0000114A B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
+   616 0000114F CD21                <1>     int 21h
+   617 00001151 488D158AFEFFFF      <1>     lea rdx, .drvMemMsg
+   618 00001158 EBE7                <1>     jmp short .drvBad2
+   619                              <1> 
+   620 0000115A 0D0A426164206F7220- <1> .drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
+   620 00001163 6D697373696E672066- <1>
+   620 0000116C 696C656E616D650D0A- <1>
+   620 00001175 24                  <1>
+   621                              <1> 
+   622                              <1> .drvAdjustMcbOwner:
+   623                              <1> ;Traverses the MCB chain looking for MCBs owned by the current PSP and 
+   624                              <1> ; sets them all to mcbOwnerNewDOS.
+   625                              <1> ;Input: rbp -> DOS Data Area
+   626 00001176 51                  <1>     push rcx
+   627 00001177 56                  <1>     push rsi
+   628 00001178 57                  <1>     push rdi
+   629 00001179 488BBD[00000000]    <1>     mov rdi, qword [rbp + currentPSP]
+   630 00001180 488BB5[00000000]    <1>     mov rsi, qword [rbp + mcbChainPtr] ;Points to the MCB chain head
+   631                              <1> .checkOwner:
+   632 00001187 48397E01            <1>     cmp qword [rsi + mcb.owner], rdi
+   633 0000118B 7508                <1>     jne .gotoNextBlock
+   634 0000118D 48C7460109000000    <1>     mov qword [rsi + mcb.owner], mcbOwnerNewDOS
+   635                              <1> .gotoNextBlock:
+   636 00001195 803E5A              <1>     cmp byte [rsi + mcb.marker], mcbMarkEnd
+   637 00001198 7413                <1>     je short .exit
+   638 0000119A 8B4E09              <1>     mov ecx, dword [rsi + mcb.blockSize]
+   639 0000119D 48C1E104            <1>     shl rcx, 4
+   640 000011A1 4881C610000000      <1>     add rsi, mcb.program    
+   641 000011A8 4801CE              <1>     add rsi, rcx
+   642 000011AB EBDA                <1>     jmp short .checkOwner
+   643                              <1> .exit:
+   644 000011AD 5F                  <1>     pop rdi
+   645 000011AE 5E                  <1>     pop rsi
+   646 000011AF 59                  <1>     pop rcx
+   647                              <1>     return
+    13                              <2> %%_ret:
+    14 000011B0 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   648                              <1> 
+   649                              <1> 
+   650                              <1> .sftHandler:
+   651                              <1> ;This reads the line to set the number of FILE to between 1 and 254
+   652 000011B1 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   653 000011B5 4881C605000000      <1>     add rsi, 5  ;Go past FILES=
+   654 000011BC E8A5FAFFFF          <1>     call .skipSeparators
+   655                              <1>     ;This must be at most three digits, anything else is a failure
+   656 000011C1 4889F7              <1>     mov rdi, rsi    ;Save the start in rdi
+   657 000011C4 31C9                <1>     xor ecx, ecx
+   658 000011C6 AC                  <1>     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
+   659 000011C7 3C30                <1>     cmp al, "0"
+   660 000011C9 0F828E000000        <1>     jb .sftHandlerErr
+   661 000011CF 3C39                <1>     cmp al, "9"
+   662 000011D1 0F8786000000        <1>     ja .sftHandlerErr
+   663 000011D7 FFC1                <1>     inc ecx ;Increment char counter
+   664 000011D9 AC                  <1>     lodsb   ;Get second char
+   665 000011DA E869010000          <1>     call .termCheck
+   666 000011DF 7424                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
+   667 000011E1 3C30                <1>     cmp al, "0"
+   668 000011E3 7278                <1>     jb .sftHandlerErr
+   669 000011E5 3C39                <1>     cmp al, "9"
+   670 000011E7 7774                <1>     ja .sftHandlerErr
+   671 000011E9 FFC1                <1>     inc ecx ;Increment char counter
+   672 000011EB AC                  <1>     lodsb   ;Get third char
+   673 000011EC E857010000          <1>     call .termCheck
+   674 000011F1 7412                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
+   675 000011F3 3C30                <1>     cmp al, "0"
+   676 000011F5 7266                <1>     jb .sftHandlerErr
+   677 000011F7 3C39                <1>     cmp al, "9"
+   678 000011F9 7762                <1>     ja .sftHandlerErr
+   679 000011FB AC                  <1>     lodsb   ;Check no more chars!
+   680 000011FC E847010000          <1>     call .termCheck
+   681 00001201 755A                <1>     jne .sftHandlerErr
+   682 00001203 FFC1                <1>     inc ecx ;Increment char counter
+   683                              <1> .sftHandlerProcess:
+   684 00001205 31D2                <1>     xor edx, edx    ;Accumulate value in edx
+   685 00001207 4889FE              <1>     mov rsi, rdi    ;Go back to the first number
+   686                              <1> .sftHandlerLp:
+   687 0000120A FFC9                <1>     dec ecx
+   688 0000120C AC                  <1>     lodsb   ;Get the digit
+   689 0000120D E823000000          <1>     call .sftHandlerMul
+   690 00001212 67E302              <1>     jecxz .sftHandlerPrepExit
+   691 00001215 EBF3                <1>     jmp short .sftHandlerLp 
+   692                              <1> .sftHandlerPrepExit:
+   693                              <1> ;edx has the value now, so place it in stack
+   694 00001217 81FAFE000000        <1>     cmp edx, 254
+   695 0000121D 773E                <1>     ja .sftHandlerErr       ;DOS maximum number of files
+   696 0000121F 0FB60D(CC010000)    <1>     movzx ecx, byte [FILES] ;Get default if the user specifies less than min
+   697 00001226 81FA08000000        <1>     cmp edx, 8              ;DOS minimum number of files
+   698 0000122C 0F42D1              <1>     cmovb edx, ecx
+   699 0000122F 488955F0            <1>     mov qword [rbp - cfgFrame.newSFTVal], rdx
+   700 00001233 F8                  <1>     clc
+   701                              <1>     return
+    13                              <2> %%_ret:
+    14 00001234 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   702                              <1> .sftHandlerMul:
+   703                              <1> ;Input:
+   704                              <1> ;al = digit to add to result (ASCII digit)
+   705                              <1> ;ecx = whether al is a unit (0), ten (1) or hundred (2)
+   706                              <1> ;rdx = Accumulated sum
+   707                              <1> ;Output:
+   708                              <1> ;rdx = Accumulated sum with al added
+   709                              <1> ;eax is destroyed
+   710                              <1> ;All other registers preserved
+   711 00001235 51                  <1>     push rcx
+   712 00001236 52                  <1>     push rdx
+   713 00001237 0FB6C0              <1>     movzx eax, al
+   714 0000123A 2D30000000          <1>     sub eax, '0' ;Convert to a binary digit
+   715 0000123F BA01000000          <1>     mov edx, 1    ;Get 1 in edx (multiplicative unit)
+   716 00001244 39D1                <1>     cmp ecx, edx  ;Was cl a ten?
+   717 00001246 BB0A000000          <1>     mov ebx, 10     ;Default base offset to 10
+   718 0000124B B964000000          <1>     mov ecx, 100
+   719 00001250 0F42DA              <1>     cmovb ebx, edx  ;If below, it was a unit
+   720 00001253 0F47D9              <1>     cmova ebx, ecx  ;If above, it was a hundred
+   721 00001256 F7E3                <1>     mul ebx    ;Multiply the base offset to eax
+   722 00001258 5A                  <1>     pop rdx ;Get the accumulated value back
+   723 00001259 01C2                <1>     add edx, eax    ;Add this result over
+   724 0000125B 59                  <1>     pop rcx
+   725                              <1>     return
+    13                              <2> %%_ret:
+    14 0000125C C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   726                              <1> .sftHandlerErr:
+   727 0000125D E862FAFFFF          <1>     call .badLineErrorMsg
+   728                              <1>     return
+    13                              <2> %%_ret:
+    14 00001262 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   729                              <1> 
+   730                              <1> .lastdriveHandler:
+   731 00001263 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   732 00001267 4881C609000000      <1>     add rsi, 9  ;Go past LASTDRIVE
+   733 0000126E E8F3F9FFFF          <1>     call .skipSeparators
+   734 00001273 AC                  <1>     lodsb   ;Get this char
+   735 00001274 0FB6C0              <1>     movzx eax, al   ;Zero extend to eax
+   736 00001277 E8C0000000          <1>     call .ucChar
+   737 0000127C 3C5A                <1>     cmp al, "Z"
+   738 0000127E 77DD                <1>     ja .sftHandlerErr
+   739 00001280 3C41                <1>     cmp al, "A"
+   740 00001282 72D9                <1>     jb .sftHandlerErr
+   741 00001284 803E0D              <1>     cmp byte [rsi], CR
+   742 00001287 740F                <1>     je .ldProceed
+   743 00001289 803E0A              <1>     cmp byte [rsi], LF
+   744 0000128C 740A                <1>     je .ldProceed
+   745 0000128E 803E09              <1>     cmp byte [rsi], TAB
+   746 00001291 7405                <1>     je .ldProceed
+   747 00001293 803E20              <1>     cmp byte [rsi], SPC
+   748 00001296 75C5                <1>     jne .sftHandlerErr
+   749                              <1> .ldProceed:
+   750 00001298 2C40                <1>     sub al, "@"     ;Convert into a number 1-26 
+   751 0000129A 0FB6C0              <1>     movzx eax, al   ;Zero extend in case DOS rets something dumb in upper bits
+   752 0000129D 0FB615(CF010000)    <1>     movzx edx, byte [LASTDRIVE]
+   753 000012A4 39D0                <1>     cmp eax, edx
+   754 000012A6 0F42C2              <1>     cmovb eax, edx
+   755 000012A9 488945D8            <1>     mov qword [rbp - cfgFrame.newLastdrive], rax
+   756 000012AD F8                  <1>     clc
+   757                              <1>     return
+    13                              <2> %%_ret:
+    14 000012AE C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   758                              <1> 
+   759                              <1> .shellHandler:
+   760 000012AF 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
+   761 000012B3 4889F3              <1>     mov rbx, rsi
+   762 000012B6 4881C605000000      <1>     add rsi, 5  ;Go past SHELL
+   763 000012BD E8A4F9FFFF          <1>     call .skipSeparators    ;Spaces, equals sign etc
+   764 000012C2 4889F7              <1>     mov rdi, rsi
+   765 000012C5 4829DF              <1>     sub rdi, rbx    ;Get the depth into the string we are at
+   766 000012C8 B980000000          <1>     mov ecx, 128
+   767 000012CD 29F9                <1>     sub ecx, edi    ;Get remaining valid char count for the string
+   768 000012CF 4889F7              <1>     mov rdi, rsi
+   769 000012D2 B80D000000          <1>     mov eax, CR
+   770 000012D7 F2AE                <1>     repne scasb     ;Scan for the terminator
+   771 000012D9 0F85E5F9FFFF        <1>     jne .badLineErrorMsg    ;If we didn't find it, complain!
+   772                              <1>     ;Now we know we are safe, proceed with copy.
+   773 000012DF 488D3D(54000000)    <1>     lea rdi, cmdSpec
+   774 000012E6 B800370000          <1>     mov eax, 3700h  ;Get switchchar in dl
+   775 000012EB CD21                <1>     int 21h
+   776                              <1> .shLp:
+   777 000012ED AC                  <1>     lodsb
+   778                              <1>     ;If a sep, a CR or a default switchchar, we are done!
+   779 000012EE 3C0D                <1>     cmp al, CR
+   780 000012F0 740E                <1>     je .shSpecDone   
+   781 000012F2 E858F9FFFF          <1>     call .isCharSeparator
+   782 000012F7 7407                <1>     je .shSpecDone
+   783 000012F9 38D0                <1>     cmp al, dl
+   784 000012FB 7403                <1>     je .shSpecDone
+   785 000012FD AA                  <1>     stosb   ;Else store the char!
+   786 000012FE EBED                <1>     jmp short .shLp
+   787                              <1> .shSpecDone:
+   788 00001300 C60700              <1>     mov byte [rdi], 0   ;Now store the null terminator :)
+   789 00001303 C605(9C020000)00    <1>     mov byte [tempPSP + psp.dta], 0 ;Reset the count of chars in the tail
+   790 0000130A 488D3D(9D020000)    <1>     lea rdi, tempPSP + psp.dta + 1  ;Now store the tail here
+   791 00001311 48FFCE              <1>     dec rsi     ;Go back to get the char again
+   792                              <1>     ;This will work with CR especially well
+   793                              <1> .shTailLp:
+   794 00001314 AC                  <1>     lodsb
+   795 00001315 3C0D                <1>     cmp al, CR
+   796 00001317 7409                <1>     je .shAllDone
+   797 00001319 AA                  <1>     stosb
+   798 0000131A FE05(9C020000)      <1>     inc byte [tempPSP + psp.dta]    ;Inc the char count!
+   799 00001320 EBF2                <1>     jmp short .shTailLp
+   800                              <1> .shAllDone: ;Only possible to get here is al=CR
+   801 00001322 AA                  <1>     stosb   ;Store the terminating CR
+   802                              <1> .countryScan:
+   803                              <1> .fcbHandler:
+   804                              <1> .stacksHandler:
+   805                              <1> .drivParm:
+   806                              <1> .comment:
+   807 00001323 F8                  <1>     clc
+   808                              <1>     return
+    13                              <2> %%_ret:
+    14 00001324 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   809                              <1> 
+   810                              <1> .cfgExit:
+   811 00001325 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle] ;Get the handle back
+   812 00001329 B8003E0000          <1>     mov eax, 3E00h    ;Close the handle
+   813 0000132E CD21                <1>     int 21h ;bx already has the handle
+   814 00001330 4C8B45B0            <1>     mov r8, qword [rbp - cfgFrame.linePtr]   ;Get the line buffer ptr back
+   815 00001334 B800490000          <1>     mov eax, 4900h  ;FREE
+   816 00001339 CD21                <1>     int 21h
+   817                              <1>     return
+    13                              <2> %%_ret:
+    14 0000133B C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   818                              <1> .ucChar:
+   819                              <1> ;Input: al = Char to UC
+   820                              <1> ;Output: al = UC'd char
+   821 0000133C 53                  <1>     push rbx    ;Save on original stack
+   822 0000133D 50                  <1>     push rax    ;Put the word on the stack
+   823 0000133E B813120000          <1>     mov eax, 1213h  ;Uppercase the char in al
+   824 00001343 CD2F                <1>     int 2fh
+   825 00001345 5B                  <1>     pop rbx     ;Pop off the word we placed on the stack
+   826 00001346 5B                  <1>     pop rbx     ;Get back original rbx
+   827                              <1>     return
+    13                              <2> %%_ret:
+    14 00001347 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   828                              <1> 
+   829                              <1> .termCheck:
+   830                              <1> ;Input: al = Char to check if it is a command line terminator
+   831                              <1> ;Output: ZF=ZE if terminator. ZF=NZ if not.
+   832 00001348 3C20                <1>     cmp al, SPC
+   833 0000134A 7210                <1>     jb .bhtcspecial
+   834                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3342,15 +3912,15 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000E04 7501                <3>  j%-1 short %%a
+    34 0000134C 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000E06 C3                  <4>  ret
+    14 0000134E C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   336 00000E07 3C09                <1>     cmp al, TAB
-   337                              <1>     rete
+   835 0000134F 3C09                <1>     cmp al, TAB
+   836                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3367,15 +3937,15 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000E09 7501                <3>  j%-1 short %%a
+    34 00001351 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000E0B C3                  <4>  ret
+    14 00001353 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   338 00000E0C 3C0D                <1>     cmp al, CR
-   339                              <1>     rete
+   837 00001354 3C0D                <1>     cmp al, CR
+   838                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -3392,686 +3962,23 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000E0E 7501                <3>  j%-1 short %%a
+    34 00001356 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000E10 C3                  <4>  ret
+    14 00001358 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   340 00000E11 3C0A                <1>     cmp al, LF
-   341                              <1>     rete
-    49                              <2> cret e
-    19                              <3> %%_base:
-    20                              <3> %assign baseVar %%_base-$$
-    21                              <3> 
-    22                              <3> 
-    23                              <3> 
-    24                              <3> 
-    25                              <3> 
-    26                              <3> 
-    27                              <3> 
-    28                              <3> 
-    29                              <3> 
-    30                              <3> 
-    31                              <3> 
-    32                              <3> 
-    33                              <3> 
-    34 00000E13 7501                <3>  j%-1 short %%a
-    35                              <3>  return
-    13                              <4> %%_ret:
-    14 00000E15 C3                  <4>  ret
-    15                              <4> %assign retOff %%_ret-$$
-    36                              <3> %%a:
-    37                              <3> 
-   342                              <1>     return
+   839 00001359 3C0A                <1>     cmp al, LF
+   840                              <1>     return
     13                              <2> %%_ret:
-    14 00000E16 C3                  <2>  ret
+    14 0000135B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   343                              <1> 
-   344                              <1> ;===============================
-   345                              <1> ;   Device Driver Loader here  :
-   346                              <1> ;===============================
-   347                              <1> .drvLoader:
-   348 00000E17 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   349 00000E1B 4881C606000000      <1>     add rsi, 6  ;Go past DEVICE= to the pathname
-   350 00000E22 E811FEFFFF          <1>     call .skipSeparators
-   351 00000E27 4889F7              <1>     mov rdi, rsi
-   352 00000E2A 4889FA              <1>     mov rdx, rdi    ;Prepare rdx for the open
-   353                              <1> ;Now search for the first char after pathname. 
-   354                              <1> .drvFindEndOfFileName:
-   355 00000E2D AC                  <1>     lodsb ;Get char from string name
-   356                              <1>     ;Was the char a primitive string terminator?
-   357 00000E2E 3C20                <1>     cmp al, SPC
-   358 00000E30 740C                <1>     je short .fileNameFound
-   359 00000E32 3C1A                <1>     cmp al, EOF
-   360 00000E34 7408                <1>     je short .fileNameFound
-   361 00000E36 3C0D                <1>     cmp al, CR
-   362 00000E38 7404                <1>     je short .fileNameFound
-   363 00000E3A 3C0A                <1>     cmp al, LF
-   364 00000E3C 75EF                <1>     jne short .drvFindEndOfFileName
-   365                              <1> .fileNameFound:
-   366 00000E3E 48FFCE              <1>     dec rsi ;Point rsi to the space itself
-   367 00000E41 488975A8            <1>     mov qword [rbp - cfgFrame.driverBreak], rsi
-   368 00000E45 0FB606              <1>     movzx eax, byte [rsi]   ;Get the original breakchar
-   369 00000E48 488945A0            <1>     mov qword [rbp - cfgFrame.breakChar], rax  ;And save it
-   370 00000E4C C60600              <1>     mov byte [rsi], 0   ;Null terminate the path to the file
-   371                              <1>     ;rdx -> Filename
-   372                              <1>     ;Here open the file to attempt to see how much space to 
-   373                              <1>     ; allocate to the file for loading. 
-   374                              <1>     ;Consider using the 4B01h loading mode instead and swapping back
-   375                              <1>     ; the current DTA and PSP to DOS default? This gives each driver a PSP
-   376                              <1>     ; which would allow for opening of files independently of calling programs'
-   377                              <1>     ; file table... maybe try it after getting 4B03h load to work first!
-   378 00000E4F B8003D0000          <1>     mov eax, 3D00h  ;Read only file
-   379 00000E54 CD21                <1>     int 21h
-   380 00000E56 0F82C4020000        <1>     jc .drvBad
-   381 00000E5C 0FB7D8              <1>     movzx ebx, ax   ;Get the handle in ebx
-   382 00000E5F 31D2                <1>     xor edx, edx    ;Move the handle to the end of the file
-   383 00000E61 B802420000          <1>     mov eax, 4202h  ;LSEEK to SEEK_END
-   384 00000E66 CD21                <1>     int 21h
-   385 00000E68 89C6                <1>     mov esi, eax    ;Save the file size in esi
-   386 00000E6A 31D2                <1>     xor edx, edx    ;Move the handle to the start of the file
-   387 00000E6C B800420000          <1>     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
-   388 00000E71 CD21                <1>     int 21h
-   389 00000E73 53                  <1>     push rbx        ;Push the file handle on the stack
-   390 00000E74 BB06000000          <1>     mov ebx, 6      ;6 paragraphs (96 bytes)
-   391 00000E79 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
-   392 00000E7E CD21                <1>     int 21h
-   393 00000E80 5B                  <1>     pop rbx         ;Get the handle back in rbx
-   394 00000E81 0F82A9020000        <1>     jc .drvMemClose
-   395 00000E87 4889C2              <1>     mov rdx, rax    ;Get pointer to memory in rdx
-   396 00000E8A B940000000          <1>     mov ecx, imageDosHdr_size
-   397 00000E8F B8003F0000          <1>     mov eax, 3F00h  ;READ
-   398 00000E94 CD21                <1>     int 21h
-   399 00000E96 4989D0              <1>     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
-   400 00000E99 4889D7              <1>     mov rdi, rdx    ;Get pointer to the EXE header
-   401 00000E9C 730C                <1>     jnc short .headerReadOK
-   402                              <1> .drvFreeMemAndHdl: ;Frees the block and then handle
-   403                              <1>     ;r8 must point to the block to free
-   404 00000E9E B800490000          <1>     mov eax, 4900h  ;Free the block first!
-   405 00000EA3 CD21                <1>     int 21h
-   406 00000EA5 E96F020000          <1>     jmp .drvBadClose
-   407                              <1> .headerReadOK:
-   408                              <1> ;Use register r10 as the indicator for .COM or .EXE. Set if COM.
-   409 00000EAA 4889D7              <1>     mov rdi, rdx    ;Save the pointer in rdi
-   410                              <1>     ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
-   411 00000EAD 66813F4D5A          <1>     cmp word [rdi], dosMagicSignature
-   412 00000EB2 742C                <1>     je short .exeDrivers
-   413 00000EB4 66813F5A4D          <1>     cmp word [rdi], dosMagicSignature2
-   414 00000EB9 7425                <1>     je short .exeDrivers
-   415                              <1> ;.COM drivers come down here
-   416                              <1>     ;Get File Image Allocation Size in ecx here.
-   417                              <1>     ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
-   418 00000EBB 31C9                <1>     xor ecx, ecx
-   419 00000EBD 31D2                <1>     xor edx, edx
-   420 00000EBF B802420000          <1>     mov eax, 4202h  ;LSEEK from the end of the file
-   421 00000EC4 CD21                <1>     int 21h
-   422                              <1>     ;eax now has the filesize. 
-   423 00000EC6 89C1                <1>     mov ecx, eax
-   424 00000EC8 81E1F0FFFFFF        <1>     and ecx, ~0Fh   ;Clear lower byte
-   425 00000ECE C1E904              <1>     shr ecx, 4      ;Convert to paragraphs
-   426 00000ED1 FFC1                <1>     inc ecx         ;... and round up!
-   427 00000ED3 81F900100000        <1>     cmp ecx, 1000h ;Is it geq 64k (in paragraphs)?
-   428 00000ED9 73C3                <1>     jae .drvFreeMemAndHdl
-   429 00000EDB E978000000          <1>     jmp .loadCont
-   430                              <1> .exeDrivers:
-   431                              <1>     ;Get the file pointer for file header
-   432 00000EE0 8B573C              <1>     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
-   433 00000EE3 31C9                <1>     xor ecx, ecx
-   434 00000EE5 B800420000          <1>     mov eax, 4200h  ;LSEEK from the start of the file
-   435 00000EEA CD21                <1>     int 21h
-   436                              <1>     ;Now read in imageFileHeader here
-   437 00000EEC 4889FA              <1>     mov rdx, rdi    ;Overwrite the 16-bit header
-   438 00000EEF B918000000          <1>     mov ecx, imageFileHeader_size   ;Read the header
-   439 00000EF4 B8003F0000          <1>     mov eax, 3F00h  ;READ
-   440 00000EF9 CD21                <1>     int 21h
-   441 00000EFB 72A1                <1>     jc short .drvFreeMemAndHdl
-   442 00000EFD 3D18000000          <1>     cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
-   443 00000F02 729A                <1>     jb short .drvFreeMemAndHdl
-   444 00000F04 813F50450000        <1>     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
-   445 00000F0A 7592                <1>     jne .drvFreeMemAndHdl
-   446 00000F0C 66817F046486        <1>     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
-   447 00000F12 758A                <1>     jne .drvFreeMemAndHdl
-   448 00000F14 66817F143C00        <1>     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 60
-   449 00000F1A 7282                <1>     jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
-   450                              <1>     ;Now read the first 60 bytes of the optional header here. rdx points to buffer
-   451 00000F1C B93C000000          <1>     mov ecx, 60     ;Read only 60 bytes
-   452 00000F21 B8003F0000          <1>     mov eax, 3F00h  ;READ
-   453 00000F26 CD21                <1>     int 21h
-   454 00000F28 0F8270FFFFFF        <1>     jc .drvFreeMemAndHdl   ;If something goes wrong, skip
-   455 00000F2E 3D38000000          <1>     cmp eax, 56
-   456 00000F33 0F8265FFFFFF        <1>     jb .drvFreeMemAndHdl   ;If fewer than 60 bytes read, skip
-   457                              <1>     ;Round up size requirement.
-   458                              <1>     ;If .EXE, round up to nearest section alignment
-   459 00000F39 8B4F38              <1>     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
-   460 00000F3C 8B4720              <1>     mov eax, dword [rdi + imageFileOptionalHeader.dSectionAlignment]
-   461 00000F3F 89C6                <1>     mov esi, eax    ;Save in esi the alignment requirement
-   462 00000F41 FFC8                <1>     dec eax         ;Set bits to strip, clear all other bits
-   463 00000F43 F7D0                <1>     not eax         ;Flip the set and clear bits
-   464 00000F45 21C1                <1>     and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
-   465 00000F47 01F1                <1>     add ecx, esi    ;Now round upwards!
-   466 00000F49 C1E904              <1>     shr ecx, 4      ;Convert to number of paragraphs.
-   467 00000F4C 81F900000002        <1>     cmp ecx, 2000000h  ;Drivers cannot be more than 2Gb in size.
-   468 00000F52 0F8346FFFFFF        <1>     jae .drvFreeMemAndHdl
-   469                              <1> .loadCont:
-   470 00000F58 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
-   471 00000F5D CD21                <1>     int 21h ;r8 has the pointer to the block for freeing
-   472                              <1>     ;Now close the file
-   473 00000F5F B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
-   474 00000F64 CD21                <1>     int 21h
-   475 00000F66 89CB                <1>     mov ebx, ecx    ;Put the number of paragraphs in ebx
-   476 00000F68 B800480000          <1>     mov eax, 4800h  ;Allocate this block of memory
-   477 00000F6D CD21                <1>     int 21h         ;rax gets the pointer to load the program into
-   478 00000F6F 0F82BB010000        <1>     jc .drvMemClose
-   479                              <1>     ;Now set the subsystem marker and the owner to DOS
-   480 00000F75 C640FD44            <1>     mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
-   481 00000F79 48C740F109000000    <1>     mov qword [rax - mcb_size + mcb.owner], mcbOwnerNewDOS
-   482                              <1>     ;Build the overlay command block
-   483 00000F81 488D1D(FC010000)    <1>     lea rbx, cmdBlock
-   484 00000F88 488903              <1>     mov qword [rbx + loadOvly.pLoadLoc], rax
-   485 00000F8B 48894308            <1>     mov qword [rbx + loadOvly.qRelocFct], rax
-   486 00000F8F 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
-   487 00000F93 4881C606000000      <1>     add rsi, 6  ;Go past DEVICE= to the null terminated pathname
-   488 00000F9A E899FCFFFF          <1>     call .skipSeparators
-   489 00000F9F 4889F2              <1>     mov rdx, rsi
-   490 00000FA2 B8034B0000          <1>     mov eax, 4B03h  ;Load overlay!
-   491 00000FA7 CD21                <1>     int 21h
-   492 00000FA9 733E                <1>     jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
-   493                              <1> .badDriverLoad:
-   494 00000FAB 4C8B05(FC010000)    <1>     mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
-   495 00000FB2 B800490000          <1>     mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
-   496 00000FB7 CD21                <1>     int 21h
-   497 00000FB9 488D1508000000      <1>     lea rdx, .drvMemMsg
-   498 00000FC0 B800090000          <1>     mov eax, 0900h
-   499 00000FC5 CD21                <1>     int 21h
-   500                              <1>     return
+   841                              <1> .bhtcspecial:
+   842 0000135C 38C0                <1>     cmp al, al  ;Set ZF=ZE
+   843                              <1>     return
     13                              <2> %%_ret:
-    14 00000FC7 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   501 00000FC8 0D0A4E6F7420656E6F- <1> .drvMemMsg: db CR,LF,"Not enough memory for driver",CR,LF,"$" 
-   501 00000FD1 756768206D656D6F72- <1>
-   501 00000FDA 7920666F7220647269- <1>
-   501 00000FE3 7665720D0A24        <1>
-   502                              <1> .loadOk:
-   503                              <1>     ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
-   504 00000FE9 488B33              <1>     mov rsi, qword [rbx + loadOvly.pLoadLoc]
-   505 00000FEC 4989F0              <1>     mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
-   506                              <1>     ;Reset the command line to have a space at the null terminator
-   507 00000FEF 488B45A8            <1>     mov rax, qword [rbp - cfgFrame.driverBreak]
-   508 00000FF3 53                  <1>     push rbx
-   509 00000FF4 8A5DA0              <1>     mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
-   510 00000FF7 8818                <1>     mov byte [rax], bl  ;and replace the null terminator
-   511 00000FF9 5B                  <1>     pop rbx
-   512                              <1>     ;Remember, the first byte of the overlay is the driver header. 
-   513                              <1>     ;Hence, rsi points to that byte!
-   514                              <1>     ;Pointers of each header need adjustment relative to their load address,
-   515                              <1>     ; and linking into the main driver chain after NUL.
-   516                              <1>     ;r11 = Local var, if no drivers in file passed init, free allocation.
-   517                              <1>     ;                 Else, free using kernel eject routine.
-   518 00000FFA 56                  <1>     push rsi    ;Save the pointer to the first pointer to adjust
-   519                              <1> .driverPtrAdjustment:
-   520 00000FFB 4801760A            <1>     add qword [rsi + drvHdr.strPtr], rsi
-   521 00000FFF 48017612            <1>     add qword [rsi + drvHdr.intPtr], rsi
-   522 00001003 48813EFFFFFFFF      <1>     cmp qword [rsi + drvHdr.nxtPtr], -1
-   523 0000100A 7408                <1>     je short .driverPtrAdjustmentDone
-   524 0000100C 480136              <1>     add qword [rsi + drvHdr.nxtPtr], rsi
-   525 0000100F 488B36              <1>     mov rsi, qword [rsi + drvHdr.nxtPtr]
-   526 00001012 EBE7                <1>     jmp short .driverPtrAdjustment
-   527                              <1> .driverPtrAdjustmentDone:
-   528 00001014 5E                  <1>     pop rsi     ;Get back the pointer to the first driver header
-   529                              <1>     ;Prepare for initialising the drivers in the arena
-   530                              <1>     ;EXPERIMENT: USING R9 and R12 UNTIL THE END OF THE FUNCTION
-   531 00001015 4989F1              <1>     mov r9, rsi     ;Save a copy of the driver pointer in r9
-   532 00001018 488D1D(DD010000)    <1>     lea rbx, initDrvBlk
-   533 0000101F 56                  <1>     push rsi
-   534 00001020 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
-   535 00001024 4881C606000000      <1>     add rsi, 6  ;Go past DEVICE
-   536 0000102B E808FCFFFF          <1>     call .skipSeparators    ;Go past equals and any following spaces
-   537 00001030 48897316            <1>     mov qword [rbx + initReqPkt.optptr], rsi ;and pass to driver!
-   538 00001034 5E                  <1>     pop rsi
-   539 00001035 4C8B6500            <1>     mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
-   540                              <1> .driverInit:
-   541 00001039 4C87E5              <1>     xchg r12, rbp
-   542                              <1> ;----------------------------------------------------------------
-   543                              <1> ;In this region, rbp points back to dosseg
-   544                              <1> ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-   545 0000103C E877F9FFFF          <1>     call initDriver
-   546 00001041 7271                <1>     jc short .driverBadRbpAdjust
-   547                              <1> ;Now walk the MCB chain for MCBs owned by the current PSP and set 
-   548                              <1> ; them all to mcbOwnerNewDOS. 
-   549 00001043 E814010000          <1>     call .drvAdjustMcbOwner
-   550                              <1> ;Now set the current PSP to mcbOwnerNewDOS and add the driver 
-   551                              <1> ; markers and set owner to mcbOwnerDOS and switch currentPSP back!
-   552 00001048 FFB5[00000000]      <1>     push qword [rbp + currentPSP]
-   553 0000104E 48C785[00000000]09- <1>     mov qword [rbp + currentPSP], mcbOwnerNewDOS
-   553 00001056 000000              <1>
-   554 00001059 E822F8FFFF          <1>     call addDriverMarkers
-   555 0000105E 8F85[00000000]      <1>     pop qword [rbp + currentPSP]
-   556                              <1> ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   557 00001064 4C87E5              <1>     xchg r12, rbp
-   558 00001067 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar
-   559 0000106D 7507                <1>     jnz short .driverInitialised
-   560 0000106F E8B3F9FFFF          <1>     call buildDPBs          ;Preserves rbp, rsi and rbx
-   561 00001074 7241                <1>     jc short .driverBad
-   562                              <1> .driverInitialised:
-   563 00001076 48813EFFFFFFFF      <1>     cmp qword [rsi + drvHdr.nxtPtr], -1     ;We at the end of the chain?
-   564 0000107D 480F4536            <1>     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
-   565 00001081 75B6                <1>     jne short .driverInit ;If not, goto next driver
-   566                              <1> ;Now we eject the init routines for the driver
-   567                              <1> ;r8 points to the MCB data area already
-   568 00001083 31DB                <1>     xor ebx, ebx
-   569 00001085 418B58F9            <1>     mov ebx, dword [r8 - mcb_size + mcb.blockSize] ;Get the size of the arena in paragraphs
-   570 00001089 48C1E304            <1>     shl rbx, 4  ;Turn into number of bytes
-   571 0000108D 4981E810000000      <1>     sub r8, mcb_size    ;Point to the mcb header proper
-   572 00001094 498D5C1810          <1>     lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
-   573 00001099 E8C8F8FFFF          <1>     call ejectKernelInit    ;Ignore any errors in ejection.
-   574                              <1>     ;Link into main driver chain, 
-   575                              <1>     ;r9 points to first driver in block
-   576                              <1>     ;rsi points to last driver in block
-   577 0000109E 488B7D00            <1>     mov rdi, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG ptr
-   578 000010A2 488DBF[00000000]    <1>     lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
-   579 000010A9 488B07              <1>     mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
-   580 000010AC 4C890F              <1>     mov qword [rdi + drvHdr.nxtPtr], r9     ;Link new drivers in
-   581 000010AF 488906              <1>     mov qword [rsi + drvHdr.nxtPtr], rax    ;Link end to old chain
-   582                              <1> .driverExit:
-   583                              <1> ;Exit the init routine if it all works out, WOO!
-   584                              <1> ;Return values to original registers/memory locations
-   585                              <1> ;    mov qword fs:[currentPSP], r11
-   586 000010B2 F8                  <1>     clc
-   587                              <1>     return
-    13                              <2> %%_ret:
-    14 000010B3 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   588                              <1> .driverBadRbpAdjust:
-   589 000010B4 4C89E5              <1>     mov rbp, r12
-   590                              <1> .driverBad:
-   591                              <1>     ;Form the string to print
-   592 000010B7 488D3D50000000      <1>     lea rdi, .driverBad2    ;Store the name here
-   593 000010BE 66F746080080        <1>     test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
-   594 000010C4 750E                <1>     jnz short .driverCharBad    ;If not, exit
-   595                              <1>     ;MSD devices need to have something placed in there
-   596 000010C6 48B84D534420646576- <1>     mov rax, "MSD dev "
-   596 000010CF 20                  <1>
-   597 000010D0 48AB                <1>     stosq   ;Store the 8 chars here
-   598 000010D2 EB06                <1>     jmp short .driverBadPrint
-   599                              <1> .driverCharBad:
-   600 000010D4 488D761A            <1>     lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
-   601 000010D8 48A5                <1>     movsq   ;Move all 8 chars over from device driver name
-   602                              <1> .driverBadPrint:
-   603 000010DA 488D1510000000      <1>     lea rdx, .driverBad1
-   604 000010E1 B800090000          <1>     mov eax, 0900h  ;Print the string!
-   605 000010E6 CD21                <1>     int 21h
-   606 000010E8 B800490000          <1>     mov eax, 4900h  ;Attempt to deallocate the driver now
-   607 000010ED CD21                <1>     int 21h
-   608 000010EF EBC1                <1>     jmp short .driverExit
-   609 000010F1 0D0A4572726F722069- <1> .driverBad1 db CR,LF,"Error initialising driver: "
-   609 000010FA 6E697469616C697369- <1>
-   609 00001103 6E6720647269766572- <1>
-   609 0000110C 3A20                <1>
-   610 0000110E 20202020202020200D- <1> .driverBad2 db "        ",CR,LF,"$"
-   610 00001117 0A24                <1>
-   611                              <1> ;------------------
-   612                              <1> ;Bad exit cases
-   613                              <1> ;------------------
-   614                              <1> .drvBadClose:
-   615 00001119 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
-   616 0000111E CD21                <1>     int 21h
-   617                              <1> .drvBad:
-   618 00001120 488D1519000000      <1>     lea rdx, .drvBadMsg
-   619                              <1> .drvBad2:
-   620 00001127 B800090000          <1>     mov eax, 0900h
-   621 0000112C CD21                <1>     int 21h
-   622 0000112E F8                  <1>     clc ;Never return with CF=CY
-   623                              <1>     return
-    13                              <2> %%_ret:
-    14 0000112F C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   624                              <1> .drvMemClose:
-   625 00001130 B8003E0000          <1>     mov eax, 3E00h  ;Close handle in ebx
-   626 00001135 CD21                <1>     int 21h
-   627 00001137 488D158AFEFFFF      <1>     lea rdx, .drvMemMsg
-   628 0000113E EBE7                <1>     jmp short .drvBad2
-   629                              <1> 
-   630 00001140 0D0A426164206F7220- <1> .drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
-   630 00001149 6D697373696E672066- <1>
-   630 00001152 696C656E616D650D0A- <1>
-   630 0000115B 24                  <1>
-   631                              <1> 
-   632                              <1> .drvAdjustMcbOwner:
-   633                              <1> ;Traverses the MCB chain looking for MCBs owned by the current PSP and 
-   634                              <1> ; sets them all to mcbOwnerNewDOS.
-   635                              <1> ;Input: rbp -> DOS Data Area
-   636 0000115C 51                  <1>     push rcx
-   637 0000115D 56                  <1>     push rsi
-   638 0000115E 57                  <1>     push rdi
-   639 0000115F 488BBD[00000000]    <1>     mov rdi, qword [rbp + currentPSP]
-   640 00001166 488BB5[00000000]    <1>     mov rsi, qword [rbp + mcbChainPtr] ;Points to the MCB chain head
-   641                              <1> .checkOwner:
-   642 0000116D 48397E01            <1>     cmp qword [rsi + mcb.owner], rdi
-   643 00001171 7508                <1>     jne .gotoNextBlock
-   644 00001173 48C7460109000000    <1>     mov qword [rsi + mcb.owner], mcbOwnerNewDOS
-   645                              <1> .gotoNextBlock:
-   646 0000117B 803E5A              <1>     cmp byte [rsi + mcb.marker], mcbMarkEnd
-   647 0000117E 7413                <1>     je short .exit
-   648 00001180 8B4E09              <1>     mov ecx, dword [rsi + mcb.blockSize]
-   649 00001183 48C1E104            <1>     shl rcx, 4
-   650 00001187 4881C610000000      <1>     add rsi, mcb.program    
-   651 0000118E 4801CE              <1>     add rsi, rcx
-   652 00001191 EBDA                <1>     jmp short .checkOwner
-   653                              <1> .exit:
-   654 00001193 5F                  <1>     pop rdi
-   655 00001194 5E                  <1>     pop rsi
-   656 00001195 59                  <1>     pop rcx
-   657                              <1>     return
-    13                              <2> %%_ret:
-    14 00001196 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   658                              <1> 
-   659                              <1> 
-   660                              <1> .sftHandler:
-   661                              <1> ;This reads the line to set the number of FILE to between 1 and 254
-   662 00001197 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   663 0000119B 4881C605000000      <1>     add rsi, 5  ;Go past FILES=
-   664 000011A2 E891FAFFFF          <1>     call .skipSeparators
-   665                              <1>     ;This must be at most three digits, anything else is a failure
-   666 000011A7 4889F7              <1>     mov rdi, rsi    ;Save the start in rdi
-   667 000011AA 31C9                <1>     xor ecx, ecx
-   668 000011AC AC                  <1>     lodsb   ;Get the first char. Must be between ASCII '0' and '9'
-   669 000011AD 3C30                <1>     cmp al, "0"
-   670 000011AF 0F828E000000        <1>     jb .sftHandlerErr
-   671 000011B5 3C39                <1>     cmp al, "9"
-   672 000011B7 0F8786000000        <1>     ja .sftHandlerErr
-   673 000011BD FFC1                <1>     inc ecx ;Increment char counter
-   674 000011BF AC                  <1>     lodsb   ;Get second char
-   675 000011C0 E884000000          <1>     call .sftHandlerTermCheck
-   676 000011C5 7424                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
-   677 000011C7 3C30                <1>     cmp al, "0"
-   678 000011C9 7278                <1>     jb .sftHandlerErr
-   679 000011CB 3C39                <1>     cmp al, "9"
-   680 000011CD 7774                <1>     ja .sftHandlerErr
-   681 000011CF FFC1                <1>     inc ecx ;Increment char counter
-   682 000011D1 AC                  <1>     lodsb   ;Get third char
-   683 000011D2 E872000000          <1>     call .sftHandlerTermCheck
-   684 000011D7 7412                <1>     je .sftHandlerProcess   ;If it is a terminating char, exit
-   685 000011D9 3C30                <1>     cmp al, "0"
-   686 000011DB 7266                <1>     jb .sftHandlerErr
-   687 000011DD 3C39                <1>     cmp al, "9"
-   688 000011DF 7762                <1>     ja .sftHandlerErr
-   689 000011E1 AC                  <1>     lodsb   ;Check no more chars!
-   690 000011E2 E862000000          <1>     call .sftHandlerTermCheck
-   691 000011E7 755A                <1>     jne .sftHandlerErr
-   692 000011E9 FFC1                <1>     inc ecx ;Increment char counter
-   693                              <1> .sftHandlerProcess:
-   694 000011EB 31D2                <1>     xor edx, edx    ;Accumulate value in edx
-   695 000011ED 4889FE              <1>     mov rsi, rdi    ;Go back to the first number
-   696                              <1> .sftHandlerLp:
-   697 000011F0 FFC9                <1>     dec ecx
-   698 000011F2 AC                  <1>     lodsb   ;Get the digit
-   699 000011F3 E823000000          <1>     call .sftHandlerMul
-   700 000011F8 67E302              <1>     jecxz .sftHandlerPrepExit
-   701 000011FB EBF3                <1>     jmp short .sftHandlerLp 
-   702                              <1> .sftHandlerPrepExit:
-   703                              <1> ;edx has the value now, so place it in stack
-   704 000011FD 81FAFE000000        <1>     cmp edx, 254
-   705 00001203 773E                <1>     ja .sftHandlerErr       ;DOS maximum number of files
-   706 00001205 0FB60D(CC010000)    <1>     movzx ecx, byte [FILES] ;Get default if the user specifies less than min
-   707 0000120C 81FA08000000        <1>     cmp edx, 8              ;DOS minimum number of files
-   708 00001212 0F42D1              <1>     cmovb edx, ecx
-   709 00001215 488955F0            <1>     mov qword [rbp - cfgFrame.newSFTVal], rdx
-   710 00001219 F8                  <1>     clc
-   711                              <1>     return
-    13                              <2> %%_ret:
-    14 0000121A C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   712                              <1> .sftHandlerMul:
-   713                              <1> ;Input:
-   714                              <1> ;al = digit to add to result (ASCII digit)
-   715                              <1> ;ecx = whether al is a unit (0), ten (1) or hundred (2)
-   716                              <1> ;rdx = Accumulated sum
-   717                              <1> ;Output:
-   718                              <1> ;rdx = Accumulated sum with al added
-   719                              <1> ;eax is destroyed
-   720                              <1> ;All other registers preserved
-   721 0000121B 51                  <1>     push rcx
-   722 0000121C 52                  <1>     push rdx
-   723 0000121D 0FB6C0              <1>     movzx eax, al
-   724 00001220 2D30000000          <1>     sub eax, '0' ;Convert to a binary digit
-   725 00001225 BA01000000          <1>     mov edx, 1    ;Get 1 in edx (multiplicative unit)
-   726 0000122A 39D1                <1>     cmp ecx, edx  ;Was cl a ten?
-   727 0000122C BB0A000000          <1>     mov ebx, 10     ;Default base offset to 10
-   728 00001231 B964000000          <1>     mov ecx, 100
-   729 00001236 0F42DA              <1>     cmovb ebx, edx  ;If below, it was a unit
-   730 00001239 0F47D9              <1>     cmova ebx, ecx  ;If above, it was a hundred
-   731 0000123C F7E3                <1>     mul ebx    ;Multiply the base offset to eax
-   732 0000123E 5A                  <1>     pop rdx ;Get the accumulated value back
-   733 0000123F 01C2                <1>     add edx, eax    ;Add this result over
-   734 00001241 59                  <1>     pop rcx
-   735                              <1>     return
-    13                              <2> %%_ret:
-    14 00001242 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   736                              <1> .sftHandlerErr:
-   737 00001243 E84EFAFFFF          <1>     call .badLineErrorMsg
-   738                              <1>     return
-    13                              <2> %%_ret:
-    14 00001248 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   739                              <1> .sftHandlerTermCheck:
-   740 00001249 3C20                <1>     cmp al, SPC
-   741                              <1>     rete
-    49                              <2> cret e
-    19                              <3> %%_base:
-    20                              <3> %assign baseVar %%_base-$$
-    21                              <3> 
-    22                              <3> 
-    23                              <3> 
-    24                              <3> 
-    25                              <3> 
-    26                              <3> 
-    27                              <3> 
-    28                              <3> 
-    29                              <3> 
-    30                              <3> 
-    31                              <3> 
-    32                              <3> 
-    33                              <3> 
-    34 0000124B 7501                <3>  j%-1 short %%a
-    35                              <3>  return
-    13                              <4> %%_ret:
-    14 0000124D C3                  <4>  ret
-    15                              <4> %assign retOff %%_ret-$$
-    36                              <3> %%a:
-    37                              <3> 
-   742 0000124E 3C09                <1>     cmp al, TAB
-   743                              <1>     rete
-    49                              <2> cret e
-    19                              <3> %%_base:
-    20                              <3> %assign baseVar %%_base-$$
-    21                              <3> 
-    22                              <3> 
-    23                              <3> 
-    24                              <3> 
-    25                              <3> 
-    26                              <3> 
-    27                              <3> 
-    28                              <3> 
-    29                              <3> 
-    30                              <3> 
-    31                              <3> 
-    32                              <3> 
-    33                              <3> 
-    34 00001250 7501                <3>  j%-1 short %%a
-    35                              <3>  return
-    13                              <4> %%_ret:
-    14 00001252 C3                  <4>  ret
-    15                              <4> %assign retOff %%_ret-$$
-    36                              <3> %%a:
-    37                              <3> 
-   744 00001253 3C0D                <1>     cmp al, CR
-   745                              <1>     rete
-    49                              <2> cret e
-    19                              <3> %%_base:
-    20                              <3> %assign baseVar %%_base-$$
-    21                              <3> 
-    22                              <3> 
-    23                              <3> 
-    24                              <3> 
-    25                              <3> 
-    26                              <3> 
-    27                              <3> 
-    28                              <3> 
-    29                              <3> 
-    30                              <3> 
-    31                              <3> 
-    32                              <3> 
-    33                              <3> 
-    34 00001255 7501                <3>  j%-1 short %%a
-    35                              <3>  return
-    13                              <4> %%_ret:
-    14 00001257 C3                  <4>  ret
-    15                              <4> %assign retOff %%_ret-$$
-    36                              <3> %%a:
-    37                              <3> 
-   746 00001258 3C0A                <1>     cmp al, LF
-   747                              <1>     rete
-    49                              <2> cret e
-    19                              <3> %%_base:
-    20                              <3> %assign baseVar %%_base-$$
-    21                              <3> 
-    22                              <3> 
-    23                              <3> 
-    24                              <3> 
-    25                              <3> 
-    26                              <3> 
-    27                              <3> 
-    28                              <3> 
-    29                              <3> 
-    30                              <3> 
-    31                              <3> 
-    32                              <3> 
-    33                              <3> 
-    34 0000125A 7501                <3>  j%-1 short %%a
-    35                              <3>  return
-    13                              <4> %%_ret:
-    14 0000125C C3                  <4>  ret
-    15                              <4> %assign retOff %%_ret-$$
-    36                              <3> %%a:
-    37                              <3> 
-   748                              <1>     return
-    13                              <2> %%_ret:
-    14 0000125D C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   749                              <1> 
-   750                              <1> .lastdriveHandler:
-   751 0000125E 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   752 00001262 4881C609000000      <1>     add rsi, 9  ;Go past LASTDRIVE
-   753 00001269 E8CAF9FFFF          <1>     call .skipSeparators
-   754 0000126E AC                  <1>     lodsb   ;Get this char
-   755 0000126F 0FB6C0              <1>     movzx eax, al   ;Zero extend to eax
-   756 00001272 E8C0000000          <1>     call .ucChar
-   757 00001277 3C5A                <1>     cmp al, "Z"
-   758 00001279 77C8                <1>     ja .sftHandlerErr
-   759 0000127B 3C41                <1>     cmp al, "A"
-   760 0000127D 72C4                <1>     jb .sftHandlerErr
-   761 0000127F 803E0D              <1>     cmp byte [rsi], CR
-   762 00001282 740F                <1>     je .ldProceed
-   763 00001284 803E0A              <1>     cmp byte [rsi], LF
-   764 00001287 740A                <1>     je .ldProceed
-   765 00001289 803E09              <1>     cmp byte [rsi], TAB
-   766 0000128C 7405                <1>     je .ldProceed
-   767 0000128E 803E20              <1>     cmp byte [rsi], SPC
-   768 00001291 75B0                <1>     jne .sftHandlerErr
-   769                              <1> .ldProceed:
-   770 00001293 2C40                <1>     sub al, "@"     ;Convert into a number 1-26 
-   771 00001295 0FB6C0              <1>     movzx eax, al   ;Zero extend in case DOS rets something dumb in upper bits
-   772 00001298 0FB615(CF010000)    <1>     movzx edx, byte [LASTDRIVE]
-   773 0000129F 39D0                <1>     cmp eax, edx
-   774 000012A1 0F42C2              <1>     cmovb eax, edx
-   775 000012A4 488945D8            <1>     mov qword [rbp - cfgFrame.newLastdrive], rax
-   776 000012A8 F8                  <1>     clc
-   777                              <1>     return
-    13                              <2> %%_ret:
-    14 000012A9 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   778                              <1> 
-   779                              <1> .shellHandler:
-   780 000012AA 488B75B0            <1>     mov rsi, qword [rbp - cfgFrame.linePtr]
-   781 000012AE 4889F3              <1>     mov rbx, rsi
-   782 000012B1 4881C605000000      <1>     add rsi, 5  ;Go past SHELL
-   783 000012B8 E87BF9FFFF          <1>     call .skipSeparators    ;Spaces, equals sign etc
-   784 000012BD 4889F7              <1>     mov rdi, rsi
-   785 000012C0 4829DF              <1>     sub rdi, rbx    ;Get the depth into the string we are at
-   786 000012C3 B980000000          <1>     mov ecx, 128
-   787 000012C8 29F9                <1>     sub ecx, edi    ;Get remaining valid char count for the string
-   788 000012CA 4889F7              <1>     mov rdi, rsi
-   789 000012CD B80D000000          <1>     mov eax, CR
-   790 000012D2 F2AE                <1>     repne scasb     ;Scan for the terminator
-   791 000012D4 0F85BCF9FFFF        <1>     jne .badLineErrorMsg    ;If we didn't find it, complain!
-   792                              <1>     ;Now we know we are safe, proceed with copy.
-   793 000012DA 488D3D(54000000)    <1>     lea rdi, cmdSpec
-   794 000012E1 B800370000          <1>     mov eax, 3700h  ;Get switchchar in dl
-   795 000012E6 CD21                <1>     int 21h
-   796                              <1> .shLp:
-   797 000012E8 AC                  <1>     lodsb
-   798                              <1>     ;If a sep, a CR or a default switchchar, we are done!
-   799 000012E9 3C0D                <1>     cmp al, CR
-   800 000012EB 740E                <1>     je .shSpecDone   
-   801 000012ED E82FF9FFFF          <1>     call .isCharSeparator
-   802 000012F2 7407                <1>     je .shSpecDone
-   803 000012F4 38D0                <1>     cmp al, dl
-   804 000012F6 7403                <1>     je .shSpecDone
-   805 000012F8 AA                  <1>     stosb   ;Else store the char!
-   806 000012F9 EBED                <1>     jmp short .shLp
-   807                              <1> .shSpecDone:
-   808 000012FB C60700              <1>     mov byte [rdi], 0   ;Now store the null terminator :)
-   809 000012FE C605(9C020000)00    <1>     mov byte [tempPSP + psp.dta], 0 ;Reset the count of chars in the tail
-   810 00001305 488D3D(9D020000)    <1>     lea rdi, tempPSP + psp.dta + 1  ;Now store the tail here
-   811 0000130C 48FFCE              <1>     dec rsi     ;Go back to get the char again
-   812                              <1>     ;This will work with CR especially well
-   813                              <1> .shTailLp:
-   814 0000130F AC                  <1>     lodsb
-   815 00001310 3C0D                <1>     cmp al, CR
-   816 00001312 7409                <1>     je .shAllDone
-   817 00001314 AA                  <1>     stosb
-   818 00001315 FE05(9C020000)      <1>     inc byte [tempPSP + psp.dta]    ;Inc the char count!
-   819 0000131B EBF2                <1>     jmp short .shTailLp
-   820                              <1> .shAllDone: ;Only possible to get here is al=CR
-   821 0000131D AA                  <1>     stosb   ;Store the terminating CR
-   822                              <1> .countryScan:
-   823                              <1> .fcbHandler:
-   824                              <1> .stacksHandler:
-   825                              <1> .drivParm:
-   826                              <1> .comment:
-   827 0000131E F8                  <1>     clc
-   828                              <1>     return
-    13                              <2> %%_ret:
-    14 0000131F C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   829                              <1> 
-   830                              <1> .cfgExit:
-   831 00001320 488B5DC0            <1>     mov rbx, qword [rbp - cfgFrame.cfgHandle] ;Get the handle back
-   832 00001324 B8003E0000          <1>     mov eax, 3E00h    ;Close the handle
-   833 00001329 CD21                <1>     int 21h ;bx already has the handle
-   834 0000132B 4C8B45B0            <1>     mov r8, qword [rbp - cfgFrame.linePtr]   ;Get the line buffer ptr back
-   835 0000132F B800490000          <1>     mov eax, 4900h  ;FREE
-   836 00001334 CD21                <1>     int 21h
-   837                              <1>     return
-    13                              <2> %%_ret:
-    14 00001336 C3                  <2>  ret
-    15                              <2> %assign retOff %%_ret-$$
-   838                              <1> .ucChar:
-   839                              <1> ;Input: al = Char to UC
-   840                              <1> ;Output: al = UC'd char
-   841 00001337 53                  <1>     push rbx    ;Save on original stack
-   842 00001338 50                  <1>     push rax    ;Put the word on the stack
-   843 00001339 B813120000          <1>     mov eax, 1213h  ;Uppercase the char in al
-   844 0000133E CD2F                <1>     int 2fh
-   845 00001340 5B                  <1>     pop rbx     ;Pop off the word we placed on the stack
-   846 00001341 5B                  <1>     pop rbx     ;Get back original rbx
-   847                              <1>     return
-    13                              <2> %%_ret:
-    14 00001342 C3                  <2>  ret
+    14 0000135E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
     22                                  
     23                                  Segment sdata data private align=1
