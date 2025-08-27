@@ -852,10 +852,15 @@ commitMain:
     int 2Fh
     return  ;Propagate CF and AL if needed due to error
 .notNet:
-    call dosCrit1Enter
+    call dosCrit1Enter  ;Enter to own the disk
+    call dosCrit1Enter  ;Enter for the flush file
     call updateSFTDateTimeFields    ;Update the SFT Time fields
     mov eax, -1         ;Set a "large" count for open handles
     call flushFile      ;Now file gets flushed and exit critical section
+    pushfq
+    call openSFT        ;Now, reopen the file in the driver 
+    popfq
+    call dosCrit1Exit   ;Release the disk
     return  ;Propagate CF and AL if needed due to error
     
 renameMain:
@@ -1824,8 +1829,8 @@ flushFile:  ;Make this non-local to be jumped to by commit too!
     jnz .exit   ;If our initial count was not 1, skip resetting the count since
     mov word [rdi], cx ; decrementOpenCount didnt set it to -1
 .exit:
-    call dosCrit1Exit
     popfq
+    call dosCrit1Exit
     return
 
 readBytes:

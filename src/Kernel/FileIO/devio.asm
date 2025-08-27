@@ -175,8 +175,8 @@ openCloseCommon:
     mov rdi, qword [rdi + sft.qPtr] ;Get DPB or Device Driver header
     jnz .charDev
     ;Here a disk drive, rdi is a DPB ptr
-    cmp byte [shareFlag], 00    ;Is SHARE loaded?
-    je .exit   ;Exit if it is zero (Share not loaded)
+    test byte [shareFlag], -1    ;Is SHARE loaded?
+    jz .exit   ;Exit if share flag is zero (Share not loaded)
     mov ah, byte [rdi + dpb.bUnitNumber]    ;Get to populate request header
     mov cl, byte [rdi + dpb.bDriveNumber]   ;Get for error if an error occurs
     mov rdi, qword [rdi + dpb.qDriverHeaderPtr]
