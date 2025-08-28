@@ -229,7 +229,6 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
 .fbHardError:
 ;Request failed thrice, critical error call
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    or byte [Int24bitfld], critWrite ;Set the initial bitfield to write req
     call diskIOError ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
     pop rax     ;Now pop back the drive number and flags from the stack!

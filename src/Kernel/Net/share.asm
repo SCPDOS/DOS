@@ -63,7 +63,7 @@ shareRetryCountdown:
 
 shareCheckOpenViolation:
 ;Input: rdi -> Locally complete SFT we are opening
-    test word [rdi + sft.wOpenMode], FCBopenedFile
+    test word [rdi + sft.wOpenMode], openSFTFCB
     jnz .fcbQuirk   ;FCB?? opened files immediately will cause an error here
     push rax
     movzx eax, word [rdi + sft.wOpenMode]
@@ -89,7 +89,7 @@ shareFile:
 .reloadCounter:
     movzx ecx, word [shareCount] ;Try to allocate resources, this many times
 .keepLooping:
-    mov rdi, qword [currentSFT]
+    call getCurrentSFT
     xor eax, eax
     mov word [rdi + sft.wShareRec], 0   ;Init to no record
     push rcx
@@ -113,7 +113,7 @@ shareCheckReadLockViolation:
 .common:
 ;Input:
 ;rdi -> SFT for the file we are reading
-    test word [rdi + sft.wOpenMode], FCBopenedFile
+    test word [rdi + sft.wOpenMode], openSFTFCB
     jnz .fcbQuirk   ;FCB?? opened files immediately will cause an error here
     push rax
     movzx eax, word [rdi + sft.wOpenMode]

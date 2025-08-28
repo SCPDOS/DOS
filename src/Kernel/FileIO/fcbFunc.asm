@@ -264,8 +264,8 @@ openFileFCB:       ;ah = 0Fh
     xor al, al
     cmp eax, 005C3A00h  ;Do null path check!
     je .exitErr
-    lea rbx, scratchSFT     ;Set the working SFT to the scratch in the SDA
-    mov qword [currentSFT], rbx
+    lea rdi, scratchSFT     ;Set the working SFT to the scratch in the SDA
+    call setCurrentSFT
     movzx eax, byte [searchAttr]   ;Get the file attribute in al
     call createMain
     jc .exitErr

@@ -73,9 +73,9 @@ commitAllFilesForProcess:   ;AX=5D01h
     je .gotoNextFile
     cmp word [rdi + sft.wNumHandles], -1  ;Is this in the process of something?
     je .gotoNextFile
-    test word [rdi + sft.wDeviceInfo], devRedirDev  ;Dont commit redirs
+    test word [rdi + sft.wDeviceInfo], devRedir  ;Dont commit redirs
     jnz .gotoNextFile
-    mov qword [currentSFT], rdi ;Set this as the current SFT
+    call setCurrentSFT ;Set this as the current SFT
     call commitMain ;Will reenter critical section but thats ok
     ;If it succeeded, great, cool also if not, keep going!
 .gotoNextFile:

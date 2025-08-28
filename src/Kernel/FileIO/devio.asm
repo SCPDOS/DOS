@@ -59,7 +59,7 @@ mainCharIO:
     pop rbx
     mov dword [secdReqPkt + ioReqPkt.tfrlen], 1 ;Request 1 byte if read/write
     mov word [singleIObyt], ax  ;Save al for transfer and ah for preservation
-    test word [rsi + sft.wDeviceInfo], devRedirDev
+    test word [rsi + sft.wDeviceInfo], devRedir
     jnz .notChar
     test word [rsi + sft.wDeviceInfo], devCharDev
     jz .notChar
@@ -169,7 +169,7 @@ closeSFT:
     mov al, drvCLOSE
 openCloseCommon:
 ;Only signals an open/close to a block device if SHARE is loaded
-    test word [rdi + sft.wDeviceInfo], devRedirDev  ;We a network device?
+    test word [rdi + sft.wDeviceInfo], devRedir  ;We a network device?
     jnz .exit    ;Exit if so
     test byte [rdi + sft.wDeviceInfo], devCharDev
     mov rdi, qword [rdi + sft.qPtr] ;Get DPB or Device Driver header

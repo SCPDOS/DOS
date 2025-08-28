@@ -146,52 +146,59 @@ struc sft
 endstruc
 ;Open Mode equates
 ;Access modes   Bits[2:0]
-ReadAccess      equ 0h
-WriteAccess     equ 1h
-RWAccess        equ 2h
+openRdAcc   equ 0h
+openWrAcc   equ 1h
+openRWAcc   equ 2h
 ;Bit 3 reserved 0
 ;Sharing modes  Bits[6:4]
-CompatShare     equ 0h
-denyRWShare     equ 10h
-denyWriteShare  equ 20h
-denyReadShare   equ 30h
-denyNoneShare   equ 40h
+openCompat      equ 0h  ;Deny all, compatibility mode
+openDenRWShr    equ 10h ;Deny all, explicity read/write
+openDenWrShr    equ 20h ;Deny writes
+openDenRdShr    equ 30h ;Deny reads
+openDenNoShr    equ 40h ;Don't deny anything!
 ;NetFCB is for files open by a local server, handling IO from a remote
 ; client by proxy opened by an FCB! Sets the Net bit to indicate this. 
 ;Thus, this is a handle with no JFT entry! Server handles its own JFT!
-netFCBShare     equ 70h     
-noInherit       equ 80h
+openNetFCBShr   equ 70h
+openNoInherit   equ 80h
+
 ;Bits 8-12 reserved 0
-;Fancy open mode bits
-diskFullFail    equ 2000h   ;Reserved: If set, trigger Int 24h on disk full.
-noBufferWrites  equ 4000h   ;Reserved: If set, flush after each buffer write.
+;Fancy open mode bits, cannot be user set! Yet!
+openFailOnI24   equ 2000h   ;If set, automatically FAIL all Int 24h
+openFlushWrites equ 4000h   ;If set, commit after each write call.
 ;Once share is loaded, if a local FCB open occurs, mark the sft as so.
-FCBopenedFile   equ 8000h   ;If set, file is opened by FCB, else handle based.
+openSFTFCB      equ 8000h   ;If set, file is SFT-FCB.
 
 ;Attribute Byte
-readOnlyFile    equ 1h
-hiddenFile      equ 2h
-systemFile      equ 4h
-volLabelFile    equ 8h
-directoryFile   equ 10h ;Directory entry
-archiveFile     equ 20h
-charFile        equ 40h ;Reserved, never found in dir
-;Device Info equates
+attrFileRO          equ 1h
+attrFileHidden      equ 2h
+attrFileSys         equ 4h
+attrFileVolLbl      equ 8h
+attrFileDir         equ 10h ;Directory entry
+attrFileArchive     equ 20h
+attrFileChar        equ 40h ;Reserved, never found in dir
+
+;Device Info word equates
 ;For a block device, bits [5:0] contain the drive number
-charDevConIn    equ 1h  ;If set, device is CON input
-charDevConOut   equ 2h  ;If set, device is CON output
-charDevNulDev   equ 4h  ;If set, device is NULL device
-charDevClockDev equ 8h  ;If set, device is CLOCK device
-charDevFastOut  equ 10h ;If set, device supports INT 29h
-charDevBinary   equ 20h ;If set, r/w char device in Binary mode!!!
-charDevNoEOF    equ 40h ;If set, no EOF when reading from device!!
-blokFileNoFlush equ 40h ;Set if file is synchronised with hard store!
+devCharConIn    equ 1h  ;If set, device is CON input
+devCharConOut   equ 2h  ;If set, device is CON output
+devCharNulDev   equ 4h  ;If set, device is NULL device
+devCharClkDev   equ 8h  ;If set, device is CLOCK device
+
+devCharFastOut  equ 10h ;If set, device supports INT 29h
+devCharBinary   equ 20h ;If set, r/w char device in Binary mode
+devCharNotEOF   equ 40h ;If set, device not yet at end of file
+devDiskNoFlush  equ 40h ;Set if file is synchronised with hard store!
 devCharDev      equ 80h ;If set, it is a char device!
-charDevNetSpool equ 800h    ;If set, device is a network spooler
+
+;The below two cannot be user set! Yet!
+devDiskI24onFull   equ 100h    ;If set, trigger Int 24h on disk full
+devCharNetSpool equ 800h    ;If set, device is a network spooler
+
 devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
-charDevNamePipe equ 2000h   ;If set, device is a named pipe
-blokNoDTonClose equ 4000h   ;If set, dont update date and time when closing
-devRedirDev     equ 8000h   ;If set, dev/file is redirected!
+devCharNamePipe equ 2000h   ;If set, device is a named pipe
+devDiskNoDTonClose equ 4000h   ;If set, dont update date and time when closing
+devRedir        equ 8000h   ;If set, dev/file is redirected!
  
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 

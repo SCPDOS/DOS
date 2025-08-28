@@ -174,7 +174,7 @@ ioctrl:            ;ah = 44h, handle function
     lea rbx, primReqPkt
     mov byte [rbx + statusReqPkt.hdrlen], statusReqPkt_size
     mov byte [errorLocus], eLocUnk
-    test word [rdi + sft.wDeviceInfo], devRedirDev  ;File cannot be redir!
+    test word [rdi + sft.wDeviceInfo], devRedir  ;File cannot be redir!
     jnz .invalidFunction
     mov byte [Int24bitfld], 0
     mov ecx, drvINSTATUS
@@ -298,7 +298,7 @@ ioctrl:            ;ah = 44h, handle function
     mov eax, errBadHdl
     jmp extErrExit
 .okHandle:
-    test word [rdi + sft.wDeviceInfo], devRedirDev
+    test word [rdi + sft.wDeviceInfo], devRedir
     jnz .ioctrlBadHandle
     test word [rdi + sft.wDeviceInfo], devCharDev
     jz .ioctrlBadHandle

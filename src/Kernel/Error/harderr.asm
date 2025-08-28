@@ -148,12 +148,9 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
 ; Caller must preserve rsp, rbx, rcx, rdx if they wish to return to DOS
 ; This function will terminate the program if an abort was requested!
 ; This function also destroys RBP
-    cmp byte [critErrFlag], 1
-    jb .noIntError  ;If not 0, enter
-    mov al, critFail    ;Else, return Fail always
-    jmp short .setFail
-.noIntError:
-    mov qword [xInt24hRSP], rsp ;Save our critical error stack
+    test byte [critErrFlag], -1   ;If not zero, already in error. Auto FAIL
+    jnz .setFail
+    mov qword [xInt24hRSP], rsp ;Save our critical error stack pointer
     cmp word  [currentNdx], -1  ;If this is -1, we are not opening a file
     je .notOpeningFile
     push rdi
@@ -161,6 +158,8 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [rdi], -1          ;Free this handle
     pop rdi
 .notOpeningFile:
+    call checkDoInt24OnHandle   ;IF returns ZF=NZ, we just fail!
+    jnz .setFail
     cli                         
     inc byte [critErrFlag]      ;Set flag for critical error
     dec byte [inDOS]            ;Exiting DOS
@@ -182,7 +181,10 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     jne .abort   ;Must be abort
 .setFail:   ;Here is for fail
     mov al, critFail    ;Reset al to contain fail (even if Int24 responded Fail)
+    call checkDoInt24OnHandle   ;If we fail because of handle, skip fail counter!
+    jnz .skipFailInc
     inc byte [Int24Fail]        ;Inc the fail counter!
+.skipFailInc:
     test byte [Int24bitfld], critFailOK
     jz .abort  ;If bit not set, fail not permitted, abort
 .exit:
@@ -236,3 +238,17 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov rbx, qword [oldRSP]
     mov qword [rdi + psp.rspPtr], rbx
     jmp terminateClean.altEP
+
+checkDoInt24OnHandle:
+;Checks if currentSFT is a null pointer. Return ZF=ZE if so.
+;Else, take the SFT pointer and check its open mode. 
+;   If openFailOnI24 set, return ZF=NZ
+;   Else, return ZF=ZE.
+    push rdi
+    call getCurrentSFT
+    test rdi, rdi   ;If this is a null pointer, no
+    jz .exit
+    test word [rdi + sft.wOpenMode], openFailOnI24
+.exit:
+    pop rdi
+    return

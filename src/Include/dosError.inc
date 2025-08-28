@@ -42,6 +42,7 @@ errLokVio   equ 33  ;File Lock violation
 errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
+errDskFul   equ 38  ;Disk full error!
 
 errNoNet    equ 50  ;Network request not supported, generic net fail
 errNLSAcDen equ 65  ;Network Access denied (NLS usage)

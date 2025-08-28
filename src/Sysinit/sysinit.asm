@@ -430,7 +430,7 @@ defaultFileHandles:
 
     lea rdx, cfgspec    ;CONFIG.SYS, must be on bootdrive for now
     mov ah, 3Dh ;Open file for reading
-    mov al, ReadAccess
+    mov al, openRdAcc
     int 21h
     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
     call configParse ;Else, parse the config file

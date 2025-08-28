@@ -581,9 +581,9 @@ updateSFTDateTimeFields:
 ;   [workingDPB] = DPB pointer for the disk device
 ;   [currentSFT] = Current SFT pointer
 ;   bx = attribute byte from the SFT
-    test bx, blokFileNoFlush | devCharDev
+    test bx, devDiskNoFlush | devCharDev
     retnz
-    test bx, blokNoDTonClose
+    test bx, devDiskNoDTonClose
     retnz
     push rax
     push rbx
@@ -601,6 +601,7 @@ updateSFTDateTimeFields:
     return
 
 getAndUpdateDirSectorForFile:
+;Must be called with currentSFT pointing to the file we operate on!
 ;Input: rdi -> SFT
 ;Output: CF=NC: rsi -> Updated dir entry in buffer
 ;               rdi -> SFT
@@ -611,7 +612,7 @@ getAndUpdateDirSectorForFile:
     mov byte [Int24bitfld], critFailOK | critRetryOK
     call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
     retc    ;If an error is to be returned from, we skip the rest of this
-    mov rdi, qword [currentSFT] ;Reobtain the SFT ptr
+    call getCurrentSFT ;Reobtain the SFT ptr in rdi
     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)
