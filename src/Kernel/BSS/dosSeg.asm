@@ -192,7 +192,7 @@ sdaDOSSwap:
     bestMCB     dq ?  ;Best fit MCB for request
     lastMCB     dq ?  ;Last fit MCB for request
     dirEntryNum dw ?  ;Offset into directory of entry we are looking for
-    volIdFlag   db ?    ;If set, we are searching for a volume ID
+    volIdFlag   db ?   ;If set, we are searching for a volume ID
     xInt24hRSP  dq ?  ;RSP across an Int 24h call
     Int24bitfld db ?  ;Copies the bit field given to the Int 24h handler
     fileDirFlag db ?  ;File/Directory flag. 0 = Dir, ¬0 = File
@@ -236,18 +236,20 @@ altRet: ;Accessed as a qword
     singleIObyt dw ?  ;For single IO byte buffers
 extErrByteBuf:  ;Used by DOS execpt hdlr to build strings. Immediate abort!
 exeHdrSpace:    ;This needs 112 bytes in EXEC only, buffer is free for use!
-    buffer1     db 128 dup (?)  ;Space for one path and file name
+    buffer1     db 2*MAX_FSPEC dup (?)  ;Space for max expanded MAX_FSPEC
 sectHdr:        ;This needs 20 bytes in EXEC only
-    buffer2     db 128 dup (?) ;Space for a second path and file name
+    buffer2     db 2*MAX_FSPEC dup (?) ;Space for a second path
     fname1Ptr   dq ?  ;Ptr to first filename argument
     fname2Ptr   dq ?  ;Ptr to second filename argument
     skipDisk    db ?  ;Set => Read Disk, Clear => Skip checking on disk
 ;Misc bookkeeping flags and vars
     dosffblock  db ffBlock_size dup (?)  ;FF block (fullsize unlike DOS)
     curDirCopy  db fatDirEntry_size dup (?)  ;Dir copy
-    tmpCDS      db cds_size dup (?)  ;Temp CDS for Server calls that need a tmp CDS
-    fcbName     db 11+1 dup (?)   ;11 chars for 8.3 ( w/o the dot) and terminating 0
-    wcdFcbName  db 11+1 dup (?)  ;Used to expand any wildcards for rename
+    tmpCDS      db cds_size dup (?)  ;For server calls that need a tmp CDS
+;These two are used to expand filenames into FCB format. The extra char 
+; is used to store the terminator of the portion (either a pathsep or null)
+    fcbName     db MAX_NAME_FCBZ dup (?)
+    wcdFcbName  db MAX_NAME_FCBZ dup (?)  ;Expands wildcards for rename
     fileDirSect dq ?  ;File/Directory starting sector, for each level
     volIncmpFCB db ?  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
     extFCBAttr  db ?  ;Extended FCB file attribute
@@ -265,7 +267,10 @@ sectHdr:        ;This needs 20 bytes in EXEC only
     parDirExist db ?  ;-1 if parent directory for file exists (create/open)
     exitType    db ?  ;Forms the upper byte of the errorlvl
     openCreate  db ?  ;If open, set to 0, if Create set to -1
-    delChar     db ?  ;Char to replace first byte of deleted file's name
+;Set to E5h for renaming and deletion. Can be set to 0 if *.* chosen
+; to speed up the deletion but we don't use this (yet) as we would not 
+; be releasing the FAT sectors of the remaining entries in the directory.
+    delChar     db ?
     workingDrv  db ?  ;Working drive number, 0 based, from DPB
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
 workingDD:  ;Create a symbol for the working device driver too

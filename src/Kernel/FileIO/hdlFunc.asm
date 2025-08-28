@@ -524,7 +524,7 @@ createUniqueFile:  ;ah = 5Ah, attempts to make a file with a unique filename
 .validAttribs:
     movzx r8, cx ;Save attributes in r8
     mov r9, rdx  ;Save pointer to the path in r9
-    mov ecx, 64-13  ;First null must be at furthest, this many chars from rdx
+    mov ecx, MAX_PSPEC
     xor eax, eax
     mov rdi, rdx
     repne scasb
@@ -893,6 +893,8 @@ renameMain:
     return
 .sameDrive:
     call dosCrit1Enter
+    ;mov byte [delChar], 0E5h    ;Set the delchar to 0E5h
+    mov byte [openCreate], -1   ;We are creating a new file! 
 ;Check if either pathsepc is simply X:\,0
 ; If they are, return fail as we cannot rename the root dir
     mov eax, dword [buffer1]
@@ -1000,7 +1002,7 @@ renameMain:
 ;CurDirCopy and dir search vars point to the parent directory of the file
 ; we were searching for. Root dir has this entry set to 0. If the file is
 ; a dir, we take the parent cluster.
-    call .searchForDirSpace ;Returns rsi -> space for dir entry if CF=NC
+    call .renFindDirSpace ;Returns rsi -> space for dir entry if CF=NC
     jc .renAccDen
     lea rdi, renameDir  ;Get ptr to the src of the new dir entry
     xchg rsi, rdi
@@ -1151,7 +1153,7 @@ renameMain:
     pop rax
     return
 
-.searchForDirSpace:
+.renFindDirSpace:
 ;Searches for directory space based on the data in the current dir copy.
 ; If the file is a dir then start searching in the parent cluster 
     mov eax, dword [dirClustPar]
@@ -1171,6 +1173,7 @@ renameMain:
     xor eax, eax    ;Reset the search to the start of the current directory
     mov word [dirSect], ax
     mov dword [dirEntry], eax
+;Needs delchar setup. Already done in the prologue of rename!
     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
     jnc .dirEntryFnd
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
@@ -1180,7 +1183,7 @@ renameMain:
     cmp eax, -1 ;Disk Full?
     je .searchBad
     ;Else eax = Newly allocated cluster
-    jmp short .searchForDirSpace
+    jmp short .renFindDirSpace
 .dirEntryFnd:
     clc
     return
@@ -1230,8 +1233,7 @@ checkExclusiveOwnFile:
     lea rdi, scratchSFT
     call setCurrentSFT
     mov eax, openRWAcc | openCompat ;Set open mode
-    mov byte [openCreate], 0    ;Make sure we are just opening the file
-    ;This is to avoid needing to put the file attributes on the stack
+    mov byte [openCreate], 0    ;We test by opening.
     push rdi    ;Save the scratch SFT ptr
     call buildSFTEntry  ;This will never fail. If it does, shareFile will catch
     pop rdi
@@ -1258,6 +1260,9 @@ outerDeleteMain:
 ;       disk vars must be populated (i.e. getFilePath mustve been run)
 ;Returns: CF=CY => Error (including no files if wildcard) in eax
 ;         CF=NC => File deleted
+
+;Hardcode delChar for now. *.* dels may be considered for optimisation later
+    ;mov byte [delChar], 0E5h
     mov rdi, qword [workingCDS]
     call testCDSNet ;CF=NC => Not net
     jnc .notNet
@@ -1388,7 +1393,7 @@ openMain:
     mov eax, ecx    ;Move the modified open mode into eax for buildSFT
 .openFile:
     mov byte [openCreate], 0   ;Opening file, set to 0
-    mov byte [delChar], 0E5h
+    ;mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
     jc .errorExit
     call shareFile      ;Puts an SFT handle in rdi
@@ -1498,7 +1503,7 @@ createMain:
 .hardFile:
     or word [rdi + sft.wOpenMode], openRWAcc ;Set R/W access when creating file
     mov byte [openCreate], -1   ;Creating file, set to FFh
-    mov byte [delChar], 0E5h
+    ;mov byte [delChar], 0E5h
     call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
     push rdi    ;Save the sft handle
     push rax    ;Save the file attributes on stack
@@ -1535,6 +1540,7 @@ buildSFTEntry:
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
 ;     SDA curDirCopy = Copy of dir for file if found or parent dir if not.
+;       If creating, delChar must be set to 0E5h. Not needed for opening!
 ;
 ;Output: If CF=NC: - CurrentSFT filled in except for wNumHandles and bFileAttrib
 ;                  - wDeviceInfo is set except for inherit bit
@@ -1683,6 +1689,7 @@ buildSFTEntry:
     mov word [dirSect], ax
     mov dword [dirEntry], eax
     push rdi
+;Needs delChar setup. We only come here for creates so already setup!
     call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
     pop rdi ;Preserve rdi = curDirCopy
     jnc .dirEntryFnd

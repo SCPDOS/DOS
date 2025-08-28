@@ -89,6 +89,13 @@ functionDispatch:   ;Int 21h Main function dispatcher
     mov byte [errorLocus], 1    ;Reset to generic, unknown locus
     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
     mov byte [errorDrv], -1     ;Set the drive which caused the error to none
+;Default delchar UNLESS a function changes it. Placed here since delete/rename
+; is a disk op. If a critical error occurs midway through a delete and the I24h
+; handler needs to call DOS for char funcs, we dont want to reset this value as 
+; the delete/rename operation might have set it to 0 (we dont do this yet).
+    mov byte [delChar], 0E5h
+;Similar for volIdFlag. Find file et al are disk ops. 
+    mov byte [volIdFlag], 0    ;Force bit clear (else, forces volid search)
 
     push rax
     mov ah, 82h ;Cancel all critical section!

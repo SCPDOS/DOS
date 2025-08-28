@@ -414,7 +414,7 @@ checkPathspecOK:
     mov eax, ecx    ;Save the length in eax
     pop rdi
     pop rcx
-    cmp eax, 64    ;Check
+    cmp eax, MAX_FSPEC    ;Check
     ja .badExit ;Above 64 only as the count includes the terminating null
     test eax, eax   ;If the path is empty, also error out!
     jz .badExit

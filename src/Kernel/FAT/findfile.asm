@@ -20,7 +20,7 @@ findNextMain:
     call setWorkingDPB
     movzx eax, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], al
-    mov byte [delChar], 0E5h
+    ;mov byte [delChar], 0E5h
     mov byte [fcbName + 11], 0  ;Set to this being a file we are searching for
     mov byte [fileDirFlag], -1  ;Set to searching for a file!
     call searchMoreDir  ;Now find the next one!
@@ -165,7 +165,6 @@ searchDir:
     jc .fnfError
     call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
 .rmdirEP: ;Entry used by rmdir to jump into this routine
-    call findInBuffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
     jz .chardev    ;CF=CY AND ZF=ZE => File not found

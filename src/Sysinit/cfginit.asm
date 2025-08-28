@@ -468,7 +468,7 @@ configParse:
     jc .drvMemClose
     ;Now set the subsystem marker and the owner to DOS
     mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
-    mov qword [rax - mcb_size + mcb.owner], mcbOwnerNewDOS
+    mov qword [rax - mcb_size + mcb.owner], mcbOwnerDOS
     ;Build the overlay command block
     lea rbx, cmdBlock
     mov qword [rbx + loadOvly.pLoadLoc], rax
@@ -534,15 +534,9 @@ configParse:
 ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     call initDriver
     jc short .driverBadRbpAdjust
-;Now walk the MCB chain for MCBs owned by the current PSP and set 
-; them all to mcbOwnerNewDOS. 
-    call .drvAdjustMcbOwner
-;Now set the current PSP to mcbOwnerNewDOS and add the driver 
-; markers and set owner to mcbOwnerDOS and switch currentPSP back!
-    push qword [rbp + currentPSP]
-    mov qword [rbp + currentPSP], mcbOwnerNewDOS
+;If we swap drivers to be their own tasks (i.e. with 4B01h)
+; this routine will still work like so!
     call addDriverMarkers
-    pop qword [rbp + currentPSP]
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     xchg r12, rbp
     test word [rsi + drvHdr.attrib], devDrvChar
@@ -618,33 +612,6 @@ configParse:
     jmp short .drvBad2
 
 .drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
-
-.drvAdjustMcbOwner:
-;Traverses the MCB chain looking for MCBs owned by the current PSP and 
-; sets them all to mcbOwnerNewDOS.
-;Input: rbp -> DOS Data Area
-    push rcx
-    push rsi
-    push rdi
-    mov rdi, qword [rbp + currentPSP]
-    mov rsi, qword [rbp + mcbChainPtr] ;Points to the MCB chain head
-.checkOwner:
-    cmp qword [rsi + mcb.owner], rdi
-    jne .gotoNextBlock
-    mov qword [rsi + mcb.owner], mcbOwnerNewDOS
-.gotoNextBlock:
-    cmp byte [rsi + mcb.marker], mcbMarkEnd
-    je short .exit
-    mov ecx, dword [rsi + mcb.blockSize]
-    shl rcx, 4
-    add rsi, mcb.program    
-    add rsi, rcx
-    jmp short .checkOwner
-.exit:
-    pop rdi
-    pop rsi
-    pop rcx
-    return
 
 
 .sftHandler:

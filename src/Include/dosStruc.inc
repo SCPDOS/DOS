@@ -4,6 +4,23 @@
 ; SCP/DOS structures.                                   ;
 ;-------------------------------------------------------;
 
+;File/path length equates.
+MAX_FNAME_FCB   equ 8
+MAX_EXT_FCB     equ 3
+MAX_NAME_FCB    equ MAX_FNAME_FCB + MAX_EXT_FCB
+MAX_NAME_FCBZ   equ MAX_NAME_FCB + 1    ;Space for a null terminator
+;Values below include the null terminator.
+MAX_FILE    equ 13  ;Maximum length of a filename (includes dot)
+MAX_DRIVE   equ 3   ;Maximum length of a drive string (X:<NUL>)
+MAX_FSPEC   equ 64  ;Maximum length of a path to a file (filespec)
+MAX_PATH    equ 67  ;Maximum length of a fully qualified pathspec
+;MAX_PATH is X:\<string, maxlen 63 chars>,<null> so 67 chars total.
+;Use this symbol to check the length of a filename after qualification.
+MAX_PSPEC   equ MAX_PATH - MAX_FILE - 1 ;54 bytes
+;MAX_PSPEC is the max length of a path with space for a filename!
+;Remember, filenames for us are just a string of, at most, 13 characters,
+; which we always resolve into FCB format. Buffers need to make space for
+; both the dot and terminating null
 ;------------------------------------------------------------------------;
 ; Each mass storage device up to LASTDRIVE gets a DPB, describing 
 ; its file system structure. This is used to locate files and structures
@@ -49,7 +66,7 @@ fat16MaxClustCnt    equ 65525   ;Cluster count less than this is FAT16
 ; DEFAULT LASTDRIVE=E, MINIMUM LASTDRIVE=B
 ;------------------------------------------------------------------------;
 struc cds       ;Current Directory structure
-    .sCurrentPath        db 67 dup (?)    ;Current Directory Path String
+    .sCurrentPath        db MAX_PATH dup (?)    ;Current Directory Path String
     .wFlags              dw ?   ;CDS Flags - 
     .qDPBPtr             dq ?   ;Ptr to the DPB of the dev using this CDS
     .dStartCluster       dd ?   ;Starting cluster of the directory on disk
@@ -199,7 +216,6 @@ devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
 devCharNamePipe equ 2000h   ;If set, device is a named pipe
 devDiskNoDTonClose equ 4000h   ;If set, dont update date and time when closing
 devRedir        equ 8000h   ;If set, dev/file is redirected!
- 
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 
 ; to an internal buffer, and then copying it to the specified location
