@@ -2069,7 +2069,7 @@ readDiskFile:
     jz .skipWalk
 .goToCurrentCluster:
     call readFAT    ;Get in eax the next cluster
-    jc .badExit   ;This can only return Fail
+    jc .readBadExit   ;This can only return Fail
     cmp eax, -1 ;Are we gonna go past the end of the file?
     je readExitOk ;Exit with no bytes transferred
     mov dword [currClustD], eax    ;Save eax as current cluster
@@ -2085,7 +2085,7 @@ readDiskFile:
 ;Main
 .mainRead:
     call diskIOGetBuffer
-    jc .badExit
+    jc .readBadExit
     lea rsi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rsi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rsi, rbx    ;Shift rsi by that amount into the sector
@@ -2121,7 +2121,7 @@ readDiskFile:
     test ecx, ecx  ;Are we at the end yet?
     jz readExitOk ;Exit if so!
     call getNextSectorOfFile    ;Get the next sector of the file
-    jc .badExit
+    jc .readBadExit
     ;If ZF=ZE then currClustF has last cluster
     jz readExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
     ;Else repeat
@@ -2129,7 +2129,7 @@ readDiskFile:
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     mov rax, qword [currSectD]  ;Get the next sector to read from
     jmp .mainRead
-.badExit:
+.readBadExit:
     ;When a disk error occurs within the bit where vars have changed,
     ; we need to update the SFT before returning
     mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
@@ -2316,7 +2316,7 @@ writeDiskFile:
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], 1    ;Write operation
     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
-    jnz .badExit
+    jnz writeCharDev.exitFail ;Recycle the error above!
     test ecx, ecx
     jnz .nonZeroWrite
     mov ecx, -1 ;If write cnt is 0, check for no locks
@@ -2339,7 +2339,7 @@ writeDiskFile:
     call startNewChain  ;Allocate a first cluster! 
     retc
     cmp eax, -1         ;Disk full?
-    je .diskFullExit
+    je writeDiskFullExit
     ;Now eax has the first cluster of chain
     mov dword [rdi + sft.dStartClust], eax  ;Store the start cluster in the sft
 .notStart:
@@ -2358,7 +2358,7 @@ writeDiskFile:
     call findFreeClusterData
 .haveFreeClustCnt:
     cmp dword [rbp + dpb.dFreeClustCnt], edx
-    jb .diskFullExit
+    jb writeDiskFullExit
     ;Here we know we have enough clusters to allocate to the file,
     ; so just roll with it. 
     mov eax, dword [currClustD] ;Get the current disk cluster 
@@ -2392,7 +2392,11 @@ writeDiskFile:
     mov eax, dword [rdi + sft.dCurntOff]
 .extend:
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
-    jmp .noByteExit ;Exit ok!
+;writeExitNoByte
+    call updateCurrentSFT   ;Update the cluster information in the SFT
+    mov eax, 2  ;Update all SFTs with the shrinking of the file
+    call qword [updateDirShare] ;Remember, CF=CY by default!
+    jmp writeDoCommit   ;Now check if we should do a commit, or just return
 .walkFAT:
 ;Input: eax = Cluster to start walking from
 ;Output: If eax = -1: currClustD is the cluster we just read
@@ -2410,9 +2414,8 @@ writeDiskFile:
     clc ;Dont remove, need this because of the compare above!!
     return
 .mainWrite:
-;Must intervene here for direct writes (if the handle specifies no buffering)
     call diskIOGetBuffer
-    jc .badExit
+    jc writeBadExit
     lea rdi, qword [rbx + bufferHdr.dataarea]    ;Move buffer data ptr to rdi
     movzx ebx, word [currByteS] ;Get the byte offset into the current sector
     add rdi, rbx    ;Shift rdi by that amount into the sector
@@ -2448,23 +2451,23 @@ writeDiskFile:
     jz writeExit
     mov word [currByteS], 0 ;We start reading now from the start of the sector
     call getNextSectorOfFile    ;If ZF=ZE, then @ last sector of last cluster
-    jc .badExit
+    jc writeBadExit
     jnz .mainWrite   ;Else, rax = Next sector to write to
     ;Here we need to extend by a cluster since we are at the end of the 
     ; current allocation chain
     mov ebx, dword [currClustD] ;Setup last cluster value in ebx
     mov ecx, 1  ;Append one more cluster to it!
     call allocateClusters
-    jc .badExit
+    jc writeBadExit
     cmp eax, -1 ;If we cannot allocate any more clusters, disk full!
-    je .diskFullExit  ;End write in this case!
+    je writeDiskFullExit  ;End write in this case!
 ;Else we just allocated a new cluster to the chain, so we have a sector to 
 ; write to! 
 ;The cluster state has not changed due to the allocate clusters call.
     call getNextSectorOfFile    ;Now we walk to chain to the new cluster
-    jc .badExit
+    jc writeBadExit
     jmp .mainWrite    ;rax = Next sector to write to
-.diskFullExit:
+writeDiskFullExit:
     call getCurrentSFT  ;Get SFT pointer into rdi
     test word [rdi + sft.wDeviceInfo], devDiskI24onFull
     jz writeExit.altEp  ;If no trigger Int 24h, return success. rdi -> SFT
@@ -2490,21 +2493,30 @@ writeDiskFile:
     mov edi, drvGenFault    ;Report general fault to driver
     call criticalDOSError   ;Trigger i24
     mov eax, errDskFul      ;and return to caller a disk full error
-    jmp short .badExiti24
-.badExit:
+    jmp short writeBadExit.diskFull
+writeBadExit:
     mov eax, errAccDen      ;Normally return Access denied
-.badExiti24:
+.diskFull:
+;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+;Old action
+;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ;Here we preserve the error code in eax on stack in the event that the 
 ; possible commit operation in writeExit also fails, as this will return
 ; its own error code.
-    push rax        
-    call writeExit
-    pop rax
+;    push rax        
+;    call writeExit
+;    pop rax
+;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+;New action
+;-----------------------------------------------------------------------
+;If we hard error in write we should return WITHOUT modifying the file
+; size information. Users should always follow a hard error on write with 
+; a zero byte write to ensure that any newly allocated FAT sectors are 
+; freed.
+    xor ecx, ecx
     stc             
     return          ;Return CF=CY and eax = Original Error code
-.noByteExit:
-    mov eax, 2  ;Update all SFTs with the shrinking of the file!
-    call qword [updateDirShare] ;Remember, CF=CY by default!
+
 writeExit:
 ;Advances the bytes on the file pointer and commits file if opened to do so!
 ;Return: ecx = Number of bytes transferred if CF=NC. Else, eax = Error code
@@ -2513,23 +2525,22 @@ writeExit:
     call updateCurrentSFT   ;Updates CurntOff in the SFT. Get xfr cnt in ecx
     test word [rdi + sft.wDeviceInfo], devCharDev
     retnz           ;Return if char dev. No commit possible here.
-    test ecx, ecx   ;If no bytes transferred, no size change!
-    jz .doCommit    ;But still commit any dirty buffers (ie for FAT growth)
+    test ecx, ecx   ;If no bytes transferred, no growth to report!
+    jz writeDoCommit    ;But still commit any dirty buffers (ie for FAT growth)
     and word [rdi + sft.wDeviceInfo], ~devDiskNoFlush ;File has been accessed
 ;Now replace the filesize with the currentoffset if it is greater
     mov eax, dword [rdi + sft.dCurntOff]
     cmp dword [rdi + sft.dFileSize], eax    
-    jae .doCommit   ;If past the end of the file, update the file size!
+    jae writeDoCommit   ;If past the end of the file, update the file size!
     mov dword [rdi + sft.dFileSize], eax
     mov eax, 1  ;Update all SFTs with the growth of the file!
     call qword [updateDirShare] ;Remember, CF=CY by default!
-.doCommit:
+writeDoCommit:
+;Common good exit routine for write
     test word [rdi + sft.wOpenMode], openFlushWrites
     retz    ;If we don't flush on each write call, return here!
     push rcx
-    push rdi
     call commitMain ;If this fails, return CF=CY and eax = Error code
-    pop rdi
     pop rcx ;Else, ecx is preserved so return ecx = # bytes xfred
     return
 writeExitChar:
@@ -2723,12 +2734,12 @@ findFreeJFTEntry:
     xor ebx, ebx    ;Start searching from offset 0 in the JFT
 .searchLp:
     call getJFTPtr
-    jc .badExit
+    jc .ffJFTbadExit
     cmp byte [rdi], -1
     rete
     inc ebx
     jmp short .searchLp
-.badExit:
+.ffJFTbadExit:
     mov al, errNhl
     stc
     return
