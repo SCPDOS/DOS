@@ -165,6 +165,7 @@ searchDir:
     jc .fnfError
     call prepSectorSearch    ;rbx has the buffer pointer for this dir sector
 .rmdirEP: ;Entry used by rmdir to jump into this routine
+    call findInBuffer
 .nextEp:
     retnc   ;If CF=NC, then the dir has been found and the DTA has been setup
     jz .chardev    ;CF=CY AND ZF=ZE => File not found
