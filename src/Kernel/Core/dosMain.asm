@@ -19,20 +19,20 @@ functionDispatch:   ;Int 21h Main function dispatcher
     cld ;Ensure all string ops occur in the right direction
     cmp ah, kDispTblL/2    ;Number of functions
     jae .fdExitBad  ;If equal or above, exit error
-    ;Cherry pick functions
-    cmp ah, 33h ;CTRL+BREAK check
-    jb .fsbegin   ;If below skip these checks
+;Cherry pick functions
+    cmp ah, 33h
     je ctrlBreakCheck
+    jb .fsbegin
     cmp ah, 64h
-    je setDriverLookahead  ;Reserved, but avoids usual Int 21h spiel
-    ja .fsbegin   ;If above, do usual Int21 entry
+    je setDriverLookahead  
+    ja .fsbegin             ;If above, do usual Int21 entry
     cmp ah, 51h
-    je getCurrProcessID    ;This and below are exactly the same
+    je getCurrPSP           ;This and below are exactly the same
     cmp ah, 62h
-    je getPSPaddr          ;Calls the above function
+    je getCurrPSP           ;Calls the above function
     cmp ah, 50h
-    je setCurrProcessID
-    cmp ah, 61h           ;New service, Process Services, reentrant
+    je setCurrPSP
+    cmp ah, 61h             ;New service, Process Services, reentrant
     je systemServices
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
@@ -375,15 +375,11 @@ ctrlBreakCheck:    ;ah = 33h
     mov dx, (dosVerFlags << 8) | dosRev
     iretq
 
-setCurrProcessID:  ;ah = 50h, set current process ID (Set current PSP)
+setCurrPSP:     ;ah = 50h, set current PSP
     mov qword [currentPSP], rbx ;Set the pointer
     iretq
 
-getCurrProcessID:  ;ah = 51h, get current process ID (Get current PSP)
-    mov rbx, qword [currentPSP]
-    iretq
-
-getPSPaddr:        ;ah = 62h, gives PSP addr/Process ID
+getCurrPSP:     ;ah = 51h/62h, gives PSP addr/Process ID
     mov rbx, qword [currentPSP]
     iretq
 
