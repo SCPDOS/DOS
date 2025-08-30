@@ -253,6 +253,7 @@ getExtLocalInfo:    ;ah = 65h, Get Extended Country Info
     jnz .loopTableSearch
     ;Fallthrough to error if no match
 .invFuncExit:
+    mov byte [errorLocus], eLocUnk  
     mov eax, errInvFnc  ;Bad info ID byte or subfunction
     jmp extErrExit
 .tblFound:

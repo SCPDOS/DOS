@@ -52,7 +52,7 @@ kDispTbl:
     dw getDOSversion - kDispTbl       ;AH = 30H, MISC. SYS. FUNCTION
     dw terminateStayRes - kDispTbl    ;AH = 31H, PROCESS MANAGEMENT
     dw getDeviceDPBptr - kDispTbl     ;AH = 32H, RESERVED INTERNAL, GET DEVICE DPB PTR
-    dw ctrlBreakCheck - kDispTbl      ;AH = 33H, MISC. SYS. FUNCTION
+    dw cbcServer - kDispTbl           ;AH = 33H, MISC. SYS. FUNCTION
     dw getInDOSflagPtr - kDispTbl     ;AH = 34H, RESERVED INTERNAL, GET PTR TO INDOS FLAG
     dw getIntVector - kDispTbl        ;AH = 35H, MISC. SYS. FUNCTION
     dw getDiskFreeSpace - kDispTbl    ;AH = 36H, DISK MANAGEMENT
@@ -81,8 +81,8 @@ kDispTbl:
     dw getRetCodeChild - kDispTbl     ;AH = 4DH, PROCESS MANAGEMENT
     dw findFirstFileHdl - kDispTbl    ;AH = 4EH, FILE OPERATION       HANDLE
     dw findNextFileHdl - kDispTbl     ;AH = 4FH, FILE OPERATION       HANDLE
-    dw setCurrPSP - kDispTbl          ;AH = 50H, RESERVED INTERNAL, SET CURRENT PROCESS ID
-    dw getCurrPSP - kDispTbl          ;AH = 51H, RESERVED INTERNAL, GET CURRENT PROCESS ID
+    dw scpspServer - kDispTbl         ;AH = 50H, RESERVED INTERNAL, SET CURRENT PROCESS ID
+    dw gcpspServer - kDispTbl         ;AH = 51H, RESERVED INTERNAL, GET CURRENT PROCESS ID
     dw getSysVarsPtr - kDispTbl       ;AH = 52H, RESERVED INTERNAL, GET SYSVARS POINTER
     dw createDPB - kDispTbl           ;AH = 53H, RESERVED INTERNAL, TRANSLATE A BPB TO DPB
     dw getVerifySetting - kDispTbl    ;AH = 54H, DISK MANAGEMENT
@@ -99,9 +99,9 @@ kDispTbl:
     dw netRedir - kDispTbl  ;AH = 5FH, RESERVED NETWORK FUNCTION
     dw trueName - kDispTbl            ;AH = 60H, RESERVED INTERNAL, GET TRUE NAME
     dw systemServices - kDispTbl      ;AH = 61H, PROCESS MANAGEMENT, NEW
-    dw getCurrPSP - kDispTbl          ;AH = 62H, PROCESS MANAGEMENT
+    dw gcpspServer - kDispTbl         ;AH = 62H, PROCESS MANAGEMENT
     dw noOp - kDispTbl                ;AH = 63H, RESERVED
-    dw setDriverLookahead - kDispTbl  ;AH = 64H, RESERVED INTERNAL, DRIVER LOOKAHEAD
+    dw sdlServer - kDispTbl           ;AH = 64H, RESERVED INTERNAL, DRIVER LOOKAHEAD
     dw getExtLocalInfo - kDispTbl     ;AH = 65H, MISC. SYS. FUNCTION
     dw getsetGlobalCP - kDispTbl      ;AH = 66H, MISC. SYS. FUNCTION
     dw setHandleCount - kDispTbl      ;AH = 67H, FILE OPERAITON       F/H

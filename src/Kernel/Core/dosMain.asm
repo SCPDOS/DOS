@@ -19,21 +19,19 @@ functionDispatch:   ;Int 21h Main function dispatcher
     cld ;Ensure all string ops occur in the right direction
     cmp ah, kDispTblL/2    ;Number of functions
     jae .fdExitBad  ;If equal or above, exit error
-;Cherry pick functions
+;Cherry pick quick functions
     cmp ah, 33h
-    je ctrlBreakCheck
+    je cbcQuick
     jb .fsbegin
     cmp ah, 64h
-    je setDriverLookahead  
+    je sdlQuick  
     ja .fsbegin             ;If above, do usual Int21 entry
     cmp ah, 51h
-    je getCurrPSP           ;This and below are exactly the same
+    je gcpspQuick           ;This and below are exactly the same
     cmp ah, 62h
-    je getCurrPSP           ;Calls the above function
+    je gcpspQuick           ;Calls the above function
     cmp ah, 50h
-    je setCurrPSP
-    cmp ah, 61h             ;New service, Process Services, reentrant
-    je systemServices
+    je scpspQuick
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
@@ -334,7 +332,32 @@ checkFail:
 ;========================================:
 ;      Reentrant Kernel Functions        :
 ;========================================:
-ctrlBreakCheck:    ;ah = 33h
+;ah = 33h, Control Break related functions + some undocumented stuff
+cbcQuick:
+;The entry point for this function if entered through a normal DOS call
+    call ctrlBreakCheck
+    iretq
+cbcServer:
+;The entry point for this function if entered through a Server Call (5D00h)
+    call ctrlBreakCheck
+    call getUserRegs
+;Calls which dont modify the regs, preserve them themselves so this so 
+; replacing them back on the stack is a small price to pay
+    mov qword [rsi + callerFrame.rbx], rbx
+    mov qword [rsi + callerFrame.rdx], rdx
+;DO NOT WRITE AN ERROR CODE AS THIS WOULD OVERWRITE AN ERROR CODE 
+; THAT MAY BE DEPENDED ON. RETURN WITH THE VALUE IN AL AS RETCODE.
+    return 
+ctrlBreakCheck:
+;Can handle subfunctions:
+; al = 0: Get state for the break flag in dl
+; al = 1: Set the state of the break flag to dl
+; al = 2: Exchange the value of the break flag with dl
+; al = 3: Error, returns al = -1
+; al = 4: Error, returns al = -1
+;Undocumented subfunctions:
+; al = 5: Get the boot drive in dl
+; al = 6: Get the true DOS version number in bx with subversion flags in dl
     cmp al, 6
     je .trueVer
     cmp al, 5
@@ -342,7 +365,7 @@ ctrlBreakCheck:    ;ah = 33h
     test al, al
     jnz .cbcget     ;Get the state or other functions
     mov dl, byte [breakFlag]    ;Get the state
-    iretq
+    return
 .cbcget:
     cmp al, 02h
     ja .cbcBad
@@ -351,21 +374,21 @@ ctrlBreakCheck:    ;ah = 33h
     and dl, 1   ;Get only the bottom bit
     mov byte [breakFlag], dl    ;Set the state
     pop rdx
-    iretq
+    return
 .cbcxchg:
     and dl, 1
     xchg byte [breakFlag], dl
-    iretq
+    return
 .cbcBad:
     mov al, -1
-    iretq
+    return
 .getBtDrv:
 ;Undocumented.
 ;Might be unreliable so dont document yet.
 ;Return 1 based boot drive in dl
     mov dl, byte [bootDrive]    ;Get the 0 based bootDrive number
     inc dl  ;Return a 1 based drive number
-    iretq
+    return
 .trueVer:
 ;Undocumented.
 ;bx returns true DOS number.
@@ -373,73 +396,38 @@ ctrlBreakCheck:    ;ah = 33h
 ;dh has various flags. All reserved for future use.
     mov bx, dosVerMac
     mov dx, (dosVerFlags << 8) | dosRev
-    iretq
+    return
 
-setCurrPSP:     ;ah = 50h, set current PSP
+;ah = 50h, set current PSP
+scpspQuick:
+    call setCurrPSP
+    iretq
+scpspServer:
+setCurrPSP:
     mov qword [currentPSP], rbx ;Set the pointer
-    iretq
+    return
 
-getCurrPSP:     ;ah = 51h/62h, gives PSP addr/Process ID
+;ah = 51h/62h, gives PSP addr/Process ID
+gcpspQuick:
+    call getCurrPSP
+    iretq
+gcpspServer:
+    call getCurrPSP
+    call getUserRegs
+    mov qword [rsi + callerFrame.rbx], rbx
+    return
+getCurrPSP:     
     mov rbx, qword [currentPSP]
-    iretq
+    return
 
-setDriverLookahead:;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
+;ah = 64h, set lookahead flag to al (-1 is on, 0 is off)
+sdlQuick:
+    call setDriverLookahead
+    iretq
+sdlServer:
+setDriverLookahead:
     mov byte [lookahead], al    
     iretq
-
-systemServices: ;ah = 61h
-;All pointers returned in rdx
-;al = 0 -> Get Environment pointer in rdx
-;al = 1 -> Get Command Line Arguments Pointer in rdx
-;al = 2 -> Get ptr to ASCIIZ FQFN for program in rdx
-;       al = 2 can fail. If CF=CY or rdx = 0, cannot use ptr.
-;                        Else, rdx -> Filename
-    cmp al, 1
-    je short .getCmdLineArgs
-    cmp al, 2
-    jbe .getEnvPtr
-    mov eax, errInvFnc
-.exitBad:
-    or byte [rsp + 2*8], 1  ;Set CF on
-    iretq
-.getEnvPtr:
-    ;Gets the environment pointer in rdx
-    mov rdx, qword [currentPSP]
-    mov rdx, qword [rdx + psp.envPtr]   ;Get the environement pointer
-    jne short .exitOk   ;If it is not equal to 2, exit (since it was 0)
-;Here we search for the double 00 and then check if it is 0001 and
-; pass the ptr to the word after.
-    cli
-    push rcx
-    xor ecx, ecx
-    mov ecx, 7FFFh  ;Max environment size
-.gep0:
-    cmp word [rdx], 0   ;Zero word?
-    je short .gep1
-    inc rdx         ;Go to the next byte
-    dec ecx
-    jnz short .gep0
-.gep00:
-    ;Failure here if we haven't hit the double null by the end of 32Kb
-    pop rcx
-    sti
-    xor edx, edx    ;Turn it into null pointer
-    jmp short .exitBad
-.gep1:
-    add rdx, 2  ;Skip the double null
-    cmp word [rdx], 1   ;Check if one more string in environment
-    jne .gep00
-    add rdx, 2  ;Skip the 0001 word.
-    pop rcx
-    sti
-    jmp short .exitOk
-.getCmdLineArgs:
-    mov rdx, qword [currentPSP]
-    lea rdx, qword [rdx + psp.cmdLineArgPtr]   ;Get the cmdargs pointer
-.exitOk:
-    and byte [rsp + 2*8], ~1    ;Clear CF
-    iretq
-
 
 ;========================================:
 ;            Kernel Functions            :
@@ -798,6 +786,71 @@ getExtendedError:  ;ah = 59h
     mov qword [rsi + callerFrame.rdi], rdi
 noOp:
     return
+
+systemServices: ;ah = 61h
+;al = 0 -> Get Environment pointer in rdx
+;   Output: rdx -> Environment Pointer. May be a null pointer. Caller checks!
+;al = 1 -> Get Command Line Arguments Pointer in rdx
+;   Output: rdx -> Pointer to whatever was passed as a CR terminated 
+;                   command line.
+;al = 2 -> Get ptr to ASCIIZ name for program in rdx. Might not be FQ.
+;   Output: CF=NC: rdx -> Filename 
+;           CF=CY: eax = Error code (errAccDen) if no filename ptr.
+;                   The error case should only happen for special
+;                   programs that are launched without an environment
+;                   as DOS has nowhere to put the filename string.
+;al > 2: Returns CF=CY and eax = Error code (errInvFnc).
+    cmp al, 1
+    je .getCmdLineArgs
+    cmp al, 2
+    jbe .getEnvPtr
+    mov byte [errorLocus], eLocUnk  
+    mov eax, errInvFnc  ;Error, with invalid function number error
+.exitBad:
+    jmp extErrExit
+.getCmdLineArgs:
+    mov rdx, qword [currentPSP]
+    lea rdx, qword [rdx + psp.cmdLineArgPtr]   ;Get the cmdargs pointer
+    jmp short .gepExitOk
+.getEnvPtr:
+;Gets the environment pointer in rdx
+    mov rdx, qword [currentPSP]
+    mov rdx, qword [rdx + psp.envPtr]   ;Get the environment pointer
+    test al, al     ;Was al=0?
+    jz .gepExitOk   ;Exit if al = 0 since we have the pointer we need!
+    test rdx, rdx   ;Check if the env pointer is ok to use
+    jz .gepFail
+    cmp rdx, -1
+    je .gepFail
+;Here we search for the double 00 and then check if it is 0001 and
+; pass the ptr to the word after.
+    push rcx
+    xor ecx, ecx
+    mov ecx, 7FFFh  ;Max environment size
+.gep0:
+    cmp word [rdx], 0   ;Zero word?
+    je short .gep1
+    inc rdx         ;Go to the next byte
+    dec ecx
+    jnz short .gep0
+.gep00:
+;Failure here if we haven't hit the double null by the end of 32Kb
+    pop rcx
+.gepFail:
+    xor edx, edx        ;Turn it into null pointer
+    mov eax, errAccDen  ;Set error code here
+    jmp short .exitBad  ;Return setting CF=CY and errAccDen (no pointer)
+.gep1:
+    add rdx, 2  ;Skip the double null
+    cmp word [rdx], 1   ;Check if one more string in environment
+    jne .gep00
+    add rdx, 2  ;Skip the 0001 word.
+    pop rcx
+.gepExitOk:
+    call getUserRegs
+    mov qword [rsi + callerFrame.rdx], rdx
+    jmp extGoodExit
+
 ;At some point we will implement the below function but that is
 ; a low priority as it is not a DOS 3.3 function. 
 ;getsetDiskSerial:  ;ah = 69h, get/set disk serial number
