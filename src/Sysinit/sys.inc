@@ -43,6 +43,7 @@ EXTERN charTableArray.ucTable
 EXTERN charTableArray.filenameUCTable
 EXTERN charTableArray.filenameTerminatingTable
 EXTERN charTableArray.collatingTable
+EXTERN charTableArray.dbcsTable
 EXTERN serverDispTbl
 EXTERN machineName
 EXTERN critPtchTbl

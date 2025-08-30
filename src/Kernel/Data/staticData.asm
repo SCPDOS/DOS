@@ -222,7 +222,7 @@ dosNLSPtr:      ;Symbol to point to the DOS internal NLS data
 leadingZeros:   db 8 dup (0)    ;Unknown why they are 0 in DOS
 defltCtry:      db "\COUNTRY.SYS", (64-12) dup (0) ;FQ Path to COUNTRY.SYS file
 defaultCP:      dw 437  ;Set to CP437 default
-ctryFunctions:  dw 5    ;Support 5 extended functions: al=01,02,04,05,06
+ctryFunctions:  dw 6    ;Support 6 extended functions: al=01,02,04,05,06,07
 charTableArray: ;All the qwords need fixing up here
 .ucTable:   ;Each table length is 9 bytes in length (except the last one)
     db 2
@@ -236,6 +236,9 @@ charTableArray: ;All the qwords need fixing up here
 .collatingTable:
     db 6
     dq collTblExt
+.dbcsTable:
+    db 7
+    dq dbcsTblExt
 ;Extended country table
 extCtryTbl:
     db 1    ;infoIDCode (always 1), also matches function 1 value
@@ -357,6 +360,13 @@ collTbl:
     db 0E8h, 0E9h, 0EAh, 0EBh, 0ECh, 0EDh, 0EEh, 0EFh
     db 0F0h, 0F1h, 0F2h, 0F3h, 0F4h, 0F5h, 0F6h, 0F7h
     db 0F8h, 0F9h, 0FAh, 0FBh, 0FCh, 0FDh, 0FEh, 0FFh
+
+dbcsTblExt:
+    dw 6    ;Length of the DBCS table. Doesn't exceed 6 bytes.
+dbcsTbl:
+;The default DBCS table for our CP is just zeros.
+;COUNTRY can change this.
+    db 6 dup (0)
 
 asciiCharProperties:   ;This table is const. Gives "properties" of chars.
 ;Bit[0]=Clear if the char is an invalid filename character.

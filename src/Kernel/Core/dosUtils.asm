@@ -247,11 +247,19 @@ uppercaseCharAtPtr:
 ;Get the char pointed to by rsi and then fall
     lodsb
 uppercaseChar:      ;Int 2Fh, AX=1213h, Uppercase Char
-;Convert a lowercase char to uppercase
+;Convert a lowercase char to uppercase using file UC table
 ; Leave alone uppercase chars and invalid chars
 ;Input: al = Char to convert to uppercase
 ;Output: al = Processed char
     push rbx
+    lea rbx, fileUCTbl    ;Get ptr to ucFilenameTable
+uppercaseCharWithTable:
+;Convert a lowercase char to uppercase char using a table as provided
+;Input: al = Char to convert to uppercase
+;       rbx -> Table to use for translation
+;Output: al = Processed char
+;WARNING: 
+;   RBX MUST BE PUSHED ONTO THE STACK BEFORE ENTERING THIS PROCEDURE!
     cmp al, "a"
     jb .exit
     cmp al, "z"
@@ -261,8 +269,7 @@ uppercaseChar:      ;Int 2Fh, AX=1213h, Uppercase Char
     cmp al, 80h ;Extended ASCII first char
     jb .exit
     sub al, 80h ;Turn into table offset
-    lea rbx, fileUCTbl    ;Get ptr to ucFilenameTable
-    xlatb   ;Get converted extended byte into al
+    xlatb   ;Get translated extended byte into al
 .exit:
     push rax    ;Save al temporarily
     lea rbx, asciiCharProperties

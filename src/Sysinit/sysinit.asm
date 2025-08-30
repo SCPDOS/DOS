@@ -196,6 +196,7 @@ kernDrvInit:
     add qword [rbp + charTableArray.filenameUCTable + 1], rbp 
     add qword [rbp + charTableArray.filenameTerminatingTable + 1], rbp 
     add qword [rbp + charTableArray.collatingTable + 1], rbp 
+    add qword [rbp + charTableArray.dbcsTable + 1], rbp 
 
 ;Server Table setup
     lea rdi, qword [rbp + serverDispTbl]  ;Get pointer to table
