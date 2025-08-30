@@ -1,6 +1,6 @@
 ;This file contains the main DOS data segment
-dosDataArea:
     anchorMcb   db mcb_size dup (?) ;This is space for the anchor MCB
+dosDataArea:    ;The returned pointer points to the variables w/o anchor MCB
     bootDrive   db ?    ;The logical drive we booted from
     biosVers    dd ?    ;Indicates BIOS type. Each OEM picks a number
     biosPtr     dq ?    ;For saving a data ptr to be used by BIOS/drivers
@@ -105,40 +105,35 @@ dosMgrHooks:
 dllHooks:
     registerDLL     dq ?  ;Entered with rbp = execFrame
     unloadDLLHook   dq ?  ;
+
     ;Share hook functions here
     ;All share hooks now take 8 bytes rather than 4 bytes as before
     ;Thus ALL offsets from SFT header increase by 4 bytes and each entry
     ; is a QWORD entry. Please adjust SHARE.EXE access as necessary.
-
-    ;Note to programmer - Please adjust as necessary:
-    ;Functions which are nowhere called (yet) are noted as UNUSED in caps.
-    ;Those which are not meant to be used are noted as unused in lower case.
-    ;Those suffixed with a ? have their future in question.
-    ;Those suffixed with a / are done partially wrt MSDOS.
-
 shareHooks:
-    markerShare dq ?  ;Marker Share hook
-    openShare   dq ?  ;Share called on open.                          DONE 
-    closeShare  dq ?  ;Share called on close.                         DONE
-    closeCompShare  dq ?  ;Share to close all files for a machine.    DONE
-    closeTaskShare  dq ?  ;Share to close all files for a task.       DONE
-    closeNameShare  dq ?  ;Share to close file by name.               DONE
-    lockFileShare   dq ?  ;Share to lock file region.                 DONE
-    unlockFileShare dq ?  ;Share to unlock file region.               DONE
-    checkFileLockShare  dq ?  ;Share to check file region locked.     DONE
-    openFileListShare   dq ?  ;Share to get open file list entry.     DONE
-    updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.      UNUSED
-    fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.     UNUSED
-    closeDupFileShare   dq ?  ;Share to close file if dup for proc.   DONE
-    closeNewHdlShare    dq ?  ;Share to close hdls of rec opened file. DONE
-    updateDirShare      dq ?  ;Share to update dir info in SFT.       DONE 
+    markerShare         dq ?  ;Marker Share hook
+    openShare           dq ?  ;Share called on open. 
+    closeShare          dq ?  ;Share called on close.
+    closeCompShare      dq ?  ;Share to close all files for a machine.
+    closeTaskShare      dq ?  ;Share to close all files for a task.
+    closeNameShare      dq ?  ;Share to close file by name.
+    lockFileShare       dq ?  ;Share to lock file region.
+    unlockFileShare     dq ?  ;Share to unlock file region.
+    checkFileLockShare  dq ?  ;Share to check file region locked.
+    openFileListShare   dq ?  ;Share to get open file list entry.
+    updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.    UNUSED
+    fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.   UNUSED
+    closeDupFileShare   dq ?  ;Share to close file if dup for proc.
+    closeNewHdlShare    dq ?  ;Share to close hdls of rec opened file.
+    updateDirShare      dq ?  ;Share to update dir info in SFT. 
+
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  db sfth_size dup (?)
-    firstSft    db sft_size dup (?)
-    secondSft   db sft_size dup (?)
-    thirdSft    db sft_size dup (?)
-    fourthSft   db sft_size dup (?)
-    fifthSft    db sft_size dup (?)
+    firstSft        db sft_size dup (?)
+    secondSft       db sft_size dup (?)
+    thirdSft        db sft_size dup (?)
+    fourthSft       db sft_size dup (?)
+    fifthSft        db sft_size dup (?)
 
 ;Virtual CONsole Buffers
     vConCursPos db ?     ;Keeps track for tabs stops (and var with 7)
@@ -347,27 +342,27 @@ haltDOS:
 
 ;Additional variables NOT in the SDA
     serverDispTblPtr    dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
-    bkupReqHdr  db ioReqPkt_size dup (?)  ;A backup header to allow copying to
-    ;for saving the current header when quickly doing a second request
-
-    ;Prevent toggling print if in the middle of reading an extended ASCII char
+;A backup header to allow copying to for saving the current header when 
+; quickly doing a second request
+    bkupReqHdr          db ioReqPkt_size dup (?)  
+;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle
     keybTicks   dw ?  ;Counts the number of cycles spent in a kb loop.
-    ;Every time this overflows, we read the clock and update the DOS internal
-    ; copy of the date/time record
-    ;The idt doesnt need to be in the SDA as we will halt interrupts
-    ; until we get/set the address. Thus the IDT entry returned is the 
-    ; correct one AT the time of calling up to "the time it takes to get
-    ; to the read IDT routine".
+;Every time this overflows, we read the clock and update the DOS internal
+; copy of the date/time record
+;The idt doesnt need to be in the SDA as we will halt interrupts
+; until we get/set the address. Thus the IDT entry returned is the 
+; correct one AT the time of calling up to "the time it takes to get
+; to the read IDT routine".
 dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
     .limit  dw ?    ;Overlap this with stack below as no call overlap
     .base   dq ?
-    ;Lseek and IOCTL return data in registers as well as on the caller's 
-    ; stack. In Int 2Fh, this could overwrite user data if the functions
-    ; were allowed to write to original callers register stack. 
-    ; So we have this structure below that is used by these functions to 
-    ; write their "return" data onto a "stack", even though when accessed 
-    ; through the multiplexer we never will read this structure. 
-    ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
+;Lseek and IOCTL return data in registers as well as on the caller's 
+; stack. In Int 2Fh, this could overwrite user data if the functions
+; were allowed to write to original callers register stack. 
+; So we have this structure below that is used by these functions to 
+; write their "return" data onto a "stack", even though when accessed 
+; through the multiplexer we never will read this structure. 
+; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
     mplxRegStack    db callerFrame_size dup (?) 
