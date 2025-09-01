@@ -307,8 +307,7 @@ configParse:
     lodsb   ;Get the digit
     sub al, "0" ;Convert to ASCII
     movzx eax, al
-    dec ecx
-    jz .bufHandlerPrepExit   ;Exit if this is the only digit
+    jecxz .bufHandlerPrepExit   ;Exit if this is the only digit
     shl eax, 1  ;Multiply by 2
     lea edx, dword [4*eax + eax]    ;Multiply (2*eax) by 5
     lodsb   ;Get the next digit
