@@ -14639,837 +14639,836 @@
     12                              <1> ;            If bit 7 of the subfunction byte is set, we load the corresponding
     13                              <1> ;               function but in 16-bit mode. 
     14                              <1> ;
-    15                              <1> ;If the loaded file is not a PE it is assumed to be a COM/RFS file. 
-    16                              <1> ; If not EXE, we read the filename extension. If it is RFS, we assign maximum 
-    17                              <1> ; memory. If it is COM, we assign only 64Kb to the application.
-    18                              <1> 
-    19                              <1> ;If AL = 0 and 4 (if DOSMGR present):
-    20                              <1> ;            Load Child Program and Xfr control to it
-    21                              <1> ; rbx ------>   |-------------------------------|
-    22                              <1> ;               |   Ptr to Environment Block    |
-    23                              <1> ;               |                               |
-    24                              <1> ;               | Can be 0 => Get pointer to    |
-    25                              <1> ;               | parent Environment Block      |
-    26                              <1> ;               |-------------------------------|
-    27                              <1> ;               |   Ptr to Command Line to be   |
-    28                              <1> ;               |   placed at PSP + 80h         |
-    29                              <1> ;               |-------------------------------|
-    30                              <1> ;               |   Ptr to first default FCB    |
-    31                              <1> ;               |      to copy to PSP.fcb1      |
-    32                              <1> ;               |                               |
-    33                              <1> ;               | Should be used to parse the   |
-    34                              <1> ;               |  first two command line args  |
-    35                              <1> ;               |-------------------------------|
-    36                              <1> ;               |   Ptr to second default FCB   |
-    37                              <1> ;               |      to copy to PSP.fcb2      |
-    38                              <1> ;               |-------------------------------|
-    39                              <1> ;
-    40                              <1> ;If AL = 1 :
-    41                              <1> ;           Load Child Program BUT DO NOT Xfr control to it
-    42                              <1> ; rbx ------>   |-------------------------------|
-    43                              <1> ;               |         AS IN AL=00H          |
-    44                              <1> ;               |-------------------------------|
-    45                              <1> ;               |     Initial Value of RSP      |
-    46                              <1> ;               |       on program launch       |
-    47                              <1> ;               |                               |
-    48                              <1> ;               |     This is returned to the   |
-    49                              <1> ;               |         caller by DOS         |
-    50                              <1> ;               |-------------------------------|
-    51                              <1> ;               |     Initial Value of RIP      |
-    52                              <1> ;               |       on program launch       |
-    53                              <1> ;               |                               |
-    54                              <1> ;               |     This is returned to the   |
-    55                              <1> ;               |         caller by DOS         |
-    56                              <1> ;               |-------------------------------|
-    57                              <1> ;
-    58                              <1> ;                      !!Important Note!!
-    59                              <1> ;   The block pointed to by rbx must reserve the space for 
-    60                              <1> ;        those last two qwords on a AL=1 call to EXEC.
-    61                              <1> ;
-    62                              <1> ;If AL = 3 :
-    63                              <1> ;                      Load program overlay
-    64                              <1> ; rbx ------>   |-------------------------------|
-    65                              <1> ;               |  Pointer to the byte in the   |
-    66                              <1> ;               |  prog space to start writing  |
-    67                              <1> ;               |        the overlay at.        |
-    68                              <1> ;               |-------------------------------|
-    69                              <1> ;               | QWORD value used as the base  |
-    70                              <1> ;               |   address for relocation      |
-    71                              <1> ;               |   computations. In most cases |
-    72                              <1> ;               |   should be the same as the   |
-    73                              <1> ;               |   load pointer. The desired   |
-    74                              <1> ;               |   load address is subtracted  |
-    75                              <1> ;               |   from this value to generate |
-    76                              <1> ;               |   a valid relocation factor,  |
-    77                              <1> ;               |   much like for normal load   |
-    78                              <1> ;               |   but here we are controlling |
-    79                              <1> ;               |    precisely the factor by    |
-    80                              <1> ;               |     which we relocate the     |
-    81                              <1> ;               |           symbols.            |
-    82                              <1> ;               |  (Called a Relocation Factor) |
-    83                              <1> ;               |     Only FOR EXE Overlays.    |
-    84                              <1> ;               |    For COM, 0 is sufficient.  |
-    85                              <1> ;               |-------------------------------|
-    86                              <1> ; For AL = 3: Both pointers must be aligned to section alignment.
-    87                              <1> ;   If this is not the case, DOS will round UP both pointers to the 
-    88                              <1> ;   section alignment for the file being loaded. 
-    89                              <1> ; The overlay will be loaded so that the first byte at the start of the memory
-    90                              <1> ; block is the first byte of the first section of the executable. No header
-    91                              <1> ; information will be retained. Thus, (for now) overlays cannot be used to export 
-    92                              <1> ; functions or import functions from DLLs. Furthermore, it is HIGHLY recommended
-    93                              <1> ; that you compile any .EXE overlays to have a section alignment of 1 byte.
-    94                              <1> ;
-    95                              <1> ; All three will setup both COM and EXE files for whatever purpose. 
-    96                              <1> ;           AL = 3 DOES NOT BUILD THE PROGRAM A PSP.
-    97                              <1> ;
-    98                              <1> ;Start by setting up a stack frame of local vars to keep track of vars in call
-    99 00005E83 55                  <1>     push rbp
-   100 00005E84 4889E5              <1>     mov rbp, rsp
-   101 00005E87 4881EC80000000      <1>     sub rsp, execFrame_size   ;Make the space pointing at rbp
-   102                              <1>     ;Clear up the pointers on the stack frame
-   103 00005E8E 31C9                <1>     xor ecx, ecx
-   104 00005E90 48894DC8            <1>     mov qword [rbp - execFrame.pPSPBase], rcx
-   105 00005E94 48894DD0            <1>     mov qword [rbp - execFrame.pEnvBase], rcx
-   106 00005E98 48894DC0            <1>     mov qword [rbp - execFrame.pProgBase], rcx
-   107 00005E9C 48894DC8            <1>     mov qword [rbp - execFrame.pPSPBase], rcx
-   108 00005EA0 48894D98            <1>     mov qword [rbp - execFrame.pProgEP], rcx
-   109                              <1> 
-   110 00005EA4 B403                <1>     mov ah, execOverlay
-   111 00005EA6 F605(9E000000)FF    <1>     test byte [dosMgrPresent], -1 ;If bits set, change max to execBkgrnd
-   112 00005EAD 7402                <1>     jz short .noMulti
-   113 00005EAF B404                <1>     mov ah, execBkgrnd
-   114                              <1> .noMulti:
-   115 00005EB1 38E0                <1>     cmp al, ah
-   116 00005EB3 7615                <1>     jbe .validSubfunction
-   117                              <1> .badSubFunction:
-   118 00005EB5 B801000000          <1>     mov eax, errInvFnc
-   119 00005EBA C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
-   120                              <1> .badExit:
-   121 00005EC1 4889EC              <1>     mov rsp, rbp
-   122 00005EC4 5D                  <1>     pop rbp
-   123 00005EC5 E99B190000          <1>     jmp extErrExit
-   124                              <1> 
-   125                              <1> .validSubfunction:
-   126 00005ECA 3C02                <1>     cmp al, execInvld
-   127 00005ECC 74E7                <1>     je .badSubFunction
-   128                              <1>     ;Save registers for each function call
-   129 00005ECE 48895DE0            <1>     mov qword [rbp - execFrame.pParam], rbx
-   130 00005ED2 488955D8            <1>     mov qword [rbp - execFrame.pProgname], rdx
-   131 00005ED6 0FB6C0              <1>     movzx eax, al
-   132 00005ED9 488945F8            <1>     mov qword [rbp - execFrame.bSubFunc], rax   ;clear alignment and progHdl
-   133 00005EDD 4889D7              <1>     mov rdi, rdx
-   134 00005EE0 E820160000          <1>     call strlen ;Get string length in cx
-   135 00005EE5 66894DE8            <1>     mov word [rbp - execFrame.wNameLen], cx   ;Get the string length  
-   136                              <1> ;Now open the file we wanna launch
-   137 00005EE9 31C0                <1>     xor eax, eax    ;al = 0 => Normal program attributes to search for
-   138 00005EEB 55                  <1>     push rbp    ;Preserve local frame ptr
-   139 00005EEC B923000000          <1>     mov ecx, 23h    ;Tell server to open for exec. No writing or sharing!
-   140 00005EF1 E81FD7FFFF          <1>     call openFileHdl
-   141 00005EF6 5D                  <1>     pop rbp
-   142 00005EF7 72C8                <1>     jc .badExit ;Exit preserving error code in al
-   143                              <1>     ;Now ax has the file handle
-   144 00005EF9 668945F0            <1>     mov word [rbp - execFrame.wProgHdl], ax
-   145 00005EFD 0FB7D8              <1>     movzx ebx, ax   ;Move file handle into bx
-   146 00005F00 E897F2FFFF          <1>     call derefSFTPtr    ;And deref it into rdi
-   147 00005F05 0FB75705            <1>     movzx edx, word [rdi + sft.wDeviceInfo] ;Get device word
-   148 00005F09 F7C280000000        <1>     test edx, devCharDev
-   149 00005F0F 7407                <1>     jz .validDiskFile    ;We cannot have a char device
-   150 00005F11 B002                <1>     mov al, errFnf
-   151 00005F13 E922060000          <1>     jmp .cleanAndFail
-   152                              <1> .validDiskFile:
-   153 00005F18 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   154 00005F20 0F8489000000        <1>     je .loadProgram ;If overlay, skip making an environment block
-   155                              <1> ;If we get an instruction to copy parent env, we do that. If the 
-   156                              <1> ; parent ptr is a special NULL value, then we leave the NULL value
-   157                              <1> ; in place in the execFrame envPtr var. Else, we use the parent
-   158                              <1> ; env pointer as the source of our copy.
-   159 00005F26 488B7DE0            <1>     mov rdi, qword [rbp - execFrame.pParam] ;Get params ptr in rdi
-   160 00005F2A 488B07              <1>     mov rax, qword [rdi + execProg.pEnv]
-   161 00005F2D 4885C0              <1>     test rax, rax   ;Is this 0? (i.e. copy parent env)
-   162 00005F30 7510                <1>     jnz short .copyEnvironmentBlock
-   163 00005F32 488B35(1F040000)    <1>     mov rsi, qword [currentPSP] ;Get current PSP address in rsi
-   164 00005F39 488B463E            <1>     mov rax, qword [rsi + psp.envPtr]   ;Get ptr to env src from parent env
-   165 00005F3D 4885C0              <1>     test rax, rax   ;Was parent ptr 0? If so, skip allocing new env.
-   166 00005F40 746D                <1>     jz short .loadProgram ;This is used by the boot process!!
-   167                              <1> .copyEnvironmentBlock:
-   168 00005F42 4889C7              <1>     mov rdi, rax    ;Point rdi to the source of the environment
-   169                              <1> ;Get the length of the environment
-   170 00005F45 B9FF7F0000          <1>     mov ecx, 7fffh  ;32kb limit for env size
-   171 00005F4A 31C0                <1>     xor eax, eax
-   172 00005F4C 4889FB              <1>     mov rbx, rdi    ;Use rbx as the base ptr of the scan
-   173                              <1> .envVerifyLp:
-   174 00005F4F F2AE                <1>     repne scasb   ;Scan for a terminating word of nulls
-   175 00005F51 7531                <1>     jnz short .invalidEnvironmentError
-   176 00005F53 67E32E              <1>     jecxz .invalidEnvironmentError  ;Error if no space for a second null
-   177 00005F56 FFC9                <1>     dec ecx
-   178 00005F58 AE                  <1>     scasb   ;Check if we have a second byte of 00 (i.e. end of environment)
-   179 00005F59 75F4                <1>     jnz short .envVerifyLp
-   180                              <1> 
-   181 00005F5B 4829DF              <1>     sub rdi, rbx ;Get offset into block, gives a result less than 7FFFh
-   182 00005F5E 57                  <1>     push rdi     ;Save the length of the environment block
-   183 00005F5F 81C711000000        <1>     add edi, 11h    ;Add 11 to round up when converting to paragraphs
-   184 00005F65 0FB75DE8            <1>     movzx ebx, word [rbp - execFrame.wNameLen]  ;Get name length
-   185 00005F69 01DF                <1>     add edi, ebx    ;edi has number of bytes to allocate for environment blk
-   186 00005F6B 89FB                <1>     mov ebx, edi
-   187 00005F6D C1EB04              <1>     shr ebx, 4  ;Turn bytes needed into paragrapsh
-   188 00005F70 55                  <1>     push rbp
-   189 00005F71 E841F7FFFF          <1>     call allocateMemory
-   190 00005F76 5D                  <1>     pop rbp
-   191 00005F77 59                  <1>     pop rcx ;Pop the length of the environment block into rcx
-   192 00005F78 7314                <1>     jnc short .copyEnvironment
-   193                              <1>     ;Fall thru if not enuff memory
-   194                              <1> .insufficientMemory:
-   195 00005F7A B808000000          <1>     mov eax, errNoMem
-   196 00005F7F E9B6050000          <1>     jmp .cleanAndFail
-   197                              <1> .invalidEnvironmentError:   ;DO NOT MOVE THIS TO USE JECXZ ABOVE
-   198 00005F84 B80A000000          <1>     mov eax, errBadEnv
-   199 00005F89 E9AC050000          <1>     jmp .cleanAndFail
-   200                              <1> 
-   201                              <1> .copyEnvironment:
-   202                              <1>     ;rax has the ptr to allocated memory block
-   203                              <1>     ;rcx has the number of chars to copy from the source env block
-   204 00005F8E 4889C7              <1>     mov rdi, rax    ;This is the destination of the copy
-   205 00005F91 488945D0            <1>     mov qword [rbp - execFrame.pEnvBase], rax   ;Save the env block in frame
-   206 00005F95 488B75E0            <1>     mov rsi, qword [rbp - execFrame.pParam]
-   207 00005F99 488B36              <1>     mov rsi, qword [rsi + execProg.pEnv]    ;Get in rsi the src of the env
-   208 00005F9C F3A4                <1>     rep movsb   ;Copy from rsi to rdi
-   209 00005F9E B801000000          <1>     mov eax, 1  ;One additional string and a second null char!
-   210 00005FA3 66AB                <1>     stosw       ;Away you go!
-   211 00005FA5 488B75D8            <1>     mov rsi, qword [rbp - execFrame.pProgname]  ;Get ASCIIZ string for filespec
-   212 00005FA9 0FB74DE8            <1>     movzx ecx, word [rbp - execFrame.wNameLen]
-   213 00005FAD F3A4                <1>     rep movsb   ;Move the bytes to rdi
-   214                              <1> ;Done with the environment... more or less
-   215                              <1> .loadProgram:
-   216 00005FAF B940000000          <1>     mov ecx, imageDosHdr_size   ;Read the DOS header for the exe file
-   217 00005FB4 488D15(1E050000)    <1>     lea rdx, exeHdrSpace    ;Read into the SDA area
-   218 00005FBB E896050000          <1>     call .readDataFromHdl
-   219 00005FC0 0F826F050000        <1>     jc .badFmtErr
-   220 00005FC6 85C0                <1>     test eax, eax   ;Were zero bytes read?
-   221 00005FC8 0F8467050000        <1>     jz .badFmtErr
-   222 00005FCE 3D40000000          <1>     cmp eax, imageDosHdr_size
-   223 00005FD3 0F826F030000        <1>     jb .loadCom
-   224                              <1> 
-   225 00005FD9 66813A4D5A          <1>     cmp word [rdx + imageDosHdr.e_magic], dosMagicSignature
-   226 00005FDE 740B                <1>     je .proceedEXE
-   227 00005FE0 66813A5A4D          <1>     cmp word [rdx + imageDosHdr.e_magic], dosMagicSignature2
-   228 00005FE5 0F855D030000        <1>     jne .loadCom    ;If not equal to ZM or MZ, must be a COM file
-   229                              <1> .proceedEXE:
-   230                              <1>     ;Now we need to read e_lfanew
-   231 00005FEB 52                  <1>     push rdx    ;Save exeHdrSpace addr on stack
-   232 00005FEC 8B523C              <1>     mov edx, dword [rdx + imageDosHdr.e_lfanew]
-   233 00005FEF 8955B0              <1>     mov dword [rbp - execFrame.dCOFFhdr], edx   ;Save this for later
-   234 00005FF2 31C9                <1>     xor ecx, ecx    ;Officially, need to set ecx to 0
-   235 00005FF4 30C0                <1>     xor al, al  ;Set file pointer from start of file
-   236 00005FF6 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get handle
-   237 00005FFA E842D8FFFF          <1>     call lseekHdl   ;Move to that position in the file
-   238 00005FFF 5A                  <1>     pop rdx ;Get exeHdrSpace address back
-   239 00006000 B918000000          <1>     mov ecx, imageFileHeader_size
-   240 00006005 E84C050000          <1>     call .readDataFromHdl       ;Now read the COFF header
-   241 0000600A 85C0                <1>     test eax, eax   ;Were zero bytes read?
-   242 0000600C 0F8423050000        <1>     jz .badFmtErr
-   243 00006012 3D18000000          <1>     cmp eax, imageFileHeader_size
-   244 00006017 0F8218050000        <1>     jb .badFmtErr
-   245                              <1>     ;So now rdx points to the imageFileHeader
-   246 0000601D 813A50450000        <1>     cmp dword [rdx + imageFileHeader.dPESignature], imagePESignature
-   247 00006023 0F850C050000        <1>     jne .badFmtErr
-   248 00006029 66817A046486        <1>     cmp word [rdx + imageFileHeader.wMachineType], imageFileMachineAMD64
-   249 0000602F 0F8500050000        <1>     jne .badFmtErr
-   250                              <1>     ;Check the binary is executable
-   251 00006035 0FB74216            <1>     movzx eax, word [rdx + imageFileHeader.wCharacteristics]
-   252 00006039 66A90200            <1>     test ax, imageFileExecutable
-   253 0000603D 0F84F2040000        <1>     jz .badFmtErr
-   254 00006043 668945A0            <1>     mov word [rbp - execFrame.wCOFFChars], ax   ;Save this for later!
-   255                              <1> 
-   256 00006047 66817A147000        <1>     cmp word [rdx + imageFileHeader.wSizeOfOptionalHdr], imageFileOptionalHeader_size
-   257 0000604D 0F82E2040000        <1>     jb .badFmtErr   ;We need the full optional header (as normal)
-   258                              <1>     ;Now save the number of sections in the the file
-   259 00006053 0FB74206            <1>     movzx eax, word [rdx + imageFileHeader.wNumberOfSections]
-   260 00006057 85C0                <1>     test eax, eax   ;If this is 0, what?
-   261 00006059 0F84D6040000        <1>     jz .badFmtErr
-   262 0000605F 66894598            <1>     mov word [rbp - execFrame.wNumSeg], ax  ;Save this value for later!
-   263                              <1>     ;Now load Optional header, file ptr points to it so all good!
-   264 00006063 B970000000          <1>     mov ecx, imageFileOptionalHeader_size
-   265                              <1>     ;rdx points to exeHdrSpace
-   266 00006068 E8E9040000          <1>     call .readDataFromHdl
-   267 0000606D 85C0                <1>     test eax, eax   ;Were zero bytes read?
-   268 0000606F 0F84C0040000        <1>     jz .badFmtErr
-   269 00006075 3D70000000          <1>     cmp eax, imageFileOptionalHeader_size
-   270 0000607A 0F82B5040000        <1>     jb .badFmtErr
-   271                              <1>     ;Now File Ptr points to data dirs, not an issue
-   272 00006080 81459070000000      <1>     add dword [rbp - execFrame.dFilePtr], imageFileOptionalHeader_size
-   273                              <1>     ;We load the program in, one section at a time, reading section headers in
-   274                              <1>     ; one at a time to the section header internal buffer.
-   275 00006087 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   276 0000608F 7463                <1>     je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
-   277 00006091 8B1D(56050000)      <1>     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
-   278 00006097 488B05(6E050000)    <1>     mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackCommit]
-   279 0000609E 4885C0              <1>     test rax, rax
-   280 000060A1 750A                <1>     jnz .notDefaultStackAlloc
-   281 000060A3 48B800000400000000- <1>     mov rax, 40000h ;256Kb stack default
-   281 000060AC 00                  <1>
-   282                              <1> .notDefaultStackAlloc:
-   283 000060AD 01C3                <1>     add ebx, eax    ;Add stack allocation
-   284 000060AF 81C300010000        <1>     add ebx, psp_size   ;Add space for the PSP to the allocation too
-   285                              <1>     ;Add also one section alignment as it is likely that our arena won't be 
-   286                              <1>     ; section aligned and so we will need to align before reading, to 
-   287                              <1>     ; guaranee that we will have space for the EXE header to be read in later.
-   288 000060B5 031D(3E050000)      <1>     add ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
-   289 000060BB 895DB8              <1>     mov dword [rbp - execFrame.dProgSize], ebx  ;Save the program size
-   290 000060BE 81C311000000        <1>     add ebx, 11h
-   291 000060C4 C1EB04              <1>     shr ebx, 4  ;Turn into paragraphs
-   292 000060C7 55                  <1>     push rbp
-   293 000060C8 E8EAF5FFFF          <1>     call allocateMemory ;Get in rax, ptr to memory block
-   294 000060CD 5D                  <1>     pop rbp
-   295 000060CE 0F82A6FEFFFF        <1>     jc .insufficientMemory  ;Unless not enough, sorry buddy!
-   296 000060D4 488945C8            <1>     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
-   297 000060D8 480500010000        <1>     add rax, psp_size
-   298 000060DE 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax  ;First byte of exe hdr goes here
-   299                              <1>     ;Finally, just check that we have some code to execute. 
-   300                              <1>     ;Empty code sections are NOT allowed if executing. Only for overlays
-   301 000060E2 813D(22050000)0000- <1>     cmp dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfCode], 0
-   301 000060EA 0000                <1>
-   302 000060EC 0F8443040000        <1>     je .badFmtErr   ;If no bytes, exit error
-   303 000060F2 EB0B                <1>     jmp short .exeProceed1
-   304                              <1> .exeOvlySkipAlloc:
-   305 000060F4 488B5DE0            <1>     mov rbx, qword [rbp - execFrame.pParam]
-   306 000060F8 488B03              <1>     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
-   307 000060FB 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
-   308                              <1> .exeProceed1:
-   309                              <1> ;===========================================================================
-   310                              <1>     ;The below blocks are being kept because they can be turned on later
-   311                              <1>     ; to change this exe loader to force section alignment of the 
-   312                              <1>     ; base load address. It appears there is no need to enforce that the 
-   313                              <1>     ; base load address be section aligned, but individual sections need
-   314                              <1>     ; to adhere to the section alignment requirements thereafter. 
-   315                              <1>     ;Finally, the pProgBase gets rescaled so that the first byte of the 
-   316                              <1>     ; first section gets places at the load address and not at some
-   317                              <1>     ; offset from it (as is usually the case, offset 1000h).
-   318                              <1> ;===========================================================================
-   319                              <1>     ;=======================================================================
-   320                              <1>     ;Now we align the progBase to full header size aligned to the next page
-   321                              <1>     ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
-   322                              <1>     ;add rax, rbx    ;Add this offset where the header should go in future
-   323                              <1>     ;=======================================================================
-   324                              <1>     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-   325                              <1>     ;It appears that the load address does NOT need to be aligned at all xD
-   326                              <1>     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-   327                              <1>     ;Now we section pad. Once aligned, that is the program base address!
-   328                              <1>     ;push rax
-   329                              <1>     ;mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
-   330                              <1>     ;dec ecx ;Turn into a mask
-   331                              <1>     ;and rax, rcx    ;Compute ptr modulo mask
-   332                              <1>     ;inc ecx
-   333                              <1>     ;sub rcx, rax
-   334                              <1>     ;pop rdi
-   335                              <1>     ;xor eax, eax
-   336                              <1>     ;rep stosb
-   337                              <1>     ;mov qword [rbp - execFrame.pProgBase], rdi
-   338                              <1>     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-   339                              <1> 
-   340                              <1>     ;So now copy one section at a time, read section header in
-   341                              <1>     ;File pointer points to the directory table, so skip that
-   342 000060FF 8B15(8A050000)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
-   343                              <1>     ;Load however many directories we have into place
-   344                              <1>     ;Each directory is 8 bytes, so multiply edx by 8
-   345 00006105 C1E203              <1>     shl edx, 3  ;edx has number of bytes to move file pointer forwards by
-   346 00006108 31C9                <1>     xor ecx, ecx
-   347 0000610A 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   348 0000610E B001                <1>     mov al, 1   ;Move handle forwards from current position
-   349 00006110 E82CD7FFFF          <1>     call lseekHdl   ;Move the handle forwards by that many bytes
-   350                              <1>     ;eax has pointer location after adjustment
-   351 00006115 894590              <1>     mov dword [rbp - execFrame.dFilePtr], eax   ;We have moved to section table
-   352                              <1>     ;File now points to start of Section headers. Read first header in.
-   353                              <1>     ;USE ECX AS COUNTER FOR HEADERS LEFT TO PROCESS
-   354 00006118 488B7DC0            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Move prog base in rdi
-   355 0000611C 0FB74D98            <1>     movzx ecx, word [rbp - execFrame.wNumSeg]   ;Get number of segments in ecx
-   356 00006120 31F6                <1>     xor esi, esi    ;Use as an indicator for the first data segment. 
-   357 00006122 488975A8            <1>     mov qword [rbp - execFrame.bSegCount], rsi  ;Clear the segment counter
-   358                              <1> .loadLp:
-   359 00006126 51                  <1>     push rcx    ;Save # of segments left on stack
-   360 00006127 57                  <1>     push rdi    ;Save the current buffer ptr here
-   361 00006128 B928000000          <1>     mov ecx, imageSectionHdr_size
-   362 0000612D 488D15(9E050000)    <1>     lea rdx, sectHdr    ;Read section headers here
-   363 00006134 E81D040000          <1>     call .readDataFromHdl
-   364 00006139 5F                  <1>     pop rdi
-   365 0000613A 59                  <1>     pop rcx
-   366 0000613B 85C0                <1>     test eax, eax
-   367 0000613D 0F84F2030000        <1>     jz .badFmtErr
-   368 00006143 3D28000000          <1>     cmp eax, imageSectionHdr_size
-   369 00006148 0F85E7030000        <1>     jne .badFmtErr
-   370                              <1>     ;File ptr moved forwards to next section header
-   371 0000614E 81459028000000      <1>     add dword [rbp - execFrame.dFilePtr], imageSectionHdr_size
-   372                              <1>     ;Section header read, now we load section into memory
-   373                              <1>     ;Move file ptr to data location
-   374 00006155 8B15(B2050000)      <1>     mov edx, dword [sectHdr + imageSectionHdr.dPointerToRawData] ;Data File ptr
-   375 0000615B 85D2                <1>     test edx, edx
-   376 0000615D 744B                <1>     jz short .skipRawPtrMove
-   377 0000615F 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get the handle
-   378 00006163 31C0                <1>     xor eax, eax    ;Seek from start of file
-   379 00006165 51                  <1>     push rcx
-   380 00006166 57                  <1>     push rdi
-   381 00006167 E8D5D6FFFF          <1>     call lseekHdl
-   382 0000616C 5F                  <1>     pop rdi
-   383 0000616D 59                  <1>     pop rcx
-   384                              <1>     ;Is this a overlay load?
-   385 0000616E 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   386 00006176 7532                <1>     jne short .skipRawPtrMove
-   387                              <1>     ;Here we rescale to put the first byte at pLoadLoc and use the 
-   388                              <1>     ; rescale value against RelocFct to compute the qRelocVal for later
-   389                              <1>     ;Is this is the first segment with data being read into memory?
-   390 00006178 48FF45A8            <1>     inc qword [rbp - execFrame.bSegCount]
-   391 0000617C 48817DA801000000    <1>     cmp qword [rbp - execFrame.bSegCount], 1 
-   392 00006184 7524                <1>     jne short .skipRawPtrMove   ;If not, skip
-   393                              <1>     ;Now rebase the program to point the first byte of the first
-   394                              <1>     ; section at the ProgBase.
-   395 00006186 51                  <1>     push rcx
-   396 00006187 57                  <1>     push rdi
-   397 00006188 488B7DC0            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Get the load address
-   398 0000618C 8B0D(AA050000)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualAddress]
-   399 00006192 4829CF              <1>     sub rdi, rcx    ;Rebase by offset of the first section
-   400 00006195 48897DC0            <1>     mov qword [rbp - execFrame.pProgBase], rdi 
-   401 00006199 488B7DE0            <1>     mov rdi, qword [rbp - execFrame.pParam]
-   402 0000619D 488B7F08            <1>     mov rdi, qword [rdi + loadOvly.qRelocFct]   ;Get the reload factor
-   403 000061A1 4829CF              <1>     sub rdi, rcx    ;Now rescale the relocation factor by the same amount
-   404 000061A4 48897D88            <1>     mov qword [rbp - execFrame.qRelocVal], rdi  ;Now store this value for later
-   405 000061A8 5F                  <1>     pop rdi
-   406 000061A9 59                  <1>     pop rcx
-   407                              <1> .skipRawPtrMove:
-   408 000061AA 51                  <1>     push rcx
-   409 000061AB 31FF                <1>     xor edi, edi
-   410 000061AD 8B3D(AA050000)      <1>     mov edi, dword [sectHdr + imageSectionHdr.dVirtualAddress]  ;Get where it should go in memory, offset from image base
-   411 000061B3 48037DC0            <1>     add rdi, qword [rbp - execFrame.pProgBase]  ;Turn into offset from progbase
-   412                              <1>     ;If a section has a virtual address outside of the allocation arena
-   413                              <1>     ; refuse to load it IF it contains no BSS, Data or Code and skip to the 
-   414                              <1>     ; next section.
-   415 000061B7 488B55C8            <1>     mov rdx, qword [rbp - execFrame.pPSPBase]
-   416 000061BB 4885D2              <1>     test rdx, rdx   ;If this is 0 (as in the case of overlay)...
-   417 000061BE 7432                <1>     jz short .okToLoad  ;skip this as it is assumed there is enough space!
-   418 000061C0 4881EA10000000      <1>     sub rdx, mcb_size   ;Go back a unit of mcb
-   419 000061C7 31C9                <1>     xor ecx, ecx
-   420 000061C9 8B4A09              <1>     mov ecx, dword [rdx + mcb.blockSize]
-   421 000061CC 48C1E104            <1>     shl rcx, 4  ;Convert to bytes (multiply by 16)
-   422 000061D0 4881C210000000      <1>     add rdx, mcb_size   ;Go to the first byte of the mcb
-   423 000061D7 4801CA              <1>     add rdx, rcx    ;Now rdx points to the first byte outside the arena
-   424 000061DA 4839FA              <1>     cmp rdx, rdi    ;If rdx > rdi, we are ok
-   425 000061DD 7713                <1>     ja short .okToLoad
-   426                              <1>     ;Now check if this is a useless section. If so, we don't load it at all
-   427                              <1> 
-   428                              <1>     ;V-0000000000-EARMARK FOR REMOVAL-0000000000-V
-   429 000061DF F705(C2050000)E000- <1>     test dword [sectHdr + imageSectionHdr.dCharacteristics], imgScnCntBSS | imgScnCntCode | imgScnCntData
-   429 000061E7 0000                <1>
-   430 000061E9 0F8546030000        <1>     jnz .badFmtErr  ;If any of these bits set, error out
-   431                              <1>     ;^-0000000000-EARMARK FOR REMOVAL-0000000000-^
-   432                              <1> 
-   433                              <1>     ;Else, just skip this section, goto next section
-   434 000061EF 59                  <1>     pop rcx
-   435 000061F0 EB3F                <1>     jmp short .gotoNextSection
-   436                              <1> .okToLoad:
-   437 000061F2 8B0D(A6050000)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]   ;Get # of bytes to read
-   438 000061F8 4889FA              <1>     mov rdx, rdi    ;Get ptr to buffer in rdx
-   439 000061FB 57                  <1>     push rdi    ;Save section in memory locally
-   440 000061FC E855030000          <1>     call .readDataFromHdl
-   441 00006201 5F                  <1>     pop rdi
-   442 00006202 59                  <1>     pop rcx     ; Matches push after skipRawPtrMove
-   443 00006203 0F822C030000        <1>     jc .badFmtErr
-   444                              <1>     ;Don't check for a zero section read as empty sections may be present!
-   445 00006209 3B05(A6050000)      <1>     cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
-   446 0000620F 0F8520030000        <1>     jne .badFmtErr
-   447                              <1>     ;Data read ok, now fill in any zeros needed
-   448 00006215 4801C7              <1>     add rdi, rax    ;Move rdi forwards by that amount at least
-   449                              <1> 
-   450 00006218 51                  <1>     push rcx
-   451                              <1>     ;Here do section padding
-   452 00006219 4889F8              <1>     mov rax, rdi    ;Get the current address
-   453 0000621C 8B0D(3E050000)      <1>     mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
-   454 00006222 FFC9                <1>     dec ecx ;Turn into a mask
-   455 00006224 4821C8              <1>     and rax, rcx    ;Compute ptr modulo mask
-   456 00006227 FFC1                <1>     inc ecx
-   457 00006229 4829C1              <1>     sub rcx, rax
-   458 0000622C 31C0                <1>     xor eax, eax
-   459 0000622E F3AA                <1>     rep stosb
-   460 00006230 59                  <1>     pop rcx
-   461                              <1> .gotoNextSection:
-   462 00006231 FFC9                <1>     dec ecx ;Decrement our section counter
-   463 00006233 7419                <1>     jz short .doExeFixups
-   464                              <1>     ;Read next section header in here
-   465 00006235 51                  <1>     push rcx
-   466 00006236 57                  <1>     push rdi
-   467 00006237 30C0                <1>     xor al, al  ;Move rel start of file
-   468 00006239 8B5590              <1>     mov edx, dword [rbp - execFrame.dFilePtr]
-   469 0000623C 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl] ;Get the file handle
-   470 00006240 31C9                <1>     xor ecx, ecx
-   471 00006242 E8FAD5FFFF          <1>     call lseekHdl
-   472 00006247 5F                  <1>     pop rdi
-   473 00006248 59                  <1>     pop rcx
-   474 00006249 E9D8FEFFFF          <1>     jmp .loadLp
-   475                              <1> .doExeFixups:
-   476                              <1> ;Here we fixup addresses if needed
-   477                              <1> ;If the program is loaded at its desired location never need to relocate.
-   478                              <1> ;Else we need to have a .reloc section to see if we need to do relocations. 
-   479                              <1> ;   If the program has had it's .reloc section stripped by the linker
-   480                              <1> ;       or has no .reloc directory, we fail
-   481                              <1> ;   Else, we read the .reloc directory in. It most likely will have no 
-   482                              <1> ;       relocations anyway.
-   483                              <1> 
-   484                              <1> ;If program base = desired load, skip relocs
-   485 0000624E 488B55C0            <1>     mov rdx, qword [rbp - execFrame.pProgBase]
-   486 00006252 483B15(36050000)    <1>     cmp rdx, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
-   487 00006259 0F84CA000000        <1>     je .exeComplete
-   488                              <1> ;If program has had relocs stripped, fail
-   489 0000625F 0FB745A0            <1>     movzx eax, word [rbp - execFrame.wCOFFChars]
-   490 00006263 66A90100            <1>     test ax, imageFileRelocsStripped
-   491 00006267 0F85C8020000        <1>     jnz .badFmtErr
-   492                              <1> ;If program has no .reloc section, fail
-   493 0000626D 8B15(8A050000)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
-   494 00006273 81FA06000000        <1>     cmp edx, 6  ;Does .reloc exist (6th directory entry)
-   495 00006279 0F82B6020000        <1>     jb .badFmtErr ;Need relocs but no .reloc directory exists
-   496                              <1> ;Now we get the reloc section
-   497 0000627F 8B55B0              <1>     mov edx, dword [rbp - execFrame.dCOFFhdr]
-   498 00006282 81C2B0000000        <1>     add edx, imageFileHeader_size + imageFileOptionalHeader_size + 5*8
-   499                              <1>     ;eax now points to position in file of directory entry for reloc
-   500 00006288 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get handle in bx
-   501 0000628C 31C0                <1>     xor eax, eax
-   502 0000628E E8AED5FFFF          <1>     call lseekHdl   ;Move handle there in file
-   503 00006293 894590              <1>     mov dword [rbp - execFrame.dFilePtr], eax   ;Save table offset here
-   504 00006296 B908000000          <1>     mov ecx, imageDataDirectory_size
-   505                              <1>     ;Read 8 bytes into sectHdr space
-   506 0000629B 488D15(9E050000)    <1>     lea rdx, sectHdr
-   507 000062A2 E8AF020000          <1>     call .readDataFromHdl   ;Read this directory entry in
-   508 000062A7 85C0                <1>     test eax, eax
-   509 000062A9 0F8486020000        <1>     jz .badFmtErr
-   510 000062AF 39C8                <1>     cmp eax, ecx
-   511 000062B1 0F857E020000        <1>     jne .badFmtErr
-   512                              <1>     ;Now we have the offset in memory if the file was loaded at imageBase
-   513 000062B7 8B35(9E050000)      <1>     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
-   514 000062BD 85F6                <1>     test esi, esi   ;If there are no relocations, skip this...
-   515 000062BF 7468                <1>     jz .exeComplete   ;... including if overlay
-   516 000062C1 480375C0            <1>     add rsi, qword [rbp - execFrame.pProgBase]
-   517                              <1>     ;Now rsi points to where in memory the relocation data table is
-   518                              <1>     ;Now compute the relocation factor =
-   519                              <1>     ;   Difference from the load address and prefered
-   520 000062C5 488B45C0            <1>     mov rax, qword [rbp - execFrame.pProgBase]
-   521 000062C9 482B05(36050000)    <1>     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase] 
-   522 000062D0 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   523 000062D8 750F                <1>     jne short .notOverlayReloc
-   524                              <1>     ;For overlays, we use the relocation factor as the base of computation.
-   525                              <1>     ;Thus now the relocation factor becomes the ProgBase.
-   526                              <1>     ;This should be the same as ProgBase anyway for overlays.
-   527 000062DA 488B4588            <1>     mov rax, qword [rbp - execFrame.qRelocVal]   ;Get the overlay reloc factor
-   528 000062DE 482B05(36050000)    <1>     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
-   529                              <1>     ;Store this as the overlay program base
-   530 000062E5 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
-   531                              <1> .notOverlayReloc:
-   532 000062E9 4889C3              <1>     mov rbx, rax    ;Save this relocation factor in rbx
-   533                              <1>     ;rsi points to relocation data table in memory
-   534 000062EC 8B0D(A2050000)      <1>     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
-   535 000062F2 85C9                <1>     test ecx, ecx    ;If no relocations, skip
-   536 000062F4 7433                <1>     jz .exeComplete
-   537                              <1>     ;rsi points to the first base relocation block. The relocations begin
-   538                              <1>     ; after the first block
-   539                              <1>     ;ecx has the number of base relocation blocks to process.
-   540                              <1> .nextBlock:
-   541 000062F6 51                  <1>     push rcx    ;Reuse rcx as a counter for the current page
-   542 000062F7 8B06                <1>     mov eax, dword [rsi + baseRelocBlock.pageRVA]   ;Get the page rva
-   543 000062F9 488B7DC0            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
-   544 000062FD 4801C7              <1>     add rdi, rax    ;Add this page offset to rdi to goto correct page for reloc
-   545 00006300 8B4E04              <1>     mov ecx, dword [rsi + baseRelocBlock.size]  ;Get number of bytes in block
-   546 00006303 67E31E              <1>     jecxz .blockDone    
-   547 00006306 81E908000000        <1>     sub ecx, 8
-   548 0000630C 4881C608000000      <1>     add rsi, 8  ;Go to the start of the directory data
-   549 00006313 D1E9                <1>     shr ecx, 1  ;Get number of directories = # of relocs to do
-   550                              <1> .blockNotDone:
-   551 00006315 66AD                <1>     lodsw   ;Get the next page offset word
-   552 00006317 25FF0F0000          <1>     and eax, 00000FFFh  ;Save bottom 12 bits
-   553                              <1>     ;rdi points to base, rax give offset into 4Kb page
-   554 0000631C 48011C07            <1>     add qword [rdi + rax], rbx    ;Relocation factor was saved in rbx
-   555 00006320 FFC9                <1>     dec ecx
-   556 00006322 75F1                <1>     jnz .blockNotDone
-   557                              <1> .blockDone:
-   558 00006324 59                  <1>     pop rcx
-   559 00006325 FFC9                <1>     dec ecx
-   560 00006327 75CD                <1>     jnz .nextBlock
-   561                              <1> .exeComplete:
-   562 00006329 8B05(2E050000)      <1>     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
-   563                              <1>     ;Now get EP relative to the (rescaled) load address.
-   564 0000632F 480345C0            <1>     add rax, qword [rbp - execFrame.pProgBase]
-   565 00006333 48894598            <1>     mov qword [rbp - execFrame.pProgEP], rax
-   566 00006337 FF15(AF000000)      <1>     call qword [registerDLL]    ;Now we register the DLL and any import/exports
-   567 0000633D 0F82F2010000        <1>     jc .badFmtErr   ;If this errors out for some reason, quit loading EXE
-   568 00006343 E9CC000000          <1>     jmp .buildChildPSP
-   569                              <1> .loadCom:
-   570                              <1>     ;File is open here, so just read the file into memory. 
-   571                              <1>     ;The file cannot exceed 64Kb in size.
-   572                              <1>     ;Allocate 64Kb of memory, or as much as we can
-   573 00006348 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   574 00006350 745C                <1>     je .comOverlay
-   575 00006352 BBF0FF0000          <1>     mov ebx, 0FFF0h ;64Kb - 16 bytes, give me FFF0h bytes
-   576 00006357 895DB8              <1>     mov dword [rbp - execFrame.dProgSize], ebx
-   577 0000635A C1EB04              <1>     shr ebx, 4      ;Convert to paragraphs
-   578 0000635D 55                  <1>     push rbp
-   579 0000635E E854F3FFFF          <1>     call allocateMemory
-   580 00006363 5D                  <1>     pop rbp
-   581 00006364 7355                <1>     jnc .comallocOk
-   582 00006366 3C08                <1>     cmp al, errNoMem
-   583 00006368 0F85CC010000        <1>     jne .cleanAndFail   ;Propagate the proper error if not a lack of memory
-   584                              <1>     ;rbx should have the amount available in paragraphs
-   585 0000636E 09DB                <1>     or ebx, ebx ;Clear the upper dword
-   586 00006370 48C1E304            <1>     shl rbx, 4
-   587                              <1>     ;We check if this value is psp_size more than filesize
-   588 00006374 53                  <1>     push rbx    ;Save new minimum size
-   589 00006375 B802000000          <1>     mov eax, 2    ;Reposition to end of file
-   590 0000637A 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   591 0000637E 31D2                <1>     xor edx, edx    ;Go to end of file
-   592 00006380 E8BCD4FFFF          <1>     call lseekHdl
-   593                              <1>     ;eax has file size
-   594 00006385 5B                  <1>     pop rbx ;Get back max alloc size
-   595 00006386 89DA                <1>     mov edx, ebx    ;Save in max alloc in edx temporarily
-   596 00006388 29C2                <1>     sub edx, eax
-   597 0000638A 81FA00010000        <1>     cmp edx, psp_size   ;If filesize - memory space is < psp_size...
-   598 00006390 0F82E4FBFFFF        <1>     jb .insufficientMemory   ;Fail
-   599 00006396 895DB8              <1>     mov dword [rbp - execFrame.dProgSize], ebx  ;Store progsize
-   600 00006399 C1EB04              <1>     shr ebx, 4  ;Convert to paragraphs
-   601 0000639C 55                  <1>     push rbp
-   602 0000639D E815F3FFFF          <1>     call allocateMemory
-   603 000063A2 5D                  <1>     pop rbp
-   604 000063A3 0F8291010000        <1>     jc .cleanAndFail
-   605 000063A9 E90D000000          <1>     jmp .comallocOk
-   606                              <1> .comOverlay:
-   607                              <1>     ;Here we simply read the file into the buffer provided
-   608 000063AE 488B5DE0            <1>     mov rbx, qword [rbp - execFrame.pParam]
-   609 000063B2 488B03              <1>     mov rax, qword [rbx + loadOvly.pLoadLoc]
-   610 000063B5 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
-   611 000063B9 EB0A                <1>     jmp short .comRead
-   612                              <1> .comallocOk:
-   613                              <1>     ;rax should point to the first byte
-   614 000063BB 488945C8            <1>     mov qword [rbp - execFrame.pPSPBase], rax
-   615 000063BF 480500010000        <1>     add rax, psp_size
-   616                              <1> .comRead:
-   617 000063C5 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
-   618                              <1> 
-   619 000063C9 B802000000          <1>     mov eax, 2    ;Reposition to end of file
-   620 000063CE 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   621 000063D2 31D2                <1>     xor edx, edx    ;Go to end of file
-   622 000063D4 E868D4FFFF          <1>     call lseekHdl
-   623                              <1>     ;eax has filesize now
-   624 000063D9 50                  <1>     push rax    ;Save filesize
-   625 000063DA 31C0                <1>     xor eax, eax    ;Reposition to start of file
-   626 000063DC 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   627 000063E0 31D2                <1>     xor edx, edx    ;Go to start of file
-   628 000063E2 E85AD4FFFF          <1>     call lseekHdl
-   629 000063E7 59                  <1>     pop rcx ;Get the filesize in rcx (# of bytes to read)
-   630 000063E8 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   631 000063F0 7411                <1>     je .comOverlay2
-   632                              <1>     ;Now we check if the space we have available is sufficient to load
-   633                              <1>     ; the program. Skipped if an overlay being loaded
-   634                              <1>     ;ecx = # File size
-   635 000063F2 8B55B8              <1>     mov edx, dword [rbp - execFrame.dProgSize]  ;Get the alloc space size
-   636 000063F5 81EA00010000        <1>     sub edx, psp_size
-   637 000063FB 39CA                <1>     cmp edx, ecx    ;Do we have space for the PSP and program?
-   638 000063FD 0F8277FBFFFF        <1>     jb .insufficientMemory
-   639                              <1> .comOverlay2:
-   640 00006403 488B55C0            <1>     mov rdx, qword [rbp - execFrame.pProgBase]  ;Buffer to read into
-   641 00006407 E84A010000          <1>     call .readDataFromHdl   ;Read from the file handle
-   642 0000640C 488B45C0            <1>     mov rax, qword [rbp - execFrame.pProgBase]
-   643 00006410 48894598            <1>     mov qword [rbp - execFrame.pProgEP], rax
-   644                              <1> .buildChildPSP:
-   645                              <1>     ;We can close handle now
-   646 00006414 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   647 00006418 55                  <1>     push rbp
-   648 00006419 E839D3FFFF          <1>     call closeFileHdl   ;Close the file
-   649 0000641E 5D                  <1>     pop rbp
-   650                              <1> 
-   651                              <1>     ;Only build a PSP if not in overlay mode. If in overlay mode skip
-   652 0000641F 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
-   653 00006427 0F84E5000000        <1>     je .overlayExit
-   654                              <1>     ;Now build the PSP
-   655 0000642D 8B75B8              <1>     mov esi, dword [rbp - execFrame.dProgSize]
-   656 00006430 488B55C8            <1>     mov rdx, qword [rbp - execFrame.pPSPBase]
-   657 00006434 52                  <1>     push rdx
-   658 00006435 55                  <1>     push rbp
-   659 00006436 E8DCF7FFFF          <1>     call createPSP
-   660 0000643B 5D                  <1>     pop rbp
-   661 0000643C 5A                  <1>     pop rdx
-   662                              <1> 
-   663                              <1> ;Now copy the environment block ptr over. 
-   664                              <1> ;Stores the null ptr that is our pointer (special init case)
-   665 0000643D 488B5DD0            <1>     mov rbx, qword [rbp - execFrame.pEnvBase]
-   666                              <1> ;    test rbx, rbx
-   667                              <1> ;    jz short .skipEnvCopy
-   668 00006441 48895A3E            <1>     mov qword [rdx + psp.envPtr], rbx
-   669                              <1> ;.skipEnvCopy:
-   670                              <1>     ;Now set Current PSP to our PSP and set current DTA to command line
-   671 00006445 488915(1F040000)    <1>     mov qword [currentPSP], rdx
-   672 0000644C E8C9130000          <1>     call dosCrit1Enter
-   673 00006451 E827010000          <1>     call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
-   674                              <1> 
-   675 00006456 488DBA80000000      <1>     lea rdi, qword [rdx + psp.dta] ;Point to default dta...
-   676 0000645D 48893D(17040000)    <1>     mov qword [currentDTA], rdi ;and set it!
-   677                              <1> 
-   678                              <1>     ;Now We need to copy over the command line and fcbs to the PSP
-   679                              <1>     ; and set FS to point to the PSP
-   680 00006464 488B5DE0            <1>     mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
-   681                              <1> 
-   682 00006468 488D7A5C            <1>     lea rdi, qword [rdx + psp.fcb1]
-   683 0000646C B925000000          <1>     mov ecx, fcb_size
-   684 00006471 488B7310            <1>     mov rsi, qword [rbx + execProg.pfcb1]
-   685 00006475 8A06                <1>     mov al, byte [rsi + fcb.driveNum]   ;Get FCB1's drive number in al
-   686 00006477 F3A4                <1>     rep movsb   ;Copy fcb 1 over
-   687 00006479 488D7A6C            <1>     lea rdi, qword [rdx + psp.fcb2]
-   688 0000647D B925000000          <1>     mov ecx, fcb_size
-   689 00006482 488B7318            <1>     mov rsi, qword [rbx + execProg.pfcb2]
-   690 00006486 8A26                <1>     mov ah, byte [rsi + fcb.driveNum]   ;Get FCB2's drive number in ah
-   691 00006488 F3A4                <1>     rep movsb   ;Copy fcb 2 over
-   692 0000648A 488B7308            <1>     mov rsi, qword [rbx + execProg.pCmdLine]
-   693 0000648E 488DBA80000000      <1>     lea rdi, qword [rdx + psp.dta]
-   694 00006495 B980000000          <1>     mov ecx, 80h
-   695 0000649A F3A4                <1>     rep movsb   ;Copy the command line over (terminated by 0Dh)
-   696                              <1> 
-   697 0000649C 89C3                <1>     mov ebx, eax  ;Save the fcb drive numbers in bx
-   698 0000649E 4889D7              <1>     mov rdi, rdx  ;Point RDI to PSP
-   699                              <1> 
-   700                              <1>     ;Check FCB drive numbers are valid. Return FFh if not
-   701 000064A1 88D8                <1>     mov al, bl
-   702 000064A3 30DB                <1>     xor bl, bl
-   703 000064A5 E8020F0000          <1>     call getCDSNotJoin
-   704 000064AA 7302                <1>     jnc .drive1Ok
-   705 000064AC B3FF                <1>     mov bl, -1
-   706                              <1> .drive1Ok:
-   707 000064AE 88F8                <1>     mov al, bh
-   708 000064B0 30FF                <1>     xor bh, bh
-   709 000064B2 E8F50E0000          <1>     call getCDSNotJoin
-   710 000064B7 7302                <1>     jnc .drive2Ok
-   711 000064B9 B7FF                <1>     mov bh, -1
-   712                              <1> .drive2Ok:
-   713                              <1>     ;bx has validity flags for the two fcb drives, undocumented!!
-   714                              <1>     ;rdi has pointer to psp
-   715 000064BB 8B75B8              <1>     mov esi, dword [rbp - execFrame.dProgSize]  ;Get program size
-   716                              <1>     ;Add psp base (rdi) to prog size to get the last byte of the allocation
-   717 000064BE 488D743EF8          <1>     lea rsi, qword [rsi + rdi - 8]    ;Get new rsp in rsi (last qword of alloc)
-   718 000064C3 48B8F8FFFFFFFFFFFF- <1>     mov rax, ~7     ;Clear the bottom 3 bits
-   718 000064CC FF                  <1>
-   719 000064CD 4821C6              <1>     and rsi, rax    ;To align downwards
-   720                              <1>     ;We align stack to qword. x64 ABI requires paragraph alignment.
-   721                              <1>     ;That is the job of the runtime to handle.
-   722                              <1> ;Registers carrying data at this point:
-   723                              <1> ;bx = FCB drive statuses
-   724                              <1> ;rsi = Stack Base
-   725                              <1> ;rbp = execFrame
-   726 000064D0 807DF804            <1>     cmp byte [rbp - execFrame.bSubFunc], execBkgrnd
-   727 000064D4 750B                <1>     jne short .noBg
-   728                              <1>     ;Get termination mode in ecx before xfring control to dosmgr
-   729 000064D6 56                  <1>     push rsi
-   730 000064D7 E8AC0E0000          <1>     call getUserRegs
-   731 000064DC 488B4E10            <1>     mov rcx, qword [rsi + callerFrame.rcx]  ;Get termination mode
-   732 000064E0 5E                  <1>     pop rsi
-   733                              <1> .noBg:
-   734 000064E1 FF15(9F000000)      <1>     call qword [launchTask]
-   735 000064E7 7251                <1>     jc short .cleanAndFail
-   736                              <1> ;Final step: Transfer control
-   737 000064E9 807DF800            <1>     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
-   738 000064ED 742C                <1>     je .xfrProgram
-   739 000064EF 807DF804            <1>     cmp byte [rbp - execFrame.bSubFunc], execBkgrnd
-   740 000064F3 741D                <1>     je .overlayExit ;Skip the below for background tasks
-   741 000064F5 488B4598            <1>     mov rax, qword [rbp - execFrame.pProgEP]
-   742 000064F9 488B55E0            <1>     mov rdx, qword [rbp - execFrame.pParam]
-   743 000064FD 48894228            <1>     mov qword [rdx + loadProg.initRIP], rax
-   744 00006501 0FB7C3              <1>     movzx eax, bx   ;Return fcb drive status
-   745 00006504 4881EE08000000      <1>     sub rsi, 8  ;Now go down one so that we can pop the AX value from the stack
-   746 0000650B 488906              <1>     mov qword [rsi], rax    ;Store the FCB status on the top of stack for AH=01h
-   747 0000650E 48897220            <1>     mov qword [rdx + loadProg.initRSP], rsi
-   748                              <1> .overlayExit:
-   749 00006512 4889EC              <1>     mov rsp, rbp    ;Reset the stack to its position
-   750 00006515 5D                  <1>     pop rbp ;Point rsp to the return address
-   751 00006516 E93C130000          <1>     jmp extGoodExit ;And return!
-   752                              <1> .xfrProgram:
-   753 0000651B FA                  <1>     cli
-   754 0000651C 4889F4              <1>     mov rsp, rsi    ;Set rsp to initRSP value
-   755 0000651F C605(08040000)00    <1>     mov byte [inDOS], 0 ;Clear all inDosnessness
-   756 00006526 FB                  <1>     sti
-   757                              <1> 
-   758 00006527 57                  <1>     push rdi    ;Push &psp[0] onto the stack to allow for ret exit
-   759 00006528 FF7598              <1>     push qword [rbp - execFrame.pProgEP]
-   760 0000652B 4989F8              <1>     mov r8, rdi ;Move psp base into r8 and r9
-   761 0000652E 4989F9              <1>     mov r9, rdi
-   762 00006531 0FB7C3              <1>     movzx eax, bx   ;ax must contain validity of the two FCB drives
-   763                              <1>     return  ;Return to child task
+    15                              <1> ;If the loaded file is not a PE it is assumed to be a COM file. 
+    16                              <1> ; If not EXE, we read the filename extension.
+    17                              <1> 
+    18                              <1> ;If AL = 0 and 4 (if DOSMGR present):
+    19                              <1> ;            Load Child Program and Xfr control to it
+    20                              <1> ; rbx ------>   |-------------------------------|
+    21                              <1> ;               |   Ptr to Environment Block    |
+    22                              <1> ;               |                               |
+    23                              <1> ;               | Can be 0 => Get pointer to    |
+    24                              <1> ;               | parent Environment Block      |
+    25                              <1> ;               |-------------------------------|
+    26                              <1> ;               |   Ptr to Command Line to be   |
+    27                              <1> ;               |   placed at PSP + 80h         |
+    28                              <1> ;               |-------------------------------|
+    29                              <1> ;               |   Ptr to first default FCB    |
+    30                              <1> ;               |      to copy to PSP.fcb1      |
+    31                              <1> ;               |                               |
+    32                              <1> ;               | Should be used to parse the   |
+    33                              <1> ;               |  first two command line args  |
+    34                              <1> ;               |-------------------------------|
+    35                              <1> ;               |   Ptr to second default FCB   |
+    36                              <1> ;               |      to copy to PSP.fcb2      |
+    37                              <1> ;               |-------------------------------|
+    38                              <1> ;
+    39                              <1> ;If AL = 1 :
+    40                              <1> ;           Load Child Program BUT DO NOT Xfr control to it
+    41                              <1> ; rbx ------>   |-------------------------------|
+    42                              <1> ;               |         AS IN AL=00H          |
+    43                              <1> ;               |-------------------------------|
+    44                              <1> ;               |     Initial Value of RSP      |
+    45                              <1> ;               |       on program launch       |
+    46                              <1> ;               |                               |
+    47                              <1> ;               |     This is returned to the   |
+    48                              <1> ;               |         caller by DOS         |
+    49                              <1> ;               |-------------------------------|
+    50                              <1> ;               |     Initial Value of RIP      |
+    51                              <1> ;               |       on program launch       |
+    52                              <1> ;               |                               |
+    53                              <1> ;               |     This is returned to the   |
+    54                              <1> ;               |         caller by DOS         |
+    55                              <1> ;               |-------------------------------|
+    56                              <1> ;
+    57                              <1> ;                      !!Important Note!!
+    58                              <1> ;   The block pointed to by rbx must reserve the space for 
+    59                              <1> ;        those last two qwords on a AL=1 call to EXEC.
+    60                              <1> ;
+    61                              <1> ;If AL = 3 :
+    62                              <1> ;                      Load program overlay
+    63                              <1> ; rbx ------>   |-------------------------------|
+    64                              <1> ;               |  Pointer to the byte in the   |
+    65                              <1> ;               |  prog space to start writing  |
+    66                              <1> ;               |        the overlay at.        |
+    67                              <1> ;               |-------------------------------|
+    68                              <1> ;               | QWORD value used as the base  |
+    69                              <1> ;               |   address for relocation      |
+    70                              <1> ;               |   computations. In most cases |
+    71                              <1> ;               |   should be the same as the   |
+    72                              <1> ;               |   load pointer. The desired   |
+    73                              <1> ;               |   load address is subtracted  |
+    74                              <1> ;               |   from this value to generate |
+    75                              <1> ;               |   a valid relocation factor,  |
+    76                              <1> ;               |   much like for normal load   |
+    77                              <1> ;               |   but here we are controlling |
+    78                              <1> ;               |    precisely the factor by    |
+    79                              <1> ;               |     which we relocate the     |
+    80                              <1> ;               |           symbols.            |
+    81                              <1> ;               |  (Called a Relocation Factor) |
+    82                              <1> ;               |     Only FOR EXE Overlays.    |
+    83                              <1> ;               |    For COM, 0 is sufficient.  |
+    84                              <1> ;               |-------------------------------|
+    85                              <1> ; For AL = 3: Both pointers must be aligned to section alignment.
+    86                              <1> ;   If this is not the case, DOS will round UP both pointers to the 
+    87                              <1> ;   section alignment for the file being loaded. 
+    88                              <1> ; The overlay will be loaded so that the first byte at the start of the memory
+    89                              <1> ; block is the first byte of the first section of the executable. No header
+    90                              <1> ; information will be retained. Thus, (for now) overlays cannot be used to export 
+    91                              <1> ; functions or import functions from DLLs. Furthermore, it is HIGHLY recommended
+    92                              <1> ; that you compile any .EXE overlays to have a section alignment of 1 byte.
+    93                              <1> ;
+    94                              <1> ; All three will setup both COM and EXE files for whatever purpose. 
+    95                              <1> ;           AL = 3 DOES NOT BUILD THE PROGRAM A PSP.
+    96                              <1> ;
+    97                              <1> ;Start by setting up a stack frame of local vars to keep track of vars in call
+    98 00005E83 55                  <1>     push rbp
+    99 00005E84 4889E5              <1>     mov rbp, rsp
+   100 00005E87 4881EC80000000      <1>     sub rsp, execFrame_size   ;Make the space pointing at rbp
+   101                              <1>     ;Clear up the pointers on the stack frame
+   102 00005E8E 31C9                <1>     xor ecx, ecx
+   103 00005E90 48894DC8            <1>     mov qword [rbp - execFrame.pPSPBase], rcx
+   104 00005E94 48894DD0            <1>     mov qword [rbp - execFrame.pEnvBase], rcx
+   105 00005E98 48894DC0            <1>     mov qword [rbp - execFrame.pProgBase], rcx
+   106 00005E9C 48894DC8            <1>     mov qword [rbp - execFrame.pPSPBase], rcx
+   107 00005EA0 48894D98            <1>     mov qword [rbp - execFrame.pProgEP], rcx
+   108                              <1> 
+   109 00005EA4 B403                <1>     mov ah, execOverlay
+   110 00005EA6 F605(9E000000)FF    <1>     test byte [dosMgrPresent], -1 ;If bits set, change max to execBkgrnd
+   111 00005EAD 7402                <1>     jz short .noMulti
+   112 00005EAF B404                <1>     mov ah, execBkgrnd
+   113                              <1> .noMulti:
+   114 00005EB1 38E0                <1>     cmp al, ah
+   115 00005EB3 7615                <1>     jbe .validSubfunction
+   116                              <1> .badSubFunction:
+   117 00005EB5 B801000000          <1>     mov eax, errInvFnc
+   118 00005EBA C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
+   119                              <1> .badExit:
+   120 00005EC1 4889EC              <1>     mov rsp, rbp
+   121 00005EC4 5D                  <1>     pop rbp
+   122 00005EC5 E99B190000          <1>     jmp extErrExit
+   123                              <1> 
+   124                              <1> .validSubfunction:
+   125 00005ECA 3C02                <1>     cmp al, execInvld
+   126 00005ECC 74E7                <1>     je .badSubFunction
+   127                              <1>     ;Save registers for each function call
+   128 00005ECE 48895DE0            <1>     mov qword [rbp - execFrame.pParam], rbx
+   129 00005ED2 488955D8            <1>     mov qword [rbp - execFrame.pProgname], rdx
+   130 00005ED6 0FB6C0              <1>     movzx eax, al
+   131 00005ED9 488945F8            <1>     mov qword [rbp - execFrame.bSubFunc], rax   ;clear alignment and progHdl
+   132 00005EDD 4889D7              <1>     mov rdi, rdx
+   133 00005EE0 E820160000          <1>     call strlen ;Get string length in cx
+   134 00005EE5 66894DE8            <1>     mov word [rbp - execFrame.wNameLen], cx   ;Get the string length  
+   135                              <1> ;Now open the file we wanna launch
+   136 00005EE9 31C0                <1>     xor eax, eax    ;al = 0 => Normal program attributes to search for
+   137 00005EEB 55                  <1>     push rbp    ;Preserve local frame ptr
+   138 00005EEC B923000000          <1>     mov ecx, 23h    ;Tell server to open for exec. No writing or sharing!
+   139 00005EF1 E81FD7FFFF          <1>     call openFileHdl
+   140 00005EF6 5D                  <1>     pop rbp
+   141 00005EF7 72C8                <1>     jc .badExit ;Exit preserving error code in al
+   142                              <1>     ;Now ax has the file handle
+   143 00005EF9 668945F0            <1>     mov word [rbp - execFrame.wProgHdl], ax
+   144 00005EFD 0FB7D8              <1>     movzx ebx, ax   ;Move file handle into bx
+   145 00005F00 E897F2FFFF          <1>     call derefSFTPtr    ;And deref it into rdi
+   146 00005F05 0FB75705            <1>     movzx edx, word [rdi + sft.wDeviceInfo] ;Get device word
+   147 00005F09 F7C280000000        <1>     test edx, devCharDev
+   148 00005F0F 7407                <1>     jz .validDiskFile    ;We cannot have a char device
+   149 00005F11 B002                <1>     mov al, errFnf
+   150 00005F13 E922060000          <1>     jmp .cleanAndFail
+   151                              <1> .validDiskFile:
+   152 00005F18 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   153 00005F20 0F8489000000        <1>     je .loadProgram ;If overlay, skip making an environment block
+   154                              <1> ;If we get an instruction to copy parent env, we do that. If the 
+   155                              <1> ; parent ptr is a special NULL value, then we leave the NULL value
+   156                              <1> ; in place in the execFrame envPtr var. Else, we use the parent
+   157                              <1> ; env pointer as the source of our copy.
+   158 00005F26 488B7DE0            <1>     mov rdi, qword [rbp - execFrame.pParam] ;Get params ptr in rdi
+   159 00005F2A 488B07              <1>     mov rax, qword [rdi + execProg.pEnv]
+   160 00005F2D 4885C0              <1>     test rax, rax   ;Is this 0? (i.e. copy parent env)
+   161 00005F30 7510                <1>     jnz short .copyEnvironmentBlock
+   162 00005F32 488B35(1F040000)    <1>     mov rsi, qword [currentPSP] ;Get current PSP address in rsi
+   163 00005F39 488B463E            <1>     mov rax, qword [rsi + psp.envPtr]   ;Get ptr to env src from parent env
+   164 00005F3D 4885C0              <1>     test rax, rax   ;Was parent ptr 0? If so, skip allocing new env.
+   165 00005F40 746D                <1>     jz short .loadProgram ;This is used by the boot process!!
+   166                              <1> .copyEnvironmentBlock:
+   167 00005F42 4889C7              <1>     mov rdi, rax    ;Point rdi to the source of the environment
+   168                              <1> ;Get the length of the environment
+   169 00005F45 B9FF7F0000          <1>     mov ecx, 7fffh  ;32kb limit for env size
+   170 00005F4A 31C0                <1>     xor eax, eax
+   171 00005F4C 4889FB              <1>     mov rbx, rdi    ;Use rbx as the base ptr of the scan
+   172                              <1> .envVerifyLp:
+   173 00005F4F F2AE                <1>     repne scasb   ;Scan for a terminating word of nulls
+   174 00005F51 7531                <1>     jnz short .invalidEnvironmentError
+   175 00005F53 67E32E              <1>     jecxz .invalidEnvironmentError  ;Error if no space for a second null
+   176 00005F56 FFC9                <1>     dec ecx
+   177 00005F58 AE                  <1>     scasb   ;Check if we have a second byte of 00 (i.e. end of environment)
+   178 00005F59 75F4                <1>     jnz short .envVerifyLp
+   179                              <1> 
+   180 00005F5B 4829DF              <1>     sub rdi, rbx ;Get offset into block, gives a result less than 7FFFh
+   181 00005F5E 57                  <1>     push rdi     ;Save the length of the environment block
+   182 00005F5F 81C711000000        <1>     add edi, 11h    ;Add 11 to round up when converting to paragraphs
+   183 00005F65 0FB75DE8            <1>     movzx ebx, word [rbp - execFrame.wNameLen]  ;Get name length
+   184 00005F69 01DF                <1>     add edi, ebx    ;edi has number of bytes to allocate for environment blk
+   185 00005F6B 89FB                <1>     mov ebx, edi
+   186 00005F6D C1EB04              <1>     shr ebx, 4  ;Turn bytes needed into paragrapsh
+   187 00005F70 55                  <1>     push rbp
+   188 00005F71 E841F7FFFF          <1>     call allocateMemory
+   189 00005F76 5D                  <1>     pop rbp
+   190 00005F77 59                  <1>     pop rcx ;Pop the length of the environment block into rcx
+   191 00005F78 7314                <1>     jnc short .copyEnvironment
+   192                              <1>     ;Fall thru if not enuff memory
+   193                              <1> .insufficientMemory:
+   194 00005F7A B808000000          <1>     mov eax, errNoMem
+   195 00005F7F E9B6050000          <1>     jmp .cleanAndFail
+   196                              <1> .invalidEnvironmentError:   ;DO NOT MOVE THIS TO USE JECXZ ABOVE
+   197 00005F84 B80A000000          <1>     mov eax, errBadEnv
+   198 00005F89 E9AC050000          <1>     jmp .cleanAndFail
+   199                              <1> 
+   200                              <1> .copyEnvironment:
+   201                              <1>     ;rax has the ptr to allocated memory block
+   202                              <1>     ;rcx has the number of chars to copy from the source env block
+   203 00005F8E 4889C7              <1>     mov rdi, rax    ;This is the destination of the copy
+   204 00005F91 488945D0            <1>     mov qword [rbp - execFrame.pEnvBase], rax   ;Save the env block in frame
+   205 00005F95 488B75E0            <1>     mov rsi, qword [rbp - execFrame.pParam]
+   206 00005F99 488B36              <1>     mov rsi, qword [rsi + execProg.pEnv]    ;Get in rsi the src of the env
+   207 00005F9C F3A4                <1>     rep movsb   ;Copy from rsi to rdi
+   208 00005F9E B801000000          <1>     mov eax, 1  ;One additional string and a second null char!
+   209 00005FA3 66AB                <1>     stosw       ;Away you go!
+   210 00005FA5 488B75D8            <1>     mov rsi, qword [rbp - execFrame.pProgname]  ;Get ASCIIZ string for filespec
+   211 00005FA9 0FB74DE8            <1>     movzx ecx, word [rbp - execFrame.wNameLen]
+   212 00005FAD F3A4                <1>     rep movsb   ;Move the bytes to rdi
+   213                              <1> ;Done with the environment... more or less
+   214                              <1> .loadProgram:
+   215 00005FAF B940000000          <1>     mov ecx, imageDosHdr_size   ;Read the DOS header for the exe file
+   216 00005FB4 488D15(1E050000)    <1>     lea rdx, exeHdrSpace    ;Read into the SDA area
+   217 00005FBB E896050000          <1>     call .readDataFromHdl
+   218 00005FC0 0F826F050000        <1>     jc .badFmtErr
+   219 00005FC6 85C0                <1>     test eax, eax   ;Were zero bytes read?
+   220 00005FC8 0F8467050000        <1>     jz .badFmtErr
+   221 00005FCE 3D40000000          <1>     cmp eax, imageDosHdr_size
+   222 00005FD3 0F826F030000        <1>     jb .loadCom
+   223                              <1> 
+   224 00005FD9 66813A4D5A          <1>     cmp word [rdx + imageDosHdr.e_magic], dosMagicSignature
+   225 00005FDE 740B                <1>     je .proceedEXE
+   226 00005FE0 66813A5A4D          <1>     cmp word [rdx + imageDosHdr.e_magic], dosMagicSignature2
+   227 00005FE5 0F855D030000        <1>     jne .loadCom    ;If not equal to ZM or MZ, must be a COM file
+   228                              <1> .proceedEXE:
+   229                              <1>     ;Now we need to read e_lfanew
+   230 00005FEB 52                  <1>     push rdx    ;Save exeHdrSpace addr on stack
+   231 00005FEC 8B523C              <1>     mov edx, dword [rdx + imageDosHdr.e_lfanew]
+   232 00005FEF 8955B0              <1>     mov dword [rbp - execFrame.dCOFFhdr], edx   ;Save this for later
+   233 00005FF2 31C9                <1>     xor ecx, ecx    ;Officially, need to set ecx to 0
+   234 00005FF4 30C0                <1>     xor al, al  ;Set file pointer from start of file
+   235 00005FF6 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get handle
+   236 00005FFA E842D8FFFF          <1>     call lseekHdl   ;Move to that position in the file
+   237 00005FFF 5A                  <1>     pop rdx ;Get exeHdrSpace address back
+   238 00006000 B918000000          <1>     mov ecx, imageFileHeader_size
+   239 00006005 E84C050000          <1>     call .readDataFromHdl       ;Now read the COFF header
+   240 0000600A 85C0                <1>     test eax, eax   ;Were zero bytes read?
+   241 0000600C 0F8423050000        <1>     jz .badFmtErr
+   242 00006012 3D18000000          <1>     cmp eax, imageFileHeader_size
+   243 00006017 0F8218050000        <1>     jb .badFmtErr
+   244                              <1>     ;So now rdx points to the imageFileHeader
+   245 0000601D 813A50450000        <1>     cmp dword [rdx + imageFileHeader.dPESignature], imagePESignature
+   246 00006023 0F850C050000        <1>     jne .badFmtErr
+   247 00006029 66817A046486        <1>     cmp word [rdx + imageFileHeader.wMachineType], imageFileMachineAMD64
+   248 0000602F 0F8500050000        <1>     jne .badFmtErr
+   249                              <1>     ;Check the binary is executable
+   250 00006035 0FB74216            <1>     movzx eax, word [rdx + imageFileHeader.wCharacteristics]
+   251 00006039 66A90200            <1>     test ax, imageFileExecutable
+   252 0000603D 0F84F2040000        <1>     jz .badFmtErr
+   253 00006043 668945A0            <1>     mov word [rbp - execFrame.wCOFFChars], ax   ;Save this for later!
+   254                              <1> 
+   255 00006047 66817A147000        <1>     cmp word [rdx + imageFileHeader.wSizeOfOptionalHdr], imageFileOptionalHeader_size
+   256 0000604D 0F82E2040000        <1>     jb .badFmtErr   ;We need the full optional header (as normal)
+   257                              <1>     ;Now save the number of sections in the the file
+   258 00006053 0FB74206            <1>     movzx eax, word [rdx + imageFileHeader.wNumberOfSections]
+   259 00006057 85C0                <1>     test eax, eax   ;If this is 0, what?
+   260 00006059 0F84D6040000        <1>     jz .badFmtErr
+   261 0000605F 66894598            <1>     mov word [rbp - execFrame.wNumSeg], ax  ;Save this value for later!
+   262                              <1>     ;Now load Optional header, file ptr points to it so all good!
+   263 00006063 B970000000          <1>     mov ecx, imageFileOptionalHeader_size
+   264                              <1>     ;rdx points to exeHdrSpace
+   265 00006068 E8E9040000          <1>     call .readDataFromHdl
+   266 0000606D 85C0                <1>     test eax, eax   ;Were zero bytes read?
+   267 0000606F 0F84C0040000        <1>     jz .badFmtErr
+   268 00006075 3D70000000          <1>     cmp eax, imageFileOptionalHeader_size
+   269 0000607A 0F82B5040000        <1>     jb .badFmtErr
+   270                              <1>     ;Now File Ptr points to data dirs, not an issue
+   271 00006080 81459070000000      <1>     add dword [rbp - execFrame.dFilePtr], imageFileOptionalHeader_size
+   272                              <1>     ;We load the program in, one section at a time, reading section headers in
+   273                              <1>     ; one at a time to the section header internal buffer.
+   274 00006087 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   275 0000608F 7463                <1>     je .exeOvlySkipAlloc    ;DONT allocate memory if loading an overlay
+   276 00006091 8B1D(56050000)      <1>     mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfImage]
+   277 00006097 488B05(6E050000)    <1>     mov rax, qword [exeHdrSpace + imageFileOptionalHeader.qSizeOfStackCommit]
+   278 0000609E 4885C0              <1>     test rax, rax
+   279 000060A1 750A                <1>     jnz .notDefaultStackAlloc
+   280 000060A3 48B800000400000000- <1>     mov rax, 40000h ;256Kb stack default
+   280 000060AC 00                  <1>
+   281                              <1> .notDefaultStackAlloc:
+   282 000060AD 01C3                <1>     add ebx, eax    ;Add stack allocation
+   283 000060AF 81C300010000        <1>     add ebx, psp_size   ;Add space for the PSP to the allocation too
+   284                              <1>     ;Add also one section alignment as it is likely that our arena won't be 
+   285                              <1>     ; section aligned and so we will need to align before reading, to 
+   286                              <1>     ; guaranee that we will have space for the EXE header to be read in later.
+   287 000060B5 031D(3E050000)      <1>     add ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+   288 000060BB 895DB8              <1>     mov dword [rbp - execFrame.dProgSize], ebx  ;Save the program size
+   289 000060BE 81C311000000        <1>     add ebx, 11h
+   290 000060C4 C1EB04              <1>     shr ebx, 4  ;Turn into paragraphs
+   291 000060C7 55                  <1>     push rbp
+   292 000060C8 E8EAF5FFFF          <1>     call allocateMemory ;Get in rax, ptr to memory block
+   293 000060CD 5D                  <1>     pop rbp
+   294 000060CE 0F82A6FEFFFF        <1>     jc .insufficientMemory  ;Unless not enough, sorry buddy!
+   295 000060D4 488945C8            <1>     mov qword [rbp - execFrame.pPSPBase], rax  ;Save ptr here, psp will go here
+   296 000060D8 480500010000        <1>     add rax, psp_size
+   297 000060DE 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax  ;First byte of exe hdr goes here
+   298                              <1>     ;Finally, just check that we have some code to execute. 
+   299                              <1>     ;Empty code sections are NOT allowed if executing. Only for overlays
+   300 000060E2 813D(22050000)0000- <1>     cmp dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfCode], 0
+   300 000060EA 0000                <1>
+   301 000060EC 0F8443040000        <1>     je .badFmtErr   ;If no bytes, exit error
+   302 000060F2 EB0B                <1>     jmp short .exeProceed1
+   303                              <1> .exeOvlySkipAlloc:
+   304 000060F4 488B5DE0            <1>     mov rbx, qword [rbp - execFrame.pParam]
+   305 000060F8 488B03              <1>     mov rax, qword [rbx + loadOvly.pLoadLoc]    ;Get the load addr
+   306 000060FB 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
+   307                              <1> .exeProceed1:
+   308                              <1> ;===========================================================================
+   309                              <1>     ;The below blocks are being kept because they can be turned on later
+   310                              <1>     ; to change this exe loader to force section alignment of the 
+   311                              <1>     ; base load address. It appears there is no need to enforce that the 
+   312                              <1>     ; base load address be section aligned, but individual sections need
+   313                              <1>     ; to adhere to the section alignment requirements thereafter. 
+   314                              <1>     ;Finally, the pProgBase gets rescaled so that the first byte of the 
+   315                              <1>     ; first section gets places at the load address and not at some
+   316                              <1>     ; offset from it (as is usually the case, offset 1000h).
+   317                              <1> ;===========================================================================
+   318                              <1>     ;=======================================================================
+   319                              <1>     ;Now we align the progBase to full header size aligned to the next page
+   320                              <1>     ;mov ebx, dword [exeHdrSpace + imageFileOptionalHeader.dSizeOfHeaders]
+   321                              <1>     ;add rax, rbx    ;Add this offset where the header should go in future
+   322                              <1>     ;=======================================================================
+   323                              <1>     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+   324                              <1>     ;It appears that the load address does NOT need to be aligned at all xD
+   325                              <1>     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+   326                              <1>     ;Now we section pad. Once aligned, that is the program base address!
+   327                              <1>     ;push rax
+   328                              <1>     ;mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+   329                              <1>     ;dec ecx ;Turn into a mask
+   330                              <1>     ;and rax, rcx    ;Compute ptr modulo mask
+   331                              <1>     ;inc ecx
+   332                              <1>     ;sub rcx, rax
+   333                              <1>     ;pop rdi
+   334                              <1>     ;xor eax, eax
+   335                              <1>     ;rep stosb
+   336                              <1>     ;mov qword [rbp - execFrame.pProgBase], rdi
+   337                              <1>     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+   338                              <1> 
+   339                              <1>     ;So now copy one section at a time, read section header in
+   340                              <1>     ;File pointer points to the directory table, so skip that
+   341 000060FF 8B15(8A050000)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+   342                              <1>     ;Load however many directories we have into place
+   343                              <1>     ;Each directory is 8 bytes, so multiply edx by 8
+   344 00006105 C1E203              <1>     shl edx, 3  ;edx has number of bytes to move file pointer forwards by
+   345 00006108 31C9                <1>     xor ecx, ecx
+   346 0000610A 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   347 0000610E B001                <1>     mov al, 1   ;Move handle forwards from current position
+   348 00006110 E82CD7FFFF          <1>     call lseekHdl   ;Move the handle forwards by that many bytes
+   349                              <1>     ;eax has pointer location after adjustment
+   350 00006115 894590              <1>     mov dword [rbp - execFrame.dFilePtr], eax   ;We have moved to section table
+   351                              <1>     ;File now points to start of Section headers. Read first header in.
+   352                              <1>     ;USE ECX AS COUNTER FOR HEADERS LEFT TO PROCESS
+   353 00006118 488B7DC0            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Move prog base in rdi
+   354 0000611C 0FB74D98            <1>     movzx ecx, word [rbp - execFrame.wNumSeg]   ;Get number of segments in ecx
+   355 00006120 31F6                <1>     xor esi, esi    ;Use as an indicator for the first data segment. 
+   356 00006122 488975A8            <1>     mov qword [rbp - execFrame.bSegCount], rsi  ;Clear the segment counter
+   357                              <1> .loadLp:
+   358 00006126 51                  <1>     push rcx    ;Save # of segments left on stack
+   359 00006127 57                  <1>     push rdi    ;Save the current buffer ptr here
+   360 00006128 B928000000          <1>     mov ecx, imageSectionHdr_size
+   361 0000612D 488D15(9E050000)    <1>     lea rdx, sectHdr    ;Read section headers here
+   362 00006134 E81D040000          <1>     call .readDataFromHdl
+   363 00006139 5F                  <1>     pop rdi
+   364 0000613A 59                  <1>     pop rcx
+   365 0000613B 85C0                <1>     test eax, eax
+   366 0000613D 0F84F2030000        <1>     jz .badFmtErr
+   367 00006143 3D28000000          <1>     cmp eax, imageSectionHdr_size
+   368 00006148 0F85E7030000        <1>     jne .badFmtErr
+   369                              <1>     ;File ptr moved forwards to next section header
+   370 0000614E 81459028000000      <1>     add dword [rbp - execFrame.dFilePtr], imageSectionHdr_size
+   371                              <1>     ;Section header read, now we load section into memory
+   372                              <1>     ;Move file ptr to data location
+   373 00006155 8B15(B2050000)      <1>     mov edx, dword [sectHdr + imageSectionHdr.dPointerToRawData] ;Data File ptr
+   374 0000615B 85D2                <1>     test edx, edx
+   375 0000615D 744B                <1>     jz short .skipRawPtrMove
+   376 0000615F 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get the handle
+   377 00006163 31C0                <1>     xor eax, eax    ;Seek from start of file
+   378 00006165 51                  <1>     push rcx
+   379 00006166 57                  <1>     push rdi
+   380 00006167 E8D5D6FFFF          <1>     call lseekHdl
+   381 0000616C 5F                  <1>     pop rdi
+   382 0000616D 59                  <1>     pop rcx
+   383                              <1>     ;Is this a overlay load?
+   384 0000616E 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   385 00006176 7532                <1>     jne short .skipRawPtrMove
+   386                              <1>     ;Here we rescale to put the first byte at pLoadLoc and use the 
+   387                              <1>     ; rescale value against RelocFct to compute the qRelocVal for later
+   388                              <1>     ;Is this is the first segment with data being read into memory?
+   389 00006178 48FF45A8            <1>     inc qword [rbp - execFrame.bSegCount]
+   390 0000617C 48817DA801000000    <1>     cmp qword [rbp - execFrame.bSegCount], 1 
+   391 00006184 7524                <1>     jne short .skipRawPtrMove   ;If not, skip
+   392                              <1>     ;Now rebase the program to point the first byte of the first
+   393                              <1>     ; section at the ProgBase.
+   394 00006186 51                  <1>     push rcx
+   395 00006187 57                  <1>     push rdi
+   396 00006188 488B7DC0            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Get the load address
+   397 0000618C 8B0D(AA050000)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualAddress]
+   398 00006192 4829CF              <1>     sub rdi, rcx    ;Rebase by offset of the first section
+   399 00006195 48897DC0            <1>     mov qword [rbp - execFrame.pProgBase], rdi 
+   400 00006199 488B7DE0            <1>     mov rdi, qword [rbp - execFrame.pParam]
+   401 0000619D 488B7F08            <1>     mov rdi, qword [rdi + loadOvly.qRelocFct]   ;Get the reload factor
+   402 000061A1 4829CF              <1>     sub rdi, rcx    ;Now rescale the relocation factor by the same amount
+   403 000061A4 48897D88            <1>     mov qword [rbp - execFrame.qRelocVal], rdi  ;Now store this value for later
+   404 000061A8 5F                  <1>     pop rdi
+   405 000061A9 59                  <1>     pop rcx
+   406                              <1> .skipRawPtrMove:
+   407 000061AA 51                  <1>     push rcx
+   408 000061AB 31FF                <1>     xor edi, edi
+   409 000061AD 8B3D(AA050000)      <1>     mov edi, dword [sectHdr + imageSectionHdr.dVirtualAddress]  ;Get where it should go in memory, offset from image base
+   410 000061B3 48037DC0            <1>     add rdi, qword [rbp - execFrame.pProgBase]  ;Turn into offset from progbase
+   411                              <1>     ;If a section has a virtual address outside of the allocation arena
+   412                              <1>     ; refuse to load it IF it contains no BSS, Data or Code and skip to the 
+   413                              <1>     ; next section.
+   414 000061B7 488B55C8            <1>     mov rdx, qword [rbp - execFrame.pPSPBase]
+   415 000061BB 4885D2              <1>     test rdx, rdx   ;If this is 0 (as in the case of overlay)...
+   416 000061BE 7432                <1>     jz short .okToLoad  ;skip this as it is assumed there is enough space!
+   417 000061C0 4881EA10000000      <1>     sub rdx, mcb_size   ;Go back a unit of mcb
+   418 000061C7 31C9                <1>     xor ecx, ecx
+   419 000061C9 8B4A09              <1>     mov ecx, dword [rdx + mcb.blockSize]
+   420 000061CC 48C1E104            <1>     shl rcx, 4  ;Convert to bytes (multiply by 16)
+   421 000061D0 4881C210000000      <1>     add rdx, mcb_size   ;Go to the first byte of the mcb
+   422 000061D7 4801CA              <1>     add rdx, rcx    ;Now rdx points to the first byte outside the arena
+   423 000061DA 4839FA              <1>     cmp rdx, rdi    ;If rdx > rdi, we are ok
+   424 000061DD 7713                <1>     ja short .okToLoad
+   425                              <1>     ;Now check if this is a useless section. If so, we don't load it at all
+   426                              <1> 
+   427                              <1>     ;V-0000000000-EARMARK FOR REMOVAL-0000000000-V
+   428 000061DF F705(C2050000)E000- <1>     test dword [sectHdr + imageSectionHdr.dCharacteristics], imgScnCntBSS | imgScnCntCode | imgScnCntData
+   428 000061E7 0000                <1>
+   429 000061E9 0F8546030000        <1>     jnz .badFmtErr  ;If any of these bits set, error out
+   430                              <1>     ;^-0000000000-EARMARK FOR REMOVAL-0000000000-^
+   431                              <1> 
+   432                              <1>     ;Else, just skip this section, goto next section
+   433 000061EF 59                  <1>     pop rcx
+   434 000061F0 EB3F                <1>     jmp short .gotoNextSection
+   435                              <1> .okToLoad:
+   436 000061F2 8B0D(A6050000)      <1>     mov ecx, dword [sectHdr + imageSectionHdr.dVirtualSize]   ;Get # of bytes to read
+   437 000061F8 4889FA              <1>     mov rdx, rdi    ;Get ptr to buffer in rdx
+   438 000061FB 57                  <1>     push rdi    ;Save section in memory locally
+   439 000061FC E855030000          <1>     call .readDataFromHdl
+   440 00006201 5F                  <1>     pop rdi
+   441 00006202 59                  <1>     pop rcx     ; Matches push after skipRawPtrMove
+   442 00006203 0F822C030000        <1>     jc .badFmtErr
+   443                              <1>     ;Don't check for a zero section read as empty sections may be present!
+   444 00006209 3B05(A6050000)      <1>     cmp eax, dword [sectHdr + imageSectionHdr.dVirtualSize]
+   445 0000620F 0F8520030000        <1>     jne .badFmtErr
+   446                              <1>     ;Data read ok, now fill in any zeros needed
+   447 00006215 4801C7              <1>     add rdi, rax    ;Move rdi forwards by that amount at least
+   448                              <1> 
+   449 00006218 51                  <1>     push rcx
+   450                              <1>     ;Here do section padding
+   451 00006219 4889F8              <1>     mov rax, rdi    ;Get the current address
+   452 0000621C 8B0D(3E050000)      <1>     mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+   453 00006222 FFC9                <1>     dec ecx ;Turn into a mask
+   454 00006224 4821C8              <1>     and rax, rcx    ;Compute ptr modulo mask
+   455 00006227 FFC1                <1>     inc ecx
+   456 00006229 4829C1              <1>     sub rcx, rax
+   457 0000622C 31C0                <1>     xor eax, eax
+   458 0000622E F3AA                <1>     rep stosb
+   459 00006230 59                  <1>     pop rcx
+   460                              <1> .gotoNextSection:
+   461 00006231 FFC9                <1>     dec ecx ;Decrement our section counter
+   462 00006233 7419                <1>     jz short .doExeFixups
+   463                              <1>     ;Read next section header in here
+   464 00006235 51                  <1>     push rcx
+   465 00006236 57                  <1>     push rdi
+   466 00006237 30C0                <1>     xor al, al  ;Move rel start of file
+   467 00006239 8B5590              <1>     mov edx, dword [rbp - execFrame.dFilePtr]
+   468 0000623C 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl] ;Get the file handle
+   469 00006240 31C9                <1>     xor ecx, ecx
+   470 00006242 E8FAD5FFFF          <1>     call lseekHdl
+   471 00006247 5F                  <1>     pop rdi
+   472 00006248 59                  <1>     pop rcx
+   473 00006249 E9D8FEFFFF          <1>     jmp .loadLp
+   474                              <1> .doExeFixups:
+   475                              <1> ;Here we fixup addresses if needed
+   476                              <1> ;If the program is loaded at its desired location never need to relocate.
+   477                              <1> ;Else we need to have a .reloc section to see if we need to do relocations. 
+   478                              <1> ;   If the program has had it's .reloc section stripped by the linker
+   479                              <1> ;       or has no .reloc directory, we fail
+   480                              <1> ;   Else, we read the .reloc directory in. It most likely will have no 
+   481                              <1> ;       relocations anyway.
+   482                              <1> 
+   483                              <1> ;If program base = desired load, skip relocs
+   484 0000624E 488B55C0            <1>     mov rdx, qword [rbp - execFrame.pProgBase]
+   485 00006252 483B15(36050000)    <1>     cmp rdx, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
+   486 00006259 0F84CA000000        <1>     je .exeComplete
+   487                              <1> ;If program has had relocs stripped, fail
+   488 0000625F 0FB745A0            <1>     movzx eax, word [rbp - execFrame.wCOFFChars]
+   489 00006263 66A90100            <1>     test ax, imageFileRelocsStripped
+   490 00006267 0F85C8020000        <1>     jnz .badFmtErr
+   491                              <1> ;If program has no .reloc section, fail
+   492 0000626D 8B15(8A050000)      <1>     mov edx, dword [exeHdrSpace + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+   493 00006273 81FA06000000        <1>     cmp edx, 6  ;Does .reloc exist (6th directory entry)
+   494 00006279 0F82B6020000        <1>     jb .badFmtErr ;Need relocs but no .reloc directory exists
+   495                              <1> ;Now we get the reloc section
+   496 0000627F 8B55B0              <1>     mov edx, dword [rbp - execFrame.dCOFFhdr]
+   497 00006282 81C2B0000000        <1>     add edx, imageFileHeader_size + imageFileOptionalHeader_size + 5*8
+   498                              <1>     ;eax now points to position in file of directory entry for reloc
+   499 00006288 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]  ;Get handle in bx
+   500 0000628C 31C0                <1>     xor eax, eax
+   501 0000628E E8AED5FFFF          <1>     call lseekHdl   ;Move handle there in file
+   502 00006293 894590              <1>     mov dword [rbp - execFrame.dFilePtr], eax   ;Save table offset here
+   503 00006296 B908000000          <1>     mov ecx, imageDataDirectory_size
+   504                              <1>     ;Read 8 bytes into sectHdr space
+   505 0000629B 488D15(9E050000)    <1>     lea rdx, sectHdr
+   506 000062A2 E8AF020000          <1>     call .readDataFromHdl   ;Read this directory entry in
+   507 000062A7 85C0                <1>     test eax, eax
+   508 000062A9 0F8486020000        <1>     jz .badFmtErr
+   509 000062AF 39C8                <1>     cmp eax, ecx
+   510 000062B1 0F857E020000        <1>     jne .badFmtErr
+   511                              <1>     ;Now we have the offset in memory if the file was loaded at imageBase
+   512 000062B7 8B35(9E050000)      <1>     mov esi, dword [sectHdr + imageDataDirectory.virtualAddress]
+   513 000062BD 85F6                <1>     test esi, esi   ;If there are no relocations, skip this...
+   514 000062BF 7468                <1>     jz .exeComplete   ;... including if overlay
+   515 000062C1 480375C0            <1>     add rsi, qword [rbp - execFrame.pProgBase]
+   516                              <1>     ;Now rsi points to where in memory the relocation data table is
+   517                              <1>     ;Now compute the relocation factor =
+   518                              <1>     ;   Difference from the load address and prefered
+   519 000062C5 488B45C0            <1>     mov rax, qword [rbp - execFrame.pProgBase]
+   520 000062C9 482B05(36050000)    <1>     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase] 
+   521 000062D0 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   522 000062D8 750F                <1>     jne short .notOverlayReloc
+   523                              <1>     ;For overlays, we use the relocation factor as the base of computation.
+   524                              <1>     ;Thus now the relocation factor becomes the ProgBase.
+   525                              <1>     ;This should be the same as ProgBase anyway for overlays.
+   526 000062DA 488B4588            <1>     mov rax, qword [rbp - execFrame.qRelocVal]   ;Get the overlay reloc factor
+   527 000062DE 482B05(36050000)    <1>     sub rax, qword [exeHdrSpace + imageFileOptionalHeader.qImageBase]
+   528                              <1>     ;Store this as the overlay program base
+   529 000062E5 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
+   530                              <1> .notOverlayReloc:
+   531 000062E9 4889C3              <1>     mov rbx, rax    ;Save this relocation factor in rbx
+   532                              <1>     ;rsi points to relocation data table in memory
+   533 000062EC 8B0D(A2050000)      <1>     mov ecx, dword [sectHdr + imageDataDirectory.size]  ;Get number of words
+   534 000062F2 85C9                <1>     test ecx, ecx    ;If no relocations, skip
+   535 000062F4 7433                <1>     jz .exeComplete
+   536                              <1>     ;rsi points to the first base relocation block. The relocations begin
+   537                              <1>     ; after the first block
+   538                              <1>     ;ecx has the number of base relocation blocks to process.
+   539                              <1> .nextBlock:
+   540 000062F6 51                  <1>     push rcx    ;Reuse rcx as a counter for the current page
+   541 000062F7 8B06                <1>     mov eax, dword [rsi + baseRelocBlock.pageRVA]   ;Get the page rva
+   542 000062F9 488B7DC0            <1>     mov rdi, qword [rbp - execFrame.pProgBase]  ;Point to start of program
+   543 000062FD 4801C7              <1>     add rdi, rax    ;Add this page offset to rdi to goto correct page for reloc
+   544 00006300 8B4E04              <1>     mov ecx, dword [rsi + baseRelocBlock.size]  ;Get number of bytes in block
+   545 00006303 67E31E              <1>     jecxz .blockDone    
+   546 00006306 81E908000000        <1>     sub ecx, 8
+   547 0000630C 4881C608000000      <1>     add rsi, 8  ;Go to the start of the directory data
+   548 00006313 D1E9                <1>     shr ecx, 1  ;Get number of directories = # of relocs to do
+   549                              <1> .blockNotDone:
+   550 00006315 66AD                <1>     lodsw   ;Get the next page offset word
+   551 00006317 25FF0F0000          <1>     and eax, 00000FFFh  ;Save bottom 12 bits
+   552                              <1>     ;rdi points to base, rax give offset into 4Kb page
+   553 0000631C 48011C07            <1>     add qword [rdi + rax], rbx    ;Relocation factor was saved in rbx
+   554 00006320 FFC9                <1>     dec ecx
+   555 00006322 75F1                <1>     jnz .blockNotDone
+   556                              <1> .blockDone:
+   557 00006324 59                  <1>     pop rcx
+   558 00006325 FFC9                <1>     dec ecx
+   559 00006327 75CD                <1>     jnz .nextBlock
+   560                              <1> .exeComplete:
+   561 00006329 8B05(2E050000)      <1>     mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dAddressOfEntryPoint]
+   562                              <1>     ;Now get EP relative to the (rescaled) load address.
+   563 0000632F 480345C0            <1>     add rax, qword [rbp - execFrame.pProgBase]
+   564 00006333 48894598            <1>     mov qword [rbp - execFrame.pProgEP], rax
+   565 00006337 FF15(AF000000)      <1>     call qword [registerDLL]    ;Now we register the DLL and any import/exports
+   566 0000633D 0F82F2010000        <1>     jc .badFmtErr   ;If this errors out for some reason, quit loading EXE
+   567 00006343 E9CC000000          <1>     jmp .buildChildPSP
+   568                              <1> .loadCom:
+   569                              <1>     ;File is open here, so just read the file into memory. 
+   570                              <1>     ;The file cannot exceed 64Kb in size.
+   571                              <1>     ;Allocate 64Kb of memory, or as much as we can
+   572 00006348 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   573 00006350 745C                <1>     je .comOverlay
+   574 00006352 BBF0FF0000          <1>     mov ebx, 0FFF0h ;64Kb - 16 bytes, give me FFF0h bytes
+   575 00006357 895DB8              <1>     mov dword [rbp - execFrame.dProgSize], ebx
+   576 0000635A C1EB04              <1>     shr ebx, 4      ;Convert to paragraphs
+   577 0000635D 55                  <1>     push rbp
+   578 0000635E E854F3FFFF          <1>     call allocateMemory
+   579 00006363 5D                  <1>     pop rbp
+   580 00006364 7355                <1>     jnc .comallocOk
+   581 00006366 3C08                <1>     cmp al, errNoMem
+   582 00006368 0F85CC010000        <1>     jne .cleanAndFail   ;Propagate the proper error if not a lack of memory
+   583                              <1>     ;rbx should have the amount available in paragraphs
+   584 0000636E 09DB                <1>     or ebx, ebx ;Clear the upper dword
+   585 00006370 48C1E304            <1>     shl rbx, 4
+   586                              <1>     ;We check if this value is psp_size more than filesize
+   587 00006374 53                  <1>     push rbx    ;Save new minimum size
+   588 00006375 B802000000          <1>     mov eax, 2    ;Reposition to end of file
+   589 0000637A 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   590 0000637E 31D2                <1>     xor edx, edx    ;Go to end of file
+   591 00006380 E8BCD4FFFF          <1>     call lseekHdl
+   592                              <1>     ;eax has file size
+   593 00006385 5B                  <1>     pop rbx ;Get back max alloc size
+   594 00006386 89DA                <1>     mov edx, ebx    ;Save in max alloc in edx temporarily
+   595 00006388 29C2                <1>     sub edx, eax
+   596 0000638A 81FA00010000        <1>     cmp edx, psp_size   ;If filesize - memory space is < psp_size...
+   597 00006390 0F82E4FBFFFF        <1>     jb .insufficientMemory   ;Fail
+   598 00006396 895DB8              <1>     mov dword [rbp - execFrame.dProgSize], ebx  ;Store progsize
+   599 00006399 C1EB04              <1>     shr ebx, 4  ;Convert to paragraphs
+   600 0000639C 55                  <1>     push rbp
+   601 0000639D E815F3FFFF          <1>     call allocateMemory
+   602 000063A2 5D                  <1>     pop rbp
+   603 000063A3 0F8291010000        <1>     jc .cleanAndFail
+   604 000063A9 E90D000000          <1>     jmp .comallocOk
+   605                              <1> .comOverlay:
+   606                              <1>     ;Here we simply read the file into the buffer provided
+   607 000063AE 488B5DE0            <1>     mov rbx, qword [rbp - execFrame.pParam]
+   608 000063B2 488B03              <1>     mov rax, qword [rbx + loadOvly.pLoadLoc]
+   609 000063B5 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
+   610 000063B9 EB0A                <1>     jmp short .comRead
+   611                              <1> .comallocOk:
+   612                              <1>     ;rax should point to the first byte
+   613 000063BB 488945C8            <1>     mov qword [rbp - execFrame.pPSPBase], rax
+   614 000063BF 480500010000        <1>     add rax, psp_size
+   615                              <1> .comRead:
+   616 000063C5 488945C0            <1>     mov qword [rbp - execFrame.pProgBase], rax
+   617                              <1> 
+   618 000063C9 B802000000          <1>     mov eax, 2    ;Reposition to end of file
+   619 000063CE 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   620 000063D2 31D2                <1>     xor edx, edx    ;Go to end of file
+   621 000063D4 E868D4FFFF          <1>     call lseekHdl
+   622                              <1>     ;eax has filesize now
+   623 000063D9 50                  <1>     push rax    ;Save filesize
+   624 000063DA 31C0                <1>     xor eax, eax    ;Reposition to start of file
+   625 000063DC 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   626 000063E0 31D2                <1>     xor edx, edx    ;Go to start of file
+   627 000063E2 E85AD4FFFF          <1>     call lseekHdl
+   628 000063E7 59                  <1>     pop rcx ;Get the filesize in rcx (# of bytes to read)
+   629 000063E8 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   630 000063F0 7411                <1>     je .comOverlay2
+   631                              <1>     ;Now we check if the space we have available is sufficient to load
+   632                              <1>     ; the program. Skipped if an overlay being loaded
+   633                              <1>     ;ecx = # File size
+   634 000063F2 8B55B8              <1>     mov edx, dword [rbp - execFrame.dProgSize]  ;Get the alloc space size
+   635 000063F5 81EA00010000        <1>     sub edx, psp_size
+   636 000063FB 39CA                <1>     cmp edx, ecx    ;Do we have space for the PSP and program?
+   637 000063FD 0F8277FBFFFF        <1>     jb .insufficientMemory
+   638                              <1> .comOverlay2:
+   639 00006403 488B55C0            <1>     mov rdx, qword [rbp - execFrame.pProgBase]  ;Buffer to read into
+   640 00006407 E84A010000          <1>     call .readDataFromHdl   ;Read from the file handle
+   641 0000640C 488B45C0            <1>     mov rax, qword [rbp - execFrame.pProgBase]
+   642 00006410 48894598            <1>     mov qword [rbp - execFrame.pProgEP], rax
+   643                              <1> .buildChildPSP:
+   644                              <1>     ;We can close handle now
+   645 00006414 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   646 00006418 55                  <1>     push rbp
+   647 00006419 E839D3FFFF          <1>     call closeFileHdl   ;Close the file
+   648 0000641E 5D                  <1>     pop rbp
+   649                              <1> 
+   650                              <1>     ;Only build a PSP if not in overlay mode. If in overlay mode skip
+   651 0000641F 48817DF803000000    <1>     cmp qword [rbp - execFrame.bSubFunc], execOverlay
+   652 00006427 0F84E5000000        <1>     je .overlayExit
+   653                              <1>     ;Now build the PSP
+   654 0000642D 8B75B8              <1>     mov esi, dword [rbp - execFrame.dProgSize]
+   655 00006430 488B55C8            <1>     mov rdx, qword [rbp - execFrame.pPSPBase]
+   656 00006434 52                  <1>     push rdx
+   657 00006435 55                  <1>     push rbp
+   658 00006436 E8DCF7FFFF          <1>     call createPSP
+   659 0000643B 5D                  <1>     pop rbp
+   660 0000643C 5A                  <1>     pop rdx
+   661                              <1> 
+   662                              <1> ;Now copy the environment block ptr over. 
+   663                              <1> ;Stores the null ptr that is our pointer (special init case)
+   664 0000643D 488B5DD0            <1>     mov rbx, qword [rbp - execFrame.pEnvBase]
+   665                              <1> ;    test rbx, rbx
+   666                              <1> ;    jz short .skipEnvCopy
+   667 00006441 48895A3E            <1>     mov qword [rdx + psp.envPtr], rbx
+   668                              <1> ;.skipEnvCopy:
+   669                              <1>     ;Now set Current PSP to our PSP and set current DTA to command line
+   670 00006445 488915(1F040000)    <1>     mov qword [currentPSP], rdx
+   671 0000644C E8C9130000          <1>     call dosCrit1Enter
+   672 00006451 E827010000          <1>     call .setPSPArenaOwner  ;Set the new PSP as the owner of the arenas 
+   673                              <1> 
+   674 00006456 488DBA80000000      <1>     lea rdi, qword [rdx + psp.dta] ;Point to default dta...
+   675 0000645D 48893D(17040000)    <1>     mov qword [currentDTA], rdi ;and set it!
+   676                              <1> 
+   677                              <1>     ;Now We need to copy over the command line and fcbs to the PSP
+   678                              <1>     ; and set FS to point to the PSP
+   679 00006464 488B5DE0            <1>     mov rbx, qword [rbp - execFrame.pParam] ;Get the paramter block ptr in rbx
+   680                              <1> 
+   681 00006468 488D7A5C            <1>     lea rdi, qword [rdx + psp.fcb1]
+   682 0000646C B925000000          <1>     mov ecx, fcb_size
+   683 00006471 488B7310            <1>     mov rsi, qword [rbx + execProg.pfcb1]
+   684 00006475 8A06                <1>     mov al, byte [rsi + fcb.driveNum]   ;Get FCB1's drive number in al
+   685 00006477 F3A4                <1>     rep movsb   ;Copy fcb 1 over
+   686 00006479 488D7A6C            <1>     lea rdi, qword [rdx + psp.fcb2]
+   687 0000647D B925000000          <1>     mov ecx, fcb_size
+   688 00006482 488B7318            <1>     mov rsi, qword [rbx + execProg.pfcb2]
+   689 00006486 8A26                <1>     mov ah, byte [rsi + fcb.driveNum]   ;Get FCB2's drive number in ah
+   690 00006488 F3A4                <1>     rep movsb   ;Copy fcb 2 over
+   691 0000648A 488B7308            <1>     mov rsi, qword [rbx + execProg.pCmdLine]
+   692 0000648E 488DBA80000000      <1>     lea rdi, qword [rdx + psp.dta]
+   693 00006495 B980000000          <1>     mov ecx, 80h
+   694 0000649A F3A4                <1>     rep movsb   ;Copy the command line over (terminated by 0Dh)
+   695                              <1> 
+   696 0000649C 89C3                <1>     mov ebx, eax  ;Save the fcb drive numbers in bx
+   697 0000649E 4889D7              <1>     mov rdi, rdx  ;Point RDI to PSP
+   698                              <1> 
+   699                              <1>     ;Check FCB drive numbers are valid. Return FFh if not
+   700 000064A1 88D8                <1>     mov al, bl
+   701 000064A3 30DB                <1>     xor bl, bl
+   702 000064A5 E8020F0000          <1>     call getCDSNotJoin
+   703 000064AA 7302                <1>     jnc .drive1Ok
+   704 000064AC B3FF                <1>     mov bl, -1
+   705                              <1> .drive1Ok:
+   706 000064AE 88F8                <1>     mov al, bh
+   707 000064B0 30FF                <1>     xor bh, bh
+   708 000064B2 E8F50E0000          <1>     call getCDSNotJoin
+   709 000064B7 7302                <1>     jnc .drive2Ok
+   710 000064B9 B7FF                <1>     mov bh, -1
+   711                              <1> .drive2Ok:
+   712                              <1>     ;bx has validity flags for the two fcb drives, undocumented!!
+   713                              <1>     ;rdi has pointer to psp
+   714 000064BB 8B75B8              <1>     mov esi, dword [rbp - execFrame.dProgSize]  ;Get program size
+   715                              <1>     ;Add psp base (rdi) to prog size to get the last byte of the allocation
+   716 000064BE 488D743EF8          <1>     lea rsi, qword [rsi + rdi - 8]    ;Get new rsp in rsi (last qword of alloc)
+   717 000064C3 48B8F8FFFFFFFFFFFF- <1>     mov rax, ~7     ;Clear the bottom 3 bits
+   717 000064CC FF                  <1>
+   718 000064CD 4821C6              <1>     and rsi, rax    ;To align downwards
+   719                              <1>     ;We align stack to qword. x64 ABI requires paragraph alignment.
+   720                              <1>     ;That is the job of the runtime to handle.
+   721                              <1> ;Registers carrying data at this point:
+   722                              <1> ;bx = FCB drive statuses
+   723                              <1> ;rsi = Stack Base
+   724                              <1> ;rbp = execFrame
+   725 000064D0 807DF804            <1>     cmp byte [rbp - execFrame.bSubFunc], execBkgrnd
+   726 000064D4 750B                <1>     jne short .noBg
+   727                              <1>     ;Get termination mode in ecx before xfring control to dosmgr
+   728 000064D6 56                  <1>     push rsi
+   729 000064D7 E8AC0E0000          <1>     call getUserRegs
+   730 000064DC 488B4E10            <1>     mov rcx, qword [rsi + callerFrame.rcx]  ;Get termination mode
+   731 000064E0 5E                  <1>     pop rsi
+   732                              <1> .noBg:
+   733 000064E1 FF15(9F000000)      <1>     call qword [launchTask]
+   734 000064E7 7251                <1>     jc short .cleanAndFail
+   735                              <1> ;Final step: Transfer control
+   736 000064E9 807DF800            <1>     cmp byte [rbp - execFrame.bSubFunc], execLoadGo
+   737 000064ED 742C                <1>     je .xfrProgram
+   738 000064EF 807DF804            <1>     cmp byte [rbp - execFrame.bSubFunc], execBkgrnd
+   739 000064F3 741D                <1>     je .overlayExit ;Skip the below for background tasks
+   740 000064F5 488B4598            <1>     mov rax, qword [rbp - execFrame.pProgEP]
+   741 000064F9 488B55E0            <1>     mov rdx, qword [rbp - execFrame.pParam]
+   742 000064FD 48894228            <1>     mov qword [rdx + loadProg.initRIP], rax
+   743 00006501 0FB7C3              <1>     movzx eax, bx   ;Return fcb drive status
+   744 00006504 4881EE08000000      <1>     sub rsi, 8  ;Now go down one so that we can pop the AX value from the stack
+   745 0000650B 488906              <1>     mov qword [rsi], rax    ;Store the FCB status on the top of stack for AH=01h
+   746 0000650E 48897220            <1>     mov qword [rdx + loadProg.initRSP], rsi
+   747                              <1> .overlayExit:
+   748 00006512 4889EC              <1>     mov rsp, rbp    ;Reset the stack to its position
+   749 00006515 5D                  <1>     pop rbp ;Point rsp to the return address
+   750 00006516 E93C130000          <1>     jmp extGoodExit ;And return!
+   751                              <1> .xfrProgram:
+   752 0000651B FA                  <1>     cli
+   753 0000651C 4889F4              <1>     mov rsp, rsi    ;Set rsp to initRSP value
+   754 0000651F C605(08040000)00    <1>     mov byte [inDOS], 0 ;Clear all inDosnessness
+   755 00006526 FB                  <1>     sti
+   756                              <1> 
+   757 00006527 57                  <1>     push rdi    ;Push &psp[0] onto the stack to allow for ret exit
+   758 00006528 FF7598              <1>     push qword [rbp - execFrame.pProgEP]
+   759 0000652B 4989F8              <1>     mov r8, rdi ;Move psp base into r8 and r9
+   760 0000652E 4989F9              <1>     mov r9, rdi
+   761 00006531 0FB7C3              <1>     movzx eax, bx   ;ax must contain validity of the two FCB drives
+   762                              <1>     return  ;Return to child task
     13                              <2> %%_ret:
     14 00006534 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   764                              <1> ;r8 is guaranteed to have a copy of the PSP.
-   765                              <1> ;ax is guaranteed to have the validity signatures in AH and AL.
-   766                              <1> ;Everything else is optional and potentially changable at a later stage
-   767                              <1> 
-   768                              <1> .badFmtErr:
-   769 00006535 B80B000000          <1>     mov eax, errBadFmt  ;Fall thru with bad resource format error
-   770                              <1> .cleanAndFail:
-   771                              <1> ;Close the open file and any open resources and fail
-   772 0000653A E82F000000          <1>     call .clearArenaOwner   ;Enters level 1 critical section
-   773 0000653F E8E0120000          <1>     call dosCrit1Exit
-   774 00006544 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   775 00006548 50                  <1>     push rax    ;Save error code
-   776 00006549 55                  <1>     push rbp
-   777 0000654A E808D2FFFF          <1>     call closeFileHdl
-   778 0000654F 5D                  <1>     pop rbp
-   779 00006550 58                  <1>     pop rax
-   780 00006551 E96BF9FFFF          <1>     jmp .badExit
-   781                              <1> 
-   782                              <1> .readDataFromHdl:
-   783                              <1> ;Input: ecx = Number of bytes to transfer
-   784                              <1> ;       rdx = Ptr to the buffer to use
-   785 00006556 52                  <1>     push rdx
-   786 00006557 E812000000          <1>     call .clearArenaOwner   ;Entering critical section!
-   787 0000655C 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
-   788 00006560 55                  <1>     push rbp
-   789 00006561 E82FD2FFFF          <1>     call readFileHdl
-   790 00006566 5D                  <1>     pop rbp
-   791 00006567 E811000000          <1>     call .setPSPArenaOwner  ;Exiting critical section!
-   792 0000656C 5A                  <1>     pop rdx
-   793                              <1>     return
+   763                              <1> ;r8 is guaranteed to have a copy of the PSP.
+   764                              <1> ;ax is guaranteed to have the validity signatures in AH and AL.
+   765                              <1> ;Everything else is optional and potentially changable at a later stage
+   766                              <1> 
+   767                              <1> .badFmtErr:
+   768 00006535 B80B000000          <1>     mov eax, errBadFmt  ;Fall thru with bad resource format error
+   769                              <1> .cleanAndFail:
+   770                              <1> ;Close the open file and any open resources and fail
+   771 0000653A E82F000000          <1>     call .clearArenaOwner   ;Enters level 1 critical section
+   772 0000653F E8E0120000          <1>     call dosCrit1Exit
+   773 00006544 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   774 00006548 50                  <1>     push rax    ;Save error code
+   775 00006549 55                  <1>     push rbp
+   776 0000654A E808D2FFFF          <1>     call closeFileHdl
+   777 0000654F 5D                  <1>     pop rbp
+   778 00006550 58                  <1>     pop rax
+   779 00006551 E96BF9FFFF          <1>     jmp .badExit
+   780                              <1> 
+   781                              <1> .readDataFromHdl:
+   782                              <1> ;Input: ecx = Number of bytes to transfer
+   783                              <1> ;       rdx = Ptr to the buffer to use
+   784 00006556 52                  <1>     push rdx
+   785 00006557 E812000000          <1>     call .clearArenaOwner   ;Entering critical section!
+   786 0000655C 0FB75DF0            <1>     movzx ebx, word [rbp - execFrame.wProgHdl]
+   787 00006560 55                  <1>     push rbp
+   788 00006561 E82FD2FFFF          <1>     call readFileHdl
+   789 00006566 5D                  <1>     pop rbp
+   790 00006567 E811000000          <1>     call .setPSPArenaOwner  ;Exiting critical section!
+   791 0000656C 5A                  <1>     pop rdx
+   792                              <1>     return
     13                              <2> %%_ret:
     14 0000656D C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   794                              <1> .clearArenaOwner:
-   795 0000656E 53                  <1>     push rbx
-   796 0000656F 31DB                <1>     xor ebx, ebx    ;Make owner null, ok to trash flags here
-   797 00006571 E8A4120000          <1>     call dosCrit1Enter
-   798 00006576 E816000000          <1>     call .setProgOrEnvArenaOwnerToRBX
-   799 0000657B 5B                  <1>     pop rbx
-   800                              <1>     return
+   793                              <1> .clearArenaOwner:
+   794 0000656E 53                  <1>     push rbx
+   795 0000656F 31DB                <1>     xor ebx, ebx    ;Make owner null, ok to trash flags here
+   796 00006571 E8A4120000          <1>     call dosCrit1Enter
+   797 00006576 E816000000          <1>     call .setProgOrEnvArenaOwnerToRBX
+   798 0000657B 5B                  <1>     pop rbx
+   799                              <1>     return
     13                              <2> %%_ret:
     14 0000657C C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   801                              <1> .setPSPArenaOwner:
-   802                              <1> ;Sets the current PSP as the arena owner
-   803 0000657D 53                  <1>     push rbx
-   804 0000657E 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP]
-   805 00006585 E807000000          <1>     call .setProgOrEnvArenaOwnerToRBX
-   806 0000658A E895120000          <1>     call dosCrit1Exit
-   807 0000658F 5B                  <1>     pop rbx
-   808                              <1>     return
+   800                              <1> .setPSPArenaOwner:
+   801                              <1> ;Sets the current PSP as the arena owner
+   802 0000657D 53                  <1>     push rbx
+   803 0000657E 488B1D(1F040000)    <1>     mov rbx, qword [currentPSP]
+   804 00006585 E807000000          <1>     call .setProgOrEnvArenaOwnerToRBX
+   805 0000658A E895120000          <1>     call dosCrit1Exit
+   806 0000658F 5B                  <1>     pop rbx
+   807                              <1>     return
     13                              <2> %%_ret:
     14 00006590 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   809                              <1> .setProgOrEnvArenaOwnerToRBX:
-   810                              <1> ;Input: rbx = Owner ID  (Start of PSP address)
-   811 00006591 9C                  <1>     pushfq
-   812 00006592 50                  <1>     push rax
-   813                              <1>     ;Only one of the two below addresses may be non zero at any one time!
-   814                              <1>     ;This is because they are set up at separate points in the routine!
-   815 00006593 488B45C8            <1>     mov rax, qword [rbp - execFrame.pPSPBase]
-   816 00006597 E80C000000          <1>     call .writeArenaHeaderOwner
-   817 0000659C 488B45D0            <1>     mov rax, qword [rbp - execFrame.pEnvBase]
-   818 000065A0 E803000000          <1>     call .writeArenaHeaderOwner
-   819 000065A5 58                  <1>     pop rax
-   820 000065A6 9D                  <1>     popfq
-   821                              <1>     return
+   808                              <1> .setProgOrEnvArenaOwnerToRBX:
+   809                              <1> ;Input: rbx = Owner ID  (Start of PSP address)
+   810 00006591 9C                  <1>     pushfq
+   811 00006592 50                  <1>     push rax
+   812                              <1>     ;Only one of the two below addresses may be non zero at any one time!
+   813                              <1>     ;This is because they are set up at separate points in the routine!
+   814 00006593 488B45C8            <1>     mov rax, qword [rbp - execFrame.pPSPBase]
+   815 00006597 E80C000000          <1>     call .writeArenaHeaderOwner
+   816 0000659C 488B45D0            <1>     mov rax, qword [rbp - execFrame.pEnvBase]
+   817 000065A0 E803000000          <1>     call .writeArenaHeaderOwner
+   818 000065A5 58                  <1>     pop rax
+   819 000065A6 9D                  <1>     popfq
+   820                              <1>     return
     13                              <2> %%_ret:
     14 000065A7 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   822                              <1> .writeArenaHeaderOwner:
-   823                              <1> ;Input: rax = Ptr to arena (NOT HEADER)
-   824                              <1> ;       rbx = Owner ID
-   825 000065A8 4885C0              <1>     test rax, rax   ;Don't write if arena header null
-   826                              <1>     retz
+   821                              <1> .writeArenaHeaderOwner:
+   822                              <1> ;Input: rax = Ptr to arena (NOT HEADER)
+   823                              <1> ;       rbx = Owner ID
+   824 000065A8 4885C0              <1>     test rax, rax   ;Don't write if arena header null
+   825                              <1>     retz
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -15493,9 +15492,9 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   827 000065AE 482D10000000        <1>     sub rax, mcb.program    ;Go to start of arena header
-   828 000065B4 48895801            <1>     mov qword [rax + 1], rbx
-   829                              <1>     return
+   826 000065AE 482D10000000        <1>     sub rax, mcb.program    ;Go to start of arena header
+   827 000065B4 48895801            <1>     mov qword [rax + 1], rbx
+   828                              <1>     return
     13                              <2> %%_ret:
     14 000065B8 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
