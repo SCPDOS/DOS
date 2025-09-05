@@ -1735,7 +1735,7 @@ errTblLen equ $ - .biosErrTbl
     ;mov eax, devChgd    ;Set the device changed bit on all devices
     ;call .setBitsForAllDevs
 ;.ioidccExit:
-    ;pop rdx
+    pop rdx
     return
 
 .ioSetAccessFlag:
