@@ -346,8 +346,8 @@ ensureDiskValid:
     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
     test word [rbp + drvHdr.attrib], devDrvHdlCTL
     pop rbp
-    jz .errorExitBad    ;Just return fail if bit not set
-    ;rbp points to the dpb still
+    jz .dbeExit     ;Just return Invalid Disk Swap if bit not set
+;rbp points to the dpb still
     push rdi
     mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
@@ -362,6 +362,7 @@ ensureDiskValid:
     call diskDevErr
     cmp al, critFail    ;Did the user select fail?
     jne ensureDiskValid  ;If not, try again!
+.dbeExit:
     mov eax, errIDC     ;Else, report an invalid disk swap error!
     jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
 ;+++++++++++++++++++++++++++++++++++++++++++++++++

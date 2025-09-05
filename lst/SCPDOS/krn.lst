@@ -17096,8 +17096,8 @@
    346 0000726F 488B6D1B            <1>     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
    347 00007273 66F745080008        <1>     test word [rbp + drvHdr.attrib], devDrvHdlCTL
    348 00007279 5D                  <1>     pop rbp
-   349 0000727A 74F0                <1>     jz .errorExitBad    ;Just return fail if bit not set
-   350                              <1>     ;rbp points to the dpb still
+   349 0000727A 7429                <1>     jz .dbeExit     ;Just return Invalid Disk Swap if bit not set
+   350                              <1> ;rbp points to the dpb still
    351 0000727C 57                  <1>     push rdi
    352 0000727D 488B3D(D0040000)    <1>     mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
    353 00007284 48893D(0F040000)    <1>     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
@@ -17112,121 +17112,122 @@
    362 00007298 E8BAF6FFFF          <1>     call diskDevErr
    363 0000729D 3C03                <1>     cmp al, critFail    ;Did the user select fail?
    364 0000729F 0F85A0FEFFFF        <1>     jne ensureDiskValid  ;If not, try again!
-   365 000072A5 B822000000          <1>     mov eax, errIDC     ;Else, report an invalid disk swap error!
-   366 000072AA E9BDFFFFFF          <1>     jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
-   367                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
-   368                              <1> ;           Primitive Driver Requests
-   369                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
-   370                              <1> ;First are Disk requests, then Char device requests
-   371                              <1> ;All Disk Driver Requests come with at least rbp pointing to DPB
-   372                              <1> ;All Char Requests come with rsi pointing to the Char device driver
-   373                              <1> 
-   374                              <1> primReqWriteSetup:
-   375 000072AF 50                  <1>     push rax
-   376 000072B0 B408                <1>     mov ah, drvWRITE    ;Command code
-   377 000072B2 0225(D0030000)      <1>     add ah, byte [verifyFlag]   ;Add verify if needed to be added
-   378 000072B8 EB03                <1>     jmp short primReqRWCommon
-   379                              <1> primReqReadSetup:
-   380 000072BA 50                  <1>     push rax
-   381 000072BB B404                <1>     mov ah, drvREAD
-   382                              <1> primReqRWCommon:
-   383                              <1> ;Sets up the IO request packet with:
-   384                              <1> ; rbp = DPB ptr | NullPtr if a char dev
-   385                              <1> ; rbx = Data storage buffer ptr
-   386                              <1> ; ecx = Number of sectors to transfer
-   387                              <1> ; rdx = Starting sector to read/write from/to | Undefined if a char dev
-   388                              <1> ; ~~~~ Set by entry function ~~~~ 
-   389                              <1> ; ah = Command code
-   390                              <1> ; All regs preserved EXCEPT rbx.
-   391                              <1> ; Return: rbx = Transfer Address
-   392 000072BD 48891D(CF040000)    <1>     mov qword [primReqPkt + ioReqPkt.bufptr], rbx   ;Buffer
-   393 000072C4 890D(D7040000)      <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
-   394 000072CA C605(C1040000)2A    <1>     mov byte [primReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
-   395 000072D1 2500FF0000          <1>     and eax, 0000FF00h  ;Clear the upper word (status word) and al
-   396 000072D6 8905(C2040000)      <1>     mov dword [primReqPkt + ioReqPkt.unitnm], eax   ;Clear unit number field
-   397 000072DC 4885ED              <1>     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
-   398 000072DF 7419                <1>     jz primReqCommonExit    ;If char request, exit!
-   399                              <1>     ;Disk operations only here!
-   400 000072E1 488915(DB040000)    <1>     mov qword [primReqPkt + ioReqPkt.strtsc], rdx   ;Start sector
-   401 000072E8 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   402 000072EB 8805(CE040000)      <1>     mov byte [primReqPkt + ioReqPkt.medesc], al ;Store medesc!
-   403 000072F1 8A4501              <1>     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
-   404 000072F4 8805(C2040000)      <1>     mov byte [primReqPkt + ioReqPkt.unitnm], al ;Store the unit number
-   405                              <1> primReqCommonExit:
-   406                              <1> ;Returns in rbx the primary request header as these functions
-   407                              <1> ; setup the request in the primary request header space
-   408 000072FA 58                  <1>     pop rax
-   409 000072FB 488D1D(C1040000)    <1>     lea rbx, primReqPkt ;Put in rbx the primary request header
-   410                              <1>     return
+   365                              <1> .dbeExit:
+   366 000072A5 B822000000          <1>     mov eax, errIDC     ;Else, report an invalid disk swap error!
+   367 000072AA E9BDFFFFFF          <1>     jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
+   368                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
+   369                              <1> ;           Primitive Driver Requests
+   370                              <1> ;+++++++++++++++++++++++++++++++++++++++++++++++++
+   371                              <1> ;First are Disk requests, then Char device requests
+   372                              <1> ;All Disk Driver Requests come with at least rbp pointing to DPB
+   373                              <1> ;All Char Requests come with rsi pointing to the Char device driver
+   374                              <1> 
+   375                              <1> primReqWriteSetup:
+   376 000072AF 50                  <1>     push rax
+   377 000072B0 B408                <1>     mov ah, drvWRITE    ;Command code
+   378 000072B2 0225(D0030000)      <1>     add ah, byte [verifyFlag]   ;Add verify if needed to be added
+   379 000072B8 EB03                <1>     jmp short primReqRWCommon
+   380                              <1> primReqReadSetup:
+   381 000072BA 50                  <1>     push rax
+   382 000072BB B404                <1>     mov ah, drvREAD
+   383                              <1> primReqRWCommon:
+   384                              <1> ;Sets up the IO request packet with:
+   385                              <1> ; rbp = DPB ptr | NullPtr if a char dev
+   386                              <1> ; rbx = Data storage buffer ptr
+   387                              <1> ; ecx = Number of sectors to transfer
+   388                              <1> ; rdx = Starting sector to read/write from/to | Undefined if a char dev
+   389                              <1> ; ~~~~ Set by entry function ~~~~ 
+   390                              <1> ; ah = Command code
+   391                              <1> ; All regs preserved EXCEPT rbx.
+   392                              <1> ; Return: rbx = Transfer Address
+   393 000072BD 48891D(CF040000)    <1>     mov qword [primReqPkt + ioReqPkt.bufptr], rbx   ;Buffer
+   394 000072C4 890D(D7040000)      <1>     mov dword [primReqPkt + ioReqPkt.tfrlen], ecx   ;Number of sectors/bytes
+   395 000072CA C605(C1040000)2A    <1>     mov byte [primReqPkt + ioReqPkt.hdrlen], ioReqPkt_size
+   396 000072D1 2500FF0000          <1>     and eax, 0000FF00h  ;Clear the upper word (status word) and al
+   397 000072D6 8905(C2040000)      <1>     mov dword [primReqPkt + ioReqPkt.unitnm], eax   ;Clear unit number field
+   398 000072DC 4885ED              <1>     test rbp, rbp   ;If RBP is the null ptr, skip the Disk fields
+   399 000072DF 7419                <1>     jz primReqCommonExit    ;If char request, exit!
+   400                              <1>     ;Disk operations only here!
+   401 000072E1 488915(DB040000)    <1>     mov qword [primReqPkt + ioReqPkt.strtsc], rdx   ;Start sector
+   402 000072E8 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   403 000072EB 8805(CE040000)      <1>     mov byte [primReqPkt + ioReqPkt.medesc], al ;Store medesc!
+   404 000072F1 8A4501              <1>     mov al, byte [rbp + dpb.bUnitNumber]    ;Get the unit number
+   405 000072F4 8805(C2040000)      <1>     mov byte [primReqPkt + ioReqPkt.unitnm], al ;Store the unit number
+   406                              <1> primReqCommonExit:
+   407                              <1> ;Returns in rbx the primary request header as these functions
+   408                              <1> ; setup the request in the primary request header space
+   409 000072FA 58                  <1>     pop rax
+   410 000072FB 488D1D(C1040000)    <1>     lea rbx, primReqPkt ;Put in rbx the primary request header
+   411                              <1>     return
     13                              <2> %%_ret:
     14 00007302 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   411                              <1> 
-   412                              <1> primReqMedCheckSetup:
-   413                              <1> ;Prepare the diskIO packet for mediacheck
-   414                              <1> ;rbp has DPB pointer for device to check media on
-   415 00007303 50                  <1>     push rax
-   416 00007304 C605(C1040000)17    <1>     mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
-   417 0000730B C605(C3040000)01    <1>     mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
-   418                              <1> .cmn:
-   419 00007312 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
-   420 00007315 8805(CE040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
-   421 0000731B 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
-   422 0000731E 8805(C2040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
-   423 00007324 66C705(C4040000)00- <1>     mov word [primReqPkt + mediaCheckReqPkt.status], 0
-   423 0000732C 00                  <1>
-   424 0000732D EBCB                <1>     jmp short primReqCommonExit
-   425                              <1> 
-   426                              <1> primReqGetBPBSetup:
-   427                              <1> ;rbp has DPB pointer for device
-   428                              <1> ;rdi has sector buffer header pointer for transfer
-   429 0000732F 50                  <1>     push rax
-   430 00007330 488D4720            <1>     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
-   431 00007334 488905(CF040000)    <1>     mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rax
-   432 0000733B C605(C1040000)1E    <1>     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
-   433 00007342 C605(C3040000)02    <1>     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
-   434 00007349 EBC7                <1>     jmp short primReqMedCheckSetup.cmn
-   435                              <1> 
-   436                              <1> primReqOpenSetup:
-   437                              <1> ;al = unit number if a disk device. Undefined otherwise
-   438 0000734B 50                  <1>     push rax
-   439 0000734C B40D                <1>     mov ah, drvOPEN
-   440 0000734E EB03                <1>     jmp short primReqOCcommon
-   441                              <1> primReqCloseSetup:
-   442                              <1> ;al = unit number if a disk device. Undefined otherwise
-   443 00007350 50                  <1>     push rax
-   444 00007351 B40E                <1>     mov ah, drvCLOSE
-   445                              <1> primReqOCcommon:
-   446 00007353 C605(C1040000)0D    <1>     mov byte [primReqPkt + openReqPkt.hdrlen], openReqPkt_size
-   447 0000735A 98                  <1>     cwde   ;Sign extend (but top bit is zero so zero extend)
-   448 0000735B 8905(C2040000)      <1>     mov dword [primReqPkt + openReqPkt.unitnm], eax
-   449                              <1>     ;Cover unit number (if disk drive, cmdcde and status)
-   450 00007361 E994FFFFFF          <1>     jmp primReqCommonExit   ;Now simply exit
-   451                              <1> 
-   452                              <1> secdReqCharIOReq:
-   453                              <1> ;Sets up the request packet to transfer 1 byte to/from the singleIOByt buffer.
-   454                              <1> ;Input:
-   455                              <1> ; ah =  Data Request code (Read/Write/Write with Verify)
-   456                              <1> ; ecx = Length of buffer
-   457                              <1> ; rdi = Buffer pointer
-   458                              <1> ;Output: 
-   459                              <1> ; rbx = Transfer Address 
-   460 00007366 488D1D(97040000)    <1>     lea rbx, secdReqPkt
-   461 0000736D C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-   462 00007370 886302              <1>     mov byte [rbx + ioReqPkt.cmdcde], ah
-   463 00007373 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
-   464 00007379 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
-   465 0000737D 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
-   466                              <1>     return
+   412                              <1> 
+   413                              <1> primReqMedCheckSetup:
+   414                              <1> ;Prepare the diskIO packet for mediacheck
+   415                              <1> ;rbp has DPB pointer for device to check media on
+   416 00007303 50                  <1>     push rax
+   417 00007304 C605(C1040000)17    <1>     mov byte [primReqPkt + mediaCheckReqPkt.hdrlen], mediaCheckReqPkt_size
+   418 0000730B C605(C3040000)01    <1>     mov byte [primReqPkt + mediaCheckReqPkt.cmdcde], drvMEDCHK
+   419                              <1> .cmn:
+   420 00007312 8A4523              <1>     mov al, byte [rbp + dpb.bMediaDescriptor]
+   421 00007315 8805(CE040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.medesc], al
+   422 0000731B 8A4500              <1>     mov al, byte [rbp + dpb.bDriveNumber]
+   423 0000731E 8805(C2040000)      <1>     mov byte [primReqPkt + mediaCheckReqPkt.unitnm], al
+   424 00007324 66C705(C4040000)00- <1>     mov word [primReqPkt + mediaCheckReqPkt.status], 0
+   424 0000732C 00                  <1>
+   425 0000732D EBCB                <1>     jmp short primReqCommonExit
+   426                              <1> 
+   427                              <1> primReqGetBPBSetup:
+   428                              <1> ;rbp has DPB pointer for device
+   429                              <1> ;rdi has sector buffer header pointer for transfer
+   430 0000732F 50                  <1>     push rax
+   431 00007330 488D4720            <1>     lea rax, qword [rdi + bufferHdr.dataarea]   ;Get the data area
+   432 00007334 488905(CF040000)    <1>     mov qword [primReqPkt + bpbBuildReqPkt.bufptr], rax
+   433 0000733B C605(C1040000)1E    <1>     mov byte [primReqPkt + bpbBuildReqPkt.hdrlen], bpbBuildReqPkt_size
+   434 00007342 C605(C3040000)02    <1>     mov byte [primReqPkt + bpbBuildReqPkt.cmdcde], drvBUILDBPB
+   435 00007349 EBC7                <1>     jmp short primReqMedCheckSetup.cmn
+   436                              <1> 
+   437                              <1> primReqOpenSetup:
+   438                              <1> ;al = unit number if a disk device. Undefined otherwise
+   439 0000734B 50                  <1>     push rax
+   440 0000734C B40D                <1>     mov ah, drvOPEN
+   441 0000734E EB03                <1>     jmp short primReqOCcommon
+   442                              <1> primReqCloseSetup:
+   443                              <1> ;al = unit number if a disk device. Undefined otherwise
+   444 00007350 50                  <1>     push rax
+   445 00007351 B40E                <1>     mov ah, drvCLOSE
+   446                              <1> primReqOCcommon:
+   447 00007353 C605(C1040000)0D    <1>     mov byte [primReqPkt + openReqPkt.hdrlen], openReqPkt_size
+   448 0000735A 98                  <1>     cwde   ;Sign extend (but top bit is zero so zero extend)
+   449 0000735B 8905(C2040000)      <1>     mov dword [primReqPkt + openReqPkt.unitnm], eax
+   450                              <1>     ;Cover unit number (if disk drive, cmdcde and status)
+   451 00007361 E994FFFFFF          <1>     jmp primReqCommonExit   ;Now simply exit
+   452                              <1> 
+   453                              <1> secdReqCharIOReq:
+   454                              <1> ;Sets up the request packet to transfer 1 byte to/from the singleIOByt buffer.
+   455                              <1> ;Input:
+   456                              <1> ; ah =  Data Request code (Read/Write/Write with Verify)
+   457                              <1> ; ecx = Length of buffer
+   458                              <1> ; rdi = Buffer pointer
+   459                              <1> ;Output: 
+   460                              <1> ; rbx = Transfer Address 
+   461 00007366 488D1D(97040000)    <1>     lea rbx, secdReqPkt
+   462 0000736D C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+   463 00007370 886302              <1>     mov byte [rbx + ioReqPkt.cmdcde], ah
+   464 00007373 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
+   465 00007379 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
+   466 0000737D 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
+   467                              <1>     return
     13                              <2> %%_ret:
     14 00007380 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   467                              <1> ;If the device which will process this request is a disk device
-   468                              <1> ; then we will be requesting 1 sector of data to a disk buffer.
-   469                              <1> ;Then we will read the appropriate byte from that buffer to the 
-   470                              <1> ; singleIOByt buffer.
-   471                              <1> ;Such a request will require additional setup with the following fields:
-   472                              <1> ; .unitnm, .medesc, .bufptr, .strtsc
+   468                              <1> ;If the device which will process this request is a disk device
+   469                              <1> ; then we will be requesting 1 sector of data to a disk buffer.
+   470                              <1> ;Then we will read the appropriate byte from that buffer to the 
+   471                              <1> ; singleIOByt buffer.
+   472                              <1> ;Such a request will require additional setup with the following fields:
+   473                              <1> ; .unitnm, .medesc, .bufptr, .strtsc
     52                                  %include "./src/Kernel/Core/dosUtils.asm"
      1                              <1> ;DOS utility functions 
      2                              <1> 

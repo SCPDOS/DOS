@@ -217,8 +217,8 @@ dosInt33h:
     cmp byte [.dbgCnt], 1
     je .dbgIret
     mov ah, 80h
-    or byte [rsp + 2*8h], 1 ;Set CF
 .dbgIret:
+    or byte [rsp + 2*8h], 1 ;Set CF
     iretq
 .dbgCnt db 0
 %endif
@@ -529,23 +529,28 @@ errTblLen equ $ - .biosErrTbl
 .mmcNoChange:
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
-    call .mmcDbgNoCh
+    lea rsi, .mmcNoStrD
+    call .mmcDbgCmn
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     mov eax, 1
     jmp short .mmcExit
+
 .mmcUnsure:
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
-    call .mmcDbgUnk
+    lea rsi, .mmcUnkStrD
+    call .mmcDbgCmn
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     xor eax, eax
     jmp short .mmcExit
+    
 .mmcChange:
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
-    call .mmcDbgChange
+    lea rsi, .mmcChStrD
+    call .mmcDbgCmn
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     mov eax, -1
@@ -556,21 +561,6 @@ errTblLen equ $ - .biosErrTbl
     return
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
-.mmcDbgNoCh:
-    lea rsi, .mmcNoStrD
-    jmp short .mmcDbgCmn
-.mmcNoStrD  db "_ not changed",0Ah,0Dh,0
-
-.mmcDbgUnk:
-    lea rsi, .mmcUnkStrD
-    jmp short .mmcDbgCmn
-.mmcUnkStrD db "_ unknown",0Ah,0Dh,0
-
-.mmcDbgChange:
-    lea rsi, .mmcChStrD
-    jmp short .mmcDbgCmn
-.mmcChStrD  db "_ changed",0Ah,0Dh,0
-
 .mmcDbgCmn:
     push rsi
     lea rsi, .mmcMedChgStr
@@ -581,6 +571,10 @@ errTblLen equ $ - .biosErrTbl
     mov byte [rsi], al
     call dbgPrintString
     return
+.mmcNoStrD  db "_ not changed",0Ah,0Dh,0
+.mmcUnkStrD db "_ unknown",0Ah,0Dh,0
+.mmcChStrD  db "_ changed",0Ah,0Dh,0
+
 .mmcMedChgStr   db "[MEDCHECK] ",0
 .mcDbgMsg db "[MEDCHECK] Doing BIOS medcheck",0Ah,0Dh,0
 .mcDbgMsg1 db "[MEDCHECK] Reported change",0Ah,0Dh,0
@@ -1410,6 +1404,8 @@ errTblLen equ $ - .biosErrTbl
     lea rsi, qword [rbp + drvBlk.bpb]
     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncBPB
     jnz .iogdpBkup  ;If set, return the bpb data as is.
+    test word [rbp + drvBlk.wDevFlgs], devFixed
+    jnz .iogdpBkup  ;If it is fixed, return the BPB as is too
     call .updateBpb ;Else, gets the BPB from the disk.
     jc .ioDoErr ;Errors returned as if from block IO handler
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
@@ -1448,6 +1444,8 @@ errTblLen equ $ - .biosErrTbl
     je .lgpbpbGetPhys
     test byte [rdi + lbaParamsBlock.bSpecFuncs], 1  ;Check if we update BPB.
     jnz .lgpbpbok
+    test word [rbp + drvBlk.wDevFlgs], devFixed
+    jnz .lgpbpbok  ;If it is fixed, return the BPB as is too
     push rdi    ;Push the param block onto the stack
     call .updateBpb
     jc .lgpbpbnotok ;Even if just bad BPB, keep changed bit on!
