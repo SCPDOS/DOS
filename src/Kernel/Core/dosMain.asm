@@ -851,6 +851,24 @@ systemServices: ;ah = 61h
     mov qword [rsi + callerFrame.rdx], rdx
     jmp extGoodExit
 
-;At some point we will implement the below function but that is
-; a low priority as it is not a DOS 3.3 function. 
-;getsetDiskSerial:  ;ah = 69h, get/set disk serial number
+getsetDiskSerial:  ;ah = 69h, get/set disk serial number
+;Wraps the generic disk IO call to get/set the disk serial number and
+; associated information.
+;Input:
+;   al = 0: Get disk serial number
+;   al = 1: Set disk serial number
+;   ebx = 1-based drive number
+;   rdx -> Pointer to an ID parameter block
+    movzx eax, al
+    mov ecx, 0866h  ;Get Disk Serial Packet major/minor codes
+    test eax, eax
+    jz .doIoctl
+    sub ecx, 20h    ;Turn Get major/minor codes into a Set
+    cmp eax, 1      ;Is this a set?
+    je .doIoctl
+    mov eax, errInvFnc  ;Else, return error, invalid function!
+    jmp extErrExit
+.doIoctl:
+    mov eax, 0Dh    ;Do block dev Generic IOCTL call
+    call ioctrl     ;Sets up the return state internally
+    return          ; so just return normally

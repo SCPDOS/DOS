@@ -251,6 +251,7 @@ sectHdr:        ;This needs 20 bytes in EXEC only
     extFCBFlag  db ?  ;Set to -1 if Extended FCB
     searchAttr  db ?  ;Directory Search attributes
     fileOpenMd  db ?  ;Open mode (compat, r/w/rw?)
+renSamePar:         ;Used in rename. Set if both paths have same parent dir
     fileFDflg   db ?  ;01h = File Found!, 04h = File deleted!
     badNameRen  db ?  ;Device name or File not found for rename
     rwFlag      db ?  ;00h=Read, 1=Write, read/write/share error reporting

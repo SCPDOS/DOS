@@ -916,6 +916,22 @@ renameMain:
     lea rsi, wcdFcbName
     xchg rsi, rdi
     call asciiToFCB     ;Copy the ASCIIZ filename to the FCB field
+;Now check if both destination and source directories are the same.
+    mov byte [renSamePar], 0 
+    mov rsi, qword [fname1Ptr]
+    mov byte [rsi - 1], 0
+    mov rdi, qword [fname2Ptr]
+    mov byte [rdi - 1], 0
+    lea rsi, buffer1
+    lea rdi, buffer2
+    call compareFileNames
+    mov rsi, qword [fname1Ptr]
+    mov byte [rsi - 1], "\"
+    mov rdi, qword [fname2Ptr]
+    mov byte [rdi - 1], "\"
+    jnz .renMakeFF
+    mov byte [renSamePar], -1 ;Set to indicate same parent directory
+.renMakeFF:
 ;Find First the source file with given attributes!
     lea rdi, buffer1
     push qword [fname1Ptr]
@@ -923,10 +939,10 @@ renameMain:
     pop qword [fname1Ptr]
     jc .renErrExit  ;If there is no file or an error, fail it!
 ;Build the rename FFBlock
+.renFindNext:
     lea rdi, renameFFBlk
     call setupFFBlock
-.renFindNext:
-;Copy the dir to rename dir and make the ren ffblock
+;Copy the found dir to rename dir
     lea rsi, curDirCopy
     lea rdi, renameDir
     mov ecx, fatDirEntry_size/8
@@ -938,13 +954,19 @@ renameMain:
 ;Check the file is not a char dev or a CDS directory
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev
     jnz .renAccDen ;Cant rename a char file!
-    test byte [curDirCopy + fatDirEntry.attribute], attrFileDir
+    test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
     jz .srcNotDir
     lea rdi, buffer1  ;Check this path isn't a CDS
     call .checkPathCDS
     jc .renErrExit  ;Bubble the error code up if there is an error!
+    mov eax, dword [renameFFBlk + ffBlock.asciizName]
+    and eax, 00FFFFFFh  ;Drop the upper byte
+    cmp eax, ".."       ;Did we read ..<NUL> ?
+    je .renAccDen
+    cmp ax, "."         ;Did we read .<NUL> ?
+    je .renAccDen
 .srcNotDir:
-;Finally, make sure this found file can be renamed (i.e. has no locks)
+;Finally, make sure this found file can be renamed (i.e. has no share locks)
     push qword [fname1Ptr]
     lea rsi, buffer1
     mov qword [fname1Ptr], rsi
@@ -969,8 +991,21 @@ renameMain:
     lea rsi, fcbName
     mov ecx, 11
     rep movsb
-;Check the parent directory of the destination exists. For this, we
+    test byte [renSamePar], -1    ;If clear, different parent directories
+    jz .renDiffDirs
+;Here we are in the same parent directory. So we recycle the directory
+; entry directly.
+;At this point, the curDir is to the source directory entry.
+    call getDiskDirectoryEntry  ;So get a pointer to this entry in rsi
+    lea rdi, renameDir  ;Get ptr to the src of the new dir entry
+    xchg rsi, rdi   ;Swap the pointers
+    mov ecx, fatDirEntry_size/8
+    rep movsq   ;Move it over
+    jmp .renDone  ;Mark buffer dirty, flush and exit!
+.renDiffDirs:
+;Else check the parent directory of the destination exists. For this, we
 ; replace the pathsep before the filename with a null and do a dir search.
+;We also do this to setup the vars to point to the parent directory.
     mov rdi, qword [fname2Ptr]
     dec rdi ;Point to the pathsep char
     cmp byte [rdi - 1], ":" ;If we are in the root directory, skip check!
@@ -1002,6 +1037,10 @@ renameMain:
 ;CurDirCopy and dir search vars point to the parent directory of the file
 ; we were searching for. Root dir has this entry set to 0. If the file is
 ; a dir, we take the parent cluster.
+
+;To prevent file loss, we create the new directory entry first and mark 
+; the buffer dirty before deleting the original. Unless something happens
+; midway through these two operations, we should be oki
     call .renFindDirSpace ;Returns rsi -> space for dir entry if CF=NC
     jc .renAccDen
     lea rdi, renameDir  ;Get ptr to the src of the new dir entry
@@ -1009,24 +1048,22 @@ renameMain:
     mov ecx, fatDirEntry_size/8
     rep movsq
     call markBufferDirty    ;Written to a disk buffer, mark it dirty!
-;Now we delete the old directory entry
+;Now we delete the old directory entry. If this fails we end up with
+; two directory entries linked to the same file. Better than losing
+; data on disk! In this case, to prevent corruption, you should
+; copy the data from the disk to hopefully another disk, and then
+; delete both the old and new directory entries for this file.
     lea rdi, buffer1    ;Search for this file again to get curdir
     call getFilePathNoCanon
-;If this fails, proceed as normal since all it will do is delete
-; the new directory entry, preserving the old.
+    jc .renErrExit
     call getDiskDirectoryEntry  ;Vars were setup in getFilePathNoCanon call
 ;rsi points to the file entry
     mov al, byte [delChar]
     mov byte [rsi], al      ;Delete the file!
+.renDone:
     call markBufferDirty    ;Set this buffer as having been written to now
     call flushAllBuffersForDPB  ;Now flush all buffers
-;Check source template in ren ffblock and wc fcbname. If EITHER has a wildcard
-; then we goto find next.
-    lea rdi, qword [renameFFBlk + ffBlock.template]
-    call .searchForWC
-    jz .wcFnd
-    lea rdi, wcdFcbName
-    call .searchForWC
+    call .searchForWC   ;Now check if we have WC's. If so, find next file!
     jz .wcFnd
 .renExit:   ;Normal Exit!
     call dosCrit1Exit
@@ -1045,25 +1082,27 @@ renameMain:
 ;Beware, WC calls may take a long timeslice in multitasking environments.
 ;Consider adding a mechanism for multitasking (Can't exit crit1 unless
 ; we can guarantee the only multitasker is one that swaps the SDA on each 
-; task swap, i.e. us). A proper multitasker which uses protection rings
-; and swaps the sda on each task swap, can then patch these spaces.
+; task swap, i.e. us). A proper multitasker which swaps the sda on each task
+; swap, can then patch these spaces.
     db 5 dup (90h)  ;Space for exit crit1
-    push qword [currentDTA]
-    lea rdi, renameFFBlk
+    push qword [currentDTA] ;Save the original DTA address
+    lea rdi, renameFFBlk ;Use dosffblk to preserve original search template
     mov qword [currentDTA], rdi
-    call findNextMain   ;Updates the find first block
-    pop qword [currentDTA]
+    call findNextMain
+    mov rdi, qword [currentDTA]
+    pop qword [currentDTA]  ;Get back original DTA
     db 5 dup (90h)  ;Space for enter crit1
     jc .renExit     ;If find next errors, exit here (and exit crit1)
-    jmp .renFindNext  
+    jmp .renFindNext  ;else update the renameffblock and proceed
 
 ;---------------------
 ;Rename routines
 ;---------------------
 .searchForWC:
-;Searches for a wildcard in the FCB name.
+;Searches for a wildcard in the renFFblock.
 ;Input: rdi -> FCB name to check
 ;Output: ZF=ZE if WC present. ZF=NZ otherwise.
+    lea rdi, qword [renameFFBlk + ffBlock.template]
     mov al, "?"
     mov ecx, 11
     repne scasb

@@ -186,8 +186,11 @@ dosInt33h:
     push rax
     push rdx
     movzx edx, byte [.drv]
+    test edx, 80h       ;Was this a hard disk?
+    jnz .exitI33Weird   ;Just skip setting this bit in this case
     mov eax, devChgd    ;Set the device changed bit on all devices
     call msdDriver.setBitsForAllDevs
+.exitI33Weird:
     pop rdx
     pop rax
 .exitI33Bad:
@@ -452,7 +455,7 @@ errTblLen equ $ - .biosErrTbl
     jnz .mmcNoChange
 .mcRem:
     call .setDrvOwner
-    test word [rbp + drvBlk.wDevFlgs], devChgLine
+    call .checkHasChangeline
     jz .mmcNoChangeLine
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
 ;Now we do a BIOS changeline check. 
@@ -605,6 +608,7 @@ errTblLen equ $ - .biosErrTbl
 ;------------------------------------------------------
     call .resetIds  ;Reset the drvBlk volume ids
     call .updateBpb ;Fill the BPB entries in the drvBlk
+    jc .ioDoErr     ;Errors returned as if from block IO handler
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
     push rsi
@@ -617,7 +621,6 @@ errTblLen equ $ - .biosErrTbl
     pop rsi
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    jc .ioDoErr     ;Errors returned as if from block IO handler
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
     jnc .bbpbExit
 ;Here we will search the root directory for the volume label only!
@@ -927,6 +930,7 @@ errTblLen equ $ - .biosErrTbl
     jmp short .bbpbReadEp
 .bbpbReadBS:
 ;Reads the bootsector of media we are playing with.
+;If an error occurs, returns CF=CY and ZF=ZE with AH=BIOS error code
     xor ecx, ecx    ;Read Sector 0...
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
@@ -947,11 +951,12 @@ errTblLen equ $ - .biosErrTbl
 %if drvDbg
     jnc .bbpbDbgReadExit
 %else
-    jnc .bioExit
+    jnc .bioExit    ;Exit setting up the time and .bLastDsk to this drive
 %endif
 ;Here if an error. AH has the BIOS error code. Return with
 ; ZF=ZE to indicate we are returning a BIOS code!
-    call .bioReset  ;Reset the drive. WARNING: CRASHES BOCHS
+;Reset the drive. WARNING: CRASHES BOCHS
+    call .bioReset  ;Resets .bLastDsk to -1
     dec esi
     jnz .bbpbReadLp
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
@@ -962,9 +967,8 @@ errTblLen equ $ - .biosErrTbl
     pop rsi
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    call .bioExit   ;Setup the time and the drive info for the access
     stc             ;Now set up the carry flag!
-    return
+    return          ; and exit CF=CY and ZF=ZE
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
 .bbpbDbgReadExit:
@@ -1140,7 +1144,8 @@ errTblLen equ $ - .biosErrTbl
 .bioError:
 ;Jumped to with ah = BIOS error code
     call .checkSwapIO
-    call .bioReset  ;Reset the drive. WARNING: CRASHES BOCHS. Does E9h check
+;Reset the drive. WARNING: CRASHES BOCHS. Does E9h check. 
+    call .bioReset  ;Resets .bLastDsk to -1
     dec esi
     jnz .biolp
     pop rsi ;Pop the sector count off the stack
@@ -1192,14 +1197,14 @@ errTblLen equ $ - .biosErrTbl
     jmp short .bioNoDiskErr
 
 .devOpen:         ;Function 13
-    test word [rbp + drvBlk.wDevFlgs], devChgLine
+    call .checkHasChangeline
     retz    ;Only modify the open and closed counts is a changeline present!
     cmp word [rbp + drvBlk.wOpenCnt], -1
     rete  ;Inc past -1 does nothing!
     inc word [rbp + drvBlk.wOpenCnt]
     return
 .devClose:        ;Function 14
-    test word [rbp + drvBlk.wDevFlgs], devChgLine
+    call .checkHasChangeline
     retz
     cmp word [rbp + drvBlk.wOpenCnt], 0
     rete    ;Dec past zero does nothing
@@ -1453,8 +1458,7 @@ errTblLen equ $ - .biosErrTbl
 ;If no valid BPB found, and the device removable, return BIOS params for the 
 ; whole device. We never come here for fixed disks as updateBpb always passes.
     pop rdi
-    cmp al, drvBadMed   ;If remdev has bad media, get bios attribs.
-    jne .errorExit
+    jz .errorXlat   ;If update returned CF=CY and ZF=ZE, xlat the BIOS code
 ;We only fall here if on an unformatted removable disk.
 ;Unformatted means with an unrecognisable BPB.
 .lgpbpbGetPhys:
@@ -1627,8 +1631,113 @@ errTblLen equ $ - .biosErrTbl
 ;                           Misc GENIO routines 
 ;---------------------------------------------------------------------------
 .ioSetIds:
+;We get the BS from the disk, write the new metadata and write it
+; back to the disk. If the BS is not extended, we error exit with
+; unknown media error.
+;Input: rbp -> drvBlk
+;       rdx -> idParamBlk to set from
+    push rdx    ;Save the ptr to the parameter block
+    call .ioGetSetSetup ;Return rbx -> Extended Bootsector structure
+    pop rdx
+    retc    ;If CF=CY, just return. Error info has been setup already
+;Now we setup the info in the BS we just read and write the BS back.
+;rbx points to the extBS structure
+    mov ecx, 4+11+8 ;Lengths of ID, Label and FS string 
+    lea rsi, qword [rdx + idParamBlk.volId]
+    lea rdi, qword [rbx + extBs.volId]
+    rep movsb
+;Now write the bootsector back
+    xor ecx, ecx    ;Write Sector 0...
+    add ecx, dword [rbp + drvBlk.dHiddSec]
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    lea rbx, .inBuffer  ;Use the in sector buffer.
+    mov esi, 5
+.iosidLp:
+    mov eax, 8301h  ;LBA Write function (write 1 sector)
+    call .callI33h
+    jnc .bioExit   ;Setup the last access time and disk and return to caller
+;Here if an error. AH has the BIOS error code. Return with
+; ZF=ZE to indicate we are returning a BIOS code!
+    call .bioReset  ;Reset the drive. Saves error code in ah
+    dec esi
+    jnz .iosidLp
+;Exit by translating BIOS error to DOS error and putting it in the reqpkt.
+; We return to the caller directly. The rest call sets the last drive to -1.
+; Dont update time fields.
+    jmp .errorXlat 
+
 .ioGetIds:
-    jmp .iobadCmd
+;We get the BS from the disk and populate the field from the BS.
+;Input: rbp -> drvBlk
+;       rdx -> idParamBlk to set from
+    push rdx    ;Save the ptr to the parameter block
+    call .ioGetSetSetup ;Return rbx -> Extended Bootsector structure
+    pop rdx
+    retc    ;If CF=CY, just return. Error info has been setup already
+;rbx points to the extBS structure
+    mov ecx, 4+11+8 ;Lengths of ID, Label and FS string 
+    lea rdi, qword [rdx + idParamBlk.volId]
+    lea rsi, qword [rbx + extBs.volId]
+    rep movsb
+    return
+
+.ioGetSetSetup:
+;Reads a bootsector in for us and checks it's the right kind of thing
+; for us to do this op on. All failures set up the return information
+; for us.
+;Sets up the BIOS/DOS error translation on hard error for us.
+    call .ioIdCheckChange   ;Do this to ensure no fail in the read below
+    call .bbpbReadBS        ;Read BS for the drive in rbp. sets rbx to buffer
+    jc .iogssHardErr        ;This returns CF=CY and ZF=ZE
+;Just do a quick jump check here too to make sure we're a decent BPB.
+    cmp byte [rbx + oemHeader.jump], 069h       ;Direct jump has no NOP
+    je .iogssOk
+    cmp byte [rbx + oemHeader.jump], 0E9h       ;Near jump has no NOP
+    je .iogssOk
+    cmp byte [rbx + oemHeader.jump], 0EBh       ;Short jump has a NOP
+    jne .iogssBadBS
+    cmp byte [rbx + oemHeader.jump + 2], 090h   ;NOP should be here
+    jne .iogssBadBS
+.iogssOk:
+    add rbx, oemHeader_size ;Point rbx to the bpb itself
+    call .getFATType    ;Get in dl if we are FAT32 or CF=CY if bad
+    jc .iogssBadBS
+    cmp dl, bpbFat32    ;Did we get a FAT32 disk?
+    mov eax, bpb_size
+    mov ecx, bpb32_size
+    cmovne ecx, eax     ;If not FAT32, replace move count
+    add rbx, rcx        ;Move rbx to point to the extended signature
+    cmp byte [rbx + extBs.bootSig], extBsSig    ;Check ext boot sig?
+    rete
+.iogssBadBS:
+;Bad bootsectors come through here
+    mov eax, drvBadMed
+    test eax, eax   ;Make ZF=NZ for ioDoErr to route us correctly
+.iogssHardErr:
+    call .ioDoErr   ;xlat BIOS code if needed (ZF=ZE). Setup for Error return
+    stc
+    return
+
+.ioIdCheckChange:
+;We don't want to trigger an error (a disk swap error) on BIOS io so first
+; do a quick media check. If the media has been changed, the BIOS wrapper
+; will set the flag for all drives for us.
+    call .checkDevFixed ;If fixed, just return
+    retnz
+    call .checkHasChangeline
+    retz
+    push rdx
+    movzx edx, byte [rbp + drvBlk.bBIOSNum]
+    mov eax, 1600h
+    call .callI33h
+;I33 wrapper sets the device changed bit on all devs if a change detected
+    ;jnc .ioidccExit
+    ;mov eax, devChgd    ;Set the device changed bit on all devices
+    ;call .setBitsForAllDevs
+;.ioidccExit:
+    ;pop rdx
+    return
+
 .ioSetAccessFlag:
 ;Sets/Clears the unformatted bit of a device block.
     test byte [rdx + accFlgBlk.bAccMode], -1
@@ -1817,7 +1926,8 @@ errTblLen equ $ - .biosErrTbl
 ;Input: rbp -> drvBlk to check for
 ;Output: CF=NC: All ok.
 ;        CF=CY: Error in getting updated BPB. 
-;               AL = BIOS error code
+;               ZF=ZE: AH = BIOS error code
+;               ZF=NZ: AL = DOS error code
 ;   If an illegal disk swap is detected, then this call returns directly
 ;   and doesnt bubble up to the caller. 
     call .checkDevFixed ;If the dev is fixed, skip checking swap
@@ -1873,6 +1983,13 @@ errTblLen equ $ - .biosErrTbl
 .cvsChange:
     dec eax ;Make eax = -1, change
     mov byte [.bLastDsk], al    ;Ensure we do a media check next time
+    return
+
+.checkHasChangeline:
+;Input: rbp -> drvBlk to check if it has a changeline
+;Output: ZF=ZE: Drive has no changeline support
+;        ZF=NZ: Drive has changeline support
+    test word [rbp + drvBlk.wDevFlgs], devChgLine
     return
 
 .checkDevFixed:
