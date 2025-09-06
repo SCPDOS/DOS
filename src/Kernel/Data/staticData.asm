@@ -145,6 +145,7 @@ errXlatTbl:
     db 66h, 02h, errInvFnc, errFnf                      ;Get/Set Global Codepage
     db 67h, 03h, errNhl, errNoMem, errInvFnc            ;Set Handle Count
     db 68h, 01h, errBadHdl                              ;Commit File
+    db 69h, 04h, errBadDrv, errInvDat, errInvFnc, errAccDen ;Get/Set Disk Serial
     db -1   ;End Of Table marker
 
 
@@ -159,63 +160,116 @@ extErrTbl:
 ; Byte 3: Error Locus
 ;If a byte is -1, we dont set that variable (Thus allowing the caller to set)
 ;
-;Error 01: Invalid function number
+;Error 01h: Invalid function number
     db errInvFnc, eClsAppFlt, eActAbt, -1   ;Locus set before call
-;Error 02: File not found
+;Error 02h: File not found
     db errFnf, eClsNotFnd, eActUsr, eLocDsk 
-;Error 03: Path not found
+;Error 03h: Path not found
     db errPnf, eClsNotFnd, eActUsr, eLocDsk
-;Error 04: Too many open handles, and no handles are left
+;Error 04h: Too many open handles, and no handles are left
     db errNhl, eClsOoR, eActAbt, eLocUnk
-;Error 05: Access being denied
-    db errAccDen, eClsAuth, eActUsr, eLocUnk
-;Error 06: Invalid File handle being provided
+;Error 05h: Access being denied
+    db errAccDen, eClsAuth, eActUsr, -1
+;Error 06h: Invalid File handle being provided
     db errBadHdl, eClsAppFlt, eActAbt, eLocUnk
-;Error 07: MCB chain destroyed
+;Error 07h: MCB chain destroyed
     db errMCBbad, eClsAppFlt, eActKil, eLocMem
-;Error 08: No Memory remaining
+;Error 08h: No Memory remaining
     db errNoMem, eClsOoR, eActAbt, eLocMem
-;Error 09: Invalid MCB block Address
+;Error 09h: Invalid MCB block Address
     db errMemAddr, eClsAppFlt, eActAbt, eLocMem
-;Error 0A: Bad Environment block
+;Error 0Ah: Bad Environment block
     db errBadEnv, eClsAppFlt, eActAbt, eLocMem
-;Error 0B: Data provided in a bad format
+;Error 0Bh: Data provided in a bad format
     db errBadFmt, eClsBadFmt, eActUsr, eLocUnk
-;Error 0C: Access Code Invalid
+;Error 0Ch: Access Code Invalid
     db errAccCde, eClsAppFlt, eActAbt, eLocUnk
-;Error 0D: Error due to Invalid Data provided
+;Error 0Dh: Error due to Invalid Data provided
     db errInvDat, eClsBadFmt, eActAbt, eLocUnk
-;Error 0F: Error due to a bad drive letter being provided
+;Error 0Fh: Error due to a bad drive letter being provided
     db errBadDrv, eClsNotFnd, eActUsr, eLocDsk
-;Error 10: Error due to attempting to delete the CWD
+;Error 10h: Error due to attempting to delete the CWD
     db errDelCD, eClsAuth, eActUsr, eLocDsk
-;Error 11: Error due to a unknown device being used
+;Error 11h: Error due to a unknown device being used
     db errDevUnk, eClsUnk, eActUsr, eLocDsk
-;Error 12: No more file handles available
+;Error 12h: No more file handles available
     db errNoFil, eClsNotFnd, eActUsr, eLocDsk
-;Error 50: Network request not supported
-    db errNoNet, eClsClash, eActUsr, eLocDsk
-;Error 20: Generic Share Violation, Sharing Resource cannot be shared
+;Error 50h: File already exits
+    db errFilExist, eClsClash, eActUsr, eLocDsk
+;Error 20h: Share Violation, Resource cannot be shared
     db errShrVio, eClsLocked, eActDRet, eLocDsk
-;Error 21: File Locking Violation
+;Error 21h: File Lock Violation
     db errLokVio, eClsLocked, eActDRet, eLocDsk
-;Error 54: Too many levels of redirection error
+;Error 54h: Too many levels of redirection error
     db errRedir, eClsOoR, eActAbt, -1
-;Error 56: Bad resource password provided
+;Error 56h: Bad resource password provided
     db errBadPass, eClsAuth, eActUsr, eLocUnk
-;Error 52: Directory already exists
+;Error 52h: Directory already exists
     db errDirExist, eClsOoR, eActAbt, eLocDsk
-;Error 32: Network request not supported by DOS
+;Error 32h: Network request not supported by DOS
     db errNoNet, eClsBadFmt, eActUsr, eLocNet
-;Error 55: Trying to duplicate a redirection for a resource
+;Error 55h: Trying to duplicate a redirection for a resource
     db errDupRedir, eClsClash, eActUsr, eLocNet
-;Error 57: Bad parameter in request
+;Error 57h: Bad parameter in request
     db errBadParam, eClsBadFmt, eActUsr, eLocUnk
-;Error 53: Fail was returned from Int 24h
+;Error 53h: Fail was returned from Int 24h
     db errFI24, eClsUnk, eActAbt, eLocUnk
-;Error 24: Sharing Buffer Full
+;Error 24h: Sharing Buffer Full
     db errShrFul, eClsOoR, eActAbt, eLocMem
-    dd -1   ;End of table signature
+;Error 26h: Handle reached EOF on handle that reports EOF
+    db errHdlEOF, eClsOoR, eActAbt, eLocUnk
+;Error 27h: Handle reached a full disk condition and asked to report this
+    db errDskFul, eClsOoR, eActAbt, eLocUnk
+;Error XXh: Catch all case
+    dd -1
+
+hardErrTbl:
+;Same format as above, used for translating hard errors.
+; Byte 0: Extended Error Code as a byte
+; Byte 1: Error Class
+; Byte 2: Error Suggested Action
+; Byte 3: Error Locus
+;If a byte is -1, we dont set that variable (Thus allowing the caller to set)
+;
+;DOS Error 19/Driver Error 0: Write Protect Error
+    db errWpd, eClsMedia, eActRetUsr, eLocDsk
+;DOS Error 20/Driver Error 1: Unknown Unit
+    db errUnkUnt, eClsInt, eActKil, eLocUnk
+;DOS Error 21/Driver Error 2: Drive not ready
+    db errDrvNR, eClsHrdFlt, eActRetUsr, -1
+;DOS Error 22/Driver Error 3: Unknown command
+    db errUnkCmd, eClsInt, eActKil, eLocUnk
+;DOS Error 23/Driver Error 4: CRC (data integrity) error
+    db errCRCerr, eClsMedia, eActAbt, eLocDsk
+;DOS Error 24/Driver Error 5: Bad request length 
+    db errBadRLn, eClsInt, eActKil, eLocUnk
+;DOS Error 25/Driver Error 6: Seek error
+    db errSekErr, eClsHrdFlt, eActRet, eLocDsk
+;DOS Error 26/Driver Error 7: Unknown (non-DOS) medium
+    db errUnkMed, eClsMedia, eActRetUsr, eLocDsk
+;DOS Error 27/Driver Error 8: Sector not found
+    db errSecNF, eClsMedia, eActAbt, eLocDsk
+;DOS Error 28/Driver Error 9: Printer (or device) out of paper
+    db errNoPap, eClsTS, eActRetUsr, eLocChr
+;DOS Error 29/Driver Error 10: Write failure
+    db errWF, eClsHrdFlt, eActAbt, -1
+;DOS Error 30/Driver Error 11: Read failure
+    db errRF, eClsHrdFlt, eActAbt, -1
+;DOS Error 31/Driver Error 12: General failure
+    db errGF, eClsUnk, eActAbt, -1
+;DOS Error 32: Share Violation, Resource cannot be shared
+    db errShrVio, eClsLocked, eActDRet, eLocDsk
+;DOS Error 33: File Lock Violation
+    db errLokVio, eClsLocked, eActDRet, eLocDsk
+;DOS Error 50: Network request not supported
+    db errNoNet, eClsBadFmt, eActUsr, eLocNet
+;DOS Error 35: FCB Unavailable
+    db errNoFCB, eClsAppFlt, eActAbt, eLocUnk
+;DOS Error 36: Sharing buffer full, Can't share more files!
+    db errShrFul, eClsOoR, eActAbt, eLocMem
+;DOS Error XX: Catch all case for other hard errors
+    db -1, eClsUnk, eActKil, -1
+
 
 ;Nationalisation stuff
 dosNLSPtr:      ;Symbol to point to the DOS internal NLS data

@@ -32,7 +32,7 @@ xlatHardError:
     mov word [errorExCde], ax   ;Store this error code here
     pop rax
     push rsi
-    lea rsi, extErrTbl
+    lea rsi, hardErrTbl
     call setErrorVars
     pop rsi
     return

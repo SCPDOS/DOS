@@ -42,7 +42,8 @@ errLokVio   equ 33  ;File Lock violation
 errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
-errDskFul   equ 38  ;Disk full error!
+errHdlEOF   equ 38  ;Handle reached EOF. Asked to return this error code
+errDskFul   equ 39  ;Disk full error! Hanlde asked to return this error code
 
 errNoNet    equ 50  ;Network request not supported, generic net fail
 errNLSAcDen equ 65  ;Network Access denied (NLS usage)
@@ -72,7 +73,7 @@ eActKil     equ 5   ;Abort without cleanup
 eActIgn     equ 6   ;Ignore error
 eActRetUsr  equ 7   ;Retry after user intervention (i.e swap remdev)
 ;-----------------------------------------------------------------------------
-;Error classes
+;Error Classes
 eClsOoR     equ 1   ;Out of resources, no mem or handles
 eClsTS      equ 2   ;Temp sitch, should go away
 eClsAuth    equ 3   ;Authorisation, e.g. file permission error 
