@@ -3,11 +3,11 @@
 %define true 1
 %define false 0
 
-;Switch the DEBUG to false in production!
-%define DEBUG false
-%define DPBINFO false
-%define REGS false
-%define ENDSTATUS false
+%define DEBUG       false
+%define DPBINFO     false
+%define REGS        false
+%define ENDSTATUS   false
+%define HEADERS     false
 
 
 ;Use this space as the debug stack

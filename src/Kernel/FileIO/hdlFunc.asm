@@ -2182,7 +2182,7 @@ readDiskFile:
     xor al, al  ;Set ZF flag
     call readExitOk   ;We call this
     stc ;All calls which end up here return Fail!
-    ret
+    return
 charReadExitOk:
 ;Input: ecx = Number of bytes left to transfer!
 ;       ZF=ZE => Ensure we reach "EOF" on char device!
@@ -2543,18 +2543,6 @@ writeDiskFullExit:
 writeBadExit:
     mov eax, errAccDen      ;Normally return Access denied
 .diskFull:
-;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-;Old action
-;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-;Here we preserve the error code in eax on stack in the event that the 
-; possible commit operation in writeExit also fails, as this will return
-; its own error code.
-;    push rax        
-;    call writeExit
-;    pop rax
-;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-;New action
-;-----------------------------------------------------------------------
 ;If we hard error in write we should return WITHOUT modifying the file
 ; size information. Users should always follow a hard error on write with 
 ; a zero byte write to ensure that any newly allocated FAT sectors are 

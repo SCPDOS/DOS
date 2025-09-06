@@ -161,12 +161,12 @@ openSFT:
 ;Signals an open to a file (e.g. when printer echo is to begin)
 ;Input: rdi = SFT pointer
     call dosPushRegs
-    mov al, drvOPEN
+    mov ah, drvOPEN
     jmp short openCloseCommon
 closeSFT:
 ;Signals a close to a file (e.g. when printer echo is to end)
     call dosPushRegs
-    mov al, drvCLOSE
+    mov ah, drvCLOSE
 openCloseCommon:
 ;Only signals an open/close to a block device if SHARE is loaded
     test word [rdi + sft.wDeviceInfo], devRedir  ;We a network device?
@@ -174,10 +174,10 @@ openCloseCommon:
     test byte [rdi + sft.wDeviceInfo], devCharDev
     mov rdi, qword [rdi + sft.qPtr] ;Get DPB or Device Driver header
     jnz .charDev
-    ;Here a disk drive, rdi is a DPB ptr
+;Here a disk drive, rdi is a DPB ptr
     test byte [shareFlag], -1    ;Is SHARE loaded?
     jz .exit   ;Exit if share flag is zero (Share not loaded)
-    mov ah, byte [rdi + dpb.bUnitNumber]    ;Get to populate request header
+    mov al, byte [rdi + dpb.bUnitNumber]    ;Get to populate request header
     mov cl, byte [rdi + dpb.bDriveNumber]   ;Get for error if an error occurs
     mov rdi, qword [rdi + dpb.qDriverHeaderPtr]
 .charDev:
@@ -206,7 +206,7 @@ openCloseCommon:
 .errorCmn:
 ;Permit only Abort, Retry or Ignore. Abort doesn't come through.
     call charDevErr ;Call temperror handler (handler due to change, not ep)
-    mov al, critRetry   ;al returns user response
+    cmp al, critRetry   ;al returns user response
     jne .exitPop    ;Ignore, proceed as if nothing happened
     pop rax ;Get back zero extended eax into eax to store
     jmp short .retryEP  ;Reset

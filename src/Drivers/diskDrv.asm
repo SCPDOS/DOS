@@ -47,6 +47,8 @@ dbgPutch:
     push rdx
     mov dx, 0E9h
     out dx, al
+    ;mov ah, 0Eh
+    ;int 30h
     pop rdx
     return
 
@@ -71,12 +73,9 @@ dbgPrintHexByte:
     popfq
     return
 .wrchar:
-    push rdx
     lea rbx, .debascii
     xlatb    ;point al to entry in ascii table, using al as offset into table
-    mov dx, 0E9h
-    out dx, al
-    pop rdx
+    call dbgPutch
     return
 .debascii   db "0123456789ABCDEF"
 %endif
@@ -212,14 +211,28 @@ dosInt33h:
     cmp byte [.drv], 0
     retne
     pop rax
-    inc byte [.dbgCnt]
+;Now we enter the fake handler.
+    mov byte [0700h], 0
+    ;inc byte [.dbgCnt]
+    ;mov ah, 80h ;Timeout most of the time
+    ;cmp byte [.dbgCnt], 1
+    ;jne .dbgIret
+    mov eax, devChgd    ;Set the device changed bit on all devices
+    call msdDriver.setBitsForAllDevs
     mov ah, 06h
-    cmp byte [.dbgCnt], 1
-    je .dbgIret
-    mov ah, 80h
 .dbgIret:
+    push rsi
+    lea rsi, .dbgStrMsg
+    call dbgPrintString
+    push rax
+    mov al, ah
+    call dbgPrintHexByte
+    pop rax
+    call dbgCrlf
+    pop rsi
     or byte [rsp + 2*8h], 1 ;Set CF
     iretq
+.dbgStrMsg db  "[BIOS DEBUG] REPORTING ERROR AH=",0
 .dbgCnt db 0
 %endif
 ;Local data for the main IRQ handler
@@ -417,6 +430,7 @@ msdDriver:
     mov ah, 80h ;Set error bit
     mov rbx, qword [reqPktPtr]
     mov word [rbx + drvReqPkt.status], ax
+    stc         ;Some functions need CF set to error properly
     return      ;Return to set done bit
 ;The xlat table is used for simple error codes.
 ;The more complex stuff requires a further callout to int 33h for the SCSI
@@ -602,7 +616,6 @@ errTblLen equ $ - .biosErrTbl
 ;------------------------------------------------------
     call .resetIds  ;Reset the drvBlk volume ids
     call .updateBpb ;Fill the BPB entries in the drvBlk
-    jc .ioDoErr     ;Errors returned as if from block IO handler
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
     push rsi
@@ -615,6 +628,7 @@ errTblLen equ $ - .biosErrTbl
     pop rsi
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    jc .ioDoErr     ;Errors returned as if from block IO handler
     call .moveVolIds    ;Move the volume ID's into the drvBlk if they exist.
     jnc .bbpbExit
 ;Here we will search the root directory for the volume label only!
@@ -1910,6 +1924,7 @@ errTblLen equ $ - .biosErrTbl
 ;Place DOS error code into al
     pop rax ;Pop check io swap return address
     pop rax ;Pop do io function return address
+    pop rax ;Pop read/write function return address
     mov eax, drvBadDskChnge
     jmp .errorExit
 .csiogetbpberr:

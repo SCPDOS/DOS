@@ -4,7 +4,7 @@
 ;-----------------------------------:
 functionDispatch:   ;Int 21h Main function dispatcher
 ;ah = Function number, all other registers have various meanings
- %if DEBUG
+%if DEBUG && HEADERS
     ;Entry function
     debugEnterM
     lea rbp, .l0000
@@ -14,7 +14,7 @@ functionDispatch:   ;Int 21h Main function dispatcher
 .l0000 db 0Ah,0Dh,"Entering ",0
 .l0001:    
     debugExitM
-    %endif
+%endif
     cli ;Halt external interrupts
     cld ;Ensure all string ops occur in the right direction
     cmp ah, kDispTblL/2    ;Number of functions
@@ -117,7 +117,7 @@ functionDispatch:   ;Int 21h Main function dispatcher
     debugExitM
 %endif
     call qword [oldRBX]     ;Call the desired function, rax contains ret code
-%if DEBUG
+%if DEBUG && HEADERS
     ;Entry function
     debugEnterM
     lea rbp, .l0002
