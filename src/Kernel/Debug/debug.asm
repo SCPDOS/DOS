@@ -65,12 +65,12 @@ debPrintNullString:
 
 debGetch:
     push rdx
-    mov ah, 02h ;Blocking recieve!
-    xor edx, edx
-    int 34h
-    test ah, 80h    ;Was no char recieved? Keep waiting
-    ;mov eax, 0100h
-    ;int 36h
+    ;mov ah, 02h ;Blocking recieve!
+    ;xor edx, edx
+    ;int 34h
+    ;test ah, 80h    ;Was no char recieved? Keep waiting
+    mov eax, 0100h
+    int 36h
     pop rdx
     return
 debPutch:

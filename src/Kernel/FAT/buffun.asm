@@ -105,19 +105,21 @@ flushAllBuffersForDrive:    ;External linkage (2 - diskReset/exit)
     movzx eax, byte [rdi + bufferHdr.driveNumber]
     cmp al, byte [errorDrv] ;Was this a buffer on the error drive?
     pop rax
-    je .errDrv    ;If not, goto next buffer
-.nextBuffer:
+    je .errDrv      ;If not, goto next buffer
+.nextBuffer:        ;This handles the case if the user aborts or ignores.
     mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
     jmp short .mainLp
 .errDrv:
-    mov byte [rdi + bufferHdr.driveNumber], -1  ;Free the buffer if caused error
+;Free the buffer if it caused an error in this DOS call and was aborted
+; or ignored.
+    mov byte [rdi + bufferHdr.wDrvNumFlg], freeBuffer
     jmp short .nextBuffer
 .exit:
     pop rax
     pop rdi
-    test byte [Int24Fail], -1   ;Did we xlat error?
+    test byte [Int24Fail], -1   ;Did we return fail at any point?
     retz
-    stc ;If so, return CF=CY
+    stc     ;If so, carry the CF=CY
     return
 
 flushAndCleanBuffer:   ;Internal Linkage Int 2Fh AX=1215h

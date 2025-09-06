@@ -27,20 +27,23 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov rsi, rdx
     call checkPathspecOK
     jnc .pathOk ;Path ok save for potentially having wildcards
-.badPath: ;We cant have wildcards when creating or opening a file!
+;We cant have wildcards when creating or opening a file!
     pop rax
     mov eax, errAccDen
     jmp extErrExit
+.errNoHandles:
+    pop rbx             ;Pop the word from the stack
+    jmp extErrExit      ;Return in eax the error code
 .pathOk:
     call dosCrit1Enter
     call findFreeSFT    ;Get free SFT in rdi or error exit
     call dosCrit1Exit
-    jc .exitBad
-    ;Now save variables
-    call setCurrentSFT
+    jc .errNoHandles
+;Now save DOS state. 
+    call setCurrentSFT          ;Set rdi as the current SFT
     mov word [currentNdx], bx   ;Save a word, SFTNdx are bytes though
-    call findFreeJFTEntry    ;Get a ptr to a free JFT entry in rdi
-    jc .exitBad
+    call findFreeJFTEntry       ;Get a ptr to a free JFT entry in rdi
+    jc .errNoJFTentries         ;Free the current SFT entry and exit
     mov word [currentHdl], bx   ;Save handle number in var
     mov qword [curHdlPtr], rdi  ;Save ptr to this entry
     movzx ebx, word [currentNdx]    ;Get the current ndx 
@@ -71,11 +74,11 @@ openFileHdl:       ;ah = 3Dh, handle function
 .badFile:   ;If trying to open a file that doesnt exit, error so!
     pop rax
     mov eax, errFnf 
-    jmp .exitBad2   ;Need to deallocate the SFT before returning
+    jmp .errBadDeallocate   ;Need to deallocate the SFT before returning
 .badPathspec:   ;If the parent path doesnt exist, error thus.
     pop rax
     mov eax, errPnf
-    jmp .exitBad2   ;Need to deallocate the SFT before returning
+    jmp .errBadDeallocate   ;Need to deallocate the SFT before returning
 .proceedCall:
 ;If the pathspec exists, recall that for create, we truncate.
     xor ecx, ecx    ;Default to empty device info word
@@ -94,25 +97,24 @@ openFileHdl:       ;ah = 3Dh, handle function
     call rbx    ;Enter with open mode in 
     pop rcx
     mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
-    jc .exitBad2
+    jc .errBadDeallocate
     mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
     movzx eax, word [currentHdl]
     call qword [closeDupFileShare]  ;Close Duplicate Handles if opened file! 
     mov word [currentNdx], -1       ;Now reset the index back to -1
     jmp extGoodExit ;Save ax and return OK
-.exitBad:
-    sti ;To prevent new net open/create reqs from crapping out a failed request
-    pop rbx ;Pop the word from the stack
-    jmp short .exitBadCommon
-.exitBad2:
-    ;Now we deallocate the SFT entry in the JFT and SFT block
+.errBadDeallocate:
+;Now we deallocate the SFT entry in the JFT and SFT block
     mov rsi, qword [curHdlPtr]
     mov byte [rsi], -1  ;Re-free the entry in the JFT
-    mov rsi, qword [currentSFT]
-    mov word [rsi], 0   ;Re-free the SFT 
-.exitBadCommon:
+.errNoJFTentries:
+    cli     ;Enter critical section! No multitasking to free the SFT
+    call getCurrentSFT  ;Get the current SFT ptr in rdi
+    mov word [rdi + sft.wNumHandles], 0   ;Mark as free! 
+    stc ;Debug to show that we are here
     mov word [currentNdx], -1
+    sti
     jmp extErrExit ;Propagate the error code that is in ax
 
 closeFileHdl:      ;ah = 3Eh, handle function
@@ -1623,23 +1625,23 @@ buildSFTEntry:
     pop rbp
     pop rdi
     pop rsi
-    jnc .bad ;If CF=NC, then we have found a vollbl, fail.
+    jnc .badBuildSFTAccDen ;If CF=NC, then we have found a vollbl, fail.
     cmp al, errNoFil
-    jne .bad ;If not "no file found", error out
+    jne .badBuildSFTAccDen ;If not "no file found", error out
 .notVolLbl:
     test byte [fileExist], -1   ;-1 => File exists
     jz .createFile
     test byte [curDirCopy + fatDirEntry.attribute], dirCharDev ;Char dev?
     jnz .charDev    ;If its valid, just reopens it!
     test byte [curDirCopy + fatDirEntry.attribute], attrFileDir | dirReadOnly
-    jnz .bad    ;Cant recreate a dir or ro file!
+    jnz .badBuildSFTAccDen    ;Cant recreate a dir or ro file!
     ;Here disk file exists, so recreating the file.
     push rbp
     push qword [currentSFT]
     call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
     pop qword [currentSFT]
     pop rbp
-    jc .bad
+    jc .badBuildSFTAccDen
     ;al has the char for the filename
     ;Sets vars for the sector/offset into the sector
     call getCurrentSFT
@@ -1680,7 +1682,7 @@ buildSFTEntry:
     mov dword [rdi + sft.dStartClust], eax
 
     xor eax, eax
-    ;Now set DeviceInfo to drive number and get the dpb for this disk file
+;Now set DeviceInfo to drive number and get the dpb for this disk file
     mov al, byte [workingDrv]
     or al, devDiskNoFlush  ;Dont flush until it is accessed
     mov word [rdi + sft.wDeviceInfo], ax    ;AH already 0
@@ -1695,7 +1697,7 @@ buildSFTEntry:
     movsw
     movsb
     ;SFT filled
-    jmp .exit
+    jmp .exitBuildSFT
 .createFile:
     ;Create a dummy dir entry in the SDA to swap into the disk buffer
     ;rsi points to current sft entry
@@ -1733,11 +1735,11 @@ buildSFTEntry:
     pop rdi ;Preserve rdi = curDirCopy
     jnc .dirEntryFnd
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
-    je .bad ;Set CF and exit
+    je .badBuildSFTAccDen ;Set CF and exit
     call growDirectory  ;Increase directory size by 1 cluster
-    jc .exit
+    jc .badBuildSFTOwnErr
     cmp eax, -1 ;Disk Full?
-    je .bad
+    je .badBuildSFTAccDen
     ;Else eax = Newly allocated cluster
     jmp short .searchForDirSpace
 .dirEntryFnd:
@@ -1764,10 +1766,7 @@ buildSFTEntry:
 .charDev:
     mov rax, qword [curDirCopy + fatDirEntry.name]  ;Get the name
     call getCharDevDriverPtr    ;Get in rdi device header ptr
-    jnc .notBadCharDevName
-    mov eax, errAccDen
-    jmp short .exit ;CF already set
-.notBadCharDevName:
+    jc .badBuildSFTAccDen
     mov rsi, qword [currentSFT]
     mov qword [rsi + sft.qPtr], rdi ;Store the Device Driver Header pointer
     movzx ebx, byte [rdi + drvHdr.attrib]   ;Get the attribute word low byte
@@ -1779,14 +1778,14 @@ buildSFTEntry:
     mov eax, "    "
     mov word [rsi + sft.sFileName + 8], ax
     mov byte [rsi + sft.sFileName + 10], al
-.exit:
+.exitBuildSFT:
     call writeThroughBuffersForHandle
-    jc .bad2
+    jc .badBuildSFTOwnErr
     pop rbp
     return
-.bad:   ;Set Access Denied
+.badBuildSFTAccDen:   ;Set Access Denied
     mov eax, errAccDen
-.bad2:  ;Error propagating error code
+.badBuildSFTOwnErr:  ;Error propagating error code
     stc
     pop rbp
     return
@@ -2362,7 +2361,7 @@ writeDiskFile:
     mov byte [errorLocus], eLocDsk 
     mov byte [rwFlag], 1    ;Write operation
     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
-    jnz writeCharDev.exitFail ;Recycle the error above!
+    jnz writeBadExit
     test ecx, ecx
     jnz .nonZeroWrite
     mov ecx, -1 ;If write cnt is 0, check for no locks
@@ -2372,7 +2371,7 @@ writeDiskFile:
     jnc .proceedWithWrite   ;No lock for rdi and ecx, all good!
     call shareCheckWriteLockViolation
     jnc .nonZeroWrite   ;If returned retry, retry the request
-    return  ;Else return with CF=CY
+    jmp writeBadExit
 .proceedWithWrite:
 ;Ensure that we update the directory entry after this write
     and word [rdi + sft.wDeviceInfo], ~(devCharNotEOF|devDiskNoDTonClose)
@@ -2383,7 +2382,7 @@ writeDiskFile:
     test eax, eax
     jnz .notStart
     call startNewChain  ;Allocate a first cluster! 
-    retc
+    jc writeBadExit
     cmp eax, -1         ;Disk full?
     je writeDiskFullExit
     ;Now eax has the first cluster of chain
@@ -2396,7 +2395,7 @@ writeDiskFile:
     test edx, edx   ;If the fileptr is in the first cluster, already there
     jz .atCluster
     call .walkFAT   ;Walks the fat, gets the next cluster in eax
-    retc
+    jc writeBadExit
     cmp eax, -1     ;Not EOC, eax = the cluster we need to be at
     jne .atCluster
     cmp dword [rbp + dpb.dFreeClustCnt], -1
@@ -2411,10 +2410,10 @@ writeDiskFile:
     mov ebx, eax    ;Setup last cluster value in ebx
     mov ecx, edx    ;Allocate the remainder of clusters!
     call allocateClusters   ;ebx has last cluster value
-    retc
+    jc writeBadExit
     mov eax, ebx    ;Move the start sector for the walk back
     call .walkFAT   ;Walks the fat, gets the next cluster in eax
-    retc    
+    jc writeBadExit    
 .atCluster:
 ;Fall here with the sector number in eax
     call getStartSectorOfCluster    ;Get the start sector on the disk in rax
@@ -2434,7 +2433,7 @@ writeDiskFile:
 ;Here we truncate!
     mov eax, dword [currClustD] ;We must free the chain from currClustD
     call truncateFAT    ;Truncate from current cluster setting it to EOC
-    retc
+    jc writeBadExit
     mov eax, dword [rdi + sft.dCurntOff]
 .extend:
     mov dword [rdi + sft.dFileSize], eax    ;This is the new filesize now
@@ -2444,13 +2443,14 @@ writeDiskFile:
     call qword [updateDirShare] ;Remember, CF=CY by default!
     jmp writeDoCommit   ;Now check if we should do a commit, or just return
 .walkFAT:
+;Subroutine used by WRITE
 ;Input: eax = Cluster to start walking from
 ;Output: If eax = -1: currClustD is the cluster we just read
 ;        Else: currClustD = eax is the cluster value we are at
 ;       edx = Number of clusters left (0 or #toAllocate)
 ;If CF=CY, hard error, fail!
     call readFAT
-    retc
+    retc    ;DO NOT REPLACE WITH JUMP TO ERROR HANDLER!!
     cmp eax, -1 ;Is the next cluster an EOC?
     je .wFatExit    ;Return if so
     mov dword [currClustD], eax     ;Else, save eax as current cluster

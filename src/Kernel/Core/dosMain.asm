@@ -57,7 +57,6 @@ functionDispatch:   ;Int 21h Main function dispatcher
     mov byte [int28Flag], 1 ;Make it ok to trigger Int 28h
     mov byte [Int24Fail], bl    ;Clear the Int24 returned fail flag
     mov byte [dirFlag], bl  ;Default to look for dir
-    mov qword [currentSFT], rbx ;Reset the current SFT field
 
     push rax        ;Save rax to use temporarily as table base 
     mov bl, ah      ;Move the function number bl (rbx = 0)
@@ -94,6 +93,15 @@ functionDispatch:   ;Int 21h Main function dispatcher
     mov byte [delChar], 0E5h
 ;Similar for volIdFlag. Find file et al are disk ops. 
     mov byte [volIdFlag], 0    ;Force bit clear (else, forces volid search)
+    
+;Need to clear the currentSFT field on all disk stack operations in the 
+; event of a hard error. In this case, checkDoInt24OnHandle is called and 
+; checks the currentSFT, which might have bogus data from an old call (e.g.
+; create a file, then rename, and on path search, rename hard errors. In 
+; this case, the create pointer would still be present.). 
+;xxxxxxxxxx NOT IN USE RIGHT NOW xxxxxxxxxx
+    ;mov qword [currentSFT], 0  
+;xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
     push rax
     mov ah, 82h ;Cancel all critical section!

@@ -158,8 +158,8 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [rdi], -1          ;Free this handle
     pop rdi
 .notOpeningFile:
-    call checkDoInt24OnHandle   ;IF returns ZF=NZ, we just fail!
-    jnz .setFail
+    ;call checkDoInt24OnHandle   ;IF returns ZF=NZ, we just fail!
+    ;jnz .setFail
     cli                         
     inc byte [critErrFlag]      ;Set flag for critical error
     dec byte [inDOS]            ;Exiting DOS
@@ -181,8 +181,8 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     jne .abort   ;Must be abort
 .setFail:   ;Here is for fail
     mov al, critFail    ;Reset al to contain fail (even if Int24 responded Fail)
-    call checkDoInt24OnHandle   ;If we fail because of handle, skip fail counter!
-    jnz .skipFailInc
+    ;call checkDoInt24OnHandle   ;If we fail because of handle, skip fail counter!
+    ;jnz .skipFailInc
     inc byte [Int24Fail]        ;Inc the fail counter!
 .skipFailInc:
     test byte [Int24bitfld], critFailOK
@@ -239,16 +239,16 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov qword [rdi + psp.rspPtr], rbx
     jmp terminateClean.altEP
 
-checkDoInt24OnHandle:
+;checkDoInt24OnHandle:
 ;Checks if currentSFT is a null pointer. Return ZF=ZE if so.
 ;Else, take the SFT pointer and check its open mode. 
 ;   If openFailOnI24 set, return ZF=NZ
 ;   Else, return ZF=ZE.
-    push rdi
-    call getCurrentSFT
-    test rdi, rdi   ;If this is a null pointer, no
-    jz .exit
-    test word [rdi + sft.wOpenMode], openFailOnI24
-.exit:
-    pop rdi
-    return
+;    push rdi
+;    call getCurrentSFT
+;    test rdi, rdi   ;If this is a null pointer, no
+;    jz .exit
+;    test word [rdi + sft.wOpenMode], openFailOnI24
+;.exit:
+;    pop rdi
+;    return
