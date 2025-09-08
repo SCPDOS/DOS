@@ -181,7 +181,7 @@ openCloseCommon:
     mov cl, byte [rdi + dpb.bDriveNumber]   ;Get for error if an error occurs
     mov rdi, qword [rdi + dpb.qDriverHeaderPtr]
 .charDev:
-    test word [rdi + drvHdr.attrib], devDrvHdlCTL   ;Can we open/close?
+    test word [rdi + drvHdr.attrib], devDrvOpClRem   ;Can we open/close?
     jz .exit    ;No, exit!
     mov rsi, rdi    ;Save driver header in rsi for the request
     lea rbx, primReqPkt ;Get the primary request header space in rbx

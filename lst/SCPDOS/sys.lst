@@ -160,323 +160,337 @@
     65                              <1>     devDrvClockDev  equ 8h  ;If set, device is CLOCK device
     66                              <1>     devDrvFastOut   equ 10h ;If set, device supports Int 29h
     67                              <1>     devDrvIOCTL     equ 40h ;If set, IOCTL and GET/SET suported
-    68                              <1>     devDrvHdlCTL    equ 800h ;If set, Open, Close and Rem media supported
-    69                              <1>     devDrvNotIBM    equ 2000h ;If set, buffer in Build BPB is scratch space
-    70                              <1>     devDrvOutToBsy  equ 2000h ;If set, char dev supports output until busy
-    71                              <1>     devDrvIOCTLRW   equ 4000h ;If set, IOCTL Read/Write supported
-    72                              <1>     devDrvChar      equ 8000h ;If set, Char device
-    73                              <1> ;Bit 0 1=console input
-    74                              <1> ;    1 1=console output (character devices)
-    75                              <1> ;    2 1=NUL device
-    76                              <1> ;    3 1=CLOCK device
-    77                              <1> ;    4 1=Int 29 output (CON)
-    78                              <1> ;    6 1=extended functions supported (13,17,18) (3.2+)
-    79                              <1> ;    7 1=query IOCTL function supported (19) (5.0+)
-    80                              <1> ;   11 1=open/close/removable media supported (3.0+)
-    81                              <1> ;   13 1=output until busy supported (character devices) (3.0+)
-    82                              <1> ;      1=media descriptor in FAT required (block devices)
-    83                              <1> ;   14 1=IOCTL supported
-    84                              <1> ;   15 0=block device
-    85                              <1> ;      1=character device
-    86                              <1> 
-    87                              <1> ;Driver structures
-    88                              <1> 
-    89                              <1> %macro drvReqPktM 0 ;Driver Request Header Macro
-    90                              <1> 
-    91                              <1>     .hdrlen db ?  ;Length of the request header
-    92                              <1>     .unitnm db ?  ;Unit number, meaningless for character devs
-    93                              <1>     .cmdcde db ?  ;Command code
-    94                              <1>     .status dw ?  ;Status word
-    95                              <1>     .devptr dq ?  ;Device queue pointer field, reserved for future use
-    96                              <1> 
-    97                              <1> %endmacro
-    98                              <1> 
-    99                              <1> struc drvReqPkt
-   100                              <1>     drvReqPktM
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   101                              <1> endstruc
-   102                              <1> 
-   103                              <1> struc initReqPkt  ;Init Request Packet
-   104                              <1> 
-   105                              <1>     drvReqPktM   ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   106 0000000D ??                  <1>     .numunt db ?  ;Number of logical units (Block only, 0 for char)
-   107 0000000E ????????????????    <1>     .endptr dq ?  ;Pointer to first free byte after driver
-   108 00000016 ????????????????    <1>     .optptr dq ?  ;Ptr to BPB array (blkdev) or cmdline args
-   109 0000001E ??                  <1>     .drvnum db ?  ;First Drive number
-   110                              <1> 
-   111                              <1> endstruc
-   112                              <1> 
-   113                              <1> struc mediaCheckReqPkt ;Media Check Request Packet
-   114                              <1> 
-   115                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   116 0000000D ??                  <1>     .medesc db ?  ;DOS media descriptor
-   117 0000000E ??                  <1>     .medret db ?  ;Return byte (Has media been changed?)
-   118 0000000F ????????????????    <1>     .desptr dq ?  ;Pointer to a valid volume id field
-   119                              <1> 
-   120                              <1> endstruc
-   121                              <1> 
-   122                              <1> struc bpbBuildReqPkt  ;Build BPB Request Packet
-   123                              <1> 
-   124                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   125 0000000D ??                  <1>     .medesc db ?  ;DOS media descriptor
-   126 0000000E ????????????????    <1>     .bufptr dq ?  ;Transfer buffer
-   127 00000016 ????????????????    <1>     .bpbptr dq ?  ;Pointer to the BPB
-   128                              <1> 
-   129                              <1> endstruc
-   130                              <1> 
-   131                              <1> struc ioReqPkt   ;IO Request Packet
-   132                              <1> 
-   133                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   134 0000000D ??                  <1>     .medesc db ?  ;DOS media descriptor
-   135 0000000E ????????????????    <1>     .bufptr dq ?  ;Transfer buffer
-   136 00000016 ????????            <1>     .tfrlen dd ?  ;Number of Sectors/bytes to transfer
-   137 0000001A ????????????????    <1>     .strtsc dq ?  ;Starting sector for transfer
-   138 00000022 ????????????????    <1>     .desptr dq ?  ;Pointer to a valid volume id field if error
-   139                              <1> 
-   140                              <1> endstruc
-   141                              <1> 
-   142                              <1> struc ndInNoWaitPkt    ;Nondestructive Input No Wait Request Packet
-   143                              <1>     
-   144                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   145 0000000D ??                  <1>     .retbyt db ?  ;Byte read non destructively
-   146                              <1> 
-   147                              <1> endstruc
-   148                              <1> 
-   149                              <1> struc statusReqPkt   ;Status Request Packet
-   150                              <1> 
-   151                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   152                              <1> 
-   153                              <1> endstruc
-   154                              <1> 
-   155                              <1> struc flushReqPkt ;Flush Request Packet, terminate all pending requests
-   156                              <1> 
-   157                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   158                              <1>      
-   159                              <1> endstruc
-   160                              <1> 
-   161                              <1> struc openReqPkt ;Open Device Request Packet
-   162                              <1> 
-   163                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   164                              <1>      
-   165                              <1> endstruc
-   166                              <1> 
-   167                              <1> struc closeReqPkt ;Close Device Request Packet
-   168                              <1> 
-   169                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   170                              <1>      
-   171                              <1> endstruc
-   172                              <1> 
-   173                              <1> struc remMediaReqPkt ;Removeable Media Request Packet
-   174                              <1> 
-   175                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   176                              <1>      
-   177                              <1> endstruc
-   178                              <1> 
-   179                              <1> struc ioctlReqPkt    ;Generic IOCTL Request Packet
-   180                              <1> 
-   181                              <1>     drvReqPktM    ;Common Driver Header Macro  
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   182 0000000D ??                  <1>     .majfun db ?  ;Major function number
-   183 0000000E ??                  <1>     .minfun db ?  ;Minor function number
-   184 0000000F ????????????????    <1>     .rsival dq ?  ;Contents of RSI
-   185 00000017 ????????????????    <1>     .rdival dq ?  ;Contents of RDI
-   186 0000001F ????????????????    <1>     .ctlptr dq ?  ;Pointer to Generic IOCTL Request Packet
+    68                              <1>     devDrvIOCTLQ    equ 80h ;If set, IOCTL Query supported (21h/4410h, 4411h)
+    69                              <1>     devDrvOpClRem   equ 800h ;If set, Open, Close and Rem media supported
+    70                              <1>     devDrvNotIBM    equ 2000h ;If set, media byte is meaningful for disk comps
+    71                              <1>     devDrvOutToBsy  equ 2000h ;If set, char dev supports output until busy
+    72                              <1>     devDrvIOCTLCtl  equ 4000h ;If set, IOCTL control strings supported
+    73                              <1>     devDrvChar      equ 8000h ;If set, Char device
+    74                              <1> ;Bit 0 1=Console input
+    75                              <1> ;    1 1=Console output (character devices)
+    76                              <1> ;    2 1=NUL device
+    77                              <1> ;    3 1=CLOCK device
+    78                              <1> ;    4 1=Int 29 output (CON)
+    79                              <1> ;    6 1=Generic IOCTL and GET/SET logical drive supported (13,17,18) (3.2+)
+    80                              <1> ;    7 1=Query IOCTL function supported (19) (5.0+)
+    81                              <1> ;   11 1=Open/close/removable media supported (3.0+)
+    82                              <1> ;   13 1=Output until busy supported (character devices) (3.0+)
+    83                              <1> ;      1=Media descriptor in FAT required (block devices)
+    84                              <1> ;   14 1=IOCTL read and write control strings supported
+    85                              <1> ;   15 0=Block device
+    86                              <1> ;      1=Character device
+    87                              <1> 
+    88                              <1> ;Driver structures
+    89                              <1> 
+    90                              <1> %macro drvReqPktM 0 ;Driver Request Header Macro
+    91                              <1> 
+    92                              <1>     .hdrlen db ?  ;Length of the request header
+    93                              <1>     .unitnm db ?  ;Unit number, meaningless for character devs
+    94                              <1>     .cmdcde db ?  ;Command code
+    95                              <1>     .status dw ?  ;Status word
+    96                              <1>     .devptr dq ?  ;Device queue pointer field, reserved for future use
+    97                              <1> 
+    98                              <1> %endmacro
+    99                              <1> 
+   100                              <1> struc drvReqPkt
+   101                              <1>     drvReqPktM
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   102                              <1> endstruc
+   103                              <1> 
+   104                              <1> struc initReqPkt  ;Init Request Packet
+   105                              <1> 
+   106                              <1>     drvReqPktM   ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   107 0000000D ??                  <1>     .numunt db ?  ;Number of logical units (Block only, 0 for char)
+   108 0000000E ????????????????    <1>     .endptr dq ?  ;Pointer to first free byte after driver
+   109 00000016 ????????????????    <1>     .optptr dq ?  ;Ptr to BPB array (blkdev) or cmdline args
+   110 0000001E ??                  <1>     .drvnum db ?  ;First Drive number
+   111                              <1> 
+   112                              <1> endstruc
+   113                              <1> 
+   114                              <1> struc mediaCheckReqPkt ;Media Check Request Packet
+   115                              <1> 
+   116                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   117 0000000D ??                  <1>     .medesc db ?  ;DOS media descriptor
+   118 0000000E ??                  <1>     .medret db ?  ;Return byte (Has media been changed?)
+   119 0000000F ????????????????    <1>     .desptr dq ?  ;Pointer to a valid volume id field
+   120                              <1> 
+   121                              <1> endstruc
+   122                              <1> 
+   123                              <1> struc bpbBuildReqPkt  ;Build BPB Request Packet
+   124                              <1> 
+   125                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   126 0000000D ??                  <1>     .medesc db ?  ;DOS media descriptor
+   127 0000000E ????????????????    <1>     .bufptr dq ?  ;Transfer buffer
+   128 00000016 ????????????????    <1>     .bpbptr dq ?  ;Pointer to the BPB
+   129                              <1> 
+   130                              <1> endstruc
+   131                              <1> 
+   132                              <1> struc ioReqPkt   ;IO Request Packet
+   133                              <1> 
+   134                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   135 0000000D ??                  <1>     .medesc db ?  ;DOS media descriptor
+   136 0000000E ????????????????    <1>     .bufptr dq ?  ;Transfer buffer
+   137 00000016 ????????            <1>     .tfrlen dd ?  ;Number of Sectors/bytes to transfer
+   138 0000001A ????????????????    <1>     .strtsc dq ?  ;Starting sector for transfer
+   139 00000022 ????????????????    <1>     .desptr dq ?  ;Pointer to a valid volume id field if error
+   140                              <1> 
+   141                              <1> endstruc
+   142                              <1> 
+   143                              <1> struc ndInNoWaitPkt    ;Nondestructive Input No Wait Request Packet
+   144                              <1>     
+   145                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   146 0000000D ??                  <1>     .retbyt db ?  ;Byte read non destructively
+   147                              <1> 
+   148                              <1> endstruc
+   149                              <1> 
+   150                              <1> struc statusReqPkt   ;Status Request Packet
+   151                              <1> 
+   152                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   153                              <1> 
+   154                              <1> endstruc
+   155                              <1> 
+   156                              <1> struc flushReqPkt ;Flush Request Packet, terminate all pending requests
+   157                              <1> 
+   158                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   159                              <1>      
+   160                              <1> endstruc
+   161                              <1> 
+   162                              <1> struc openReqPkt ;Open Device Request Packet
+   163                              <1> 
+   164                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   165                              <1>      
+   166                              <1> endstruc
+   167                              <1> 
+   168                              <1> struc closeReqPkt ;Close Device Request Packet
+   169                              <1> 
+   170                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   171                              <1>      
+   172                              <1> endstruc
+   173                              <1> 
+   174                              <1> struc remMediaReqPkt ;Removeable Media Request Packet
+   175                              <1> 
+   176                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   177                              <1>      
+   178                              <1> endstruc
+   179                              <1> 
+   180                              <1> struc outTilBusyPkt
+   181                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   182 0000000D ????????????????    <1>     .pXfrBuffer dq ?    ;Pointer to the transfer buffer
+   183 00000015 ????                <1>     .wXfrCount  dw ?    ;Byte count to xfr. Returns bytes xfred.
+   184                              <1> endstruc
+   185                              <1> 
+   186                              <1> struc ioctlReqPkt    ;Generic IOCTL Request Packet
    187                              <1> 
-   188                              <1> endstruc
-   189                              <1> 
-   190                              <1> struc getDevReqPkt ;Get Logical Device Request Packet
-   191                              <1>     
-   192                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   193                              <1> 
-   194                              <1> endstruc
-   195                              <1> 
-   196                              <1> struc setDevReqPkt ;Set Logical Device Request Packet
-   197                              <1>     
-   198                              <1>     drvReqPktM    ;Common Driver Header Macro
-    90                              <2> 
-    91 00000000 ??                  <2>  .hdrlen db ?
-    92 00000001 ??                  <2>  .unitnm db ?
-    93 00000002 ??                  <2>  .cmdcde db ?
-    94 00000003 ????                <2>  .status dw ?
-    95 00000005 ????????????????    <2>  .devptr dq ?
-    96                              <2> 
-   199                              <1> 
-   200                              <1> endstruc
-   201                              <1> ;IOCTL structs
+   188                              <1>     drvReqPktM    ;Common Driver Header Macro  
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   189 0000000D ??                  <1>     .majfun db ?  ;Major function number
+   190 0000000E ??                  <1>     .minfun db ?  ;Minor function number
+   191 0000000F ????????????????    <1>     .rsival dq ?  ;Contents of RSI
+   192 00000017 ????????????????    <1>     .rdival dq ?  ;Contents of RDI
+   193 0000001F ????????????????    <1>     .ctlptr dq ?  ;Pointer to Generic IOCTL Request Packet
+   194                              <1> 
+   195                              <1> endstruc
+   196                              <1> 
+   197                              <1> struc getDevReqPkt ;Get Logical Device Request Packet
+   198                              <1>     
+   199                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   200                              <1> 
+   201                              <1> endstruc
    202                              <1> 
-   203                              <1> struc lbaParamsBlock
-   204 00000000 ??                  <1>     .bSize          db ?
-   205 00000001 ??                  <1>     .bSpecFuncs     db ?    ;0 = Update drive info from medium and return that
-   206                              <1>                             ;1 = Get current saved drive info w/o updating
-   207                              <1>                             ;2 = Get physical parameters of the medium
-   208                              <1>                             ;Only meaningful on get. Set must have this as 0
-   209 00000002 ????                <1>     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
-   210 00000004 ????                <1>     .wFSType        dw ?    ;If one, it is a FAT type. Only valid on getlba
-   211                              <1>                             ; If one, can use CHS functions with returned vals
-   212 00000006 ????                <1>     .wRes           dw ?    ;Reserved word
-   213 00000008 ????????????????    <1>     .qSectorSize    dq ?    ;Only the lower word is valid here
-   214 00000010 ????????????????    <1>     .qNumSectors    dq ?    ;Only the lower dword is valid here
-   215                              <1> ;The below is the absolute start sector of the partition. It is the 
-   216                              <1> ; partition at which to find the BPB.
-   217 00000018 ????????????????    <1>     .qStartSector   dq ?    ;Only the lower dword is valid here.
-   218                              <1> endstruc
-   219                              <1> 
-   220                              <1> %macro lbIOCmnM 0   ;IOCTL LBA request common portion macro
-   221                              <1>     .size           db ?
-   222                              <1>     .numSectors     db ?  ;# sectors to act on. Returns sectors acted on
-   223                              <1>     .res            db 6 dup (?)
-   224                              <1>     .startSector    dq ?  ;Sector to start action on
-   225                              <1> %endmacro
+   203                              <1> struc setDevReqPkt ;Set Logical Device Request Packet
+   204                              <1>     
+   205                              <1>     drvReqPktM    ;Common Driver Header Macro
+    91                              <2> 
+    92 00000000 ??                  <2>  .hdrlen db ?
+    93 00000001 ??                  <2>  .unitnm db ?
+    94 00000002 ??                  <2>  .cmdcde db ?
+    95 00000003 ????                <2>  .status dw ?
+    96 00000005 ????????????????    <2>  .devptr dq ?
+    97                              <2> 
+   206                              <1> 
+   207                              <1> endstruc
+   208                              <1> ;IOCTL structs
+   209                              <1> 
+   210                              <1> struc lbaParamsBlock
+   211 00000000 ??                  <1>     .bSize          db ?
+   212 00000001 ??                  <1>     .bSpecFuncs     db ?    ;0 = Update drive info from medium and return that
+   213                              <1>                             ;1 = Get current saved drive info w/o updating
+   214                              <1>                             ;2 = Get physical parameters of the medium
+   215                              <1>                             ;Only meaningful on get. Set must have this as 0
+   216 00000002 ????                <1>     .wDevFlgs       dw ?    ;Only bits 0 and 1 are xmitted/read
+   217 00000004 ????                <1>     .wFSType        dw ?    ;If one, it is a FAT type. Only valid on getlba
+   218                              <1>                             ; If one, can use CHS functions with returned vals
+   219 00000006 ????                <1>     .wRes           dw ?    ;Reserved word
+   220 00000008 ????????????????    <1>     .qSectorSize    dq ?    ;Only the lower word is valid here
+   221 00000010 ????????????????    <1>     .qNumSectors    dq ?    ;Only the lower dword is valid here
+   222                              <1> ;The below is the absolute start sector of the partition. It is the 
+   223                              <1> ; partition at which to find the BPB.
+   224 00000018 ????????????????    <1>     .qStartSector   dq ?    ;Only the lower dword is valid here.
+   225                              <1> endstruc
    226                              <1> 
-   227                              <1> struc lbaIOBlock
-   228                              <1>     lbIOCmnM
-   221 00000000 ??                  <2>  .size db ?
-   222 00000001 ??                  <2>  .numSectors db ?
-   223 00000002 ????????????        <2>  .res db 6 dup (?)
-   224 00000008 ????????????????    <2>  .startSector dq ?
-   229 00000010 ????????????????    <1>     .xferBuffer     dq ?  ;Transfer buffer for data
-   230                              <1> endstruc
-   231                              <1> 
-   232                              <1> struc lbaFormatBlock
-   233                              <1>     lbIOCmnM
-   221 00000000 ??                  <2>  .size db ?
-   222 00000001 ??                  <2>  .numSectors db ?
-   223 00000002 ????????????        <2>  .res db 6 dup (?)
-   224 00000008 ????????????????    <2>  .startSector dq ?
-   234                              <1> endstruc
-   235                              <1> 
-   236                              <1> struc chsParamsBlock
-   237 00000000 ??                  <1>     .bSpecFuncs db ?    ;
-   238 00000001 ??                  <1>     .bDevType   db ?    ;5 if fixed, 7 otherwise
-   239 00000002 ????                <1>     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
-   240 00000004 ????                <1>     .wNumCyl    dw ?
-   241 00000006 ??                  <1>     .bMedTyp    db ?    ;Perma 0 for us, meaningless. Reserved.
-   242 00000007 <res 35h>           <1>     .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
-   243                              <1>     .TrackLayout:
-   244                              <1> endstruc
-   245                              <1> 
-   246                              <1> ;Used for get and set params. Refer to DOS docs for meaning of bit.
-   247                              <1> specFuncBPB equ 1<<0    ;Does BPB stuff
-   248                              <1> ;Only used in setparams requests. Ignored for getparams 
-   249                              <1> specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
-   250                              <1> specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
-   251                              <1> 
+   227                              <1> %macro lbIOCmnM 0   ;IOCTL LBA request common portion macro
+   228                              <1>     .size           db ?
+   229                              <1>     .numSectors     db ?  ;# sectors to act on. Returns sectors acted on
+   230                              <1>     .res            db 6 dup (?)
+   231                              <1>     .startSector    dq ?  ;Sector to start action on
+   232                              <1> %endmacro
+   233                              <1> 
+   234                              <1> struc lbaIOBlock
+   235                              <1>     lbIOCmnM
+   228 00000000 ??                  <2>  .size db ?
+   229 00000001 ??                  <2>  .numSectors db ?
+   230 00000002 ????????????        <2>  .res db 6 dup (?)
+   231 00000008 ????????????????    <2>  .startSector dq ?
+   236 00000010 ????????????????    <1>     .xferBuffer     dq ?  ;Transfer buffer for data
+   237                              <1> endstruc
+   238                              <1> 
+   239                              <1> struc lbaFormatBlock
+   240                              <1>     lbIOCmnM
+   228 00000000 ??                  <2>  .size db ?
+   229 00000001 ??                  <2>  .numSectors db ?
+   230 00000002 ????????????        <2>  .res db 6 dup (?)
+   231 00000008 ????????????????    <2>  .startSector dq ?
+   241                              <1> endstruc
+   242                              <1> 
+   243                              <1> struc chsParamsBlock
+   244 00000000 ??                  <1>     .bSpecFuncs db ?    ;
+   245 00000001 ??                  <1>     .bDevType   db ?    ;5 if fixed, 7 otherwise
+   246 00000002 ????                <1>     .wDevFlgs   dw ?    ;Only bits 0 and 1 are xmitted/read
+   247 00000004 ????                <1>     .wNumCyl    dw ?
+   248 00000006 ??                  <1>     .bMedTyp    db ?    ;Perma 0 for us, meaningless. Reserved.
+   249 00000007 <res 35h>           <1>     .deviceBPB  db 53 dup (?)   ;Full length with reserved bytes of BPB32
+   250                              <1>     .TrackLayout:
+   251                              <1> endstruc
    252                              <1> 
-   253                              <1> struc chsIOBlock
-   254 00000000 ??                  <1>     .bSpecFuncs     db ?
-   255 00000001 ????                <1>     .wStartHead     dw ?
-   256 00000003 ????                <1>     .wStartCyl      dw ?    ;Zero based.
-   257 00000005 ????                <1>     .wStartSector   dw ?    ;Zero based.
-   258 00000007 ????                <1>     .wNumSectors    dw ?
-   259 00000009 ????????????????    <1>     .pXferBuffer    dq ?
-   260                              <1> endstruc
-   261                              <1> 
-   262                              <1> struc chsFormatBlock
-   263 00000000 ??                  <1>     .bSpecFuncs db ?
-   264 00000001 ????                <1>     .wStartHead dw ?
-   265 00000003 ????                <1>     .wStartCyl  dw ?        ;Zero based.
-   266                              <1> endstruc
-   267                              <1> 
-   268                              <1> struc accFlgBlk
-   269 00000000 ??                  <1>     .bSpecFuncs db ?    ;Must be 0
-   270 00000001 ??                  <1>     .bAccMode   db ?    ;Set if access allowed. Clear if not.
-   271                              <1> endstruc
-   272                              <1> 
-   273                              <1> struc idParamBlk
-   274 00000000 ????                <1>     .wCallLvl   dw ?    ;Should be zero
-   275 00000002 ????????            <1>     .volId      dd ?    ;Volume Id
-   276 00000006 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
-   277 00000011 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
+   253                              <1> ;Used for get and set params. Refer to DOS docs for meaning of bit.
+   254                              <1> specFuncBPB equ 1<<0    ;Does BPB stuff
+   255                              <1> ;Only used in setparams requests. Ignored for getparams 
+   256                              <1> specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
+   257                              <1> specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
+   258                              <1> 
+   259                              <1> 
+   260                              <1> struc chsIOBlock
+   261 00000000 ??                  <1>     .bSpecFuncs     db ?
+   262 00000001 ????                <1>     .wStartHead     dw ?
+   263 00000003 ????                <1>     .wStartCyl      dw ?    ;Zero based.
+   264 00000005 ????                <1>     .wStartSector   dw ?    ;Zero based.
+   265 00000007 ????                <1>     .wNumSectors    dw ?
+   266 00000009 ????????????????    <1>     .pXferBuffer    dq ?
+   267                              <1> endstruc
+   268                              <1> 
+   269                              <1> struc chsFormatBlock
+   270 00000000 ??                  <1>     .bSpecFuncs db ?
+   271 00000001 ????                <1>     .wStartHead dw ?
+   272 00000003 ????                <1>     .wStartCyl  dw ?        ;Zero based.
+   273                              <1> endstruc
+   274                              <1> 
+   275                              <1> struc accFlgBlk
+   276 00000000 ??                  <1>     .bSpecFuncs db ?    ;Must be 0
+   277 00000001 ??                  <1>     .bAccMode   db ?    ;Set if access allowed. Clear if not.
    278                              <1> endstruc
+   279                              <1> 
+   280                              <1> struc idParamBlk
+   281 00000000 ????                <1>     .wCallLvl   dw ?    ;Should be zero
+   282 00000002 ????????            <1>     .volId      dd ?    ;Volume Id
+   283 00000006 <res Bh>            <1>     .volLab     db 11 dup (?)   ;Volume label string
+   284 00000011 ????????????????    <1>     .filSysType db 8 dup (?)    ;File system type string
+   285                              <1> endstruc
      6                                  %include "./src/Include/fatStruc.inc"
      1                              <1> 
      2                              <1> ;-------------------------------------------------------;

@@ -344,7 +344,7 @@ ensureDiskValid:
 ;We will never enter here if we returned media unknown.
     push rbp
     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
-    test word [rbp + drvHdr.attrib], devDrvHdlCTL
+    test word [rbp + drvHdr.attrib], devDrvOpClRem
     pop rbp
     jz .dbeExit     ;Just return Invalid Disk Swap if bit not set
 ;rbp points to the dpb still

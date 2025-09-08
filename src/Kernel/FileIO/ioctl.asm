@@ -32,7 +32,11 @@ ioctrl:            ;ah = 44h, handle function
 ;al = 0Eh => Get logical device                 
 ;al = 0Fh => Set logical device  
 ;======================================================
-    cmp al, 15
+;Query IOCTL capacity (optionally implemented)
+;al = 10h => Query IOCTL Handle
+;al = 11h => Quety IOCTL block Device
+;======================================================
+    cmp al, 17
     ja .invalidFunction
     test al, al
     jz .getDevWord
@@ -55,7 +59,11 @@ ioctrl:            ;ah = 44h, handle function
     jz .genericBlokDevIOCTL
     dec al
     jz .getDrvLogicalDevice
-    jmp .setDrvLogicalDevice
+    dec al
+    jz .setDrvLogicalDevice
+    cmp al, 1
+    jz .queryIOCTLHdl
+    jmp .queryIOCTLDev
 .invalidFunction:
     mov eax, errInvFnc
 .ifExit:
@@ -152,7 +160,7 @@ ioctrl:            ;ah = 44h, handle function
     ;rbx -> Request Header
     ;al = Media descriptor
     mov byte [rbx + ioReqPkt.medesc], al
-    test word [rsi + drvHdr.attrib], devDrvIOCTLRW
+    test word [rsi + drvHdr.attrib], devDrvIOCTLCtl
     jz .invalidFunction ;If not supported, invalid function error 
     ;Make request now
     push rcx    ;Push xfrctr
@@ -268,7 +276,7 @@ ioctrl:            ;ah = 44h, handle function
     mov rsi, qword [rdi + cds.qDPBPtr]
     mov al, byte [rsi + dpb.bUnitNumber]    ;Get the unit number
     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr in rsi
-    test word [rsi + drvHdr.attrib], devDrvHdlCTL
+    test word [rsi + drvHdr.attrib], devDrvOpClRem
     jz .invalidFunction
     mov byte [rbx + remMediaReqPkt.hdrlen], remMediaReqPkt_size
     mov byte [rbx + remMediaReqPkt.cmdcde], drvREMMEDCHECK
@@ -291,45 +299,10 @@ ioctrl:            ;ah = 44h, handle function
     jmp extGoodExit
 
 .genericCharDevIOCTL:
-    call getSFTPtr  ;Get in rdi the SFT ptr
-    jnc .okHandle
-.ioctrlBadHandle:
-    mov byte [errorLocus], eLocChr
-    mov eax, errBadHdl
-    jmp extErrExit
-.okHandle:
-    test word [rdi + sft.wDeviceInfo], devRedir
-    jnz .ioctrlBadHandle
-    test word [rdi + sft.wDeviceInfo], devCharDev
-    jz .ioctrlBadHandle
-    mov rsi, qword [rdi + sft.qPtr] ;Get the driver ptr in rsi
+    call .getHandleInfo
     jmp short .ioctlReqMake
 .genericBlokDevIOCTL:
-    mov al, bl  ;Move the drive number from bl to al
-    push rcx
-    push rdx
-    call getCDS ;Sets the current CDS
-    pop rdx
-    pop rcx
-    jc .badDrv
-    ;Check the CDS not net, subst or join
-    mov rsi, qword [workingCDS]
-    movzx eax, word [rsi + cds.wFlags]
-    test ax, cdsValidDrive  ;If not valid, fail
-    jz .badDrv
-    test ax, cdsRedirDrive|cdsJoinDrive|cdsSubstDrive|cdsRdirLocDrive
-    jz .goodDrive
-.badDrv:
-    mov byte [errorLocus], eLocDsk
-    mov eax, errBadDrv  ;Error code if error
-    jmp extErrExit
-.goodDrive:
-    ;CDS is good,now get the DPB
-    mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
-    mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
-    mov al, byte [rsi + dpb.bUnitNumber]
-    mov byte [primReqPkt + ioctlReqPkt.unitnm], al
-    mov rsi, rdi   ;Get the driver ptr in rsi 
+    call .getBlkDevInfo
 .ioctlReqMake:
 ;rsi must point to the driver header here
     test word [rsi + drvHdr.attrib], devDrvIOCTL
@@ -340,6 +313,66 @@ ioctrl:            ;ah = 44h, handle function
     jmp extErrExit
 .supportsIOCTL:
     ;Setup the request header
+    call .doIOCTLrequest
+    jz extGoodExit
+    jmp failIOCTLCall
+
+.getHandleInfo:
+;Returns in rsi a pointer to the driver for the handle device
+    call getSFTPtr  ;Get in rdi the SFT ptr
+    jnc .ghiOkHdl
+.ghiBadHdl:
+    mov byte [errorLocus], eLocChr
+    pop rax ;Pop the return addr, return through DOS immediately
+    mov eax, errBadHdl
+    jmp extErrExit  ;Exit as if in line with main routine body
+.ghiOkHdl:
+    test word [rdi + sft.wDeviceInfo], devRedir
+    jnz .ghiBadHdl
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    jz .ghiBadHdl
+    mov rsi, qword [rdi + sft.qPtr] ;Get the driver ptr in rsi
+    return
+
+.getBlkDevInfo:
+;Returns in rsi a ptr to the block device driver
+    mov al, bl  ;Move the drive number from bl to al
+    push rcx
+    push rdx
+    call getCDS ;Sets the current CDS
+    pop rdx
+    pop rcx
+    jc .gbdiBadDrv
+    ;Check the CDS not net, subst or join
+    mov rsi, qword [workingCDS]
+    movzx eax, word [rsi + cds.wFlags]
+    test ax, cdsValidDrive  ;If not valid, fail
+    jz .gbdiBadDrv
+    test ax, cdsRedirDrive|cdsJoinDrive|cdsSubstDrive|cdsRdirLocDrive
+    jz .gbdiOk
+.gbdiBadDrv:
+    mov byte [errorLocus], eLocDsk
+    pop rax ;Pop the return addr, return through DOS immediately
+    mov eax, errBadDrv  ;Error code if error
+    jmp extErrExit
+.gbdiOk:
+    ;CDS is good,now get the DPB
+    mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
+    mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
+    mov al, byte [rsi + dpb.bUnitNumber]
+    mov byte [primReqPkt + ioctlReqPkt.unitnm], al
+    mov rsi, rdi   ;Get the driver ptr in rsi
+    return
+
+
+.doIOCTLrequest:
+;Does IOCTL request
+;Input: cx = Major/Minor bytes packed in cx
+;       rdx -> Ptr to control packet
+;Output: ZF=ZE: No error.
+;        ZF=NZ: Error. Get error code.
+;       rbx -> Left pointing to the request packet
+;       eax = Status word
     lea rbx, primReqPkt
     mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
     mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
@@ -354,9 +387,9 @@ ioctrl:            ;ah = 44h, handle function
     mov qword [rbx + ioctlReqPkt.rdival], rax
     mov rsi, rdi
     call goDriver
-    test word [rbx + ioctlReqPkt.status], drvErrStatus
-    jz extGoodExit
-    jmp failIOCTLCall
+    movzx eax, word [rbx + ioctlReqPkt.status]
+    test eax, drvErrStatus
+    return
 
 .getDrvLogicalDevice:
     mov al, bl
@@ -406,6 +439,24 @@ ioctrl:            ;ah = 44h, handle function
     xor al, al
     test word [rbx + getDevReqPkt.status], drvErrStatus
     retz    ;Return if OK, else fail
+
+.queryIOCTLHdl:
+    call .getHandleInfo
+    jmp short .queryCmn
+.queryIOCTLDev:
+    call .getBlkDevInfo
+.queryCmn:
+;If Query is set, then we should be able to make the IOCTL Query request
+    test word [rsi + drvHdr.attrib], devDrvIOCTLQ
+    jz .badFunction
+    test word [rsi + drvHdr.attrib], devDrvIOCTL
+    jz .badFunction
+    call .doIOCTLrequest
+    jz extGoodExit
+;Else, the driver reports it doesn't recognise the command function!
+    mov eax, errAccDen
+    jmp extErrExit
+
 failIOCTLCall:
 ;Called to fail IOCTL calls that don't trigger Int 24h
 ;rbx -> Driver request packet

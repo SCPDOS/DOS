@@ -65,24 +65,25 @@ endstruc
     devDrvClockDev  equ 8h  ;If set, device is CLOCK device
     devDrvFastOut   equ 10h ;If set, device supports Int 29h
     devDrvIOCTL     equ 40h ;If set, IOCTL and GET/SET suported
-    devDrvHdlCTL    equ 800h ;If set, Open, Close and Rem media supported
-    devDrvNotIBM    equ 2000h ;If set, buffer in Build BPB is scratch space
+    devDrvIOCTLQ    equ 80h ;If set, IOCTL Query supported (21h/4410h, 4411h)
+    devDrvOpClRem   equ 800h ;If set, Open, Close and Rem media supported
+    devDrvNotIBM    equ 2000h ;If set, media byte is meaningful for disk comps
     devDrvOutToBsy  equ 2000h ;If set, char dev supports output until busy
-    devDrvIOCTLRW   equ 4000h ;If set, IOCTL Read/Write supported
+    devDrvIOCTLCtl  equ 4000h ;If set, IOCTL control strings supported
     devDrvChar      equ 8000h ;If set, Char device
-;Bit 0 1=console input
-;    1 1=console output (character devices)
+;Bit 0 1=Console input
+;    1 1=Console output (character devices)
 ;    2 1=NUL device
 ;    3 1=CLOCK device
 ;    4 1=Int 29 output (CON)
-;    6 1=extended functions supported (13,17,18) (3.2+)
-;    7 1=query IOCTL function supported (19) (5.0+)
-;   11 1=open/close/removable media supported (3.0+)
-;   13 1=output until busy supported (character devices) (3.0+)
-;      1=media descriptor in FAT required (block devices)
-;   14 1=IOCTL supported
-;   15 0=block device
-;      1=character device
+;    6 1=Generic IOCTL and GET/SET logical drive supported (13,17,18) (3.2+)
+;    7 1=Query IOCTL function supported (19) (5.0+)
+;   11 1=Open/close/removable media supported (3.0+)
+;   13 1=Output until busy supported (character devices) (3.0+)
+;      1=Media descriptor in FAT required (block devices)
+;   14 1=IOCTL read and write control strings supported
+;   15 0=Block device
+;      1=Character device
 
 ;Driver structures
 
@@ -174,6 +175,12 @@ struc remMediaReqPkt ;Removeable Media Request Packet
 
     drvReqPktM    ;Common Driver Header Macro
      
+endstruc
+
+struc outTilBusyPkt
+    drvReqPktM    ;Common Driver Header Macro
+    .pXfrBuffer dq ?    ;Pointer to the transfer buffer
+    .wXfrCount  dw ?    ;Byte count to xfr. Returns bytes xfred.
 endstruc
 
 struc ioctlReqPkt    ;Generic IOCTL Request Packet

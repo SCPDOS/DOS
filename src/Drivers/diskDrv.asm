@@ -366,6 +366,8 @@ msdDriver:
     dw getDevReqPkt_size
     dw .setLogicalDev - .fnTbl   ;Function 24
     dw setDevReqPkt_size
+    dw .ioctlQuery - .fnTbl      ;Function 25
+    dw setDevReqPkt_size
 
 ;DISK DRIVER ERROR HANDLER. Errors from within the functions come here!
 .errorXlat:
@@ -1274,6 +1276,13 @@ errTblLen equ $ - .biosErrTbl
     dw .ioGetIds - .ioctlTbl        ;CL = 66h or CL = E6h, Get vol Ids
     dw .ioSetAccessFlag - .ioctlTbl ;CL = 47h or CL = C7h, Write IOCTL
     dw .ioGetAccessFlag - .ioctlTbl ;CL = 67h or CL = E7h, Read IOCTL
+.ioctlQTbl:
+;Table of Read functions for IOCTL query. We homogenise the minor code 
+; value into a CHS level read request and then search for it (by clearing
+; bits 7 and 5 from the byte, both optionally set bits).
+;If we add a new function, add it to this table pls :)
+    db 40h, 41h, 42h, 46h, 47h
+ioctlQTblL equ $ - .ioctlQTbl
 .iobadCmd:
     mov eax, drvBadCmd
     jmp .errorExit
@@ -1861,6 +1870,26 @@ errTblLen equ $ - .biosErrTbl
 .setLogicalDev:   ;Function 24
     call .setDrvOwner  ;Set the unit as the owner of this BIOS drive!
     return
+
+.ioctlQuery:      ;Function 25
+;Called with a Generic IOCTL packet in rbx
+;We check to see that major/minor codes are valid functions for us.
+;Major code is always 08h
+    cmp byte [rbx + ioctlReqPkt.majfun], 08h
+    jne .ioctlQErr
+    movzx eax, byte [rbx + ioctlReqPkt.minfun]
+    test al, 90h    ;If either of these bits are set, dont recognise func
+    jnz .ioctlQErr
+;Convert LBA functions to CHS and Writes functions to Read functions
+    and al, 5Fh ;Turn off bits 7 and 5, bot optionally set
+    mov ecx, ioctlQTblL
+    lea rdi, .ioctlQTbl ;Table up near IOCTL table
+    repne scasb
+    rete    ;Just return if found
+.ioctlQErr:
+;Here we set the error code. We dont recognise the IOCTL command.
+    mov al, drvBadCmd
+    jmp .errorExit
 
 .setupDrive:
 ;Finds the DOS drive in the linked list which is for this drive, and
