@@ -763,7 +763,8 @@ pathWalk:
 .notNet:
     cmp byte [rsi], 0   ;If rsi at the end of the string, exit for ROOT dir
     jnz .mainlp
-    ;Setup dummy dir data for Root directory
+;Setup dummy dir data for the Root directory only if we are searching for it.
+;This is to help setting vars when doing other DOS calls. 
     xor eax, eax
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax

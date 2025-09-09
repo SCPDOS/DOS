@@ -250,9 +250,8 @@ sectHdr:        ;This needs 20 bytes in EXEC only
     extFCBAttr  db ?  ;Extended FCB file attribute
     extFCBFlag  db ?  ;Set to -1 if Extended FCB
     searchAttr  db ?  ;Directory Search attributes
-    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?)
-renSamePar:         ;Used in rename. Set if both paths have same parent dir
-    fileFDflg   db ?  ;01h = File Found!, 04h = File deleted!
+    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
+    renFlags    db ?  ;01h = Rename in same dir, 02h = Wildcard in destination
     badNameRen  db ?  ;Device name or File not found for rename
     rwFlag      db ?  ;00h=Read, 1=Write, read/write/share error reporting
     spliceFlag  db ?  ;00 = Relative path, !0 = Full path
@@ -264,8 +263,7 @@ renSamePar:         ;Used in rename. Set if both paths have same parent dir
     exitType    db ?  ;Forms the upper byte of the errorlvl
     openCreate  db ?  ;If open, set to 0, if Create set to -1
 ;Set to E5h for renaming and deletion. Can be set to 0 if *.* chosen
-; to speed up the deletion but we don't use this (yet) as we would not 
-; be releasing the FAT sectors of the remaining entries in the directory.
+; to speed up the deletion but we don't use this (yet).
     delChar     db ?
     workingDrv  db ?  ;Working drive number, 0 based, from DPB
 qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)

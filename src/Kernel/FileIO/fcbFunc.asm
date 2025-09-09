@@ -160,7 +160,7 @@ renameFileFCB:     ;ah = 17h
     mov rax, qword [fname2Ptr]  ;Get the old source ptr in rax
     xchg qword [fname1Ptr], rax ;Swap ptr positions 
     mov qword [fname2Ptr], rax  ;Now place destination pattern in correct place
-    call renameMain
+    call outerRenameMain
     jnc fcbGoodExit
     jmp short .bad
 .badPop:
