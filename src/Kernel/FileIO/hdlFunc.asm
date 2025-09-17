@@ -1252,6 +1252,34 @@ innerRenameMain:
     mov byte [rsi], al      ;Delete the file!
 .rimDone:
     call markBufferDirty    ;Set this buffer as having been written to now
+;Now check if we renamed a volume label. If so, do special stuff
+    test word [curDirCopy + fatDirEntry.attribute], dirVolumeID
+    jz .rimNotVolId
+;A hack, but since we should never have more than one volid in a root dir
+; we only consider the first one as valid. As a result, we copy the renamedir 
+; name into fcbName to make the function below work. We then turn off
+; WC search if it is turned on. This will prevent the WC loop from being
+; entered. WC rename will terminate as if it was not a WC rename.
+; This is harmless in the context of FCB and WC server rename :)
+    push rax
+    push rsi
+    push rdi
+    lea rsi, renameDir + fatDirEntry.name
+    lea rdi, fcbName
+    mov ecx, 11
+    rep movsb
+    mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
+    mov al, byte [rdi]     ;Get the drive letter
+    sub al, "A"            ;Convert to a 0 based number
+    mov byte [rebuildDrv], al  ;Set the volid rebuild var
+    call makVolLabel    ;Force the BPB reset
+    call getDiskDPB     ;Force driver sync, ignore fails
+    mov byte [renFlags], 0  ;Reset the WC flags to terminate rename
+.rimVolExit:
+    pop rdi
+    pop rsi
+    pop rax
+.rimNotVolId:
     call flushAllBuffersForDPB  ;Now flush the modified buffers
     return                  ;Return CF from flush 
 ;Error exits :)
@@ -1483,6 +1511,9 @@ outerDeleteMain:
     call deleteMain ;Whilst it keeps finding files that match, keep deleting
     jnc .serverWCloop     
 ;Stop as soon as an error occurs
+    cmp al, errNoFil    ;Was the error no more files?
+    rete    ;If it was, return with CF=NC and error code in al
+;Else let the error propagate with CF=CY again
 .exitBad:
     stc
     return
@@ -1526,7 +1557,9 @@ deleteMain:
 ;Now check if this was a volume label. If so, do special stuff
     test word [curDirCopy + fatDirEntry.attribute], dirVolumeID
     jz .notVolId
-    push rax
+;al and rsi are used for buildSFT!
+    push rax    ;Preserve first char of file name
+    push rsi    ;Preserve pointer to the first char in dir entry
     push rdi
     mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
     mov al, byte [rdi]     ;Get the drive letter
@@ -1535,6 +1568,7 @@ deleteMain:
     call delVolLabel    ;Force the BPB reset
     call getDiskDPB     ;Force the driver sync
     pop rdi
+    pop rsi
     pop rax
 .notVolId:
 ;CF is clear here
@@ -3137,6 +3171,8 @@ makVolLabel:
     return
 syncVolLabel:
 ;Used to sync volume labels when a new vol label made in DOS.
+;If the device doesn't support this function we just ignore it.
+;Fails therefore are ignored.
 ;Input: fcbName = Volume Label name in FCB format
 ;       bl = 0 : Create label
 ;       bl = 1 : Delete label (reset to NO NAME and 0 time)
@@ -3156,7 +3192,7 @@ syncVolLabel:
     call ioctrl ;This call sets the working drive again to drive in bx
     pop rbx     ;Get subfunction back
     jc .exit
-    test eax, eax
+    test ebx, ebx
     jnz .defaultLbl
     lea rsi, fcbName
     jmp short .makePkt
