@@ -1523,7 +1523,21 @@ deleteMain:
     mov al, byte [delChar]
     xchg byte [rsi], al    ;Mark entry as free, get char in al
     call markBufferDirty
-    ;CF must be clear
+;Now check if this was a volume label. If so, do special stuff
+    test word [curDirCopy + fatDirEntry.attribute], dirVolumeID
+    jz .notVolId
+    push rax
+    push rdi
+    mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
+    mov al, byte [rdi]     ;Get the drive letter
+    sub al, "A"            ;Convert to a 0 based number
+    mov byte [rebuildDrv], al  ;Set the volid rebuild var
+    call delVolLabel    ;Force the BPB reset
+    call getDiskDPB     ;Force the driver sync
+    pop rdi
+    pop rax
+.notVolId:
+;CF is clear here
     call flushAllBuffersForDPB
     pop rbp
     retnc
@@ -1739,7 +1753,7 @@ createMain:
     sub al, "A"            ;Convert to a 0 based number
     mov byte [rebuildDrv], al  ;Set the volid rebuild var
 ;Do a Set Media ID call 
-; * HERE * 
+    call makVolLabel    ;Enter with al = Drive to rebuild for!
 ;to sync the bootsector label
     call dosCrit1Enter
     call getDiskDPB        ;Rebuild DPB and clear var
@@ -3108,4 +3122,58 @@ setExtOpenMode:
     or word [rdi + sft.wOpenMode], bx
     pop rbx
     stc
+    return
+
+delVolLabel:
+    push rbx
+    mov ebx, 1
+    jmp short makVolLabel.goVolLab
+makVolLabel:
+    push rbx
+    xor ebx, ebx
+.goVolLab:
+    call syncVolLabel
+    pop rbx
+    return
+syncVolLabel:
+;Used to sync volume labels when a new vol label made in DOS.
+;Input: fcbName = Volume Label name in FCB format
+;       bl = 0 : Create label
+;       bl = 1 : Delete label (reset to NO NAME and 0 time)
+;       al = 0 based drive to work on
+;Preserves all registers except rax and rbx (rbx saved externally)
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+
+    push rbx    ;Save subfunction code
+    mov bl, al  ;Save drive number
+    inc ebx     ;Turn into a 1 based drive number
+    mov eax, 0Dh
+    mov ecx, 0866h   ;IOCTL GET LABEL PACKET
+    lea rdx, labelPkt
+    call ioctrl ;This call sets the working drive again to drive in bx
+    pop rbx     ;Get subfunction back
+    jc .exit
+    test eax, eax
+    jnz .defaultLbl
+    lea rsi, fcbName
+    jmp short .makePkt
+.defaultLbl:
+    lea rsi, dosDfltLbl
+.makePkt:
+;rsi -> Source of 11 chars to copy over
+    lea rdi, qword [rdx + idParamBlk.volLab]    ;Point rdi here
+    mov ecx, 11
+    rep movsb
+    mov ecx, 0846h  ;IOCTL SET LABEL PACKET
+    mov eax, 0Dh
+    xor ebx, ebx    ;Use default drive now (set in previous ioctl call)
+    call ioctrl
+.exit:
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
     return

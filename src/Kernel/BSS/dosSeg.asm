@@ -370,4 +370,5 @@ dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
 ; write their "return" data onto a "stack", even though when accessed 
 ; through the multiplexer we never will read this structure. 
 ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
+labelPkt:   ;Whilst this is here, keep the thing below kinda big :)
     mplxRegStack    db callerFrame_size dup (?) 

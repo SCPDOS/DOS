@@ -15,6 +15,7 @@ dosVerMac equ (dosMinor << 8) | dosMajor    ;DOS version macro
 dosVersion  dw dosVerMac    ;DOS version number
 dosBIOSName db "SCPBIOS .SYS"
 dosKernName db "SCPDOS  .SYS"
+dosDfltLbl  db "NO NAME    "    ;Default disk label
 ;-----------------------------------:
 ;        Static Data Tables         :
 ;-----------------------------------:
