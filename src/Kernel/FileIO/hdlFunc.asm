@@ -144,6 +144,10 @@ readFileHdl:       ;ah = 3Fh, handle function
     call getSFTPtr  ;Get SFT ptr in rdi (if file is r/w-able from machine)
     jc extErrExit   ;Error code in al and exit
     call setCurrentSFT  ;Set the current SFT (from rdi)
+    test word [rdi + sft.wOpenMode], openFailOnI24  ;Do we force hard Fail?
+    jz .goIO
+    or word [wEOFlags], eoFailI24 ;Make sure CTRL+C is aware we fail!!
+.goIO:
     or ecx, ecx ;Clear upper bits of RCX if they are NOT clear just in case
     push qword [currentDTA] ;Save the current Disk Transfer Area
     mov qword [currentDTA], rdx ;Set the user buffer as the currentDTA
@@ -839,6 +843,142 @@ commitFile:        ;ah = 68h, flushes buffers for handle to disk
     and byte [rsi + callerFrame], ~1    ;Clear CF
     return
 
+xOpenHdl:    ;EAX = 6C00h, Extended open/create file
+;Input: AL=0 (checked)
+;       BL = Open mode (like AL for normal Open call)
+;           BL[7] = Set if inherit file handle allowed
+;           BL[4-6] = SHARE mode
+;           BL[3] = Reserved, 0 
+;           BL[0-2] = Access mode
+;       BH = Extended Open Flags
+;           BH[0-4] = Reserved, 0
+;           BH[5] = Set means Fail all Int 24h calls by default
+;           BH[6] = Set means Commit after each write operation
+;           BH[7] = Reserved, 0 
+;       CL = Create Attributes if creating
+;           CL[0] = Sets Read-Only Bit in Directory Entry
+;           CL[1] = Sets Hidden Bit in Directory Entry
+;           CL[2] = Sets System Bit in Directory Entry
+;           CL[3] = Sets Volume label in Directory Entry (becomes exclusive)
+;           CL[4] = Reserved, 0
+;           CL[5] = Sets Archive Bit in Directory Entry
+;           CL[6-7] = Reserved, 0
+;       CH = [SERVER CALL ONLY] Search attribute for file
+;       DL = Actions if file exist or not during create/open
+;           DL[4-7]: Action if file does not exist
+;               0000b = Fail the call, file not found.
+;               0001b = Create the file specified.
+;           DL[0-3]: Action if file does exist
+;               0000b = Fail the call, access denied.
+;               0001b = Open the file if it exists
+;               0010b = Truncate and Create file
+;       DH = 0
+;       RSI -> ASCIIZ name of path to operate on
+;Output: CF=NC: Call succeeded
+;           EAX = File handle for filespec specified
+;           ECX = Action undertaken by call
+;               01h = File opened
+;               02h = File created
+;               03h = File truncated and created
+;       CF=CY: Call failed.
+;           AX = Error code
+;Start by saving the input vars
+    mov word [wEOOpenMode], bx  ;Save the open flags
+    mov word [wEOAttribs], cx   ;Save attribute bytes
+    mov word [wEOActions], dx   ;Save these bit for later
+    mov qword [pszEOfile], rsi  ;Save filename ptr
+;Now we sanity check that what we have is meaningful
+    test al, al
+    jz .okStart
+.badParmExit:
+    mov eax, errBadParam
+    jmp extErrExit
+.okStart:
+    test dx, 0FFECh             ;Have we set any bites we are not allowed to?
+    jnz .badParmExit
+    test dl, dl                 ;Are we a fail if exist and dont exist?
+    jz .badParmExit
+    mov dh, dl                  ;Get a copy of the actions high
+    cmp dh, 10h                 ;Any action other than allowed?
+    ja .badParmExit
+    and dl, 0Fh                 ;Isolate the file exist bits
+    cmp dl, 2
+    ja .badParmExit
+;Test to check if the force fail bit is set
+    test bx, openFailOnI24  ;Is the Int 24h Force Fail bit set?
+    jnz .noFailI24
+    or word [wEOFlags], eoFailI24   ;Set corresponding bit in EO flags
+.noFailI24:
+    or word [wEOFlags], eoInExtOpen ;Entering Extended Open
+    mov rdx, rsi    ;Move the pointer into rdx as required
+    cmp word [wEOActions], eoActCreate  ;Do we create if one doesnt exist?
+    jne .notCreateNew
+;----DO NEW CREATE HERE----
+;cx = File attributes (same as search attributes for find first)
+;rdx = Ptr to ASCIZ filename to create
+    call createNewFile
+    jc extErrExit
+    cmp word [wEOFlags], 0  ;Cleared by Network drives
+    jz extGoodExit  ;Exit immediately, vars set by Network drive
+    mov ecx, eoRetActCreate
+.localGoodExit:
+;Entry: ax = File Handle
+;       cx = What happened (Action type)
+    call getUserRegs
+    mov word [rsi + callerFrame.rcx], cx  ;Save action type 
+    mov word [rsi + callerFrame.rax], ax  ;Explicitly save handle
+    jmp extGoodExit
+.notCreateNew:
+    test word [wEOActions], eoActOpen   ;If open bit set, open
+    jnz .openFile
+;----DO TRUNCATE CREATE HERE----
+;cx = File attributes (same as search attributes for find first)
+;rdx = Ptr to ASCIZ filename to create
+    call createFileHdl
+    jc extErrExit
+    cmp word [wEOFlags], 0  ;Cleared by Network drives
+    jz extGoodExit  ;Exit immediately, vars set by Network drive
+;Now check if we created a new file or an existing file.
+    mov ecx, eoRetActCreate ;Anticipate new create
+    test word [wEOFlags], eoFileNoExist   ;Set if file was newly created
+    jnz .localGoodExit
+    mov ecx, eoRetActTruncate   ;Instead we truncated!
+    jmp short .localGoodExit
+.openFile:
+;----DO OPEN HERE----
+;al = Open mode, to open file with
+;cl = Server call only, search mode for file to search for
+;rdx = Ptr to ASCIZ filename to open if it exists
+    mov eax, ebx    ;Move the normal open flags to al for opening
+;CH has server search attribs if this is a server call.
+;Else this is a harmless mov
+    mov cl, ch
+    call openFileHdl
+    jnc .fileOpened
+;Check if the file doesnt exist and if we are allowed to create one.
+;Since we errored, CF is set on caller stack so we can just return
+; if we dont create a file
+    cmp word [wEOFlags], 0  ;Cleared by Network drives.
+    retz
+    cmp ax, errFnf  ;Any error other than file not found errors here
+    retnz
+;So we know that the file was not found here
+    test word [wEOFlags], eoActCreate   ;Do we create a file (even if exists)?
+    jz extErrExit   ;Bubble FNF error
+;Else setup the create here.
+;cx = File attributes (same as search attributes for find first)
+;rdx = Ptr to ASCIZ filename to create
+    mov rdx, qword [pszEOfile]
+    movzx ecx, word [wEOAttribs]
+    call createFileHdl
+    jc extErrExit
+    mov ecx, eoRetActCreate
+    jmp .localGoodExit
+.fileOpened:
+    cmp word [wEOFlags], 0  ;Cleared by Network drives
+    jz extGoodExit  ;Exit immediately, vars set by Network drive
+    mov ecx, eoRetActOpen
+    jmp .localGoodExit
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
@@ -1280,7 +1420,7 @@ checkExclusiveOwnFile:
     ;The close of the handle will only happen if there is 1 file referring to it
     lea rdi, scratchSFT
     call setCurrentSFT
-    mov eax, openRWAcc | openCompat ;Set open mode
+    mov eax, openRWAcc  ;Set open mode
     mov byte [openCreate], 0    ;We test by opening.
     push rdi    ;Save the scratch SFT ptr
     call buildSFTEntry  ;This will never fail. If it does, shareFile will catch
@@ -1393,23 +1533,33 @@ deleteMain:
     return
 
 openMain:
-;Input: ax (formally al) = Open mode
+;Input: ax = Open mode
 ;       [currentSFT] = SFT we are building
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
 ;Ouput: CF=CY => Error, eax has error code
-    call setOpenMode
+    call setOpenMode    ;AX preserved
     retc    ;Error Exit 
     call getCurrentSFT
+    mov byte [rdi + sft.wOpenMode], al  ;Set low byte, preserve high byte
     mov rsi, qword [workingCDS]
-    xor ah, ah  ;al has the access mode
+    xor ah, ah      ;al has the access and share modes
     cmp rsi, -1
     jne .notNet
 .redirOpen:
+    test word [wEOFlags], eoInExtOpen
+    jnz .redirExtOpen   
     push rax    ;Push open mode onto stack
-    mov eax, 1116h  ;Open remote file on "\\" pathspec drives
+    mov eax, 1116h  ;Open remote file on all net drives
     int 2Fh
     pop rax
+    return
+.redirExtOpen:
+    push rax
+    mov eax, 112Eh  ;Extended open redir call
+    int 2Fh
+    pop rbx
+    mov word [wEOFlags], 0
     return
 .notNet:
     test word [rsi + cds.wFlags], cdsRedirDrive
@@ -1430,13 +1580,13 @@ openMain:
     cmp edx, openNetFCBShr ;Is this a net server FCB open?
     je .fcbOpen     ;If it is net fcb, similarly force to ro as before
     and ecx, 0Fh    ;Else, isolate the bottom nybble
-    cmp cl, openRdAcc  ;Are we asking for more than read?
+    cmp cl, openRdAcc  ;Are we asking for more than read on ro file?
     je .openFile    ;If no, proceed, eax has openmode. Else, access denied!
 .accDenExit:
     mov eax, errAccDen
     jmp short .errorExit
 .fcbOpen:
-    and cx, 0FFF0h  ;Set to read access open only. Preserve share/property bits
+    and cx, 0FFF0h  ;Set RO access only. Preserve share/inhrt/upper bits
     mov word [rdi + sft.wOpenMode], cx
     mov eax, ecx    ;Move the modified open mode into eax for buildSFT
 .openFile:
@@ -1467,8 +1617,9 @@ openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
     return
 
 setOpenMode:
-;Input: al = Open mode for the file open
-    mov byte [fileOpenMd], al
+;Checks that the open mode is ok for us viz. share bits
+;Preserves al
+;Input: al = Open mode for the file open.
     push rbx
 ;Check we are not opening a directory. This is to prevent disk io with a dir
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
@@ -1535,27 +1686,45 @@ createMain:
     mov rsi, qword [workingCDS]
     cmp rsi, -1
     jne .diskFile
+    test byte [wEOFlags], eoInExtOpen   ;Are we doing an extended open?
+    jnz .redirExtOpen
+;Do remote net create
     push rax    ;Save the new attributes
     mov eax, 1118h  ;Create file w/o CDS
     int 2Fh
     pop rbx
     return
+.redirExtOpen:
+    push rax
+    mov eax, 112Eh  ;Extended open redir call
+    int 2Fh
+    pop rbx
+    mov word [wEOFlags], 0  ;Zero to indicate we are done
+    return
 .diskFile:
+;Now setup the extended open mode bits in the SFT
+    call setExtOpenMode ;Set the extended open mode and go!
+    jc .redirExtCheck
+    or word [rdi + sft.wOpenMode], openRWAcc ;Set R/W access when creating file
+.redirExtCheck:
     test word [rsi + cds.wFlags], cdsRedirDrive ;We a redir drv?
     jz .hardFile
+;Here we do local redir file creation.
+    test byte [wEOFlags], eoInExtOpen
+    jnz .redirExtOpen
     push rax    ;Save the new attributes
     mov eax, 1117h  ;Create file with CDS
     int 2Fh
     pop rbx
     return
 .hardFile:
-    or word [rdi + sft.wOpenMode], openRWAcc ;Set R/W access when creating file
+    ;or word [rdi + sft.wOpenMode], openRWAcc ;Set R/W access when creating file
     mov byte [openCreate], -1   ;Creating file, set to FFh
     ;mov byte [delChar], 0E5h
     call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
     push rdi    ;Save the sft handle
     push rax    ;Save the file attributes on stack
-    mov eax, openRWAcc | openCompat ;Set open mode
+    mov eax, openRWAcc  ;Set open access mode
     call buildSFTEntry
     pop rbx ;Pop the file attribute off
     pop rdi
@@ -1564,11 +1733,14 @@ createMain:
     jc .errorExit
     test bl, attrFileVolLbl    ;Was the attribute a volume label?
     jz .notVolLabel    ;If not vol label, skip.
-; Treat volume label creation case here. Rebuild DPB.
+; Treat volume label creation case here. Rebuild DPB and BPB.
     mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
     mov al, byte [rdi]     ;Get the drive letter
     sub al, "A"            ;Convert to a 0 based number
     mov byte [rebuildDrv], al  ;Set the volid rebuild var
+;Do a Set Media ID call 
+; * HERE * 
+;to sync the bootsector label
     call dosCrit1Enter
     call getDiskDPB        ;Rebuild DPB and clear var
     call dosCrit1Exit
@@ -1605,8 +1777,9 @@ buildSFTEntry:
     push rbp    ;file attribute is rbp + 10h
     mov rbp, rsp
     mov rsi, qword [currentSFT]
-;Set the open mode
-    mov word [rsi + sft.wOpenMode], ax
+;Usually the lower byte of open mode is set. Here we add any more bits
+; and set the upper byte of the open mode bits too
+    or word [rsi + sft.wOpenMode], ax
 ;Get current time
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     call getDirDTwords  ;Get current D/T words packed in eax
@@ -1623,6 +1796,8 @@ buildSFTEntry:
     ;First check if we are handling a volume label
     test qword [rbp + 10h], attrFileVolLbl  ;Are we creating a volume label?
     jz .notVolLbl   ;Bit not set? Jump!
+;If we are, the previous search wouldn't have searched for all volids. Now
+; check for any volids. 
     push rsi
     push rdi
     push rbp
@@ -1706,8 +1881,21 @@ buildSFTEntry:
     ;SFT filled
     jmp .exitBuildSFT
 .createFile:
-    ;Create a dummy dir entry in the SDA to swap into the disk buffer
-    ;rsi points to current sft entry
+;Here if the file doesn't exist and we want to create a new file.
+    test word [wEOFlags], eoInExtOpen
+    jz .createGo
+;This part is only entered by an ExtOpen with instructions to open a file
+; and the file doesn't exist. We thus check if the user wants to create
+; a file in this case. We also mark that the original file didn't exist.
+    or word [wEOFlags], eoFileNoExist
+    test word [wEOActions], eoActCreate 
+    jnz .createGo
+;If we shouldnt create a file, fail, reporting that file not found.
+    mov eax, errFnf
+    jmp .badBuildSFTOwnErr
+.createGo:
+;Create a dummy dir entry in the SDA to swap into the disk buffer
+;rsi points to current sft entry
     lea rdi, curDirCopy
     ;Clear out the dir entry
     push rdi
@@ -2080,26 +2268,27 @@ readCharDev:
     jmp charReadExitOk    ;Called with ecx = Number of bytes LEFT to transfer
 
 readDiskFile:
-;rdi = Current SFT
-;rbp = WorkingDPB
+;We have the following vars setup:
+;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
+;currClustF
+;Input:
+;rdi -> Current SFT
+;rbp -> WorkingDPB
 ;ecx = Bytes to transfer
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
     mov byte [rwFlag], 0    ;Read operation
-    ;We have the following vars setup:
-    ;tfrLen, tfrCntr, qPtr, workingDPB, workingDrv, currByteF/S, currSectF/C, 
-    ;currClustF
-    ;Now convert currSectC to disk sector by using currClustF
-    ;Using currClustF as a counter, we walk the fat from startingCluster
-    mov edx, dword [rdi + sft.dFileSize]  ;Check that the file size isn't zero
-    test edx, edx
-    jz readExitOk  ;Return with zero bytes transferred
+;Checks to make sure we dont start reading past the end of the file. 
+;Check the starting position isn't equal to or past the filesize.
+    mov eax, dword [rdi + sft.dFileSize]
+    sub eax, dword [currByteF]
+    jb diskReadNoBytes 
+;Now convert currSectC to disk sector by using currClustF
+;Using currClustF as a counter, we walk the fat from startingCluster
     mov edx, dword [currClustF] ;Use edx as the counter reg
     mov eax, dword [rdi + sft.dStartClust]  ;Get starting cluster
     mov dword [currClustD], eax
-    test eax, eax   ;If starting cluster is zero, exit no bytes read
-    jz readExitOk
-    cmp eax, -1 ;If left in an indeterminate state somehow, exit no bytes
-    jz readExitOk   
+    test eax, eax   ;If starting cluster is zero, exit EOF
+    jz diskReadNoBytes
     mov ecx, dword [tfrLen] ;Get the tfrlen if we are past the end of the file
     ;Check if we have opened a volume label (should never happen)
     test byte [rdi + sft.bFileAttrib], attrFileVolLbl    ;If we try read from vollbl
@@ -2123,7 +2312,7 @@ readDiskFile:
     call readFAT    ;Get in eax the next cluster
     jc .readBadExit   ;This can only return Fail
     cmp eax, -1 ;Are we gonna go past the end of the file?
-    je readExitOk ;Exit with no bytes transferred
+    je diskReadNoBytes ;Exit with no bytes transferred
     mov dword [currClustD], eax    ;Save eax as current cluster
     dec edx ;Decrement counter
     jnz .goToCurrentCluster
@@ -2144,7 +2333,7 @@ readDiskFile:
     ;Now we read the smallest of the following from the sector buffer:
     ; 1) Bytes left in sector size, 2) Bytes left in File, 
     ; 3) Bytes left to read from Request
-
+;This guarantees that we can read UP TO EOF (but not cause an EOF condition)
     mov ecx, dword [rdi + sft.dFileSize]
     sub ecx, dword [currByteF]  ;Get bytes left to read in file in ecx
     mov ebx, dword [tfrCntr]
@@ -2174,7 +2363,7 @@ readDiskFile:
     jz readExitOk ;Exit if so!
     call getNextSectorOfFile    ;Get the next sector of the file
     jc .readBadExit
-    ;If ZF=ZE then currClustF has last cluster
+    ;If ZF=ZE then currClustF has last cluster. 
     jz readExitOk ;ecx has the number of bytes left to transfer. ZF=ZE => EOF
     ;Else repeat
     ;currSectD has been updated, we now set currByteS = 0
@@ -2182,13 +2371,21 @@ readDiskFile:
     mov rax, qword [currSectD]  ;Get the next sector to read from
     jmp .mainRead
 .readBadExit:
-    ;When a disk error occurs within the bit where vars have changed,
-    ; we need to update the SFT before returning
-    mov ecx, dword [tfrCntr]    ;Get the bytes left to transfer
-    xor al, al  ;Set ZF flag
-    call readExitOk   ;We call this
+;If an error occurs, we acts as if no bytes read.
+;SFT pointer remains unmoved.
+    xor ecx, ecx    
     stc ;All calls which end up here return Fail!
     return
+diskReadNoBytes:
+;Come through here with rdi -> SFT
+;No bytes to transfer comes through here. If the handle specifies it
+; all exits through here will trigger an Int 24h for the EOF condition.
+    xor ecx, ecx    ;Set that we read 0 bytes if we dont trigger I24 on EOF
+    test word [rdi + sft.wDeviceInfo], devDiskI24onFull
+    jnz hardEOFexit ;Jump through here if so. Returns CF=CY and ecx = 0
+;Else ret CF=NC and ecx = 0. SFT is left alone at its position as 
+; it hasnt moved (or if we read, we pretend we didn't)
+    return  
 charReadExitOk:
 ;Input: ecx = Number of bytes left to transfer!
 ;       ZF=ZE => Ensure we reach "EOF" on char device!
@@ -2527,10 +2724,16 @@ writeDiskFullExit:
 ;Else trigger Int 24h.
 ;Start by setting the allowed actions.
 ;Due to the disk being full, we ONLY allow the user to Fail.
-    movzx eax, byte [workingDrv]    ;Get drive number in al
-    or eax, (critWrite | critData | critFailOK) << 8    ;Move to ah
+    mov word [errorExCde], errDskFul    ;Mark Disk full
+    mov ah, critWrite | critData | critFailOK   ;Move flags to ah
+    jmp short hardEOFexit.cmn
+hardEOFexit:
+;Jumped to from read file! rdi -> SFT
+    mov word [errorExCde], errHdlEOF    ;Mark EOF for file
+    mov ah, critRead | critData | critFailOK    ;Move to ah
+.cmn:
     mov byte [Int24bitfld], ah  ;Store the bitfield var
-    mov word [errorExCde], errDskFul
+    movzx eax, byte [workingDrv]   ;Get drive number in al
     mov byte [errorLocus], eLocUnk
     mov byte [errorAction], eActAbt
     mov byte [errorClass], eClsOoR
@@ -2544,8 +2747,8 @@ writeDiskFullExit:
     mov rsi, qword [rdi + sft.qPtr] ;Get the char drive pointer
 .i24Go:
     mov edi, drvGenFault    ;Report general fault to driver
-    call criticalDOSError   ;Trigger i24
-    mov eax, errDskFul      ;and return to caller a disk full error
+    call criticalDOSError   ;Trigger i24...
+    movzx eax, word [errorExCde]    ;... and return error code to caller
     jmp short writeBadExit.diskFull
 writeBadExit:
     mov eax, errAccDen      ;Normally return Access denied
@@ -2890,3 +3093,19 @@ setDPBfromSFT:
 ;        CF=CY: Error fail, exit
     mov rbp, qword [rdi + sft.qPtr] ;Get the DPB ptr in rbp
     jmp getDiskDPB.sftEp  ;Doing this will nullify CDS paths on disk swaps!
+
+setExtOpenMode:
+;Sets the open mode of the sft if this is an extended open call.
+;Input: word [wEOFlags] set to indicate extended open call
+;       word [wEOOpenMode] set with open flags
+;       rdi -> Current SFT
+;Output: CF=NC: No an extended open call. Nothing touched.
+;        CF=CY: Extended open call. Setup SFT open mode bits
+    test word [wEOFlags], eoInExtOpen
+    retz
+    push rbx
+    movzx ebx, word [wEOOpenMode]
+    or word [rdi + sft.wOpenMode], bx
+    pop rbx
+    stc
+    return

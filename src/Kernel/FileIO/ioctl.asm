@@ -74,24 +74,45 @@ ioctrl:            ;ah = 44h, handle function
 .badHandle:
     mov eax, errBadHdl
     jmp short .ifExit
-
+.badData:
+    mov eax, errInvDat
+    jmp short .ifExit
 ;...Functions...
 .getDevWord:
 ;Input: bx = File Handle
+;Ouput: dl = Low byte of device info word
+;       dh = If char dev, upper byte of driver attribute word
+;            Else, upper byte of device info word
     call derefSFTPtr
     jc .badHandle
     mov dx, word [rdi + sft.wDeviceInfo]
+    test dx, devCharDev
+    jz .gdwExit
+    mov rdi, qword [rdi + sft.qPtr]         ;Get driver pointer
+    mov dh, byte [rdi + drvHdr.attrib + 1]  ;Get the header 
+.gdwExit:
     xor al, al
     call getUserRegs
     mov word [rsi + callerFrame.rdx], dx
-    return
+    jmp extGoodExit
 .setDevWord:
 ;Input: bx = File Handle
-;       dl = Low byte of Device information word
+;       dl = Low byte of Device information word (if char dev)
+;       dh = Upper byte of dev info for disk devs (undocumented). 
+;            Must be 0 for char devs.
     call derefSFTPtr
     jc .badHandle 
-    mov byte [rdi + sft.wDeviceInfo], dl
-    return
+    test word [rdi + sft.wDeviceInfo], devCharDev
+    jz .sdwDisk
+    mov byte [errorLocus], eLocChr
+    test dh, dh ;If dh is not 0 for a char dev, complain!
+    jnz .badData
+    or dl, devCharDev   ;Ensure we remain a char dev if we are one
+    mov byte [rdi + sft.wDeviceInfo], dl    ;And store these bits here
+.sdwDisk:
+;Set these bits here. dh is 0 for char dev so its oki
+    or byte [rdi + sft.wDeviceInfo + 1], dh
+    jmp extGoodExit
 .ioctlStringFunctions:
 ;al = 0 -> ReadCharDev
 ;al = 1 -> WriteCharDev

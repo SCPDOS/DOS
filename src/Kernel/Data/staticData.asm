@@ -146,6 +146,8 @@ errXlatTbl:
     db 67h, 03h, errNhl, errNoMem, errInvFnc            ;Set Handle Count
     db 68h, 01h, errBadHdl                              ;Commit File
     db 69h, 04h, errBadDrv, errInvDat, errInvFnc, errAccDen ;Get/Set Disk Serial
+    db 6Ch, 0Ah, errPnf, errFnf, errAccCde, errNhl, errFilExist, errNoMem
+    db errUnkMed, errInvDat, errInvFnc, errAccDen       ;Extended Open/Create
     db -1   ;End Of Table marker
 
 

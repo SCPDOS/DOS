@@ -180,7 +180,7 @@ openNetFCBShr   equ 70h
 openNoInherit   equ 80h
 
 ;Bits 8-12 reserved 0
-;Fancy open mode bits, cannot be user set! Yet!
+;The next two are extended open mode bits!
 openFailOnI24   equ 2000h   ;If set, automatically FAIL all Int 24h
 openFlushWrites equ 4000h   ;If set, commit after each write call.
 ;Once share is loaded, if a local FCB open occurs, mark the sft as so.
@@ -208,14 +208,29 @@ devCharNotEOF   equ 40h ;If set, device not yet at end of file
 devDiskNoFlush  equ 40h ;Set if file is synchronised with hard store!
 devCharDev      equ 80h ;If set, it is a char device!
 
-;The below two cannot be user set! Yet!
-devDiskI24onFull   equ 100h    ;If set, trigger Int 24h on disk full
+devDiskI24onFull    equ 100h    ;If set, Int 24h on disk full or disk EOF
 devCharNetSpool equ 800h    ;If set, device is a network spooler
 
 devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
 devCharNamePipe equ 2000h   ;If set, device is a named pipe
 devDiskNoDTonClose equ 4000h   ;If set, dont update date and time when closing
 devRedir        equ 8000h   ;If set, dev/file is redirected!
+
+;Extended open flags. For the var [wEOFlags]
+;These are not related to the SFT but are used during an extended open
+; call to keep track of whats going on and thus help build an SFT.
+eoInExtOpen     equ 0001h   ;Doing Extended Open
+eoFailI24       equ 0002h   ;If EO file hard fails, skip and fail Int 24h
+eoFileNoExist   equ 0004h   ;File doesnt exist
+
+;Can combine open and create to allow creation and opening of new files.
+eoActOpen       equ 01h ;Open the file. Fail if the file doesnt exist.
+eoActTruncate   equ 02h ;Create an existing file. Fail if file doesnt exist.
+eoActCreate     equ 10h ;Create a file if one doesnt exist.
+;Extended Open Action Return 
+eoRetActOpen    equ 1   ;Open existing
+eoRetActCreate  equ 2   ;Create new and open
+eoRetActTruncate    equ 3    ;Recreate and open
 ;------------------------------------------------------------------------;
 ; Buffers allow for buffered drive IO, by first transferring a sector 
 ; to an internal buffer, and then copying it to the specified location

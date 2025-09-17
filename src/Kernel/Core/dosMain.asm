@@ -57,6 +57,7 @@ functionDispatch:   ;Int 21h Main function dispatcher
     mov byte [int28Flag], 1 ;Make it ok to trigger Int 28h
     mov byte [Int24Fail], bl    ;Clear the Int24 returned fail flag
     mov byte [dirFlag], bl  ;Default to look for dir
+    mov word [wEOFlags], bx ;Reset every entry. Sets to skip reentry in i24h
 
     push rax        ;Save rax to use temporarily as table base 
     mov bl, ah      ;Move the function number bl (rbx = 0)

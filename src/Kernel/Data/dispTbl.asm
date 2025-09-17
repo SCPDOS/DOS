@@ -107,6 +107,9 @@ kDispTbl:
     dw setHandleCount - kDispTbl        ;AH = 67H, FILE OPERAITON       F/H
     dw commitFile - kDispTbl            ;AH = 68H, FILE OPERATION       HANDLE
     dw getsetDiskSerial - kDispTbl      ;AH = 69H, INTERNAL, GET/SET DISK SER. NUM
+    dw commitFile - kDispTbl            ;AH = 6AH, FILE OPERATION       HANDLE
+    dw noOp - kDispTbl                  ;AH = 6BH, RESERVED
+    dw xOpenHdl - kDispTbl              ;AH = 6CH, FILE OPERATION       HANDLE
 kDispTblL  equ $ - kDispTbl 
 
 mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here

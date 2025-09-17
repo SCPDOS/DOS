@@ -42,8 +42,13 @@ errLokVio   equ 33  ;File Lock violation
 errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
-errHdlEOF   equ 38  ;Handle reached EOF. Asked to return this error code
-errDskFul   equ 39  ;Disk full error! Hanlde asked to return this error code
+;The next two errors occur because an redir handle has the bit set to do this.
+;We do not move the SFT in either case so that one can safely examine the
+; state of the system before the call was made. In the second case,
+; the user should do a 0 byte write at filesize before anything else to truncate
+; any pre-allocated clusters.
+errHdlEOF   equ 38  ;Handle will EOF if read proceeds or at EOF. 
+errDskFul   equ 39  ;Disk will fill up if write proceeds or full. 
 
 errNoNet    equ 50  ;Network request not supported, generic net fail
 errNLSAcDen equ 65  ;Network Access denied (NLS usage)

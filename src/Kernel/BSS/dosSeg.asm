@@ -250,7 +250,7 @@ sectHdr:        ;This needs 20 bytes in EXEC only
     extFCBAttr  db ?  ;Extended FCB file attribute
     extFCBFlag  db ?  ;Set to -1 if Extended FCB
     searchAttr  db ?  ;Directory Search attributes
-    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
+;    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
     renFlags    db ?  ;01h = Rename in same dir, 02h = Wildcard in destination
     badNameRen  db ?  ;Device name or File not found for rename
     rwFlag      db ?  ;00h=Read, 1=Write, read/write/share error reporting
@@ -308,6 +308,12 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     dirClustA   dd ?  ;Absolute cluster number of current directory
     dirSect     dw ?  ;Sector of current directory cluster
     dirEntry    dd ?  ;32 byte offset in dir for file being searched for
+;Extended Open vars
+    wEOFlags    dw ?  ;Set if we are doing an extended open with various flags
+    wEOActions  dw ?  ;Extended open actions (user DX)
+    wEOOpenMode dw ?  ;Symbol to the next two bytes. (USER BX)
+    wEOAttribs  dw ?  ;Symbol to the next two bytes (USER CX)
+    pszEOfile   dq ?  ;Ptr to null terminated string to file name (USER RSI)
 ;Error DPB 
     tmpDPBPtr   dq ?  ;A DPB for error/temporary situations
 ;No clash recycling below var as the vars in SDA are invalid if in CPU 
