@@ -223,9 +223,30 @@ eoInExtOpen     equ 0001h   ;Doing Extended Open
 eoFailI24       equ 0002h   ;If EO file hard fails, skip and fail Int 24h
 eoFileNoExist   equ 0004h   ;File doesnt exist
 
-;Can combine open and create to allow creation and opening of new files.
-eoActOpen       equ 01h ;Open the file. Fail if the file doesnt exist.
-eoActTruncate   equ 02h ;Create an existing file. Fail if file doesnt exist.
+;Can combine the third option with one of the first two options.
+;The first two options cannot be combined.
+; - If only create is selected, then we try to do a create new. If the 
+;       file exists, this fails. 
+;       Acts like a normal create new call. (21/5Bh)
+;
+; - If only open is selected then we try to do an open. If the file doesn't
+;       doesn't exist, this fails. 
+;       Acts like a normal open call. (21/3Dh)
+;
+; - If only truncate is selected then we try to do a create. If the file
+;       doesn't exist, this fails. 
+;       New behaviour.
+;
+; - If open and create are selected then we try and open the file. If 
+;       the open fails due to the file not existing, we create a new file. 
+;       New behaviour.
+;
+; - If truncate and create are selected then we try to truncate the file. 
+;       If the file doesnt exist then we create a new file instead.
+;       Acts like a normal create call. (21/3Ch)
+
+eoActOpen       equ 01h ;Open the file. 
+eoActTruncate   equ 02h ;Truncate an existing file.
 eoActCreate     equ 10h ;Create a file if one doesnt exist.
 ;Extended Open Action Return 
 eoRetActOpen    equ 1   ;Open existing

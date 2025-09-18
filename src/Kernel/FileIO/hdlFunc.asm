@@ -921,13 +921,7 @@ xOpenHdl:    ;EAX = 6C00h, Extended open/create file
     cmp word [wEOFlags], 0  ;Cleared by Network drives
     jz extGoodExit  ;Exit immediately, vars set by Network drive
     mov ecx, eoRetActCreate
-.localGoodExit:
-;Entry: ax = File Handle
-;       cx = What happened (Action type)
-    call getUserRegs
-    mov word [rsi + callerFrame.rcx], cx  ;Save action type 
-    mov word [rsi + callerFrame.rax], ax  ;Explicitly save handle
-    jmp extGoodExit
+    jmp .localGoodExit
 .notCreateNew:
     test word [wEOActions], eoActOpen   ;If open bit set, open
     jnz .openFile
@@ -962,8 +956,8 @@ xOpenHdl:    ;EAX = 6C00h, Extended open/create file
     retz
     cmp ax, errFnf  ;Any error other than file not found errors here
     retnz
-;So we know that the file was not found here
-    test word [wEOFlags], eoActCreate   ;Do we create a file (even if exists)?
+;Here we know that the file doesn't exist
+    test word [wEOFlags], eoActCreate   ;Do we now create file?
     jz extErrExit   ;Bubble FNF error
 ;Else setup the create here.
 ;cx = File attributes (same as search attributes for find first)
@@ -973,12 +967,18 @@ xOpenHdl:    ;EAX = 6C00h, Extended open/create file
     call createFileHdl
     jc extErrExit
     mov ecx, eoRetActCreate
-    jmp .localGoodExit
+    jmp short .localGoodExit
 .fileOpened:
     cmp word [wEOFlags], 0  ;Cleared by Network drives
     jz extGoodExit  ;Exit immediately, vars set by Network drive
     mov ecx, eoRetActOpen
-    jmp .localGoodExit
+.localGoodExit:
+;Entry: ax = File Handle
+;       cx = What happened (Action type)
+    call getUserRegs
+    mov word [rsi + callerFrame.rcx], cx  ;Save action type 
+    mov word [rsi + callerFrame.rax], ax  ;Explicitly save handle
+    jmp extGoodExit
 ;-----------------------------------:
 ;       Main File IO Routines       :
 ;-----------------------------------:
@@ -1930,15 +1930,15 @@ buildSFTEntry:
     jmp .exitBuildSFT
 .createFile:
 ;Here if the file doesn't exist and we want to create a new file.
-    test word [wEOFlags], eoInExtOpen
+    test word [wEOFlags], eoInExtOpen   ;If a normal create call, skip this.
     jz .createGo
-;This part is only entered by an ExtOpen with instructions to open a file
-; and the file doesn't exist. We thus check if the user wants to create
-; a file in this case. We also mark that the original file didn't exist.
-    or word [wEOFlags], eoFileNoExist
-    test word [wEOActions], eoActCreate 
+;This part is only entered by an ExtOpen with instructions to truncate a 
+; file and the file doesn't exist. Here we check if we are supposed to 
+; create a file if the file doesnt exist.
+    or word [wEOFlags], eoFileNoExist   ;Note the file didn't exist
+    test word [wEOActions], eoActCreate ;Check if we should make new
     jnz .createGo
-;If we shouldnt create a file, fail, reporting that file not found.
+;If we shouldnt create a file, fail, reporting file not found.
     mov eax, errFnf
     jmp .badBuildSFTOwnErr
 .createGo:
