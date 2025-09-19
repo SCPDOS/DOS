@@ -872,6 +872,7 @@ xOpenHdl:    ;EAX = 6C00h, Extended open/create file
 ;               0000b = Fail the call, access denied.
 ;               0001b = Open the file if it exists
 ;               0010b = Truncate and Create file
+;       Note, DL cannot be 0 as this is a fail if exist and doesnt exist
 ;       DH = 0
 ;       RSI -> ASCIIZ name of path to operate on
 ;Output: CF=NC: Call succeeded
@@ -894,16 +895,13 @@ xOpenHdl:    ;EAX = 6C00h, Extended open/create file
     mov eax, errBadParam
     jmp extErrExit
 .okStart:
-    test dx, 0FFECh             ;Have we set any bites we are not allowed to?
-    jnz .badParmExit
     test dl, dl                 ;Are we a fail if exist and dont exist?
     jz .badParmExit
-    mov dh, dl                  ;Get a copy of the actions high
-    cmp dh, 10h                 ;Any action other than allowed?
-    ja .badParmExit
-    and dl, 0Fh                 ;Isolate the file exist bits
-    cmp dl, 2
-    ja .badParmExit
+    test dx, ~(eoActCreate | eoActOpen | eoActTruncate)
+    jnz .badParmExit    ;If set any bits we are not allowed to set, fail!
+    and dl, eoActOpen | eoActTruncate   ;Isolate the file exist bits
+    cmp dl, eoActOpen | eoActTruncate   ;They cannot both be set
+    je .badParmExit     
 ;Test to check if the force fail bit is set
     test bx, openFailOnI24  ;Is the Int 24h Force Fail bit set?
     jnz .noFailI24
