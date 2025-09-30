@@ -180,7 +180,8 @@ openNetFCBShr   equ 70h
 openNoInherit   equ 80h
 
 ;Bits 8-12 reserved 0
-;The next two are extended open mode bits!
+;The next two are extended open mode bits! 
+;Can be set
 openFailOnI24   equ 2000h   ;If set, automatically FAIL all Int 24h
 openFlushWrites equ 4000h   ;If set, commit after each write call.
 ;Once share is loaded, if a local FCB open occurs, mark the sft as so.

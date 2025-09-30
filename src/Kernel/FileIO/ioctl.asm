@@ -110,8 +110,11 @@ ioctrl:            ;ah = 44h, handle function
     or dl, devCharDev   ;Ensure we remain a char dev if we are one
     mov byte [rdi + sft.wDeviceInfo], dl    ;And store these bits here
 .sdwDisk:
-;Set these bits here. dh is 0 for char dev so its oki
-    or byte [rdi + sft.wDeviceInfo + 1], dh
+;Set high bits here for disk devices only.
+;Can only set bits 5 and 6. Fail if any other bits are set in dh.
+    test dh, ~(40h | 20h)   ;20h = Fail on I24, 40h = Flush on writes
+    jnz .badData
+    mov byte [rdi + sft.wDeviceInfo + 1], dh
     jmp extGoodExit
 .ioctlStringFunctions:
 ;al = 0 -> ReadCharDev
