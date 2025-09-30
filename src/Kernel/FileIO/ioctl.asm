@@ -109,6 +109,7 @@ ioctrl:            ;ah = 44h, handle function
     jnz .badData
     or dl, devCharDev   ;Ensure we remain a char dev if we are one
     mov byte [rdi + sft.wDeviceInfo], dl    ;And store these bits here
+    jmp extGoodExit
 .sdwDisk:
 ;Set high bits here for disk devices only.
 ;Can only set bits 5 and 6. Fail if any other bits are set in dh.
