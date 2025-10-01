@@ -12,7 +12,7 @@
 
 ;The following functions are NOT currently generally supported:
 ;   openFCB -> Except for creating a volume label.
-;   closeFCB
+;   closeFCB -> Except for closing a volume label.
 ;   createFCB -> Except for creating a volume label.
 ;   randomReadFCB
 ;   randomWriteFCB
