@@ -14136,382 +14136,383 @@
    112 000056CB E907260000          <1>     jmp extGoodExit
    113                              <1> .sdwDisk:
    114                              <1> ;Set high bits here for disk devices only.
-   115                              <1> ;Can only set bits 5 and 6. Fail if any other bits are set in dh.
-   116 000056D0 F6C69F              <1>     test dh, ~(40h | 20h)   ;20h = Fail on I24, 40h = Flush on writes
-   117 000056D3 75A6                <1>     jnz .badData
-   118 000056D5 887706              <1>     mov byte [rdi + sft.wDeviceInfo + 1], dh
-   119 000056D8 E9FA250000          <1>     jmp extGoodExit
-   120                              <1> .ioctlStringFunctions:
-   121                              <1> ;al = 0 -> ReadCharDev
-   122                              <1> ;al = 1 -> WriteCharDev
-   123                              <1> ;al = 2 -> ReadDiskDev
-   124                              <1> ;al = 3 -> WriteDiskDev
-   125                              <1> ;Input: bx = File handle/drive number
-   126                              <1> ;       ecx = Bytes to transfer
-   127                              <1> ;       rdx = Ptr to string to transfer
-   128 000056DD 0FB6F3              <1>     movzx esi, bl
-   129 000056E0 488D1D(C1040000)    <1>     lea rbx, primReqPkt
-   130 000056E7 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
-   131 000056EE C605(68040000)00    <1>     mov byte [Int24bitfld], 0
-   132                              <1> ;Get in rdi the ptr to the SFT for the handle we are looking at
-   133                              <1> ;Setup the common ioReqPkt fields and the read/write 
-   134 000056F5 C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-   135 000056F8 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
-   136 000056FB 4889530E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdx
-   137 000056FF 51                  <1>     push rcx
-   138 00005700 52                  <1>     push rdx
-   139 00005701 B903000000          <1>     mov ecx, drvIOCTLREAD
-   140 00005706 BA0C000000          <1>     mov edx, drvIOCTLWRITE
-   141 0000570B A801                <1>     test al, 1  ;If set, this is a write operation
-   142 0000570D 0F45CA              <1>     cmovnz ecx, edx ;Move write command into ecx
-   143 00005710 7507                <1>     jnz .notWrite
-   144 00005712 800D(68040000)01    <1>     or byte [Int24bitfld], critWrite
-   145                              <1> .notWrite:
-   146 00005719 5A                  <1>     pop rdx
-   147 0000571A 59                  <1>     pop rcx
-   148 0000571B 884B02              <1>     mov byte [rbx + ioReqPkt.cmdcde], cl
-   149 0000571E 3C01                <1>     cmp al, 1
-   150 00005720 7733                <1>     ja .ioctlStringBlockDevice
-   151                              <1>     ;Here we are for char devices only
-   152 00005722 4887DE              <1>     xchg rbx, rsi    ;Save the driver ptr to rsi and the handle to ebx 
-   153 00005725 E8CDFDFFFF          <1>     call derefSFTPtr    ;Get the sft ptr in rdi
-   154 0000572A 0F8244FFFFFF        <1>     jc .badHandle 
-   155 00005730 C605(0A040000)04    <1>     mov byte [errorLocus], eLocChr
-   156 00005737 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev   ;Bit must be set
-   157 0000573D 0F8420FFFFFF        <1>     jz .invalidFunction
-   158                              <1> 
-   159 00005743 488B5F07            <1>     mov rbx, qword [rdi + sft.qPtr] ;Get ptr to device driver
-   160 00005747 800D(68040000)80    <1>     or byte [Int24bitfld], critCharDev
-   161 0000574E 4887DE              <1>     xchg rbx, rsi   ;Swap back
-   162 00005751 31C0                <1>     xor eax, eax
-   163 00005753 EB38                <1>     jmp short .ioctlStringCommon
-   164                              <1> .ioctlStringBlockDevice:
-   165                              <1>     ;Here we are for block devices only
-   166                              <1>     ;esi has the drive number
-   167 00005755 C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
-   168 0000575C 89F0                <1>     mov eax, esi
-   169 0000575E 53                  <1>     push rbx
-   170 0000575F E838210000          <1>     call getCDS ;Returns in al the unit number of the drive
-   171 00005764 5B                  <1>     pop rbx
-   172 00005765 730A                <1>     jnc .okDrive
-   173 00005767 B80F000000          <1>     mov eax, errBadDrv
-   174 0000576C E974250000          <1>     jmp extErrExit
-   175                              <1> .okDrive:
-   176 00005771 488B35(11070000)    <1>     mov rsi, qword [workingCDS]
-   177 00005778 488B7645            <1>     mov rsi, qword [rsi + cds.qDPBPtr]
-   178 0000577C 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
-   179 0000577F 884301              <1>     mov byte [rbx + ioReqPkt.unitnm], al
-   180 00005782 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr]
-   181 00005786 8A4623              <1>     mov al, byte [rsi + dpb.bMediaDescriptor]
-   182 00005789 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] 
-   183                              <1> .ioctlStringCommon:
-   184                              <1>     ;rsi -> Device Driver header
-   185                              <1>     ;rbx -> Request Header
-   186                              <1>     ;al = Media descriptor
-   187 0000578D 88430D              <1>     mov byte [rbx + ioReqPkt.medesc], al
-   188 00005790 66F746080040        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTLCtl
-   189 00005796 0F84C7FEFFFF        <1>     jz .invalidFunction ;If not supported, invalid function error 
-   190                              <1>     ;Make request now
-   191 0000579C 51                  <1>     push rcx    ;Push xfrctr
-   192 0000579D 52                  <1>     push rdx    ;Buffer Ptr
-   193 0000579E 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
-   194 000057A4 E8B41B0000          <1>     call goDriver
-   195 000057A9 5A                  <1>     pop rdx
-   196 000057AA 59                  <1>     pop rcx
-   197                              <1> ;Check status, if bad, reuse ecx and rdx for tfrlen and bufptr and go again
-   198 000057AB 66F743030080        <1>     test word [rbx + ioReqPkt.status], drvErrStatus
-   199 000057B1 0F8420250000        <1>     jz extGoodExit
-   200 000057B7 E96B030000          <1>     jmp failIOCTLCall
-   201                              <1> 
-   202                              <1> .ioStatusFunctions:
-   203                              <1> ;al = 0 -> Get input status 
-   204                              <1> ;al = 1 -> Get output status
-   205 000057BC E836FDFFFF          <1>     call derefSFTPtr
-   206 000057C1 0F82ADFEFFFF        <1>     jc .badHandle 
-   207 000057C7 488D1D(C1040000)    <1>     lea rbx, primReqPkt
-   208 000057CE C6030D              <1>     mov byte [rbx + statusReqPkt.hdrlen], statusReqPkt_size
-   209 000057D1 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
-   210 000057D8 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedir  ;File cannot be redir!
-   211 000057DE 0F857FFEFFFF        <1>     jnz .invalidFunction
-   212 000057E4 C605(68040000)00    <1>     mov byte [Int24bitfld], 0
-   213 000057EB B906000000          <1>     mov ecx, drvINSTATUS
-   214 000057F0 BA0A000000          <1>     mov edx, drvOUTSTATUS
-   215 000057F5 84C0                <1>     test al, al
-   216 000057F7 0F45CA              <1>     cmovnz ecx, edx
-   217 000057FA 884B02              <1>     mov byte [rbx + statusReqPkt.cmdcde], cl
-   218 000057FD 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
-   219 00005803 7416                <1>     jz .ioStatDisk
-   220 00005805 C605(0A040000)04    <1>     mov byte [errorLocus], eLocChr
-   221 0000580C 800D(68040000)80    <1>     or byte [Int24bitfld], critCharDev
-   222 00005813 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr]
-   223 00005817 30C0                <1>     xor al, al
-   224 00005819 EB15                <1>     jmp short .ioStatCommon
-   225                              <1> .ioStatDisk:
-   226 0000581B C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
-   227 00005822 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get DPB ptr
-   228 00005826 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
-   229 00005829 884301              <1>     mov byte [rbx + statusReqPkt.unitnm], al
-   230 0000582C 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr]
-   231                              <1> .ioStatCommon:
-   232 00005830 E8281B0000          <1>     call goDriver
-   233 00005835 66F743030080        <1>     test word [rbx + statusReqPkt.status], drvErrStatus
-   234 0000583B 0F85E6020000        <1>     jnz failIOCTLCall
-   235 00005841 66F743030002        <1>     test word [rbx + statusReqPkt.status], drvBsyStatus
-   236 00005847 7403                <1>     jz .notBusyExit
-   237 00005849 B0FF                <1>     mov al, -1  ;Device Busy/EOF
-   238                              <1>     return 
+   115                              <1> ;Can only set/clear bit 1 for EOF and disk full special handling. 
+   116                              <1> ; Fail if any other bits are set in dh.
+   117 000056D0 F6C6FE              <1>     test dh, ~1
+   118 000056D3 75A6                <1>     jnz .badData
+   119 000056D5 887706              <1>     mov byte [rdi + sft.wDeviceInfo + 1], dh
+   120 000056D8 E9FA250000          <1>     jmp extGoodExit
+   121                              <1> .ioctlStringFunctions:
+   122                              <1> ;al = 0 -> ReadCharDev
+   123                              <1> ;al = 1 -> WriteCharDev
+   124                              <1> ;al = 2 -> ReadDiskDev
+   125                              <1> ;al = 3 -> WriteDiskDev
+   126                              <1> ;Input: bx = File handle/drive number
+   127                              <1> ;       ecx = Bytes to transfer
+   128                              <1> ;       rdx = Ptr to string to transfer
+   129 000056DD 0FB6F3              <1>     movzx esi, bl
+   130 000056E0 488D1D(C1040000)    <1>     lea rbx, primReqPkt
+   131 000056E7 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
+   132 000056EE C605(68040000)00    <1>     mov byte [Int24bitfld], 0
+   133                              <1> ;Get in rdi the ptr to the SFT for the handle we are looking at
+   134                              <1> ;Setup the common ioReqPkt fields and the read/write 
+   135 000056F5 C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+   136 000056F8 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
+   137 000056FB 4889530E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdx
+   138 000056FF 51                  <1>     push rcx
+   139 00005700 52                  <1>     push rdx
+   140 00005701 B903000000          <1>     mov ecx, drvIOCTLREAD
+   141 00005706 BA0C000000          <1>     mov edx, drvIOCTLWRITE
+   142 0000570B A801                <1>     test al, 1  ;If set, this is a write operation
+   143 0000570D 0F45CA              <1>     cmovnz ecx, edx ;Move write command into ecx
+   144 00005710 7507                <1>     jnz .notWrite
+   145 00005712 800D(68040000)01    <1>     or byte [Int24bitfld], critWrite
+   146                              <1> .notWrite:
+   147 00005719 5A                  <1>     pop rdx
+   148 0000571A 59                  <1>     pop rcx
+   149 0000571B 884B02              <1>     mov byte [rbx + ioReqPkt.cmdcde], cl
+   150 0000571E 3C01                <1>     cmp al, 1
+   151 00005720 7733                <1>     ja .ioctlStringBlockDevice
+   152                              <1>     ;Here we are for char devices only
+   153 00005722 4887DE              <1>     xchg rbx, rsi    ;Save the driver ptr to rsi and the handle to ebx 
+   154 00005725 E8CDFDFFFF          <1>     call derefSFTPtr    ;Get the sft ptr in rdi
+   155 0000572A 0F8244FFFFFF        <1>     jc .badHandle 
+   156 00005730 C605(0A040000)04    <1>     mov byte [errorLocus], eLocChr
+   157 00005737 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev   ;Bit must be set
+   158 0000573D 0F8420FFFFFF        <1>     jz .invalidFunction
+   159                              <1> 
+   160 00005743 488B5F07            <1>     mov rbx, qword [rdi + sft.qPtr] ;Get ptr to device driver
+   161 00005747 800D(68040000)80    <1>     or byte [Int24bitfld], critCharDev
+   162 0000574E 4887DE              <1>     xchg rbx, rsi   ;Swap back
+   163 00005751 31C0                <1>     xor eax, eax
+   164 00005753 EB38                <1>     jmp short .ioctlStringCommon
+   165                              <1> .ioctlStringBlockDevice:
+   166                              <1>     ;Here we are for block devices only
+   167                              <1>     ;esi has the drive number
+   168 00005755 C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
+   169 0000575C 89F0                <1>     mov eax, esi
+   170 0000575E 53                  <1>     push rbx
+   171 0000575F E838210000          <1>     call getCDS ;Returns in al the unit number of the drive
+   172 00005764 5B                  <1>     pop rbx
+   173 00005765 730A                <1>     jnc .okDrive
+   174 00005767 B80F000000          <1>     mov eax, errBadDrv
+   175 0000576C E974250000          <1>     jmp extErrExit
+   176                              <1> .okDrive:
+   177 00005771 488B35(11070000)    <1>     mov rsi, qword [workingCDS]
+   178 00005778 488B7645            <1>     mov rsi, qword [rsi + cds.qDPBPtr]
+   179 0000577C 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
+   180 0000577F 884301              <1>     mov byte [rbx + ioReqPkt.unitnm], al
+   181 00005782 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr]
+   182 00005786 8A4623              <1>     mov al, byte [rsi + dpb.bMediaDescriptor]
+   183 00005789 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] 
+   184                              <1> .ioctlStringCommon:
+   185                              <1>     ;rsi -> Device Driver header
+   186                              <1>     ;rbx -> Request Header
+   187                              <1>     ;al = Media descriptor
+   188 0000578D 88430D              <1>     mov byte [rbx + ioReqPkt.medesc], al
+   189 00005790 66F746080040        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTLCtl
+   190 00005796 0F84C7FEFFFF        <1>     jz .invalidFunction ;If not supported, invalid function error 
+   191                              <1>     ;Make request now
+   192 0000579C 51                  <1>     push rcx    ;Push xfrctr
+   193 0000579D 52                  <1>     push rdx    ;Buffer Ptr
+   194 0000579E 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
+   195 000057A4 E8B41B0000          <1>     call goDriver
+   196 000057A9 5A                  <1>     pop rdx
+   197 000057AA 59                  <1>     pop rcx
+   198                              <1> ;Check status, if bad, reuse ecx and rdx for tfrlen and bufptr and go again
+   199 000057AB 66F743030080        <1>     test word [rbx + ioReqPkt.status], drvErrStatus
+   200 000057B1 0F8420250000        <1>     jz extGoodExit
+   201 000057B7 E96B030000          <1>     jmp failIOCTLCall
+   202                              <1> 
+   203                              <1> .ioStatusFunctions:
+   204                              <1> ;al = 0 -> Get input status 
+   205                              <1> ;al = 1 -> Get output status
+   206 000057BC E836FDFFFF          <1>     call derefSFTPtr
+   207 000057C1 0F82ADFEFFFF        <1>     jc .badHandle 
+   208 000057C7 488D1D(C1040000)    <1>     lea rbx, primReqPkt
+   209 000057CE C6030D              <1>     mov byte [rbx + statusReqPkt.hdrlen], statusReqPkt_size
+   210 000057D1 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
+   211 000057D8 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedir  ;File cannot be redir!
+   212 000057DE 0F857FFEFFFF        <1>     jnz .invalidFunction
+   213 000057E4 C605(68040000)00    <1>     mov byte [Int24bitfld], 0
+   214 000057EB B906000000          <1>     mov ecx, drvINSTATUS
+   215 000057F0 BA0A000000          <1>     mov edx, drvOUTSTATUS
+   216 000057F5 84C0                <1>     test al, al
+   217 000057F7 0F45CA              <1>     cmovnz ecx, edx
+   218 000057FA 884B02              <1>     mov byte [rbx + statusReqPkt.cmdcde], cl
+   219 000057FD 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
+   220 00005803 7416                <1>     jz .ioStatDisk
+   221 00005805 C605(0A040000)04    <1>     mov byte [errorLocus], eLocChr
+   222 0000580C 800D(68040000)80    <1>     or byte [Int24bitfld], critCharDev
+   223 00005813 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr]
+   224 00005817 30C0                <1>     xor al, al
+   225 00005819 EB15                <1>     jmp short .ioStatCommon
+   226                              <1> .ioStatDisk:
+   227 0000581B C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
+   228 00005822 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get DPB ptr
+   229 00005826 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
+   230 00005829 884301              <1>     mov byte [rbx + statusReqPkt.unitnm], al
+   231 0000582C 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr]
+   232                              <1> .ioStatCommon:
+   233 00005830 E8281B0000          <1>     call goDriver
+   234 00005835 66F743030080        <1>     test word [rbx + statusReqPkt.status], drvErrStatus
+   235 0000583B 0F85E6020000        <1>     jnz failIOCTLCall
+   236 00005841 66F743030002        <1>     test word [rbx + statusReqPkt.status], drvBsyStatus
+   237 00005847 7403                <1>     jz .notBusyExit
+   238 00005849 B0FF                <1>     mov al, -1  ;Device Busy/EOF
+   239                              <1>     return 
     13                              <2> %%_ret:
     14 0000584B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   239                              <1> .notBusyExit:
-   240                              <1> ;Device ready/NotEOF
-   241 0000584C 31C0                <1>     xor eax, eax
-   242                              <1>     return
+   240                              <1> .notBusyExit:
+   241                              <1> ;Device ready/NotEOF
+   242 0000584C 31C0                <1>     xor eax, eax
+   243                              <1>     return
     13                              <2> %%_ret:
     14 0000584E C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   243                              <1> 
-   244                              <1> .devControl:
-   245                              <1> ;al = 0 -> Is media removable?
-   246                              <1> ;al = 1 -> Is device local or remote?
-   247                              <1> ;al = 2 -> Is handle local or remote?
-   248 0000584F 84C0                <1>     test al, al
-   249 00005851 746D                <1>     jz .remTest
-   250 00005853 A801                <1>     test al, 1
-   251 00005855 751B                <1>     jnz .deviceTest
-   252                              <1> ;Handle Local or Remote
-   253 00005857 E89BFCFFFF          <1>     call derefSFTPtr    ;Get ptr in rdi
-   254 0000585C 0F8212FEFFFF        <1>     jc .badHandle 
-   255 00005862 0FB75705            <1>     movzx edx, word [rdi + sft.wDeviceInfo]
-   256                              <1> .devControlExit:
-   257 00005866 E89D1F0000          <1>     call getUserRegs
-   258 0000586B 66895618            <1>     mov word [rsi + callerFrame.rdx], dx
-   259 0000586F 31C0                <1>     xor eax, eax
-   260                              <1>     return 
+   244                              <1> 
+   245                              <1> .devControl:
+   246                              <1> ;al = 0 -> Is media removable?
+   247                              <1> ;al = 1 -> Is device local or remote?
+   248                              <1> ;al = 2 -> Is handle local or remote?
+   249 0000584F 84C0                <1>     test al, al
+   250 00005851 746D                <1>     jz .remTest
+   251 00005853 A801                <1>     test al, 1
+   252 00005855 751B                <1>     jnz .deviceTest
+   253                              <1> ;Handle Local or Remote
+   254 00005857 E89BFCFFFF          <1>     call derefSFTPtr    ;Get ptr in rdi
+   255 0000585C 0F8212FEFFFF        <1>     jc .badHandle 
+   256 00005862 0FB75705            <1>     movzx edx, word [rdi + sft.wDeviceInfo]
+   257                              <1> .devControlExit:
+   258 00005866 E89D1F0000          <1>     call getUserRegs
+   259 0000586B 66895618            <1>     mov word [rsi + callerFrame.rdx], dx
+   260 0000586F 31C0                <1>     xor eax, eax
+   261                              <1>     return 
     13                              <2> %%_ret:
     14 00005871 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   261                              <1> .deviceTest:
-   262                              <1> ;Drive Local or Remote
-   263                              <1> ;For more compat, get the driver attrib word if local with bit 12 clear
-   264                              <1> ;Else, just get the CDS word and swap subst and net
-   265 00005872 88D8                <1>     mov al, bl
-   266 00005874 E823200000          <1>     call getCDS
-   267 00005879 730A                <1>     jnc .devTestOkDrive
-   268 0000587B B80F000000          <1>     mov eax, errBadDrv
-   269 00005880 E960240000          <1>     jmp extErrExit
-   270                              <1> .devTestOkDrive:
-   271 00005885 488B3D(11070000)    <1>     mov rdi, qword [workingCDS]
-   272 0000588C 668B5743            <1>     mov dx, word [rdi + cds.wFlags]
-   273 00005890 66F7C20080          <1>     test dx, cdsRedirDrive   ;Check the remote bit
-   274 00005895 7513                <1>     jnz .remoteDrive
-   275 00005897 488B7F45            <1>     mov rdi, qword [rdi + cds.qDPBPtr]
-   276 0000589B 488B7F1B            <1>     mov rdi, qword [rdi + dpb.qDriverHeaderPtr]
-   277 0000589F 668B5708            <1>     mov dx, word [rdi + drvHdr.attrib]
-   278 000058A3 6681E2FFCF          <1>     and dx, ~3000h  ;Clear bits 12 and 13
-   279 000058A8 EBBC                <1>     jmp short .devControlExit
-   280                              <1> .remoteDrive:
-   281 000058AA 6689D3              <1>     mov bx, dx
-   282 000058AD 6681CA0010          <1>     or dx, 1000h    ;Set bit 12 for remote (its at subst)
-   283 000058B2 6681E30010          <1>     and bx, cdsSubstDrive   ;Isolate the subst bit
-   284 000058B7 74AD                <1>     jz short .devControlExit    ;Jump to exit if no subst bit
-   285 000058B9 6681CA0080          <1>     or dx, 8000h    ;Else, set bit 15 for subst in returning word!
-   286 000058BE EBA6                <1>     jmp short .devControlExit   ;Store it
-   287                              <1> 
-   288                              <1> .remTest:
-   289                              <1> ;Drive letter in bl
-   290 000058C0 88D8                <1>     mov al, bl
-   291 000058C2 E8D51F0000          <1>     call getCDS
-   292 000058C7 730A                <1>     jnc .remTestOkDrive
-   293                              <1> .remTestBadDrv:
-   294 000058C9 B80F000000          <1>     mov eax, errBadDrv
-   295 000058CE E912240000          <1>     jmp extErrExit
-   296                              <1> .remTestOkDrive:
-   297 000058D3 488B3D(11070000)    <1>     mov rdi, qword [workingCDS] ;Get the CDS
-   298 000058DA 66F747430080        <1>     test word [rdi + cds.wFlags], cdsRedirDrive
-   299 000058E0 75E7                <1>     jnz .remTestBadDrv
-   300 000058E2 488D1D(C1040000)    <1>     lea rbx, primReqPkt
-   301 000058E9 488B7745            <1>     mov rsi, qword [rdi + cds.qDPBPtr]
-   302 000058ED 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]    ;Get the unit number
-   303 000058F0 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr in rsi
-   304 000058F4 66F746080008        <1>     test word [rsi + drvHdr.attrib], devDrvOpClRem
-   305 000058FA 0F8463FDFFFF        <1>     jz .invalidFunction
-   306 00005900 C6030D              <1>     mov byte [rbx + remMediaReqPkt.hdrlen], remMediaReqPkt_size
-   307 00005903 C643020F            <1>     mov byte [rbx + remMediaReqPkt.cmdcde], drvREMMEDCHECK
-   308 00005907 66C743030000        <1>     mov word [rbx + remMediaReqPkt.status], 0
-   309 0000590D 884301              <1>     mov byte [rbx + remMediaReqPkt.unitnm], al
-   310 00005910 E8481A0000          <1>     call goDriver
-   311 00005915 0FB74303            <1>     movzx eax, word [rbx + remMediaReqPkt.status]   ;Get the status
-   312 00005919 2500020000          <1>     and eax, drvBsyStatus   ;Clear all but bit 9
-   313 0000591E C1E809              <1>     shr eax, 9  ;Move the busy bit to al[0]
-   314                              <1>     return
+   262                              <1> .deviceTest:
+   263                              <1> ;Drive Local or Remote
+   264                              <1> ;For more compat, get the driver attrib word if local with bit 12 clear
+   265                              <1> ;Else, just get the CDS word and swap subst and net
+   266 00005872 88D8                <1>     mov al, bl
+   267 00005874 E823200000          <1>     call getCDS
+   268 00005879 730A                <1>     jnc .devTestOkDrive
+   269 0000587B B80F000000          <1>     mov eax, errBadDrv
+   270 00005880 E960240000          <1>     jmp extErrExit
+   271                              <1> .devTestOkDrive:
+   272 00005885 488B3D(11070000)    <1>     mov rdi, qword [workingCDS]
+   273 0000588C 668B5743            <1>     mov dx, word [rdi + cds.wFlags]
+   274 00005890 66F7C20080          <1>     test dx, cdsRedirDrive   ;Check the remote bit
+   275 00005895 7513                <1>     jnz .remoteDrive
+   276 00005897 488B7F45            <1>     mov rdi, qword [rdi + cds.qDPBPtr]
+   277 0000589B 488B7F1B            <1>     mov rdi, qword [rdi + dpb.qDriverHeaderPtr]
+   278 0000589F 668B5708            <1>     mov dx, word [rdi + drvHdr.attrib]
+   279 000058A3 6681E2FFCF          <1>     and dx, ~3000h  ;Clear bits 12 and 13
+   280 000058A8 EBBC                <1>     jmp short .devControlExit
+   281                              <1> .remoteDrive:
+   282 000058AA 6689D3              <1>     mov bx, dx
+   283 000058AD 6681CA0010          <1>     or dx, 1000h    ;Set bit 12 for remote (its at subst)
+   284 000058B2 6681E30010          <1>     and bx, cdsSubstDrive   ;Isolate the subst bit
+   285 000058B7 74AD                <1>     jz short .devControlExit    ;Jump to exit if no subst bit
+   286 000058B9 6681CA0080          <1>     or dx, 8000h    ;Else, set bit 15 for subst in returning word!
+   287 000058BE EBA6                <1>     jmp short .devControlExit   ;Store it
+   288                              <1> 
+   289                              <1> .remTest:
+   290                              <1> ;Drive letter in bl
+   291 000058C0 88D8                <1>     mov al, bl
+   292 000058C2 E8D51F0000          <1>     call getCDS
+   293 000058C7 730A                <1>     jnc .remTestOkDrive
+   294                              <1> .remTestBadDrv:
+   295 000058C9 B80F000000          <1>     mov eax, errBadDrv
+   296 000058CE E912240000          <1>     jmp extErrExit
+   297                              <1> .remTestOkDrive:
+   298 000058D3 488B3D(11070000)    <1>     mov rdi, qword [workingCDS] ;Get the CDS
+   299 000058DA 66F747430080        <1>     test word [rdi + cds.wFlags], cdsRedirDrive
+   300 000058E0 75E7                <1>     jnz .remTestBadDrv
+   301 000058E2 488D1D(C1040000)    <1>     lea rbx, primReqPkt
+   302 000058E9 488B7745            <1>     mov rsi, qword [rdi + cds.qDPBPtr]
+   303 000058ED 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]    ;Get the unit number
+   304 000058F0 488B761B            <1>     mov rsi, qword [rsi + dpb.qDriverHeaderPtr] ;Get driver ptr in rsi
+   305 000058F4 66F746080008        <1>     test word [rsi + drvHdr.attrib], devDrvOpClRem
+   306 000058FA 0F8463FDFFFF        <1>     jz .invalidFunction
+   307 00005900 C6030D              <1>     mov byte [rbx + remMediaReqPkt.hdrlen], remMediaReqPkt_size
+   308 00005903 C643020F            <1>     mov byte [rbx + remMediaReqPkt.cmdcde], drvREMMEDCHECK
+   309 00005907 66C743030000        <1>     mov word [rbx + remMediaReqPkt.status], 0
+   310 0000590D 884301              <1>     mov byte [rbx + remMediaReqPkt.unitnm], al
+   311 00005910 E8481A0000          <1>     call goDriver
+   312 00005915 0FB74303            <1>     movzx eax, word [rbx + remMediaReqPkt.status]   ;Get the status
+   313 00005919 2500020000          <1>     and eax, drvBsyStatus   ;Clear all but bit 9
+   314 0000591E C1E809              <1>     shr eax, 9  ;Move the busy bit to al[0]
+   315                              <1>     return
     13                              <2> %%_ret:
     14 00005921 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   315                              <1> 
-   316                              <1> .setSharingCount:
-   317                              <1> ;Input: cx = Share Count
-   318                              <1> ;       dx = Share Retry
-   319 00005922 66890D(1F000000)    <1>     mov word [shareCount], cx
-   320 00005929 6685D2              <1>     test dx, dx
-   321 0000592C 0F8431FDFFFF        <1>     jz .invalidFunction
-   322 00005932 668915(21000000)    <1>     mov word [shareDelay], dx
-   323 00005939 31C0                <1>     xor eax, eax
-   324 0000593B E997230000          <1>     jmp extGoodExit
-   325                              <1> 
-   326                              <1> .genericCharDevIOCTL:
-   327 00005940 E830000000          <1>     call .getHandleInfo
-   328 00005945 EB05                <1>     jmp short .ioctlReqMake
-   329                              <1> .genericBlokDevIOCTL:
-   330 00005947 E857000000          <1>     call .getBlkDevInfo
-   331                              <1> .ioctlReqMake:
-   332                              <1> ;rsi must point to the driver header here
-   333 0000594C 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
-   334 00005952 7511                <1>     jnz .supportsIOCTL
-   335                              <1> .badFunction:
-   336 00005954 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
-   337 0000595B B801000000          <1>     mov eax, errInvFnc
-   338 00005960 E980230000          <1>     jmp extErrExit
-   339                              <1> .supportsIOCTL:
-   340                              <1>     ;Setup the request header
-   341 00005965 E884000000          <1>     call .doIOCTLrequest
-   342 0000596A 0F8467230000        <1>     jz extGoodExit
-   343 00005970 E9B2010000          <1>     jmp failIOCTLCall
-   344                              <1> 
-   345                              <1> .getHandleInfo:
-   346                              <1> ;Returns in rsi a pointer to the driver for the handle device
-   347 00005975 E861FBFFFF          <1>     call getSFTPtr  ;Get in rdi the SFT ptr
-   348 0000597A 7312                <1>     jnc .ghiOkHdl
-   349                              <1> .ghiBadHdl:
-   350 0000597C C605(0A040000)04    <1>     mov byte [errorLocus], eLocChr
-   351 00005983 58                  <1>     pop rax ;Pop the return addr, return through DOS immediately
-   352 00005984 B806000000          <1>     mov eax, errBadHdl
-   353 00005989 E957230000          <1>     jmp extErrExit  ;Exit as if in line with main routine body
-   354                              <1> .ghiOkHdl:
-   355 0000598E 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedir
-   356 00005994 75E6                <1>     jnz .ghiBadHdl
-   357 00005996 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
-   358 0000599C 74DE                <1>     jz .ghiBadHdl
-   359 0000599E 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get the driver ptr in rsi
-   360                              <1>     return
+   316                              <1> 
+   317                              <1> .setSharingCount:
+   318                              <1> ;Input: cx = Share Count
+   319                              <1> ;       dx = Share Retry
+   320 00005922 66890D(1F000000)    <1>     mov word [shareCount], cx
+   321 00005929 6685D2              <1>     test dx, dx
+   322 0000592C 0F8431FDFFFF        <1>     jz .invalidFunction
+   323 00005932 668915(21000000)    <1>     mov word [shareDelay], dx
+   324 00005939 31C0                <1>     xor eax, eax
+   325 0000593B E997230000          <1>     jmp extGoodExit
+   326                              <1> 
+   327                              <1> .genericCharDevIOCTL:
+   328 00005940 E830000000          <1>     call .getHandleInfo
+   329 00005945 EB05                <1>     jmp short .ioctlReqMake
+   330                              <1> .genericBlokDevIOCTL:
+   331 00005947 E857000000          <1>     call .getBlkDevInfo
+   332                              <1> .ioctlReqMake:
+   333                              <1> ;rsi must point to the driver header here
+   334 0000594C 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
+   335 00005952 7511                <1>     jnz .supportsIOCTL
+   336                              <1> .badFunction:
+   337 00005954 C605(0A040000)01    <1>     mov byte [errorLocus], eLocUnk
+   338 0000595B B801000000          <1>     mov eax, errInvFnc
+   339 00005960 E980230000          <1>     jmp extErrExit
+   340                              <1> .supportsIOCTL:
+   341                              <1>     ;Setup the request header
+   342 00005965 E884000000          <1>     call .doIOCTLrequest
+   343 0000596A 0F8467230000        <1>     jz extGoodExit
+   344 00005970 E9B2010000          <1>     jmp failIOCTLCall
+   345                              <1> 
+   346                              <1> .getHandleInfo:
+   347                              <1> ;Returns in rsi a pointer to the driver for the handle device
+   348 00005975 E861FBFFFF          <1>     call getSFTPtr  ;Get in rdi the SFT ptr
+   349 0000597A 7312                <1>     jnc .ghiOkHdl
+   350                              <1> .ghiBadHdl:
+   351 0000597C C605(0A040000)04    <1>     mov byte [errorLocus], eLocChr
+   352 00005983 58                  <1>     pop rax ;Pop the return addr, return through DOS immediately
+   353 00005984 B806000000          <1>     mov eax, errBadHdl
+   354 00005989 E957230000          <1>     jmp extErrExit  ;Exit as if in line with main routine body
+   355                              <1> .ghiOkHdl:
+   356 0000598E 66F747050080        <1>     test word [rdi + sft.wDeviceInfo], devRedir
+   357 00005994 75E6                <1>     jnz .ghiBadHdl
+   358 00005996 66F747058000        <1>     test word [rdi + sft.wDeviceInfo], devCharDev
+   359 0000599C 74DE                <1>     jz .ghiBadHdl
+   360 0000599E 488B7707            <1>     mov rsi, qword [rdi + sft.qPtr] ;Get the driver ptr in rsi
+   361                              <1>     return
     13                              <2> %%_ret:
     14 000059A2 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   361                              <1> 
-   362                              <1> .getBlkDevInfo:
-   363                              <1> ;Returns in rsi a ptr to the block device driver
-   364 000059A3 88D8                <1>     mov al, bl  ;Move the drive number from bl to al
-   365 000059A5 51                  <1>     push rcx
-   366 000059A6 52                  <1>     push rdx
-   367 000059A7 E8F01E0000          <1>     call getCDS ;Sets the current CDS
-   368 000059AC 5A                  <1>     pop rdx
-   369 000059AD 59                  <1>     pop rcx
-   370 000059AE 7217                <1>     jc .gbdiBadDrv
-   371                              <1>     ;Check the CDS not net, subst or join
-   372 000059B0 488B35(11070000)    <1>     mov rsi, qword [workingCDS]
-   373 000059B7 0FB74643            <1>     movzx eax, word [rsi + cds.wFlags]
-   374 000059BB 66A90040            <1>     test ax, cdsValidDrive  ;If not valid, fail
-   375 000059BF 7406                <1>     jz .gbdiBadDrv
-   376 000059C1 66A980B0            <1>     test ax, cdsRedirDrive|cdsJoinDrive|cdsSubstDrive|cdsRdirLocDrive
-   377 000059C5 7412                <1>     jz .gbdiOk
-   378                              <1> .gbdiBadDrv:
-   379 000059C7 C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
-   380 000059CE 58                  <1>     pop rax ;Pop the return addr, return through DOS immediately
-   381 000059CF B80F000000          <1>     mov eax, errBadDrv  ;Error code if error
-   382 000059D4 E90C230000          <1>     jmp extErrExit
-   383                              <1> .gbdiOk:
-   384                              <1>     ;CDS is good,now get the DPB
-   385 000059D9 488B7645            <1>     mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
-   386 000059DD 488B7E1B            <1>     mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
-   387 000059E1 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
-   388 000059E4 8805(C2040000)      <1>     mov byte [primReqPkt + ioctlReqPkt.unitnm], al
-   389 000059EA 4889FE              <1>     mov rsi, rdi   ;Get the driver ptr in rsi
-   390                              <1>     return
+   362                              <1> 
+   363                              <1> .getBlkDevInfo:
+   364                              <1> ;Returns in rsi a ptr to the block device driver
+   365 000059A3 88D8                <1>     mov al, bl  ;Move the drive number from bl to al
+   366 000059A5 51                  <1>     push rcx
+   367 000059A6 52                  <1>     push rdx
+   368 000059A7 E8F01E0000          <1>     call getCDS ;Sets the current CDS
+   369 000059AC 5A                  <1>     pop rdx
+   370 000059AD 59                  <1>     pop rcx
+   371 000059AE 7217                <1>     jc .gbdiBadDrv
+   372                              <1>     ;Check the CDS not net, subst or join
+   373 000059B0 488B35(11070000)    <1>     mov rsi, qword [workingCDS]
+   374 000059B7 0FB74643            <1>     movzx eax, word [rsi + cds.wFlags]
+   375 000059BB 66A90040            <1>     test ax, cdsValidDrive  ;If not valid, fail
+   376 000059BF 7406                <1>     jz .gbdiBadDrv
+   377 000059C1 66A980B0            <1>     test ax, cdsRedirDrive|cdsJoinDrive|cdsSubstDrive|cdsRdirLocDrive
+   378 000059C5 7412                <1>     jz .gbdiOk
+   379                              <1> .gbdiBadDrv:
+   380 000059C7 C605(0A040000)02    <1>     mov byte [errorLocus], eLocDsk
+   381 000059CE 58                  <1>     pop rax ;Pop the return addr, return through DOS immediately
+   382 000059CF B80F000000          <1>     mov eax, errBadDrv  ;Error code if error
+   383 000059D4 E90C230000          <1>     jmp extErrExit
+   384                              <1> .gbdiOk:
+   385                              <1>     ;CDS is good,now get the DPB
+   386 000059D9 488B7645            <1>     mov rsi, qword [rsi + cds.qDPBPtr]  ;DPB ptr in rsi
+   387 000059DD 488B7E1B            <1>     mov rdi, qword [rsi + dpb.qDriverHeaderPtr] ;Driver ptr in rdi
+   388 000059E1 8A4601              <1>     mov al, byte [rsi + dpb.bUnitNumber]
+   389 000059E4 8805(C2040000)      <1>     mov byte [primReqPkt + ioctlReqPkt.unitnm], al
+   390 000059EA 4889FE              <1>     mov rsi, rdi   ;Get the driver ptr in rsi
+   391                              <1>     return
     13                              <2> %%_ret:
     14 000059ED C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   391                              <1> 
    392                              <1> 
-   393                              <1> .doIOCTLrequest:
-   394                              <1> ;Does IOCTL request
-   395                              <1> ;Input: cx = Major/Minor bytes packed in cx
-   396                              <1> ;       rdx -> Ptr to control packet
-   397                              <1> ;Output: ZF=ZE: No error.
-   398                              <1> ;        ZF=NZ: Error. Get error code.
-   399                              <1> ;       rbx -> Left pointing to the request packet
-   400                              <1> ;       eax = Status word
-   401 000059EE 488D1D(C1040000)    <1>     lea rbx, primReqPkt
-   402 000059F5 C60327              <1>     mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
-   403 000059F8 C6430213            <1>     mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
-   404 000059FC 66C743030000        <1>     mov word [rbx + ioctlReqPkt.status], 0
-   405 00005A02 66894B0D            <1>     mov word [rbx + ioctlReqPkt.majfun], cx ;Store maj and min together
-   406 00005A06 4889531F            <1>     mov qword [rbx + ioctlReqPkt.ctlptr], rdx
-   407 00005A0A 4889F7              <1>     mov rdi, rsi    ;Save the driver header ptr in rdi
-   408 00005A0D E8F61D0000          <1>     call getUserRegs
-   409 00005A12 488B4620            <1>     mov rax, qword [rsi + callerFrame.rsi]
-   410 00005A16 4889430F            <1>     mov qword [rbx + ioctlReqPkt.rsival], rax
-   411 00005A1A 488B4628            <1>     mov rax, qword [rsi + callerFrame.rdi]
-   412 00005A1E 48894317            <1>     mov qword [rbx + ioctlReqPkt.rdival], rax
-   413 00005A22 4889FE              <1>     mov rsi, rdi
-   414 00005A25 E833190000          <1>     call goDriver
-   415 00005A2A 0FB74303            <1>     movzx eax, word [rbx + ioctlReqPkt.status]
-   416 00005A2E A900800000          <1>     test eax, drvErrStatus
-   417                              <1>     return
+   393                              <1> 
+   394                              <1> .doIOCTLrequest:
+   395                              <1> ;Does IOCTL request
+   396                              <1> ;Input: cx = Major/Minor bytes packed in cx
+   397                              <1> ;       rdx -> Ptr to control packet
+   398                              <1> ;Output: ZF=ZE: No error.
+   399                              <1> ;        ZF=NZ: Error. Get error code.
+   400                              <1> ;       rbx -> Left pointing to the request packet
+   401                              <1> ;       eax = Status word
+   402 000059EE 488D1D(C1040000)    <1>     lea rbx, primReqPkt
+   403 000059F5 C60327              <1>     mov byte [rbx + ioctlReqPkt.hdrlen], ioctlReqPkt_size
+   404 000059F8 C6430213            <1>     mov byte [rbx + ioctlReqPkt.cmdcde], drvIOCTL
+   405 000059FC 66C743030000        <1>     mov word [rbx + ioctlReqPkt.status], 0
+   406 00005A02 66894B0D            <1>     mov word [rbx + ioctlReqPkt.majfun], cx ;Store maj and min together
+   407 00005A06 4889531F            <1>     mov qword [rbx + ioctlReqPkt.ctlptr], rdx
+   408 00005A0A 4889F7              <1>     mov rdi, rsi    ;Save the driver header ptr in rdi
+   409 00005A0D E8F61D0000          <1>     call getUserRegs
+   410 00005A12 488B4620            <1>     mov rax, qword [rsi + callerFrame.rsi]
+   411 00005A16 4889430F            <1>     mov qword [rbx + ioctlReqPkt.rsival], rax
+   412 00005A1A 488B4628            <1>     mov rax, qword [rsi + callerFrame.rdi]
+   413 00005A1E 48894317            <1>     mov qword [rbx + ioctlReqPkt.rdival], rax
+   414 00005A22 4889FE              <1>     mov rsi, rdi
+   415 00005A25 E833190000          <1>     call goDriver
+   416 00005A2A 0FB74303            <1>     movzx eax, word [rbx + ioctlReqPkt.status]
+   417 00005A2E A900800000          <1>     test eax, drvErrStatus
+   418                              <1>     return
     13                              <2> %%_ret:
     14 00005A33 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   418                              <1> 
-   419                              <1> .getDrvLogicalDevice:
-   420 00005A34 88D8                <1>     mov al, bl
-   421 00005A36 488D1D(C1040000)    <1>     lea rbx, primReqPkt
-   422 00005A3D C6430217            <1>     mov byte [rbx + getDevReqPkt.cmdcde], drvGETDRVMAP
-   423 00005A41 C6030D              <1>     mov byte [rbx + getDevReqPkt.hdrlen], getDevReqPkt_size
-   424 00005A44 66C743030000        <1>     mov word [rbx + getDevReqPkt.status], 0
-   425 00005A4A 53                  <1>     push rbx
-   426 00005A4B E84C1E0000          <1>     call getCDS
-   427 00005A50 8805(08070000)      <1>     mov byte [workingDrv], al
-   428 00005A56 5B                  <1>     pop rbx
-   429 00005A57 0F826CFEFFFF        <1>     jc .remTestBadDrv
-   430 00005A5D 488B3D(11070000)    <1>     mov rdi, qword [workingCDS]
-   431 00005A64 488B7F45            <1>     mov rdi, qword [rdi + cds.qDPBPtr]
-   432 00005A68 488B771B            <1>     mov rsi, qword [rdi + dpb.qDriverHeaderPtr]
-   433 00005A6C 8A4701              <1>     mov al, byte [rdi + dpb.bUnitNumber]
-   434 00005A6F 884301              <1>     mov byte [rbx + getDevReqPkt.unitnm], al
-   435                              <1> 
-   436 00005A72 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
-   437 00005A78 0F84E5FBFFFF        <1>     jz .invalidFunction
-   438 00005A7E E8DA180000          <1>     call goDriver
-   439 00005A83 66F743030080        <1>     test word [rbx + getDevReqPkt.status], drvErrStatus
-   440 00005A89 7405                <1>     jz .getDrvOk
-   441 00005A8B E997000000          <1>     jmp failIOCTLCall
-   442                              <1> .getDrvOk:
-   443 00005A90 8A4301              <1>     mov al, byte [rbx + getDevReqPkt.unitnm]    ;Get the byte
-   444                              <1>     return
+   419                              <1> 
+   420                              <1> .getDrvLogicalDevice:
+   421 00005A34 88D8                <1>     mov al, bl
+   422 00005A36 488D1D(C1040000)    <1>     lea rbx, primReqPkt
+   423 00005A3D C6430217            <1>     mov byte [rbx + getDevReqPkt.cmdcde], drvGETDRVMAP
+   424 00005A41 C6030D              <1>     mov byte [rbx + getDevReqPkt.hdrlen], getDevReqPkt_size
+   425 00005A44 66C743030000        <1>     mov word [rbx + getDevReqPkt.status], 0
+   426 00005A4A 53                  <1>     push rbx
+   427 00005A4B E84C1E0000          <1>     call getCDS
+   428 00005A50 8805(08070000)      <1>     mov byte [workingDrv], al
+   429 00005A56 5B                  <1>     pop rbx
+   430 00005A57 0F826CFEFFFF        <1>     jc .remTestBadDrv
+   431 00005A5D 488B3D(11070000)    <1>     mov rdi, qword [workingCDS]
+   432 00005A64 488B7F45            <1>     mov rdi, qword [rdi + cds.qDPBPtr]
+   433 00005A68 488B771B            <1>     mov rsi, qword [rdi + dpb.qDriverHeaderPtr]
+   434 00005A6C 8A4701              <1>     mov al, byte [rdi + dpb.bUnitNumber]
+   435 00005A6F 884301              <1>     mov byte [rbx + getDevReqPkt.unitnm], al
+   436                              <1> 
+   437 00005A72 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
+   438 00005A78 0F84E5FBFFFF        <1>     jz .invalidFunction
+   439 00005A7E E8DA180000          <1>     call goDriver
+   440 00005A83 66F743030080        <1>     test word [rbx + getDevReqPkt.status], drvErrStatus
+   441 00005A89 7405                <1>     jz .getDrvOk
+   442 00005A8B E997000000          <1>     jmp failIOCTLCall
+   443                              <1> .getDrvOk:
+   444 00005A90 8A4301              <1>     mov al, byte [rbx + getDevReqPkt.unitnm]    ;Get the byte
+   445                              <1>     return
     13                              <2> %%_ret:
     14 00005A93 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   445                              <1> .setDrvLogicalDevice:
-   446 00005A94 88D8                <1>     mov al, bl
-   447 00005A96 488D1D(C1040000)    <1>     lea rbx, primReqPkt
-   448 00005A9D C6430218            <1>     mov byte [rbx + setDevReqPkt.cmdcde], drvSETDRVMAP
-   449 00005AA1 C6030D              <1>     mov byte [rbx + setDevReqPkt.hdrlen], setDevReqPkt_size
-   450 00005AA4 66C743030000        <1>     mov word [rbx + setDevReqPkt.status], 0
-   451 00005AAA 53                  <1>     push rbx
-   452 00005AAB E8EC1D0000          <1>     call getCDS
-   453 00005AB0 8805(08070000)      <1>     mov byte [workingDrv], al
-   454 00005AB6 5B                  <1>     pop rbx
-   455 00005AB7 0F820CFEFFFF        <1>     jc .remTestBadDrv
-   456 00005ABD 488B3D(11070000)    <1>     mov rdi, qword [workingCDS]
-   457 00005AC4 488B7F45            <1>     mov rdi, qword [rdi + cds.qDPBPtr]
-   458 00005AC8 488B771B            <1>     mov rsi, qword [rdi + dpb.qDriverHeaderPtr]
-   459 00005ACC 8A4701              <1>     mov al, byte [rdi + dpb.bUnitNumber]
-   460 00005ACF 884301              <1>     mov byte [rbx + setDevReqPkt.unitnm], al
-   461 00005AD2 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
-   462 00005AD8 0F8485FBFFFF        <1>     jz .invalidFunction
-   463 00005ADE E87A180000          <1>     call goDriver
-   464 00005AE3 30C0                <1>     xor al, al
-   465 00005AE5 66F743030080        <1>     test word [rbx + getDevReqPkt.status], drvErrStatus
-   466                              <1>     retz    ;Return if OK, else fail
+   446                              <1> .setDrvLogicalDevice:
+   447 00005A94 88D8                <1>     mov al, bl
+   448 00005A96 488D1D(C1040000)    <1>     lea rbx, primReqPkt
+   449 00005A9D C6430218            <1>     mov byte [rbx + setDevReqPkt.cmdcde], drvSETDRVMAP
+   450 00005AA1 C6030D              <1>     mov byte [rbx + setDevReqPkt.hdrlen], setDevReqPkt_size
+   451 00005AA4 66C743030000        <1>     mov word [rbx + setDevReqPkt.status], 0
+   452 00005AAA 53                  <1>     push rbx
+   453 00005AAB E8EC1D0000          <1>     call getCDS
+   454 00005AB0 8805(08070000)      <1>     mov byte [workingDrv], al
+   455 00005AB6 5B                  <1>     pop rbx
+   456 00005AB7 0F820CFEFFFF        <1>     jc .remTestBadDrv
+   457 00005ABD 488B3D(11070000)    <1>     mov rdi, qword [workingCDS]
+   458 00005AC4 488B7F45            <1>     mov rdi, qword [rdi + cds.qDPBPtr]
+   459 00005AC8 488B771B            <1>     mov rsi, qword [rdi + dpb.qDriverHeaderPtr]
+   460 00005ACC 8A4701              <1>     mov al, byte [rdi + dpb.bUnitNumber]
+   461 00005ACF 884301              <1>     mov byte [rbx + setDevReqPkt.unitnm], al
+   462 00005AD2 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
+   463 00005AD8 0F8485FBFFFF        <1>     jz .invalidFunction
+   464 00005ADE E87A180000          <1>     call goDriver
+   465 00005AE3 30C0                <1>     xor al, al
+   466 00005AE5 66F743030080        <1>     test word [rbx + getDevReqPkt.status], drvErrStatus
+   467                              <1>     retz    ;Return if OK, else fail
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -14535,33 +14536,33 @@
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   467                              <1> 
-   468                              <1> .queryIOCTLHdl:
-   469 00005AEE E882FEFFFF          <1>     call .getHandleInfo
-   470 00005AF3 EB05                <1>     jmp short .queryCmn
-   471                              <1> .queryIOCTLDev:
-   472 00005AF5 E8A9FEFFFF          <1>     call .getBlkDevInfo
-   473                              <1> .queryCmn:
-   474                              <1> ;If Query is set, then we should be able to make the IOCTL Query request
-   475 00005AFA 66F746088000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTLQ
-   476 00005B00 0F844EFEFFFF        <1>     jz .badFunction
-   477 00005B06 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
-   478 00005B0C 0F8442FEFFFF        <1>     jz .badFunction
-   479 00005B12 E8D7FEFFFF          <1>     call .doIOCTLrequest
-   480 00005B17 0F84BA210000        <1>     jz extGoodExit
-   481                              <1> ;Else, the driver reports it doesn't recognise the command function!
-   482 00005B1D B805000000          <1>     mov eax, errAccDen
-   483 00005B22 E9BE210000          <1>     jmp extErrExit
-   484                              <1> 
-   485                              <1> failIOCTLCall:
-   486                              <1> ;Called to fail IOCTL calls that don't trigger Int 24h
-   487                              <1> ;rbx -> Driver request packet
-   488 00005B27 0FB77B03            <1>     movzx edi, word [rbx + ioctlReqPkt.status]
-   489 00005B2B 81E7FF000000        <1>     and edi, 0FFh   ;Save the low byte only
-   490 00005B31 E8CF110000          <1>     call xlatHardError
-   491 00005B36 0FB705(0B040000)    <1>     movzx eax, word [errorExCde] 
-   492 00005B3D E9A3210000          <1>     jmp extErrExit
-   493                              <1> 
+   468                              <1> 
+   469                              <1> .queryIOCTLHdl:
+   470 00005AEE E882FEFFFF          <1>     call .getHandleInfo
+   471 00005AF3 EB05                <1>     jmp short .queryCmn
+   472                              <1> .queryIOCTLDev:
+   473 00005AF5 E8A9FEFFFF          <1>     call .getBlkDevInfo
+   474                              <1> .queryCmn:
+   475                              <1> ;If Query is set, then we should be able to make the IOCTL Query request
+   476 00005AFA 66F746088000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTLQ
+   477 00005B00 0F844EFEFFFF        <1>     jz .badFunction
+   478 00005B06 66F746084000        <1>     test word [rsi + drvHdr.attrib], devDrvIOCTL
+   479 00005B0C 0F8442FEFFFF        <1>     jz .badFunction
+   480 00005B12 E8D7FEFFFF          <1>     call .doIOCTLrequest
+   481 00005B17 0F84BA210000        <1>     jz extGoodExit
+   482                              <1> ;Else, the driver reports it doesn't recognise the command function!
+   483 00005B1D B805000000          <1>     mov eax, errAccDen
+   484 00005B22 E9BE210000          <1>     jmp extErrExit
+   485                              <1> 
+   486                              <1> failIOCTLCall:
+   487                              <1> ;Called to fail IOCTL calls that don't trigger Int 24h
+   488                              <1> ;rbx -> Driver request packet
+   489 00005B27 0FB77B03            <1>     movzx edi, word [rbx + ioctlReqPkt.status]
+   490 00005B2B 81E7FF000000        <1>     and edi, 0FFh   ;Save the low byte only
+   491 00005B31 E8CF110000          <1>     call xlatHardError
+   492 00005B36 0FB705(0B040000)    <1>     movzx eax, word [errorExCde] 
+   493 00005B3D E9A3210000          <1>     jmp extErrExit
+   494                              <1> 
     44                                  %include "./src/Kernel/MemExec/memFunc.asm"
      1                              <1> ;Memory related functions
      2                              <1> 

@@ -112,8 +112,9 @@ ioctrl:            ;ah = 44h, handle function
     jmp extGoodExit
 .sdwDisk:
 ;Set high bits here for disk devices only.
-;Can only set bits 5 and 6. Fail if any other bits are set in dh.
-    test dh, ~(40h | 20h)   ;20h = Fail on I24, 40h = Flush on writes
+;Can only set/clear bit 1 for EOF and disk full special handling. 
+; Fail if any other bits are set in dh.
+    test dh, ~1
     jnz .badData
     mov byte [rdi + sft.wDeviceInfo + 1], dh
     jmp extGoodExit
