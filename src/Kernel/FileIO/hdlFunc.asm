@@ -94,7 +94,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov word [rsi + sft.wOpenMode], 0   ;Clear open mode bits
     mov word [rsi + sft.wShareRec], 0   ;Clear Share record pointer details
     push rcx    ;Save the device word 
-    call rbx    ;Enter with open mode in 
+    call rbx    ;Enter with open mode in ax if an open call.
     pop rcx
     mov rsi, qword [currentSFT] ;Get current SFT pointer in rsi
     jc .errBadDeallocate
@@ -955,7 +955,7 @@ xOpenHdl:    ;EAX = 6C00h, Extended open/create file
     cmp ax, errFnf  ;Any error other than file not found errors here
     retnz
 ;Here we know that the file doesn't exist
-    test word [wEOFlags], eoActCreate   ;Do we now create file?
+    test word [wEOActions], eoActCreate   ;Do we now create file?
     jz extErrExit   ;Bubble FNF error
 ;Else setup the create here.
 ;cx = File attributes (same as search attributes for find first)
@@ -1588,6 +1588,7 @@ openMain:
     retc    ;Error Exit 
     call getCurrentSFT
     mov byte [rdi + sft.wOpenMode], al  ;Set low byte, preserve high byte
+    call setExtOpenMode ;Set high open mode bits too if an extended open call
     mov rsi, qword [workingCDS]
     xor ah, ah      ;al has the access and share modes
     cmp rsi, -1
@@ -2779,7 +2780,7 @@ hardEOFexit:
     mov ah, critRead | critData | critFailOK    ;Move to ah
 .cmn:
     mov byte [Int24bitfld], ah  ;Store the bitfield var
-    movzx eax, byte [workingDrv]   ;Get drive number in al
+    mov al, byte [workingDrv]   ;Get drive number in al
     mov byte [errorLocus], eLocUnk
     mov byte [errorAction], eActAbt
     mov byte [errorClass], eClsOoR

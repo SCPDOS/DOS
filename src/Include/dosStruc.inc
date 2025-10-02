@@ -227,15 +227,15 @@ eoFileNoExist   equ 0004h   ;File doesnt exist
 ;Can combine the third option with one of the first two options.
 ;The first two options cannot be combined.
 ; - If only create is selected, then we try to do a create new. If the 
-;       file exists, this fails. 
+;       file exists, this fails with a "File exists" error.
 ;       Acts like a normal create new call. (21/5Bh)
 ;
 ; - If only open is selected then we try to do an open. If the file doesn't
-;       doesn't exist, this fails. 
+;       doesn't exist, this fails with a "File not found" error.
 ;       Acts like a normal open call. (21/3Dh)
 ;
 ; - If only truncate is selected then we try to do a create. If the file
-;       doesn't exist, this fails. 
+;       doesn't exist, this fails a "File not found" error.
 ;       New behaviour.
 ;
 ; - If open and create are selected then we try and open the file. If 
