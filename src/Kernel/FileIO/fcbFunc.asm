@@ -12,7 +12,7 @@
 
 ;The following functions are NOT currently generally supported:
 ;   openFCB -> Except for creating a volume label.
-;   closeFCB
+;   closeFCB -> Except for closing a volume label.
 ;   createFCB -> Except for creating a volume label.
 ;   randomReadFCB
 ;   randomWriteFCB
@@ -160,7 +160,7 @@ renameFileFCB:     ;ah = 17h
     mov rax, qword [fname2Ptr]  ;Get the old source ptr in rax
     xchg qword [fname1Ptr], rax ;Swap ptr positions 
     mov qword [fname2Ptr], rax  ;Now place destination pattern in correct place
-    call renameMain
+    call outerRenameMain
     jnc fcbGoodExit
     jmp short .bad
 .badPop:
@@ -264,8 +264,8 @@ openFileFCB:       ;ah = 0Fh
     xor al, al
     cmp eax, 005C3A00h  ;Do null path check!
     je .exitErr
-    lea rbx, scratchSFT     ;Set the working SFT to the scratch in the SDA
-    mov qword [currentSFT], rbx
+    lea rdi, scratchSFT     ;Set the working SFT to the scratch in the SDA
+    call setCurrentSFT
     movzx eax, byte [searchAttr]   ;Get the file attribute in al
     call createMain
     jc .exitErr

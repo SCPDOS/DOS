@@ -121,12 +121,40 @@ getsetCountryInfo: ;ah = 38h, localisation info
 
 
 getExtLocalInfo:    ;ah = 65h, Get Extended Country Info
-;al = info ID
-;   01h get general internationalization info
-;   02h get pointer to uppercase table
-;   04h get pointer to filename uppercase table
-;   05h get pointer to filename terminator table
-;   06h get pointer to collating sequence table
+;al = info ID or subfunction value
+;al >= 20h:
+;   If al[7] set, use filename table. Else, use normal table
+;   al = 20h/A0h  country dependant character capitalisation
+;       dl = Char to UC
+;       dh = Reserved for second byte if DCBS
+;   Returns:
+;       dl = UC char
+;       dh = Reserved for second byte if DCBS
+;   al = 21h/A1h  country dependant string capitalisation
+;       rdx -> Ptr to string of ecx characters to capitalise
+;       ecx = String length
+;   Returns: 
+;       rdx -> Capitalised string
+;   al = 22h/A2h  country dependant ASCIIZ string capitalisation
+;       rdx -> Ptr to ASCIIZ string to capitalise
+;   Returns:
+;       rdx -> Capitalised ASCIIZ string
+;   al = 23h/A3h  determine if character represents country relative
+;                   Yes or No response 
+;       dl = Char to test Y/N on
+;       dh = Reserved for second byte if DCBS
+;   Returns:
+;       ax = 0 : (N)O
+;       ax = 1 : (Y)ES 
+;       ax = 2 : NEITHER
+;al < 20h:
+;   al = 01h get general internationalization info
+;   al = 02h get pointer to uppercase table
+;   xxx No 03h. Fails unknown function in this case xxx
+;   al = 04h get pointer to filename uppercase table
+;   al = 05h get pointer to filename terminator table
+;   al = 06h get pointer to collating sequence table
+;   al = 07h get pointer to DCBS table
 ;bx = code page (FFFFh=global code page)
 ;dx = country ID (FFFFh=current country)
 ;rdi -> country information buffer
@@ -138,6 +166,70 @@ getExtLocalInfo:    ;ah = 65h, Get Extended Country Info
 ;ecx = size of country information returned
 ;rdi -> country information filled in
 ;Undocumented: ax = default Codepage if nls or requested codepage if internal
+    cmp al, 20h
+    jb .getInterInfo
+;Do string manipulation here
+;Start by getting the correct table to use for translation
+    lea rbx, ucTbl
+    lea rsi, fileUCTbl
+    test al, 80h    ;Check bit 7.
+    cmovnz rbx, rsi ;If set, use fileUC table
+    and al, ~80h    ;Now clear the checking bit
+    cmp al, 24h     ;Check the function number is valid
+    jae .invFuncExit
+    cmp al, 23h     ;Does the user want a Y/N check?
+    je .doYn
+    cmp al, 20h     ;Does the user want a char conversion?
+    je .doOne
+;String functions here
+    mov rsi, rdx    ;Move source string ptr to rsi
+    mov rdi, rdx    ;Move destination ptr to rdi too
+    cmp al, 21h     ;Do we have the count in ecx?
+    jne .doString   ;Yes, go straight to conversion
+    call strlen     ;Else, get length of string to convert 
+    dec ecx         ;Drop the terminating null from conversion
+.doString:
+;rsi -> Next char to convert
+;rdi -> Position to store the converted char
+;ecx = Number of chars to convert
+    lodsb
+    call .doChar    ;Converts the char in al
+    stosb
+    dec ecx         ;One less char to convert
+    jnz .doString
+    jmp short .ynExit
+.doYn:
+    call .convChar  ;Uppercase char in dl.
+    xor eax, eax    ;Else in Y/N check. Setup retcode in al
+    cmp dl, "N"
+    je .ynExit
+    inc eax         ;Inc for yes
+    cmp dl, "Y"
+    je .ynExit
+    inc eax         ;Inc for unknown
+.ynExit:
+    jmp extGoodExit ;Return value in ax
+.doOne:
+    call .convChar  ;Get converted char in dl
+    call getUserRegs
+    mov byte [rsi + callerFrame.rdx], dl    ;Put dl into its place
+    jmp short .ynExit
+.convChar:
+;Input: dl = Char to uppercase
+;       rbx -> Table to use for conversion
+;Output: dl = Uppercased char
+    mov al, dl  ;Move the char into al to uppercase
+    call .doChar
+    mov dl, al
+    return
+.doChar:
+;Input: rbx -> Table to use for uppercasing the string
+;       al = Char to uppercase
+;Output: al = Uppercased char
+    push rbx
+    jmp uppercaseCharWithTable
+
+.getInterInfo:
     cmp ecx, 9  ;Is our buffer of minimum acceptable size?
     jb .invFuncExit
     lea rsi, dosNLSPtr
@@ -161,7 +253,8 @@ getExtLocalInfo:    ;ah = 65h, Get Extended Country Info
     jnz .loopTableSearch
     ;Fallthrough to error if no match
 .invFuncExit:
-    mov eax, 1
+    mov byte [errorLocus], eLocUnk  
+    mov eax, errInvFnc  ;Bad info ID byte or subfunction
     jmp extErrExit
 .tblFound:
     movsb   ;Copy over the first byte, moving both pointers by 1

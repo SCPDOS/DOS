@@ -48,14 +48,14 @@ charOut_B:       ;ah = 02h
     jc auxOutCmn.exit
     ;Ensure we only echo if STDOUT is a char device!!
     movzx ebx, word [rsi + sft.wDeviceInfo]
-    test ebx, devRedirDev
+    test ebx, devRedir
     jnz auxOutCmn.exit  ;Exit if STDOUT is redir
     test ebx, devCharDev
     jz auxOutCmn.exit
     mov ebx, 4  ;STDPRN handle
     call getCharDevSFT  ;Get printer sft in rsi
     jc auxOutCmn.exit   ;Exit if handle closed
-    test word [rsi + sft.wDeviceInfo], charDevNetSpool  ;Network printer?
+    test word [rsi + sft.wDeviceInfo], devCharNetSpool  ;Network printer?
     jz auxOutCmn.diskFileEP
     mov byte [printEcho], 0 ;Stop echoing
     jmp auxOutCmn.netFileEP
@@ -381,7 +381,7 @@ vConCtrlCheck:
     retc    ;If CF=CY, exit
     push rdi
     mov rdi, rsi    ;Move SFT pointer into rdi
-    test word [rdi + sft.wDeviceInfo], charDevNetSpool  ;Check if net spooler
+    test word [rdi + sft.wDeviceInfo], devCharNetSpool  ;Check if net spooler
     jz .notNet
     push rax
     mov eax, 1126h  ;Network redirector! Toggle Remote Printer Echo!
@@ -524,7 +524,7 @@ vConSwapDriver:
 ;Sets up the vCon to use the alternative SFT pointer
     push rdi
     mov byte [vConDrvSwp], 1    ;Set to use alternative driver
-    mov rdi, qword [currentSFT] ;Get current SFT pointer
+    call getCurrentSFT ;Get current SFT pointer
     mov qword [vConAltSFTPtr], rdi ;Save the SFT ptr in var
     pop rdi
     return

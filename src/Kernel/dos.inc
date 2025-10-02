@@ -20,6 +20,7 @@ GLOBAL charTableArray.ucTable
 GLOBAL charTableArray.filenameUCTable
 GLOBAL charTableArray.filenameTerminatingTable
 GLOBAL charTableArray.collatingTable
+GLOBAL charTableArray.dbcsTable
 GLOBAL serverDispTbl
 GLOBAL machineName
 GLOBAL critPtchTbl

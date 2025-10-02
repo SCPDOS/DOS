@@ -105,19 +105,21 @@ flushAllBuffersForDrive:    ;External linkage (2 - diskReset/exit)
     movzx eax, byte [rdi + bufferHdr.driveNumber]
     cmp al, byte [errorDrv] ;Was this a buffer on the error drive?
     pop rax
-    je .errDrv    ;If not, goto next buffer
-.nextBuffer:
+    je .errDrv      ;If not, goto next buffer
+.nextBuffer:        ;This handles the case if the user aborts or ignores.
     mov rdi, qword [rdi + bufferHdr.nextBufPtr] ;Goto next buffer
     jmp short .mainLp
 .errDrv:
-    mov byte [rdi + bufferHdr.driveNumber], -1  ;Free the buffer if caused error
+;Free the buffer if it caused an error in this DOS call and was aborted
+; or ignored.
+    mov byte [rdi + bufferHdr.wDrvNumFlg], freeBuffer
     jmp short .nextBuffer
 .exit:
     pop rax
     pop rdi
-    test byte [Int24Fail], -1   ;Did we xlat error?
+    test byte [Int24Fail], -1   ;Did we return fail at any point?
     retz
-    stc ;If so, return CF=CY
+    stc     ;If so, carry the CF=CY
     return
 
 flushAndCleanBuffer:   ;Internal Linkage Int 2Fh AX=1215h
@@ -221,7 +223,9 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     pop rax
     return
 .fbFail:
-;Enter here only if the request failed
+;Enter here only if the request failed esi times or bad change
+    cmp al, drvBadDskChnge  ;If error code is bad change, prompt immediately
+    je .fbHardError
     dec esi
     jz .fbHardError ;Once we have tried it a number of times, fail!
     pop rax     ;Else pop back the drive number and flags
@@ -229,12 +233,11 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
 .fbHardError:
 ;Request failed thrice, critical error call
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    or byte [Int24bitfld], critWrite ;Set the initial bitfield to write req
     call diskIOError ;Call with rdi = Buffer header and eax = Status Word
     cmp al, critRetry
     pop rax     ;Now pop back the drive number and flags from the stack!
     je .fbWriteSetup   ;If we retry, we rebuild the stack, values possibly trashed
-    ;Else we fail (Ignore=Fail here)
+;Else we fail (Ignore=Fail here)
     stc ;Set error flag to indicate fail
     jmp short .fbExitFail
 
@@ -390,16 +393,19 @@ readSectorBuffer:   ;Internal Linkage
     pop rax
     return
 .rsFail:
-;Enter here only if the request failed
+;Enter here only if the request failed. al has driver error code
+    cmp al, drvBadDskChnge  ;If error code is bad change, prompt immediately
+    je .rsBadChange
     dec esi
     jnz .rsRequest1 ;Try the request again!
-;Request failed thrice, critical error call
+.rsBadChange:
+;Request failed thrice or bad change detected, critical error call
 ;First free the buffer if we failed to read data into it. 
 ;We free this buffer to free the resource if the user aborts.
 ;This function is called in a critical section so the buffer pointer
 ; is under no thread of being reallocated.
 ;At this point, ax = Error code, rbp -> DPB, rdi -> Buffer code
-    mov word [rdi + bufferHdr.driveNumber], freeBuffer ;Free buffer
+    mov byte [rdi + bufferHdr.driveNumber], -1 ;Free buffer
     mov byte [Int24bitfld], critRead | critFailOK | critRetryOK
     call diskIOError    ;Returns rbp -> DPB and rdi -> Buffer, al = Action code
     cmp al, critRetry

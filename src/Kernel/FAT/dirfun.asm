@@ -6,18 +6,21 @@ makeDIR:           ;ah = 39h
 ;Input: rdx = Pointer to ASCIIZ string
     mov rdi, rdx
     call strlen
-    cmp ecx, 64
+    cmp ecx, MAX_FSPEC
     jbe .okLength
+.badLen:
+    mov eax, errAccDen
+    jmp extErrExit
 .badFile:
-    mov al, errFnf
+    mov eax, errFnf
     jmp extErrExit
 .badPath:
-    mov al, errPnf
+    mov eax, errPnf
     jmp extErrExit
 .okLength:
     mov rsi, rdx
     call checkPathspecOK
-    jc .bad  ;Don't allow any malformed chars, exit Acc den
+    jc .badLen  ;Don't allow any malformed chars, exit Acc den
 .pathOk:
     call scanPathWC
     jc .badPath ;Dont allow wildcards
@@ -27,6 +30,9 @@ makeDIR:           ;ah = 39h
     call getFilePath ;Get a Directory path in buffer1, hitting the disk
     ;If the path exists, exit error
     jnc extErrExit
+    call strlen ;Get the length again
+    cmp ecx, MAX_PATH
+    ja .badLen
     ;Handle resolved null paths here!!!
     mov eax, dword [buffer1]    ;Get the first four chars for comparison
     xor al, al
@@ -60,6 +66,8 @@ makeDIR:           ;ah = 39h
     ;Current dpb ptr is already set
     ;Setup directory variables to now search for a free space in parent dir.
     ;First we make a dummy dir in curDirCopy
+    ;mov byte [delChar], 0E5h    ;Setup delchar
+    mov byte [openCreate], -1   ;Creating special file!
     mov rbp, qword [workingDPB]
     lea rsi, fcbName    ;Copy the dir name we searched for over
     lea rdi, curDirCopy
@@ -100,7 +108,7 @@ makeDIR:           ;ah = 39h
     sub rsi, rbx    ;rsi now contains offset into buffer data area
     mov word [entry], si    ;Word is enough to store byte offset into sector
 ;Must now request a cluster and sanitise it
-    call startNewChain  ;Get cluster number in eax
+    call startNewChain      ;Get cluster number in eax
     jc .badExit
     call sanitiseCluster    ;Sanitise this cluster, preserve eax, writes to buf
     jc .badExit
@@ -174,7 +182,7 @@ makeDIR:           ;ah = 39h
 removeDIR:         ;ah = 3Ah
     mov rdi, rdx
     call strlen
-    cmp ecx, 64
+    cmp ecx, MAX_FSPEC
     jbe .okLength
 .badPath:
     mov al, errAccDen
@@ -222,6 +230,7 @@ removeDIR:         ;ah = 3Ah
     call dosCrit1Exit
     jmp extErrExit
 .notCurrent:
+    ;mov byte [delChar], 0E5h    ;Setup delchar
     mov rbp, qword [workingDPB]
     ;Now let use check that our directory is not the CDS currentdir
     mov rsi, qword [workingCDS]
@@ -289,14 +298,13 @@ removeDIR:         ;ah = 3Ah
     movzx eax, word [entry]
     lea rsi, qword [rbx + bufferHdr.dataarea]
     add rsi, rax    
-    mov al, byte [delChar]  ;Move the delchar in place
-    mov byte [rsi], al  ;Store delchar there
+    mov byte [rsi], 0E5h  ;Store delchar now to remove the entry
     movzx eax, word [rsi + fatDirEntry.fstClusLo]
     movzx edx, word [rsi + fatDirEntry.fstClusHi]
     call markBufferDirty ;We wrote to this buffer
     shl edx, 10h
     or eax, edx
-    ;Now remove the FAT chain
+;Now remove the FAT chain
     call unlinkFAT
     jc .exitBad
     call flushAllBuffersForDPB
@@ -315,7 +323,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
 ;Input: rdx = Pointer to ASCIIZ string
     mov rdi, rdx
     call strlen
-    cmp ecx, 64
+    cmp ecx, MAX_FSPEC
     jbe .okLength
 .badPath:
     mov al, errPnf
@@ -346,7 +354,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     ; moved the path past the end.
     lea rdi, buffer1
     call strlen ;Get the length of this path
-    cmp ecx, 67
+    cmp ecx, MAX_PATH
     ja .badPathCrit
     ;The path must've been ok, so now copy the path into the CDS
     ;The copy of the directory entry has the start cluster of this dir file
@@ -366,7 +374,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     mov rdi, rsi    ;Get the ptr to the cds to get it's length
     call strlen
     add eax, ecx    ;Add the lengths of the two strings together
-    cmp eax, 67     ;If the sum is greater than the space for the string + null, error
+    cmp eax, MAX_PATH
     ja .badPathCrit
     push rcx
     lea rdi, tmpCDS ;Copy the join-disabled CDS over to tmpCDS
@@ -399,7 +407,7 @@ setCurrentDIR:     ;ah = 3Bh, CHDIR
     mov dword [rdi + cds.dStartCluster], -1 ;Finally, set the start cluster to welp.
     ;mov word [rdi + cds.wBackslashOffset], 2    ;Make sure this is 2 if it changed...
     ;Backslash offset must always be 2 on a join host
-    mov ecx, 67
+    mov ecx, MAX_PATH
     rep movsb   ;Copy in the CDS path only, to keep all other fields ok.
     jmp short .exitGood
 .notJoin:
@@ -581,9 +589,9 @@ updateSFTDateTimeFields:
 ;   [workingDPB] = DPB pointer for the disk device
 ;   [currentSFT] = Current SFT pointer
 ;   bx = attribute byte from the SFT
-    test bx, blokFileNoFlush | devCharDev
+    test bx, devDiskNoFlush | devCharDev
     retnz
-    test bx, blokNoDTonClose
+    test bx, devDiskNoDTonClose
     retnz
     push rax
     push rbx
@@ -601,6 +609,7 @@ updateSFTDateTimeFields:
     return
 
 getAndUpdateDirSectorForFile:
+;Must be called with currentSFT pointing to the file we operate on!
 ;Input: rdi -> SFT
 ;Output: CF=NC: rsi -> Updated dir entry in buffer
 ;               rdi -> SFT
@@ -611,7 +620,7 @@ getAndUpdateDirSectorForFile:
     mov byte [Int24bitfld], critFailOK | critRetryOK
     call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
     retc    ;If an error is to be returned from, we skip the rest of this
-    mov rdi, qword [currentSFT] ;Reobtain the SFT ptr
+    call getCurrentSFT ;Reobtain the SFT ptr in rdi
     lea rsi, qword [rbx + bufferHdr.dataarea]   ;Goto data area
     movzx ebx, byte [rdi + sft.bNumDirEnt] ;Get the directory entry into ebx
     shl ebx, 5  ;Multiply by 32 (directory entry is 32 bytes in size)

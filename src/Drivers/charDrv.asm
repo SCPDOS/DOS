@@ -510,7 +510,20 @@ prnDriver:
     mov al, byte [rbx + drvReqPkt.cmdcde]
     test al, al ;If the command code was Init, return ok!
     jz .prnExit 
-    ;Everything else, device not ready
+    cmp al, drvOUTSTATUS    ;Always report we are busy
+    je .prnBsy
+    cmp al, drvOUTTILBUSY   ;Always report now busy and 0 bytes xfred
+    jne .prnElse
+;If we are requested to output until busy, report we are busy
+; and that we output 0 bytes
+    mov word [rbx + outTilBusyPkt.wXfrCount], 0 ;Xfr 0 bytes
+;And fall through to be busy!
+.prnBsy:
+;Always report we are busy!
+    mov word [rbx + drvReqPkt.status], drvBsyStatus
+    jmp short .prnExit
+.prnElse:
+;Everything else, device not ready
     mov al, drvNotReady
 .prnWriteErrorCode:     ;Jump to with al=Standard Error code
     mov ah, 80h ;Set error bit

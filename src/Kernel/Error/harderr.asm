@@ -32,7 +32,7 @@ xlatHardError:
     mov word [errorExCde], ax   ;Store this error code here
     pop rax
     push rsi
-    lea rsi, extErrTbl
+    lea rsi, hardErrTbl
     call setErrorVars
     pop rsi
     return
@@ -148,12 +148,9 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
 ; Caller must preserve rsp, rbx, rcx, rdx if they wish to return to DOS
 ; This function will terminate the program if an abort was requested!
 ; This function also destroys RBP
-    cmp byte [critErrFlag], 1
-    jb .noIntError  ;If not 0, enter
-    mov al, critFail    ;Else, return Fail always
-    jmp short .setFail
-.noIntError:
-    mov qword [xInt24hRSP], rsp ;Save our critical error stack
+    test byte [critErrFlag], -1   ;If not zero, already in error. Auto FAIL
+    jnz .setFail
+    mov qword [xInt24hRSP], rsp ;Save our critical error stack pointer
     cmp word  [currentNdx], -1  ;If this is -1, we are not opening a file
     je .notOpeningFile
     push rdi
@@ -161,6 +158,8 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov byte [rdi], -1          ;Free this handle
     pop rdi
 .notOpeningFile:
+    test word [wEOFlags], eoFailI24 ;If we should skip I24, return fail!
+    jnz .setFail
     cli                         
     inc byte [critErrFlag]      ;Set flag for critical error
     dec byte [inDOS]            ;Exiting DOS
@@ -182,7 +181,10 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     jne .abort   ;Must be abort
 .setFail:   ;Here is for fail
     mov al, critFail    ;Reset al to contain fail (even if Int24 responded Fail)
+    test word [wEOFlags], eoFailI24   ;If hdl tells us to fail, skip fail ctr!
+    jnz .skipFailInc
     inc byte [Int24Fail]        ;Inc the fail counter!
+.skipFailInc:
     test byte [Int24bitfld], critFailOK
     jz .abort  ;If bit not set, fail not permitted, abort
 .exit:

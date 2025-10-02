@@ -15,10 +15,7 @@ debMakeDebuggerRespond:
 .waiting:
     dec ecx
     jz .timeout
-    mov ah, 02h ;Blocking recieve!
-    xor edx, edx
-    int 34h
-    test ah, 80h    ;Was no char recieved? Keep waiting
+    call debGetch
     jnz .waiting
     ret
 .timeout:
@@ -45,32 +42,46 @@ debPrintHexByte:
     pop rdx
     ret
 .wrchar:
-    xchg bx, bx
     lea rbx, debascii
     xlatb    ;point al to entry in ascii table, using al as offset into table
-    mov ah, 01h
-    int 34h  ;print char
+    call debPutch
     ret
 
 debPrintNullString:
 ;Print a null terminated string pointed to by rbp
     push rsi
     push rax
-    push rdx
-    xor edx, edx    ;Select COM1
     mov rsi, rbp
 .getChar:
     lodsb
     test al, al
     jz .exit
-    mov ah, 01h
-    int 34h
+    call debPutch
     jmp short .getChar
 .exit:
-    pop rdx
     pop rax
     pop rsi
     ret
+
+debGetch:
+    push rdx
+    ;mov ah, 02h ;Blocking recieve!
+    ;xor edx, edx
+    ;int 34h
+    ;test ah, 80h    ;Was no char recieved? Keep waiting
+    mov eax, 0100h
+    int 36h
+    pop rdx
+    return
+debPutch:
+    push rdx
+    ;xor edx, edx    ;Select COM1
+    ;mov ah, 01h
+    ;int 34h
+    mov ah, 0Eh
+    int 30h
+    pop rdx
+    return
 
 debPrintDOSStack:
 ;Function that shows me the state on entering and exiting a DOS kernel function

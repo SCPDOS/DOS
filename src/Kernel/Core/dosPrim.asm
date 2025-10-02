@@ -190,7 +190,7 @@ getDiskDPB:
 .sftEp:   ;Entry point if updating DPB for an SFT entry!
     push rdi    ;Save the CDS/SFT ptr
     movzx eax, byte [rbp + dpb.bDriveNumber]   ;Get 0 based drive number
-    mov [workingDrv], al    ;Save working drive number in working drive variable
+    mov byte [workingDrv], al
     call setWorkingDPB
     call ensureDiskValid   ;Ensures the DPB is up to date and rebuilds if needed
     mov rbp, qword [workingDPB] ;If a driver didn't save rbp, get it back!
@@ -344,10 +344,10 @@ ensureDiskValid:
 ;We will never enter here if we returned media unknown.
     push rbp
     mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
-    test word [rbp + drvHdr.attrib], devDrvHdlCTL
+    test word [rbp + drvHdr.attrib], devDrvOpClRem
     pop rbp
-    jz .errorExitBad    ;Just return fail if bit not set
-    ;rbp points to the dpb still
+    jz .dbeExit     ;Just return Invalid Disk Swap if bit not set
+;rbp points to the dpb still
     push rdi
     mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
     mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
@@ -362,6 +362,7 @@ ensureDiskValid:
     call diskDevErr
     cmp al, critFail    ;Did the user select fail?
     jne ensureDiskValid  ;If not, try again!
+.dbeExit:
     mov eax, errIDC     ;Else, report an invalid disk swap error!
     jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
 ;+++++++++++++++++++++++++++++++++++++++++++++++++

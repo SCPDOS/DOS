@@ -20,7 +20,7 @@ findNextMain:
     call setWorkingDPB
     movzx eax, byte [rbp + dpb.bDriveNumber]
     mov byte [workingDrv], al
-    mov byte [delChar], 0E5h
+    ;mov byte [delChar], 0E5h
     mov byte [fcbName + 11], 0  ;Set to this being a file we are searching for
     mov byte [fileDirFlag], -1  ;Set to searching for a file!
     call searchMoreDir  ;Now find the next one!
@@ -763,7 +763,8 @@ pathWalk:
 .notNet:
     cmp byte [rsi], 0   ;If rsi at the end of the string, exit for ROOT dir
     jnz .mainlp
-    ;Setup dummy dir data for Root directory
+;Setup dummy dir data for the Root directory only if we are searching for it.
+;This is to help setting vars when doing other DOS calls. 
     xor eax, eax
     mov word [curDirCopy + fatDirEntry.fstClusHi], ax
     mov word [curDirCopy + fatDirEntry.fstClusLo], ax

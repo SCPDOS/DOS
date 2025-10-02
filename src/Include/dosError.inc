@@ -42,6 +42,13 @@ errLokVio   equ 33  ;File Lock violation
 errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
+;The next two errors occur because an redir handle has the bit set to do this.
+;We do not move the SFT in either case so that one can safely examine the
+; state of the system before the call was made. In the second case,
+; the user should do a 0 byte write at filesize before anything else to truncate
+; any pre-allocated clusters.
+errHdlEOF   equ 38  ;Handle will EOF if read proceeds or at EOF. 
+errDskFul   equ 39  ;Disk will fill up if write proceeds or full. 
 
 errNoNet    equ 50  ;Network request not supported, generic net fail
 errNLSAcDen equ 65  ;Network Access denied (NLS usage)
@@ -58,7 +65,7 @@ errNetWrite equ 88  ;Network Write Fault
 ;Error Loci
 eLocUnk     equ 1   ;Unknown locus, nonspecific or not appropriate
 eLocDsk     equ 2   ;Disk, related to Random Access to a disk or block device
-eLocNet     equ 3   ;Network related issues, shouldnt affect us (yet!)
+eLocNet     equ 3   ;Network related issues
 eLocChr     equ 4   ;Serial/Character Device error
 eLocMem     equ 5   ;Related to RAM
 ;-----------------------------------------------------------------------------
@@ -71,7 +78,7 @@ eActKil     equ 5   ;Abort without cleanup
 eActIgn     equ 6   ;Ignore error
 eActRetUsr  equ 7   ;Retry after user intervention (i.e swap remdev)
 ;-----------------------------------------------------------------------------
-;Error classes
+;Error Classes
 eClsOoR     equ 1   ;Out of resources, no mem or handles
 eClsTS      equ 2   ;Temp sitch, should go away
 eClsAuth    equ 3   ;Authorisation, e.g. file permission error 

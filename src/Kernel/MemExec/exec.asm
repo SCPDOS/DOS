@@ -12,9 +12,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
 ;            If bit 7 of the subfunction byte is set, we load the corresponding
 ;               function but in 16-bit mode. 
 ;
-;If the loaded file is not a PE it is assumed to be a COM/RFS file. 
-; If not EXE, we read the filename extension. If it is RFS, we assign maximum 
-; memory. If it is COM, we assign only 64Kb to the application.
+;If the loaded file is not a PE it is assumed to be a COM file. 
+; If not EXE, we read the filename extension.
 
 ;If AL = 0 and 4 (if DOSMGR present):
 ;            Load Child Program and Xfr control to it

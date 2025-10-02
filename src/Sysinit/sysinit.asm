@@ -54,6 +54,11 @@ adjInts:
     mov eax, 20h            ;Start with interrupt 20h
     mov ecx, 30h
     call setupInterruptBlock
+;------------------------------------------------;
+;              Setup PSP for DOS                 ;
+;------------------------------------------------;
+    lea rbx, qword [tempPSP]
+    mov qword [rbp + currentPSP], rbx
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
 ;    DOS INTERRUPTS CAN BE USED FROM HERE ON     ;
 ;++++++++++++++++++++++++++++++++++++++++++++++++;
@@ -141,10 +146,6 @@ kernDrvInit:
     mov qword [rbp + clockPtr], rsi ;Store default CLOCK$ ptr
     mov rsi, rbx     ;Point rsi back to head of device chain
     lea rbx, initDrvBlk
-    ;The following is to mark all kernel driver allocs as new DOS.
-    ;The only functions available to the kernel drivers are those
-    ; w/o reference to the PSP, hence this being ok!
-    mov qword [rbp + currentPSP], mcbOwnerNewDOS
 .init:
     call initDriver         ;Importantly preserves rbp, rsi and rbx
     jc OEMHALT
@@ -195,6 +196,7 @@ kernDrvInit:
     add qword [rbp + charTableArray.filenameUCTable + 1], rbp 
     add qword [rbp + charTableArray.filenameTerminatingTable + 1], rbp 
     add qword [rbp + charTableArray.collatingTable + 1], rbp 
+    add qword [rbp + charTableArray.dbcsTable + 1], rbp 
 
 ;Server Table setup
     lea rdi, qword [rbp + serverDispTbl]  ;Get pointer to table
@@ -219,7 +221,7 @@ kernDrvInit:
 
 ;Initial PSP pointer fields
     lea rbx, qword [tempPSP]
-    mov qword fs:[currentPSP], rbx    ;Save current PSP
+    mov qword fs:[currentPSP], rbx    ;Reset current PSP
     push rbx
     add rbx, psp.dta
     mov qword fs:[currentDTA], rbx    ;Save current DTA
@@ -430,7 +432,7 @@ defaultFileHandles:
 
     lea rdx, cfgspec    ;CONFIG.SYS, must be on bootdrive for now
     mov ah, 3Dh ;Open file for reading
-    mov al, ReadAccess
+    mov al, openRdAcc
     int 21h
     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
     call configParse ;Else, parse the config file
@@ -676,48 +678,40 @@ addDriverMarkers:
 ;Traverses the MCB chain after a driver init to add the correct subsytem 
 ; information and owner to each memory block. Used for drivers that allocate
 ; their own memory using ALLOC.
-;Input: qword [currentPSP] = Signature to search for (9 means kernel driver).
-;       fs -> Dos Data Area
-;Output: Sets the first occurrence to Driver, the rest to driver appendage,
-;           unless the signature is 9 in which case, it is set to DOS owner.
-;           In the event of a kernel driver then only mcbSubDrvExtra is used.
+;All drivers (kernel and config) initialise using sysinit's own PSP. Thus
+; any allocations made during this time result in arenas with owner 
+; of qword [currentPSP]. We replace each such owner with mcbOwnerDOS and
+; set the subsytem mark to driver extra. This works because in config.sys
+; we load the driver into its own arena first and modify the MCB manually.
+;Kernel drivers dont have a separate allocation so any allocation after 
+; init must be an extra block.
+;Input: Nothing
+;Output: Sets all MCBs with currentPSP owner to mcbOwnerDOS and mcbSubDrvExtra
     push rax
-    push rbx
-    push rcx
     push rsi
     push rdi
     mov rdi, qword [rbp + currentPSP]
     mov rsi, qword [rbp + mcbChainPtr] ;Points to the kernel allocation
-    mov eax, mcbSubDriver
-    mov ebx, mcbSubDrvExtra
-    cmp rdi, mcbOwnerNewDOS  ;If so, skip setting driver, only extra!
-    cmove eax, ebx
     jmp short .gotoNextBlock    ;Skip the first alloc (the kernel)
 .checkSubsystem:
     cmp qword [rsi + mcb.owner], rdi
     jne short .gotoNextBlock
-    mov byte [rsi + mcb.subSysMark], al
-    cmp eax, ebx
-    cmovne eax, ebx
-    cmp byte [rsi + mcb.owner], mcbOwnerNewDOS
-    jne short .gotoNextBlock
+;Twiddle this newly allocated block!
+    mov byte [rsi + mcb.subSysMark], mcbSubDrvExtra
     mov byte [rsi + mcb.owner], mcbOwnerDOS
 .gotoNextBlock:
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     je short .exit
-    mov ecx, dword [rsi + mcb.blockSize]
-    shl rcx, 4
+    mov eax, dword [rsi + mcb.blockSize]
+    shl rax, 4
     add rsi, mcb.program    
-    add rsi, rcx
+    add rsi, rax
     jmp short .checkSubsystem
 .exit:
     pop rdi
     pop rsi
-    pop rcx
-    pop rbx
     pop rax
     return
-
 
 convertBPBArray:
 ;rsi -> BPB array
