@@ -182,12 +182,12 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 sdaDOSSwap:
     oldRAX      dq ?  ;Store rax on entering Int21h or returning Int 23h
     serverPSP   dq ?  ;PSP of prog making server request, used by net & share
-    machineNum  dw ?  ;for sharing/networking 00h = default number (us)
+    dReqNetID   dd ?  ;Requesters' (VM) Network ID. 0 means local machine.
     firstMCB    dq ?  ;First fit MCB for request
     bestMCB     dq ?  ;Best fit MCB for request
     lastMCB     dq ?  ;Last fit MCB for request
     dirEntryNum dw ?  ;Offset into directory of entry we are looking for
-    volIdFlag   db ?   ;If set, we are searching for a volume ID
+    volIdFlag   db ?  ;If set, we are searching for a volume ID
     xInt24hRSP  dq ?  ;RSP across an Int 24h call
     Int24bitfld db ?  ;Copies the bit field given to the Int 24h handler
     fileDirFlag db ?  ;File/Directory flag. 0 = Dir, ¬0 = File

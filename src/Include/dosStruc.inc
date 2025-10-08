@@ -155,11 +155,11 @@ struc sft
     .qDirSect    dq ?    ;Abs number of sector containing directory entry 
     .bNumDirEnt  db ?    ;Directory entry within dir sector (byte offset/32)
     .sFileName   db 11 dup (?)   ;8.3 Filename
-    .qSharePtr   dq ?    ;SHARE pointer to previous SFT sharing same file
-    .wMachNum    dw ?    ;SHARE number of network machine opening file
-    .qPSPOwner   dq ?    ;Addr of PSP of program which first opened this file
-    .wShareRec   dw ?    ;offset within SHARE code segment of sharing record
-;                           0 means no record
+;                       Share Vars
+    .pNextSFT   dq ?    ;Ptr to the next SFT for this file in the chain
+    .dNetID     dd ?    ;Network ID of the machine (VM) that opened this file
+    .qPID       dq ?    ;Proc ID (PSP) of the program which opened this file
+    .wMFTOffset dw ?    ;Offset to the MFT for this file. 0 means no MFT
 endstruc
 ;Open Mode equates
 ;Access modes   Bits[2:0]

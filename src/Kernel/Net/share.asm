@@ -91,7 +91,7 @@ shareFile:
 .keepLooping:
     call getCurrentSFT
     xor eax, eax
-    mov word [rdi + sft.wShareRec], 0   ;Init to no record
+    mov word [rdi + sft.wMFTOffset], 0   ;Init to no record
     push rcx
     call openShareCallWrapper
     pop rcx

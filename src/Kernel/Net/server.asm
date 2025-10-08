@@ -10,8 +10,8 @@ dosServer:  ;ah = 5Dh
     jbe .skip2
 .skip:
     mov rsi, rdx
-    mov rbx, qword [rsi + dpl.compID]   ;Low word only used
-    mov word [machineNum], bx
+    mov rbx, qword [rsi + dpl.compID]   ;Low dword only used
+    mov dword [dReqNetID], ebx  ;Set the netID of the requester
     mov rbx, qword [rsi + dpl.procID]
     mov qword [serverPSP], rbx
 .skip2:

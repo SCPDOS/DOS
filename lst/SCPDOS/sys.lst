@@ -908,11 +908,11 @@
    155 00000027 ????????????????    <1>     .qDirSect    dq ?    ;Abs number of sector containing directory entry 
    156 0000002F ??                  <1>     .bNumDirEnt  db ?    ;Directory entry within dir sector (byte offset/32)
    157 00000030 <res Bh>            <1>     .sFileName   db 11 dup (?)   ;8.3 Filename
-   158 0000003B ????????????????    <1>     .qSharePtr   dq ?    ;SHARE pointer to previous SFT sharing same file
-   159 00000043 ????                <1>     .wMachNum    dw ?    ;SHARE number of network machine opening file
-   160 00000045 ????????????????    <1>     .qPSPOwner   dq ?    ;Addr of PSP of program which first opened this file
-   161 0000004D ????                <1>     .wShareRec   dw ?    ;offset within SHARE code segment of sharing record
-   162                              <1> ;                           0 means no record
+   158                              <1> ;                       Share Vars
+   159 0000003B ????????????????    <1>     .pNextSFT   dq ?    ;Ptr to the next SFT for this file in the chain
+   160 00000043 ????????            <1>     .dNetID     dd ?    ;Network ID of the machine (VM) that opened this file
+   161 00000047 ????????????????    <1>     .qPID       dq ?    ;Proc ID (PSP) of the program which opened this file
+   162 0000004F ????                <1>     .wMFTOffset dw ?    ;Offset to the MFT for this file. 0 means no MFT
    163                              <1> endstruc
    164                              <1> ;Open Mode equates
    165                              <1> ;Access modes   Bits[2:0]
@@ -2268,7 +2268,7 @@
    506 00000640 7663                <1>     jbe short .skipSFT
    507                              <1>     ;First compute how big this new arena needs to be
    508 00000642 81E905000000        <1>     sub ecx, 5   ;Remove the default five files that are *always* present!
-   509 00000648 B84F000000          <1>     mov eax, sft_size
+   509 00000648 B851000000          <1>     mov eax, sft_size
    510 0000064D F7E1                <1>     mul ecx ;Get number of files*size of file in bytes in eax
    511 0000064F 050A000000          <1>     add eax, sfth_size  ;Add the size of one SFT header
    512 00000654 89C3                <1>     mov ebx, eax        ;And move into ebx for the syscall
@@ -2289,14 +2289,14 @@
    526 00000691 488D781A            <1>     lea rdi, qword [rax + sfth_size + mcb_size]
    527                              <1> .initExtraSFTs:
    528 00000695 66C7070000          <1>     mov word [rdi], 0
-   529 0000069A 4881C74F000000      <1>     add rdi, sft_size   ;Goto next SFT
+   529 0000069A 4881C751000000      <1>     add rdi, sft_size   ;Goto next SFT
    530 000006A1 FFC9                <1>     dec ecx
    531 000006A3 75F0                <1>     jnz .initExtraSFTs  ;Remember uop hybridisation (don't use loop)
    532                              <1> .skipSFT:
    533                              <1> ;FCBS now
    534 000006A5 488B4DE8            <1>     mov rcx, qword [rbp - cfgFrame.newFCBSVal]
    535 000006A9 67E346              <1>     jecxz .skipFCBS ;Skip if no FCBS requested
-   536 000006AC B84F000000          <1>     mov eax, sft_size
+   536 000006AC B851000000          <1>     mov eax, sft_size
    537 000006B1 F7E1                <1>     mul ecx ;Get number of files*size of file in bytes in eax
    538 000006B3 050A000000          <1>     add eax, sfth_size  ;Add the size of one SFT header
    539 000006B8 89C3                <1>     mov ebx, eax        ;And move into ebx for the syscall

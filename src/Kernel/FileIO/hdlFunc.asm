@@ -92,7 +92,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov ecx, devNoInherit       ;Set the corresponding the device info bit 
 .callProc:
     mov word [rsi + sft.wOpenMode], 0   ;Clear open mode bits
-    mov word [rsi + sft.wShareRec], 0   ;Clear Share record pointer details
+    mov word [rsi + sft.wMFTOffset], 0  ;Clear mft pointer details
     push rcx    ;Save the device word 
     call rbx    ;Enter with open mode in ax if an open call.
     pop rcx
@@ -1440,7 +1440,7 @@ checkExclusiveOwnFile:
     ; way we do path parsing. Thus, we can proceed safely.
 
     ;The following closes most recent shared handles referencing it
-    ;Only if sharePSP, shareMachineNumber are equal and openMode not Compat
+    ;Only if sharePSP, Requester NetID are equal and openMode not Compat
     ; mode and if there is precisely 1  
     call qword [closeNewHdlShare]    
     ;The close of the handle will only happen if there is 1 file referring to it
@@ -1660,7 +1660,7 @@ openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
     return
 .netOpen:
     mov rax, qword [currentPSP]
-    mov qword [rdi + sft.qPSPOwner], rax
+    mov qword [rdi + sft.qPID], rax
     return
 
 setOpenMode:
@@ -1833,7 +1833,7 @@ buildSFTEntry:
     mov dword [rsi + sft.wTime], eax    ;Store time and date together
 ;Set current Owner
     mov rax, qword [currentPSP]
-    mov qword [rsi + sft.qPSPOwner], rax ;Set who opened the file
+    mov qword [rsi + sft.qPID], rax ;Set who opened the file
 ;Set file pointer to first byte
     mov dword [rsi + sft.dCurntOff], 0  
 ;Common fields set
@@ -2948,10 +2948,10 @@ findFreeSFT:
     ;Here, check that if this sft is owned by the caller and repurpose it.
     push rbx
     mov rbx, qword [serverPSP]
-    cmp qword [rdi + sft.qPSPOwner], rbx
+    cmp qword [rdi + sft.qPID], rbx
     jne .netGoToNextNdx
-    movzx ebx, word [machineNum]
-    cmp word [rdi + sft.wMachNum], bx
+    mov ebx, dword [dReqNetID]
+    cmp dword [rdi + sft.dNetID], ebx
 .netGoToNextNdx:
     pop rbx
     je .sftFound
@@ -2962,9 +2962,9 @@ findFreeSFT:
     push rbx
     mov word [rdi + sft.wNumHandles], -1    ;Mark as repurposing!
     mov rbx, qword [serverPSP]
-    mov qword [rdi + sft.qPSPOwner], rbx
-    movzx ebx, word [machineNum]
-    mov word [rdi + sft.wMachNum], bx
+    mov qword [rdi + sft.qPID], rbx
+    mov ebx, dword [dReqNetID]
+    mov dword [rdi + sft.dNetID], ebx
     pop rbx
     clc
     return
@@ -3042,8 +3042,8 @@ getSFTPtr:
     call derefSFTPtr
     retc    ;Return if carry
     push rax
-    movzx eax, word [machineNum]
-    cmp ax, word [rdi + sft.wMachNum]
+    mov eax, dword [dReqNetID]
+    cmp eax, dword [rdi + sft.dNetID]
     pop rax
     rete
     mov al, errBadHdl   ;Error code
