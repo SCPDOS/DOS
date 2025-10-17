@@ -114,7 +114,7 @@ dosInt33h:
 ; already has the lock so this simply incs the count. If a process attempts 
 ; to bypass DOS and we are already processing a request it gets put on ice.
 ;--------------------------------------------------------------------------
-%if drvDbg and i33Dbg
+%if drvDbg && i33Dbg
     call .dbgFun
 %endif
 ;Start by clearing the CF on entry
@@ -204,7 +204,7 @@ dosInt33h:
     pop rax
 ;And finally go back to the caller :)
     return
-%if drvDbg and i33Dbg
+%if drvDbg && i33Dbg
 .dbgFun:
     cmp byte [0700h], -1
     retne
