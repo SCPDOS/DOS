@@ -1,8 +1,8 @@
 [DEFAULT REL]
 BITS 64
 
-%include "./src/Include/dosMacro.mac"
-%include "./src/Include/dosStruc.inc"
+%include "./inc/dosMacro.mac"
+%include "./inc/dosStruc.inc"
 
 ;=======================START OF OEMINIT MODULE======================
 %include "./src/Oeminit/oem.inc"

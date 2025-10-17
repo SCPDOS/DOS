@@ -1,13 +1,13 @@
 [DEFAULT REL]
 BITS 64
 
-%include "./src/Include/dosMacro.mac"
-%include "./src/Include/drvStruc.inc"
-%include "./src/Include/fatStruc.inc"
-%include "./src/Include/fcbStruc.inc"
-%include "./src/Include/dosStruc.inc"
-%include "./src/Include/dosError.inc"
-%include "./src/Include/dosExec.inc"
+%include "./inc/dosMacro.mac"
+%include "./inc/drvStruc.inc"
+%include "./inc/fatStruc.inc"
+%include "./inc/fcbStruc.inc"
+%include "./inc/dosStruc.inc"
+%include "./inc/dosError.inc"
+%include "./inc/dosExec.inc"
 
 ;=======================START OF SYSINIT MODULE======================
 %include "./src/Sysinit/sys.inc"
