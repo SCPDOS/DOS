@@ -5,13 +5,13 @@ BITS 64
 %include "./inc/dosStruc.inc"
 
 ;=======================START OF OEMINIT MODULE======================
-%include "./src/Oeminit/oem.inc"
+%include "./src/dos/Oeminit/oem.inc"
 
 Segment otext code private align=1 use64
 ;---------------------------
 ;   OEMINIT code segment
 ;---------------------------
-%include "./src/Oeminit/oeminit.asm"
+%include "./src/dos/Oeminit/oeminit.asm"
 
 Segment odata data private align=1
 ;---------------------------
