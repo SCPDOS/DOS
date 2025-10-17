@@ -6,8 +6,7 @@ BINUTIL := x86_64-w64-mingw32
 LINKER  := ${BINUTIL}-ld 
 OBJCOPY := ${BINUTIL}-objcopy
 
-LD_FLAGS := -T ./src/dos/scpdos.ld --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section -Map=./lst/SCPDOS/scpdos.map
-#LD_FLAGS := -T ./src/dos/scpdos.ld --no-check-sections -Map=./lst/SCPDOS/scpdos.map
+LD_FLAGS := --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section 
 OC_FLAGS := --dump-section
 
 
@@ -25,7 +24,11 @@ world:
 	$(MAKE) clean
 	./build
 
-
+share:
+# Build the standalone share module
+	${ASM} ./src/share/shbuild.asm -o ./bin/share.obj -f win64 -l ./lst/share/oem.lst -O0v
+	${LINKER} -T ./src/share/share.ld ${LD_FLAGS} -Map=./lst/share/share.map -o ./bin/share.exe
+	
 assemble:
 # Build four modules, then link them together, then strip headers.
 # Build with all alignment of 1. Export nothing.
@@ -35,7 +38,7 @@ assemble:
 	${ASM} ./src/dos/Drivers/drvbuild.asm -o ./bin/drv.obj -f win64 -l ./lst/SCPDOS/drv.lst -O0v
 
 link:
-	${LINKER} ${LD_FLAGS} -o ./bin/dos.exe
+	${LINKER} -T ./src/dos/scpdos.ld ${LD_FLAGS} -Map=./lst/SCPDOS/scpdos.map -o ./bin/dos.exe
 
 dos:
 	${OBJCOPY} ${OC_FLAGS} oem$$=./bin/oem.bin ./bin/dos.exe 

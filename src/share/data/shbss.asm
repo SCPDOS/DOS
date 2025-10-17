@@ -1,0 +1,1 @@
+;All BSS variables go here
