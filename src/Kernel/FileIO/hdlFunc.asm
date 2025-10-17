@@ -92,7 +92,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov ecx, devNoInherit       ;Set the corresponding the device info bit 
 .callProc:
     mov word [rsi + sft.wOpenMode], 0   ;Clear open mode bits
-    mov word [rsi + sft.wMFTOffset], 0  ;Clear mft pointer details
+    mov qword [rsi + sft.pMFT], 0       ;Clear mft pointer details
     push rcx    ;Save the device word 
     call rbx    ;Enter with open mode in ax if an open call.
     pop rcx
