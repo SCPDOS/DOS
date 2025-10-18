@@ -899,415 +899,416 @@
    146 00000005 ????                <1>     .wDeviceInfo dw ?    ;Includes unit number if a block device
    147 00000007 ????????????????    <1>     .qPtr        dq ?    ;IF char, ptr to device driver header, ELSE DPBptr
    148 0000000F ????????            <1>     .dStartClust dd ?    ;Start cluster of file pointed to by SFT entry
-   149 00000013 ????                <1>     .wTime       dw ?    ;File Time, updated on open and writes
-   150 00000015 ????                <1>     .wDate       dw ?    ;File Date, updated on open and writes
-   151 00000017 ????????            <1>     .dFileSize   dd ?    ;File Size, in bytes
-   152 0000001B ????????            <1>     .dCurntOff   dd ?    ;Current Offset pointed to by SFT entry, in bytes
-   153 0000001F ????????            <1>     .dRelClust   dd ?    ;Rel cluster pointed to by SFT entry
-   154 00000023 ????????            <1>     .dAbsClusr   dd ?    ;Absolute cluster pointed to by SFT entry
-   155 00000027 ????????????????    <1>     .qDirSect    dq ?    ;Abs number of sector containing directory entry 
-   156 0000002F ??                  <1>     .bNumDirEnt  db ?    ;Directory entry within dir sector (byte offset/32)
-   157 00000030 <res Bh>            <1>     .sFileName   db 11 dup (?)   ;8.3 Filename
-   158                              <1> ;                       Share Vars
-   159 0000003B ????????????????    <1>     .pNextSFT   dq ?    ;Ptr to the next SFT for this file in the chain
-   160 00000043 ????????            <1>     .dNetID     dd ?    ;Network ID of the machine (VM) that opened this file
-   161 00000047 ????????????????    <1>     .qPID       dq ?    ;Proc ID (PSP) of the program which opened this file
-   162 0000004F ????????????????    <1>     .pMFT       dq ?    ;Pointer to the MFT for this file. 0 means no MFT
-   163                              <1> endstruc
-   164                              <1> ;Open Mode equates
-   165                              <1> ;Access modes   Bits[2:0]
-   166                              <1> openRdAcc   equ 0h
-   167                              <1> openWrAcc   equ 1h
-   168                              <1> openRWAcc   equ 2h
-   169                              <1> ;Bit 3 reserved 0
-   170                              <1> ;Sharing modes  Bits[6:4]
-   171                              <1> openCompat      equ 0h  ;Deny all, compatibility mode
-   172                              <1> openDenRWShr    equ 10h ;Deny all, explicity read/write
-   173                              <1> openDenWrShr    equ 20h ;Deny writes
-   174                              <1> openDenRdShr    equ 30h ;Deny reads
-   175                              <1> openDenNoShr    equ 40h ;Don't deny anything!
-   176                              <1> ;NetFCB is for files open by a local server, handling IO from a remote
-   177                              <1> ; client by proxy opened by an FCB! Sets the Net bit to indicate this. 
-   178                              <1> ;Thus, this is a handle with no JFT entry! Server handles its own JFT!
-   179                              <1> openNetFCBShr   equ 70h
-   180                              <1> openNoInherit   equ 80h
-   181                              <1> 
-   182                              <1> ;Bits 8-12 reserved 0
-   183                              <1> ;The next two are extended open mode bits! 
-   184                              <1> ;Can be set
-   185                              <1> openFailOnI24   equ 2000h   ;If set, automatically FAIL all Int 24h
-   186                              <1> openFlushWrites equ 4000h   ;If set, commit after each write call.
-   187                              <1> ;Once share is loaded, if a local FCB open occurs, mark the sft as so.
-   188                              <1> openSFTFCB      equ 8000h   ;If set, file is SFT-FCB.
-   189                              <1> 
-   190                              <1> ;Attribute Byte
-   191                              <1> attrFileRO          equ 1h
-   192                              <1> attrFileHidden      equ 2h
-   193                              <1> attrFileSys         equ 4h
-   194                              <1> attrFileVolLbl      equ 8h
-   195                              <1> attrFileDir         equ 10h ;Directory entry
-   196                              <1> attrFileArchive     equ 20h
-   197                              <1> attrFileChar        equ 40h ;Reserved, never found in dir
-   198                              <1> 
-   199                              <1> ;Device Info word equates
-   200                              <1> ;For a block device, bits [5:0] contain the drive number
-   201                              <1> devCharConIn    equ 1h  ;If set, device is CON input
-   202                              <1> devCharConOut   equ 2h  ;If set, device is CON output
-   203                              <1> devCharNulDev   equ 4h  ;If set, device is NULL device
-   204                              <1> devCharClkDev   equ 8h  ;If set, device is CLOCK device
-   205                              <1> 
-   206                              <1> devCharFastOut  equ 10h ;If set, device supports INT 29h
-   207                              <1> devCharBinary   equ 20h ;If set, r/w char device in Binary mode
-   208                              <1> devCharNotEOF   equ 40h ;If set, device not yet at end of file
-   209                              <1> devDiskNoFlush  equ 40h ;Set if file is synchronised with hard store!
-   210                              <1> devCharDev      equ 80h ;If set, it is a char device!
-   211                              <1> 
-   212                              <1> devDiskI24onFull    equ 100h    ;If set, Int 24h on disk full or disk EOF
-   213                              <1> devCharNetSpool equ 800h    ;If set, device is a network spooler
-   214                              <1> 
-   215                              <1> devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
-   216                              <1> devCharNamePipe equ 2000h   ;If set, device is a named pipe
-   217                              <1> devDiskNoDTonClose equ 4000h   ;If set, dont update date and time when closing
-   218                              <1> devRedir        equ 8000h   ;If set, dev/file is redirected!
-   219                              <1> 
-   220                              <1> ;Extended open flags. For the var [wEOFlags]
-   221                              <1> ;These are not related to the SFT but are used during an extended open
-   222                              <1> ; call to keep track of whats going on and thus help build an SFT.
-   223                              <1> eoInExtOpen     equ 0001h   ;Doing Extended Open
-   224                              <1> eoFailI24       equ 0002h   ;If EO file hard fails, skip and fail Int 24h
-   225                              <1> eoFileNoExist   equ 0004h   ;File doesnt exist
-   226                              <1> 
-   227                              <1> ;Can combine the third option with one of the first two options.
-   228                              <1> ;The first two options cannot be combined.
-   229                              <1> ; - If only create is selected, then we try to do a create new. If the 
-   230                              <1> ;       file exists, this fails with a "File exists" error.
-   231                              <1> ;       Acts like a normal create new call. (21/5Bh)
-   232                              <1> ;
-   233                              <1> ; - If only open is selected then we try to do an open. If the file doesn't
-   234                              <1> ;       doesn't exist, this fails with a "File not found" error.
-   235                              <1> ;       Acts like a normal open call. (21/3Dh)
-   236                              <1> ;
-   237                              <1> ; - If only truncate is selected then we try to do a create. If the file
-   238                              <1> ;       doesn't exist, this fails a "File not found" error.
-   239                              <1> ;       New behaviour.
-   240                              <1> ;
-   241                              <1> ; - If open and create are selected then we try and open the file. If 
-   242                              <1> ;       the open fails due to the file not existing, we create a new file. 
-   243                              <1> ;       New behaviour.
-   244                              <1> ;
-   245                              <1> ; - If truncate and create are selected then we try to truncate the file. 
-   246                              <1> ;       If the file doesnt exist then we create a new file instead.
-   247                              <1> ;       Acts like a normal create call. (21/3Ch)
-   248                              <1> 
-   249                              <1> eoActOpen       equ 01h ;Open the file. 
-   250                              <1> eoActTruncate   equ 02h ;Truncate an existing file.
-   251                              <1> eoActCreate     equ 10h ;Create a file if one doesnt exist.
-   252                              <1> ;Extended Open Action Return 
-   253                              <1> eoRetActOpen    equ 1   ;Open existing
-   254                              <1> eoRetActCreate  equ 2   ;Create new and open
-   255                              <1> eoRetActTruncate    equ 3    ;Recreate and open
-   256                              <1> ;------------------------------------------------------------------------;
-   257                              <1> ; Buffers allow for buffered drive IO, by first transferring a sector 
-   258                              <1> ; to an internal buffer, and then copying it to the specified location
-   259                              <1> ; in memory. The buffer is kept in the buffer chain,  in the event that 
-   260                              <1> ; another request for the same sector from the same device is made, so 
-   261                              <1> ; that is can be read from the device directly. Buffers are uniform in 
-   262                              <1> ; size, selected according to the largest detected sector size during 
-   263                              <1> ; the initial loadup.
-   264                              <1> ;
-   265                              <1> ; The buffer pointer in SysVars points to most recently used Buffer
-   266                              <1> ;
-   267                              <1> ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
-   268                              <1> ;------------------------------------------------------------------------;
-   269                              <1> 
-   270                              <1> struc bufferHdr
-   271 00000000 ????????????????    <1>     .nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
-   272                              <1>     .wDrvNumFlg:         ;Read as a word to get the following two bytes!
-   273 00000008 ??                  <1>     .driveNumber db  ?   ;Drive number the buffer is used for (or -1 for free)
-   274 00000009 ??                  <1>     .bufferFlags db  ?   ;Standard Flags
-   275 0000000A ????????????????    <1>     .bufferLBA   dq  ?   ;LBA the buffer contains
-   276 00000012 ??                  <1>     .bufFATcopy  db  ?   ;Number of copies of the FAT to write (1 if non-FAT)
-   277 00000013 ????????            <1>     .bufFATsize  dd  ?   ;Number of sectors per FAT (or 0 if non-FAT)
-   278 00000017 ????????????????    <1>     .driveDPBPtr dq  ?   ;Pointer to the device DPB block
-   279 0000001F ??                  <1>     .reserved    db  ?   ;Alignment byte
-   280                              <1>     .dataarea:             ;Points to the start of the data area
-   281                              <1> endstruc
-   282                              <1> ;Buffer Flag equates
-   283                              <1> dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
-   284                              <1> fatBuffer   equ 2h  ;FAT sector in buffer
-   285                              <1> dirBuffer   equ 4h  ;Directory sector in buffer
-   286                              <1> dataBuffer  equ 8h  ;File Data sector in buffer
-   287                              <1> refBuffer   equ 20h ;Data in buffer has been referenced by an application
-   288                              <1> dirtyBuffer equ 40h ;Data in buffer modified by an application
-   289                              <1> freeBuffer  equ 00FFh   ;A word which goes into the drive number to clear both fields
-   290                              <1> ;Note! A buffer is marked as referenced when the buffer is "obtained" by a syscall
-   291                              <1> ;------------------------------------------------------------------------;
-   292                              <1> ; Memory control block for each memory arena
-   293                              <1> ;------------------------------------------------------------------------;
-   294                              <1> struc mcb
-   295 00000000 ??                  <1>     .marker     db ?  ;M = Member of the MCB chain. Z = Last member
-   296 00000001 ????????????????    <1>     .owner      dq ?  ;Owning application PSP (para aligned) or 0 for free
-   297 00000009 ????????            <1>     .blockSize  dd ?  ;Number of contiguous paragraphs owned by this block
-   298                              <1>     ;The following byte is reserved outside of sysinit
-   299 0000000D ??                  <1>     .subSysMark db ?  ;Marks the optional DOS subsystem of the MCB
-   300 0000000E ????                <1>     .reserved   db 2 dup (?) 
-   301                              <1>     .program:
-   302                              <1> endstruc
-   303                              <1> ;MCB equates
-   304                              <1> mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
-   305                              <1> mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
-   306                              <1> mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
-   307                              <1> mcbOwnerNewDOS  equ 9   ;Owner = 9 => New Kernel driver alloc. Needs setting to 8.
-   308                              <1> mcbMarkCtn      equ "M"
-   309                              <1> mcbMarkEnd      equ "Z"
-   310                              <1> ;The following are used on MCB's that belong to DOS, that are not part of the
-   311                              <1> ; main kernel (i.e. the CONFIG.SYS optional parts).
-   312                              <1> mcbSubDriver    equ "D" ;Any memory allocated for a device driver's code.
-   313                              <1> mcbSubDrvExtra  equ "L" ;Any memory allocated by a device driver.
-   314                              <1> mcbSubDrvDPB    equ "P" ;Blocks used for DPB's are marked so.
-   315                              <1> mcbSubIFS       equ "I" ;Unused for now
-   316                              <1> mcbSubFiles     equ "F" ;Any memory allocated for Files.
-   317                              <1> mcbSubFCBS      equ "X" ;Unused for now
-   318                              <1> mcbSubBuffers   equ "B" ;Any memory allocated for Buffers.
-   319                              <1> mcbSubCDS       equ "L" ;Any memory allocated to store a CDS.
-   320                              <1> mcbSubStacks    equ "S" ;Unused for now
-   321                              <1> 
+   149                              <1> .dTimeDate:              ;Symbol to access time/date together
+   150 00000013 ????                <1>     .wTime       dw ?    ;File Time, updated on open and writes
+   151 00000015 ????                <1>     .wDate       dw ?    ;File Date, updated on open and writes
+   152 00000017 ????????            <1>     .dFileSize   dd ?    ;File Size, in bytes
+   153 0000001B ????????            <1>     .dCurntOff   dd ?    ;Current Offset pointed to by SFT entry, in bytes
+   154 0000001F ????????            <1>     .dRelClust   dd ?    ;File relative cluster pointed to by SFT entry
+   155 00000023 ????????            <1>     .dAbsClust   dd ?    ;Absolute disk cluster pointed to by SFT entry
+   156 00000027 ????????????????    <1>     .qDirSect    dq ?    ;Abs number of sector containing directory entry 
+   157 0000002F ??                  <1>     .bNumDirEnt  db ?    ;Directory entry within dir sector (byte offset/32)
+   158 00000030 <res Bh>            <1>     .sFileName   db 11 dup (?)   ;8.3 Filename
+   159                              <1> ;                       Share Vars
+   160 0000003B ????????????????    <1>     .pNextSFT   dq ?    ;Ptr to the next SFT for this file in the chain
+   161 00000043 ????????            <1>     .dNetID     dd ?    ;Network ID of the machine (VM) that opened this file
+   162 00000047 ????????????????    <1>     .qPID       dq ?    ;Proc ID (PSP) of the program which opened this file
+   163 0000004F ????????????????    <1>     .pMFT       dq ?    ;Pointer to the MFT for this file. 0 means no MFT
+   164                              <1> endstruc
+   165                              <1> ;Open Mode equates
+   166                              <1> ;Access modes   Bits[2:0]
+   167                              <1> openRdAcc   equ 0h
+   168                              <1> openWrAcc   equ 1h
+   169                              <1> openRWAcc   equ 2h
+   170                              <1> ;Bit 3 reserved 0
+   171                              <1> ;Sharing modes  Bits[6:4]
+   172                              <1> openCompat      equ 0h  ;Deny all, compatibility mode
+   173                              <1> openDenRWShr    equ 10h ;Deny all, explicity read/write
+   174                              <1> openDenWrShr    equ 20h ;Deny writes
+   175                              <1> openDenRdShr    equ 30h ;Deny reads
+   176                              <1> openDenNoShr    equ 40h ;Don't deny anything!
+   177                              <1> ;NetFCB is for files open by a local server, handling IO from a remote
+   178                              <1> ; client by proxy opened by an FCB! Sets the Net bit to indicate this. 
+   179                              <1> ;Thus, this is a handle with no JFT entry! Server handles its own JFT!
+   180                              <1> openNetFCBShr   equ 70h
+   181                              <1> openNoInherit   equ 80h
+   182                              <1> 
+   183                              <1> ;Bits 8-12 reserved 0
+   184                              <1> ;The next two are extended open mode bits! 
+   185                              <1> ;Can be set
+   186                              <1> openFailOnI24   equ 2000h   ;If set, automatically FAIL all Int 24h
+   187                              <1> openFlushWrites equ 4000h   ;If set, commit after each write call.
+   188                              <1> ;Once share is loaded, if a local FCB open occurs, mark the sft as so.
+   189                              <1> openSFTFCB      equ 8000h   ;If set, file is SFT-FCB.
+   190                              <1> 
+   191                              <1> ;Attribute Byte
+   192                              <1> attrFileRO          equ 1h
+   193                              <1> attrFileHidden      equ 2h
+   194                              <1> attrFileSys         equ 4h
+   195                              <1> attrFileVolLbl      equ 8h
+   196                              <1> attrFileDir         equ 10h ;Directory entry
+   197                              <1> attrFileArchive     equ 20h
+   198                              <1> attrFileChar        equ 40h ;Reserved, never found in dir
+   199                              <1> 
+   200                              <1> ;Device Info word equates
+   201                              <1> ;For a block device, bits [5:0] contain the drive number
+   202                              <1> devCharConIn    equ 1h  ;If set, device is CON input
+   203                              <1> devCharConOut   equ 2h  ;If set, device is CON output
+   204                              <1> devCharNulDev   equ 4h  ;If set, device is NULL device
+   205                              <1> devCharClkDev   equ 8h  ;If set, device is CLOCK device
+   206                              <1> 
+   207                              <1> devCharFastOut  equ 10h ;If set, device supports INT 29h
+   208                              <1> devCharBinary   equ 20h ;If set, r/w char device in Binary mode
+   209                              <1> devCharNotEOF   equ 40h ;If set, device not yet at end of file
+   210                              <1> devDiskNoFlush  equ 40h ;Set if file is synchronised with hard store!
+   211                              <1> devCharDev      equ 80h ;If set, it is a char device!
+   212                              <1> 
+   213                              <1> devDiskI24onFull    equ 100h    ;If set, Int 24h on disk full or disk EOF
+   214                              <1> devCharNetSpool equ 800h    ;If set, device is a network spooler
+   215                              <1> 
+   216                              <1> devNoInherit    equ 1000h   ;If set, handle not inherited by child processes
+   217                              <1> devCharNamePipe equ 2000h   ;If set, device is a named pipe
+   218                              <1> devDiskNoDTonClose equ 4000h   ;If set, dont update date and time when closing
+   219                              <1> devRedir        equ 8000h   ;If set, dev/file is redirected!
+   220                              <1> 
+   221                              <1> ;Extended open flags. For the var [wEOFlags]
+   222                              <1> ;These are not related to the SFT but are used during an extended open
+   223                              <1> ; call to keep track of whats going on and thus help build an SFT.
+   224                              <1> eoInExtOpen     equ 0001h   ;Doing Extended Open
+   225                              <1> eoFailI24       equ 0002h   ;If EO file hard fails, skip and fail Int 24h
+   226                              <1> eoFileNoExist   equ 0004h   ;File doesnt exist
+   227                              <1> 
+   228                              <1> ;Can combine the third option with one of the first two options.
+   229                              <1> ;The first two options cannot be combined.
+   230                              <1> ; - If only create is selected, then we try to do a create new. If the 
+   231                              <1> ;       file exists, this fails with a "File exists" error.
+   232                              <1> ;       Acts like a normal create new call. (21/5Bh)
+   233                              <1> ;
+   234                              <1> ; - If only open is selected then we try to do an open. If the file doesn't
+   235                              <1> ;       doesn't exist, this fails with a "File not found" error.
+   236                              <1> ;       Acts like a normal open call. (21/3Dh)
+   237                              <1> ;
+   238                              <1> ; - If only truncate is selected then we try to do a create. If the file
+   239                              <1> ;       doesn't exist, this fails a "File not found" error.
+   240                              <1> ;       New behaviour.
+   241                              <1> ;
+   242                              <1> ; - If open and create are selected then we try and open the file. If 
+   243                              <1> ;       the open fails due to the file not existing, we create a new file. 
+   244                              <1> ;       New behaviour.
+   245                              <1> ;
+   246                              <1> ; - If truncate and create are selected then we try to truncate the file. 
+   247                              <1> ;       If the file doesnt exist then we create a new file instead.
+   248                              <1> ;       Acts like a normal create call. (21/3Ch)
+   249                              <1> 
+   250                              <1> eoActOpen       equ 01h ;Open the file. 
+   251                              <1> eoActTruncate   equ 02h ;Truncate an existing file.
+   252                              <1> eoActCreate     equ 10h ;Create a file if one doesnt exist.
+   253                              <1> ;Extended Open Action Return 
+   254                              <1> eoRetActOpen    equ 1   ;Open existing
+   255                              <1> eoRetActCreate  equ 2   ;Create new and open
+   256                              <1> eoRetActTruncate    equ 3    ;Recreate and open
+   257                              <1> ;------------------------------------------------------------------------;
+   258                              <1> ; Buffers allow for buffered drive IO, by first transferring a sector 
+   259                              <1> ; to an internal buffer, and then copying it to the specified location
+   260                              <1> ; in memory. The buffer is kept in the buffer chain,  in the event that 
+   261                              <1> ; another request for the same sector from the same device is made, so 
+   262                              <1> ; that is can be read from the device directly. Buffers are uniform in 
+   263                              <1> ; size, selected according to the largest detected sector size during 
+   264                              <1> ; the initial loadup.
+   265                              <1> ;
+   266                              <1> ; The buffer pointer in SysVars points to most recently used Buffer
+   267                              <1> ;
+   268                              <1> ; DEFAULT BUFFERS=30, MINIMUM BUFFERS=2
+   269                              <1> ;------------------------------------------------------------------------;
+   270                              <1> 
+   271                              <1> struc bufferHdr
+   272 00000000 ????????????????    <1>     .nextBufPtr  dq  ?   ;Pointer to the next buffer in the chain or -1 at end
+   273                              <1>     .wDrvNumFlg:         ;Read as a word to get the following two bytes!
+   274 00000008 ??                  <1>     .driveNumber db  ?   ;Drive number the buffer is used for (or -1 for free)
+   275 00000009 ??                  <1>     .bufferFlags db  ?   ;Standard Flags
+   276 0000000A ????????????????    <1>     .bufferLBA   dq  ?   ;LBA the buffer contains
+   277 00000012 ??                  <1>     .bufFATcopy  db  ?   ;Number of copies of the FAT to write (1 if non-FAT)
+   278 00000013 ????????            <1>     .bufFATsize  dd  ?   ;Number of sectors per FAT (or 0 if non-FAT)
+   279 00000017 ????????????????    <1>     .driveDPBPtr dq  ?   ;Pointer to the device DPB block
+   280 0000001F ??                  <1>     .reserved    db  ?   ;Alignment byte
+   281                              <1>     .dataarea:             ;Points to the start of the data area
+   282                              <1> endstruc
+   283                              <1> ;Buffer Flag equates
+   284                              <1> dosBuffer   equ 1h  ;Sector 0 (BPB/VPB) in buffer
+   285                              <1> fatBuffer   equ 2h  ;FAT sector in buffer
+   286                              <1> dirBuffer   equ 4h  ;Directory sector in buffer
+   287                              <1> dataBuffer  equ 8h  ;File Data sector in buffer
+   288                              <1> refBuffer   equ 20h ;Data in buffer has been referenced by an application
+   289                              <1> dirtyBuffer equ 40h ;Data in buffer modified by an application
+   290                              <1> freeBuffer  equ 00FFh   ;A word which goes into the drive number to clear both fields
+   291                              <1> ;Note! A buffer is marked as referenced when the buffer is "obtained" by a syscall
+   292                              <1> ;------------------------------------------------------------------------;
+   293                              <1> ; Memory control block for each memory arena
+   294                              <1> ;------------------------------------------------------------------------;
+   295                              <1> struc mcb
+   296 00000000 ??                  <1>     .marker     db ?  ;M = Member of the MCB chain. Z = Last member
+   297 00000001 ????????????????    <1>     .owner      dq ?  ;Owning application PSP (para aligned) or 0 for free
+   298 00000009 ????????            <1>     .blockSize  dd ?  ;Number of contiguous paragraphs owned by this block
+   299                              <1>     ;The following byte is reserved outside of sysinit
+   300 0000000D ??                  <1>     .subSysMark db ?  ;Marks the optional DOS subsystem of the MCB
+   301 0000000E ????                <1>     .reserved   db 2 dup (?) 
+   302                              <1>     .program:
+   303                              <1> endstruc
+   304                              <1> ;MCB equates
+   305                              <1> mcbOwnerHole    equ 7   ;Owner = 7 => Memory hole, always fail free/realloc
+   306                              <1> mcbOwnerFree    equ 0   ;Owner = 0 => Free and available space
+   307                              <1> mcbOwnerDOS     equ 8   ;Owner = 8 => Owned by DOS
+   308                              <1> mcbOwnerNewDOS  equ 9   ;Owner = 9 => New Kernel driver alloc. Needs setting to 8.
+   309                              <1> mcbMarkCtn      equ "M"
+   310                              <1> mcbMarkEnd      equ "Z"
+   311                              <1> ;The following are used on MCB's that belong to DOS, that are not part of the
+   312                              <1> ; main kernel (i.e. the CONFIG.SYS optional parts).
+   313                              <1> mcbSubDriver    equ "D" ;Any memory allocated for a device driver's code.
+   314                              <1> mcbSubDrvExtra  equ "L" ;Any memory allocated by a device driver.
+   315                              <1> mcbSubDrvDPB    equ "P" ;Blocks used for DPB's are marked so.
+   316                              <1> mcbSubIFS       equ "I" ;Unused for now
+   317                              <1> mcbSubFiles     equ "F" ;Any memory allocated for Files.
+   318                              <1> mcbSubFCBS      equ "X" ;Unused for now
+   319                              <1> mcbSubBuffers   equ "B" ;Any memory allocated for Buffers.
+   320                              <1> mcbSubCDS       equ "L" ;Any memory allocated to store a CDS.
+   321                              <1> mcbSubStacks    equ "S" ;Unused for now
    322                              <1> 
-   323                              <1> memFirstFit     equ 0   ;First free block goes to application
-   324                              <1> memBestFit      equ 1   ;Block whos size closest matches requirement
-   325                              <1> memLastFit      equ 2   ;Last free block goes to application
-   326                              <1> 
-   327                              <1> ;Owner = Para aligned address => Owning application PSP
-   328                              <1> ;...To consider...
-   329                              <1> ;Owner = Non-para aligned address => Error? Should maybe lock up system?
-   330                              <1> ;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
-   331                              <1> ;------------------------------------------------------------------------;
-   332                              <1> ; For Int 21h, the callers registers are saved on their stack in the 
-   333                              <1> ; following order, thus allowing for return values to be placed in the 
-   334                              <1> ; registers by accessing the caller register stack frame.
-   335                              <1> ;------------------------------------------------------------------------;
-   336                              <1> struc callerFrame
-   337 00000000 ????????????????    <1>     .rax    dq ?  ;Bottom of frame, pointer to rax saved in oldRSP
-   338 00000008 ????????????????    <1>     .rbx    dq ?    
-   339 00000010 ????????????????    <1>     .rcx    dq ?
-   340 00000018 ????????????????    <1>     .rdx    dq ?
-   341 00000020 ????????????????    <1>     .rsi    dq ?
-   342 00000028 ????????????????    <1>     .rdi    dq ?
-   343 00000030 ????????????????    <1>     .rbp    dq ?
-   344 00000038 ????????????????    <1>     .r8     dq ?  ;To be removed if truly not needed
-   345 00000040 ????????????????    <1>     .r9     dq ?
-   346                              <1> ;Pushed by Processor when invoked via Interrupt
-   347 00000048 ????????????????    <1>     .rip    dq ?
-   348 00000050 ????????????????    <1>     .cs     dq ?
-   349 00000058 ????????????????    <1>     .flags  dq ?
-   350                              <1> endstruc
-   351                              <1> 
-   352                              <1> struc dpl
-   353                              <1> ;DOS parameter list, pointer to this stack is passed to DOS in rdx on
-   354                              <1> ; server calls
-   355 00000000 ????????????????    <1>     .rax    dq ?
-   356 00000008 ????????????????    <1>     .rbx    dq ?
-   357 00000010 ????????????????    <1>     .rcx    dq ?
-   358 00000018 ????????????????    <1>     .rdx    dq ?
-   359 00000020 ????????????????    <1>     .rsi    dq ?
-   360 00000028 ????????????????    <1>     .rdi    dq ?
-   361 00000030 ????????????????    <1>     .r8     dq ?
-   362 00000038 ????????????????    <1>     .r9     dq ?
-   363 00000040 ????????????????    <1>     .align  dq ?
-   364 00000048 ????????????????    <1>     .compID dq ?  ;Computer id, low word used only
-   365 00000050 ????????????????    <1>     .procID dq ?  ;Process ID
-   366                              <1> endstruc
-   367                              <1> 
-   368                              <1> struc cfgFrame  ;Frame used for config.sys parsing
-   369 00000000 ????????????????    <1>     .oldRBP         dq ?    ;Ptr to DOSSEG
-   370 00000008 ????????????????    <1>     .newBuffers     dq ?    ;New buffers value
-   371 00000010 ????????????????    <1>     .newSFTVal      dq ?
-   372 00000018 ????????????????    <1>     .newFCBSVal     dq ?
-   373 00000020 ????????????????    <1>     .newProtFCBSVal dq ?    ;Number of protected FCBS
-   374 00000028 ????????????????    <1>     .newLastdrive   dq ?
-   375 00000030 ????????????????    <1>     .newStacks      dq ?    ;Ignored for now
-   376 00000038 ????????????????    <1>     .newStackSize   dq ?    ;Ignored for now
-   377 00000040 ????????????????    <1>     .cfgHandle      dq ?    ;CONFIG.SYS handle
-   378 00000048 ????????????????    <1>     .lastLine       dq ?    ;Set if the last line is current
-   379 00000050 ????????????????    <1>     .linePtr        dq ?    ;Ptr to line buffer of line being processed
-   380 00000058 ????????????????    <1>     .driverBreak    dq ?    ;Ptr to the pathname terminator 
-   381 00000060 ????????????????    <1>     .breakChar      dq ?    ;Char that was replaced by null for terminator
-   382                              <1> endstruc
-   383                              <1> 
-   384                              <1> struc filename
-   385                              <1> ;8.3 File name struct
-   386 00000000 ????????????????    <1>     .fName  db 8 dup (?)
-   387 00000008 ??????              <1>     .fExt   db 3 dup (?)
-   388                              <1> endstruc
-   389                              <1> 
-   390                              <1> struc ffBlock   ;The structure of the Find First structure at the DTA
-   391 00000000 ??                  <1>     .driveNum   db ?  ;Drive we are searching on, 1 based number
-   392 00000001 <res Bh>            <1>     .template   db 11 dup (?) ;Search template (? meaning anything)
-   393 0000000C ??                  <1>     .attrib     db ?  ;Search attribute
-   394 0000000D ????????            <1>     .dirOffset  dd ?  ;32 byte entry within dir cluster
-   395 00000011 ????????            <1>     .parDirClus dd ?  ;Parent Directory Cluster number
-   396 00000015 ??                  <1>     .attribFnd  db ?  ;Attrib of file found
-   397 00000016 ????                <1>     .fileTime   dw ?  ;File time
-   398 00000018 ????                <1>     .fileDate   dw ?  ;File date
-   399 0000001A ????????            <1>     .fileSize   dd ?  ;Number of bytes
-   400 0000001E <res Dh>            <1>     .asciizName db 13 dup (?) ;ASCIIZ name with dot and terminating nul
-   401                              <1> endstruc
-   402                              <1> 
-   403                              <1> dfltJFTsize equ 20  ;Default size of PSP JFT
-   404                              <1> struc psp
-   405 00000000 ????                <1>     .return     db 2 dup (?)  ;Should always be CDh 20h, same place as DOS
-   406 00000002 ????????            <1>     .allocSize  dd ?  ;Number of paras in init alloc or when exiting as TSR.
-   407 00000006 ????????            <1>                 dd ?  ;Reserved 4 bytes
-   408 0000000A ????????????????    <1>     .oldInt22h  dq ?  ;Int 22h pointer on overlay load
-   409 00000012 ????????????????    <1>     .oldInt23h  dq ?  ;Int 23h pointer on overlay load
-   410 0000001A ????????????????    <1>     .oldInt24h  dq ?  ;Int 24h pointer on overlay load
-   411 00000022 ????????????????    <1>     .parentPtr  dq ?  ;Pointer to parent process PSP
-   412                              <1> ;If jftSize > 20, then the QWORD at .jobFileTbl becomes a pointer
-   413                              <1> ; to the actual in use JFT and the other 12 bytes are left undefined.
-   414                              <1> ;If jftSize < 20 (DOS will never set it so), then it is considered as 20
-   415                              <1> ;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
-   416                              <1> ; always used and jftSize.
-   417                              <1>     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
-   418 0000002A <res 14h>           <1>     .jobFileTbl db dfltJFTsize dup (?) ;Main File handle array, JFT
-   419 0000003E ????????????????    <1>     .envPtr     dq ?  ;Pointer to the environment
-   420 00000046 ????????????????    <1>     .rspPtr     dq ?  ;Pointer to rsp on entry to Int 21h
-   421 0000004E ????                <1>     .jftSize    dw ?  ;JFT array size, 20 => PSP JFT in use
-   422 00000050 ??????              <1>     .unixEntry  db 3 dup (?)  ;Must always be CDh 21h CBh, same place as DOS
-   423 00000053 ????????????????    <1>     .prevPSP    dq ?  ;Pointer to the previous PSP in chain (used by SHARE)
-   424 0000005B ??                  <1>                 db ?  ;Reserved byte
-   425                              <1> ;The below are in the same place as in DOS.
-   426                              <1>     .cmdLineArgPtr: ;Symbol for future use
-   427 0000005C <res 10h>           <1>     .fcb1       db 16 dup (?)  ;First FCB,    argument 1 
-   428 0000006C <res 14h>           <1>     .fcb2       db 20 dup (?)  ;Second FCB,   argument 2
-   429                              <1>     .dta:   ;Pointer to the default DTA in the PSP
-   430 00000080 ??                  <1>     .parmList   db ?   ;Number of characters in command tail
-   431 00000081 <res 7Fh>           <1>     .progTail   db 127 dup (?) ;Default DTA/Program tail
-   432                              <1> endstruc
-   433                              <1> 
-   434                              <1> struc clkStruc
-   435 00000000 ????                <1>     .dateWord   dw ?
-   436 00000002 ??                  <1>     .minutes    db ?
-   437 00000003 ??                  <1>     .hours      db ?
-   438 00000004 ??                  <1>     .hseconds   db ?  ;Hundreths of seconds
-   439 00000005 ??                  <1>     .seconds    db ?
-   440                              <1> endstruc
-   441                              <1> 
+   323                              <1> 
+   324                              <1> memFirstFit     equ 0   ;First free block goes to application
+   325                              <1> memBestFit      equ 1   ;Block whos size closest matches requirement
+   326                              <1> memLastFit      equ 2   ;Last free block goes to application
+   327                              <1> 
+   328                              <1> ;Owner = Para aligned address => Owning application PSP
+   329                              <1> ;...To consider...
+   330                              <1> ;Owner = Non-para aligned address => Error? Should maybe lock up system?
+   331                              <1> ;blockSize counts the number of paragraphs FROM .program TO THE NEXT MCB!
+   332                              <1> ;------------------------------------------------------------------------;
+   333                              <1> ; For Int 21h, the callers registers are saved on their stack in the 
+   334                              <1> ; following order, thus allowing for return values to be placed in the 
+   335                              <1> ; registers by accessing the caller register stack frame.
+   336                              <1> ;------------------------------------------------------------------------;
+   337                              <1> struc callerFrame
+   338 00000000 ????????????????    <1>     .rax    dq ?  ;Bottom of frame, pointer to rax saved in oldRSP
+   339 00000008 ????????????????    <1>     .rbx    dq ?    
+   340 00000010 ????????????????    <1>     .rcx    dq ?
+   341 00000018 ????????????????    <1>     .rdx    dq ?
+   342 00000020 ????????????????    <1>     .rsi    dq ?
+   343 00000028 ????????????????    <1>     .rdi    dq ?
+   344 00000030 ????????????????    <1>     .rbp    dq ?
+   345 00000038 ????????????????    <1>     .r8     dq ?  ;To be removed if truly not needed
+   346 00000040 ????????????????    <1>     .r9     dq ?
+   347                              <1> ;Pushed by Processor when invoked via Interrupt
+   348 00000048 ????????????????    <1>     .rip    dq ?
+   349 00000050 ????????????????    <1>     .cs     dq ?
+   350 00000058 ????????????????    <1>     .flags  dq ?
+   351                              <1> endstruc
+   352                              <1> 
+   353                              <1> struc dpl
+   354                              <1> ;DOS parameter list, pointer to this stack is passed to DOS in rdx on
+   355                              <1> ; server calls
+   356 00000000 ????????????????    <1>     .rax    dq ?
+   357 00000008 ????????????????    <1>     .rbx    dq ?
+   358 00000010 ????????????????    <1>     .rcx    dq ?
+   359 00000018 ????????????????    <1>     .rdx    dq ?
+   360 00000020 ????????????????    <1>     .rsi    dq ?
+   361 00000028 ????????????????    <1>     .rdi    dq ?
+   362 00000030 ????????????????    <1>     .r8     dq ?
+   363 00000038 ????????????????    <1>     .r9     dq ?
+   364 00000040 ????????????????    <1>     .align  dq ?
+   365 00000048 ????????????????    <1>     .compID dq ?  ;Computer id, low word used only
+   366 00000050 ????????????????    <1>     .procID dq ?  ;Process ID
+   367                              <1> endstruc
+   368                              <1> 
+   369                              <1> struc cfgFrame  ;Frame used for config.sys parsing
+   370 00000000 ????????????????    <1>     .oldRBP         dq ?    ;Ptr to DOSSEG
+   371 00000008 ????????????????    <1>     .newBuffers     dq ?    ;New buffers value
+   372 00000010 ????????????????    <1>     .newSFTVal      dq ?
+   373 00000018 ????????????????    <1>     .newFCBSVal     dq ?
+   374 00000020 ????????????????    <1>     .newProtFCBSVal dq ?    ;Number of protected FCBS
+   375 00000028 ????????????????    <1>     .newLastdrive   dq ?
+   376 00000030 ????????????????    <1>     .newStacks      dq ?    ;Ignored for now
+   377 00000038 ????????????????    <1>     .newStackSize   dq ?    ;Ignored for now
+   378 00000040 ????????????????    <1>     .cfgHandle      dq ?    ;CONFIG.SYS handle
+   379 00000048 ????????????????    <1>     .lastLine       dq ?    ;Set if the last line is current
+   380 00000050 ????????????????    <1>     .linePtr        dq ?    ;Ptr to line buffer of line being processed
+   381 00000058 ????????????????    <1>     .driverBreak    dq ?    ;Ptr to the pathname terminator 
+   382 00000060 ????????????????    <1>     .breakChar      dq ?    ;Char that was replaced by null for terminator
+   383                              <1> endstruc
+   384                              <1> 
+   385                              <1> struc filename
+   386                              <1> ;8.3 File name struct
+   387 00000000 ????????????????    <1>     .fName  db 8 dup (?)
+   388 00000008 ??????              <1>     .fExt   db 3 dup (?)
+   389                              <1> endstruc
+   390                              <1> 
+   391                              <1> struc ffBlock   ;The structure of the Find First structure at the DTA
+   392 00000000 ??                  <1>     .driveNum   db ?  ;Drive we are searching on, 1 based number
+   393 00000001 <res Bh>            <1>     .template   db 11 dup (?) ;Search template (? meaning anything)
+   394 0000000C ??                  <1>     .attrib     db ?  ;Search attribute
+   395 0000000D ????????            <1>     .dirOffset  dd ?  ;32 byte entry within dir cluster
+   396 00000011 ????????            <1>     .parDirClus dd ?  ;Parent Directory Cluster number
+   397 00000015 ??                  <1>     .attribFnd  db ?  ;Attrib of file found
+   398 00000016 ????                <1>     .fileTime   dw ?  ;File time
+   399 00000018 ????                <1>     .fileDate   dw ?  ;File date
+   400 0000001A ????????            <1>     .fileSize   dd ?  ;Number of bytes
+   401 0000001E <res Dh>            <1>     .asciizName db 13 dup (?) ;ASCIIZ name with dot and terminating nul
+   402                              <1> endstruc
+   403                              <1> 
+   404                              <1> dfltJFTsize equ 20  ;Default size of PSP JFT
+   405                              <1> struc psp
+   406 00000000 ????                <1>     .return     db 2 dup (?)  ;Should always be CDh 20h, same place as DOS
+   407 00000002 ????????            <1>     .allocSize  dd ?  ;Number of paras in init alloc or when exiting as TSR.
+   408 00000006 ????????            <1>                 dd ?  ;Reserved 4 bytes
+   409 0000000A ????????????????    <1>     .oldInt22h  dq ?  ;Int 22h pointer on overlay load
+   410 00000012 ????????????????    <1>     .oldInt23h  dq ?  ;Int 23h pointer on overlay load
+   411 0000001A ????????????????    <1>     .oldInt24h  dq ?  ;Int 24h pointer on overlay load
+   412 00000022 ????????????????    <1>     .parentPtr  dq ?  ;Pointer to parent process PSP
+   413                              <1> ;If jftSize > 20, then the QWORD at .jobFileTbl becomes a pointer
+   414                              <1> ; to the actual in use JFT and the other 12 bytes are left undefined.
+   415                              <1> ;If jftSize < 20 (DOS will never set it so), then it is considered as 20
+   416                              <1> ;If the user tries to reduce handle count to 20 or less, then the PSP JFT is 
+   417                              <1> ; always used and jftSize.
+   418                              <1>     .externalJFTPtr:    ;Ptr to external JFT array (first byte AFTER MCB)
+   419 0000002A <res 14h>           <1>     .jobFileTbl db dfltJFTsize dup (?) ;Main File handle array, JFT
+   420 0000003E ????????????????    <1>     .envPtr     dq ?  ;Pointer to the environment
+   421 00000046 ????????????????    <1>     .rspPtr     dq ?  ;Pointer to rsp on entry to Int 21h
+   422 0000004E ????                <1>     .jftSize    dw ?  ;JFT array size, 20 => PSP JFT in use
+   423 00000050 ??????              <1>     .unixEntry  db 3 dup (?)  ;Must always be CDh 21h CBh, same place as DOS
+   424 00000053 ????????????????    <1>     .prevPSP    dq ?  ;Pointer to the previous PSP in chain (used by SHARE)
+   425 0000005B ??                  <1>                 db ?  ;Reserved byte
+   426                              <1> ;The below are in the same place as in DOS.
+   427                              <1>     .cmdLineArgPtr: ;Symbol for future use
+   428 0000005C <res 10h>           <1>     .fcb1       db 16 dup (?)  ;First FCB,    argument 1 
+   429 0000006C <res 14h>           <1>     .fcb2       db 20 dup (?)  ;Second FCB,   argument 2
+   430                              <1>     .dta:   ;Pointer to the default DTA in the PSP
+   431 00000080 ??                  <1>     .parmList   db ?   ;Number of characters in command tail
+   432 00000081 <res 7Fh>           <1>     .progTail   db 127 dup (?) ;Default DTA/Program tail
+   433                              <1> endstruc
+   434                              <1> 
+   435                              <1> struc clkStruc
+   436 00000000 ????                <1>     .dateWord   dw ?
+   437 00000002 ??                  <1>     .minutes    db ?
+   438 00000003 ??                  <1>     .hours      db ?
+   439 00000004 ??                  <1>     .hseconds   db ?  ;Hundreths of seconds
+   440 00000005 ??                  <1>     .seconds    db ?
+   441                              <1> endstruc
    442                              <1> 
-   443                              <1> struc extCtryStruc
-   444 00000000 ??                  <1>     .infoIDCode db ?    ;Information ID code (01h)
-   445 00000001 ????                <1>     .strucSize  dw ?    ;Length of the structure  (42 or less)
-   446 00000003 ????                <1>     .ctryID     dw ?    ;Country ID number
-   447 00000005 ????                <1>     .cpNumber   dw ?    ;Code page number
-   448 00000007 ????                <1>     .dtfmt      dw ?    ;Date time format (2 bytes)
-   449                              <1>                         ;0 = month day year hh:mm:ss
-   450                              <1>                         ;1 = day month year hh:mm:ss
-   451                              <1>                         ;2 = year month day hh:mm:ss
-   452 00000009 ??????????          <1>     .curr       db 5 dup (?)   ;ASCIIZ Currency symbol (5 chars)
-   453 0000000E ????                <1>     .thouSep    db 2 dup (?)   ;ASCIIZ Thousands separator
-   454 00000010 ????                <1>     .dcmlSep    db 2 dup (?)   ;ASCIIZ Decimal separator
-   455 00000012 ????                <1>     .dateSep    db 2 dup (?)   ;ASCIIZ Date separator
-   456 00000014 ????                <1>     .timeSep    db 2 dup (?)   ;ASCIIZ Time separator
-   457 00000016 ??                  <1>     .currFmt    db ?    ;Currency Format
-   458                              <1>                         ;0 = Symbol leads, without space
-   459                              <1>                         ;1 = Symbol follows, without space
-   460                              <1>                         ;2 = Symbol leads, one space
-   461                              <1>                         ;3 = Symbol follows, one space
-   462                              <1>                         ;4 = Symbol replace decimal separator
-   463 00000017 ??                  <1>     .digtdpt    db ?    ;Number of digits after the decimal point
-   464 00000018 ??                  <1>     .timefmt    db ?    ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
-   465 00000019 ????????????????    <1>     .mapptr     db 8 dup (?)  ;Case map address (0 is nulptr), needs fixing up
-   466 00000021 ????                <1>     .dataSep    db 2 dup (?)  ;Data list separator
-   467 00000023 <res Ah>            <1>     .resv       db 10 dup (?) ;Reserve 10 bytes
-   468                              <1> endstruc
-   469                              <1> 
-   470                              <1> struc countryStruc
-   471 00000000 ????                <1>     .dtfmt      dw ?    ;Date time format (2 bytes)
-   472                              <1>                         ;0 = month day year hh:mm:ss
-   473                              <1>                         ;1 = day month year hh:mm:ss
-   474                              <1>                         ;2 = year month day hh:mm:ss
-   475 00000002 ??????????          <1>     .curr       db 5 dup (?)   ;ASCIIZ Currency symbol (5 chars)
-   476 00000007 ????                <1>     .thouSep    db 2 dup (?)   ;ASCIIZ Thousands separator
-   477 00000009 ????                <1>     .dcmlSep    db 2 dup (?)   ;ASCIIZ Decimal separator
-   478 0000000B ????                <1>     .dateSep    db 2 dup (?)   ;ASCIIZ Date separator
-   479 0000000D ????                <1>     .timeSep    db 2 dup (?)   ;ASCIIZ Time separator
-   480 0000000F ??                  <1>     .currFmt    db ?    ;Currency Format
-   481                              <1>                         ;0 = Symbol leads, without space
-   482                              <1>                         ;1 = Symbol follows, without space
-   483                              <1>                         ;2 = Symbol leads, one space
-   484                              <1>                         ;3 = Symbol follows, one space
-   485                              <1>                         ;4 = Symbol replace decimal separator
-   486 00000010 ??                  <1>     .digtdpt    db ?    ;Number of digits after the decimal point
-   487 00000011 ??                  <1>     .timefmt    db ?    ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
-   488 00000012 ????????????????    <1>     .mapptr     db 8 dup (?)  ;Case map address (0 is nulptr), needs fixing up
-   489 0000001A ????                <1>     .dataSep    db 2 dup (?)  ;Data list separator
-   490 0000001C <res Ah>            <1>     .resv       db 10 dup (?) ;Reserve 10 bytes
-   491                              <1> endstruc
-   492                              <1> 
-   493                              <1> ;Critical Error AH bitfield equates
-   494                              <1> critRead    equ 0h
-   495                              <1> critWrite   equ 1h
-   496                              <1> critDOS     equ 0h
-   497                              <1> critFAT     equ 2h
-   498                              <1> critDir     equ 4h
-   499                              <1> critData    equ 6h
-   500                              <1> critFailOK  equ 8h
-   501                              <1> critRetryOK equ 10h
-   502                              <1> critIgnorOK equ 20h
-   503                              <1> critCharDev equ 80h
-   504                              <1> 
-   505                              <1> critIgnore  equ 0
-   506                              <1> critRetry   equ 1
-   507                              <1> critAbort   equ 2
-   508                              <1> critFail    equ 3
-   509                              <1> 
-   510                              <1> ;MISC ASCII control chars
-   511                              <1> NUL equ 00h ;^@         | ASCII Null
-   512                              <1> ETX equ 03h ;^C         | ASCII Break (End of Text) 
-   513                              <1> ACK equ 06h ;^F         | ASCII Acknowledgement
-   514                              <1> BEL equ 07h ;^G         | ASCII Bell
-   515                              <1> BSP equ 08h ;^H         | ASCII Backspace
-   516                              <1> TAB equ 09h ;^I         | ASCII Horizontal Tab
-   517                              <1> LF  equ 0Ah ;^J         | ASCII Line Feed
-   518                              <1> CR  equ 0Dh ;^M         | ASCII Carriage Return
-   519                              <1> DLE equ 10h ;^P         | ASCII Data Link End (Toggle Print Echo)
-   520                              <1> DC3 equ 13h ;^S         | ASCII Device Control 3 (Toggle Scroll Lock)
-   521                              <1> DC4 equ 14h ;^T         | ASCII Device Control 4
-   522                              <1> NAK equ 15h ;^U         | ASCII Negative Acknowledgement
-   523                              <1> ETB equ 17h ;^W         | ASCII End of Transmission Block
-   524                              <1> EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
-   525                              <1> ESC equ 1Bh ;           | ASCII Escape char, used for ANSI.SYS
-   526                              <1> SPC equ 20h ;Printable  | ASCII Space
-   527                              <1> ;This last one is NEVER printed with a caret as it is a console control char
-   528                              <1> DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
-   529                              <1> 
-   530                              <1> asciiCaret  equ 20h ;Used to check which chars need to be printed with caret
-   531                              <1> ;Extended Ascii Codes
-   532                              <1> eF1     equ 3Bh ;F1 second byte
-   533                              <1> eF2     equ 3Ch ;F2 second byte
-   534                              <1> eF3     equ 3Dh ;F3 second byte
-   535                              <1> eF4     equ 3Eh ;F4 second byte
-   536                              <1> eF5     equ 3Fh ;F5 second byte
-   537                              <1> eF6     equ 40h ;F6 second byte
-   538                              <1> eF7     equ 41h ;F7 second byte
-   539                              <1> eCursL  equ 4Bh ;Cursor Left second byte
-   540                              <1> eCursR  equ 4Dh ;Cursor Right second byte
-   541                              <1> eIns    equ 52h ;Insert second byte
-   542                              <1> eDel    equ 53h ;DEL second byte (not necessarily delete key)
-   543                              <1> 
-   544                              <1> ;Default Configuration for the system
-   545                              <1> 
-   546                              <1> buffersDefault  equ 30
-   547                              <1> filesDefault    equ 20
-   548                              <1> fcbsDefault     equ 4
-   549                              <1> safeFcbsDeflt   equ 0
-   550                              <1> lastDriveDeflt  equ 5   
-   551                              <1> 
-   552                              <1> ;ASCII char property table equates. If such a bit is clear in signature in table
-   553                              <1> ; then the char has this property.
-   554                              <1> badChar     equ 1   ;Bad ASCIIZ filename char
-   555                              <1> termChar    equ 2   ;Terminator char type
-   556                              <1> sepChar     equ 4   ;Separator char type
-   557                              <1> badFCBChar  equ 8   ;FCB filename char
+   443                              <1> 
+   444                              <1> struc extCtryStruc
+   445 00000000 ??                  <1>     .infoIDCode db ?    ;Information ID code (01h)
+   446 00000001 ????                <1>     .strucSize  dw ?    ;Length of the structure  (42 or less)
+   447 00000003 ????                <1>     .ctryID     dw ?    ;Country ID number
+   448 00000005 ????                <1>     .cpNumber   dw ?    ;Code page number
+   449 00000007 ????                <1>     .dtfmt      dw ?    ;Date time format (2 bytes)
+   450                              <1>                         ;0 = month day year hh:mm:ss
+   451                              <1>                         ;1 = day month year hh:mm:ss
+   452                              <1>                         ;2 = year month day hh:mm:ss
+   453 00000009 ??????????          <1>     .curr       db 5 dup (?)   ;ASCIIZ Currency symbol (5 chars)
+   454 0000000E ????                <1>     .thouSep    db 2 dup (?)   ;ASCIIZ Thousands separator
+   455 00000010 ????                <1>     .dcmlSep    db 2 dup (?)   ;ASCIIZ Decimal separator
+   456 00000012 ????                <1>     .dateSep    db 2 dup (?)   ;ASCIIZ Date separator
+   457 00000014 ????                <1>     .timeSep    db 2 dup (?)   ;ASCIIZ Time separator
+   458 00000016 ??                  <1>     .currFmt    db ?    ;Currency Format
+   459                              <1>                         ;0 = Symbol leads, without space
+   460                              <1>                         ;1 = Symbol follows, without space
+   461                              <1>                         ;2 = Symbol leads, one space
+   462                              <1>                         ;3 = Symbol follows, one space
+   463                              <1>                         ;4 = Symbol replace decimal separator
+   464 00000017 ??                  <1>     .digtdpt    db ?    ;Number of digits after the decimal point
+   465 00000018 ??                  <1>     .timefmt    db ?    ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
+   466 00000019 ????????????????    <1>     .mapptr     db 8 dup (?)  ;Case map address (0 is nulptr), needs fixing up
+   467 00000021 ????                <1>     .dataSep    db 2 dup (?)  ;Data list separator
+   468 00000023 <res Ah>            <1>     .resv       db 10 dup (?) ;Reserve 10 bytes
+   469                              <1> endstruc
+   470                              <1> 
+   471                              <1> struc countryStruc
+   472 00000000 ????                <1>     .dtfmt      dw ?    ;Date time format (2 bytes)
+   473                              <1>                         ;0 = month day year hh:mm:ss
+   474                              <1>                         ;1 = day month year hh:mm:ss
+   475                              <1>                         ;2 = year month day hh:mm:ss
+   476 00000002 ??????????          <1>     .curr       db 5 dup (?)   ;ASCIIZ Currency symbol (5 chars)
+   477 00000007 ????                <1>     .thouSep    db 2 dup (?)   ;ASCIIZ Thousands separator
+   478 00000009 ????                <1>     .dcmlSep    db 2 dup (?)   ;ASCIIZ Decimal separator
+   479 0000000B ????                <1>     .dateSep    db 2 dup (?)   ;ASCIIZ Date separator
+   480 0000000D ????                <1>     .timeSep    db 2 dup (?)   ;ASCIIZ Time separator
+   481 0000000F ??                  <1>     .currFmt    db ?    ;Currency Format
+   482                              <1>                         ;0 = Symbol leads, without space
+   483                              <1>                         ;1 = Symbol follows, without space
+   484                              <1>                         ;2 = Symbol leads, one space
+   485                              <1>                         ;3 = Symbol follows, one space
+   486                              <1>                         ;4 = Symbol replace decimal separator
+   487 00000010 ??                  <1>     .digtdpt    db ?    ;Number of digits after the decimal point
+   488 00000011 ??                  <1>     .timefmt    db ?    ;Time format, Bit 0 = 0 => 12 hour, = 1 => 24 hour clock
+   489 00000012 ????????????????    <1>     .mapptr     db 8 dup (?)  ;Case map address (0 is nulptr), needs fixing up
+   490 0000001A ????                <1>     .dataSep    db 2 dup (?)  ;Data list separator
+   491 0000001C <res Ah>            <1>     .resv       db 10 dup (?) ;Reserve 10 bytes
+   492                              <1> endstruc
+   493                              <1> 
+   494                              <1> ;Critical Error AH bitfield equates
+   495                              <1> critRead    equ 0h
+   496                              <1> critWrite   equ 1h
+   497                              <1> critDOS     equ 0h
+   498                              <1> critFAT     equ 2h
+   499                              <1> critDir     equ 4h
+   500                              <1> critData    equ 6h
+   501                              <1> critFailOK  equ 8h
+   502                              <1> critRetryOK equ 10h
+   503                              <1> critIgnorOK equ 20h
+   504                              <1> critCharDev equ 80h
+   505                              <1> 
+   506                              <1> critIgnore  equ 0
+   507                              <1> critRetry   equ 1
+   508                              <1> critAbort   equ 2
+   509                              <1> critFail    equ 3
+   510                              <1> 
+   511                              <1> ;MISC ASCII control chars
+   512                              <1> NUL equ 00h ;^@         | ASCII Null
+   513                              <1> ETX equ 03h ;^C         | ASCII Break (End of Text) 
+   514                              <1> ACK equ 06h ;^F         | ASCII Acknowledgement
+   515                              <1> BEL equ 07h ;^G         | ASCII Bell
+   516                              <1> BSP equ 08h ;^H         | ASCII Backspace
+   517                              <1> TAB equ 09h ;^I         | ASCII Horizontal Tab
+   518                              <1> LF  equ 0Ah ;^J         | ASCII Line Feed
+   519                              <1> CR  equ 0Dh ;^M         | ASCII Carriage Return
+   520                              <1> DLE equ 10h ;^P         | ASCII Data Link End (Toggle Print Echo)
+   521                              <1> DC3 equ 13h ;^S         | ASCII Device Control 3 (Toggle Scroll Lock)
+   522                              <1> DC4 equ 14h ;^T         | ASCII Device Control 4
+   523                              <1> NAK equ 15h ;^U         | ASCII Negative Acknowledgement
+   524                              <1> ETB equ 17h ;^W         | ASCII End of Transmission Block
+   525                              <1> EOF equ 1Ah ;^Z         | ASCII Substitute character (End of File)
+   526                              <1> ESC equ 1Bh ;           | ASCII Escape char, used for ANSI.SYS
+   527                              <1> SPC equ 20h ;Printable  | ASCII Space
+   528                              <1> ;This last one is NEVER printed with a caret as it is a console control char
+   529                              <1> DEL equ 7Fh ;^?         | ASCII Rubout (Del char and dec cursor)
+   530                              <1> 
+   531                              <1> asciiCaret  equ 20h ;Used to check which chars need to be printed with caret
+   532                              <1> ;Extended Ascii Codes
+   533                              <1> eF1     equ 3Bh ;F1 second byte
+   534                              <1> eF2     equ 3Ch ;F2 second byte
+   535                              <1> eF3     equ 3Dh ;F3 second byte
+   536                              <1> eF4     equ 3Eh ;F4 second byte
+   537                              <1> eF5     equ 3Fh ;F5 second byte
+   538                              <1> eF6     equ 40h ;F6 second byte
+   539                              <1> eF7     equ 41h ;F7 second byte
+   540                              <1> eCursL  equ 4Bh ;Cursor Left second byte
+   541                              <1> eCursR  equ 4Dh ;Cursor Right second byte
+   542                              <1> eIns    equ 52h ;Insert second byte
+   543                              <1> eDel    equ 53h ;DEL second byte (not necessarily delete key)
+   544                              <1> 
+   545                              <1> ;Default Configuration for the system
+   546                              <1> 
+   547                              <1> buffersDefault  equ 30
+   548                              <1> filesDefault    equ 20
+   549                              <1> fcbsDefault     equ 4
+   550                              <1> safeFcbsDeflt   equ 0
+   551                              <1> lastDriveDeflt  equ 5   
+   552                              <1> 
+   553                              <1> ;ASCII char property table equates. If such a bit is clear in signature in table
+   554                              <1> ; then the char has this property.
+   555                              <1> badChar     equ 1   ;Bad ASCIIZ filename char
+   556                              <1> termChar    equ 2   ;Terminator char type
+   557                              <1> sepChar     equ 4   ;Separator char type
+   558                              <1> badFCBChar  equ 8   ;FCB filename char
      9                                  %include "./inc/dosError.inc"
      1                              <1> ;DOS Error codes
      2                              <1> 

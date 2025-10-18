@@ -146,12 +146,13 @@ struc sft
     .wDeviceInfo dw ?    ;Includes unit number if a block device
     .qPtr        dq ?    ;IF char, ptr to device driver header, ELSE DPBptr
     .dStartClust dd ?    ;Start cluster of file pointed to by SFT entry
+.dTimeDate:              ;Symbol to access time/date together
     .wTime       dw ?    ;File Time, updated on open and writes
     .wDate       dw ?    ;File Date, updated on open and writes
     .dFileSize   dd ?    ;File Size, in bytes
     .dCurntOff   dd ?    ;Current Offset pointed to by SFT entry, in bytes
-    .dRelClust   dd ?    ;Rel cluster pointed to by SFT entry
-    .dAbsClusr   dd ?    ;Absolute cluster pointed to by SFT entry
+    .dRelClust   dd ?    ;File relative cluster pointed to by SFT entry
+    .dAbsClust   dd ?    ;Absolute disk cluster pointed to by SFT entry
     .qDirSect    dq ?    ;Abs number of sector containing directory entry 
     .bNumDirEnt  db ?    ;Directory entry within dir sector (byte offset/32)
     .sFileName   db 11 dup (?)   ;8.3 Filename

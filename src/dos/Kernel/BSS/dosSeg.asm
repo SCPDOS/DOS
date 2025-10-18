@@ -123,8 +123,8 @@ shareHooks:
     openFileListShare   dq ?  ;Share to get open file list entry.
     updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.    UNUSED
     fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.   UNUSED
-    closeDupFileShare   dq ?  ;Share to close file if dup for proc.
-    closeNewHdlShare    dq ?  ;Share to close hdls of rec opened file.
+    closeDupNetShare    dq ?  ;Share to close file if dup for proc.
+    renDelCloseShare    dq ?  ;Share to handle rename/delete correctly.
     updateDirShare      dq ?  ;Share to update dir info in SFT. 
 
 ;Create SFT header and corresponding array of five default sft entries

@@ -101,9 +101,9 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
     movzx eax, word [currentHdl]
-    call qword [closeDupFileShare]  ;Close Duplicate Handles if opened file! 
-    mov word [currentNdx], -1       ;Now reset the index back to -1
-    jmp extGoodExit ;Save ax and return OK
+    call qword [closeDupNetShare]
+    mov word [currentNdx], -1   ;Now reset the index back to -1
+    jmp extGoodExit             ;Save ax and return OK
 .errBadDeallocate:
 ;Now we deallocate the SFT entry in the JFT and SFT block
     mov rsi, qword [curHdlPtr]
@@ -1442,7 +1442,7 @@ checkExclusiveOwnFile:
     ;The following closes most recent shared handles referencing it
     ;Only if sharePSP, Requester NetID are equal and openMode not Compat
     ; mode and if there is precisely 1  
-    call qword [closeNewHdlShare]    
+    call qword [renDelCloseShare]    
     ;The close of the handle will only happen if there is 1 file referring to it
     lea rdi, scratchSFT
     call setCurrentSFT
@@ -1909,8 +1909,10 @@ buildSFTEntry:
     shl edx, 10h
     or eax, edx
     mov dword [rdi + sft.dStartClust], eax
-
+;Now further set the abs cluster to the start and rel cluster to 0
+    mov dword [rdi + sft.dAbsClust], eax
     xor eax, eax
+    mov dword [rdi + sft.dRelClust], eax
 ;Now set DeviceInfo to drive number and get the dpb for this disk file
     mov al, byte [workingDrv]
     or al, devDiskNoFlush  ;Dont flush until it is accessed
@@ -2867,7 +2869,7 @@ updateCurrentSFT:
 ;Down here for disk files only!
     push rax
     mov eax, dword [currClustD]
-    mov dword [rdi + sft.dAbsClusr], eax
+    mov dword [rdi + sft.dAbsClust], eax
     mov eax, dword [currClustF]
     mov dword [rdi + sft.dRelClust], eax
     mov eax, dword [currByteF]
