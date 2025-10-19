@@ -10,10 +10,10 @@ dosServer:  ;ah = 5Dh
     jbe .skip2
 .skip:
     mov rsi, rdx
-    mov rbx, qword [rsi + dpl.compID]   ;Low dword only used
-    mov dword [dReqNetID], ebx  ;Set the netID of the requester
-    mov rbx, qword [rsi + dpl.procID]
-    mov qword [serverPSP], rbx
+    mov rbx, qword [rsi + dpl.dMID]   ;Low dword only used
+    mov dword [dMID], ebx  ;Set the machine ID of the requester
+    mov rbx, qword [rsi + dpl.qPID]
+    mov qword [qPID], rbx
 .skip2:
     lea rbx, noOp   ;Push the ok function return address
     push rbx

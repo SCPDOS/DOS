@@ -35,7 +35,7 @@ functionDispatch:   ;Int 21h Main function dispatcher
 .fsbegin:
     call dosPushRegs ;Push the usual prologue registers
     mov qword [oldRBX], rbx ;Need to do this as I might switch stacks later
-    mov dword [dReqNetID], 0 ;Identify this as a local operation!
+    mov dword [dMID], 0     ;This machine is making this request!
     mov rax, qword [oldRSP]
     mov qword [oldoldRSP], rax
     inc byte [inDOS]    ;Increment in DOS flag

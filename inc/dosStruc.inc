@@ -158,7 +158,7 @@ struc sft
     .sFileName   db 11 dup (?)   ;8.3 Filename
 ;                       Share Vars
     .pNextSFT   dq ?    ;Ptr to the next SFT for this file in the chain
-    .dNetID     dd ?    ;Network ID of the machine (VM) that opened this file
+    .dMID       dd ?    ;Machine ID of the machine (VM) that opened this file
     .qPID       dq ?    ;Proc ID (PSP) of the program which opened this file
     .pMFT       dq ?    ;Pointer to the MFT for this file. 0 means no MFT
 endstruc
@@ -362,8 +362,8 @@ struc dpl
     .r8     dq ?
     .r9     dq ?
     .align  dq ?
-    .compID dq ?  ;Computer id, low word used only
-    .procID dq ?  ;Process ID
+    .dMID   dq ?  ;Machine id, low dword used only
+    .qPID   dq ?  ;Process ID
 endstruc
 
 struc cfgFrame  ;Frame used for config.sys parsing

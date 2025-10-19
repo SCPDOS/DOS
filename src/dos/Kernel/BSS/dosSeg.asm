@@ -180,8 +180,10 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
 ;SDA, needs to be replaced between processes
 sdaDOSSwap:
     oldRAX      dq ?  ;Store rax on entering Int21h or returning Int 23h
-    serverPSP   dq ?  ;PSP of prog making server request, used by net & share
-    dReqNetID   dd ?  ;Requesters' (VM) Network ID. 0 means local machine.
+;Next two vars contain info for networking and sharing software to identify
+; the requester of the call.
+    qPID        dq ?  ;PSP of process making server request. 0 = current psp
+    dMID        dd ?  ;Requesters' (VM) Network ID. 0 = local machine
     firstMCB    dq ?  ;First fit MCB for request
     bestMCB     dq ?  ;Best fit MCB for request
     lastMCB     dq ?  ;Last fit MCB for request

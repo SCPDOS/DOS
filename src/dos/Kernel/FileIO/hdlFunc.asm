@@ -2949,11 +2949,11 @@ findFreeSFT:
     jne .gotoNextNdx
     ;Here, check that if this sft is owned by the caller and repurpose it.
     push rbx
-    mov rbx, qword [serverPSP]
+    mov rbx, qword [qPID]
     cmp qword [rdi + sft.qPID], rbx
     jne .netGoToNextNdx
-    mov ebx, dword [dReqNetID]
-    cmp dword [rdi + sft.dNetID], ebx
+    mov ebx, dword [dMID]
+    cmp dword [rdi + sft.dMID], ebx
 .netGoToNextNdx:
     pop rbx
     je .sftFound
@@ -2963,10 +2963,10 @@ findFreeSFT:
 .sftFound:
     push rbx
     mov word [rdi + sft.wNumHandles], -1    ;Mark as repurposing!
-    mov rbx, qword [serverPSP]
+    mov rbx, qword [qPID]
     mov qword [rdi + sft.qPID], rbx
-    mov ebx, dword [dReqNetID]
-    mov dword [rdi + sft.dNetID], ebx
+    mov ebx, dword [dMID]
+    mov dword [rdi + sft.dMID], ebx
     pop rbx
     clc
     return
@@ -3044,8 +3044,8 @@ getSFTPtr:
     call derefSFTPtr
     retc    ;Return if carry
     push rax
-    mov eax, dword [dReqNetID]
-    cmp eax, dword [rdi + sft.dNetID]
+    mov eax, dword [dMID]
+    cmp eax, dword [rdi + sft.dMID]
     pop rax
     rete
     mov al, errBadHdl   ;Error code
