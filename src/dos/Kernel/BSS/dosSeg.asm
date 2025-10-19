@@ -153,8 +153,7 @@ vConBuf:    ;Proper buffer symbol
 
     allocStrat  db ?  ;Allocation strategy. First, Best or Last fit
 ;Server stuff. Default to all zeros (blank)
-    shareFlag   db ?  ;Sharing flag, set to 0 for now (future expansion)
-    ;When share is loaded, this flag is set to -1 !!!!!
+    shareFlag   db ?  ;SHARE loaded flag. -1 means loaded, 0 means not.
     serverCnt   db ?  ;Increments on each 21h/5E01h call
     machineName db 16 dup (?) ;Machine name (Set via 21h/5E01h) (set to SPC)    
 ;Swappable Data Area

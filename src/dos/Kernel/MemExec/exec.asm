@@ -326,6 +326,8 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;Now we section pad. Once aligned, that is the program base address!
     ;push rax
     ;mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+    ;cmp ecx, 1
+    ;je .skipSecAlign
     ;dec ecx ;Turn into a mask
     ;and rax, rcx    ;Compute ptr modulo mask
     ;inc ecx
@@ -333,6 +335,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     ;pop rdi
     ;xor eax, eax
     ;rep stosb
+;.skipSecAlign:
     ;mov qword [rbp - execFrame.pProgBase], rdi
     ;ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
 
@@ -445,9 +448,14 @@ loadExecChild:     ;ah = 4Bh, EXEC
     jne .badFmtErr
     ;Data read ok, now fill in any zeros needed
     add rdi, rax    ;Move rdi forwards by that amount at least
-
+;Check if we have an alignment requirement. 1 means skip. 0 is error.
+    mov eax, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
+    test eax, eax   ;If 0, error. This shouldnt ever happen.
+    jz .badFmtErr
+    dec eax
+    jz .gotoNextSection   ;If 1, skip
+;Else, here do section padding
     push rcx
-    ;Here do section padding
     mov rax, rdi    ;Get the current address
     mov ecx, dword [exeHdrSpace + imageFileOptionalHeader.dSectionAlignment]
     dec ecx ;Turn into a mask

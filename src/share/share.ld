@@ -1,47 +1,31 @@
-/*Linker script for DOS*/
+/*Linker script for SHARE*/
+/*Order of module linkage: DOSSEG -> SHAREBSS -> SHARECODE -> SHAREINIT*/
 
-/*Order of module linkage: TOP -> OEMINIT -> SYSINIT -> DOS -> Drivers -> EOF*/
-
+OUTPUT_ARCH(i386:x86-64)
+OUTPUT_FORMAT("pei-x86-64")
+ENTRY(ep)
 
 SECTIONS {
-    .text : {
-
+    __resstart = .;
+    bss$r 0x0 (NOLOAD): {
+        ./bin/share.obj(bss$r)
     }
 
-    oem$ 0x0: {
-        ./bin/oem.obj
+    code$r ALIGN(0x4) : {
+        ./bin/share.obj(code$r)
+    }
+    __resend = .;
+
+/*The sections below are all ejected at load time*/
+
+    code$i ALIGN(0x4) : {
+        ./bin/share.obj(code$i)
     }
 
-    sys$ BLOCK(1): {
-        ./bin/sys.obj(stext)
-        ./bin/sys.obj(sdata)
+    .text ALIGN(0x4) : {
+        /**/
     }
-
-    dosResStart = . ;
-    
-    /*--------------------------------------------*/
-    /* Addresses start afresh in the module below */
-    /*--------------------------------------------*/
-
-    dos$bss 0x0 (NOLOAD): {
-        ./bin/krn.obj(dBSS)   
-    }
-
-    dos$ BLOCK(1) : {
-        ./bin/krn.obj(dtext)
-    }
-
-    drv$ BLOCK(1) : {
-        /* Ensure the segments in the driver are in the right order*/
-        drv$_start = .; /*Used by SYSINIT to get a ptr to the header*/
-        ./bin/drv.obj(kDrvDat)
-        ./bin/drv.obj(kDrvText)
-        dosResLen = .;          /*End of resident code and data*/
-    }
-
-    drv$bss (NOLOAD):{
-        ./bin/drv.obj(kDrvBSS)
-    }
-
-    dosEnd = ALIGN(16) ; /*Get the para aligned vptr to end of alloc*/
 }
+
+/*Length of the resident section in paragraphs rounded up*/
+resLenParas = (((__resend - __resstart) + 0x0F) >> 4) ;

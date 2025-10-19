@@ -7,27 +7,27 @@ LINKER  := ${BINUTIL}-ld
 OBJCOPY := ${BINUTIL}-objcopy
 
 LD_FLAGS := --no-check-sections --section-alignment=1 --file-alignment=1 --image-base=0x0 --disable-reloc-section 
+LD_FLAGS_SHARE := -T ./src/share/share.ld --no-check-sections --section-alignment=0x10 --file-alignment=0x10 --image-base=0x0 --enable-reloc-section -s --heap 0,0 --stack 128,128 -Map=./lst/share/share.map
 OC_FLAGS := --dump-section
 
 
 all:
-	$(MAKE) assemble
-	$(MAKE) link
-	$(MAKE) dos
-#	$(MAKE) disk
-
-world:
-	$(MAKE) assemble
-	$(MAKE) link
 	$(MAKE) dos
 	$(MAKE) disk
 	$(MAKE) clean
+	$(MAKE) share
 	./build
+
+dos:
+	$(MAKE) assemble
+	$(MAKE) link
+	$(MAKE) dosimg
 
 share:
 # Build the standalone share module
-	${ASM} ./src/share/shbuild.asm -o ./bin/share.obj -f win64 -l ./lst/share/oem.lst -O0v
-	${LINKER} -T ./src/share/share.ld ${LD_FLAGS} -Map=./lst/share/share.map -o ./bin/share.exe
+	${ASM} ./src/share/shbuild.asm -o ./bin/share.obj -f win64 -l ./lst/share/share.lst -O0v
+	${LINKER} ${LD_FLAGS_SHARE}  -o ./bin/share.exe
+#	rm ./bin/share.obj
 	
 assemble:
 # Build four modules, then link them together, then strip headers.
@@ -40,7 +40,7 @@ assemble:
 link:
 	${LINKER} -T ./src/dos/scpdos.ld ${LD_FLAGS} -Map=./lst/SCPDOS/scpdos.map -o ./bin/dos.exe
 
-dos:
+dosimg:
 	${OBJCOPY} ${OC_FLAGS} oem$$=./bin/oem.bin ./bin/dos.exe 
 	${OBJCOPY} ${OC_FLAGS} sys$$=./bin/sys.bin ./bin/dos.exe 
 	${OBJCOPY} ${OC_FLAGS} dos$$=./bin/krn.bin ./bin/dos.exe 

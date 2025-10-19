@@ -9,7 +9,7 @@ mftEnd   equ 0FFh    ;End of table marker.
 
 struc mft
     .bSig       db ?    ;Struc status
-    .wLen       dw ?    ;Length of struc
+    .dLen       dd ?    ;Length of struc
     .bCheckSum  db ?    ;Checksum of the full filename (helps with searches)
     .pLock      dq ?    ;Pointer to the first lock owned by file
     .pSFT       dq ?    ;Pointer to the first SFT in this file's chain
@@ -41,6 +41,12 @@ struc fileLock
     .qStart     dq ?    ;Ptr to the first byte of the locked region
     .qEnd       dq ?    ;Ptr to the last byte of the locked region
     .pSFT       dq ?    ;Ptr to the SFT which owns this lock
-    .wPID       dw ?    ;Process ID of the process which owns this lock
+    .qPID       dq ?    ;Process ID of the process which owns this lock
     .bType      db ?    ;Type of locking (Write or Read/Write)
-end struc
+endstruc
+
+MAX_LOCKS       equ 9999    
+LOCKS_DFLT      equ 20
+
+MAX_MFT_SIZE    equ 1048576 ;1Mb
+MFT_SIZE_DFLT   equ 2048

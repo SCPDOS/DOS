@@ -1,0 +1,1205 @@
+     1                                  ;Share! Handle file sharing in this module here.
+     2                                  ;This is a kernel module with the key difference that it is not linked 
+     3                                  ; into the main kernel image. Instead, we produce a standalone .EXE file
+     4                                  ; which hooks itself into DOS if the user runs the program.
+     5                                  ;We run as a TSR with two switches:
+     6                                  ;/F:xxxxxxx specifies the amount of bytes to allocate for MFT space in bytes.
+     7                                  ; Max value: 1048576 bytes (1Mb).
+     8                                  ; Default: 2048 bytes (2Kb).
+     9                                  ;/L:xxxx specifies the number of concurrent file locks allowed.
+    10                                  ; Max value: 9999
+    11                                  ; Default: 20
+    12                                  
+    13                                  [DEFAULT REL]
+    14                                  BITS 64
+    15                                  
+    16                                  [LIST -]
+    25                                  ;========================START OF SHARE MODULE=========================
+    26                                  
+    27                                  ;---------------------------
+    28                                  ;   DOS data segment here
+    29                                  ;---------------------------
+    30                                  ;Included as an absolute 
+    31                                  ;segment at address 0 to
+    32                                  ;allow using the dos data 
+    33                                  ;segment as a struc
+    34                                  ;---------------------------
+    35                                  absolute 0x0
+    36                                  %include "./src/dos/Kernel/BSS/dosSeg.asm"
+     1                              <1> ;This file contains the main DOS data segment
+     2 00000000 <res 10h>           <1>     anchorMcb   db mcb_size dup (?) ;This is space for the anchor MCB
+     3                              <1> dosDataArea:    ;The returned pointer points to the variables w/o anchor MCB
+     4 00000010 ??                  <1>     bootDrive   db ?    ;The logical drive we booted from
+     5 00000011 ????????            <1>     biosVers    dd ?    ;Indicates BIOS type. Each OEM picks a number
+     6 00000015 ????????????????    <1>     biosPtr     dq ?    ;For saving a data ptr to be used by BIOS/drivers
+     7                              <1> ;Above is the system stats
+     8                              <1> ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
+     9                              <1> ;Both below variables can be edited with Int 21h AX=440Bh
+    10 0000001D ????                <1>     validNetNam dw ?    ;Flag if machinename valid, deflt no=0
+    11 0000001F ????                <1>     shareCount  dw ?    ;Share Retry Count, number of repeats before fail.
+    12 00000021 ????                <1>     shareDelay  dw ?    ;Share Delay, in multiples of ms. (TEMP, just loop)
+    13 00000023 ????????????????    <1>                 dq ?    ;Unused ptr for future, current disk buffer
+    14 0000002B ????????????????    <1>     vConHdlOff  dq ?    ;Ptr into buff to the next char to process in hdl req
+    15                              <1>     ;   A value of 0 means no chars buffered.
+    16 00000033 ????????????????    <1>     mcbChainPtr dq ?    ;Pointer to the MCB chain x
+    17                              <1> sysVarsPtr:
+    18 0000003B ????????????????    <1>     dpbHeadPtr  dq ?    ;Pointer to the first DPB in the DPB chain x
+    19 00000043 ????????????????    <1>     sftHeadPtr  dq ?    ;Pointer to the first SFT header in SFT chain
+    20 0000004B ????????????????    <1>     clockPtr    dq ?    ;Pointer to the current active CLOCK$ device header x
+    21                              <1>     ;                    The last driver loaded with the CLOCK$ bit[3] set 
+    22 00000053 ????????????????    <1>     vConPtr     dq ?    ;Ptr to the devdrv of the char dev controlling vCon x
+    23                              <1>     ;                    The last driver loaded with the STDIN bit[0] set
+    24 0000005B ????                <1>     maxBytesSec dw ?    ;Maximum number of bytes per sector (size of buffers)x
+    25 0000005D ????????????????    <1>     bufHeadPtr  dq ?    ;Pointer to the head of the disk buffer chain x
+    26 00000065 ????????????????    <1>     cdsHeadPtr  dq ?    ;Pointer to the head of the CDS array x
+    27 0000006D ????????????????    <1>     fcbsHeadPtr dq ?    ;Pointer to the head of the System FCB chain
+    28 00000075 ????                <1>     numSafeSFCB dw ?    ;Number of protected FCBs (y in FCBS=x,y)
+    29 00000077 ??                  <1>     numPhysVol  db ?    ;Number of physical volumes in the system x
+    30 00000078 ??                  <1>     lastdrvNum  db ?    ;Value of LASTDRIVE (default = 5) [Size of CDS array]x
+    31 00000079 ??                  <1>     numBuffers  db ?    ;Buffers=30 default
+    32 0000007A <res 22h>           <1>     nulDevHdr   db drvHdr_size dup (?)
+    33 0000009C ??                  <1>     numJoinDrv  db ?    ;Number of Joined Drives
+    34                              <1> ;Additional internal variables
+    35 0000009D ??                  <1>     numFiles    db ?    ;FILES=5 default, max 255
+    36                              <1>     ;DOSMGR hook functions and variable here
+    37                              <1>     ;All DOSMGR hooks are 8 byte pointers and have been introduced to allow
+    38                              <1>     ; an external application to install itself as a multitasker into the
+    39                              <1>     ; DOS kernel. DOS's behaviour changes accordingly when a multitasker 
+    40                              <1>     ; is installed. It is recommended that a multitasker NOT be installed
+    41                              <1>     ; when a file sharing broker is not installed but that is up to the 
+    42                              <1>     ; implementer to decide.  
+    43                              <1>     ;Three function hooks are provided. NOTE, all functions must preserve
+    44                              <1>     ; ALL registers used.
+    45                              <1>     ;
+    46                              <1>     ;launchTask:
+    47                              <1>     ;This allows for a multitasker to install its handling routine for 
+    48                              <1>     ; launching tasks. Note this is called after all setup
+    49                              <1>     ; for the EXE has been done except for setting the PSP.
+    50                              <1>     ; If the mode bSuFunc = 4, then we have we have the following:
+    51                              <1>     ;       ecx = mode of termination
+    52                              <1>     ;           = 00 -> Upon terminating, leave task in Zombie mode
+    53                              <1>     ;                   awaiting for a task to read it's return code
+    54                              <1>     ;           = 01 -> Upon terminating, discard all resources allocated
+    55                              <1>     ;                   to the task.
+    56                              <1>     ;           > 01 -> Error code, unknown function (01h).
+    57                              <1>     ;This function must return to the caller via DOS with CF=CY if an error 
+    58                              <1>     ;   and eax = Error code or CF=NC if all ok. DOS will then return to
+    59                              <1>     ;   the parent task, with the background task hopefully scheduled to run
+    60                              <1>     ;   in the DOSMGR.
+    61                              <1>     ;Either before or on initial run, DOSMGR must set currentDTA in a bgTasks'
+    62                              <1>     ; SDA to psp+80h. This can be done in launchBgTask.
+    63                              <1>     ;
+    64                              <1>     ;terminateTask:
+    65                              <1>     ;This allows for a multitasker to install its handling routine for
+    66                              <1>     ; cleaning up resources allocated to a task. 
+    67                              <1>     ;
+    68                              <1>     ;Specific function definitions:
+    69                              <1>     ;
+    70                              <1>     ;If we enter
+    71                              <1>     ;   Input:  bx = FCB drive statuses
+    72                              <1>     ;           ecx = Termination mode setting
+    73                              <1>     ;           rsi = RSP value to start with
+    74                              <1>     ;           rbp = execFrame. Use this to get parentPSP data et al.
+    75                              <1>     ;           qword [rbp - execFrame.pProgEP] = RIP value to launch from
+    76                              <1>     ;   Output: CF=NC -> Proceed with launch of bg task
+    77                              <1>     ;           CF=CY -> Error exit, errorcode in eax
+    78                              <1> dosMgrHooks:
+    79 0000009E ??                  <1>     dosMgrPresent   db ?    ;Clear if no mgr, else set to -1
+    80 0000009F ????????????????    <1>     launchTask      dq ?    ;Registers a new task, with specifics based on bSubfunc
+    81 000000A7 ????????????????    <1>     terminateTask   dq ?    ;Called to tell the MGR that this task is ending
+    82                              <1> 
+    83                              <1>     ;DLL Manager hook functions here
+    84                              <1>     ;All DLLMGR hooks are 8 byte pointers and are new to the DOS kernel.
+    85                              <1>     ;They allow for the installation of a DLL manager program, which hooks
+    86                              <1>     ; these pointers, to point to their own subroutines in the DLLMGR prog.
+    87                              <1>     ;These hooks are called from within EXEC, only for PE type executables
+    88                              <1>     ; and from within EXIT. 
+    89                              <1>     ;
+    90                              <1>     ;In EXEC mode, modes 0 and 1 create a PSP for the task and thus the 
+    91                              <1>     ; task is self standing and has a PSP as a Unique ID. 
+    92                              <1>     ;If mode 3, this is an overlay EXE. This means it is not it's own task and 
+    93                              <1>     ; is an extension of the parent task. In such a case, the DLL Manager must 
+    94                              <1>     ; look at where the overlay is to be loaded (execFrame.pProgBase), and if 
+    95                              <1>     ; there is already an overlay there, to remove it's functions from the 
+    96                              <1>     ; registery, replacing them with the new overlay's functions. All overlay
+    97                              <1>     ; exports must be flagged as belonging to the parent task PSP so that
+    98                              <1>     ; on EXIT, they can be removed from the registry. 
+    99                              <1>     ;
+   100                              <1>     ;In EXIT, the PSP of the ending task must be taken
+   101                              <1>     ; into consideration, as if the PSP isn't registered then the task ending
+   102                              <1>     ; is a .COM file or an .EXE with no exports.
+   103                              <1>     ;Furthermore, if register fails (due to memory or namespace constraints),
+   104                              <1>     ; it must return CF=CY.
+   105                              <1> dllHooks:
+   106 000000AF ????????????????    <1>     registerDLL     dq ?  ;Entered with rbp = execFrame
+   107 000000B7 ????????????????    <1>     unloadDLLHook   dq ?  ;
+   108                              <1> 
+   109                              <1>     ;Share hook functions here
+   110                              <1>     ;All share hooks now take 8 bytes rather than 4 bytes as before
+   111                              <1>     ;Thus ALL offsets from SFT header increase by 4 bytes and each entry
+   112                              <1>     ; is a QWORD entry. Please adjust SHARE.EXE access as necessary.
+   113                              <1> shareHooks:
+   114 000000BF ????????????????    <1>     markerShare         dq ?  ;Marker Share hook
+   115 000000C7 ????????????????    <1>     openShare           dq ?  ;Share called on open. 
+   116 000000CF ????????????????    <1>     closeShare          dq ?  ;Share called on close.
+   117 000000D7 ????????????????    <1>     closeCompShare      dq ?  ;Share to close all files for a machine.
+   118 000000DF ????????????????    <1>     closeTaskShare      dq ?  ;Share to close all files for a task.
+   119 000000E7 ????????????????    <1>     closeNameShare      dq ?  ;Share to close file by name.
+   120 000000EF ????????????????    <1>     lockFileShare       dq ?  ;Share to lock file region.
+   121 000000F7 ????????????????    <1>     unlockFileShare     dq ?  ;Share to unlock file region.
+   122 000000FF ????????????????    <1>     checkFileLockShare  dq ?  ;Share to check file region locked.
+   123 00000107 ????????????????    <1>     openFileListShare   dq ?  ;Share to get open file list entry.
+   124 0000010F ????????????????    <1>     updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.    UNUSED
+   125 00000117 ????????????????    <1>     fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.   UNUSED
+   126 0000011F ????????????????    <1>     closeDupNetShare    dq ?  ;Share to close file if dup for proc.
+   127 00000127 ????????????????    <1>     renDelCloseShare    dq ?  ;Share to handle rename/delete correctly.
+   128 0000012F ????????????????    <1>     updateDirShare      dq ?  ;Share to update dir info in SFT. 
+   129                              <1> 
+   130                              <1> ;Create SFT header and corresponding array of five default sft entries
+   131 00000137 <res Ah>            <1>     firstSftHeader  db sfth_size dup (?)
+   132 00000141 <res 57h>           <1>     firstSft        db sft_size dup (?)
+   133 00000198 <res 57h>           <1>     secondSft       db sft_size dup (?)
+   134 000001EF <res 57h>           <1>     thirdSft        db sft_size dup (?)
+   135 00000246 <res 57h>           <1>     fourthSft       db sft_size dup (?)
+   136 0000029D <res 57h>           <1>     fifthSft        db sft_size dup (?)
+   137                              <1> 
+   138                              <1> ;Virtual CONsole Buffers
+   139 000002F4 ??                  <1>     vConCursPos db ?     ;Keeps track for tabs stops (and var with 7)
+   140                              <1>     ;Only incremented when CON device runs vCon
+   141                              <1> vConBuf:    ;Proper buffer symbol
+   142 000002F5 ??                  <1>     vConCurCnt  db ?     ;Current count of chars in vConBuffer
+   143 000002F6 <res 80h>           <1>     vConBuffer  db 128 dup (?)   ;General Buffer for vCon 256 bytes. 
+   144                              <1>     ;Only 128 bytes at a time if doing CON IO via handle
+   145 00000376 <res 80h>           <1>     vConInBuf   db 128 dup (?)   ;vConsole buffer for reads ONLY
+   146 000003F6 ??                  <1>                 db ?     ;Padding Buffer!
+   147                              <1> 
+   148 000003F7 ??                  <1>     printEcho   db ?  ;If 0, no echo. Non-zero => Echo to PRN
+   149 000003F8 ??                  <1>     verifyFlag  db ?  ;If set, writes are replaces with write/verify x
+   150 000003F9 ??                  <1>     switchChar  db ?  ;Editable by 21h/37h. Set to / by default
+   151 000003FA ??                  <1>     vConErr     db ?  ;Inc on each char output call
+   152                              <1>     ;Is and-ed with 03h, checks for ^C on every fourth char output
+   153                              <1> 
+   154 000003FB ??                  <1>     allocStrat  db ?  ;Allocation strategy. First, Best or Last fit
+   155                              <1> ;Server stuff. Default to all zeros (blank)
+   156 000003FC ??                  <1>     shareFlag   db ?  ;SHARE loaded flag. -1 means loaded, 0 means not.
+   157 000003FD ??                  <1>     serverCnt   db ?  ;Increments on each 21h/5E01h call
+   158 000003FE <res 10h>           <1>     machineName db 16 dup (?) ;Machine name (Set via 21h/5E01h) (set to SPC)    
+   159                              <1> ;Swappable Data Area
+   160 0000040E <res 20h>           <1>     critPtchTbl dq 4 dup (?)  ;Offsets from DosDataArea addr to the 4 funcs
+   161 0000042E ??                  <1>                 db ?  ;Alignment byte
+   162                              <1> sda:    ;Start of Swappable Data Area, this bit can remain static
+   163 0000042F ??                  <1>     critErrFlag db ?  ;Critical error flag, set on entry to Int 24h x
+   164 00000430 ??                  <1>     inDOS       db ?  ;Inc on each DOS call, dec when leaving x
+   165 00000431 ??                  <1>     errorDrv    db ?  ;Drive on which error occured or FFh x
+   166 00000432 ??                  <1>     errorLocus  db ?  ;Where the error took place  
+   167 00000433 ????                <1>     errorExCde  dw ?  ;Extended Error Code
+   168 00000435 ??                  <1>     errorAction db ?  ;Suggested action for error  
+   169 00000436 ??                  <1>     errorClass  db ?  ;Error Class
+   170 00000437 ????????????????    <1>     errorVolLbl dq ?    ;Sets a ptr to the volume label of the error disk
+   171 0000043F ????????????????    <1>     currentDTA  dq ?  ;Address of the current DTA x
+   172 00000447 ????????????????    <1>     currentPSP  dq ?  ;Address of current PSP x
+   173                              <1> 
+   174 0000044F ????????????????    <1>     xInt23hRSP  dq ?  ;Saves RSP across an Int 23h call
+   175 00000457 ????                <1>     errorLevel  dw ?  ;Last return code returned by Int 21h/4Ch x
+   176                              <1>     ;Upper byte: 0=Normal, 1=Abort Occured, 2=CtrlC, 3=TSR 21h/31h
+   177                              <1>     ;Lower byte: User Specified
+   178 00000459 ??                  <1>     currentDrv  db ?  ;Default drive x
+   179 0000045A ??                  <1>     breakFlag   db ?  ;If set, check for CTRL+C on all DOS calls x
+   180                              <1> ;SDA, needs to be replaced between processes
+   181                              <1> sdaDOSSwap:
+   182 0000045B ????????????????    <1>     oldRAX      dq ?  ;Store rax on entering Int21h or returning Int 23h
+   183 00000463 ????????????????    <1>     serverPSP   dq ?  ;PSP of prog making server request, used by net & share
+   184 0000046B ????????            <1>     dReqNetID   dd ?  ;Requesters' (VM) Network ID. 0 means local machine.
+   185 0000046F ????????????????    <1>     firstMCB    dq ?  ;First fit MCB for request
+   186 00000477 ????????????????    <1>     bestMCB     dq ?  ;Best fit MCB for request
+   187 0000047F ????????????????    <1>     lastMCB     dq ?  ;Last fit MCB for request
+   188 00000487 ????                <1>     dirEntryNum dw ?  ;Offset into directory of entry we are looking for
+   189 00000489 ??                  <1>     volIdFlag   db ?  ;If set, we are searching for a volume ID
+   190 0000048A ????????????????    <1>     xInt24hRSP  dq ?  ;RSP across an Int 24h call
+   191 00000492 ??                  <1>     Int24bitfld db ?  ;Copies the bit field given to the Int 24h handler
+   192 00000493 ??                  <1>     fileDirFlag db ?  ;File/Directory flag. 0 = Dir, ¬0 = File
+   193 00000494 ??                  <1>     Int24Fail   db ?  ;Set if Int 24h returned fail
+   194                              <1> 
+   195 00000495 ????????????????    <1>     oldoldRSP   dq ?  ;RSP at prev Int 21h entry if called from within Int 21h
+   196 0000049D ????????????????    <1>     dosReturn   dq ?  ;Used as a var to return when juggling stack
+   197 000004A5 ????????????????    <1>     oldRSP      dq ?  ;RSP when entering Int 21h
+   198 000004AD ????????????????    <1>     oldRBX      dq ?  ;Temp var to save value of rbx during an Int 21 call
+   199 000004B5 ??                  <1>     dirFlag     db ?  ;Directory Flag. 0 => Search for Dir, 1 => for File
+   200                              <1> ;The below flag tells DOS to print ^C in the termination function
+   201 000004B6 ??                  <1>     ctrlCExit   db ?  ;-1 => CTRL+BREAK termination, 0 otherwise
+   202 000004B7 ??                  <1>     fcbSpaceOk  db ?  ;If set, we allow embedded spaces in the filenames
+   203                              <1> ;Time stuff
+   204                              <1> ;Read the below two as a word
+   205 000004B8 ??                  <1>     dayOfMonth  db ?  ;01h - 1Fh (1 - 31)
+   206 000004B9 ??                  <1>     monthOfYear db ?  ;01h - 0Ch (1 - 12)
+   207 000004BA ??                  <1>     years       db ?  ;00h - 7Fh (00 = 1980 - 127 = 2107)
+   208 000004BB ????                <1>     daysOffset  dw ?  ;Days since 1-1-1980
+   209 000004BD ??                  <1>     dayOfWeek   db ?  ;0 = Sunday <-> 6 = Saturday
+   210                              <1> 
+   211 000004BE ??                  <1>     vConDrvSwp  db ?  ;Set if vCon controlled by a different driver to vConPtr
+   212 000004BF ??                  <1>     int28Flag   db ?  ;If set, Int 28h should be called, if clear no
+   213 000004C0 ??                  <1>     procExiting db ?  ;Set to -1 if in process termination
+   214                              <1> ;A request routed through the FCB or handle uses primReqPkt for its main IO.
+   215                              <1> ;A secondary header is present to allow simultaneous echoing to console 
+   216                              <1> ; without forcing to re-build the whole primary request block.
+   217                              <1> ;Thus all disk io uses the primary and CharIO goes through the primary
+   218                              <1> ; with secondary char output going through the secondary header
+   219                              <1> ;(i.e the char input functions use the primary for main input and secondary 
+   220                              <1> ; for output)
+   221                              <1> ;ioReqPkt is the largest possible packet
+   222 000004C1 <res 2Ah>           <1>     secdReqPkt  db ioReqPkt_size dup (?) ;Secondary, Char IO Reqhdr
+   223 000004EB <res 2Ah>           <1>     primReqPkt  db ioReqPkt_size dup (?) ;Main Drv Reqhdr 
+   224                              <1> altRet: ;Accessed as a qword
+   225 00000515 <res 2Ah>           <1>     critReqPkt  db ioReqPkt_size dup (?)  ;Used for ^C detection!
+   226 0000053F ??                  <1>     pspCopyFlg  db ?  ;Set to -1 for child process PSP, 0 for simple PSP copy
+   227                              <1> ;Swappable Buffers
+   228 00000540 ????????????        <1>     CLOCKrecrd  db 6 dup (?)  ;Clock driver record
+   229                              <1>     ;We add an additional byte to save ah too
+   230 00000546 ????                <1>     singleIObyt dw ?  ;For single IO byte buffers
+   231                              <1> extErrByteBuf:  ;Used by DOS execpt hdlr to build strings. Immediate abort!
+   232                              <1> exeHdrSpace:    ;This needs 112 bytes in EXEC only, buffer is free for use!
+   233 00000548 <res 80h>           <1>     buffer1     db 2*MAX_FSPEC dup (?)  ;Space for max expanded MAX_FSPEC
+   234                              <1> sectHdr:        ;This needs 20 bytes in EXEC only
+   235 000005C8 <res 80h>           <1>     buffer2     db 2*MAX_FSPEC dup (?) ;Space for a second path
+   236 00000648 ????????????????    <1>     fname1Ptr   dq ?  ;Ptr to first filename argument
+   237 00000650 ????????????????    <1>     fname2Ptr   dq ?  ;Ptr to second filename argument
+   238 00000658 ??                  <1>     skipDisk    db ?  ;Set => Read Disk, Clear => Skip checking on disk
+   239                              <1> ;Misc bookkeeping flags and vars
+   240 00000659 <res 2Bh>           <1>     dosffblock  db ffBlock_size dup (?)  ;FF block (fullsize unlike DOS)
+   241 00000684 <res 20h>           <1>     curDirCopy  db fatDirEntry_size dup (?)  ;Dir copy
+   242 000006A4 <res 5Fh>           <1>     tmpCDS      db cds_size dup (?)  ;For server calls that need a tmp CDS
+   243                              <1> ;These two are used to expand filenames into FCB format. The extra char 
+   244                              <1> ; is used to store the terminator of the portion (either a pathsep or null)
+   245 00000703 <res Ch>            <1>     fcbName     db MAX_NAME_FCBZ dup (?)
+   246 0000070F <res Ch>            <1>     wcdFcbName  db MAX_NAME_FCBZ dup (?)  ;Expands wildcards for rename
+   247 0000071B ????????????????    <1>     fileDirSect dq ?  ;File/Directory starting sector, for each level
+   248 00000723 ??                  <1>     volIncmpFCB db ?  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
+   249 00000724 ??                  <1>     extFCBAttr  db ?  ;Extended FCB file attribute
+   250 00000725 ??                  <1>     extFCBFlag  db ?  ;Set to -1 if Extended FCB
+   251 00000726 ??                  <1>     searchAttr  db ?  ;Directory Search attributes
+   252                              <1> ;    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
+   253 00000727 ??                  <1>     renFlags    db ?  ;01h = Rename in same dir, 02h = Wildcard in destination
+   254 00000728 ??                  <1>     badNameRen  db ?  ;Device name or File not found for rename
+   255 00000729 ??                  <1>     rwFlag      db ?  ;00h=Read, 1=Write, read/write/share error reporting
+   256 0000072A ??                  <1>     spliceFlag  db ?  ;00 = Relative path, !0 = Full path
+   257 0000072B ??                  <1>     dosInvoke   db ?  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
+   258                              <1> 
+   259 0000072C ??                  <1>     vConInsert  db ?  ;Insert mode on 21/0ah (0 = not insert, !0 = insert)
+   260 0000072D ??                  <1>     fileExist   db ?  ;-1 if file in pathspec exists (create/open)
+   261 0000072E ??                  <1>     parDirExist db ?  ;-1 if parent directory for file exists (create/open)
+   262 0000072F ??                  <1>     exitType    db ?  ;Forms the upper byte of the errorlvl
+   263 00000730 ??                  <1>     openCreate  db ?  ;If open, set to 0, if Create set to -1
+   264                              <1> ;Set to E5h for renaming and deletion. Can be set to 0 if *.* chosen
+   265                              <1> ; to speed up the deletion but we don't use this (yet).
+   266 00000731 ??                  <1>     delChar     db ?
+   267 00000732 ??                  <1>     workingDrv  db ?  ;Working drive number, 0 based, from DPB
+   268                              <1> qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
+   269                              <1> workingDD:  ;Create a symbol for the working device driver too
+   270 00000733 ????????????????    <1>     workingDPB  dq ?  ;Ptr to the DPB of the drive being accessed
+   271 0000073B ????????????????    <1>     workingCDS  dq ?  ;Ptr to the CDS of the drive being accessed
+   272 00000743 ????????????????    <1>     workingFCB  dq ?  ;Ptr to the caller FCB for FCB function
+   273                              <1> ;Below is the symbol for saving the oldSFTptr during a char func
+   274                              <1> vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
+   275 0000074B ????????????????    <1>     workingSFT  dq ?  ;Temporary SFT (may not be not current) ptr being used
+   276 00000753 ????????????????    <1>     curHdlPtr   dq ?  ;Ptr to JFT handle entry in current PSP
+   277 0000075B ????????????????    <1>     currentSFT  dq ?  ;Ptr to the SFT of the file being accessed
+   278 00000763 ????                <1>     currentNdx  dw ?  ;Used to access the current SFTNdx being opened/created
+   279 00000765 ????                <1>     currentHdl  dw ?  ;The current file handle is saved here
+   280 00000767 ????????????????    <1>     currBuff    dq ?  ;Ptr to the Current Buffer (hdr) being accessed
+   281                              <1> ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
+   282                              <1> ; and 32 byte offset into the sector for directory
+   283 0000076F ????????????????    <1>     tempSect    dq ?  ;A scratch sector number
+   284                              <1> pathLen:    ;Used to store the length of a path string for removal strcmp
+   285 00000777 ????                <1>     entry       dw ?  ;32 byte offset into a sector or #fats sectors/fat
+   286                              <1> ;***************************************************|
+   287                              <1> ; Needs to be set up before any file access         |
+   288                              <1> ; These vars keep track of file access properties   |
+   289                              <1> ;   and must be used only for such purposes.        |
+   290                              <1> ;***************************************************|
+   291 00000779 ????????            <1>     currClustF  dd ?  ;Relative cluster in file being r/w to/from
+   292 0000077D ????????            <1>     currClustD  dd ?  ;Current Disk Cluster being r/w to/from
+   293                              <1> 
+   294 00000781 ????????            <1>     currSectF   dd ?  ;Current Sector in File being r/w to/from
+   295 00000785 ??                  <1>     currSectC   db ?  ;Current Sector in Cluster being r/w to/from
+   296 00000786 ????????????????    <1>     currSectD   dq ?  ;Current absolute Sector number on Disk
+   297                              <1> 
+   298 0000078E ????                <1>     currByteS   dw ?  ;Current Byte in sector being r/w to/from
+   299 00000790 ????????            <1>     currByteF   dd ?  ;Current Byte in file being r/w to/from
+   300                              <1> ;***************************************************|
+   301 00000794 ????????            <1>     lastClust   dd ?  ;Number of the last (rel) cluster of the file
+   302 00000798 ????????            <1>     lastClustA  dd ?  ;Number of the last (abs) cluster of file on disk
+   303 0000079C ????????            <1>     tfrLen      dd ?  ;Number of bytes to transfer
+   304 000007A0 ????????            <1>     tfrCntr     dd ?  ;Number of bytes left to transfer
+   305                              <1> ;Directory stuff
+   306 000007A4 ????????            <1>     dirClustPar dd ?  ;Absolute disk cluster of the start of the parent dir
+   307 000007A8 ????????            <1>     dirClustA   dd ?  ;Absolute cluster number of current directory
+   308 000007AC ????                <1>     dirSect     dw ?  ;Sector of current directory cluster
+   309 000007AE ????????            <1>     dirEntry    dd ?  ;32 byte offset in dir for file being searched for
+   310                              <1> ;Extended Open vars
+   311 000007B2 ????                <1>     wEOFlags    dw ?  ;Set if we are doing an extended open with various flags
+   312 000007B4 ????                <1>     wEOActions  dw ?  ;Extended open actions (user DX)
+   313 000007B6 ????                <1>     wEOOpenMode dw ?  ;Symbol to the next two bytes. (USER BX)
+   314 000007B8 ????                <1>     wEOAttribs  dw ?  ;Symbol to the next two bytes (USER CX)
+   315 000007BA ????????????????    <1>     pszEOfile   dq ?  ;Ptr to null terminated string to file name (USER RSI)
+   316                              <1> ;Error DPB 
+   317 000007C2 ????????????????    <1>     tmpDPBPtr   dq ?  ;A DPB for error/temporary situations
+   318                              <1> ;No clash recycling below var as the vars in SDA are invalid if in CPU 
+   319                              <1> ; exception hdlr. This var gets cleared on entry to the exception handler. 
+   320                              <1> ;If it remains clear, the task will Abort. If it gets set, DOS or COMMAND.COM 
+   321                              <1> ; caused CPU exception or we have an NMI. Then we freeze as we cant guarantee 
+   322                              <1> ; anything anymore.
+   323                              <1> haltDOS:
+   324 000007CA ??                  <1>     mediaByte   db ?  ;Calls 1Bh and 1Ch return ptr to here
+   325                              <1>     
+   326 000007CB <res 2Bh>           <1>     renameFFBlk db ffBlock_size dup (?)  ;Source file "find first" block
+   327 000007F6 <res 20h>           <1>     renameDir   db fatDirEntry_size dup (?)  ;Build new file dir entry here
+   328                              <1> ;Stacks and scratch SFT
+   329 00000816 ????                <1>     alignb  8
+   330 00000818 <res 528h>          <1>     critStack   dq 165 dup (?)
+   331 00000D40 ????????????????    <1>     critStakTop dq ?
+   332                              <1> 
+   333 00000D48 <res 57h>           <1>     scratchSFT  db sft_size dup (?)  ;Used in FCB calls to emulate a SFT
+   334                              <1>     
+   335 00000D9F ??                  <1>     alignb  8
+   336 00000DA0 <res 638h>          <1>     AuxStack    dq 199 dup (?)
+   337 000013D8 ????????????????    <1>     AuxStakTop  dq ?  ;Auxilliary stack (Char IO, Int 25h/46h etc)
+   338 000013E0 <res 638h>          <1>     DiskStack   dq 199 dup (?)
+   339 00001A18 ????????????????    <1>     DiskStakTop dq ?
+   340                              <1> 
+   341 00001A20 ??                  <1>     lookahead   db ?  ;-1 => Lookahead on select Char function calls!
+   342                              <1> ;Below is used in create and delete for vol lbl only. Else is -1.
+   343 00001A21 ??                  <1>     rebuildDrv  db ?  ;Stores the drive letter of the dpb to reset.
+   344                              <1>     sdaLen      equ     $ - sda 
+   345                              <1>     sdaDOSLen   equ     $ - sdaDOSSwap
+   346                              <1> 
+   347                              <1> ;Additional variables NOT in the SDA
+   348 00001A22 ????????????????    <1>     serverDispTblPtr    dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
+   349                              <1> ;A backup header to allow copying to for saving the current header when 
+   350                              <1> ; quickly doing a second request
+   351 00001A2A <res 2Ah>           <1>     bkupReqHdr          db ioReqPkt_size dup (?)  
+   352                              <1> ;Prevent toggling print if in the middle of reading an extended ASCII char
+   353                              <1> inExtASCII:
+   354 00001A54 ??                  <1>     noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle
+   355 00001A55 ????                <1>     keybTicks   dw ?  ;Counts the number of cycles spent in a kb loop.
+   356                              <1> ;Every time this overflows, we read the clock and update the DOS internal
+   357                              <1> ; copy of the date/time record
+   358                              <1> ;The idt doesnt need to be in the SDA as we will halt interrupts
+   359                              <1> ; until we get/set the address. Thus the IDT entry returned is the 
+   360                              <1> ; correct one AT the time of calling up to "the time it takes to get
+   361                              <1> ; to the read IDT routine".
+   362                              <1> dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
+   363 00001A57 ????                <1>     .limit  dw ?    ;Overlap this with stack below as no call overlap
+   364 00001A59 ????????????????    <1>     .base   dq ?
+   365                              <1> ;Lseek and IOCTL return data in registers as well as on the caller's 
+   366                              <1> ; stack. In Int 2Fh, this could overwrite user data if the functions
+   367                              <1> ; were allowed to write to original callers register stack. 
+   368                              <1> ; So we have this structure below that is used by these functions to 
+   369                              <1> ; write their "return" data onto a "stack", even though when accessed 
+   370                              <1> ; through the multiplexer we never will read this structure. 
+   371                              <1> ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
+   372                              <1> labelPkt:   ;Whilst this is here, keep the thing below kinda big :)
+   373 00001A61 <res 60h>           <1>     mplxRegStack    db callerFrame_size dup (?) 
+    37                                  
+    38                                  ;---------------------------
+    39                                  ;       Share data seg
+    40                                  ;---------------------------
+    41                                  segment bss$r bss private align=4
+    42                                  %include "./src/share/data/shbss.asm"
+     1                              <1> ;All BSS variables go here
+     2                              <1> 
+     3 00000000 ????????????????    <1> pMftArena   dq ?
+     4 00000008 ????????            <1> dMftArenaSz dd ?    ;Size of MFT arena in bytes (max 1048576 bytes i.e. 1 Mb)
+     5 0000000C ????????????????    <1> pLockArena  dq ?
+     6 00000014 ????????????????    <1> pFreeLock   dq ?    ;Ptr to head of Free lock chain. 0 means no free locks left
+     7 0000001C ????                <1> wNumLocks   dw ?    ;Store number of locks here (max 9999)
+     8 0000001E ????????????????    <1> oldI2Fh     dq ?    ;Ptr to old Int 2Fh for chaining
+     9 00000026 ????????????????    <1> pDosseg     dq ?    ;Ptr to the DOSSEG
+    43                                  
+    44                                  ;---------------------------
+    45                                  ;       Share code seg
+    46                                  ;---------------------------
+    47                                  segment .text code private align=4 use64
+    48                                  ;Place this explicit .text section to calm nasm down
+    49                                  segment code$r code private align=4 use64
+    50                                  %include "./src/share/text/shmain.asm"
+     1                              <1> ;-------------------------------------------------------------------------
+     2                              <1> ;This file contains the all the functions that have external linkage.
+     3                              <1> ;
+     4                              <1> ; Int 2Fh handler
+     5                              <1> ; open           
+     6                              <1> ; close          
+     7                              <1> ; closeAllByMachine      
+     8                              <1> ; closeAllByProcess      
+     9                              <1> ; closeAllByName    
+    10                              <1> ; lockFile       
+    11                              <1> ; unlockFile     
+    12                              <1> ; checkRegionLock  
+    13                              <1> ; getMFTInformation   
+    14                              <1> ; updateFCB 
+    15                              <1> ; getFirstClusterFCB   
+    16                              <1> ; closeNetworkFiles   
+    17                              <1> ; closeRenDel
+    18                              <1> ; dirUpdate      
+    19                              <1> ;-------------------------------------------------------------------------
+    20                              <1> 
+    21                              <1> i2fHandler:
+    22 00000000 80FC10              <1>     cmp ah, 10h ;Is this call for us?
+    23 00000003 7508                <1>     jne .gotoNext
+    24 00000005 84C0                <1>     test al, al ;Do we test presence of share?
+    25 00000007 7502                <1>     jnz .exit   ;If not, probably badly behaved code. Let it return silently
+    26 00000009 B0FF                <1>     mov al, -1  ;Else, indicate we are already installed
+    27                              <1> .exit:
+    28 0000000B 48CF                <1>     iretq
+    29                              <1> .gotoNext:
+    30 0000000D FF25(1E000000)      <1>     jmp qword [oldI2Fh]
+    31                              <1> 
+    32                              <1> open:           
+    33                              <1> ;Called on file create/open
+    34 00000013 F8                  <1>     clc
+    35                              <1>     return
+    13                              <2> %%_ret:
+    14 00000014 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    36                              <1> close:          
+    37                              <1> ;Called on file close
+    38 00000015 F8                  <1>     clc
+    39                              <1>     return
+    13                              <2> %%_ret:
+    14 00000016 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    40                              <1> closeAllByMachine:      
+    41                              <1> ;Close all files for a machine
+    42 00000017 F9                  <1>     stc
+    43                              <1>     return
+    13                              <2> %%_ret:
+    14 00000018 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    44                              <1> closeAllByProcess:      
+    45                              <1> ;Close all files for a task
+    46 00000019 F9                  <1>     stc
+    47                              <1>     return
+    13                              <2> %%_ret:
+    14 0000001A C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    48                              <1> closeAllByName:      
+    49                              <1> ;Close file by name
+    50 0000001B F9                  <1>     stc
+    51                              <1>     return
+    13                              <2> %%_ret:
+    14 0000001C C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    52                              <1> lockFile:       
+    53                              <1> ;Lock a file region
+    54 0000001D F9                  <1>     stc
+    55                              <1>     return
+    13                              <2> %%_ret:
+    14 0000001E C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    56                              <1> unlockFile:     
+    57                              <1> ;Unlock file region
+    58 0000001F F9                  <1>     stc
+    59                              <1>     return
+    13                              <2> %%_ret:
+    14 00000020 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    60                              <1> checkRegionLock:  
+    61                              <1> ;Check file region locked
+    62 00000021 F8                  <1>     clc
+    63                              <1>     return
+    13                              <2> %%_ret:
+    14 00000022 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    64                              <1> getMFTInformation:   
+    65                              <1> ;Get MFT information about file
+    66 00000023 F9                  <1>     stc
+    67                              <1>     return
+    13                              <2> %%_ret:
+    14 00000024 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    68                              <1> updateFCB: 
+    69                              <1> ;UNUSED: Update FCB from the SFT
+    70 00000025 F9                  <1>     stc
+    71                              <1>     return
+    13                              <2> %%_ret:
+    14 00000026 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    72                              <1> getFirstClusterFCB:   
+    73                              <1> ;UNUSED: Get first cluster of FCB
+    74 00000027 F9                  <1>     stc
+    75                              <1>     return
+    13                              <2> %%_ret:
+    14 00000028 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    76                              <1> closeNetworkFiles:   
+    77                              <1> ;Close a newly created SFT-FCB handle for a procedure.
+    78                              <1> ;Network SFT-FCBs handles are all collapsed into one SFT.
+    79                              <1> ;----------------------------------------------------------------------------
+    80                              <1> ;Input: rsi -> Newly created SFT
+    81                              <1> ;       ax = SFTNdx for this newly created file
+    82                              <1> ;Output: ax = SFTNdx for the file (Same as on input if not a SFT-FCB)
+    83                              <1> ;----------------------------------------------------------------------------
+    84                              <1> ;If
+    85                              <1> ;   rsi -> SFT that is a network SFT-FCB (i.e. bit openNetFCBShr set 
+    86                              <1> ;   in openmode), then we close any duplicate handles using a single
+    87                              <1> ;   SFT to maintain the state (if there are none then we use this SFT
+    88                              <1> ;   as the SFT-FCB). We increment the new main SFT refcount instead of 
+    89                              <1> ;   having multiple SFTs.
+    90                              <1> ;----------------------------------------------------------------------------
+    91 00000029 F8                  <1>     clc
+    92                              <1>     return
+    13                              <2> %%_ret:
+    14 0000002A C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    93                              <1> 
+    94                              <1> closeRenDel:
+    95                              <1> ;On rename/delete/setattr, this function is called to check we can proceed
+    96                              <1> ; with the operation.
+    97                              <1> ;Finds MFT based on the filename in fname1Ptr in the dosseg
+    98                              <1> ;----------------------------------------------------------------------------
+    99                              <1> ;Input: fname1Ptr -> Filename to do check on
+   100                              <1> ;Output: Nothing
+   101                              <1> ;----------------------------------------------------------------------------
+   102                              <1> ;If 
+   103                              <1> ;   the file is not open, then we return ok.
+   104                              <1> ;Else if 
+   105                              <1> ;   the file is opened by us uniquely and is open in compatibility mode,
+   106                              <1> ;   then close the file and return ok.
+   107                              <1> ;Else, we fail.
+   108                              <1> ;----------------------------------------------------------------------------
+   109 0000002B F9                  <1>     stc
+   110                              <1>     return
+    13                              <2> %%_ret:
+    14 0000002C C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   111                              <1> dirUpdate:      
+   112                              <1> ;Update dir info across all SFTs for a file. 
+   113                              <1> ;----------------------------------------------------------------------------
+   114                              <1> ;Input: rdi -> SFT to update dir entry from
+   115                              <1> ;       eax = 0: Update the date/time fields only
+   116                              <1> ;           = 1: Update size fields for growth
+   117                              <1> ;           = 2: Update size fields for shrink (i.e. truncate calls)
+   118                              <1> ;           = 3: Update all fields
+   119                              <1> ;Output: Nothing, all SFTs in MFT chain updated.
+   120                              <1> ;        rax and rcx trashed.
+   121                              <1> ;----------------------------------------------------------------------------
+   122                              <1> ; If rdi is a chardev or a redir file, return
+   123                              <1> ; Get MFT pointer. 
+   124                              <1> ; If 
+   125                              <1> ;   MFT pointer is null, return.
+   126                              <1> ; Else
+   127                              <1> ;   Get first SFT pointer from MFT into rsi   
+   128                              <1> ; If eax = 0:
+   129                              <1> ;   Walk the SFT chain along rsi updating date/time fields except for us.
+   130                              <1> ; Else if eax = 1:
+   131                              <1> ;   Walk the SFT chain along rsi updating dFileSize and dStartClust fields 
+   132                              <1> ;   except for us.
+   133                              <1> ; Else if eax = 2:
+   134                              <1> ;   Walk the SFT chain along rsi updating dFileSize, dStartClust and 
+   135                              <1> ;   setting dRelClust to 0 and dAbsClust to dStartClust except for us.
+   136                              <1> ; Else if eax = 3:
+   137                              <1> ;   Update date/time and dFileSize, dStartClust, dRelClust and dAbsClust 
+   138                              <1> ;   fields for us from the oldest SFT in the SFT chain for this MFT. 
+   139                              <1> ;   
+   140                              <1> ; Return.
+   141                              <1> ;**** Note ****
+   142                              <1> ;In open and shrink we reset dRelClust to 0 and dAbsClust to dStartClust
+   143                              <1> ;to signify that all file IO should start from the start of the file.
+   144                              <1> ;This is a future optimisation as right now, the DOS kernel never depends 
+   145                              <1> ;on these values. These values are however correctly synchronised on each
+   146                              <1> ;read/write so in the future, we can relatively easily add a check to make
+   147                              <1> ;use of these values, unless they are at the start of the file at which
+   148                              <1> ;case we use the current algorithms.
+   149                              <1> ;----------------------------------------------------------------------------
+   150 0000002D 3D03000000          <1>     cmp eax, 3  ;Sanity check but the DOS kernel never puts such a val in
+   151                              <1>     reta
+    73                              <2> cret a
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 00000032 7601                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 00000034 C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   152 00000035 66F747058080        <1>     test word [rdi + sft.wDeviceInfo], devCharDev | devRedir
+   153                              <1>     retnz
+    45                              <2> cret nz
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 0000003B 7401                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 0000003D C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   154 0000003E 56                  <1>     push rsi
+   155 0000003F 488B774F            <1>     mov rsi, qword [rdi + sft.pMFT] ;Get MFT pointer in rsi
+   156 00000043 4885F6              <1>     test rsi, rsi   ;If this is a null pointer, return
+   157                              <1>     retz
+    41                              <2> cret z
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 00000046 7501                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 00000048 C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   158 00000049 E884000000          <1>     call critEnter
+   159 0000004E 488B760E            <1>     mov rsi, qword [rsi + mft.pSFT] ;Get first SFT of MFT in rsi
+   160 00000052 89C1                <1>     mov ecx, eax
+   161 00000054 85C9                <1>     test ecx, ecx   ;Is it 0?
+   162 00000056 7514                <1>     jnz .fileCheck
+   163                              <1> ;Here we do date/time update only.
+   164 00000058 8B4713              <1>     mov eax, dword [rdi + sft.dTimeDate]
+   165                              <1> .dtlp:
+   166 0000005B 894613              <1>     mov dword [rsi + sft.dTimeDate], eax
+   167 0000005E E85F000000          <1>     call .gotoNextSFT
+   168 00000063 75F6                <1>     jnz .dtlp
+   169                              <1> .exit:
+   170 00000065 E870000000          <1>     call critExit
+   171                              <1> .exitNoCrit:
+   172 0000006A 5E                  <1>     pop rsi
+   173                              <1>     return
+    13                              <2> %%_ret:
+    14 0000006B C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   174                              <1> .fileCheck:
+   175 0000006C 81F903000000        <1>     cmp ecx, 3
+   176 00000072 7430                <1>     je .open
+   177                              <1> ;If not 3 or 0, must be 1 or 2
+   178                              <1> .gsLp:
+   179                              <1> ;Always update filesize and start cluster info in rsi for growth/shrink
+   180                              <1> ; to the filesize and start cluster of rdi
+   181 00000074 8B4717              <1>     mov eax, dword [rdi + sft.dFileSize]
+   182 00000077 894617              <1>     mov dword [rsi + sft.dFileSize], eax
+   183 0000007A 8B470F              <1>     mov eax, dword [rdi + sft.dStartClust]
+   184 0000007D 89460F              <1>     mov dword [rsi + sft.dStartClust], eax
+   185 00000080 81F902000000        <1>     cmp ecx, 2      ;Was this a shrink call?
+   186 00000086 7409                <1>     je .gsDoShrink  ;Reset the cluster info if so
+   187                              <1> ;Here if we are a grow call. Check if the SFT in rsi was newly created.
+   188                              <1> ;If not, skip the reset below. Else, we set the absolute cluster now to
+   189                              <1> ; the start cluster to ensure that the SFTs all correctly have the same
+   190                              <1> ; cluster info.  
+   191 00000088 817E2300000000      <1>     cmp dword [rsi + sft.dAbsClust], 0 ;Is this sft just created?
+   192 0000008F 750A                <1>     jne .gsNextFile   ;If not, and a grow call, skip the below
+   193                              <1> .gsDoShrink:
+   194                              <1> ;Set the cluster information back to the start of the file.
+   195 00000091 894623              <1>     mov dword [rsi + sft.dAbsClust], eax
+   196 00000094 C7461F00000000      <1>     mov dword [rsi + sft.dRelClust], 0  ;Reset the file rel cluster ptr
+   197                              <1> .gsNextFile:
+   198 0000009B E822000000          <1>     call .gotoNextSFT
+   199 000000A0 75D2                <1>     jnz .gsLp
+   200 000000A2 EBC1                <1>     jmp short .exit 
+   201                              <1> 
+   202                              <1> .open:
+   203                              <1> ;Here we handle new file opens! Copies data from the 
+   204                              <1> ; topmost (earliest opened) SFT (rsi) of the SFT chain into 
+   205                              <1> ; the newly opened SFT (rdi)
+   206 000000A4 8B4613              <1>     mov eax, dword [rsi + sft.dTimeDate]
+   207 000000A7 894713              <1>     mov dword [rdi + sft.dTimeDate], eax
+   208 000000AA 8B4617              <1>     mov eax, dword [rsi + sft.dFileSize]
+   209 000000AD 894717              <1>     mov dword [rdi + sft.dFileSize], eax
+   210 000000B0 8B460F              <1>     mov eax, dword [rsi + sft.dStartClust]
+   211 000000B3 89470F              <1>     mov dword [rdi + sft.dStartClust], eax
+   212 000000B6 894723              <1>     mov dword [rdi + sft.dAbsClust], eax
+   213 000000B9 C7471F00000000      <1>     mov dword [rdi + sft.dRelClust], 0
+   214 000000C0 EBA3                <1>     jmp short .exit
+   215                              <1> 
+   216                              <1> .gotoNextSFT:
+   217                              <1> ;Returns in rsi the next SFT entry.
+   218                              <1> ;Input: rdi -> SFT we are updating from.
+   219                              <1> ;       rsi -> SFT we just updated.
+   220                              <1> ;Output: ZF=NZ: rsi -> Next SFT in the chain.
+   221                              <1> ;        ZF=ZE: End of SFT chain.
+   222 000000C2 488B763B            <1>     mov rsi, qword [rsi + sft.pNextSFT]
+   223 000000C6 4885F6              <1>     test rsi, rsi
+   224                              <1>     retz
+    41                              <2> cret z
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 000000C9 7501                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 000000CB C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   225 000000CC 4839FE              <1>     cmp rsi, rdi
+   226 000000CF 74F1                <1>     je .gotoNextSFT
+   227                              <1>     return
+    13                              <2> %%_ret:
+    14 000000D1 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    51                                  %include "./src/share/text/shutils.asm"
+     1                              <1> ;All utility functions go here
+     2                              <1> 
+     3                              <1> critEnter:
+     4 000000D2 B801800000          <1>     mov eax, 8001h  ;Enter DOS Level 1 critical section
+     5 000000D7 CD2A                <1>     int 2ah
+     6                              <1>     return
+    13                              <2> %%_ret:
+    14 000000D9 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+     7                              <1> critExit:
+     8 000000DA B801810000          <1>     mov eax, 8101h  ;Exit DOS Level 1 critical section
+     9 000000DF CD2A                <1>     int 2ah
+    10                              <1>     return
+    13                              <2> %%_ret:
+    14 000000E1 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+    11                              <1> 
+    52                                  
+    53                                  segment code$i code private align=4 use64
+    54                                  %include "./src/share/text/shinit.asm"
+     1                              <1> 
+     2                              <1> EXTERN resLenParas
+     3                              <1> GLOBAL ep
+     4                              <1> ;Initialises the share program
+     5                              <1> ;1) Ensure correct DOS version. We are DOS 1.
+     6                              <1> ;2) Parse the command tail. Any malformed char or switch and we abort install.
+     7                              <1> ;3) Allocate a block for MFTs. If we cannot allocate we abort install.
+     8                              <1> ;4) Allocate a block for file locks. If we cannot allocate we abort install.
+     9                              <1> ;5) Halt interrupts
+    10                              <1> ;6) Install Int 2Fh handler.
+    11                              <1> ;7) Copy over all pointers to internal routines to DOS and set Share byte on.
+    12                              <1> ;8) Close all file handles and free the environment.
+    13                              <1> ;9) Terminate and stay resident.
+    14                              <1> ep:
+    15 00000000 B800300000          <1>     mov eax, 3000h  ;Get version number
+    16 00000005 CD21                <1>     int 21h
+    17 00000007 3C01                <1>     cmp al, 1       ;If below or equal to version 1, we are ok with this
+    18 00000009 760E                <1>     jbe goInit
+    19 0000000B B0FF                <1>     mov al, -1
+    20                              <1> badVerExit:
+    21                              <1> ;Input: al = Error code
+    22 0000000D 488D15A0020000      <1>     lea rdx, sBadVer
+    23 00000014 E98D020000          <1>     jmp badPrintAndExit
+    24                              <1> goInit:
+    25 00000019 B800520000          <1>     mov eax, 5200h  ;Get ptr to sysvars
+    26 0000001E CD21                <1>     int 21h
+    27 00000020 4881EB3B000000      <1>     sub rbx, sysVarsPtr ;Subtract the offset into the segment
+    28 00000027 48891D(26000000)    <1>     mov qword [pDosseg], rbx    ;Store ptr to the head of the segment
+    29 0000002E B080                <1>     mov al, 80h         ;Error code for no SFT 
+    30 00000030 48817B4300000000    <1>     cmp qword [rbx + sftHeadPtr], 0    ;Check if no SFT ptr
+    31 00000038 74D3                <1>     je badVerExit
+    32 0000003A B800100000          <1>     mov eax, 1000h              ;SHARE Int 2f check
+    33 0000003F CD2F                <1>     int 2Fh
+    34 00000041 3CFF                <1>     cmp al, -1
+    35 00000043 750C                <1>     jne goInstall
+    36 00000045 488D15AA020000      <1>     lea rdx, sInstalled
+    37 0000004C E955020000          <1>     jmp badPrintAndExit         ;Jump with al = -1
+    38                              <1> goInstall:
+    39 00000051 B800610000          <1>     mov eax, 6100h              ;Get the pointer to the environment in rdx
+    40 00000056 CD21                <1>     int 21h
+    41 00000058 4885D2              <1>     test rdx, rdx
+    42 0000005B 740E                <1>     jz skipEnvFree
+    43 0000005D 4150                <1>     push r8
+    44 0000005F 4989D0              <1>     mov r8, rdx
+    45 00000062 B800490000          <1>     mov eax, 4900h              ;And free the environment
+    46 00000067 CD21                <1>     int 21h
+    47 00000069 4158                <1>     pop r8
+    48                              <1> skipEnvFree:
+    49                              <1> ;Initialise the sizes with the defaults
+    50 0000006B C705(08000000)0008- <1>     mov dword [dMftArenaSz], MFT_SIZE_DFLT
+    50 00000073 0000                <1>
+    51 00000075 66C705(1C000000)14- <1>     mov word [wNumLocks], LOCKS_DFLT
+    51 0000007D 00                  <1>
+    52                              <1> ;Get switchchar
+    53 0000007E B800370000          <1>     mov eax, 3700h              ;Get switchchar
+    54 00000083 CD21                <1>     int 21h
+    55 00000085 881528020000        <1>     mov byte [bSwitchChar], dl
+    56                              <1> ;Point rsi to cmd line and get string count
+    57 0000008B 498DB080000000      <1>     lea rsi, qword [r8 + 80h]   ;Go to the command line
+    58 00000092 AC                  <1>     lodsb                       ;Get the string length
+    59 00000093 0FB6C8              <1>     movzx ecx, al               ;into ecx
+    60                              <1> cmdlineLp:
+    61                              <1> ;Here we process the command line. We only allow for /f and /l switches.
+    62                              <1> ;Capital and lower case allowed. Parse based on string length.
+    63                              <1> ;We really strictly parse to ensure that the user does EXACTLY what they want
+    64 00000096 85C9                <1>     test ecx, ecx
+    65 00000098 0F848C000000        <1>     jz .endParse
+    66 0000009E AC                  <1>     lodsb           ;Read a char
+    67 0000009F FFC9                <1>     dec ecx         ;Dec the count
+    68 000000A1 E8EA010000          <1>     call isALsep    ;Is this a sep char?
+    69 000000A6 74EE                <1>     je cmdlineLp    ;Keep looping if so
+    70 000000A8 85C9                <1>     test ecx, ecx   ;If not, but we have no more chars to process, end parse
+    71 000000AA 747E                <1>     jz .endParse
+    72 000000AC 3A0501020000        <1>     cmp al, byte [bSwitchChar]
+    73 000000B2 753B                <1>     jne .badParamExit
+    74 000000B4 88C2                <1>     mov dl, al      ;Capitalise the char
+    75 000000B6 B820650000          <1>     mov eax, 6520h  ;Capitalise char in dl with normal table
+    76 000000BB CD21                <1>     int 21h
+    77 000000BD 80FA46              <1>     cmp dl, "F"
+    78 000000C0 743B                <1>     je .mftSwitch
+    79 000000C2 80FA4C              <1>     cmp dl, "L"
+    80 000000C5 7528                <1>     jne .badParamExit
+    81                              <1> ;Here we figure out how many locks were specified.
+    82 000000C7 E8AC010000          <1>     call getNextChar
+    83 000000CC 3C3A                <1>     cmp al, ":"  ;Next char MUST be a semicolon
+    84 000000CE 751F                <1>     jne .badParamExit
+    85 000000D0 E852010000          <1>     call getASCIINumber
+    86 000000D5 81FB0F270000        <1>     cmp ebx, MAX_LOCKS   ;Check the argument not insane
+    87 000000DB 7712                <1>     ja .badParamExit
+    88 000000DD 66391D(1C000000)    <1>     cmp word [wNumLocks], bx    ;If the new value is less than default, ignore
+    89 000000E4 77B0                <1>     ja cmdlineLp
+    90 000000E6 66891D(1C000000)    <1>     mov word [wNumLocks], bx
+    91 000000ED EBA7                <1>     jmp short cmdlineLp
+    92                              <1> .badParamExit:
+    93 000000EF 488D15D6010000      <1>     lea rdx, sBadParam
+    94 000000F6 B0FF                <1>     mov al, -1
+    95 000000F8 E9A9010000          <1>     jmp badPrintAndExit
+    96                              <1> .mftSwitch:
+    97 000000FD E876010000          <1>     call getNextChar
+    98 00000102 3C3A                <1>     cmp al, ":"  ;Next char MUST be a semicolon
+    99 00000104 75E9                <1>     jne .badParamExit
+   100 00000106 E81C010000          <1>     call getASCIINumber
+   101 0000010B 81FB00001000        <1>     cmp ebx, MAX_MFT_SIZE
+   102 00000111 77DC                <1>     ja .badParamExit
+   103 00000113 391D(08000000)      <1>     cmp dword [dMftArenaSz], ebx
+   104 00000119 0F8777FFFFFF        <1>     ja cmdlineLp
+   105 0000011F 891D(08000000)      <1>     mov dword [dMftArenaSz], ebx
+   106 00000125 E96CFFFFFF          <1>     jmp cmdlineLp
+   107                              <1> .endParse:
+   108                              <1> ;Now we allocate the arenas of the required size and place pointers 
+   109                              <1> ; in the right places. 
+   110                              <1> ;Do MFT first
+   111 0000012A 8B1D(08000000)      <1>     mov ebx, dword [dMftArenaSz]    ;This is in bytes
+   112 00000130 81C30F000000        <1>     add ebx, 0Fh    ;Round up 
+   113 00000136 C1EB04              <1>     shr ebx, 4      ;And convert to paragraphs
+   114 00000139 B800480000          <1>     mov eax, 4800h
+   115 0000013E CD21                <1>     int 21h
+   116 00000140 0F8257010000        <1>     jc badMemError
+   117 00000146 488905(00000000)    <1>     mov qword [pMftArena], rax
+   118                              <1> ;Now initialise this arena. Do this by:
+   119                              <1> ; 1) Zeroing the whole block
+   120                              <1> ; 2) Placing an End MFT entry at the end
+   121                              <1> ; 3) Making a single MFT entry that is free and the size of the arena
+   122 0000014D 4889C7              <1>     mov rdi, rax
+   123 00000150 31C0                <1>     xor eax, eax
+   124 00000152 8B0D(08000000)      <1>     mov ecx, dword [dMftArenaSz]
+   125 00000158 89CA                <1>     mov edx, ecx    ;Save number of free bytes in the arena
+   126 0000015A 4889FE              <1>     mov rsi, rdi    ;Save the ptr to the head of the arena
+   127 0000015D F3AA                <1>     rep stosb   ;Clear the whole arena
+   128                              <1> ;rdi now points one byte past the end
+   129 0000015F 48FFCF              <1>     dec rdi     ;Now point rdi to the last byte in the arena
+   130 00000162 C607FF              <1>     mov byte [rdi + mft.bSig], mftEnd   ;Mark as end of arena
+   131 00000165 FFCA                <1>     dec edx     ;One less free byte in the arena
+   132                              <1> ;Allocate the first free mft (which takes up the whole arena) at the head 
+   133 00000167 C60600              <1>     mov byte [rsi + mft.bSig], mftFree
+   134 0000016A 895601              <1>     mov dword [rsi + mft.dLen], edx
+   135                              <1> ;Get a File Lock arena
+   136 0000016D 0FB70D(1C000000)    <1>     movzx ecx, word [wNumLocks]
+   137 00000174 B829000000          <1>     mov eax, fileLock_size
+   138 00000179 F7E1                <1>     mul ecx     ;Multiply eax with ebx. Fits in eax. Sets edx = 0
+   139 0000017B 89C1                <1>     mov ecx, eax    ;Get number of bytes in ecx
+   140 0000017D 89CB                <1>     mov ebx, ecx
+   141 0000017F 81C30F000000        <1>     add ebx, 0Fh    ;Round up
+   142 00000185 C1EB04              <1>     shr ebx, 4      ;Get number of paras
+   143 00000188 B800480000          <1>     mov eax, 4800h
+   144 0000018D CD21                <1>     int 21h
+   145 0000018F 0F8208010000        <1>     jc badMemError
+   146 00000195 488905(0C000000)    <1>     mov qword [pLockArena], rax 
+   147 0000019C 4889C6              <1>     mov rsi, rax    ;Point rsi to the head of the arena
+   148 0000019F 4889F7              <1>     mov rdi, rsi    ;Point rdi there too
+   149 000001A2 31C0                <1>     xor eax, eax    
+   150 000001A4 F3AA                <1>     rep stosb   ;Sanitise the space we requested (ignore any overhang)
+   151 000001A6 0FB70D(1C000000)    <1>     movzx ecx, word [wNumLocks] ;Get number of locks to process
+   152 000001AD 488935(14000000)    <1>     mov qword [pFreeLock], rsi  ;rsi -> Head of the free locks list
+   153                              <1> .freeLp:
+   154 000001B4 4889F7              <1>     mov rdi, rsi    ;Point rdi to where rsi is pointing
+   155 000001B7 4881C629000000      <1>     add rsi, fileLock_size  ;Goto next lock
+   156 000001BE 488937              <1>     mov qword [rdi + fileLock.pNext], rsi
+   157 000001C1 FFC9                <1>     dec ecx         ;One less lock to process
+   158 000001C3 75EF                <1>     jnz .freeLp     ;If not done yet, keep adding them to the free lock list
+   159                              <1> ;Get the original Int 2Fh handler in rbx and replace it with our own
+   160 000001C5 B82F350000          <1>     mov eax, 352Fh
+   161 000001CA CD21                <1>     int 21h 
+   162 000001CC 48891D(1E000000)    <1>     mov qword [oldI2Fh], rbx    ;Save the original Int 2Fh handler
+   163 000001D3 488D15(00000000)    <1>     lea rdx, i2fHandler         ;And install our own
+   164 000001DA B82F250000          <1>     mov eax, 252Fh
+   165 000001DF CD21                <1>     int 21h
+   166                              <1> ;Set SHARE byte in DOS
+   167 000001E1 488B1D(26000000)    <1>     mov rbx, qword [pDosseg]    ;Get dosseg ptr
+   168 000001E8 C683FC030000FF      <1>     mov byte [rbx + shareFlag], -1
+   169                              <1> ;Halt interrupts now as we are about to move the share pointers in
+   170 000001EF FA                  <1>     cli
+   171 000001F0 488D3519010000      <1>     lea rsi, shareTable
+   172 000001F7 488DBBBF000000      <1>     lea rdi, qword [rbx + shareHooks]
+   173 000001FE B90F000000          <1>     mov ecx, shareTableL    ;Get number of entries 
+   174                              <1> ;copyLp:
+   175                              <1> ;    movsq
+   176                              <1> ;    lodsq
+   177                              <1> ;    add rax, r8             ;Add the program segment base address to relative addr
+   178                              <1> ;    stosq
+   179                              <1> ;    dec ecx
+   180                              <1> ;    jnz copyLp
+   181 00000203 F348A5              <1>     rep movsq   ;PE loader does the pointer fixups
+   182 00000206 FB                  <1>     sti
+   183                              <1> ;Close all handles. We get the number of elements in the jft and 
+   184                              <1> ;close them all. This is done like this to account for the fact that the
+   185                              <1> ;parent let us inherit more than just the standard handles.
+   186 00000207 410FB6504E          <1>     movzx edx, byte [r8 + psp.jftSize]  ;Get the JFT size
+   187 0000020C 31DB                <1>     xor ebx, ebx
+   188                              <1> closeLp:
+   189 0000020E B8003E0000          <1>     mov eax, 3E00h
+   190 00000213 CD21                <1>     int 21h
+   191 00000215 FFC3                <1>     inc ebx
+   192 00000217 39D3                <1>     cmp ebx, edx
+   193 00000219 75F3                <1>     jne closeLp
+   194 0000021B BA[10000000]        <1>     mov edx, resLenParas + ((psp_size + 0Fh)>> 4)     
+   195 00000220 B800310000          <1>     mov eax, 3100h  ;Terminate and stay resident
+   196 00000225 CD21                <1>     int 21h
+   197                              <1> ;A TSR call never returns so we end here.
+   198                              <1> 
+   199                              <1> ;Init Common Routines. Not to be used in the main files
+   200                              <1> 
+   201                              <1> getASCIINumber:
+   202                              <1> ;Accumulates the value in ebx and returns it.
+   203                              <1> ;First char read must be a digit, else, we treat a non-digit
+   204                              <1> ; as a terminator of the number. 
+   205                              <1> ;If the value is greater than 32 bits, treat as invalid input
+   206 00000227 31DB                <1>     xor ebx, ebx
+   207 00000229 E84A000000          <1>     call getNextChar    ;First char after : must be a digit
+   208 0000022E E851000000          <1>     call isAlDigit
+   209 00000233 0F82B6FEFFFF        <1>     jc cmdlineLp.badParamExit
+   210                              <1> .lp:
+   211 00000239 250F000000          <1>     and eax, 0Fh    ;Save lower nybble only and zero the rest of the register
+   212 0000023E 89DD                <1>     mov ebp, ebx    ;Dont use lea because we cant check for carry
+   213 00000240 C1E302              <1>     shl ebx, 2      ;4*ebx
+   214 00000243 0F82A6FEFFFF        <1>     jc cmdlineLp.badParamExit
+   215 00000249 01EB                <1>     add ebx, ebp    ;5*ebx
+   216 0000024B 0F829EFEFFFF        <1>     jc cmdlineLp.badParamExit
+   217 00000251 D1E3                <1>     shl ebx, 1      ;10*ebx
+   218 00000253 0F8296FEFFFF        <1>     jc cmdlineLp.badParamExit
+   219 00000259 01C3                <1>     add ebx, eax    ;Add new digit value
+   220 0000025B 0F828EFEFFFF        <1>     jc cmdlineLp.badParamExit
+   221 00000261 85C9                <1>     test ecx, ecx   ;Stop if we run out of chars to process
+   222                              <1>     retz
+    41                              <2> cret z
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 00000263 7501                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 00000265 C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   223 00000266 E815000000          <1>     call getNextChar.noCheck    ;Else get the next char
+   224 0000026B E814000000          <1>     call isAlDigit              ;If it is a digit, keep processing
+   225 00000270 73C7                <1>     jnc .lp
+   226                              <1> ;Else, we reset to the first non-digit char and return.
+   227 00000272 48FFCE              <1>     dec rsi
+   228 00000275 FFC1                <1>     inc ecx
+   229                              <1>     return
+    13                              <2> %%_ret:
+    14 00000277 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   230                              <1> 
+   231                              <1> getNextChar:
+   232                              <1> ;Gets the next char in al and decrements count. If count on entry, fail.
+   233                              <1> ;Used to wrap processing of chars after a switch char
+   234 00000278 85C9                <1>     test ecx, ecx
+   235 0000027A 0F846FFEFFFF        <1>     jz cmdlineLp.badParamExit
+   236                              <1> .noCheck:
+   237 00000280 AC                  <1>     lodsb
+   238 00000281 FFC9                <1>     dec ecx
+   239                              <1>     return
+    13                              <2> %%_ret:
+    14 00000283 C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   240                              <1> 
+   241                              <1> 
+   242                              <1> isAlDigit:
+   243 00000284 3C30                <1>     cmp al, "0"
+   244 00000286 7206                <1>     jb .notDigit
+   245 00000288 3C39                <1>     cmp al, "9"
+   246 0000028A 7702                <1>     ja .notDigit
+   247 0000028C F8                  <1>     clc
+   248                              <1>     return
+    13                              <2> %%_ret:
+    14 0000028D C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   249                              <1> .notDigit:
+   250 0000028E F9                  <1>     stc 
+   251                              <1>     return
+    13                              <2> %%_ret:
+    14 0000028F C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   252                              <1> 
+   253                              <1> isALsep:
+   254 00000290 3C20                <1>     cmp al, SPC
+   255                              <1>     rete
+    49                              <2> cret e
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 00000292 7501                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 00000294 C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   256 00000295 3C09                <1>     cmp al, TAB
+   257                              <1>     rete
+    49                              <2> cret e
+    19                              <3> %%_base:
+    20                              <3> %assign baseVar %%_base-$$
+    21                              <3> 
+    22                              <3> 
+    23                              <3> 
+    24                              <3> 
+    25                              <3> 
+    26                              <3> 
+    27                              <3> 
+    28                              <3> 
+    29                              <3> 
+    30                              <3> 
+    31                              <3> 
+    32                              <3> 
+    33                              <3> 
+    34 00000297 7501                <3>  j%-1 short %%a
+    35                              <3>  return
+    13                              <4> %%_ret:
+    14 00000299 C3                  <4>  ret
+    15                              <4> %assign retOff %%_ret-$$
+    36                              <3> %%a:
+    37                              <3> 
+   258 0000029A 3C0A                <1>     cmp al, LF
+   259                              <1>     return
+    13                              <2> %%_ret:
+    14 0000029C C3                  <2>  ret
+    15                              <2> %assign retOff %%_ret-$$
+   260                              <1> 
+   261                              <1> badMemError:
+   262 0000029D 488D153E000000      <1>     lea rdx, sBadMem
+   263 000002A4 B0FF                <1>     mov al, -1
+   264                              <1> badPrintAndExit:
+   265                              <1> ;Input: al = Error code to report
+   266                              <1> ;       rdx -> String to print
+   267 000002A6 50                  <1>     push rax
+   268 000002A7 B800090000          <1>     mov eax, 0900h
+   269 000002AC CD21                <1>     int 21h
+   270 000002AE 58                  <1>     pop rax
+   271                              <1> badExit:
+   272 000002AF B44C                <1>     mov ah, 4Ch  ;Exit with error code in al
+   273 000002B1 CD21                <1>     int 21h
+   274                              <1> 
+   275                              <1> ;All the init vars
+   276 000002B3 2F                  <1> bSwitchChar db "/"
+   277                              <1> ;Here we place all the init strings
+   278 000002B4 496E636F7272656374- <1> sBadVer     db "Incorrect DOS version",CR,LF,"$"
+   278 000002BD 20444F532076657273- <1>
+   278 000002C6 696F6E0D0A24        <1>
+   279 000002CC 496E636F7272656374- <1> sBadParam   db "Incorrect parameter",CR,LF,"$"
+   279 000002D5 20706172616D657465- <1>
+   279 000002DE 720D0A24            <1>
+   280 000002E2 4E6F7420656E6F7567- <1> sBadMem     db "Not enough memory",CR,LF,"$"
+   280 000002EB 68206D656D6F72790D- <1>
+   280 000002F4 0A24                <1>
+   281 000002F6 534841524520616C72- <1> sInstalled  db "SHARE already installed",CR,LF,"$"
+   281 000002FF 6561647920696E7374- <1>
+   281 00000308 616C6C65640D0A24    <1>
+   282                              <1> ;Function table, to be ejected
+   283                              <1> shareTable:
+   284 00000310 0000000000000000    <1>     dq 0
+   285 00000318 [1300000000000000]  <1>     dq open           
+   286 00000320 [1500000000000000]  <1>     dq close          
+   287 00000328 [1700000000000000]  <1>     dq closeAllByMachine      
+   288 00000330 [1900000000000000]  <1>     dq closeAllByProcess      
+   289 00000338 [1B00000000000000]  <1>     dq closeAllByName    
+   290 00000340 [1D00000000000000]  <1>     dq lockFile       
+   291 00000348 [1F00000000000000]  <1>     dq unlockFile     
+   292 00000350 [2100000000000000]  <1>     dq checkRegionLock  
+   293 00000358 [2300000000000000]  <1>     dq getMFTInformation   
+   294 00000360 [2500000000000000]  <1>     dq updateFCB 
+   295 00000368 [2700000000000000]  <1>     dq getFirstClusterFCB   
+   296 00000370 [2900000000000000]  <1>     dq closeNetworkFiles   
+   297 00000378 [2B00000000000000]  <1>     dq closeRenDel
+   298 00000380 [2D00000000000000]  <1>     dq dirUpdate 
+   299                              <1> shareTableL equ ($ - shareTable)/8
+    55                                  ;=========================END OF SHARE MODULE==========================
+    55          ------------------       info: assembly required 1+2+2 passes
+

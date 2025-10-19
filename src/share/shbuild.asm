@@ -13,35 +13,43 @@
 [DEFAULT REL]
 BITS 64
 
+[LIST -]
 %include "./inc/dosMacro.mac"
 %include "./inc/fatStruc.inc"
 %include "./inc/fcbStruc.inc"
 %include "./inc/dosStruc.inc"
+%include "./inc/drvStruc.inc"
 %include "./inc/dosError.inc"
 %include "./inc/shstruc.inc"
-
+[LIST +]
 ;========================START OF SHARE MODULE=========================
 
-Segment dosSeg bss private align=1
 ;---------------------------
 ;   DOS data segment here
 ;---------------------------
+;Included as an absolute 
+;segment at address 0 to
+;allow using the dos data 
+;segment as a struc
+;---------------------------
+absolute 0x0
 %include "./src/dos/Kernel/BSS/dosSeg.asm"
 
-Segment .bss bss private align=1 
 ;---------------------------
 ;       Share data seg
 ;---------------------------
+segment bss$r bss private align=4
 %include "./src/share/data/shbss.asm"
 
-
-Segment .text code private align=1 use64
 ;---------------------------
 ;       Share code seg
 ;---------------------------
+segment .text code private align=4 use64
+;Place this explicit .text section to calm nasm down
+segment code$r code private align=4 use64
 %include "./src/share/text/shmain.asm"
 %include "./src/share/text/shutils.asm"
 
-Segment .init code private align=1 use64
+segment code$i code private align=4 use64
 %include "./src/share/text/shinit.asm"
 ;=========================END OF SHARE MODULE==========================

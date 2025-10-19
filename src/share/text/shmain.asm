@@ -1,28 +1,79 @@
-;All the main bodies of the share hook calls go here
+;-------------------------------------------------------------------------
+;This file contains the all the functions that have external linkage.
+;
+; Int 2Fh handler
+; open           
+; close          
+; closeAllByMachine      
+; closeAllByProcess      
+; closeAllByName    
+; lockFile       
+; unlockFile     
+; checkRegionLock  
+; getMFTInformation   
+; updateFCB 
+; getFirstClusterFCB   
+; closeNetworkFiles   
+; closeRenDel
+; dirUpdate      
+;-------------------------------------------------------------------------
 
-openShare:           
+i2fHandler:
+    cmp ah, 10h ;Is this call for us?
+    jne .gotoNext
+    test al, al ;Do we test presence of share?
+    jnz .exit   ;If not, probably badly behaved code. Let it return silently
+    mov al, -1  ;Else, indicate we are already installed
+.exit:
+    iretq
+.gotoNext:
+    jmp qword [oldI2Fh]
+
+open:           
 ;Called on file create/open
-closeShare:          
+    clc
+    return
+close:          
 ;Called on file close
-closeCompShare:      
+    clc
+    return
+closeAllByMachine:      
 ;Close all files for a machine
-closeTaskShare:      
+    stc
+    return
+closeAllByProcess:      
 ;Close all files for a task
-closeNameShare:      
+    stc
+    return
+closeAllByName:      
 ;Close file by name
-lockFileShare:       
+    stc
+    return
+lockFile:       
 ;Lock a file region
-unlockFileShare:     
+    stc
+    return
+unlockFile:     
 ;Unlock file region
-checkFileLockShare:  
+    stc
+    return
+checkRegionLock:  
 ;Check file region locked
-openFileListShare:   
+    clc
+    return
+getMFTInformation:   
 ;Get MFT information about file
-updateFCBfromSFTShr: 
+    stc
+    return
+updateFCB: 
 ;UNUSED: Update FCB from the SFT
-fstClstOfFCBShare:   
+    stc
+    return
+getFirstClusterFCB:   
 ;UNUSED: Get first cluster of FCB
-closeDupNetShare:   
+    stc
+    return
+closeNetworkFiles:   
 ;Close a newly created SFT-FCB handle for a procedure.
 ;Network SFT-FCBs handles are all collapsed into one SFT.
 ;----------------------------------------------------------------------------
@@ -37,9 +88,10 @@ closeDupNetShare:
 ;   as the SFT-FCB). We increment the new main SFT refcount instead of 
 ;   having multiple SFTs.
 ;----------------------------------------------------------------------------
+    clc
+    return
 
-
-renDelCloseShare:
+closeRenDel:
 ;On rename/delete/setattr, this function is called to check we can proceed
 ; with the operation.
 ;Finds MFT based on the filename in fname1Ptr in the dosseg
@@ -54,7 +106,9 @@ renDelCloseShare:
 ;   then close the file and return ok.
 ;Else, we fail.
 ;----------------------------------------------------------------------------
-updateDirShare:      
+    stc
+    return
+dirUpdate:      
 ;Update dir info across all SFTs for a file. 
 ;----------------------------------------------------------------------------
 ;Input: rdi -> SFT to update dir entry from
@@ -74,13 +128,13 @@ updateDirShare:
 ; If eax = 0:
 ;   Walk the SFT chain along rsi updating date/time fields except for us.
 ; Else if eax = 1:
-;   Walk the SFT chain along rsi updating dFilesize and dStartClust fields 
+;   Walk the SFT chain along rsi updating dFileSize and dStartClust fields 
 ;   except for us.
 ; Else if eax = 2:
-;   Walk the SFT chain along rsi updating dFilesize, dStartClust and 
+;   Walk the SFT chain along rsi updating dFileSize, dStartClust and 
 ;   setting dRelClust to 0 and dAbsClust to dStartClust except for us.
 ; Else if eax = 3:
-;   Update date/time and dFilesize, dStartClust, dRelClust and dAbsClust 
+;   Update date/time and dFileSize, dStartClust, dRelClust and dAbsClust 
 ;   fields for us from the oldest SFT in the SFT chain for this MFT. 
 ;   
 ; Return.
@@ -122,32 +176,41 @@ updateDirShare:
     je .open
 ;If not 3 or 0, must be 1 or 2
 .gsLp:
-;Always update filesize and start cluster info for growth/shrink
-    mov eax, dword [rsi + sft.dFilesize]
-    mov dword [rdi + sft.dFilesize], eax
-    mov eax, dword [rsi + sft.dStartClust]
-    mov dword [rdi + sft.dStartClust], eax
-    cmp ecx, 1  ;Was this a growth call?
-    je .growth
-;Here if shrink. Set the cluster information back to the start of the file.
-    mov dword [rdi + sft.dAbsClust], eax
+;Always update filesize and start cluster info in rsi for growth/shrink
+; to the filesize and start cluster of rdi
+    mov eax, dword [rdi + sft.dFileSize]
+    mov dword [rsi + sft.dFileSize], eax
+    mov eax, dword [rdi + sft.dStartClust]
+    mov dword [rsi + sft.dStartClust], eax
+    cmp ecx, 2      ;Was this a shrink call?
+    je .gsDoShrink  ;Reset the cluster info if so
+;Here if we are a grow call. Check if the SFT in rsi was newly created.
+;If not, skip the reset below. Else, we set the absolute cluster now to
+; the start cluster to ensure that the SFTs all correctly have the same
+; cluster info.  
+    cmp dword [rsi + sft.dAbsClust], 0 ;Is this sft just created?
+    jne .gsNextFile   ;If not, and a grow call, skip the below
+.gsDoShrink:
+;Set the cluster information back to the start of the file.
+    mov dword [rsi + sft.dAbsClust], eax
     mov dword [rsi + sft.dRelClust], 0  ;Reset the file rel cluster ptr
-.growth:
+.gsNextFile:
     call .gotoNextSFT
     jnz .gsLp
     jmp short .exit 
 
 .open:
 ;Here we handle new file opens! Copies data from the 
-; topmost (earliest opened) SFT of the SFT chain into the newly opened SFT
+; topmost (earliest opened) SFT (rsi) of the SFT chain into 
+; the newly opened SFT (rdi)
     mov eax, dword [rsi + sft.dTimeDate]
     mov dword [rdi + sft.dTimeDate], eax
-    mov eax, dword [rsi + sft.dFilesize]
-    mov dword [rdi + sft.dFilesize], eax
+    mov eax, dword [rsi + sft.dFileSize]
+    mov dword [rdi + sft.dFileSize], eax
     mov eax, dword [rsi + sft.dStartClust]
     mov dword [rdi + sft.dStartClust], eax
     mov dword [rdi + sft.dAbsClust], eax
-    mov eax, dword [rdi + sft.dRelClust], 0
+    mov dword [rdi + sft.dRelClust], 0
     jmp short .exit
 
 .gotoNextSFT:
