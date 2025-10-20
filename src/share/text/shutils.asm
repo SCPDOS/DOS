@@ -71,8 +71,10 @@ getMFT:
 ;Create an MFT entry. dl and ecx are always preserved in below
     call findFreeMFT
     jnc .buildMFT
-    call defragMFTArena ;Trashes eax only (returns eax = free space)
-    call findFreeMFT
+    call defragMFTArena ;Returns rbx -> Free MFT
+    mov eax, ecx        ;Move the string length to work out...
+    add eax, mft_size   ;...the minimum size of the MFT we need
+    cmp dword [rbx + mft.dLen], eax ;Do we fit in this free space?
     jnc .buildMFT
 ;Here if CF=CY. Return Sharing buffer full error!
     mov eax, errShrFul
@@ -113,9 +115,9 @@ defragMFTArena:
 ;Defragments the MFT arena. Moves all allocated MFTs to the start.
 ;Creates a single large free MFT from all the free space.
 ;Input: Nothing
-;Output: MFT defragged. eax = Max MFT free space
-; All regs preserved.
-    push rbx
+;Output: MFT defragged. rbx -> New free MFT
+; All other regs preserved.
+    push rax
     push rcx
     push rdx
     push rsi
@@ -163,15 +165,15 @@ defragMFTArena:
 ;edx = Accumulated free space
     mov byte [rdi + mft.bSig], mftFree
     mov dword [rdi + mft.dLen], edx
-    add rdi, rdx
+    mov rbx, rdi    ;Get the free MFT pointer into rbx
+    add rdi, rdx    ;Now check the MFT chain is not corrupted
     cmp byte [rdi + mft.bSig], mftEnd
     jne .crash
-    mov eax, edx    ;Return in eax the accumulated free space
     pop rdi
     pop rsi
     pop rdx
     pop rcx
-    pop rbx
+    pop rax
     return
 .crash:
     call errPrintAndHalt    ;No return. Use call to push string ptr to stack

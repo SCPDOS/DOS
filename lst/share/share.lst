@@ -865,7 +865,7 @@
     40                              <1> 
     41                              <1> 
     42                              <1> .crash:
-    43 00000139 E841010000          <1>     call errPrintAndHalt
+    43 00000139 E847010000          <1>     call errPrintAndHalt
     44 0000013E 53465420414C524541- <1>     db "SFT ALREADY IN USE",CR,LF,NUL
     44 00000147 445920494E20555345- <1>
     44 00000150 0D0A00              <1>
@@ -895,7 +895,7 @@
     65 00000163 75F4                <1>     jnz .metalp
     66 00000165 5E                  <1>     pop rsi
     67                              <1> ;Hereon: ecx = String length, dl = Checksum, rsi -> String 
-    68 00000166 E8E7000000          <1>     call findMFT        ;Preserves dl and ecx
+    68 00000166 E8ED000000          <1>     call findMFT        ;Preserves dl and ecx
     69                              <1>     retnc
     61                              <2> cret nc
     19                              <3> %%_base:
@@ -922,140 +922,142 @@
     37                              <3> 
     70                              <1> ;We get here if this file has no MFT.
     71                              <1> ;Create an MFT entry. dl and ecx are always preserved in below
-    72 0000016E E8BA000000          <1>     call findFreeMFT
-    73 00000173 7312                <1>     jnc .buildMFT
-    74 00000175 E847000000          <1>     call defragMFTArena ;Trashes eax only (returns eax = free space)
-    75 0000017A E8AE000000          <1>     call findFreeMFT
-    76 0000017F 7306                <1>     jnc .buildMFT
-    77                              <1> ;Here if CF=CY. Return Sharing buffer full error!
-    78 00000181 B824000000          <1>     mov eax, errShrFul
-    79                              <1>     return
+    72 0000016E E8C0000000          <1>     call findFreeMFT
+    73 00000173 7317                <1>     jnc .buildMFT
+    74 00000175 E84C000000          <1>     call defragMFTArena ;Returns rbx -> Free MFT
+    75 0000017A 89C8                <1>     mov eax, ecx        ;Move the string length to work out...
+    76 0000017C 0516000000          <1>     add eax, mft_size   ;...the minimum size of the MFT we need
+    77 00000181 394301              <1>     cmp dword [rbx + mft.dLen], eax ;Do we fit in this free space?
+    78 00000184 7306                <1>     jnc .buildMFT
+    79                              <1> ;Here if CF=CY. Return Sharing buffer full error!
+    80 00000186 B824000000          <1>     mov eax, errShrFul
+    81                              <1>     return
     13                              <2> %%_ret:
-    14 00000186 C3                  <2>  ret
+    14 0000018B C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-    80                              <1> .buildMFT:
-    81                              <1> ;Here we have the following values:
-    82                              <1> ;rsi -> String to copy in
-    83                              <1> ;rbx -> Space to allocate the MFT in. rbx points to a free MFT.
-    84                              <1> ;ecx = String length 
-    85                              <1> ;dl = String checksum 
-    86                              <1> ;Start by doing the easy part of the allocation
-    87 00000187 C60301              <1>     mov byte [rbx + mft.bSig], mftAlloc
-    88 0000018A 48C7430600000000    <1>     mov qword [rbx + mft.pLock], 0
-    89 00000192 48C7430E00000000    <1>     mov qword [rbx + mft.pSFT], 0
-    90 0000019A 885305              <1>     mov byte [rbx + mft.bCheckSum], dl  ;Set the checksum immediately.
-    91                              <1> ;Now we work out if we want to split space into two MFTs or keep it as one.
-    92                              <1> ;Check if the MFT we are pointing at has enough space for a minimum mft and
-    93                              <1> ; our MFT. If there is more than enough space, we split into two MFTs. 
-    94                              <1> ;Else, we just allocate the whole space and waste the few extra bytes.
-    95 0000019D 8D5116              <1>     lea edx, dword [rcx + mft_size] ;Get the min size of our MFT allocation
-    96 000001A0 8B4301              <1>     mov eax, dword [rbx + mft.dLen] ;Get the current size of the free MFT
-    97 000001A3 29D0                <1>     sub eax, edx        ;Remove our own allocation from the free MFT size
-    98 000001A5 3D26000000          <1>     cmp eax, MIN_MFT_SIZE
-    99 000001AA 760D                <1>     jbe .alloc   ;If this is beq, we just use this mft entry as is.
-   100                              <1> ;eax has the size of the new free block
-   101 000001AC 488D3C13            <1>     lea rdi, qword [rbx + rdx]  ;Point rdi to where the new free block will go
-   102 000001B0 C60700              <1>     mov byte [rdi + mft.bSig], mftFree  ;Make the new free block
-   103 000001B3 894701              <1>     mov dword [rdi + mft.dLen], eax     ;Set the new free block's size
-   104 000001B6 895301              <1>     mov dword [rbx + mft.dLen], edx     ;Set the newly allocated block's size
-   105                              <1> .alloc:
-   106                              <1> ;Finally, allocate the MFT. The size, if modified, is done already.
-   107 000001B9 488D7B16            <1>     lea rdi, qword [rbx + mft.name] 
-   108 000001BD F3A4                <1>     rep movsb   ;Move the string. rdi points to start of new MFT
-   109 000001BF F8                  <1>     clc
-   110                              <1>     return
+    82                              <1> .buildMFT:
+    83                              <1> ;Here we have the following values:
+    84                              <1> ;rsi -> String to copy in
+    85                              <1> ;rbx -> Space to allocate the MFT in. rbx points to a free MFT.
+    86                              <1> ;ecx = String length 
+    87                              <1> ;dl = String checksum 
+    88                              <1> ;Start by doing the easy part of the allocation
+    89 0000018C C60301              <1>     mov byte [rbx + mft.bSig], mftAlloc
+    90 0000018F 48C7430600000000    <1>     mov qword [rbx + mft.pLock], 0
+    91 00000197 48C7430E00000000    <1>     mov qword [rbx + mft.pSFT], 0
+    92 0000019F 885305              <1>     mov byte [rbx + mft.bCheckSum], dl  ;Set the checksum immediately.
+    93                              <1> ;Now we work out if we want to split space into two MFTs or keep it as one.
+    94                              <1> ;Check if the MFT we are pointing at has enough space for a minimum mft and
+    95                              <1> ; our MFT. If there is more than enough space, we split into two MFTs. 
+    96                              <1> ;Else, we just allocate the whole space and waste the few extra bytes.
+    97 000001A2 8D5116              <1>     lea edx, dword [rcx + mft_size] ;Get the min size of our MFT allocation
+    98 000001A5 8B4301              <1>     mov eax, dword [rbx + mft.dLen] ;Get the current size of the free MFT
+    99 000001A8 29D0                <1>     sub eax, edx        ;Remove our own allocation from the free MFT size
+   100 000001AA 3D26000000          <1>     cmp eax, MIN_MFT_SIZE
+   101 000001AF 760D                <1>     jbe .alloc   ;If this is beq, we just use this mft entry as is.
+   102                              <1> ;eax has the size of the new free block
+   103 000001B1 488D3C13            <1>     lea rdi, qword [rbx + rdx]  ;Point rdi to where the new free block will go
+   104 000001B5 C60700              <1>     mov byte [rdi + mft.bSig], mftFree  ;Make the new free block
+   105 000001B8 894701              <1>     mov dword [rdi + mft.dLen], eax     ;Set the new free block's size
+   106 000001BB 895301              <1>     mov dword [rbx + mft.dLen], edx     ;Set the newly allocated block's size
+   107                              <1> .alloc:
+   108                              <1> ;Finally, allocate the MFT. The size, if modified, is done already.
+   109 000001BE 488D7B16            <1>     lea rdi, qword [rbx + mft.name] 
+   110 000001C2 F3A4                <1>     rep movsb   ;Move the string. rdi points to start of new MFT
+   111 000001C4 F8                  <1>     clc
+   112                              <1>     return
     13                              <2> %%_ret:
-    14 000001C0 C3                  <2>  ret
+    14 000001C5 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   111                              <1> 
-   112                              <1> defragMFTArena:
-   113                              <1> ;Defragments the MFT arena. Moves all allocated MFTs to the start.
-   114                              <1> ;Creates a single large free MFT from all the free space.
-   115                              <1> ;Input: Nothing
-   116                              <1> ;Output: MFT defragged. eax = Max MFT free space
-   117                              <1> ; All regs preserved.
-   118 000001C1 53                  <1>     push rbx
-   119 000001C2 51                  <1>     push rcx
-   120 000001C3 52                  <1>     push rdx
-   121 000001C4 56                  <1>     push rsi
-   122 000001C5 57                  <1>     push rdi
-   123                              <1> ;rsi = Read pointer
-   124                              <1> ;rdi = Write pointer
-   125                              <1> ;edx = Free space accumulator
-   126 000001C6 488B35(00000000)    <1>     mov rsi, qword [pMftArena]
-   127 000001CD 4889F7              <1>     mov rdi, rsi
-   128 000001D0 31D2                <1>     xor edx, edx
-   129                              <1> .lp:
-   130                              <1> ;If we encounter an allocated mft, we move it over, moving the 
-   131                              <1> ; the read and write pointers. If we encounter a free mft, we add its
-   132                              <1> ; size and move the read pointer.
-   133 000001D2 803E00              <1>     cmp byte [rsi + mft.bSig], mftFree
-   134 000001D5 7826                <1>     js .exit    ;At this point, all compression is done. Goto end
-   135 000001D7 741A                <1>     je .free
-   136                              <1> ;Here we copy over. Before we do, we walk down the SFT chain
-   137                              <1> ; updating the MFT pointer in each SFT.
-   138                              <1> ;rsi -> Allocated MFT
-   139                              <1> ;rdi -> Where this MFT will be moved to
-   140 000001D9 488B5E0E            <1>     mov rbx, qword [rsi + mft.pSFT]     ;Point rbx to the first SFT in chain.
-   141                              <1> .sftLp:
-   142 000001DD 4885DB              <1>     test rbx, rbx   ;End of SFT chain?
-   143 000001E0 740A                <1>     jz .sftEnd
-   144 000001E2 48897B4F            <1>     mov qword [rbx + sft.pMFT], rdi     ;Update the SFT's MFT pointer
-   145 000001E6 488B5B3B            <1>     mov rbx, qword [rbx + sft.pNextSFT]
-   146 000001EA EBF1                <1>     jmp short .sftLp
-   147                              <1> .sftEnd:
-   148                              <1> ;All SFTs updated, now we copy the MFT up.
-   149 000001EC 8B4E01              <1>     mov ecx, dword [rsi + mft.dLen] ;Get the length of this MFT
-   150 000001EF F3A4                <1>     rep movsb   ;Moves both pointers to the end of the MFT
-   151                              <1> ;Now rdi points to the next write space and rsi points to the next MFT
-   152 000001F1 EBDF                <1>     jmp short .lp
-   153                              <1> .free:
-   154                              <1> ;Dont worry about overflow. Max dLen is 1Mb, way less than 32 bit max.
-   155 000001F3 8B4601              <1>     mov eax, dword [rsi + mft.dLen] ;Get the length
-   156 000001F6 01C2                <1>     add edx, eax    ;Add to the free space accumulator
-   157 000001F8 4801C6              <1>     add rsi, rax    ;Move the read pointer past this free space
-   158 000001FB EBD5                <1>     jmp short .lp
-   159                              <1> .exit:
-   160                              <1> ;Now we must make a single free MFT at the write pointer with the 
-   161                              <1> ; correct size and assert it is correct
-   162                              <1> ;rdi -> Where to make this MFT
-   163                              <1> ;edx = Accumulated free space
-   164 000001FD C60700              <1>     mov byte [rdi + mft.bSig], mftFree
-   165 00000200 895701              <1>     mov dword [rdi + mft.dLen], edx
-   166 00000203 4801D7              <1>     add rdi, rdx
-   167 00000206 803FFF              <1>     cmp byte [rdi + mft.bSig], mftEnd
-   168 00000209 7508                <1>     jne .crash
-   169 0000020B 89D0                <1>     mov eax, edx    ;Return in eax the accumulated free space
-   170 0000020D 5F                  <1>     pop rdi
-   171 0000020E 5E                  <1>     pop rsi
-   172 0000020F 5A                  <1>     pop rdx
-   173 00000210 59                  <1>     pop rcx
-   174 00000211 5B                  <1>     pop rbx
-   175                              <1>     return
+   113                              <1> 
+   114                              <1> defragMFTArena:
+   115                              <1> ;Defragments the MFT arena. Moves all allocated MFTs to the start.
+   116                              <1> ;Creates a single large free MFT from all the free space.
+   117                              <1> ;Input: Nothing
+   118                              <1> ;Output: MFT defragged. rbx -> New free MFT
+   119                              <1> ; All other regs preserved.
+   120 000001C6 50                  <1>     push rax
+   121 000001C7 51                  <1>     push rcx
+   122 000001C8 52                  <1>     push rdx
+   123 000001C9 56                  <1>     push rsi
+   124 000001CA 57                  <1>     push rdi
+   125                              <1> ;rsi = Read pointer
+   126                              <1> ;rdi = Write pointer
+   127                              <1> ;edx = Free space accumulator
+   128 000001CB 488B35(00000000)    <1>     mov rsi, qword [pMftArena]
+   129 000001D2 4889F7              <1>     mov rdi, rsi
+   130 000001D5 31D2                <1>     xor edx, edx
+   131                              <1> .lp:
+   132                              <1> ;If we encounter an allocated mft, we move it over, moving the 
+   133                              <1> ; the read and write pointers. If we encounter a free mft, we add its
+   134                              <1> ; size and move the read pointer.
+   135 000001D7 803E00              <1>     cmp byte [rsi + mft.bSig], mftFree
+   136 000001DA 7826                <1>     js .exit    ;At this point, all compression is done. Goto end
+   137 000001DC 741A                <1>     je .free
+   138                              <1> ;Here we copy over. Before we do, we walk down the SFT chain
+   139                              <1> ; updating the MFT pointer in each SFT.
+   140                              <1> ;rsi -> Allocated MFT
+   141                              <1> ;rdi -> Where this MFT will be moved to
+   142 000001DE 488B5E0E            <1>     mov rbx, qword [rsi + mft.pSFT]     ;Point rbx to the first SFT in chain.
+   143                              <1> .sftLp:
+   144 000001E2 4885DB              <1>     test rbx, rbx   ;End of SFT chain?
+   145 000001E5 740A                <1>     jz .sftEnd
+   146 000001E7 48897B4F            <1>     mov qword [rbx + sft.pMFT], rdi     ;Update the SFT's MFT pointer
+   147 000001EB 488B5B3B            <1>     mov rbx, qword [rbx + sft.pNextSFT]
+   148 000001EF EBF1                <1>     jmp short .sftLp
+   149                              <1> .sftEnd:
+   150                              <1> ;All SFTs updated, now we copy the MFT up.
+   151 000001F1 8B4E01              <1>     mov ecx, dword [rsi + mft.dLen] ;Get the length of this MFT
+   152 000001F4 F3A4                <1>     rep movsb   ;Moves both pointers to the end of the MFT
+   153                              <1> ;Now rdi points to the next write space and rsi points to the next MFT
+   154 000001F6 EBDF                <1>     jmp short .lp
+   155                              <1> .free:
+   156                              <1> ;Dont worry about overflow. Max dLen is 1Mb, way less than 32 bit max.
+   157 000001F8 8B4601              <1>     mov eax, dword [rsi + mft.dLen] ;Get the length
+   158 000001FB 01C2                <1>     add edx, eax    ;Add to the free space accumulator
+   159 000001FD 4801C6              <1>     add rsi, rax    ;Move the read pointer past this free space
+   160 00000200 EBD5                <1>     jmp short .lp
+   161                              <1> .exit:
+   162                              <1> ;Now we must make a single free MFT at the write pointer with the 
+   163                              <1> ; correct size and assert it is correct
+   164                              <1> ;rdi -> Where to make this MFT
+   165                              <1> ;edx = Accumulated free space
+   166 00000202 C60700              <1>     mov byte [rdi + mft.bSig], mftFree
+   167 00000205 895701              <1>     mov dword [rdi + mft.dLen], edx
+   168 00000208 4889FB              <1>     mov rbx, rdi    ;Get the free MFT pointer into rbx
+   169 0000020B 4801D7              <1>     add rdi, rdx    ;Now check the MFT chain is not corrupted
+   170 0000020E 803FFF              <1>     cmp byte [rdi + mft.bSig], mftEnd
+   171 00000211 7506                <1>     jne .crash
+   172 00000213 5F                  <1>     pop rdi
+   173 00000214 5E                  <1>     pop rsi
+   174 00000215 5A                  <1>     pop rdx
+   175 00000216 59                  <1>     pop rcx
+   176 00000217 58                  <1>     pop rax
+   177                              <1>     return
     13                              <2> %%_ret:
-    14 00000212 C3                  <2>  ret
+    14 00000218 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   176                              <1> .crash:
-   177 00000213 E867000000          <1>     call errPrintAndHalt    ;No return. Use call to push string ptr to stack
-   178 00000218 4D4654204445465241- <1>     db "MFT DEFRAG FAILURE",CR,LF,NUL
-   178 00000221 47204641494C555245- <1>
-   178 0000022A 0D0A00              <1>
-   179                              <1> 
-   180                              <1> findFreeMFT:
-   181                              <1> ;Searches for a free MFT of a particular size or greater.
-   182                              <1> ;Input: ecx = length of the string to add 
-   183                              <1> ;Output: CF=NC: rbx -> MFT of appropriate size
-   184                              <1> ;        CF=CY: No MFT found of this size. rbx -> End MFT
-   185                              <1> ;Trashes rax. All other regs preserved.
-   186 0000022D 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
-   187 00000234 89C8                <1>     mov eax, ecx    ;Use eax for the size we are looking for
-   188 00000236 0516000000          <1>     add eax, mft_size   ;eax thus has string length + mft_size
-   189                              <1> .lp:
-   190 0000023B 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree
-   191 0000023E 783D                <1>     js findMFT.noMFT    ;If sign bit set, must be mftEnd. Exit error!
-   192 00000240 7506                <1>     jne .next           ;If not equal, must be mftAlloc. Goto next MFT
-   193 00000242 394301              <1>     cmp dword [rbx + mft.dLen], eax ;Is this MFT ok sizewise?
-   194                              <1>     retnc   ;Not carry means dLen is geq eax, as required
+   178                              <1> .crash:
+   179 00000219 E867000000          <1>     call errPrintAndHalt    ;No return. Use call to push string ptr to stack
+   180 0000021E 4D4654204445465241- <1>     db "MFT DEFRAG FAILURE",CR,LF,NUL
+   180 00000227 47204641494C555245- <1>
+   180 00000230 0D0A00              <1>
+   181                              <1> 
+   182                              <1> findFreeMFT:
+   183                              <1> ;Searches for a free MFT of a particular size or greater.
+   184                              <1> ;Input: ecx = length of the string to add 
+   185                              <1> ;Output: CF=NC: rbx -> MFT of appropriate size
+   186                              <1> ;        CF=CY: No MFT found of this size. rbx -> End MFT
+   187                              <1> ;Trashes rax. All other regs preserved.
+   188 00000233 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
+   189 0000023A 89C8                <1>     mov eax, ecx    ;Use eax for the size we are looking for
+   190 0000023C 0516000000          <1>     add eax, mft_size   ;eax thus has string length + mft_size
+   191                              <1> .lp:
+   192 00000241 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree
+   193 00000244 783D                <1>     js findMFT.noMFT    ;If sign bit set, must be mftEnd. Exit error!
+   194 00000246 7506                <1>     jne .next           ;If not equal, must be mftAlloc. Goto next MFT
+   195 00000248 394301              <1>     cmp dword [rbx + mft.dLen], eax ;Is this MFT ok sizewise?
+   196                              <1>     retnc   ;Not carry means dLen is geq eax, as required
     61                              <2> cret nc
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1072,40 +1074,40 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000245 7201                <3>  j%-1 short %%a
+    34 0000024B 7201                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000247 C3                  <4>  ret
+    14 0000024D C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   195                              <1> .next:
-   196 00000248 50                  <1>     push rax
-   197 00000249 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
-   198 0000024C 4801C3              <1>     add rbx, rax    ;Point to the next MFT
-   199 0000024F 58                  <1>     pop rax
-   200 00000250 EBE9                <1>     jmp short .lp
-   201                              <1> 
-   202                              <1> findMFT:
-   203                              <1> ;Searches for an MFT for the filename in rsi 
-   204                              <1> ;Input: rsi -> Filename to search for
-   205                              <1> ;       dl = Filename checksum
-   206                              <1> ;Output: CF=NC: rbx -> MFT for file
-   207                              <1> ;        CF=CY: No MFT found for this file. rbx -> End MFT
-   208                              <1> ;Trashes rax. All other regs preserved.
-   209 00000252 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
-   210                              <1> .lp:
-   211 00000259 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree  
-   212 0000025C 781F                <1>     js .noMFT   ;If sign bit is set, bSig must be -1. End of arena!
-   213 0000025E 7415                <1>     je .next    ;If this MFT is free, goto next entry
-   214 00000260 385305              <1>     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
-   215 00000263 7510                <1>     jne .next   ;If not equal, skip entry
-   216 00000265 57                  <1>     push rdi
-   217 00000266 488D7B16            <1>     lea rdi, qword [rbx + mft.name] ;Point to mft filename
-   218 0000026A B81E120000          <1>     mov eax, 121Eh  ;Compare strings in rsi and rdi
-   219 0000026F CD2F                <1>     int 2Fh         ;Doesnt modify string pointers
-   220 00000271 5F                  <1>     pop rdi
-   221                              <1>     retz    ;If ZF=ZE (also CF=NC), we have found the MFT! Return to caller.
+   197                              <1> .next:
+   198 0000024E 50                  <1>     push rax
+   199 0000024F 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
+   200 00000252 4801C3              <1>     add rbx, rax    ;Point to the next MFT
+   201 00000255 58                  <1>     pop rax
+   202 00000256 EBE9                <1>     jmp short .lp
+   203                              <1> 
+   204                              <1> findMFT:
+   205                              <1> ;Searches for an MFT for the filename in rsi 
+   206                              <1> ;Input: rsi -> Filename to search for
+   207                              <1> ;       dl = Filename checksum
+   208                              <1> ;Output: CF=NC: rbx -> MFT for file
+   209                              <1> ;        CF=CY: No MFT found for this file. rbx -> End MFT
+   210                              <1> ;Trashes rax. All other regs preserved.
+   211 00000258 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
+   212                              <1> .lp:
+   213 0000025F 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree  
+   214 00000262 781F                <1>     js .noMFT   ;If sign bit is set, bSig must be -1. End of arena!
+   215 00000264 7415                <1>     je .next    ;If this MFT is free, goto next entry
+   216 00000266 385305              <1>     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
+   217 00000269 7510                <1>     jne .next   ;If not equal, skip entry
+   218 0000026B 57                  <1>     push rdi
+   219 0000026C 488D7B16            <1>     lea rdi, qword [rbx + mft.name] ;Point to mft filename
+   220 00000270 B81E120000          <1>     mov eax, 121Eh  ;Compare strings in rsi and rdi
+   221 00000275 CD2F                <1>     int 2Fh         ;Doesnt modify string pointers
+   222 00000277 5F                  <1>     pop rdi
+   223                              <1>     retz    ;If ZF=ZE (also CF=NC), we have found the MFT! Return to caller.
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1122,85 +1124,85 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000272 7501                <3>  j%-1 short %%a
+    34 00000278 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000274 C3                  <4>  ret
+    14 0000027A C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   222                              <1> .next:
-   223 00000275 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
-   224 00000278 4801C3              <1>     add rbx, rax    ;Point to the next MFT
-   225 0000027B EBDC                <1>     jmp short .lp
-   226                              <1> .noMFT:
-   227 0000027D F9                  <1>     stc
-   228                              <1>     return
+   224                              <1> .next:
+   225 0000027B 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
+   226 0000027E 4801C3              <1>     add rbx, rax    ;Point to the next MFT
+   227 00000281 EBDC                <1>     jmp short .lp
+   228                              <1> .noMFT:
+   229 00000283 F9                  <1>     stc
+   230                              <1>     return
     13                              <2> %%_ret:
-    14 0000027E C3                  <2>  ret
+    14 00000284 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   229                              <1> 
-   230                              <1> 
-   231                              <1> ;Critical error handling
-   232                              <1> errPrintAndHalt:
-   233                              <1> ;This function is called such that the return address points to the 
-   234                              <1> ; null terminated string to print. We never return from this.
-   235                              <1> ;********************************************
-   236                              <1> ;Consider requesting all disk buffers flush before entering infinite loop.
+   231                              <1> 
+   232                              <1> 
+   233                              <1> ;Critical error handling
+   234                              <1> errPrintAndHalt:
+   235                              <1> ;This function is called such that the return address points to the 
+   236                              <1> ; null terminated string to print. We never return from this.
    237                              <1> ;********************************************
-   238                              <1> ;Input: TOS -> Ptr to string to print after header.
-   239                              <1> ;Output: Never return.
-   240 0000027F 488D3D51000000      <1>     lea rdi, .sHdr
-   241 00000286 E80A000000          <1>     call .doWrite
-   242 0000028B 5F                  <1>     pop rdi         ;Get the passed in string
-   243 0000028C E804000000          <1>     call .doWrite   ;Write the passed in ASCIIZ string.
-   244                              <1> .halt:
-   245 00000291 F390                <1>     pause           ;Hint the CPU to power down
-   246 00000293 EBFC                <1>     jmp short .halt ;Infinite loop, await CTRL+ALT+DEL
-   247                              <1> .doWrite:
-   248                              <1> ;We write directly to the console driver completely bypassing any 
-   249                              <1> ;redirection, without resorting to using BIOS functions.
-   250                              <1> ;We use the PSP as the buffer for the ioReqPkt.
-   251                              <1> ;We obviously do no error checking or Int 24 invokation if things
-   252                              <1> ; go wrong with this. 
-   253                              <1> ;Input: rdi -> String to print
-   254                              <1> ;Output: Hopefully, string printed.
-   255 00000295 B812120000          <1>     mov eax, 1212h  ;Do dos strlen
-   256 0000029A CD2F                <1>     int 2Fh         ;Get length of string pointed to by rdi in ecx
-   257                              <1> ;1) Build request packet
-   258 0000029C 488B1D(2E000000)    <1>     mov rbx, qword [pPSP]   ;Get the ptr to our PSP
-   259 000002A3 C6430208            <1>     mov byte [rbx + ioReqPkt.cmdcde], drvWRITE
-   260 000002A7 C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-   261 000002AA 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
-   262 000002B0 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
-   263 000002B3 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
-   264                              <1> ;2) Get the driver pointer
-   265 000002B7 488B35(26000000)    <1>     mov rsi, qword [pDosseg]    
-   266 000002BE 488B7653            <1>     mov rsi, qword [rsi + vConPtr]  ;Get the console driver ptr
-   267                              <1> ;Go driver routine here
-   268 000002C2 B802800000          <1>     mov eax, 8002h  ;SPECIAL: Enter DOS Level 2 critical section
-   269 000002C7 CD2A                <1>     int 2ah
-   270 000002C9 FF560A              <1>     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
-   271 000002CC FF5612              <1>     call qword [rsi + drvHdr.intPtr]
-   272 000002CF B802810000          <1>     mov eax, 8102h  ;SPECIAL: Exit DOS Level 2 critical section
-   273 000002D4 CD2A                <1>     int 2ah
-   274                              <1>     return
+   238                              <1> ;Consider requesting all disk buffers flush before entering infinite loop.
+   239                              <1> ;********************************************
+   240                              <1> ;Input: TOS -> Ptr to string to print after header.
+   241                              <1> ;Output: Never return.
+   242 00000285 488D3D51000000      <1>     lea rdi, .sHdr
+   243 0000028C E80A000000          <1>     call .doWrite
+   244 00000291 5F                  <1>     pop rdi         ;Get the passed in string
+   245 00000292 E804000000          <1>     call .doWrite   ;Write the passed in ASCIIZ string.
+   246                              <1> .halt:
+   247 00000297 F390                <1>     pause           ;Hint the CPU to power down
+   248 00000299 EBFC                <1>     jmp short .halt ;Infinite loop, await CTRL+ALT+DEL
+   249                              <1> .doWrite:
+   250                              <1> ;We write directly to the console driver completely bypassing any 
+   251                              <1> ;redirection, without resorting to using BIOS functions.
+   252                              <1> ;We use the PSP as the buffer for the ioReqPkt.
+   253                              <1> ;We obviously do no error checking or Int 24 invokation if things
+   254                              <1> ; go wrong with this. 
+   255                              <1> ;Input: rdi -> String to print
+   256                              <1> ;Output: Hopefully, string printed.
+   257 0000029B B812120000          <1>     mov eax, 1212h  ;Do dos strlen
+   258 000002A0 CD2F                <1>     int 2Fh         ;Get length of string pointed to by rdi in ecx
+   259                              <1> ;1) Build request packet
+   260 000002A2 488B1D(2E000000)    <1>     mov rbx, qword [pPSP]   ;Get the ptr to our PSP
+   261 000002A9 C6430208            <1>     mov byte [rbx + ioReqPkt.cmdcde], drvWRITE
+   262 000002AD C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+   263 000002B0 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
+   264 000002B6 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
+   265 000002B9 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
+   266                              <1> ;2) Get the driver pointer
+   267 000002BD 488B35(26000000)    <1>     mov rsi, qword [pDosseg]    
+   268 000002C4 488B7653            <1>     mov rsi, qword [rsi + vConPtr]  ;Get the console driver ptr
+   269                              <1> ;Go driver routine here
+   270 000002C8 B802800000          <1>     mov eax, 8002h  ;SPECIAL: Enter DOS Level 2 critical section
+   271 000002CD CD2A                <1>     int 2ah
+   272 000002CF FF560A              <1>     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
+   273 000002D2 FF5612              <1>     call qword [rsi + drvHdr.intPtr]
+   274 000002D5 B802810000          <1>     mov eax, 8102h  ;SPECIAL: Exit DOS Level 2 critical section
+   275 000002DA CD2A                <1>     int 2ah
+   276                              <1>     return
     13                              <2> %%_ret:
-    14 000002D6 C3                  <2>  ret
+    14 000002DC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   275                              <1> .sHdr:
-   276 000002D7 0D0A0A              <1>     db CR,LF,LF
-   277 000002DA 202020202020202053- <1>     db "        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
-   277 000002E3 43502F444F53204558- <1>
-   277 000002EC 43455054494F4E2044- <1>
-   277 000002F5 45544543544544210D- <1>
-   277 000002FE 0A0A                <1>
-   278 00000300 202020205343502F44- <1>     db "    SCP/DOS SYSTEM STOP: SHARE INTERNAL ERROR : ",NUL
-   278 00000309 4F532053595354454D- <1>
-   278 00000312 2053544F503A205348- <1>
-   278 0000031B 41524520494E544552- <1>
-   278 00000324 4E414C204552524F52- <1>
-   278 0000032D 203A2000            <1>
+   277                              <1> .sHdr:
+   278 000002DD 0D0A0A              <1>     db CR,LF,LF
+   279 000002E0 202020202020202053- <1>     db "        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
+   279 000002E9 43502F444F53204558- <1>
+   279 000002F2 43455054494F4E2044- <1>
+   279 000002FB 45544543544544210D- <1>
+   279 00000304 0A0A                <1>
+   280 00000306 202020205343502F44- <1>     db "    SCP/DOS SYSTEM STOP: SHARE INTERNAL ERROR : ",NUL
+   280 0000030F 4F532053595354454D- <1>
+   280 00000318 2053544F503A205348- <1>
+   280 00000321 41524520494E544552- <1>
+   280 0000032A 4E414C204552524F52- <1>
+   280 00000333 203A2000            <1>
     53                                  
     54                                  segment code$i code private align=4 use64
     55                                  %include "./src/share/text/shinit.asm"
