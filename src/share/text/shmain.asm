@@ -41,28 +41,44 @@ open:
 ;        CF=CY: eax = Error code for request. Abort, free SFT.
 ;Use r8 as DOSSEG base
 ;----------------------------------------------------------------------------
-;
-;----------------------------------------------------------------------------
     call critEnter
     push r8
     mov r8, qword [pDosseg]
     mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
+    ;breakpoint
     call getMFT
-    jc .exitBad
+    jc .exit
 ;rbx -> MFT for this file here.
     mov rsi, qword [r8 + currentSFT]    ;Get the current SFT now
-    call addSFTtoMFT
+    call addSFTtoMFT    ;Bubble CF
 .exit:
     pop r8
-    clc
-.exitBad:
     call critExit
     return
 
 close:          
-;Called on file close
-    clc
+;Called on file close. Frees all sharing information associated with
+; a file.
+;Input: rdi -> SFT we are closing.
+    call critEnter
+    ;breakpoint
+    mov rbx, qword [rdi + sft.pMFT]
+    test rbx, rbx   ;If this is an SFT from before Share loaded, do nothing!
+    jz .exit
+    movsx eax, word [rdi + sft.wNumHandles] ;Get the count
+    test eax, eax   ;If count is zero, free all sharing data
+    jz .goClose
+    inc eax         ;If this handle is -1, also free any sharing data.
+    jnz .exit       ;If not -1 or 0, then inc eax > 0 and so we just exit
+.goClose:
+    call freeLocks  ;Free all locks associated to this SFT
+    call removeSFTfromMFT ;Delink this SFT from the SFT link
+    jnz .exit       ;If not last SFT in MFT chain, dont free MFT
+    call freeMFT    ;If no more SFTs, free the MFT. Do small GC.
+.exit:
+    call critExit
     return
+
 closeAllByMachine:      
 ;Close all files for a machine
     stc
@@ -140,7 +156,7 @@ dirUpdate:
 ;Input: rdi -> SFT to update dir entry from
 ;       eax = 0: Update the date/time fields only
 ;           = 1: Update size fields for growth
-;           = 2: Update size fields for shrink (i.e. truncate calls)
+;           = 2: Update size fields for shrink (i.e. truncate/open calls)
 ;           = 3: Update all fields
 ;Output: Nothing, all SFTs in MFT chain updated.
 ;        rax and rcx trashed.
@@ -173,10 +189,10 @@ dirUpdate:
 ;use of these values, unless they are at the start of the file at which
 ;case we use the current algorithms.
 ;----------------------------------------------------------------------------
-    cmp eax, 3  ;Sanity check but the DOS kernel never puts such a val in
-    reta
+    breakpoint
     test word [rdi + sft.wDeviceInfo], devCharDev | devRedir
     retnz
+    push rcx
     push rsi
     mov rsi, qword [rdi + sft.pMFT] ;Get MFT pointer in rsi
     test rsi, rsi   ;If this is a null pointer, return
@@ -196,6 +212,7 @@ dirUpdate:
     call critExit
 .exitNoCrit:
     pop rsi
+    pop rcx
     return
 .fileCheck:
     cmp ecx, 3

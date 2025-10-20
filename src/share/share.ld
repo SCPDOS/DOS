@@ -11,18 +11,18 @@ SECTIONS {
         ./bin/share.obj(bss$r)
     }
 
-    code$r ALIGN(0x4) : {
+    code$r ALIGN(0x10) : {
         ./bin/share.obj(code$r)
     }
     __resend = .;
 
 /*The sections below are all ejected at load time*/
 
-    code$i ALIGN(0x4) : {
+    code$i ALIGN(0x10) : {
         ./bin/share.obj(code$i)
     }
 
-    .text ALIGN(0x4) : {
+    .text ALIGN(0x10) : {
         /**/
     }
 }

@@ -39,18 +39,18 @@ absolute 0x0
 ;---------------------------
 ;       Share data seg
 ;---------------------------
-segment bss$r bss private align=4
+segment bss$r bss private align=16
 %include "./src/share/data/shbss.asm"
 
 ;---------------------------
 ;       Share code seg
 ;---------------------------
-segment .text code private align=4 use64
+segment .text code private align=16 use64
 ;Place this explicit .text section to calm nasm down
-segment code$r code private align=4 use64
+segment code$r code private align=16 use64
 %include "./src/share/text/shmain.asm"
 %include "./src/share/text/shutils.asm"
 
-segment code$i code private align=4 use64
+segment code$i code private align=16 use64
 %include "./src/share/text/shinit.asm"
 ;=========================END OF SHARE MODULE==========================

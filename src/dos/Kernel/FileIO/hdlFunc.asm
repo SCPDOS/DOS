@@ -1431,6 +1431,7 @@ checkExclusiveOwnFile:
     push rbx
     push rsi
     push rdi
+    push rbp
 
     ;The below in DOS is passed in by the caller, here we preserve the 
     ; caller's regs and proceed to set the ptrs ourselves.
@@ -1459,11 +1460,11 @@ checkExclusiveOwnFile:
     call closeShareCallWrapper 
     clc
 .exit:
+    pop rbp
     pop rdi
     pop rsi
     pop rbx
     pop rax
-    ;mov rbp, qword [workingDPB] ;This seems always set so no need for it.
     return
 
 outerDeleteMain:
@@ -1773,12 +1774,12 @@ createMain:
     push rax    ;Save the file attributes on stack
     mov eax, openRWAcc  ;Set open access mode
     call buildSFTEntry
-    pop rbx ;Pop the file attribute off
+    pop rcx ;Pop the file attribute off
     pop rdi
     jc .errorExit
-    call shareFile  ;Puts an sft handle in rdi, preserves rbx
+    call shareFile  ;Puts an sft handle in rdi. Preserves rcx
     jc .errorExit
-    test bl, attrFileVolLbl    ;Was the attribute a volume label?
+    test cl, attrFileVolLbl    ;Was the attribute a volume label?
     jz .notVolLabel    ;If not vol label, skip.
 ; Treat volume label creation case here. Rebuild DPB and BPB.
     mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
@@ -1793,6 +1794,7 @@ createMain:
     call dosCrit1Exit
 .notVolLabel:
     mov eax, 2  ;Needed for the SHARE call
+    call getCurrentSFT  ;Get SFT ptr in rdi
     call qword [updateDirShare]
     call dosCrit1Exit
     jmp openDriverMux
@@ -2056,7 +2058,7 @@ closeMain: ;Int 2Fh AX=1201h
     call decrementOpenCount ;rdi = current SFT, returns (e)ax = old handle count
     push rax
     push rbx
-    call closeShareCallWrapper  ;The SFT count has been decremented
+    call closeShareCallWrapper  ;Free sharing magic
     pop rbx
     pop rax
 flushFile:  ;Make this non-local to be jumped to by commit too!

@@ -83,7 +83,8 @@ shareCheckOpenViolation:
 shareFile:
 ;Once the SFT has been made, here we allocate resources within share to
 ; share the file, if it is possible to do so!
-; This is done by calling the open wrapper
+; This is done by calling the open wrapper.
+;Preserves ecx
 ;Output: rdi -> Current SFT!!
     push rcx
 .reloadCounter:
@@ -91,7 +92,7 @@ shareFile:
 .keepLooping:
     call getCurrentSFT
     xor eax, eax
-    mov qword [rdi + sft.pMFT], 0     ;Init to no record
+    mov qword [rdi + sft.pMFT], rax     ;Init to no record
     push rcx
     call openShareCallWrapper
     pop rcx
