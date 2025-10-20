@@ -556,3 +556,10 @@ badChar     equ 1   ;Bad ASCIIZ filename char
 termChar    equ 2   ;Terminator char type
 sepChar     equ 4   ;Separator char type
 badFCBChar  equ 8   ;FCB filename char
+
+;Nice STDIO equates
+STDIN   equ 0
+STDOUT  equ 1
+STDERR  equ 2
+STDAUX  equ 3
+STDPRN  equ 4

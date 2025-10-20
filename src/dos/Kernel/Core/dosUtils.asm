@@ -305,15 +305,17 @@ isCharSeparator:
     pop rax
     return
 
-strlen2:    ;Int 2Fh, AX=1212h
-;Entry point for Multiplex
+strlen2:    ;Int 2Fh, AX=1225h
+;Gets the length of a ASCIIZ string pointed to by rsi
+;Input: rsi = Source buffer
+;Output: ecx = Length of string
     push rdi
     mov rdi, rsi
     call strlen
     pop rdi
     return
-strlen: 
-;Gets the length of a ASCIIZ string
+strlen:     ;Int 2Fh, AX=1212h
+;Gets the length of a ASCIIZ string pointed to by rdi
 ;Input: rdi = Source buffer
 ;Output: ecx = Length of string
     push rax

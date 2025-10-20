@@ -151,7 +151,7 @@ mDispTbl:   ;Multiplex 2Fh/EAX=12xxh functions go here
     dw setErrorVars - mDispTbl ;AX=1222h, Set Extended Error Info
     dw checkIfCharDevice - mDispTbl  ;AX=1223, Check If Char Device
     dw shareRetryCountdown - mDispTbl   ;AX=1224h, Share Retry
-    dw strlen2 - mDispTbl   ;AX=1225h, strlen
+    dw strlen2 - mDispTbl   ;AX=1225h, strlen2
     ;The file ops need all vars setup as if accessing thru DOS
     dw mpxOpen - mDispTbl       ;AX=1226h, Open File
     dw closeFileHdl - mDispTbl  ;AX=1227h, Close File

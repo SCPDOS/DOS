@@ -1,6 +1,4 @@
 
-EXTERN resLenParas
-GLOBAL ep
 ;Initialises the share program
 ;1) Ensure correct DOS version. We are DOS 1.
 ;2) Parse the command tail. Any malformed char or switch and we abort install.
@@ -22,6 +20,7 @@ badVerExit:
     lea rdx, sBadVer
     jmp badPrintAndExit
 goInit:
+    mov qword [pPSP], r8    ;Save our PSP pointer
     mov eax, 5200h  ;Get ptr to sysvars
     int 21h
     sub rbx, sysVarsPtr ;Subtract the offset into the segment
@@ -159,7 +158,7 @@ cmdlineLp:
 ;Get the original Int 2Fh handler in rbx and replace it with our own
     mov eax, 352Fh
     int 21h 
-    mov qword [oldI2Fh], rbx    ;Save the original Int 2Fh handler
+    mov qword [pOldI2Fh], rbx    ;Save the original Int 2Fh handler
     lea rdx, i2fHandler         ;And install our own
     mov eax, 252Fh
     int 21h
@@ -290,7 +289,7 @@ shareTable:
     dq lockFile       
     dq unlockFile     
     dq checkRegionLock  
-    dq getMFTInformation   
+    dq getMFTInfo   
     dq updateFCB 
     dq getFirstClusterFCB   
     dq closeNetworkFiles   

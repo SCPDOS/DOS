@@ -10,7 +10,7 @@
 ; lockFile       
 ; unlockFile     
 ; checkRegionLock  
-; getMFTInformation   
+; getMFTInfo   
 ; updateFCB 
 ; getFirstClusterFCB   
 ; closeNetworkFiles   
@@ -27,12 +27,38 @@ i2fHandler:
 .exit:
     iretq
 .gotoNext:
-    jmp qword [oldI2Fh]
+    jmp qword [pOldI2Fh]
 
 open:           
-;Called on file create/open
+;Called on file create/open. Creates/Finds an MFT entry for the file
+; being opened and adds the new SFT to the MFT chain.
+;----------------------------------------------------------------------------
+;Input: qword [fname1Ptr] -> Fully qualified pathname to open
+;       qword [currentSFT] -> SFT that was just created/opened
+;       qword [qPID] -> Process ID of the requesting task
+;       dword [dMID] -> Machine ID of the requesting task
+;Output: CF=NC: Proceed happily with SFT linked into the MFT for the file.
+;        CF=CY: eax = Error code for request. Abort, free SFT.
+;Use r8 as DOSSEG base
+;----------------------------------------------------------------------------
+;
+;----------------------------------------------------------------------------
+    call critEnter
+    push r8
+    mov r8, qword [pDosseg]
+    mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
+    call getMFT
+    jc .exitBad
+;rbx -> MFT for this file here.
+    mov rsi, qword [r8 + currentSFT]    ;Get the current SFT now
+    call addSFTtoMFT
+.exit:
+    pop r8
     clc
+.exitBad:
+    call critExit
     return
+
 close:          
 ;Called on file close
     clc
@@ -61,7 +87,7 @@ checkRegionLock:
 ;Check file region locked
     clc
     return
-getMFTInformation:   
+getMFTInfo:   
 ;Get MFT information about file
     stc
     return

@@ -16,6 +16,9 @@ struc mft
     .name:              ;Symbol to the filename (variable size, as in wLen)
 endstruc
 
+;The symbol below is the size of the smallest allocatable MFT.
+;This gives space for an MFT header plus a X:\XXXXXXXX.XXX<NUL>
+MIN_MFT_SIZE    equ     mft_size + MAX_DRIVE + MAX_FILE
 
 ;Each MFT (MFT) points to an SFT and, possibly, a lock. If a file has multiple 
 ; locks, each lock is then linked into a linked list. If a file has multiple 

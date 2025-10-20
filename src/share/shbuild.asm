@@ -23,7 +23,8 @@ BITS 64
 %include "./inc/shstruc.inc"
 [LIST +]
 ;========================START OF SHARE MODULE=========================
-
+EXTERN resLenParas
+GLOBAL ep
 ;---------------------------
 ;   DOS data segment here
 ;---------------------------
