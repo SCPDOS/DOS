@@ -45,7 +45,6 @@ open:
     push r8
     mov r8, qword [pDosseg]
     mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
-    ;breakpoint
     call getMFT
     jc .exit
 ;rbx -> MFT for this file here.
@@ -61,7 +60,6 @@ close:
 ; a file.
 ;Input: rdi -> SFT we are closing.
     call critEnter
-    ;breakpoint
     mov rbx, qword [rdi + sft.pMFT]
     test rbx, rbx   ;If this is an SFT from before Share loaded, do nothing!
     jz .exit
@@ -189,7 +187,6 @@ dirUpdate:
 ;use of these values, unless they are at the start of the file at which
 ;case we use the current algorithms.
 ;----------------------------------------------------------------------------
-    breakpoint
     test word [rdi + sft.wDeviceInfo], devCharDev | devRedir
     retnz
     push rcx

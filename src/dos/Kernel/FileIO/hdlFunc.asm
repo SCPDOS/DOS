@@ -1454,8 +1454,9 @@ checkExclusiveOwnFile:
     pop rdi
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
     mov word [rdi + sft.wOpenMode], openDenRWShr ;Prevent everything temporarily
-    call shareFile  ;Puts an sft handle in rdi
+    call shareFile  ;Preserves ecx only (useless here) :)
     jc .exit
+    call getCurrentSFT
     mov word [rdi + sft.wNumHandles], 0 ;Now free it and close it
     call closeShareCallWrapper 
     clc
