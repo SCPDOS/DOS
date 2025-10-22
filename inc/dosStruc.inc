@@ -141,7 +141,7 @@ endstruc
 struc sft
 ;This is the file struc itself
     .wNumHandles dw ?    ;Number of handles pointing to this file
-    .wOpenMode   dw ?    ;File access permissions and behvaiours
+    .wOpenMode   dw ?    ;File access permissions and behaviours
     .bFileAttrib db ?    ;Regular File Attributes
     .wDeviceInfo dw ?    ;Includes unit number if a block device
     .qPtr        dq ?    ;IF char, ptr to device driver header, ELSE DPBptr

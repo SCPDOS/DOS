@@ -61,21 +61,23 @@ shareRetryCountdown:
     pop rcx
     return
 
-shareCheckOpenViolation:
+shareCheckOpenViolation:    ;Int 2Fh AX=120Bh
 ;Input: rdi -> Locally complete SFT we are opening
+;       eax = Error code to prsent!
     test word [rdi + sft.wOpenMode], openSFTFCB
-    jnz .fcbQuirk   ;FCB?? opened files immediately will cause an error here
+    jnz .fcbQuirk   ;If not a Net FCB, skip this. 
+;Else, if the Net FCB isn't in compat mode, fail immediately!!
     push rax
     movzx eax, word [rdi + sft.wOpenMode]
     and eax, 0F0h   ;Save second nybble only (sharing modes)
     pop rax
     jnz .notInCompatMode    ;Jump if not zero only!
 .fcbQuirk:
-    call shareLockViolationCriticalError
+    call shareCriticalError
     retnc
 .notInCompatMode:
     mov eax, errShrVio
-    stc ;Set the flag for error
+    stc     ;Set the flag for error
     return
 
 

@@ -1450,11 +1450,11 @@ checkExclusiveOwnFile:
     mov eax, openRWAcc  ;Set open mode
     mov byte [openCreate], 0    ;We test by opening.
     push rdi    ;Save the scratch SFT ptr
-    call buildSFTEntry  ;This will never fail. If it does, shareFile will catch
+    call buildSFTEntry  ;This will never fail. If it does, share catches it.
     pop rdi
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
     mov word [rdi + sft.wOpenMode], openDenRWShr ;Prevent everything temporarily
-    call shareFile  ;Preserves ecx only (useless here) :)
+    call shareFile  ;Possibly trashes rdi
     jc .exit
     call getCurrentSFT
     mov word [rdi + sft.wNumHandles], 0 ;Now free it and close it
@@ -1643,8 +1643,19 @@ openMain:
     ;mov byte [delChar], 0E5h
     call buildSFTEntry  ;ax must have the open mode
     jc .errorExit
-    call shareFile      ;Puts an SFT handle in rdi
+.shareLpRetry:
+    movzx ecx, word [shareCount]  ;Get retry counter
+.shareLp:
+    push rcx
+    call openShareCallWrapper
+    pop rcx
     jnc .fileSharedOk   ;If the file open doesnt violate share, jump!
+    call shareRetryCountdown    ;Pause a bit
+    dec ecx     
+    jnz .shareLp
+;Here, the file open share failed. Complain!
+    call shareCheckOpenViolation
+    jnc .shareLpRetry   ;If NC, not a fail, and we proceed as normal!
 .errorExit:
     call dosCrit1Exit   ;Else we error out with error code in al
     return
