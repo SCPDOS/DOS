@@ -1858,7 +1858,7 @@ buildSFTEntry:
 ;Here if Creating a file.
 ;First pull the file attribute off the stack and put it in SFT
     mov rax, qword [rsp + 8h]
-    mov qword [rsi + sft.bFileAttrib], al
+    mov byte [rsi + sft.bFileAttrib], al
 ;Check if we are handling a volume label
     test al, attrFileVolLbl  ;Are we creating a volume label?
     jz .notVolLbl   ;Bit not set? Jump!
@@ -1899,7 +1899,12 @@ buildSFTEntry:
     mov ecx, fatDirEntry_size
     rep movsb
     call markBufferDirty ;We wrote to this buffer
+    call shareFile  ;And now share. I dont think this can ever fail...
     pop rdi
+;Since all sharing resources pertaining to this file are freed by the delete 
+; it makes no sense for this to fail due to a sharing conflict. Thus, I 
+; believe this can be removed but it doesnt hurt to keep, it is three bytes.
+    retc
 .createCommon:  ;rdi must point to the current SFT 
     ;Now populate the remaining SFT fields 
     lea rsi, curDirCopy
@@ -1952,6 +1957,8 @@ buildSFTEntry:
     stc
     return
 .createGo:
+    call shareFile  ;Now try and allocate share resources
+    retc            ;If the file can't be shared, exit.
 ;Create a dummy dir entry in the SDA to swap into the disk buffer
 ;rsi points to current sft entry
     lea rdi, curDirCopy
