@@ -1857,12 +1857,10 @@ buildSFTEntry:
     jz .openProc
 ;Here if Creating a file.
 ;First pull the file attribute off the stack and put it in SFT
-    mov rcx, qword [rsp + 8h]   ;Get into cl as the share test preserves rcx
-    mov qword [rsi + sft.bFileAttrib], cl
-    call shareFile  ;Now check if we are allowed to create file
-    retc
-;We are ok, now check if we are handling a volume label
-    test cl, attrFileVolLbl  ;Are we creating a volume label?
+    mov rax, qword [rsp + 8h]
+    mov qword [rsi + sft.bFileAttrib], al
+;Check if we are handling a volume label
+    test al, attrFileVolLbl  ;Are we creating a volume label?
     jz .notVolLbl   ;Bit not set? Jump!
 ;If we are, the previous search wouldn't have searched for all volids. Now
 ; check for any volids. 
