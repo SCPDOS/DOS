@@ -32,6 +32,7 @@ freeMFT:
 ; any adjacent free space too.
 ;Input: rbx -> MFT to free
 ;Output: MFT freed. Any adjacent free space is absorbed by this MFT too.
+;Trashes rax, rbx and rsi
     mov rax, qword [rbx + mft.pSFT]
     or qword [rbx + mft.pLock], rax ;If pLock or pSFT is non-zero, hard error
     jnz .crash
