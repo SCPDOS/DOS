@@ -35,6 +35,12 @@ open:
 ;----------------------------------------------------------------------------
 ;Input: qword [fname1Ptr] -> Fully qualified pathname to open
 ;       qword [currentSFT] -> SFT that was just created/opened
+;           This SFT needs the following fields filled in:
+;               .wOpenMode
+;               .bFileAttrib
+;               .dMID
+;               .qPID
+;               .pMFT
 ;       qword [qPID] -> Process ID of the requesting task
 ;       dword [dMID] -> Machine ID of the requesting task
 ;Output: CF=NC: Proceed happily with SFT linked into the MFT for the file.
