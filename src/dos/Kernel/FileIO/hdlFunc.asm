@@ -1426,7 +1426,7 @@ checkExclusiveOwnFile:
 ; Rename or Delete.
 ;Input: SDA fname1Ptr -> Filename we want to consider
 ;       currDirCopy = Directory entry for the file
-;Output: Clobbers rcx, rdx.
+;Output: Clobbers rcx, rdx, qword [currentSFT]
     push rax
     push rbx
     push rsi
@@ -1439,7 +1439,6 @@ checkExclusiveOwnFile:
     lea rsi, qword [rbx + fatDirEntry.fstClusLo]
 ;At this point, the filename is fully normalised due to the 
 ; way we do path parsing. Thus, we can proceed safely.
-
 ;The following closes compat mode handles referencing file on this machine
     call qword [renDelCloseShare]    
 ;The close of the handle will only happen if there is 1 file referring to it
@@ -1672,9 +1671,7 @@ openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
     call getCurrentSFT
     call openSFT    ;This takes input rdi-> currentSFT. Preserves it too
     test word [rdi + sft.wOpenMode], openSFTFCB
-    jnz .netOpen
-    return
-.netOpen:
+    retz    ;Only do this set if an SFTFCB
     mov rax, qword [currentPSP]
     mov qword [rdi + sft.qPID], rax
     return
@@ -1878,10 +1875,10 @@ buildSFTEntry:
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory | dirReadOnly
     jnz .badBuildSFTAccDen    ;Cant recreate a dir or ro file!
 ;Here disk file exists, so recreating the file.
-    push qword [currentSFT] ;Calling delete resets this to sda sft
+    push qword [currentSFT] ;Calling delete modifies this because of xclusiv
     call deleteMain ;Ret rsi pointing to deleted dir entry in the disk buffer
     pop qword [currentSFT]
-    jc .badBuildSFTAccDen
+    retc    ;Just bubble up the delete/share error code
     ;al has the char for the filename
     ;Sets vars for the sector/offset into the sector
     call getCurrentSFT  ;Get SFT ptr in rdi
@@ -1899,12 +1896,8 @@ buildSFTEntry:
     mov ecx, fatDirEntry_size
     rep movsb
     call markBufferDirty ;We wrote to this buffer
-    call shareFile  ;And now share. I dont think this can ever fail...
+    call shareFile  ;And now share. This cannot fail because of delete above.
     pop rdi
-;Since all sharing resources pertaining to this file are freed by the delete 
-; it makes no sense for this to fail due to a sharing conflict. Thus, I 
-; believe this can be removed but it doesnt hurt to keep, it is three bytes.
-    retc
 .createCommon:  ;rdi must point to the current SFT 
     ;Now populate the remaining SFT fields 
     lea rsi, curDirCopy
@@ -2113,6 +2106,12 @@ flushFile:  ;Make this non-local to be jumped to by commit too!
     mov word [rsi + fatDirEntry + fatDirEntry.fstClusLo], ax
     shr eax, 10h
     mov word [rsi + fatDirEntry + fatDirEntry.fstClusHi], ax
+;Make a copy of this updated directory for when truncate deletes the file
+    push rdi
+    lea rdi, curDirCopy
+    mov ecx, fatDirEntry_size
+    rep movsb
+    pop rdi
     call markBufferDirty
     movzx eax, byte [workingDrv]
     call flushAllBuffersForDrive

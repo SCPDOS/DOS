@@ -6,6 +6,7 @@ dosDataArea:    ;The returned pointer points to the variables w/o anchor MCB
     biosPtr     dq ?    ;For saving a data ptr to be used by BIOS/drivers
 ;Above is the system stats
 ;Below is the DOS vars, DO NOT TOUCH FROM validNetNam TO NUMJOINDRV
+    dosPSP      dq ?    ;PSP to initial DOS PSP (aliased by 8, used by share)
 ;Both below variables can be edited with Int 21h AX=440Bh
     validNetNam dw ?    ;Flag if machinename valid, deflt no=0
     shareCount  dw ?    ;Share Retry Count, number of repeats before fail.

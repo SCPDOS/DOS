@@ -59,6 +59,7 @@ EXTERN badDfltShareHook
 EXTERN dosBIOSName
 EXTERN biosVers
 EXTERN biosPtr
+EXTERN dosPSP
 EXTERN bootDrive
 EXTERN numFiles
 EXTERN lastdrvNum

@@ -128,7 +128,9 @@ terminateStayRes:  ;ah = 31h
     mov ebx, edx
     push rax    ;Preserve errorlevel across call
     push rbx    ;Preserve new number of paragraphs across call
+    push r8     ;Preserve the PSP segment
     call reallocMemory
+    pop r8
     pop rbx
     pop rax
     jc terminateClean.altEP ;If an error, return w/o editing psp seg. size

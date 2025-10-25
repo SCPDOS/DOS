@@ -51,6 +51,7 @@ GLOBAL ctryTbl
 GLOBAL serverDispTblPtr
 GLOBAL currentDTA
 GLOBAL cdsHeadPtr
+GLOBAL dosPSP
 GLOBAL dpbHeadPtr
 GLOBAL maxBytesSec
 GLOBAL bufHeadPtr

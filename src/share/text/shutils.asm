@@ -10,6 +10,9 @@
 ; defragMFTArena -> Defragments the MFT arena
 ; findFreeMFT -> Finds a free MFT for a given size
 ; findMFT -> Find an MFT for a given filename
+; getNameMeta -> Computes the length and checksum of a filename
+; closeJFTentries -> Closes all JFT entries pointing to a 
+;                       particular SFT for a process.
 ; errPrintAndHalt -> Prints a formatted error message and halts the machine
 ;-----------------------------------------------------------------------------
 
@@ -78,7 +81,7 @@ removeSFTfromMFT:
     return
 .crash:
     call errPrintAndHalt
-    db "SFT not in SFT list",CR,LF,NUL
+    db "SFT NOT IN SFT LIST",CR,LF,NUL
 
 
 freeLocks:
@@ -341,19 +344,7 @@ getMFT:
 ;Output: CF=NC: rbx -> MFT for this file.
 ;        CF=CY: eax = Error code.
 ;Start by working out the string length and checksum values
-    push rsi
-    xor ecx, ecx    ;Use for string length (zero inclusive)
-    xor edx, edx    ;Use for checksum value (dl)
-.metalp:
-    lodsb
-    add dl, al
-    adc dl, 0       ;Add 1 if this rolls over
-    inc ecx
-    test al, al
-    jnz .metalp
-    pop rsi
-;Hereon: ecx = String length, dl = Checksum, rsi -> String 
-    call findMFT        ;Preserves dl and ecx
+    call findMFT        ;Sets dl for checksum and ecx for string length
     retnc
 ;We get here if this file has no MFT.
 ;Create an MFT entry. dl and ecx are always preserved in functions below
@@ -486,10 +477,13 @@ findFreeMFT:
 findMFT:
 ;Searches for an MFT for the filename in rsi 
 ;Input: rsi -> Filename to search for
-;       dl = Filename checksum
-;Output: CF=NC: rbx -> MFT for file
+;       
+;Output: ecx = String length
+;        dl = Filename checksum
+;        CF=NC: rbx -> MFT for file
 ;        CF=CY: No MFT found for this file. rbx -> End MFT
 ;Trashes rax. All other regs preserved.
+    call getNameMeta    ;Sets ecx and dl
     mov rbx, qword [pMftArena]
 .lp:
     cmp byte [rbx + mft.bSig], mftFree  
@@ -511,6 +505,77 @@ findMFT:
     stc
     return
 
+getNameMeta:
+;Gets the string length and checksum value
+;Input: rsi -> String to search on
+;Output: ecx = String length
+;        edx = Checksum value
+;Trashes eax.
+    push rsi
+    xor ecx, ecx    ;Use for string length (zero inclusive)
+    xor edx, edx    ;Use for checksum value (dl)
+.metalp:
+    lodsb
+    add dl, al
+    adc dl, 0       ;Add 1 if this rolls over
+    inc ecx
+    test al, al
+    jnz .metalp
+    pop rsi
+    return
+
+closeJFTEntries:
+;Closes all JFT entries pointing to a particular SFT for a process.
+;Input: bl = SFTIndex
+;       rax = PID
+;Output: Closes all JFT entries.
+;Preserves all registers
+    push rax
+    call .isPIDSpecial   ;If the PID is special, we just exit.
+    je .cjeExit2
+    push rcx
+    push rdi
+    mov rdi, rax
+    movzx ecx, word [rdi + psp.jftSize]   ;Get the size
+    lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to JFT or JFTptr
+    cmp ecx, dfltJFTsize
+    cmova rdi, qword [rdi]  ;If above normal, pull the JFTPtr
+    mov eax, ebx    ;Get the SFTIndx to scan for
+.cjeLp:
+    repne scasb     ;DOS sets direction so we dont worry
+    jne .cjeExit
+    mov byte [rdi - 1], -1  ;Free the entry
+    test ecx, ecx  ;If we are out of entries, dont reenter loop
+    jnz .cjeLp
+.cjeExit:
+    clc
+    pop rdi
+    pop rcx
+.cjeExit2:
+    pop rax
+    return
+.isPIDSpecial:
+;Certain PIDs have special meaning and must be ignored.
+;If free or a hole, ignore.
+;If DOS or New DOS (should NEVER exist outside of a drivers init)
+; we get return the DOS PSP address in rax and pretend it is not 
+; special.
+;Input: rax = PID to check
+;Output: ZF=ZE: Special PID, don't operate on it
+;        ZF=NZ: Normal PID, proceed.
+    cmp rax, mcbOwnerFree   ;Bona-fide must be ignored
+    rete
+    cmp rax, mcbOwnerHole   ;Bona-fide must be ignored 
+    rete
+    cmp rax, mcbOwnerNewDOS ;None should ever exist from the POV of share.exe
+    je .ips1
+    cmp rax, mcbOwnerDOS
+    retne
+.ips1:
+    test eax, eax   ;eax = 8 or 9 so anding it with itself will clear ZF
+    mov rax, qword [r8 + dosPSP]    ;Get the actual DOS PSP value
+    return
+    
 
 ;Critical error handling
 errPrintAndHalt:
@@ -538,6 +603,8 @@ errPrintAndHalt:
 ;Output: Hopefully, string printed.
     mov eax, 1212h  ;Do dos strlen
     int 2Fh         ;Get length of string pointed to by rdi in ecx
+    dec ecx ;Drop the terminating null from the count
+    retz    ;If this is zero, forget the error
 ;1) Build request packet
     mov rbx, qword [pPSP]   ;Get the ptr to our PSP
     mov byte [rbx + ioReqPkt.cmdcde], drvWRITE

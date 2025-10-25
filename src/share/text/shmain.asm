@@ -125,7 +125,8 @@ closeNetworkFiles:
 ;----------------------------------------------------------------------------
 ;Input: rsi -> Newly created SFT
 ;       ax = SFTNdx for this newly created file
-;Output: ax = SFTNdx for the file (Same as on input if not a SFT-FCB)
+;Output: CF=NC: ax = SFTNdx for the SFT (Same as on input if not a SFT-FCB)
+;        CF=CY: No SFT found
 ;----------------------------------------------------------------------------
 ;If
 ;   rsi -> SFT that is a network SFT-FCB (i.e. bit openNetFCBShr set 
@@ -134,7 +135,67 @@ closeNetworkFiles:
 ;   as the SFT-FCB). We increment the new main SFT refcount instead of 
 ;   having multiple SFTs.
 ;----------------------------------------------------------------------------
-    clc
+    push r8
+    mov r8, qword [pDosseg]
+    movzx eax, word [rsi + sft.wOpenMode]
+    and eax, 0F0h    ;Save the share bits
+    cmp eax, openNetFCBShr
+    jne .exitNormal
+    xor ebx, ebx
+.ptrLp:
+    push rbx
+    mov eax, 1216h  ;getSFTPtrfromSFTNdx -> Get in rdi the SFT for index bx
+    int 2Fh
+    pop rbx
+    jc .exit
+    cmp rdi, rsi    ;Skip ourselves
+    je .ptrNext
+    cmp word [rdi + sft.wNumHandles], 0 ;Handle must have empty count
+    je .ptrNext
+    movzx eax, word [rsi + sft.wOpenMode]
+    cmp ax, word [rdi + sft.wOpenMode]
+    jne .ptrNext
+    mov eax, dword [rsi + sft.dMID]
+    cmp dword [rdi + sft.dMID], eax
+    jne .ptrNext
+    mov rax, qword [rsi + sft.qPID]
+    cmp qword [rdi + sft.qPID], rax
+    jne .ptrNext
+    mov rax, qword [rsi + sft.pMFT]
+    cmp qword [rdi + sft.pMFT], rax
+    je .ptrFnd  ;If all this, then we have a duplicate net handle
+.ptrNext:
+    inc ebx
+    jmp short .ptrLp
+.ptrFnd:
+;rsi is a duplicate of rdi for this process
+    mov word [rsi + sft.wNumHandles], 0 ;Free the handle we just allocated
+    push rdi    ;rdi is the master FCB SFT 
+    push rbx    ;Save the sftindex
+    mov rdi, rsi
+    call close  ;Close the current SFT now
+    pop rax     ;Get the sftindex into eax
+    pop rdi
+    inc word [rdi + sft.wNumHandles]    ;Add one now
+    xor ebx, ebx
+.jftlp:
+    push rax
+    mov eax, 1220h  ;getJFTPtr -> Get ptr to this jft entry in psp in rdi
+    int 2Fh
+    pop rax
+    jc .exit
+    cmp byte [rdi], al
+    je .jftFnd
+    inc ebx
+    jmp short .jftlp
+.jftFnd:
+    mov byte [rdi], -1
+    mov eax, ebx
+    jmp short .exit
+.exitNormal:
+    movzx eax, word [r8 + currentHdl]   ;Get the handle value to return
+.exit:
+    pop r8
     return
 
 closeRenDel:
@@ -152,8 +213,85 @@ closeRenDel:
 ;   then close the file and return ok.
 ;Else, we fail.
 ;----------------------------------------------------------------------------
-    stc
+    push r8
+    mov r8, qword [pDosseg]
+    call critEnter
+.again:
+    mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
+    call findMFT    ;Looks for this file
+    jc .exit    ;If the file doesn't exist, exit
+;File MFT found. rbx -> MFT. 
+; Now check that all the files on this chain have the mid and pid of 
+; the requester and (are in compatibility mode or a net SFT).
+    mov rsi, qword [rbx + mft.pSFT] ;This cant be empty so it must be an SFT
+    mov rdi, rsi    ;Save this SFT pointer in rdi
+.scanLp:
+    mov eax, dword [r8 + dMID]
+    cmp eax, dword [rsi + sft.dMID]
+    jne .exit
+    mov rax, qword [r8 + qPID]
+    cmp rax, qword [rsi + sft.qPID]
+    jne .exit
+    movzx eax, word [rsi + sft.wOpenMode]
+    and eax, 0F0h    ;Get the sharing mode
+;If compatibility mode or net fcb, proceed with close
+    cmp eax, openNetFCBShr
+    je .next
+    cmp eax, openCompat
+    je .next
+.exit:
+    call critExit
+    pop r8
     return
+.next:
+    mov rsi, qword [rsi + sft.pNextSFT]
+    test rsi, rsi
+    jnz .scanLp
+;Here we must close all the handles referring to this SFT
+;rdi -> First SFT 
+    mov qword [r8 + currentSFT], rdi    ;Set this SFT as current SFT
+    mov rsi, rdi
+    xor ebx, ebx
+.sftIndxLp:
+    push rbx
+    mov eax, 1216h  ;Get SFT Ptr from SFT Index into rdi
+    int 2Fh
+    pop rbx
+    inc ebx
+    cmp rsi, rdi    ;Was this index correct?
+    jne .sftIndxLp
+    dec ebx         ;Decrement it back, we are looking for this number
+;Now we walk the Arena Chain to find every task ID and close the
+; JFT entry for this file if the SFTIndex exists in that task's JFT
+    xor eax, eax    ;Zero to give a PID that will not be at the start
+    mov rdi, qword [r8 + mcbChainPtr]   ;Get the MCB chain header in rdi
+    jmp short .checkMCB ;Make sure this MCB is a valid MCB
+.mcbLp:
+    cmp rax, qword [rdi + mcb.owner]    ;If new PID same as before, skip
+    je .getNextMCB
+    mov rax, qword [rdi + mcb.owner]    ;Else, get the new PID
+    call closeJFTEntries    ;Close all JFT entries for this process
+.getNextMCB:
+    cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we processed end block, exit
+    je .mcbEnd
+;Else, goto next block
+    mov ecx, dword [rdi + mcb.blockSize]    ;Get size of block in paras
+    shl rcx, 4      ;Turn into bytes
+    add rcx, mcb_size
+    add rdi, rcx    ;Go to next MCB
+.checkMCB:
+    mov cl, byte [rdi + mcb.marker] ;Now check the new MCB is valid
+    cmp cl, mcbMarkEnd
+    je .mcbLp
+    cmp cl, mcbMarkCtn
+    je .mcbLp
+    call errPrintAndHalt    ;Wasn't a end or cont block, error!
+    db "MCB CORRUPTION DETECTED",CR,LF,NUL
+.mcbEnd:
+    mov eax, 1201h ;Close the currentSFT
+    int 2Fh
+    jmp .again  ;Now do this again until no more files
+
 dirUpdate:      
 ;Update dir info across all SFTs for a file. 
 ;----------------------------------------------------------------------------
