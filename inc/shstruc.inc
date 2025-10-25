@@ -13,7 +13,7 @@ struc mft
     .bCheckSum  db ?    ;Checksum of the full filename (helps with searches)
     .pLock      dq ?    ;Pointer to the first lock owned by file
     .pSFT       dq ?    ;Pointer to the first SFT in this file's chain
-    .name:              ;Symbol to the filename (variable size, as in wLen)
+    .sName:             ;Symbol to the filename (variable size, as in wLen)
 endstruc
 
 ;The symbol below is the size of the smallest allocatable MFT.
@@ -30,22 +30,13 @@ MIN_MFT_SIZE    equ     mft_size + MAX_DRIVE + MAX_FILE
 ; collection.
 
 
-;The file lock block has two types:
-;All -> Prevents all access to the byte region specified 
-;        for not this process
-;Write -> Prevents write access to the byte region specified 
-;        for not this process
-
-flAll   equ 0   ;Lock reads and writes in the region
-flWrite equ 1   ;Lock only writes in the region
-
+;The file lock block has one type only
 struc fileLock
     .pNext      dq ?    ;Ptr to the next flock. 0 if end
     .qStart     dq ?    ;Ptr to the first byte of the locked region
     .qEnd       dq ?    ;Ptr to the last byte of the locked region
     .pSFT       dq ?    ;Ptr to the SFT which owns this lock
     .qPID       dq ?    ;Process ID of the process which owns this lock
-    .bType      db ?    ;Type of locking (Write or Read/Write)
 endstruc
 
 MAX_LOCKS       equ 9999    

@@ -609,8 +609,12 @@ lockUnlockFile:    ;ah = 5Ch
 ;       00h lock region of file
 ;       01h unlock region of file
 ;ebx = file handle
-;ecx = start offset of region within file
+;edx = start offset of region within file
 ;edi = length of region in bytes
+;ecx = esi = 0 (NOTE: MUST BE ZERO)
+;Formally speaking (important for redir files):
+;ecx:edx = Start offset
+;esi:edi = Length of region
     cmp al, 1
     ja .badFunction
     push rdi
@@ -631,6 +635,9 @@ lockUnlockFile:    ;ah = 5Ch
     pop rbx
     jmp short .exitSelect
 .unlockShare:
+;rdi -> SFT for file
+;ecx:edx = Start offset
+;esi:eax = Length of region
     call qword [unlockFileShare]    ;Call share hook
 .exitSelect:
     jc extErrExit
@@ -644,6 +651,9 @@ lockUnlockFile:    ;ah = 5Ch
     pop rbx
     jmp short .exitSelect
 .lockShare:
+;rdi -> SFT for file
+;ecx:edx = Start offset
+;esi:eax = Length of region
     call qword [lockFileShare]  ;Call share hook
     jmp short .exitSelect
 .badFunction:

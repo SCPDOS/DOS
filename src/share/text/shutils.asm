@@ -2,6 +2,12 @@
 ;-----------------------------------------------------------------------------
 ; critEnter -> Enters a DOS 1 critical section
 ; critExit -> Exits a DOS 1 critical section
+; lockPreamble -> Sets up the registers for set/clear flock
+; checkLockOverlap -> Checks if a lock with the given bounds exists
+; getFreeLock -> Removes a free lock from the free lock list
+; closeByID -> Closses all files according to IDs
+; closeSFT -> Wrapper for Close SFT
+; closeHandlesForSFT -> Closes handles referencing an SFT
 ; freeMFT -> Frees an MFT from the MFT arena
 ; removeSFTfromMFT -> Removes an SFT from an MFT's SFT chain
 ; freeLocks -> Frees all file locks associated to a SFT
@@ -29,6 +35,221 @@ critExit:
     int 2ah
     pop rax
     return
+
+lockPreamble:
+;Sets up the regs for the lock/unlock operation
+;Input: rdi -> SFT for file
+;       ecx:edx = Start offset
+;       esi:eax = Length of region
+;Output:    CF=NC: Ok to proceed with locking
+;               rax = Start byte of lock
+;               rdx = End byte of lock
+;               rbp -> MFT we are adding the lock to
+;           CF=CY: Error!
+;               ZF=ZE: Lock equals a previous lock
+;               ZF=NZ: Lock partially overlaps or of 0 length
+;               rbx -> Lock that we overlap
+    test edx, edx   ;Ensure the upper 32 bits of edx are zero
+    or esi, eax     ;Ditto rax but also check the length is not zero
+    jz .badExit
+    shl rcx, 31     ;Move the argument high
+    shl rsi, 31     ;Move the argument high
+    or rdx, rcx     ;Stick the bits together (no overlap)
+    or rax, rax     ;Stick the bits together (no overlap)
+    add rax, rdx    ;Add the start byte to the length to get first byte free
+    dec rax         ;And now point rax to the last byte in the lock
+;rdx -> Start byte of lock
+;rax -> End byte of lock
+    mov rbp, qword [rdi + sft.pMFT] ;Get the mft ptr
+    xor ecx, ecx
+    inc ecx     ;Check all locks for overlap
+    call checkLockOverlap   ;Preserves everything
+    return
+.badExit:
+    mov eax, errLokVio
+    test eax, eax   ;Clear the ZF flag
+    stc             ;And set CF
+    return
+
+checkLockOverlap:
+;Input: rax = Start byte to check
+;       rdx = End byte to check
+;       rbp -> MFT to start searching 
+;       ecx = 0: Do not check locks belonging to currentSFT, dMID, qPID
+;           = 1: Check all locks
+;Output: CF=NC: No overlap!
+;           rbx = Trashed (Null)
+;        CF=CY: Overlap!
+;           ZF=ZE: Lock region matched exactly
+;           ZF=NZ: Lock region not matched exactly
+;           rbx -> Lock we matched to
+    push rsi
+    mov rbx, qword [rbp + mft.pLock]
+.lockLp:
+    test rbx, rbx
+    jz .exit
+    test ecx, ecx   ;Check if we may skip this lock?
+    jnz .doLock
+;Now we check that this lock isnt the same as the current SFT, qPID and dMID.
+;If any are not equal, we do the lock. If they are all the same, skip.
+;Check currentSFT
+    mov rsi, qword [r8 + currentSFT]
+    cmp qword [rbx + fileLock.pSFT], rsi
+    jne .doLock
+;Check qPID
+    mov rsi, qword [rbx + fileLock.qPID]    
+    cmp rsi, qword [r8 + qPID]
+    jne .doLock
+;Check dMID
+    mov rsi, qword [rbx + fileLock.pSFT]
+    mov esi, dword [rsi + sft.dMID]
+    cmp esi, dword [r8 + dMID]
+    jne .doLock
+;If all three were equal, skip this lock!
+.nextLock:
+    mov rbx, qword [rbx + fileLock.pNext]  ;Go to next lock in chain
+    jmp short .lockLp
+.doLock:
+;Input: rbx -> filelock to check on
+;       rax -> Start byte to check
+;       rdx -> End byte to check
+    cmp rax, qword [rbx + fileLock.qEnd]
+    ja .nextLock    ;If start is past the end, immediately check next!
+    cmp rdx, qword [rbx + fileLock.qStart]
+    jb .nextLock    ;If end is below the start, immediately check next!
+;Now we check that we are not overlapping
+    cmp rax, qword [rbx + fileLock.qStart]
+    jae .overlap
+    cmp rdx, qword [rbx + fileLock.qEnd]
+    ja .nextLock
+.overlap:
+;Here we have an overlap. Check if it is exact.
+    jnz .ovlpExit   ;This check had to have been equal to be exact
+    cmp rax, qword [rbx + fileLock.qStart]  ;Keeps ZF set if equal
+.ovlpExit:
+    stc
+.exit:
+    pop rsi
+    return
+
+getFreeLock:
+;Gets a free lock.
+;Output: CF=NC: rsi -> Lock
+;        CF=CY: No more locks
+    mov rsi, qword [pFreeLock]
+    test rsi, rsi
+    jz .noMoreLocks
+    mov rcx, qword [rsi + fileLock.pNext]   ;Move next entry to the head
+    mov qword [pFreeLock], rcx
+    clc
+    return
+.noMoreLocks:
+    mov eax, errShrFul
+    stc
+    return
+
+
+closeByID:
+;Closes all files by IDs.
+;Input: rcx = qPID (or -1 if we are not to use this)
+;       rdx = dMID
+;Searches through the MFT heap for allocated MFTs and within them,
+; frees each SFT which meets the ID requirements
+    push r8
+    mov r8, qword [pDosseg]
+    mov rsi, qword [pMftArena]
+.mftLp:
+    mov eax, dword [rsi + mft.dLen]
+    lea rdi, qword [rsi + rsi]  ;Point rdi to the next MFT if one exists
+    cmp byte [rsi + mft.bSig], mftFree
+    jb .exit
+    jz .mftNext
+;Here we have an allocated MFT. Now we go down it's SFT chain freeing
+; the SFTs as specified
+    mov rbx, qword [rsi + mft.pSFT] ;Point rbx to the first SFT
+.sftLp:
+    test rbx, rbx   ;Once we are at the end of the sft chain, goto next MFT
+    jz .mftNext
+    cmp dword [rbx + sft.dMID], edx
+    jne .sftNext
+    cmp rcx, -1
+    je .sftNext
+    cmp qword  [rbx + sft.qPID], rcx
+    jne .sftNext
+;Here we have an sft to close. The one in rsi. 
+    mov rbx, qword [rbx + sft.pNextSFT] ;Get ptr to next SFT in chain
+    push rbx
+    push rcx
+    push rdx
+    push rdi
+    mov qword [r8 + currentSFT], rsi
+    push rsi    ;Save current SFT we are closing 
+    call closeHandlesForSFT
+    pop rdi
+    call closeSFT   ;This wants the ptr in rdi
+    pop rdi
+    pop rdx
+    pop rcx
+    pop rbx
+    jmp short .sftLp
+.sftNext:
+    mov rbx, qword [rbx + sft.pNextSFT]
+    jmp short .sftLp
+.mftNext:
+    mov rsi, rdi    ;Move rsi to the next MFT
+    jmp .mftLp
+.exit:
+    clc 
+    return
+
+closeSFT:
+;Closes current SFT
+;Input: qword [currentSFT] = SFT to close
+    mov eax, 1201h ;Close the currentSFT
+    int 2Fh
+    return
+
+closeHandlesForSFT:
+;Closes all handles referencing the current SFT
+;Input: r8 -> DOSSEG
+;       qword [currentSFT] = SFT to close handles for
+    mov rsi, qword [r8 + currentSFT]
+    xor ebx, ebx
+.sftIndxLp:
+    push rbx
+    mov eax, 1216h  ;Get SFT Ptr from SFT Index into rdi
+    int 2Fh
+    pop rbx
+    inc ebx
+    cmp rsi, rdi    ;Was this index correct?
+    jne .sftIndxLp
+    dec ebx         ;Decrement it back, we are looking for this number
+;Now we walk the Arena Chain to find every task ID and close the
+; JFT entry for this file if the SFTIndex exists in that task's JFT
+    xor eax, eax    ;Zero to give a PID that will not be at the start
+    mov rdi, qword [r8 + mcbChainPtr]   ;Get the MCB chain header in rdi
+    jmp short .checkMCB ;Make sure this MCB is a valid MCB
+.mcbLp:
+    cmp rax, qword [rdi + mcb.owner]    ;If new PID same as before, skip
+    je .getNextMCB
+    mov rax, qword [rdi + mcb.owner]    ;Else, get the new PID
+    call closeJFTEntries    ;Close all JFT entries for this process
+.getNextMCB:
+    cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we processed end block, exit
+    rete
+;Else, goto next block
+    mov ecx, dword [rdi + mcb.blockSize]    ;Get size of block in paras
+    shl rcx, 4      ;Turn into bytes
+    add rcx, mcb_size
+    add rdi, rcx    ;Go to next MCB
+.checkMCB:
+    mov cl, byte [rdi + mcb.marker] ;Now check the new MCB is valid
+    cmp cl, mcbMarkEnd
+    je .mcbLp
+    cmp cl, mcbMarkCtn
+    je .mcbLp
+    call errPrintAndHalt    ;Wasn't a end or cont block, error!
+    db "MCB CORRUPTION DETECTED",CR,LF,NUL
 
 freeMFT:
 ;Frees the MFT if it is safe to do so. Crashes otherwise. Combines 
@@ -384,7 +605,7 @@ getMFT:
     mov qword [rbx + mft.pSFT], 0
     mov byte [rbx + mft.bCheckSum], dl  ;Set the checksum immediately.
     sub ecx, mft_size   ;Now get just the string length
-    lea rdi, qword [rbx + mft.name] 
+    lea rdi, qword [rbx + mft.sName] 
     rep movsb   ;Move the string over
     clc
     return
@@ -492,7 +713,7 @@ findMFT:
     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
     jne .next   ;If not equal, skip entry
     push rdi
-    lea rdi, qword [rbx + mft.name] ;Point to mft filename
+    lea rdi, qword [rbx + mft.sName] ;Point to mft filename
     mov eax, 121Eh  ;Compare strings in rsi and rdi
     int 2Fh         ;Doesnt modify string pointers
     pop rdi

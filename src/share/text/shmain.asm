@@ -10,7 +10,7 @@
 ; lockFile       
 ; unlockFile     
 ; checkRegionLock  
-; getMFTInfo   
+; getSFTShareInfo   
 ; updateFCB 
 ; getFirstClusterFCB   
 ; closeNetworkFiles   
@@ -84,33 +84,221 @@ close:
     return
 
 closeAllByMachine:      
-;Close all files for a machine
-    stc
+;Close all files for a machine.
+;Input: rdx -> DPL (use dMID only)
+    call critEnter
+    xor ecx, ecx
+    dec rcx ;Get -1 into ecx to indicate not to use this
+    mov rdx, qword [rdx + dpl.rdx]  ;Get the MID
+    call closeByID
+    call critExit
     return
+
 closeAllByProcess:      
-;Close all files for a task
-    stc
+;Close all files for a task.
+;Input: rdx -> DPL (use dMID and qPID)
+    call critEnter
+    mov rcx, qword [rdx + dpl.rdx]  ;Get the PID
+    mov rdx, qword [rdx + dpl.rdx]  ;Get the MID
+    call closeByID
+    call critExit
     return
+
 closeAllByName:      
-;Close file by name
-    stc
+;Close all files by name.
+;Input: rdx -> DPL (use rdx, dMID and qPID)
+    call critEnter
+    push r8
+    mov r8, qword [pDosseg] ;Needed for the close handles call below
+    mov rsi, qword [rdx + dpl.rdx]  ;Get the filename ptr in rsi
+    call findMFT    ;Find the MFT for this file name
+    jc .exit
+    mov rdi, qword [rbx + mft.pSFT] ;Get the ptr to the first SFT
+.lp:
+;We work by looking ahead an SFT in the chain. This is because closeSFT
+; might free the MFT so instead of having to search for it each time
+; we look for the condition on which it will be freed, i.e. the sft we are at
+; being the last SFT open on that MFT.
+    test rdi, rdi   ;Is the SFT ptr null? Exit if so
+    jz .exit
+    mov qword [r8 + currentSFT], rdi    ;Else, set this SFT to be current
+    mov rsi, qword [r8 + sft.pNextSFT]  ;Get the next SFT
+    push rsi    ;Preserve next SFT across the next two calls
+    push rdi    ;Preserve rdi across this call
+    call closeHandlesForSFT ;Closes this SFT on all processes
+    pop rdi     ;Get back the ptr to current SFT
+    call closeSFT   ;Close this SFT
+    pop rdi     ;Get the ptr to the next SFT in rdi
+    jmp short .lp
+.exit:
+    pop r8
+    call critExit
     return
+
 lockFile:       
-;Lock a file region
-    stc
+;Lock a file region.
+;Input: rdi -> SFT for file
+;       ecx:edx = Start offset
+;       esi:eax = Length of region
+    call critEnter
+    push r8
+    mov r8, qword [pDosseg]
+    cmp qword [rdi + sft.pMFT], 0   ;If we don't have an MFT, fail
+    je .exitBad
+    call lockPreamble
+    jc .exit
+    call getFreeLock    ;Get a free lock in rsi
+    jc .exit
+;Here we have:
+;   CF=NC
+;   rbp -> MFT to add to
+;   rax = Start of locked region
+;   rdx = End of locked region
+;   rdi -> SFT owning the lock
+;   rsi -> Free lock we are creating
+    mov qword [rsi + fileLock.qStart], rax
+    mov qword [rsi + fileLock.qEnd], rdx
+    mov qword [rsi + fileLock.pSFT], rdi
+    mov rax, qword [r8 + currentPSP]
+    mov qword [rsi + fileLock.qPID], rax
+    mov rax, qword [rbp + mft.pLock]    ;Add the lock to the head of the list
+    mov qword [rdi + fileLock.pNext], rax   
+    mov qword [rbx + mft.pLock], rdi
+.exit:    
+    pop r8
+    call critExit
     return
+.exitBad:
+    mov eax, errLokVio
+    stc
+    jmp short .exit
+    
 unlockFile:     
-;Unlock file region
-    stc
-    return
+;Unlock file region. 
+;Input: rdi -> SFT for file
+;       ecx:edx = Start offset
+;       esi:eax = Length of region
+    call critEnter
+    push r8
+    mov r8, qword [pDosseg]
+    cmp qword [rdi + sft.pMFT], 0   ;If we don't have an MFT, fail
+    je lockFile.exitBad
+    call lockPreamble
+    jnc lockFile.exitBad
+    jnz lockFile.exitBad
+;   rbp -> MFT to remove lock from
+;   rdi -> SFT owning the lock
+;   rbx -> Lock to free
+    cmp qword [rbx + fileLock.pSFT], rdi
+    jne lockFile.exitBad
+    mov rax, qword [r8 + currentPSP]
+    cmp qword [rbx + fileLock.qPID], rax
+    jne lockFile.exitBad
+    mov rax, qword [rbx + fileLock.pNext]
+    mov qword [rbp + mft.pLock], rax
+    mov rax, qword [pFreeLock]
+    mov qword [rbx + fileLock.pNext], rax
+    mov qword [pFreeLock], rbx
+    jmp short lockFile.exit
+
+
 checkRegionLock:  
-;Check file region locked
-    clc
+;Check file region locked.
+;Input: rdi -> SFT for current file
+;       ecx = Length of region from current position in file
+;       dword [currByteF] set up with current position in file
+;Get the mft ptr, walk the lock list and check that the range specified
+; in between current offset and current offset + ecx is not within any range
+    call critEnter
+    push rcx
+    push rbp
+    push r8
+    mov r8, qword [pDosseg]
+    cmp qword [rdi + sft.pMFT], 0   ;If we don't have an MFT, exit immediately
+    je .exit
+    mov rbp, qword [rbp + sft.pMFT] ;Get the MFT ptr
+    cmp qword [rbp + mft.pLock], 0  ;If we have no locks, exit immediately
+    je .exit
+    mov eax, dword [r8 + currByteF] ;Get the current byte count
+    dec ecx ;Reduce count by 1 to get last byte in range and clear upper dword
+    cmc     ;If carry clear here, exit (it means ecx was zero)
+    jnc .exit
+    lea rdx, qword [rax + rcx]  ;Add the read length to curroffset
+    xor ecx, ecx    ;Set to ignore locks rdi owns
+;Below needs:  
+;       rax = Start byte to check
+;       rdx = End byte to check
+;       rbp -> MFT to start searching 
+;       ecx = 0: Do not check locks belonging to currentSFT, dMID, qPID
+    call checkLockOverlap
+    mov eax, errLokVio  ;Assume an error occured
+.exit:
+    pop r8
+    pop rbp
+    pop rcx
+    call critExit
+    return 
+
+getSFTShareInfo:
+;Get SFT sharing information about file.
+;Input: rdx -> DPL (use ebx and ecx)
+;       DPL.ebx = MFT Index (1 based)
+;       DPL.ecx = SFT Index (1 based)
+;Output:
+;   CF=NC: File found 
+;       rdi -> ASCIIZ filename
+;       ebx = dMID for the SFT
+;       ecx = Number of locks held by SFT
+;   CF=CY: Either index is out of range.
+;       eax = No more files
+    call critEnter
+    push r8
+    mov ebx, dword [rdx + dpl.rbx]  ;Get the MFT index
+    mov ecx, dword [rdx + dpl.rcx]  ;Get the SFT index
+    mov rsi, qword [pMftArena]
+.mftLp:
+    cmp byte [rsi + mft.bSig], mftFree
+    jz .mftNext ;If its free, just goto next MFT
+    jb .exitBad ;If we are at the end, exit error!
+    dec ebx     ;Drop one from the count, if zero, we have arrived
+    jz .goSft
+.mftNext:
+    mov eax, dword [rsi + mft.dLen]
+    add rsi, rax    ;Goto the next MFT
+    jmp short .mftLp
+.goSft:
+    lea rdi, qword [rsi + mft.sName]    ;Point to the name now
+    mov rsi, qword [rsi + mft.pSFT]     ;Point rsi to the first SFT
+.sftLp:
+    test rsi, rsi   ;If no more SFTs, fail!
+    jz .exitBad
+    dec ecx
+    jz .goEnd
+    mov rsi, qword [rsi + sft.pNextSFT]
+    jmp short .sftLp
+.goEnd:
+    mov ebx, dword [rsi + sft.dMID] ;Get the dMID
+;Here we have: 
+; ebx = dMID
+; rsi -> our SFT
+; rdi -> Filename to return
+;Now count the number of locks this file has. 
+    mov rsi, qword [rsi + sft.pMFT] ;Point back to the MFT
+    mov rsi, qword [rsi + mft.pLock] ;Point to the lock list
+.lockLp:
+    test rsi, rsi   ;Once rsi is zero, we are done
+    jz .exit
+    inc ecx         ;Else, increment the lock count
+    mov rsi, qword [rsi + fileLock.pNext]
+    jmp short .lockLp
+.exit:
+    pop r8
+    call critExit
     return
-getMFTInfo:   
-;Get MFT information about file
-    stc
-    return
+.exitBad:
+    mov eax, errNoFil
+    jmp short .exit
+
 updateFCB: 
 ;UNUSED: Update FCB from the SFT
     stc
@@ -119,6 +307,7 @@ getFirstClusterFCB:
 ;UNUSED: Get first cluster of FCB
     stc
     return
+
 closeNetworkFiles:   
 ;Close a newly created SFT-FCB handle for a procedure.
 ;Network SFT-FCBs handles are all collapsed into one SFT.
@@ -250,47 +439,10 @@ closeRenDel:
 ;Here we must close all the handles referring to this SFT
 ;rdi -> First SFT 
     mov qword [r8 + currentSFT], rdi    ;Set this SFT as current SFT
-    mov rsi, rdi
-    xor ebx, ebx
-.sftIndxLp:
-    push rbx
-    mov eax, 1216h  ;Get SFT Ptr from SFT Index into rdi
-    int 2Fh
-    pop rbx
-    inc ebx
-    cmp rsi, rdi    ;Was this index correct?
-    jne .sftIndxLp
-    dec ebx         ;Decrement it back, we are looking for this number
-;Now we walk the Arena Chain to find every task ID and close the
-; JFT entry for this file if the SFTIndex exists in that task's JFT
-    xor eax, eax    ;Zero to give a PID that will not be at the start
-    mov rdi, qword [r8 + mcbChainPtr]   ;Get the MCB chain header in rdi
-    jmp short .checkMCB ;Make sure this MCB is a valid MCB
-.mcbLp:
-    cmp rax, qword [rdi + mcb.owner]    ;If new PID same as before, skip
-    je .getNextMCB
-    mov rax, qword [rdi + mcb.owner]    ;Else, get the new PID
-    call closeJFTEntries    ;Close all JFT entries for this process
-.getNextMCB:
-    cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we processed end block, exit
-    je .mcbEnd
-;Else, goto next block
-    mov ecx, dword [rdi + mcb.blockSize]    ;Get size of block in paras
-    shl rcx, 4      ;Turn into bytes
-    add rcx, mcb_size
-    add rdi, rcx    ;Go to next MCB
-.checkMCB:
-    mov cl, byte [rdi + mcb.marker] ;Now check the new MCB is valid
-    cmp cl, mcbMarkEnd
-    je .mcbLp
-    cmp cl, mcbMarkCtn
-    je .mcbLp
-    call errPrintAndHalt    ;Wasn't a end or cont block, error!
-    db "MCB CORRUPTION DETECTED",CR,LF,NUL
-.mcbEnd:
-    mov eax, 1201h ;Close the currentSFT
-    int 2Fh
+    call closeHandlesForSFT
+    call closeSFT
     jmp .again  ;Now do this again until no more files
+
 
 dirUpdate:      
 ;Update dir info across all SFTs for a file. 

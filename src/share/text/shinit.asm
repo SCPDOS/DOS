@@ -289,7 +289,7 @@ shareTable:
     dq lockFile       
     dq unlockFile     
     dq checkRegionLock  
-    dq getMFTInfo   
+    dq getSFTShareInfo   
     dq updateFCB 
     dq getFirstClusterFCB   
     dq closeNetworkFiles   
