@@ -162,53 +162,61 @@ closeByID:
 ; frees each SFT which meets the ID requirements
     push r8
     mov r8, qword [pDosseg]
-    mov rsi, qword [pMftArena]
-.mftLp:
-    mov eax, dword [rsi + mft.dLen]
-    lea rdi, qword [rsi + rax]  ;Point rdi to the next MFT if one exists
-    cmp byte [rsi + mft.bSig], mftFree
-    jb .exit
-    jz .mftNext
-;Here we have an allocated MFT. Now we go down it's SFT chain freeing
-; the SFTs as specified
+    mov rdi, qword [pMftArena]
+    call .mftAdvNext    ;Start by skipping any leading free blocks
+.mftNext:
+    mov rsi, rdi    ;Set current MFT = Next MFT 
+    cmp byte [rdi + mft.bSig], mftEnd   ;Is this MFT an end MFT?
+    je .end
+;Here, we advance rdi before processing rsi. The advance must be done
+; before any possible close as the close might invalidate the pointer in rsi.
+;rsi will always be an allocated SFT as it isn't free or end
+    call .mftAdvNext ;Returns rdi -> Next Non-free MFT. rsi -> MFT to process.
+;Now we go down rsi's SFT chain freeing the SFTs as specified.
     mov rbx, qword [rsi + mft.pSFT] ;Point rbx to the first SFT
 .sftLp:
     test rbx, rbx   ;Once we are at the end of the sft chain, goto next MFT
     jz .mftNext
+;Here we have an SFT for investigation. Set it to current and push the
+; next SFT on the stack
+    mov qword [r8 + currentSFT], rbx    ;Set the current SFT as rbx
+    push qword [rbx + sft.pNextSFT] ;Save the ptr to next SFT in chain
+;Now check do we need to close this SFT
     cmp dword [rbx + sft.dMID], edx
-    jne .sftNext
+    jne .sftSkip
     cmp rcx, -1 ;If -1, then just equal dMID suffices. Close this SFT
     je .sftGo
     cmp qword [rbx + sft.qPID], rcx
-    jne .sftNext
+    jne .sftSkip
 .sftGo:
 ;Here we have an sft to close. The one in rsi. 
-    mov qword [r8 + currentSFT], rbx    ;Set the current SFT as rbx
-    push qword [rbx + sft.pNextSFT] ;Save the ptr to next SFT in chain
     push rcx    ;Save the qPID (or -1 signature) for checking
     push rdx    ;Save the dMID for checking
     push rsi    ;Save the current MFT we are processing
     push rdi    ;Save the next MFT
-    push rbx    ;Save current SFT we are closing 
+;These two require currentSFT set
     call closeHandlesForSFT
-    pop rdi     ;Get the current SFT we are closing into rdi for the close
-    call closeSFT   ;This might delete the current MFT...
+    call closeSFT   ;This might delete the current MFT... 
     pop rdi     ;Get the next MFT
     pop rsi     ;Get the current MFT (might be invalid now)
     pop rdx     ;Get the dMID
     pop rcx     ;Get the qPID (or -1 signature)
-    pop rbx     ;Get the ptr to the next SFT in the chain (might be null)
+.sftSkip:
+    pop rbx     ;Get ptr to the next SFT in the chain (might be null)
     jmp short .sftLp
-.sftNext:
-    mov rbx, qword [rbx + sft.pNextSFT]
-    jmp short .sftLp
-.mftNext:
-    mov rsi, rdi    ;Move rsi to the next MFT
-    jmp .mftLp
-.exit:
+.end:
+;Else, the MFT was the end MFT so we are done! Exit!
     pop r8
-    clc 
     return
+.mftAdvNext:
+;Advances rdi to the next non-free MFT (stops at mftEnd).
+;Input: rdi -> MFT to start advancing from.
+    mov eax, dword [rdi + mft.dLen]
+    add rdi, rax  
+    cmp byte [rdi + mft.bSig], mftFree  ;Do we keep advancing?
+    je .mftAdvNext  ;If rdi points to a free MFT, yes!
+    return
+
 
 closeSFT:
 ;Closes current SFT

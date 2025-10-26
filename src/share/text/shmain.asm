@@ -125,13 +125,11 @@ closeAllByName:
     test rdi, rdi   ;Is the SFT ptr null? Exit if so
     jz .exit
     mov qword [r8 + currentSFT], rdi    ;Else, set this SFT to be current
-    mov rsi, qword [r8 + sft.pNextSFT]  ;Get the next SFT
-    push rsi    ;Preserve next SFT across the next two calls
-    push rdi    ;Preserve rdi across this call
+    push qword [rdi + sft.pNextSFT]     ;Save next SFT
+;These two require currentSFT set
     call closeHandlesForSFT ;Closes this SFT on all processes
-    pop rdi     ;Get back the ptr to current SFT
     call closeSFT   ;Close this SFT
-    pop rdi     ;Get the ptr to the next SFT in rdi
+    pop rdi         ;Get the ptr to the next SFT in rdi
     jmp short .lp
 .exit:
     pop r8
@@ -453,6 +451,7 @@ closeRenDel:
 ;Here we must close all the handles referring to this SFT
 ;rdi -> First SFT 
     mov qword [r8 + currentSFT], rdi    ;Set this SFT as current SFT
+;These two require currentSFT set
     call closeHandlesForSFT
     call closeSFT
     jmp .again  ;Now do this again until no more files
