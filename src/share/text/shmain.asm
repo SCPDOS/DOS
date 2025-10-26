@@ -271,7 +271,7 @@ getSFTShareInfo:
 .mftLp:
     cmp byte [rsi + mft.bSig], mftFree
     jz .mftNext ;If its free, just goto next MFT
-    jb .exitBad ;If we are at the end, exit error!
+    jl .exitBad ;If we are at the end, exit error!
     dec ebx     ;Drop one from the count, if zero, we have arrived
     jz .goSft
 .mftNext:

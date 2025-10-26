@@ -269,8 +269,8 @@ closeHandlesForSFT:
     db "MCB CORRUPTION DETECTED",CR,LF,NUL
 
 freeMFT:
-;Frees the MFT if it is safe to do so. Crashes otherwise. Combines 
-; any adjacent free space too.
+;Frees the MFT if it is safe to do so. Crashes otherwise. Then combines
+; all fragmented free space in the MFT arena
 ;Input: rbx -> MFT to free
 ;Output: MFT freed. Any adjacent free space is absorbed by this MFT too.
 ;Trashes rax, rbx and rsi
@@ -278,17 +278,23 @@ freeMFT:
     or qword [rbx + mft.pLock], rax ;If pLock or pSFT is non-zero, hard error
     jnz .crash
     mov byte [rbx + mft.bSig], mftFree
+;Now start combining all fragmented free space in the MFT arena space
+    mov rbx, qword [pMftArena]
 .lp:
-;Checks the adjacent MFT. If it is free, we combine it to this free MFT.
-    mov rsi, rbx
-    mov eax, dword [rbx + mft.dLen]
-    add rsi, rax    ;Point to next MFT
-    cmp byte [rsi + mft.bSig], mftFree
-    retne   ;If not free, we exit
-    mov eax, dword [rsi + mft.dLen]
-    add dword [rbx + mft.dLen], eax ;Add this size to our MFT len
-    jmp short .lp       ;Now go again
+    mov esi, dword [rbx + mft.dLen] ;Get length of base MFT
+    cmp byte [rbx + mft.bSig], mftFree
+    retl            ;If end, finish combining
+    jne .gotoNext   ;If allocated, skip this MFT
+    cmp byte [rbx + rsi + mft.bSig], mftFree    ;Is the next MFT free?
+    jne .gotoNext   ;If not, leave this MFT block alone and goto next MFT
+    mov esi, dword [rbx + rsi + mft.dLen]   ;Else, get length of next MFT
+    add dword [rbx + mft.dLen], esi         ;And add to length of base MFT
+    jmp short .lp
+.gotoNext:
+    add rbx, rsi
+    jmp short .lp
 .crash:
+    call errPrintAndHalt
     db "SFT LCK fields not 0",CR,LF,NUL
 
 
@@ -648,7 +654,7 @@ defragMFTArena:
 ; the read and write pointers. If we encounter a free mft, we add its
 ; size and move the read pointer.
     cmp byte [rsi + mft.bSig], mftFree
-    js .exit    ;At this point, all compression is done. Goto end
+    jl .exit    ;At this point, all compression is done. Goto end
     je .free
 ;Here we copy over. Before we do, we walk down the SFT chain
 ; updating the MFT pointer in each SFT.
@@ -703,7 +709,7 @@ findFreeMFT:
     mov rbx, qword [pMftArena]
 .lp:
     cmp byte [rbx + mft.bSig], mftFree
-    js findMFT.noMFT    ;If sign bit set, must be mftEnd. Exit error!
+    jl findMFT.noMFT    ;If below, must be mftEnd. Exit error!
     jne .next           ;If not equal, must be mftAlloc. Goto next MFT
     cmp dword [rbx + mft.dLen], ecx ;Is this MFT ok sizewise?
     retnc   ;Not carry means dLen is geq eax, as required
@@ -725,7 +731,7 @@ findMFT:
     mov rbx, qword [pMftArena]
 .lp:
     cmp byte [rbx + mft.bSig], mftFree  
-    js .noMFT   ;If sign bit is set, bSig must be -1. End of arena!
+    jl .noMFT   ;If below, bSig must be -1. End of arena!
     je .next    ;If this MFT is free, goto next entry
     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
     jne .next   ;If not equal, skip entry

@@ -483,11 +483,11 @@
     54 00000018 4150                <1>     push r8
     55 0000001A 4C8B05(26000000)    <1>     mov r8, qword [pDosseg]
     56 00000021 498BB050060000      <1>     mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
-    57 00000028 E894070000          <1>     call getMFT
+    57 00000028 E8A8070000          <1>     call getMFT
     58 0000002D 720C                <1>     jc .exit
     59                              <1> ;rbx -> MFT for this file here.
     60 0000002F 498BB063070000      <1>     mov rsi, qword [r8 + currentSFT]    ;Get the current SFT now
-    61 00000036 E848060000          <1>     call addSFTtoMFT    ;Bubble CF
+    61 00000036 E85C060000          <1>     call addSFTtoMFT    ;Bubble CF
     62                              <1> .exit:
     63 0000003B 4158                <1>     pop r8
     64 0000003D E8C0030000          <1>     call critExit
@@ -510,8 +510,8 @@
     78 00000058 FFC0                <1>     inc eax         ;If this handle is -1, also free any sharing data.
     79 0000005A 7511                <1>     jnz .exit       ;If not -1 or 0, then inc eax > 0 and so we just exit
     80                              <1> .goClose:
-    81 0000005C E8C9050000          <1>     call freeLocks  ;Free all locks associated to this SFT
-    82 00000061 E877050000          <1>     call removeSFTfromMFT ;Delink this SFT from the SFT link
+    81 0000005C E8DD050000          <1>     call freeLocks  ;Free all locks associated to this SFT
+    82 00000061 E88B050000          <1>     call removeSFTfromMFT ;Delink this SFT from the SFT link
     83 00000066 7505                <1>     jnz .exit       ;If not last SFT in MFT chain, dont free MFT
     84 00000068 E835050000          <1>     call freeMFT    ;If no more SFTs, free the MFT. Do small GC.
     85                              <1> .exit:
@@ -555,7 +555,7 @@
    114 000000A9 4150                <1>     push r8
    115 000000AB 4C8B05(26000000)    <1>     mov r8, qword [pDosseg] ;Needed for the close handles call below
    116 000000B2 488B7218            <1>     mov rsi, qword [rdx + dpl.rdx]  ;Get the filename ptr in rsi
-   117 000000B6 E8F0070000          <1>     call findMFT    ;Find the MFT for this file name
+   117 000000B6 E804080000          <1>     call findMFT    ;Find the MFT for this file name
    118 000000BB 7220                <1>     jc .exit
    119 000000BD 488B7B0E            <1>     mov rdi, qword [rbx + mft.pSFT] ;Get the ptr to the first SFT
    120                              <1> .lp:
@@ -721,7 +721,7 @@
    271                              <1> .mftLp:
    272 000001F4 803E00              <1>     cmp byte [rsi + mft.bSig], mftFree
    273 000001F7 7406                <1>     jz .mftNext ;If its free, just goto next MFT
-   274 000001F9 7242                <1>     jb .exitBad ;If we are at the end, exit error!
+   274 000001F9 7C42                <1>     jl .exitBad ;If we are at the end, exit error!
    275 000001FB FFCB                <1>     dec ebx     ;Drop one from the count, if zero, we have arrived
    276 000001FD 7408                <1>     jz .goSft
    277                              <1> .mftNext:
@@ -881,7 +881,7 @@
    419 000002E8 E80B010000          <1>     call critEnter
    420                              <1> .again:
    421 000002ED 498BB050060000      <1>     mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
-   422 000002F4 E8B2050000          <1>     call findMFT    ;Looks for this file
+   422 000002F4 E8C6050000          <1>     call findMFT    ;Looks for this file
    423 000002F9 7237                <1>     jc .exit    ;If the file doesn't exist, exit
    424                              <1> ;File MFT found. rbx -> MFT. 
    425                              <1> ; Now check that all the files on this chain have the mid and pid of 
@@ -1397,7 +1397,7 @@
    250 00000551 483B4701            <1>     cmp rax, qword [rdi + mcb.owner]    ;If new PID same as before, skip
    251 00000555 7409                <1>     je .getNextMCB
    252 00000557 488B4701            <1>     mov rax, qword [rdi + mcb.owner]    ;Else, get the new PID
-   253 0000055B E890030000          <1>     call closeJFTEntries    ;Close all JFT entries for this process
+   253 0000055B E8A4030000          <1>     call closeJFTEntries    ;Close all JFT entries for this process
    254                              <1> .getNextMCB:
    255 00000560 803F5A              <1>     cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we processed end block, exit
    256                              <1>     rete
@@ -1435,29 +1435,28 @@
    265 0000057C 74D3                <1>     je .mcbLp
    266 0000057E 80F94D              <1>     cmp cl, mcbMarkCtn
    267 00000581 74CE                <1>     je .mcbLp
-   268 00000583 E8C4030000          <1>     call errPrintAndHalt    ;Wasn't a end or cont block, error!
+   268 00000583 E8D8030000          <1>     call errPrintAndHalt    ;Wasn't a end or cont block, error!
    269 00000588 4D434220434F525255- <1>     db "MCB CORRUPTION DETECTED",CR,LF,NUL
    269 00000591 5054494F4E20444554- <1>
    269 0000059A 45435445440D0A00    <1>
    270                              <1> 
    271                              <1> freeMFT:
-   272                              <1> ;Frees the MFT if it is safe to do so. Crashes otherwise. Combines 
-   273                              <1> ; any adjacent free space too.
+   272                              <1> ;Frees the MFT if it is safe to do so. Crashes otherwise. Then combines
+   273                              <1> ; all fragmented free space in the MFT arena
    274                              <1> ;Input: rbx -> MFT to free
    275                              <1> ;Output: MFT freed. Any adjacent free space is absorbed by this MFT too.
    276                              <1> ;Trashes rax, rbx and rsi
    277 000005A2 488B430E            <1>     mov rax, qword [rbx + mft.pSFT]
    278 000005A6 48094306            <1>     or qword [rbx + mft.pLock], rax ;If pLock or pSFT is non-zero, hard error
-   279 000005AA 751A                <1>     jnz .crash
+   279 000005AA 7529                <1>     jnz .crash
    280 000005AC C60300              <1>     mov byte [rbx + mft.bSig], mftFree
-   281                              <1> .lp:
-   282                              <1> ;Checks the adjacent MFT. If it is free, we combine it to this free MFT.
-   283 000005AF 4889DE              <1>     mov rsi, rbx
-   284 000005B2 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
-   285 000005B5 4801C6              <1>     add rsi, rax    ;Point to next MFT
-   286 000005B8 803E00              <1>     cmp byte [rsi + mft.bSig], mftFree
-   287                              <1>     retne   ;If not free, we exit
-    53                              <2> cret ne
+   281                              <1> ;Now start combining all fragmented free space in the MFT arena space
+   282 000005AF 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
+   283                              <1> .lp:
+   284 000005B6 8B7301              <1>     mov esi, dword [rbx + mft.dLen] ;Get length of base MFT
+   285 000005B9 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree
+   286                              <1>     retl            ;If end, finish combining
+    89                              <2> cret l
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
     21                              <3> 
@@ -1473,72 +1472,79 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000005BB 7401                <3>  j%-1 short %%a
+    34 000005BC 7D01                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000005BD C3                  <4>  ret
+    14 000005BE C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   288 000005BE 8B4601              <1>     mov eax, dword [rsi + mft.dLen]
-   289 000005C1 014301              <1>     add dword [rbx + mft.dLen], eax ;Add this size to our MFT len
-   290 000005C4 EBE9                <1>     jmp short .lp       ;Now go again
-   291                              <1> .crash:
-   292 000005C6 534654204C434B2066- <1>     db "SFT LCK fields not 0",CR,LF,NUL
-   292 000005CF 69656C6473206E6F74- <1>
-   292 000005D8 20300D0A00          <1>
-   293                              <1> 
-   294                              <1> 
-   295                              <1> removeSFTfromMFT:
-   296                              <1> ;Removes the SFT from the MFT's SFT chain.
-   297                              <1> ;Input: rdi -> SFT we are closing.
-   298                              <1> ;Output: ZF=ZE: No more files on MFT
-   299                              <1> ;        ZF=NZ: More files on MFT.
-   300                              <1> ;           rbx -> MFT for this file
-   301                              <1> ;Trashes rax and rsi.
-   302 000005DD 488B5F4F            <1>     mov rbx, qword [rdi + sft.pMFT] ;Get the MFT pointer
-   303                              <1> ;Point rsi to the such that it is one sft.pNextSFT away from the pointer to
-   304                              <1> ; the next SFT
-   305 000005E1 488D73D3            <1>     lea rsi, qword [rbx + mft.pSFT - sft.pNextSFT]
-   306                              <1> .lp:
-   307 000005E5 4885F6              <1>     test rsi, rsi   ;If we dont find rdi, something has gone terribly wrong
-   308 000005E8 7425                <1>     jz .crash
-   309 000005EA 48397E3B            <1>     cmp qword [rsi + sft.pNextSFT], rdi    ;Is the next SFT us?
-   310 000005EE 7406                <1>     je .found
-   311 000005F0 488B763B            <1>     mov rsi, qword [rsi + sft.pNextSFT] ;Go to next SFT
-   312 000005F4 EBEF                <1>     jmp short .lp
-   313                              <1> .found:
-   314                              <1> ;rsi -> Points to the previous SFT in the chain 
-   315 000005F6 488B473B            <1>     mov rax, qword [rdi + sft.pNextSFT] ;Get our next SFT value
-   316 000005FA 4889463B            <1>     mov qword [rsi + sft.pNextSFT], rax ;And set the prev SFT to link over us
-   317 000005FE 48C7474F00000000    <1>     mov qword [rdi + sft.pMFT], 0   ;Set pMFT to zero to mean we are done!
-   318 00000606 48817B0E00000000    <1>     cmp qword [rbx + mft.pSFT], 0   ;Is the MFT SFT chain ptr 0?
-   319                              <1>     return
+   287 000005BF 750F                <1>     jne .gotoNext   ;If allocated, skip this MFT
+   288 000005C1 803C3300            <1>     cmp byte [rbx + rsi + mft.bSig], mftFree    ;Is the next MFT free?
+   289 000005C5 7509                <1>     jne .gotoNext   ;If not, leave this MFT block alone and goto next MFT
+   290 000005C7 8B743301            <1>     mov esi, dword [rbx + rsi + mft.dLen]   ;Else, get length of next MFT
+   291 000005CB 017301              <1>     add dword [rbx + mft.dLen], esi         ;And add to length of base MFT
+   292 000005CE EBE6                <1>     jmp short .lp
+   293                              <1> .gotoNext:
+   294 000005D0 4801F3              <1>     add rbx, rsi
+   295 000005D3 EBE1                <1>     jmp short .lp
+   296                              <1> .crash:
+   297 000005D5 E886030000          <1>     call errPrintAndHalt
+   298 000005DA 534654204C434B2066- <1>     db "SFT LCK fields not 0",CR,LF,NUL
+   298 000005E3 69656C6473206E6F74- <1>
+   298 000005EC 20300D0A00          <1>
+   299                              <1> 
+   300                              <1> 
+   301                              <1> removeSFTfromMFT:
+   302                              <1> ;Removes the SFT from the MFT's SFT chain.
+   303                              <1> ;Input: rdi -> SFT we are closing.
+   304                              <1> ;Output: ZF=ZE: No more files on MFT
+   305                              <1> ;        ZF=NZ: More files on MFT.
+   306                              <1> ;           rbx -> MFT for this file
+   307                              <1> ;Trashes rax and rsi.
+   308 000005F1 488B5F4F            <1>     mov rbx, qword [rdi + sft.pMFT] ;Get the MFT pointer
+   309                              <1> ;Point rsi to the such that it is one sft.pNextSFT away from the pointer to
+   310                              <1> ; the next SFT
+   311 000005F5 488D73D3            <1>     lea rsi, qword [rbx + mft.pSFT - sft.pNextSFT]
+   312                              <1> .lp:
+   313 000005F9 4885F6              <1>     test rsi, rsi   ;If we dont find rdi, something has gone terribly wrong
+   314 000005FC 7425                <1>     jz .crash
+   315 000005FE 48397E3B            <1>     cmp qword [rsi + sft.pNextSFT], rdi    ;Is the next SFT us?
+   316 00000602 7406                <1>     je .found
+   317 00000604 488B763B            <1>     mov rsi, qword [rsi + sft.pNextSFT] ;Go to next SFT
+   318 00000608 EBEF                <1>     jmp short .lp
+   319                              <1> .found:
+   320                              <1> ;rsi -> Points to the previous SFT in the chain 
+   321 0000060A 488B473B            <1>     mov rax, qword [rdi + sft.pNextSFT] ;Get our next SFT value
+   322 0000060E 4889463B            <1>     mov qword [rsi + sft.pNextSFT], rax ;And set the prev SFT to link over us
+   323 00000612 48C7474F00000000    <1>     mov qword [rdi + sft.pMFT], 0   ;Set pMFT to zero to mean we are done!
+   324 0000061A 48817B0E00000000    <1>     cmp qword [rbx + mft.pSFT], 0   ;Is the MFT SFT chain ptr 0?
+   325                              <1>     return
     13                              <2> %%_ret:
-    14 0000060E C3                  <2>  ret
+    14 00000622 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   320                              <1> .crash:
-   321 0000060F E838030000          <1>     call errPrintAndHalt
-   322 00000614 534654204E4F542049- <1>     db "SFT NOT IN SFT LIST",CR,LF,NUL
-   322 0000061D 4E20534654204C4953- <1>
-   322 00000626 540D0A00            <1>
-   323                              <1> 
-   324                              <1> 
-   325                              <1> freeLocks:
-   326                              <1> ;Frees all file locks associated to this rdi. 
-   327                              <1> ;Input: rdi -> SFT for this file
-   328                              <1> ;       edx = Flag for if we should free locks for process
-   329                              <1> ;             -1 -> Free for process (on 5D04h calls)
-   330                              <1> ;              0 -> Dont bother (otherwise)
-   331                              <1> ;Output: All file locks owned by this process are delinked from the 
-   332                              <1> ;        file chain and added to the free lock chain.
-   333                              <1> ;Trashes rax, rbx, rsi.
-   334 0000062A 488B5F4F            <1>     mov rbx, qword [rdi + sft.pMFT]     ;Get MFT ptr in rbx
-   335 0000062E 488B7306            <1>     mov rsi, qword [rbx + mft.pLock]    ;Get the first lock of MFT in rsi 
-   336 00000632 4881C306000000      <1>     add rbx, mft.pLock  ;Point rbx to the link field of the previous lock
-   337                              <1> .lp:
-   338 00000639 4885F6              <1>     test rsi, rsi   ;End of list? 
-   339                              <1>     retz            ;Exit if so
+   326                              <1> .crash:
+   327 00000623 E838030000          <1>     call errPrintAndHalt
+   328 00000628 534654204E4F542049- <1>     db "SFT NOT IN SFT LIST",CR,LF,NUL
+   328 00000631 4E20534654204C4953- <1>
+   328 0000063A 540D0A00            <1>
+   329                              <1> 
+   330                              <1> 
+   331                              <1> freeLocks:
+   332                              <1> ;Frees all file locks associated to this rdi. 
+   333                              <1> ;Input: rdi -> SFT for this file
+   334                              <1> ;       edx = Flag for if we should free locks for process
+   335                              <1> ;             -1 -> Free for process (on 5D04h calls)
+   336                              <1> ;              0 -> Dont bother (otherwise)
+   337                              <1> ;Output: All file locks owned by this process are delinked from the 
+   338                              <1> ;        file chain and added to the free lock chain.
+   339                              <1> ;Trashes rax, rbx, rsi.
+   340 0000063E 488B5F4F            <1>     mov rbx, qword [rdi + sft.pMFT]     ;Get MFT ptr in rbx
+   341 00000642 488B7306            <1>     mov rsi, qword [rbx + mft.pLock]    ;Get the first lock of MFT in rsi 
+   342 00000646 4881C306000000      <1>     add rbx, mft.pLock  ;Point rbx to the link field of the previous lock
+   343                              <1> .lp:
+   344 0000064D 4885F6              <1>     test rsi, rsi   ;End of list? 
+   345                              <1>     retz            ;Exit if so
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1555,62 +1561,62 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 0000063C 7501                <3>  j%-1 short %%a
+    34 00000650 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 0000063E C3                  <4>  ret
+    14 00000652 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   340                              <1> ;A lock is ours if the SFT pointer of the lock matches our SFT pointer in rdi
-   341 0000063F 48397E18            <1>     cmp qword [rsi + fileLock.pSFT], rdi    ;Is the SFT ours?
-   342 00000643 7536                <1>     jne .nextLock   ;If not, skip
-   343 00000645 85D2                <1>     test edx, edx   ;If it is but we dont care for process ID, skip this
-   344 00000647 7418                <1>     jz .skipProcess
-   345                              <1> ;Now check this lock belongs to this process too
-   346 00000649 4150                <1>     push r8
-   347 0000064B 4C8B05(26000000)    <1>     mov r8, qword [pDosseg]
-   348 00000652 498B806B040000      <1>     mov rax, qword [r8 + qPID]  ;Get the process id
-   349 00000659 48394620            <1>     cmp qword [rsi + fileLock.qPID], rax    ;And compare them
-   350 0000065D 4158                <1>     pop r8
-   351 0000065F 751A                <1>     jne .nextLock
-   352                              <1> .skipProcess:
-   353                              <1> ;Here we delink the flock. We move it from the MFT list to the Free list
-   354                              <1> ; and cross link.
-   355                              <1> ;Registers on entry
-   356                              <1> ;rdi -> Our SFT
-   357                              <1> ;rsi -> Lock
-   358                              <1> ;rbx -> The previous lock in the file chain (only first qword valid)
-   359                              <1> ;edx = Flag, do not use.
-   360 00000661 488B06              <1>     mov rax, qword [rsi + fileLock.pNext]   ;Unlink rsi by linking the prev...
-   361 00000664 488903              <1>     mov qword [rbx + fileLock.pNext], rax   ;... flock to the flock after rsi
-   362 00000667 488B05(14000000)    <1>     mov rax, qword [pFreeLock]              ;Get head of the free lock list
-   363 0000066E 488906              <1>     mov qword [rsi + fileLock.pNext], rax   ;Link rsi to the head of free list
-   364 00000671 488935(14000000)    <1>     mov qword [pFreeLock], rsi              ;Make rsi the head of the free list
-   365 00000678 4889DE              <1>     mov rsi, rbx    ;Start from previous lock in the list again.
-   366                              <1> .nextLock:
-   367 0000067B 4889F3              <1>     mov rbx, rsi    ;Point rsi to this filelock
-   368 0000067E 488B36              <1>     mov rsi, qword [rsi + fileLock.pNext]   ;Get next file lock
-   369 00000681 EBB6                <1>     jmp short .lp
-   370                              <1> 
-   371                              <1> addSFTtoMFT:
-   372                              <1> ;Adds an SFT to the MFT chain and finishes filling in it's share fields. 
-   373                              <1> ;Checks for sharing conflicts before adding.
-   374                              <1> ;Input: rsi -> SFT to add
-   375                              <1> ;       rbx -> MFT to add SFT to
-   376                              <1> ;       r8 -> DOSSEG
-   377                              <1> ;Output: CF=NC: SFT Added to list
-   378                              <1> ;        CF=CY: Sharing violation. eax has error code
-   379 00000683 48817E4F00000000    <1>     cmp qword [rsi + sft.pMFT], 0   ;This SFT better not already be on a chain
-   380 0000068B 752E                <1>     jne .crash
-   381                              <1> ;Add the networking ids now as we need them for permissions checking
-   382 0000068D 498B806B040000      <1>     mov rax, qword [r8 + qPID]
-   383 00000694 48894647            <1>     mov qword [rsi + sft.qPID], rax
-   384 00000698 418B8073040000      <1>     mov eax, dword [r8 + dMID]
-   385 0000069F 894643              <1>     mov dword [rsi + sft.dMID], eax
-   386                              <1> ;Now we check if there are any sharing conflicts
-   387 000006A2 E82E000000          <1>     call checkPermissions
-   388                              <1>     retc
+   346                              <1> ;A lock is ours if the SFT pointer of the lock matches our SFT pointer in rdi
+   347 00000653 48397E18            <1>     cmp qword [rsi + fileLock.pSFT], rdi    ;Is the SFT ours?
+   348 00000657 7536                <1>     jne .nextLock   ;If not, skip
+   349 00000659 85D2                <1>     test edx, edx   ;If it is but we dont care for process ID, skip this
+   350 0000065B 7418                <1>     jz .skipProcess
+   351                              <1> ;Now check this lock belongs to this process too
+   352 0000065D 4150                <1>     push r8
+   353 0000065F 4C8B05(26000000)    <1>     mov r8, qword [pDosseg]
+   354 00000666 498B806B040000      <1>     mov rax, qword [r8 + qPID]  ;Get the process id
+   355 0000066D 48394620            <1>     cmp qword [rsi + fileLock.qPID], rax    ;And compare them
+   356 00000671 4158                <1>     pop r8
+   357 00000673 751A                <1>     jne .nextLock
+   358                              <1> .skipProcess:
+   359                              <1> ;Here we delink the flock. We move it from the MFT list to the Free list
+   360                              <1> ; and cross link.
+   361                              <1> ;Registers on entry
+   362                              <1> ;rdi -> Our SFT
+   363                              <1> ;rsi -> Lock
+   364                              <1> ;rbx -> The previous lock in the file chain (only first qword valid)
+   365                              <1> ;edx = Flag, do not use.
+   366 00000675 488B06              <1>     mov rax, qword [rsi + fileLock.pNext]   ;Unlink rsi by linking the prev...
+   367 00000678 488903              <1>     mov qword [rbx + fileLock.pNext], rax   ;... flock to the flock after rsi
+   368 0000067B 488B05(14000000)    <1>     mov rax, qword [pFreeLock]              ;Get head of the free lock list
+   369 00000682 488906              <1>     mov qword [rsi + fileLock.pNext], rax   ;Link rsi to the head of free list
+   370 00000685 488935(14000000)    <1>     mov qword [pFreeLock], rsi              ;Make rsi the head of the free list
+   371 0000068C 4889DE              <1>     mov rsi, rbx    ;Start from previous lock in the list again.
+   372                              <1> .nextLock:
+   373 0000068F 4889F3              <1>     mov rbx, rsi    ;Point rsi to this filelock
+   374 00000692 488B36              <1>     mov rsi, qword [rsi + fileLock.pNext]   ;Get next file lock
+   375 00000695 EBB6                <1>     jmp short .lp
+   376                              <1> 
+   377                              <1> addSFTtoMFT:
+   378                              <1> ;Adds an SFT to the MFT chain and finishes filling in it's share fields. 
+   379                              <1> ;Checks for sharing conflicts before adding.
+   380                              <1> ;Input: rsi -> SFT to add
+   381                              <1> ;       rbx -> MFT to add SFT to
+   382                              <1> ;       r8 -> DOSSEG
+   383                              <1> ;Output: CF=NC: SFT Added to list
+   384                              <1> ;        CF=CY: Sharing violation. eax has error code
+   385 00000697 48817E4F00000000    <1>     cmp qword [rsi + sft.pMFT], 0   ;This SFT better not already be on a chain
+   386 0000069F 752E                <1>     jne .crash
+   387                              <1> ;Add the networking ids now as we need them for permissions checking
+   388 000006A1 498B806B040000      <1>     mov rax, qword [r8 + qPID]
+   389 000006A8 48894647            <1>     mov qword [rsi + sft.qPID], rax
+   390 000006AC 418B8073040000      <1>     mov eax, dword [r8 + dMID]
+   391 000006B3 894643              <1>     mov dword [rsi + sft.dMID], eax
+   392                              <1> ;Now we check if there are any sharing conflicts
+   393 000006B6 E82E000000          <1>     call checkPermissions
+   394                              <1>     retc
     57                              <2> cret c
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1627,208 +1633,208 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000006A7 7301                <3>  j%-1 short %%a
+    34 000006BB 7301                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000006A9 C3                  <4>  ret
+    14 000006BD C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   389 000006AA 48895E4F            <1>     mov qword [rsi + sft.pMFT], rbx
-   390                              <1> ;Now add this SFT to the front of the list.
-   391 000006AE 488B7B0E            <1>     mov rdi, qword [rbx + mft.pSFT] ;Get the head of the SFT list
-   392 000006B2 48897E3B            <1>     mov qword [rsi + sft.pNextSFT], rdi ;Link new SFT to previous head
-   393 000006B6 4889730E            <1>     mov qword [rbx + mft.pSFT], rsi ;Put new SFT at head of MFT list
-   394                              <1>     return
+   395 000006BE 48895E4F            <1>     mov qword [rsi + sft.pMFT], rbx
+   396                              <1> ;Now add this SFT to the front of the list.
+   397 000006C2 488B7B0E            <1>     mov rdi, qword [rbx + mft.pSFT] ;Get the head of the SFT list
+   398 000006C6 48897E3B            <1>     mov qword [rsi + sft.pNextSFT], rdi ;Link new SFT to previous head
+   399 000006CA 4889730E            <1>     mov qword [rbx + mft.pSFT], rsi ;Put new SFT at head of MFT list
+   400                              <1>     return
     13                              <2> %%_ret:
-    14 000006BA C3                  <2>  ret
+    14 000006CE C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   395                              <1> .crash:
-   396 000006BB E88C020000          <1>     call errPrintAndHalt
-   397 000006C0 53465420414C524541- <1>     db "SFT ALREADY IN USE",CR,LF,NUL
-   397 000006C9 445920494E20555345- <1>
-   397 000006D2 0D0A00              <1>
-   398                              <1> 
-   399                              <1> checkPermissions:
-   400                              <1> ;Checks for sharing conflicts of the new SFT against all
-   401                              <1> ; other SFTs in the chain. 
-   402                              <1> ;If both new SFT and SFT on chain are compatibility 
-   403                              <1> ; then check machine id. If they are equal, goto next SFT on chain.
-   404                              <1> ;Else do table logic as described below.
-   405                              <1> ;
-   406                              <1> ;Input: rsi -> New SFT, with machine id field set
-   407                              <1> ;       rbx -> MFT for this file.
-   408                              <1> ;Output: CF=NC: No sharing conflicts.
-   409                              <1> ;        CF=CY: Sharing conflict, eax has error code
-   410 000006D5 53                  <1>     push rbx
-   411 000006D6 4889F7              <1>     mov rdi, rsi        ;Save new SFT ptr in rdi
-   412 000006D9 E8A5000000          <1>     call getOpenMode    ;Get the adjusted sharing mode in eax
-   413 000006DE 89C2                <1>     mov edx, eax        ;Use edx as the marker for if compat or not
-   414 000006E0 81E2F0000000        <1>     and edx, 0F0h       ;Are the share bits 0?
-   415 000006E6 7405                <1>     jz .compat
-   416 000006E8 BAF0000000          <1>     mov edx, 0F0h       ;Set to indicate no compat mode
-   417                              <1> .compat:
-   418 000006ED E86C000000          <1>     call getTableIndex  ;Get table index in eax for new SFT. Use as row index
-   419 000006F2 D1E0                <1>     shl eax, 1          ;Multiply by two, each row is a word
-   420 000006F4 488D3545000000      <1>     lea rsi, .tbl
-   421 000006FB 0FB72C06            <1>     movzx ebp, word [rsi + rax] ;Get the table entry (bit row) into ebp
-   422 000006FF 488B730E            <1>     mov rsi, qword [rbx + mft.pSFT] ;Get the first SFT in chain
-   423                              <1> .lp:
-   424 00000703 4885F6              <1>     test rsi, rsi       ;Are we at the end of the chain?
-   425 00000706 7433                <1>     jz .exit            ;If so, all ok!
-   426 00000708 E876000000          <1>     call getOpenMode    ;Else, get the adjusted open mode in eax for this sft
-   427 0000070D 89C1                <1>     mov ecx, eax
-   428 0000070F 81E10F000000        <1>     and ecx, 0Fh        ;Get the share bits
-   429 00000715 09D1                <1>     or ecx, edx         ;Check if both new and old files are in compat mode
-   430 00000717 7508                <1>     jnz .notBothCompat
-   431                              <1> ;Both in compat mode means we do machine id check instead.
-   432                              <1> ;If they match, we skip.
-   433 00000719 8B5E43              <1>     mov ebx, dword [rsi + sft.dMID]
-   434 0000071C 395F43              <1>     cmp dword [rdi + sft.dMID], ebx
-   435 0000071F 740F                <1>     je .gotoNext
-   436                              <1> .notBothCompat:
-   437 00000721 E838000000          <1>     call getTableIndex  ;Get table index but use as a column (bit) index
-   438 00000726 678D4802            <1>     lea ecx, dword [eax + 2]    ;+2 to drop the x bit and push our bit into CF
-   439 0000072A 89E8                <1>     mov eax, ebp        ;Move row we are interested in into eax
-   440 0000072C D3E8                <1>     shr eax, cl         ;Shift the bit we are interested into CF to check
-   441 0000072E 7206                <1>     jc .exitBad
-   442                              <1> .gotoNext:
-   443 00000730 488B763B            <1>     mov rsi, qword [rsi + sft.pNextSFT] ;Goto next SFT
-   444 00000734 EBCD                <1>     jmp short .lp
-   445                              <1> .exitBad:
-   446                              <1> ;We come here with CF=CY
-   447 00000736 B820000000          <1>     mov eax, errShrVio
-   448                              <1> .exit:
-   449 0000073B 4889FE              <1>     mov rsi, rdi        ;Point rsi back to the new SFT
-   450 0000073E 5B                  <1>     pop rbx             ;Get back MFT pointer
-   451                              <1>     return
+   401                              <1> .crash:
+   402 000006CF E88C020000          <1>     call errPrintAndHalt
+   403 000006D4 53465420414C524541- <1>     db "SFT ALREADY IN USE",CR,LF,NUL
+   403 000006DD 445920494E20555345- <1>
+   403 000006E6 0D0A00              <1>
+   404                              <1> 
+   405                              <1> checkPermissions:
+   406                              <1> ;Checks for sharing conflicts of the new SFT against all
+   407                              <1> ; other SFTs in the chain. 
+   408                              <1> ;If both new SFT and SFT on chain are compatibility 
+   409                              <1> ; then check machine id. If they are equal, goto next SFT on chain.
+   410                              <1> ;Else do table logic as described below.
+   411                              <1> ;
+   412                              <1> ;Input: rsi -> New SFT, with machine id field set
+   413                              <1> ;       rbx -> MFT for this file.
+   414                              <1> ;Output: CF=NC: No sharing conflicts.
+   415                              <1> ;        CF=CY: Sharing conflict, eax has error code
+   416 000006E9 53                  <1>     push rbx
+   417 000006EA 4889F7              <1>     mov rdi, rsi        ;Save new SFT ptr in rdi
+   418 000006ED E8A5000000          <1>     call getOpenMode    ;Get the adjusted sharing mode in eax
+   419 000006F2 89C2                <1>     mov edx, eax        ;Use edx as the marker for if compat or not
+   420 000006F4 81E2F0000000        <1>     and edx, 0F0h       ;Are the share bits 0?
+   421 000006FA 7405                <1>     jz .compat
+   422 000006FC BAF0000000          <1>     mov edx, 0F0h       ;Set to indicate no compat mode
+   423                              <1> .compat:
+   424 00000701 E86C000000          <1>     call getTableIndex  ;Get table index in eax for new SFT. Use as row index
+   425 00000706 D1E0                <1>     shl eax, 1          ;Multiply by two, each row is a word
+   426 00000708 488D3545000000      <1>     lea rsi, .tbl
+   427 0000070F 0FB72C06            <1>     movzx ebp, word [rsi + rax] ;Get the table entry (bit row) into ebp
+   428 00000713 488B730E            <1>     mov rsi, qword [rbx + mft.pSFT] ;Get the first SFT in chain
+   429                              <1> .lp:
+   430 00000717 4885F6              <1>     test rsi, rsi       ;Are we at the end of the chain?
+   431 0000071A 7433                <1>     jz .exit            ;If so, all ok!
+   432 0000071C E876000000          <1>     call getOpenMode    ;Else, get the adjusted open mode in eax for this sft
+   433 00000721 89C1                <1>     mov ecx, eax
+   434 00000723 81E10F000000        <1>     and ecx, 0Fh        ;Get the share bits
+   435 00000729 09D1                <1>     or ecx, edx         ;Check if both new and old files are in compat mode
+   436 0000072B 7508                <1>     jnz .notBothCompat
+   437                              <1> ;Both in compat mode means we do machine id check instead.
+   438                              <1> ;If they match, we skip.
+   439 0000072D 8B5E43              <1>     mov ebx, dword [rsi + sft.dMID]
+   440 00000730 395F43              <1>     cmp dword [rdi + sft.dMID], ebx
+   441 00000733 740F                <1>     je .gotoNext
+   442                              <1> .notBothCompat:
+   443 00000735 E838000000          <1>     call getTableIndex  ;Get table index but use as a column (bit) index
+   444 0000073A 678D4802            <1>     lea ecx, dword [eax + 2]    ;+2 to drop the x bit and push our bit into CF
+   445 0000073E 89E8                <1>     mov eax, ebp        ;Move row we are interested in into eax
+   446 00000740 D3E8                <1>     shr eax, cl         ;Shift the bit we are interested into CF to check
+   447 00000742 7206                <1>     jc .exitBad
+   448                              <1> .gotoNext:
+   449 00000744 488B763B            <1>     mov rsi, qword [rsi + sft.pNextSFT] ;Goto next SFT
+   450 00000748 EBCD                <1>     jmp short .lp
+   451                              <1> .exitBad:
+   452                              <1> ;We come here with CF=CY
+   453 0000074A B820000000          <1>     mov eax, errShrVio
+   454                              <1> .exit:
+   455 0000074F 4889FE              <1>     mov rsi, rdi        ;Point rsi back to the new SFT
+   456 00000752 5B                  <1>     pop rbx             ;Get back MFT pointer
+   457                              <1>     return
     13                              <2> %%_ret:
-    14 0000073F C3                  <2>  ret
+    14 00000753 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   452                              <1> 
-   453                              <1> .tbl:          
-   454                              <1> ;Each word is a packed entry of 15 meaningful bits with the 
-   455                              <1> ; lower most bit always set and meaningless.
-   456                              <1> ;That is, each word is 5 lots of 3(share mode) bits.
-   457                              <1> ;The bits of each word are interpreted as follows:
-   458                              <1> ;     0NNNRRRWWWAAACCCxb 
-   459                              <1> ; where: 
-   460                              <1> ; NNN = Deny None permissions
-   461                              <1> ; RRR = Deny Read permissions 
-   462                              <1> ; WWW = Deny Write permissions
-   463                              <1> ; AAA = Deny All permissions
-   464                              <1> ; CCC = Compat permissions
-   465                              <1> ; x   = Set and ignored.
-   466                              <1> ;In each triple:
-   467                              <1> ;   0LMNb 
-   468                              <1> ; the bits are interpreted as:
-   469                              <1> ; L = What to do on Read/Write access. 
-   470                              <1> ; M = What to do on Write access. 
-   471                              <1> ; N = What to do on Read access.
-   472                              <1> ;If a bit is set, it means this combination is not allowed.
-   473                              <1> ;
-   474                              <1> ;We get the word we are interested in based on the open mode of
-   475                              <1> ; the new SFT. This gives us a row. We then use the open mode of
-   476                              <1> ; every SFT on the MFT's SFT chain, to get a bit offset into this word.
-   477                              <1> ;If for every element of the SFT chain the bit in the word is 0,
-   478                              <1> ; we are ok. If ever this bit is 1, we have a sharing violation.
+   458                              <1> 
+   459                              <1> .tbl:          
+   460                              <1> ;Each word is a packed entry of 15 meaningful bits with the 
+   461                              <1> ; lower most bit always set and meaningless.
+   462                              <1> ;That is, each word is 5 lots of 3(share mode) bits.
+   463                              <1> ;The bits of each word are interpreted as follows:
+   464                              <1> ;     0NNNRRRWWWAAACCCxb 
+   465                              <1> ; where: 
+   466                              <1> ; NNN = Deny None permissions
+   467                              <1> ; RRR = Deny Read permissions 
+   468                              <1> ; WWW = Deny Write permissions
+   469                              <1> ; AAA = Deny All permissions
+   470                              <1> ; CCC = Compat permissions
+   471                              <1> ; x   = Set and ignored.
+   472                              <1> ;In each triple:
+   473                              <1> ;   0LMNb 
+   474                              <1> ; the bits are interpreted as:
+   475                              <1> ; L = What to do on Read/Write access. 
+   476                              <1> ; M = What to do on Write access. 
+   477                              <1> ; N = What to do on Read access.
+   478                              <1> ;If a bit is set, it means this combination is not allowed.
    479                              <1> ;
-   480                              <1> ;The values of this table obtained from the matrix of the the DOS 3.3 
-   481                              <1> ; programmers guide (p. 6-121), where N=1 and Y=0, with the following changes
-   482                              <1> ; to make implementation easier (as the numbers are ordered as so):
-   483                              <1> ;1) We swap the order of the openRWAcc and openWrAcc columns/rows
-   484                              <1> ;    putting RW always at the left/bottom most part. 
-   485                              <1> ;2) Each row of the table below is for "subsequent IO" where each
-   486                              <1> ;    bit of the entry is the column.
-   487                              <1> ;3) We duplicate Deny all as for Compat
-   488                              <1> 
-   489                              <1> ;Table annotated as follows: 
-   490                              <1> ;N=Deny none
-   491                              <1> ;R=Deny read
-   492                              <1> ;W=Deny write
-   493                              <1> ;A=Deny all
-   494                              <1> ;C=Compat
-   495                              <1> ;B=Open Read/Write (both)
-   496                              <1> ;O=Open Write (output)
-   497                              <1> ;I=Open Read (input)
-   498                              <1> ;
-   499                              <1> ;        Initial Open modes
-   500                              <1> ;       N   R   W   A   C  x    ;Subsequent opens
-   501                              <1> ;      BOI BOI BOI BOI BOI x    
-   502 00000740 FFFF                <1>     dw 111_111_111_111_111_1b   ;I        openCompat|openRdAcc
-   503 00000742 FFFF                <1>     dw 111_111_111_111_111_1b   ;O C      openCompat|openWrAcc
-   504 00000744 FFFF                <1>     dw 111_111_111_111_111_1b   ;B        openCompat|openRWAcc
-   505                              <1> 
-   506 00000746 FFFF                <1>     dw 111_111_111_111_111_1b   ;I      openDenRWShr|openRdAcc
-   507 00000748 FFFF                <1>     dw 111_111_111_111_111_1b   ;O A    openDenRWShr|openWrAcc
-   508 0000074A FFFF                <1>     dw 111_111_111_111_111_1b   ;B      openDenRWShr|openRWAcc
-   509                              <1> 
-   510 0000074C 7FDF                <1>     dw 110_111_110_111_111_1b   ;I      openDenWrShr|openRdAcc
-   511 0000074E FFDB                <1>     dw 110_110_111_111_111_1b   ;O W    openDenWrShr|openWrAcc
-   512 00000750 FFDF                <1>     dw 110_111_111_111_111_1b   ;B      openDenWrShr|openRWAcc
-   513                              <1> 
-   514 00000752 FFBE                <1>     dw 101_111_101_111_111_1b   ;I      openDenRdShr|openRdAcc
-   515 00000754 FFB7                <1>     dw 101_101_111_111_111_1b   ;O R    openDenRdShr|openWrAcc
-   516 00000756 FFBF                <1>     dw 101_111_111_111_111_1b   ;B      openDenRdShr|openRWAcc
-   517                              <1> 
-   518 00000758 7F1C                <1>     dw 000_111_000_111_111_1b   ;I      openDenNoShr|openRdAcc
-   519 0000075A FF03                <1>     dw 000_000_111_111_111_1b   ;O N    openDenNoShr|openWrAcc
-   520 0000075C FF1F                <1>     dw 000_111_111_111_111_1b   ;B      openDenNoShr|openWRAcc
-   521                              <1> 
-   522                              <1> getTableIndex:
-   523                              <1> ;Turns the adjusted open mode into a table index value
-   524                              <1> ;Input: eax = Adjusted open mode
-   525                              <1> ;Output: eax = Index into the table (Number 0-14)
-   526                              <1> ;        ecx = Share group (0-4)
-   527                              <1> ;All other regs preserved
-   528 0000075E 89C1                <1>     mov ecx, eax
-   529 00000760 250F000000          <1>     and eax, 0Fh    ;Isolate the open mode bits only
-   530 00000765 81E1F0000000        <1>     and ecx, 0F0h   ;Isolate the share bits only
-   531 0000076B 81F970000000        <1>     cmp ecx, openNetFCBShr  ;Is this a net FCB share?
-   532 00000771 7502                <1>     jnz .notNetFCB
-   533 00000773 31C9                <1>     xor ecx, ecx    ;Compatibility share in this case
-   534                              <1> .notNetFCB:
-   535                              <1> ;We want ecx <- (ecx >> 4)*3 to get the share group
-   536 00000775 C1E904              <1>     shr ecx, 4      ;Get the share group
-   537 00000778 52                  <1>     push rdx
-   538 00000779 89CA                <1>     mov edx, ecx    ;Save it in edx
-   539 0000077B D1E2                <1>     shl edx, 1      ;Multiply by 2
-   540 0000077D 01CA                <1>     add edx, ecx    ;Add to get it multiplied by three
-   541 0000077F 01D0                <1>     add eax, edx    ;Add share group*3 to the offset into the group
-   542 00000781 5A                  <1>     pop rdx
-   543                              <1>     return
+   480                              <1> ;We get the word we are interested in based on the open mode of
+   481                              <1> ; the new SFT. This gives us a row. We then use the open mode of
+   482                              <1> ; every SFT on the MFT's SFT chain, to get a bit offset into this word.
+   483                              <1> ;If for every element of the SFT chain the bit in the word is 0,
+   484                              <1> ; we are ok. If ever this bit is 1, we have a sharing violation.
+   485                              <1> ;
+   486                              <1> ;The values of this table obtained from the matrix of the the DOS 3.3 
+   487                              <1> ; programmers guide (p. 6-121), where N=1 and Y=0, with the following changes
+   488                              <1> ; to make implementation easier (as the numbers are ordered as so):
+   489                              <1> ;1) We swap the order of the openRWAcc and openWrAcc columns/rows
+   490                              <1> ;    putting RW always at the left/bottom most part. 
+   491                              <1> ;2) Each row of the table below is for "subsequent IO" where each
+   492                              <1> ;    bit of the entry is the column.
+   493                              <1> ;3) We duplicate Deny all as for Compat
+   494                              <1> 
+   495                              <1> ;Table annotated as follows: 
+   496                              <1> ;N=Deny none
+   497                              <1> ;R=Deny read
+   498                              <1> ;W=Deny write
+   499                              <1> ;A=Deny all
+   500                              <1> ;C=Compat
+   501                              <1> ;B=Open Read/Write (both)
+   502                              <1> ;O=Open Write (output)
+   503                              <1> ;I=Open Read (input)
+   504                              <1> ;
+   505                              <1> ;        Initial Open modes
+   506                              <1> ;       N   R   W   A   C  x    ;Subsequent opens
+   507                              <1> ;      BOI BOI BOI BOI BOI x    
+   508 00000754 FFFF                <1>     dw 111_111_111_111_111_1b   ;I        openCompat|openRdAcc
+   509 00000756 FFFF                <1>     dw 111_111_111_111_111_1b   ;O C      openCompat|openWrAcc
+   510 00000758 FFFF                <1>     dw 111_111_111_111_111_1b   ;B        openCompat|openRWAcc
+   511                              <1> 
+   512 0000075A FFFF                <1>     dw 111_111_111_111_111_1b   ;I      openDenRWShr|openRdAcc
+   513 0000075C FFFF                <1>     dw 111_111_111_111_111_1b   ;O A    openDenRWShr|openWrAcc
+   514 0000075E FFFF                <1>     dw 111_111_111_111_111_1b   ;B      openDenRWShr|openRWAcc
+   515                              <1> 
+   516 00000760 7FDF                <1>     dw 110_111_110_111_111_1b   ;I      openDenWrShr|openRdAcc
+   517 00000762 FFDB                <1>     dw 110_110_111_111_111_1b   ;O W    openDenWrShr|openWrAcc
+   518 00000764 FFDF                <1>     dw 110_111_111_111_111_1b   ;B      openDenWrShr|openRWAcc
+   519                              <1> 
+   520 00000766 FFBE                <1>     dw 101_111_101_111_111_1b   ;I      openDenRdShr|openRdAcc
+   521 00000768 FFB7                <1>     dw 101_101_111_111_111_1b   ;O R    openDenRdShr|openWrAcc
+   522 0000076A FFBF                <1>     dw 101_111_111_111_111_1b   ;B      openDenRdShr|openRWAcc
+   523                              <1> 
+   524 0000076C 7F1C                <1>     dw 000_111_000_111_111_1b   ;I      openDenNoShr|openRdAcc
+   525 0000076E FF03                <1>     dw 000_000_111_111_111_1b   ;O N    openDenNoShr|openWrAcc
+   526 00000770 FF1F                <1>     dw 000_111_111_111_111_1b   ;B      openDenNoShr|openWRAcc
+   527                              <1> 
+   528                              <1> getTableIndex:
+   529                              <1> ;Turns the adjusted open mode into a table index value
+   530                              <1> ;Input: eax = Adjusted open mode
+   531                              <1> ;Output: eax = Index into the table (Number 0-14)
+   532                              <1> ;        ecx = Share group (0-4)
+   533                              <1> ;All other regs preserved
+   534 00000772 89C1                <1>     mov ecx, eax
+   535 00000774 250F000000          <1>     and eax, 0Fh    ;Isolate the open mode bits only
+   536 00000779 81E1F0000000        <1>     and ecx, 0F0h   ;Isolate the share bits only
+   537 0000077F 81F970000000        <1>     cmp ecx, openNetFCBShr  ;Is this a net FCB share?
+   538 00000785 7502                <1>     jnz .notNetFCB
+   539 00000787 31C9                <1>     xor ecx, ecx    ;Compatibility share in this case
+   540                              <1> .notNetFCB:
+   541                              <1> ;We want ecx <- (ecx >> 4)*3 to get the share group
+   542 00000789 C1E904              <1>     shr ecx, 4      ;Get the share group
+   543 0000078C 52                  <1>     push rdx
+   544 0000078D 89CA                <1>     mov edx, ecx    ;Save it in edx
+   545 0000078F D1E2                <1>     shl edx, 1      ;Multiply by 2
+   546 00000791 01CA                <1>     add edx, ecx    ;Add to get it multiplied by three
+   547 00000793 01D0                <1>     add eax, edx    ;Add share group*3 to the offset into the group
+   548 00000795 5A                  <1>     pop rdx
+   549                              <1>     return
     13                              <2> %%_ret:
-    14 00000782 C3                  <2>  ret
+    14 00000796 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   544                              <1> 
-   545                              <1> getOpenMode:
-   546                              <1> ;Gets the adjusted open mode.
-   547                              <1> ;--------------------------------------------------------------------
-   548                              <1> ;Input: rsi -> SFT to get adjusted open mode for
-   549                              <1> ;Output: eax = Adjusted open mode.
-   550                              <1> ;All other registers preserved.
-   551                              <1> ;--------------------------------------------------------------------
-   552                              <1> ;If not an FCB of any kind, then everything is ok. 
-   553                              <1> ;If an SFTFCB then we put it into openCompat | openRW.
-   554                              <1> ;If a NETFCB then we put it into openCompat.
-   555                              <1> ;If RO file opened in openCompat, make into openDenWrShr | openRdAcc.
-   556 00000783 53                  <1>     push rbx
-   557 00000784 0FB74602            <1>     movzx eax, word [rsi + sft.wOpenMode]
-   558 00000788 66A90080            <1>     test ax, openSFTFCB ;Is this a local FCB?
-   559 0000078C 7405                <1>     jz .notFCB
-   560 0000078E B802000000          <1>     mov eax, openCompat | openRWAcc  ;FCBs have r/w access in compat mode
-   561                              <1> .notFCB:
-   562 00000793 89C3                <1>     mov ebx, eax
-   563 00000795 81E3F0000000        <1>     and ebx, 0F0h           ;Mask off the access bits
-   564 0000079B 81FB70000000        <1>     cmp ebx, openNetFCBShr  ;Is this a net FCB?
-   565 000007A1 7505                <1>     jne .notNetFCB
-   566 000007A3 250F000000          <1>     and eax, 0Fh        ;Mask off the share bits, turn into compat share
-   567                              <1> .notNetFCB:
-   568                              <1> ;Now al has the real open mode for this file. Do RO check now
-   569 000007A8 89C3                <1>     mov ebx, eax
-   570 000007AA 81E3F0000000        <1>     and ebx, 0F0h   ;Isolate possibly adjusted share bits
-   571 000007B0 5B                  <1>     pop rbx
-   572                              <1>     retnz           ;If not zero, not in compat mode
+   550                              <1> 
+   551                              <1> getOpenMode:
+   552                              <1> ;Gets the adjusted open mode.
+   553                              <1> ;--------------------------------------------------------------------
+   554                              <1> ;Input: rsi -> SFT to get adjusted open mode for
+   555                              <1> ;Output: eax = Adjusted open mode.
+   556                              <1> ;All other registers preserved.
+   557                              <1> ;--------------------------------------------------------------------
+   558                              <1> ;If not an FCB of any kind, then everything is ok. 
+   559                              <1> ;If an SFTFCB then we put it into openCompat | openRW.
+   560                              <1> ;If a NETFCB then we put it into openCompat.
+   561                              <1> ;If RO file opened in openCompat, make into openDenWrShr | openRdAcc.
+   562 00000797 53                  <1>     push rbx
+   563 00000798 0FB74602            <1>     movzx eax, word [rsi + sft.wOpenMode]
+   564 0000079C 66A90080            <1>     test ax, openSFTFCB ;Is this a local FCB?
+   565 000007A0 7405                <1>     jz .notFCB
+   566 000007A2 B802000000          <1>     mov eax, openCompat | openRWAcc  ;FCBs have r/w access in compat mode
+   567                              <1> .notFCB:
+   568 000007A7 89C3                <1>     mov ebx, eax
+   569 000007A9 81E3F0000000        <1>     and ebx, 0F0h           ;Mask off the access bits
+   570 000007AF 81FB70000000        <1>     cmp ebx, openNetFCBShr  ;Is this a net FCB?
+   571 000007B5 7505                <1>     jne .notNetFCB
+   572 000007B7 250F000000          <1>     and eax, 0Fh        ;Mask off the share bits, turn into compat share
+   573                              <1> .notNetFCB:
+   574                              <1> ;Now al has the real open mode for this file. Do RO check now
+   575 000007BC 89C3                <1>     mov ebx, eax
+   576 000007BE 81E3F0000000        <1>     and ebx, 0F0h   ;Isolate possibly adjusted share bits
+   577 000007C4 5B                  <1>     pop rbx
+   578                              <1>     retnz           ;If not zero, not in compat mode
     45                              <2> cret nz
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1845,15 +1851,15 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000007B1 7401                <3>  j%-1 short %%a
+    34 000007C5 7401                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000007B3 C3                  <4>  ret
+    14 000007C7 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   573 000007B4 F6460401            <1>     test byte [rsi + sft.bFileAttrib], attrFileRO
-   574                              <1>     retz            ;If zero, RO bit not set
+   579 000007C8 F6460401            <1>     test byte [rsi + sft.bFileAttrib], attrFileRO
+   580                              <1>     retz            ;If zero, RO bit not set
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1870,28 +1876,28 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000007B8 7501                <3>  j%-1 short %%a
+    34 000007CC 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000007BA C3                  <4>  ret
+    14 000007CE C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   575 000007BB B820000000          <1>     mov eax, openDenWrShr | openRdAcc 
-   576                              <1>     return
+   581 000007CF B820000000          <1>     mov eax, openDenWrShr | openRdAcc 
+   582                              <1>     return
     13                              <2> %%_ret:
-    14 000007C0 C3                  <2>  ret
+    14 000007D4 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   577                              <1> 
-   578                              <1> 
-   579                              <1> getMFT:
-   580                              <1> ;Search for an MFT for a file. If one is not found, it creates it.
-   581                              <1> ;Input: rsi -> Filename to search for
-   582                              <1> ;Output: CF=NC: rbx -> MFT for this file.
-   583                              <1> ;        CF=CY: eax = Error code.
-   584                              <1> ;Start by working out the string length and checksum values
-   585 000007C1 E8E5000000          <1>     call findMFT        ;Sets dl for checksum and ecx for string length
-   586                              <1>     retnc
+   583                              <1> 
+   584                              <1> 
+   585                              <1> getMFT:
+   586                              <1> ;Search for an MFT for a file. If one is not found, it creates it.
+   587                              <1> ;Input: rsi -> Filename to search for
+   588                              <1> ;Output: CF=NC: rbx -> MFT for this file.
+   589                              <1> ;        CF=CY: eax = Error code.
+   590                              <1> ;Start by working out the string length and checksum values
+   591 000007D5 E8E5000000          <1>     call findMFT        ;Sets dl for checksum and ecx for string length
+   592                              <1>     retnc
     61                              <2> cret nc
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -1908,147 +1914,147 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000007C6 7201                <3>  j%-1 short %%a
+    34 000007DA 7201                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000007C8 C3                  <4>  ret
+    14 000007DC C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   587                              <1> ;We get here if this file has no MFT.
-   588                              <1> ;Create an MFT entry. dl and ecx are always preserved in functions below
-   589 000007C9 81C116000000        <1>     add ecx, mft_size   ;ecx now has the full MFT entry size
-   590 000007CF E8BB000000          <1>     call findFreeMFT
-   591 000007D4 730F                <1>     jnc .buildMFT
-   592 000007D6 E847000000          <1>     call defragMFTArena ;Returns rbx -> Free MFT, eax = Free MFT size
-   593 000007DB 39C8                <1>     cmp eax, ecx        ;Do we fit in this free space?
-   594 000007DD 7306                <1>     jnc .buildMFT
-   595                              <1> ;Here if CF=CY. Return Sharing buffer full error!
-   596 000007DF B824000000          <1>     mov eax, errShrFul
-   597                              <1>     return
+   593                              <1> ;We get here if this file has no MFT.
+   594                              <1> ;Create an MFT entry. dl and ecx are always preserved in functions below
+   595 000007DD 81C116000000        <1>     add ecx, mft_size   ;ecx now has the full MFT entry size
+   596 000007E3 E8BB000000          <1>     call findFreeMFT
+   597 000007E8 730F                <1>     jnc .buildMFT
+   598 000007EA E847000000          <1>     call defragMFTArena ;Returns rbx -> Free MFT, eax = Free MFT size
+   599 000007EF 39C8                <1>     cmp eax, ecx        ;Do we fit in this free space?
+   600 000007F1 7306                <1>     jnc .buildMFT
+   601                              <1> ;Here if CF=CY. Return Sharing buffer full error!
+   602 000007F3 B824000000          <1>     mov eax, errShrFul
+   603                              <1>     return
     13                              <2> %%_ret:
-    14 000007E4 C3                  <2>  ret
+    14 000007F8 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   598                              <1> .buildMFT:
-   599                              <1> ;Here we have the following values:
-   600                              <1> ;rsi -> String to copy in
-   601                              <1> ;rbx -> Space to allocate the MFT in. rbx points to a free MFT.
-   602                              <1> ;ecx = New MFT full size
-   603                              <1> ;dl = String checksum 
-   604                              <1> 
-   605                              <1> ;Work out if we want to split space into two MFTs or keep it as one.
-   606                              <1> ;Check if the MFT we are pointing at has enough space for a minimum mft and
-   607                              <1> ; our MFT. If there is more than enough space, we split into two MFTs. 
-   608                              <1> ;Else, we just allocate the whole space and waste the few extra bytes.
-   609 000007E5 8B4301              <1>     mov eax, dword [rbx + mft.dLen] ;Get the current size of the free MFT
-   610 000007E8 29C8                <1>     sub eax, ecx        ;Remove our own allocation from the free MFT size
-   611 000007EA 3D26000000          <1>     cmp eax, MIN_MFT_SIZE
-   612 000007EF 760D                <1>     jbe .alloc   ;If this is beq, we just use this mft entry as is.
-   613                              <1> ;eax has the size of the new free block
-   614 000007F1 488D3C0B            <1>     lea rdi, qword [rbx + rcx]  ;Point rdi past the end of our new mft
-   615 000007F5 C60700              <1>     mov byte [rdi + mft.bSig], mftFree  ;Make the new free block
-   616 000007F8 894701              <1>     mov dword [rdi + mft.dLen], eax     ;Set the new free block's size
-   617 000007FB 894B01              <1>     mov dword [rbx + mft.dLen], ecx     ;Set the newly allocated block's size
-   618                              <1> .alloc:
-   619                              <1> ;Finally, allocate the MFT. The size, if modified, is done already.
-   620 000007FE C60301              <1>     mov byte [rbx + mft.bSig], mftAlloc
-   621 00000801 48C7430600000000    <1>     mov qword [rbx + mft.pLock], 0
-   622 00000809 48C7430E00000000    <1>     mov qword [rbx + mft.pSFT], 0
-   623 00000811 885305              <1>     mov byte [rbx + mft.bCheckSum], dl  ;Set the checksum immediately.
-   624 00000814 81E916000000        <1>     sub ecx, mft_size   ;Now get just the string length
-   625 0000081A 488D7B16            <1>     lea rdi, qword [rbx + mft.sName] 
-   626 0000081E F3A4                <1>     rep movsb   ;Move the string over
-   627 00000820 F8                  <1>     clc
-   628                              <1>     return
+   604                              <1> .buildMFT:
+   605                              <1> ;Here we have the following values:
+   606                              <1> ;rsi -> String to copy in
+   607                              <1> ;rbx -> Space to allocate the MFT in. rbx points to a free MFT.
+   608                              <1> ;ecx = New MFT full size
+   609                              <1> ;dl = String checksum 
+   610                              <1> 
+   611                              <1> ;Work out if we want to split space into two MFTs or keep it as one.
+   612                              <1> ;Check if the MFT we are pointing at has enough space for a minimum mft and
+   613                              <1> ; our MFT. If there is more than enough space, we split into two MFTs. 
+   614                              <1> ;Else, we just allocate the whole space and waste the few extra bytes.
+   615 000007F9 8B4301              <1>     mov eax, dword [rbx + mft.dLen] ;Get the current size of the free MFT
+   616 000007FC 29C8                <1>     sub eax, ecx        ;Remove our own allocation from the free MFT size
+   617 000007FE 3D26000000          <1>     cmp eax, MIN_MFT_SIZE
+   618 00000803 760D                <1>     jbe .alloc   ;If this is beq, we just use this mft entry as is.
+   619                              <1> ;eax has the size of the new free block
+   620 00000805 488D3C0B            <1>     lea rdi, qword [rbx + rcx]  ;Point rdi past the end of our new mft
+   621 00000809 C60700              <1>     mov byte [rdi + mft.bSig], mftFree  ;Make the new free block
+   622 0000080C 894701              <1>     mov dword [rdi + mft.dLen], eax     ;Set the new free block's size
+   623 0000080F 894B01              <1>     mov dword [rbx + mft.dLen], ecx     ;Set the newly allocated block's size
+   624                              <1> .alloc:
+   625                              <1> ;Finally, allocate the MFT. The size, if modified, is done already.
+   626 00000812 C60301              <1>     mov byte [rbx + mft.bSig], mftAlloc
+   627 00000815 48C7430600000000    <1>     mov qword [rbx + mft.pLock], 0
+   628 0000081D 48C7430E00000000    <1>     mov qword [rbx + mft.pSFT], 0
+   629 00000825 885305              <1>     mov byte [rbx + mft.bCheckSum], dl  ;Set the checksum immediately.
+   630 00000828 81E916000000        <1>     sub ecx, mft_size   ;Now get just the string length
+   631 0000082E 488D7B16            <1>     lea rdi, qword [rbx + mft.sName] 
+   632 00000832 F3A4                <1>     rep movsb   ;Move the string over
+   633 00000834 F8                  <1>     clc
+   634                              <1>     return
     13                              <2> %%_ret:
-    14 00000821 C3                  <2>  ret
+    14 00000835 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   629                              <1> 
-   630                              <1> defragMFTArena:
-   631                              <1> ;Defragments the MFT arena. Moves all allocated MFTs to the start.
-   632                              <1> ;Creates a single large free MFT from all the free space.
-   633                              <1> ;Input: Nothing
-   634                              <1> ;Output: MFT defragged. rbx -> New free MFT, eax = New Free MFT size
-   635                              <1> ; All other regs preserved.
-   636 00000822 51                  <1>     push rcx
-   637 00000823 52                  <1>     push rdx
-   638 00000824 56                  <1>     push rsi
-   639 00000825 57                  <1>     push rdi
-   640                              <1> ;rsi = Read pointer
-   641                              <1> ;rdi = Write pointer
-   642                              <1> ;edx = Free space accumulator
-   643 00000826 488B35(00000000)    <1>     mov rsi, qword [pMftArena]
-   644 0000082D 4889F7              <1>     mov rdi, rsi
-   645 00000830 31D2                <1>     xor edx, edx
-   646                              <1> .lp:
-   647                              <1> ;If we encounter an allocated mft, we move it over, moving the 
-   648                              <1> ; the read and write pointers. If we encounter a free mft, we add its
-   649                              <1> ; size and move the read pointer.
-   650 00000832 803E00              <1>     cmp byte [rsi + mft.bSig], mftFree
-   651 00000835 7826                <1>     js .exit    ;At this point, all compression is done. Goto end
-   652 00000837 741A                <1>     je .free
-   653                              <1> ;Here we copy over. Before we do, we walk down the SFT chain
-   654                              <1> ; updating the MFT pointer in each SFT.
-   655                              <1> ;rsi -> Allocated MFT
-   656                              <1> ;rdi -> Where this MFT will be moved to
-   657 00000839 488B5E0E            <1>     mov rbx, qword [rsi + mft.pSFT]     ;Point rbx to the first SFT in chain.
-   658                              <1> .sftLp:
-   659 0000083D 4885DB              <1>     test rbx, rbx   ;End of SFT chain?
-   660 00000840 740A                <1>     jz .sftEnd
-   661 00000842 48897B4F            <1>     mov qword [rbx + sft.pMFT], rdi     ;Update the SFT's MFT pointer
-   662 00000846 488B5B3B            <1>     mov rbx, qword [rbx + sft.pNextSFT]
-   663 0000084A EBF1                <1>     jmp short .sftLp
-   664                              <1> .sftEnd:
-   665                              <1> ;All SFTs updated, now we copy the MFT up.
-   666 0000084C 8B4E01              <1>     mov ecx, dword [rsi + mft.dLen] ;Get the length of this MFT
-   667 0000084F F3A4                <1>     rep movsb   ;Moves both pointers to the end of the MFT
-   668                              <1> ;Now rdi points to the next write space and rsi points to the next MFT
-   669 00000851 EBDF                <1>     jmp short .lp
-   670                              <1> .free:
-   671                              <1> ;Dont worry about overflow. Max dLen is 1Mb, way less than 32 bit max.
-   672 00000853 8B4601              <1>     mov eax, dword [rsi + mft.dLen] ;Get the length
-   673 00000856 01C2                <1>     add edx, eax    ;Add to the free space accumulator
-   674 00000858 4801C6              <1>     add rsi, rax    ;Move the read pointer past this free space
-   675 0000085B EBD5                <1>     jmp short .lp
-   676                              <1> .exit:
-   677                              <1> ;Now we must make a single free MFT at the write pointer with the 
-   678                              <1> ; correct size and assert it is correct
-   679                              <1> ;rdi -> Where to make this MFT
-   680                              <1> ;edx = Accumulated free space
-   681 0000085D C60700              <1>     mov byte [rdi + mft.bSig], mftFree
-   682 00000860 895701              <1>     mov dword [rdi + mft.dLen], edx
-   683 00000863 89D0                <1>     mov eax, edx    ;Get the free MFT size into eax
-   684 00000865 4889FB              <1>     mov rbx, rdi    ;Get the free MFT pointer into rbx
-   685 00000868 4801D7              <1>     add rdi, rdx    ;Now check the MFT chain is not corrupted
-   686 0000086B 803FFF              <1>     cmp byte [rdi + mft.bSig], mftEnd
-   687 0000086E 7505                <1>     jne .crash
-   688 00000870 5F                  <1>     pop rdi
-   689 00000871 5E                  <1>     pop rsi
-   690 00000872 5A                  <1>     pop rdx
-   691 00000873 59                  <1>     pop rcx
-   692                              <1>     return
+   635                              <1> 
+   636                              <1> defragMFTArena:
+   637                              <1> ;Defragments the MFT arena. Moves all allocated MFTs to the start.
+   638                              <1> ;Creates a single large free MFT from all the free space.
+   639                              <1> ;Input: Nothing
+   640                              <1> ;Output: MFT defragged. rbx -> New free MFT, eax = New Free MFT size
+   641                              <1> ; All other regs preserved.
+   642 00000836 51                  <1>     push rcx
+   643 00000837 52                  <1>     push rdx
+   644 00000838 56                  <1>     push rsi
+   645 00000839 57                  <1>     push rdi
+   646                              <1> ;rsi = Read pointer
+   647                              <1> ;rdi = Write pointer
+   648                              <1> ;edx = Free space accumulator
+   649 0000083A 488B35(00000000)    <1>     mov rsi, qword [pMftArena]
+   650 00000841 4889F7              <1>     mov rdi, rsi
+   651 00000844 31D2                <1>     xor edx, edx
+   652                              <1> .lp:
+   653                              <1> ;If we encounter an allocated mft, we move it over, moving the 
+   654                              <1> ; the read and write pointers. If we encounter a free mft, we add its
+   655                              <1> ; size and move the read pointer.
+   656 00000846 803E00              <1>     cmp byte [rsi + mft.bSig], mftFree
+   657 00000849 7C26                <1>     jl .exit    ;At this point, all compression is done. Goto end
+   658 0000084B 741A                <1>     je .free
+   659                              <1> ;Here we copy over. Before we do, we walk down the SFT chain
+   660                              <1> ; updating the MFT pointer in each SFT.
+   661                              <1> ;rsi -> Allocated MFT
+   662                              <1> ;rdi -> Where this MFT will be moved to
+   663 0000084D 488B5E0E            <1>     mov rbx, qword [rsi + mft.pSFT]     ;Point rbx to the first SFT in chain.
+   664                              <1> .sftLp:
+   665 00000851 4885DB              <1>     test rbx, rbx   ;End of SFT chain?
+   666 00000854 740A                <1>     jz .sftEnd
+   667 00000856 48897B4F            <1>     mov qword [rbx + sft.pMFT], rdi     ;Update the SFT's MFT pointer
+   668 0000085A 488B5B3B            <1>     mov rbx, qword [rbx + sft.pNextSFT]
+   669 0000085E EBF1                <1>     jmp short .sftLp
+   670                              <1> .sftEnd:
+   671                              <1> ;All SFTs updated, now we copy the MFT up.
+   672 00000860 8B4E01              <1>     mov ecx, dword [rsi + mft.dLen] ;Get the length of this MFT
+   673 00000863 F3A4                <1>     rep movsb   ;Moves both pointers to the end of the MFT
+   674                              <1> ;Now rdi points to the next write space and rsi points to the next MFT
+   675 00000865 EBDF                <1>     jmp short .lp
+   676                              <1> .free:
+   677                              <1> ;Dont worry about overflow. Max dLen is 1Mb, way less than 32 bit max.
+   678 00000867 8B4601              <1>     mov eax, dword [rsi + mft.dLen] ;Get the length
+   679 0000086A 01C2                <1>     add edx, eax    ;Add to the free space accumulator
+   680 0000086C 4801C6              <1>     add rsi, rax    ;Move the read pointer past this free space
+   681 0000086F EBD5                <1>     jmp short .lp
+   682                              <1> .exit:
+   683                              <1> ;Now we must make a single free MFT at the write pointer with the 
+   684                              <1> ; correct size and assert it is correct
+   685                              <1> ;rdi -> Where to make this MFT
+   686                              <1> ;edx = Accumulated free space
+   687 00000871 C60700              <1>     mov byte [rdi + mft.bSig], mftFree
+   688 00000874 895701              <1>     mov dword [rdi + mft.dLen], edx
+   689 00000877 89D0                <1>     mov eax, edx    ;Get the free MFT size into eax
+   690 00000879 4889FB              <1>     mov rbx, rdi    ;Get the free MFT pointer into rbx
+   691 0000087C 4801D7              <1>     add rdi, rdx    ;Now check the MFT chain is not corrupted
+   692 0000087F 803FFF              <1>     cmp byte [rdi + mft.bSig], mftEnd
+   693 00000882 7505                <1>     jne .crash
+   694 00000884 5F                  <1>     pop rdi
+   695 00000885 5E                  <1>     pop rsi
+   696 00000886 5A                  <1>     pop rdx
+   697 00000887 59                  <1>     pop rcx
+   698                              <1>     return
     13                              <2> %%_ret:
-    14 00000874 C3                  <2>  ret
+    14 00000888 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   693                              <1> .crash:
-   694 00000875 E8D2000000          <1>     call errPrintAndHalt    ;No return. Use call to push string ptr to stack
-   695 0000087A 4D4654204445465241- <1>     db "MFT DEFRAG FAILURE",CR,LF,NUL
-   695 00000883 47204641494C555245- <1>
-   695 0000088C 0D0A00              <1>
-   696                              <1> 
-   697                              <1> findFreeMFT:
-   698                              <1> ;Searches for a free MFT of a particular size or greater.
-   699                              <1> ;Input: ecx = Minimum MFT size 
-   700                              <1> ;Output: CF=NC: rbx -> MFT of appropriate size
-   701                              <1> ;        CF=CY: No MFT found of this size. rbx -> End MFT
-   702                              <1> ;Trashes rax. All other regs preserved.
-   703 0000088F 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
-   704                              <1> .lp:
-   705 00000896 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree
-   706 00000899 7840                <1>     js findMFT.noMFT    ;If sign bit set, must be mftEnd. Exit error!
-   707 0000089B 7506                <1>     jne .next           ;If not equal, must be mftAlloc. Goto next MFT
-   708 0000089D 394B01              <1>     cmp dword [rbx + mft.dLen], ecx ;Is this MFT ok sizewise?
-   709                              <1>     retnc   ;Not carry means dLen is geq eax, as required
+   699                              <1> .crash:
+   700 00000889 E8D2000000          <1>     call errPrintAndHalt    ;No return. Use call to push string ptr to stack
+   701 0000088E 4D4654204445465241- <1>     db "MFT DEFRAG FAILURE",CR,LF,NUL
+   701 00000897 47204641494C555245- <1>
+   701 000008A0 0D0A00              <1>
+   702                              <1> 
+   703                              <1> findFreeMFT:
+   704                              <1> ;Searches for a free MFT of a particular size or greater.
+   705                              <1> ;Input: ecx = Minimum MFT size 
+   706                              <1> ;Output: CF=NC: rbx -> MFT of appropriate size
+   707                              <1> ;        CF=CY: No MFT found of this size. rbx -> End MFT
+   708                              <1> ;Trashes rax. All other regs preserved.
+   709 000008A3 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
+   710                              <1> .lp:
+   711 000008AA 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree
+   712 000008AD 7C40                <1>     jl findMFT.noMFT    ;If below, must be mftEnd. Exit error!
+   713 000008AF 7506                <1>     jne .next           ;If not equal, must be mftAlloc. Goto next MFT
+   714 000008B1 394B01              <1>     cmp dword [rbx + mft.dLen], ecx ;Is this MFT ok sizewise?
+   715                              <1>     retnc   ;Not carry means dLen is geq eax, as required
     61                              <2> cret nc
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2065,41 +2071,41 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000008A0 7201                <3>  j%-1 short %%a
+    34 000008B4 7201                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000008A2 C3                  <4>  ret
+    14 000008B6 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   710                              <1> .next:
-   711 000008A3 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
-   712 000008A6 4801C3              <1>     add rbx, rax    ;Point to the next MFT
-   713 000008A9 EBEB                <1>     jmp short .lp
-   714                              <1> 
-   715                              <1> findMFT:
-   716                              <1> ;Searches for an MFT for the filename in rsi 
-   717                              <1> ;Input: rsi -> Filename to search for
-   718                              <1> ;       
-   719                              <1> ;Output: ecx = String length
-   720                              <1> ;        dl = Filename checksum
-   721                              <1> ;        CF=NC: rbx -> MFT for file
-   722                              <1> ;        CF=CY: No MFT found for this file. rbx -> End MFT
-   723                              <1> ;Trashes rax. All other regs preserved.
-   724 000008AB E82D000000          <1>     call getNameMeta    ;Sets ecx and dl
-   725 000008B0 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
-   726                              <1> .lp:
-   727 000008B7 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree  
-   728 000008BA 781F                <1>     js .noMFT   ;If sign bit is set, bSig must be -1. End of arena!
-   729 000008BC 7415                <1>     je .next    ;If this MFT is free, goto next entry
-   730 000008BE 385305              <1>     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
-   731 000008C1 7510                <1>     jne .next   ;If not equal, skip entry
-   732 000008C3 57                  <1>     push rdi
-   733 000008C4 488D7B16            <1>     lea rdi, qword [rbx + mft.sName] ;Point to mft filename
-   734 000008C8 B81E120000          <1>     mov eax, 121Eh  ;Compare strings in rsi and rdi
-   735 000008CD CD2F                <1>     int 2Fh         ;Doesnt modify string pointers
-   736 000008CF 5F                  <1>     pop rdi
-   737                              <1>     retz    ;If ZF=ZE (also CF=NC), we have found the MFT! Return to caller.
+   716                              <1> .next:
+   717 000008B7 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
+   718 000008BA 4801C3              <1>     add rbx, rax    ;Point to the next MFT
+   719 000008BD EBEB                <1>     jmp short .lp
+   720                              <1> 
+   721                              <1> findMFT:
+   722                              <1> ;Searches for an MFT for the filename in rsi 
+   723                              <1> ;Input: rsi -> Filename to search for
+   724                              <1> ;       
+   725                              <1> ;Output: ecx = String length
+   726                              <1> ;        dl = Filename checksum
+   727                              <1> ;        CF=NC: rbx -> MFT for file
+   728                              <1> ;        CF=CY: No MFT found for this file. rbx -> End MFT
+   729                              <1> ;Trashes rax. All other regs preserved.
+   730 000008BF E82D000000          <1>     call getNameMeta    ;Sets ecx and dl
+   731 000008C4 488B1D(00000000)    <1>     mov rbx, qword [pMftArena]
+   732                              <1> .lp:
+   733 000008CB 803B00              <1>     cmp byte [rbx + mft.bSig], mftFree  
+   734 000008CE 7C1F                <1>     jl .noMFT   ;If below, bSig must be -1. End of arena!
+   735 000008D0 7415                <1>     je .next    ;If this MFT is free, goto next entry
+   736 000008D2 385305              <1>     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
+   737 000008D5 7510                <1>     jne .next   ;If not equal, skip entry
+   738 000008D7 57                  <1>     push rdi
+   739 000008D8 488D7B16            <1>     lea rdi, qword [rbx + mft.sName] ;Point to mft filename
+   740 000008DC B81E120000          <1>     mov eax, 121Eh  ;Compare strings in rsi and rdi
+   741 000008E1 CD2F                <1>     int 2Fh         ;Doesnt modify string pointers
+   742 000008E3 5F                  <1>     pop rdi
+   743                              <1>     retz    ;If ZF=ZE (also CF=NC), we have found the MFT! Return to caller.
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2116,90 +2122,90 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 000008D0 7501                <3>  j%-1 short %%a
+    34 000008E4 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 000008D2 C3                  <4>  ret
+    14 000008E6 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   738                              <1> .next:
-   739 000008D3 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
-   740 000008D6 4801C3              <1>     add rbx, rax    ;Point to the next MFT
-   741 000008D9 EBDC                <1>     jmp short .lp
-   742                              <1> .noMFT:
-   743 000008DB F9                  <1>     stc
-   744                              <1>     return
+   744                              <1> .next:
+   745 000008E7 8B4301              <1>     mov eax, dword [rbx + mft.dLen]
+   746 000008EA 4801C3              <1>     add rbx, rax    ;Point to the next MFT
+   747 000008ED EBDC                <1>     jmp short .lp
+   748                              <1> .noMFT:
+   749 000008EF F9                  <1>     stc
+   750                              <1>     return
     13                              <2> %%_ret:
-    14 000008DC C3                  <2>  ret
+    14 000008F0 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   745                              <1> 
-   746                              <1> getNameMeta:
-   747                              <1> ;Gets the string length and checksum value
-   748                              <1> ;Input: rsi -> String to search on
-   749                              <1> ;Output: ecx = String length
-   750                              <1> ;        edx = Checksum value
-   751                              <1> ;Trashes eax.
-   752 000008DD 56                  <1>     push rsi
-   753 000008DE 31C9                <1>     xor ecx, ecx    ;Use for string length (zero inclusive)
-   754 000008E0 31D2                <1>     xor edx, edx    ;Use for checksum value (dl)
-   755                              <1> .metalp:
-   756 000008E2 AC                  <1>     lodsb
-   757 000008E3 00C2                <1>     add dl, al
-   758 000008E5 80D200              <1>     adc dl, 0       ;Add 1 if this rolls over
-   759 000008E8 FFC1                <1>     inc ecx
-   760 000008EA 84C0                <1>     test al, al
-   761 000008EC 75F4                <1>     jnz .metalp
-   762 000008EE 5E                  <1>     pop rsi
-   763                              <1>     return
+   751                              <1> 
+   752                              <1> getNameMeta:
+   753                              <1> ;Gets the string length and checksum value
+   754                              <1> ;Input: rsi -> String to search on
+   755                              <1> ;Output: ecx = String length
+   756                              <1> ;        edx = Checksum value
+   757                              <1> ;Trashes eax.
+   758 000008F1 56                  <1>     push rsi
+   759 000008F2 31C9                <1>     xor ecx, ecx    ;Use for string length (zero inclusive)
+   760 000008F4 31D2                <1>     xor edx, edx    ;Use for checksum value (dl)
+   761                              <1> .metalp:
+   762 000008F6 AC                  <1>     lodsb
+   763 000008F7 00C2                <1>     add dl, al
+   764 000008F9 80D200              <1>     adc dl, 0       ;Add 1 if this rolls over
+   765 000008FC FFC1                <1>     inc ecx
+   766 000008FE 84C0                <1>     test al, al
+   767 00000900 75F4                <1>     jnz .metalp
+   768 00000902 5E                  <1>     pop rsi
+   769                              <1>     return
     13                              <2> %%_ret:
-    14 000008EF C3                  <2>  ret
+    14 00000903 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   764                              <1> 
-   765                              <1> closeJFTEntries:
-   766                              <1> ;Closes all JFT entries pointing to a particular SFT for a process.
-   767                              <1> ;Input: bl = SFTIndex
-   768                              <1> ;       rax = PID
-   769                              <1> ;Output: Closes all JFT entries.
-   770                              <1> ;Preserves all registers
-   771 000008F0 50                  <1>     push rax
-   772 000008F1 E82C000000          <1>     call .isPIDSpecial   ;If the PID is special, we just exit.
-   773 000008F6 7428                <1>     je .cjeExit2
-   774 000008F8 51                  <1>     push rcx
-   775 000008F9 57                  <1>     push rdi
-   776 000008FA 4889C7              <1>     mov rdi, rax
-   777 000008FD 0FB74F4E            <1>     movzx ecx, word [rdi + psp.jftSize]   ;Get the size
-   778 00000901 488D7F2A            <1>     lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to JFT or JFTptr
-   779 00000905 81F914000000        <1>     cmp ecx, dfltJFTsize
-   780 0000090B 480F473F            <1>     cmova rdi, qword [rdi]  ;If above normal, pull the JFTPtr
-   781 0000090F 89D8                <1>     mov eax, ebx    ;Get the SFTIndx to scan for
-   782                              <1> .cjeLp:
-   783 00000911 F2AE                <1>     repne scasb     ;DOS sets direction so we dont worry
-   784 00000913 7508                <1>     jne .cjeExit
-   785 00000915 C647FFFF            <1>     mov byte [rdi - 1], -1  ;Free the entry
-   786 00000919 85C9                <1>     test ecx, ecx  ;If we are out of entries, dont reenter loop
-   787 0000091B 75F4                <1>     jnz .cjeLp
-   788                              <1> .cjeExit:
-   789 0000091D F8                  <1>     clc
-   790 0000091E 5F                  <1>     pop rdi
-   791 0000091F 59                  <1>     pop rcx
-   792                              <1> .cjeExit2:
-   793 00000920 58                  <1>     pop rax
-   794                              <1>     return
+   770                              <1> 
+   771                              <1> closeJFTEntries:
+   772                              <1> ;Closes all JFT entries pointing to a particular SFT for a process.
+   773                              <1> ;Input: bl = SFTIndex
+   774                              <1> ;       rax = PID
+   775                              <1> ;Output: Closes all JFT entries.
+   776                              <1> ;Preserves all registers
+   777 00000904 50                  <1>     push rax
+   778 00000905 E82C000000          <1>     call .isPIDSpecial   ;If the PID is special, we just exit.
+   779 0000090A 7428                <1>     je .cjeExit2
+   780 0000090C 51                  <1>     push rcx
+   781 0000090D 57                  <1>     push rdi
+   782 0000090E 4889C7              <1>     mov rdi, rax
+   783 00000911 0FB74F4E            <1>     movzx ecx, word [rdi + psp.jftSize]   ;Get the size
+   784 00000915 488D7F2A            <1>     lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to JFT or JFTptr
+   785 00000919 81F914000000        <1>     cmp ecx, dfltJFTsize
+   786 0000091F 480F473F            <1>     cmova rdi, qword [rdi]  ;If above normal, pull the JFTPtr
+   787 00000923 89D8                <1>     mov eax, ebx    ;Get the SFTIndx to scan for
+   788                              <1> .cjeLp:
+   789 00000925 F2AE                <1>     repne scasb     ;DOS sets direction so we dont worry
+   790 00000927 7508                <1>     jne .cjeExit
+   791 00000929 C647FFFF            <1>     mov byte [rdi - 1], -1  ;Free the entry
+   792 0000092D 85C9                <1>     test ecx, ecx  ;If we are out of entries, dont reenter loop
+   793 0000092F 75F4                <1>     jnz .cjeLp
+   794                              <1> .cjeExit:
+   795 00000931 F8                  <1>     clc
+   796 00000932 5F                  <1>     pop rdi
+   797 00000933 59                  <1>     pop rcx
+   798                              <1> .cjeExit2:
+   799 00000934 58                  <1>     pop rax
+   800                              <1>     return
     13                              <2> %%_ret:
-    14 00000921 C3                  <2>  ret
+    14 00000935 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   795                              <1> .isPIDSpecial:
-   796                              <1> ;Certain PIDs have special meaning and must be ignored.
-   797                              <1> ;If free or a hole, ignore.
-   798                              <1> ;If DOS or New DOS (should NEVER exist outside of a drivers init)
-   799                              <1> ; we get return the DOS PSP address in rax and pretend it is not 
-   800                              <1> ; special.
-   801                              <1> ;Input: rax = PID to check
-   802                              <1> ;Output: ZF=ZE: Special PID, don't operate on it
-   803                              <1> ;        ZF=NZ: Normal PID, proceed.
-   804 00000922 483D00000000        <1>     cmp rax, mcbOwnerFree   ;Bona-fide must be ignored
-   805                              <1>     rete
+   801                              <1> .isPIDSpecial:
+   802                              <1> ;Certain PIDs have special meaning and must be ignored.
+   803                              <1> ;If free or a hole, ignore.
+   804                              <1> ;If DOS or New DOS (should NEVER exist outside of a drivers init)
+   805                              <1> ; we get return the DOS PSP address in rax and pretend it is not 
+   806                              <1> ; special.
+   807                              <1> ;Input: rax = PID to check
+   808                              <1> ;Output: ZF=ZE: Special PID, don't operate on it
+   809                              <1> ;        ZF=NZ: Normal PID, proceed.
+   810 00000936 483D00000000        <1>     cmp rax, mcbOwnerFree   ;Bona-fide must be ignored
+   811                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2216,15 +2222,15 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000928 7501                <3>  j%-1 short %%a
+    34 0000093C 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 0000092A C3                  <4>  ret
+    14 0000093E C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   806 0000092B 483D07000000        <1>     cmp rax, mcbOwnerHole   ;Bona-fide must be ignored 
-   807                              <1>     rete
+   812 0000093F 483D07000000        <1>     cmp rax, mcbOwnerHole   ;Bona-fide must be ignored 
+   813                              <1>     rete
     49                              <2> cret e
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2241,17 +2247,17 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000931 7501                <3>  j%-1 short %%a
+    34 00000945 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000933 C3                  <4>  ret
+    14 00000947 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   808 00000934 483D09000000        <1>     cmp rax, mcbOwnerNewDOS ;None should ever exist from the POV of share.exe
-   809 0000093A 7409                <1>     je .ips1
-   810 0000093C 483D08000000        <1>     cmp rax, mcbOwnerDOS
-   811                              <1>     retne
+   814 00000948 483D09000000        <1>     cmp rax, mcbOwnerNewDOS ;None should ever exist from the POV of share.exe
+   815 0000094E 7409                <1>     je .ips1
+   816 00000950 483D08000000        <1>     cmp rax, mcbOwnerDOS
+   817                              <1>     retne
     53                              <2> cret ne
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2268,49 +2274,49 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 00000942 7401                <3>  j%-1 short %%a
+    34 00000956 7401                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 00000944 C3                  <4>  ret
+    14 00000958 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   812                              <1> .ips1:
-   813 00000945 85C0                <1>     test eax, eax   ;eax = 8 or 9 so anding it with itself will clear ZF
-   814 00000947 498B401D            <1>     mov rax, qword [r8 + dosPSP]    ;Get the actual DOS PSP value
-   815                              <1>     return
+   818                              <1> .ips1:
+   819 00000959 85C0                <1>     test eax, eax   ;eax = 8 or 9 so anding it with itself will clear ZF
+   820 0000095B 498B401D            <1>     mov rax, qword [r8 + dosPSP]    ;Get the actual DOS PSP value
+   821                              <1>     return
     13                              <2> %%_ret:
-    14 0000094B C3                  <2>  ret
+    14 0000095F C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   816                              <1>     
-   817                              <1> 
-   818                              <1> ;Critical error handling
-   819                              <1> errPrintAndHalt:
-   820                              <1> ;********************************************
-   821                              <1> ;This function is called such that the return address points to the 
-   822                              <1> ; null terminated string to print. We never return from this.
-   823                              <1> ;********************************************
-   824                              <1> ;Input: TOS -> Ptr to string to print after header.
-   825                              <1> ;Output: Never return.
-   826 0000094C 488D3D56000000      <1>     lea rdi, .sHdr
-   827 00000953 E80A000000          <1>     call .doWrite
-   828 00000958 5F                  <1>     pop rdi         ;Get the passed in string
-   829 00000959 E804000000          <1>     call .doWrite   ;Write the passed in ASCIIZ string.
-   830                              <1> .halt:
-   831 0000095E F390                <1>     pause           ;Hint the CPU to power down
-   832 00000960 EBFC                <1>     jmp short .halt ;Infinite loop, await CTRL+ALT+DEL
-   833                              <1> .doWrite:
-   834                              <1> ;We write directly to the console driver completely bypassing any 
-   835                              <1> ;redirection, without resorting to using BIOS functions.
-   836                              <1> ;We use the PSP as the buffer for the ioReqPkt.
-   837                              <1> ;We obviously do no error checking or Int 24 invokation if things
-   838                              <1> ; go wrong with this. 
-   839                              <1> ;Input: rdi -> String to print
-   840                              <1> ;Output: Hopefully, string printed.
-   841 00000962 B812120000          <1>     mov eax, 1212h  ;Do dos strlen
-   842 00000967 CD2F                <1>     int 2Fh         ;Get length of string pointed to by rdi in ecx
-   843 00000969 FFC9                <1>     dec ecx ;Drop the terminating null from the count
-   844                              <1>     retz    ;If this is zero, forget the error
+   822                              <1>     
+   823                              <1> 
+   824                              <1> ;Critical error handling
+   825                              <1> errPrintAndHalt:
+   826                              <1> ;********************************************
+   827                              <1> ;This function is called such that the return address points to the 
+   828                              <1> ; null terminated string to print. We never return from this.
+   829                              <1> ;********************************************
+   830                              <1> ;Input: TOS -> Ptr to string to print after header.
+   831                              <1> ;Output: Never return.
+   832 00000960 488D3D56000000      <1>     lea rdi, .sHdr
+   833 00000967 E80A000000          <1>     call .doWrite
+   834 0000096C 5F                  <1>     pop rdi         ;Get the passed in string
+   835 0000096D E804000000          <1>     call .doWrite   ;Write the passed in ASCIIZ string.
+   836                              <1> .halt:
+   837 00000972 F390                <1>     pause           ;Hint the CPU to power down
+   838 00000974 EBFC                <1>     jmp short .halt ;Infinite loop, await CTRL+ALT+DEL
+   839                              <1> .doWrite:
+   840                              <1> ;We write directly to the console driver completely bypassing any 
+   841                              <1> ;redirection, without resorting to using BIOS functions.
+   842                              <1> ;We use the PSP as the buffer for the ioReqPkt.
+   843                              <1> ;We obviously do no error checking or Int 24 invokation if things
+   844                              <1> ; go wrong with this. 
+   845                              <1> ;Input: rdi -> String to print
+   846                              <1> ;Output: Hopefully, string printed.
+   847 00000976 B812120000          <1>     mov eax, 1212h  ;Do dos strlen
+   848 0000097B CD2F                <1>     int 2Fh         ;Get length of string pointed to by rdi in ecx
+   849 0000097D FFC9                <1>     dec ecx ;Drop the terminating null from the count
+   850                              <1>     retz    ;If this is zero, forget the error
     41                              <2> cret z
     19                              <3> %%_base:
     20                              <3> %assign baseVar %%_base-$$
@@ -2327,47 +2333,47 @@
     31                              <3> 
     32                              <3> 
     33                              <3> 
-    34 0000096B 7501                <3>  j%-1 short %%a
+    34 0000097F 7501                <3>  j%-1 short %%a
     35                              <3>  return
     13                              <4> %%_ret:
-    14 0000096D C3                  <4>  ret
+    14 00000981 C3                  <4>  ret
     15                              <4> %assign retOff %%_ret-$$
     36                              <3> %%a:
     37                              <3> 
-   845                              <1> ;1) Build request packet
-   846 0000096E 488B1D(2E000000)    <1>     mov rbx, qword [pPSP]   ;Get the ptr to our PSP
-   847 00000975 C6430208            <1>     mov byte [rbx + ioReqPkt.cmdcde], drvWRITE
-   848 00000979 C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
-   849 0000097C 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
-   850 00000982 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
-   851 00000985 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
-   852                              <1> ;2) Get the driver pointer
-   853 00000989 488B35(26000000)    <1>     mov rsi, qword [pDosseg]    
-   854 00000990 488B765B            <1>     mov rsi, qword [rsi + vConPtr]  ;Get the console driver ptr
-   855                              <1> ;Go driver routine here
-   856 00000994 B802800000          <1>     mov eax, 8002h  ;SPECIAL: Enter DOS Level 2 critical section
-   857 00000999 CD2A                <1>     int 2ah
-   858 0000099B FF560A              <1>     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
-   859 0000099E FF5612              <1>     call qword [rsi + drvHdr.intPtr]
-   860 000009A1 B802810000          <1>     mov eax, 8102h  ;SPECIAL: Exit DOS Level 2 critical section
-   861 000009A6 CD2A                <1>     int 2ah
-   862                              <1>     return
+   851                              <1> ;1) Build request packet
+   852 00000982 488B1D(2E000000)    <1>     mov rbx, qword [pPSP]   ;Get the ptr to our PSP
+   853 00000989 C6430208            <1>     mov byte [rbx + ioReqPkt.cmdcde], drvWRITE
+   854 0000098D C6032A              <1>     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
+   855 00000990 66C743030000        <1>     mov word [rbx + ioReqPkt.status], 0
+   856 00000996 894B16              <1>     mov dword [rbx + ioReqPkt.tfrlen], ecx
+   857 00000999 48897B0E            <1>     mov qword [rbx + ioReqPkt.bufptr], rdi
+   858                              <1> ;2) Get the driver pointer
+   859 0000099D 488B35(26000000)    <1>     mov rsi, qword [pDosseg]    
+   860 000009A4 488B765B            <1>     mov rsi, qword [rsi + vConPtr]  ;Get the console driver ptr
+   861                              <1> ;Go driver routine here
+   862 000009A8 B802800000          <1>     mov eax, 8002h  ;SPECIAL: Enter DOS Level 2 critical section
+   863 000009AD CD2A                <1>     int 2ah
+   864 000009AF FF560A              <1>     call qword [rsi + drvHdr.strPtr]  ;Passing rbx through here
+   865 000009B2 FF5612              <1>     call qword [rsi + drvHdr.intPtr]
+   866 000009B5 B802810000          <1>     mov eax, 8102h  ;SPECIAL: Exit DOS Level 2 critical section
+   867 000009BA CD2A                <1>     int 2ah
+   868                              <1>     return
     13                              <2> %%_ret:
-    14 000009A8 C3                  <2>  ret
+    14 000009BC C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   863                              <1> .sHdr:
-   864 000009A9 0D0A0A              <1>     db CR,LF,LF
-   865 000009AC 202020202020202053- <1>     db "        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
-   865 000009B5 43502F444F53204558- <1>
-   865 000009BE 43455054494F4E2044- <1>
-   865 000009C7 45544543544544210D- <1>
-   865 000009D0 0A0A                <1>
-   866 000009D2 202020205343502F44- <1>     db "    SCP/DOS SYSTEM STOP: SHARE INTERNAL ERROR : ",NUL
-   866 000009DB 4F532053595354454D- <1>
-   866 000009E4 2053544F503A205348- <1>
-   866 000009ED 41524520494E544552- <1>
-   866 000009F6 4E414C204552524F52- <1>
-   866 000009FF 203A2000            <1>
+   869                              <1> .sHdr:
+   870 000009BD 0D0A0A              <1>     db CR,LF,LF
+   871 000009C0 202020202020202053- <1>     db "        SCP/DOS EXCEPTION DETECTED!",CR,LF,LF
+   871 000009C9 43502F444F53204558- <1>
+   871 000009D2 43455054494F4E2044- <1>
+   871 000009DB 45544543544544210D- <1>
+   871 000009E4 0A0A                <1>
+   872 000009E6 202020205343502F44- <1>     db "    SCP/DOS SYSTEM STOP: SHARE INTERNAL ERROR : ",NUL
+   872 000009EF 4F532053595354454D- <1>
+   872 000009F8 2053544F503A205348- <1>
+   872 00000A01 41524520494E544552- <1>
+   872 00000A0A 4E414C204552524F52- <1>
+   872 00000A13 203A2000            <1>
     53                                  
     54                                  segment code$i code private align=16 use64
     55                                  %include "./src/share/text/shinit.asm"
