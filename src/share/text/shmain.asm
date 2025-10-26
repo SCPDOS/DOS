@@ -1,21 +1,24 @@
 ;-------------------------------------------------------------------------
 ;This file contains the all the functions that have external linkage.
 ;
-; Int 2Fh handler
-; open           
-; close          
-; closeAllByMachine      
-; closeAllByProcess      
-; closeAllByName    
-; lockFile       
-; unlockFile     
-; checkRegionLock  
-; getSFTShareInfo   
-; updateFCB 
-; getFirstClusterFCB   
-; closeNetworkFiles   
-; closeRenDel
-; dirUpdate      
+; Int 2Fh handler -> Handles share check calls.
+; open -> Creates or assignes and MFT for a newly opened/created SFT.
+; close -> Releases all share resources allocated to an SFT.
+; closeAllByMachine -> Releases all sharing resources for SFTs made 
+;   by a particular machine.
+; closeAllByProcess -> Releases all sharing resources for SFTs made 
+;   by a particular machine and process.
+; closeAllByName -> Releases all sharing resources allocated to 
+;   a particular MFT for a given FQ filename.
+; lockFile -> Assigns a file lock to a file.
+; unlockFile -> Releases a file lock from a file.
+; checkRegionLock -> Checks that the region specified is not locked.
+; getSFTShareInfo -> Gets sharing information about a particular SFT.
+; updateFCB -> Unused and should not be touched.
+; getFirstClusterFCB -> Unused and should not be touched.
+; closeNetworkFiles -> Collapses duplicate Net SFT-FCBs into a single SFT.
+; closeRenDel -> Closes all compat mode and Net SFT-FCBs for a file.
+; dirUpdate -> Updates directory information across all SFTs for a file.
 ;-------------------------------------------------------------------------
 
 i2fHandler:
@@ -145,7 +148,9 @@ lockFile:
     mov r8, qword [pDosseg]
     cmp qword [rdi + sft.pMFT], 0   ;If we don't have an MFT, fail
     je .exitBad
-    call lockPreamble
+    push rdi    ;Save SFT ptr
+    call lockPreamble   ;Trashes rbx and rdi
+    pop rdi
     jc .exit
     call getFreeLock    ;Get a free lock in rsi
     jc .exit
@@ -161,9 +166,9 @@ lockFile:
     mov qword [rsi + fileLock.pSFT], rdi
     mov rax, qword [r8 + currentPSP]
     mov qword [rsi + fileLock.qPID], rax
-    mov rax, qword [rbp + mft.pLock]    ;Add the lock to the head of the list
-    mov qword [rdi + fileLock.pNext], rax   
-    mov qword [rbx + mft.pLock], rdi
+    mov rax, qword [rbp + mft.pLock]    ;Get the head of the list
+    mov qword [rsi + fileLock.pNext], rax   ;Link to the new file lock
+    mov qword [rbx + mft.pLock], rsi    ;Add the lock to the head of the list
 .exit:    
     pop r8
     call critExit
@@ -172,7 +177,7 @@ lockFile:
     mov eax, errLokVio
     stc
     jmp short .exit
-    
+
 unlockFile:     
 ;Unlock file region. 
 ;Input: rdi -> SFT for file
@@ -183,19 +188,24 @@ unlockFile:
     mov r8, qword [pDosseg]
     cmp qword [rdi + sft.pMFT], 0   ;If we don't have an MFT, fail
     je lockFile.exitBad
-    call lockPreamble
-    jnc lockFile.exitBad
-    jnz lockFile.exitBad
+    push rdi    ;Save current SFT
+    call lockPreamble   ;Get rbx -> Matched lock, rdi -> Lock pointing to rbx
+    pop rsi     ;Get back current SFT in rsi
+    jnc lockFile.exitBad    ;If true, no match, rdi and rbx meaningless.
+    jnz lockFile.exitBad    ;If true, not exact match.
 ;   rbp -> MFT to remove lock from
-;   rdi -> SFT owning the lock
+;   rsi -> SFT owning the lock
 ;   rbx -> Lock to free
-    cmp qword [rbx + fileLock.pSFT], rdi
+;   rdi -> Lock pointed to by rbx
+    cmp qword [rbx + fileLock.pSFT], rsi    ;Check we own this lock
     jne lockFile.exitBad
     mov rax, qword [r8 + currentPSP]
-    cmp qword [rbx + fileLock.qPID], rax
+    cmp qword [rbx + fileLock.qPID], rax    ;Check this process can remove it
     jne lockFile.exitBad
+;Link over the lock we are freeing (pointed to by rbx), removing from mft list
     mov rax, qword [rbx + fileLock.pNext]
-    mov qword [rbp + mft.pLock], rax
+    mov qword [rdi + fileLock.pNext], rax
+;Add the lock (pointed to by rbx) to the head of the free list
     mov rax, qword [pFreeLock]
     mov qword [rbx + fileLock.pNext], rax
     mov qword [pFreeLock], rbx
@@ -210,13 +220,15 @@ checkRegionLock:
 ;Get the mft ptr, walk the lock list and check that the range specified
 ; in between current offset and current offset + ecx is not within any range
     call critEnter
+    push rbx
     push rcx
+    push rdi
     push rbp
     push r8
     mov r8, qword [pDosseg]
     cmp qword [rdi + sft.pMFT], 0   ;If we don't have an MFT, exit immediately
     je .exit
-    mov rbp, qword [rbp + sft.pMFT] ;Get the MFT ptr
+    mov rbp, qword [rdi + sft.pMFT] ;Get the MFT ptr
     cmp qword [rbp + mft.pLock], 0  ;If we have no locks, exit immediately
     je .exit
     mov eax, dword [r8 + currByteF] ;Get the current byte count
@@ -224,18 +236,20 @@ checkRegionLock:
     cmc     ;If carry clear here, exit (it means ecx was zero)
     jnc .exit
     lea rdx, qword [rax + rcx]  ;Add the read length to curroffset
-    xor ecx, ecx    ;Set to ignore locks rdi owns
+    xor ecx, ecx    ;Set to ignore locks currentSFT owns (i.e. rdi)
 ;Below needs:  
 ;       rax = Start byte to check
 ;       rdx = End byte to check
 ;       rbp -> MFT to start searching 
 ;       ecx = 0: Do not check locks belonging to currentSFT, dMID, qPID
-    call checkLockOverlap
-    mov eax, errLokVio  ;Assume an error occured
+    call checkLockOverlap   ;Trashes rbx and rdi
+    mov eax, errLokVio      ;Assume an error occured
 .exit:
     pop r8
     pop rbp
+    pop rdi
     pop rcx
+    pop rbx
     call critExit
     return 
 

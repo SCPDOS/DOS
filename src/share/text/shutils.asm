@@ -1,4 +1,5 @@
-;All utility functions go here
+;-----------------------------------------------------------------------------
+;All utility functions go here, in order.
 ;-----------------------------------------------------------------------------
 ; critEnter -> Enters a DOS 1 critical section
 ; critExit -> Exits a DOS 1 critical section
@@ -45,25 +46,29 @@ lockPreamble:
 ;               rax = Start byte of lock
 ;               rdx = End byte of lock
 ;               rbp -> MFT we are adding the lock to
+;               rbx = rdi = Trashed
 ;           CF=CY: Error!
 ;               ZF=ZE: Lock equals a previous lock
 ;               ZF=NZ: Lock partially overlaps or of 0 length
-;               rbx -> Lock that we overlap
+;               rbx -> Lock that we overlap (if not length 0)
+;               rdi -> Lock pointing to rbx (if not length 0)
+;ecx and esi trashed. All other registers ok.
     test edx, edx   ;Ensure the upper 32 bits of edx are zero
     or esi, eax     ;Ditto rax but also check the length is not zero
     jz .badExit
-    shl rcx, 31     ;Move the argument high
-    shl rsi, 31     ;Move the argument high
+    shl rcx, 32     ;Move the argument high
+    shl rsi, 32     ;Move the argument high
     or rdx, rcx     ;Stick the bits together (no overlap)
-    or rax, rax     ;Stick the bits together (no overlap)
+    or rax, rsi     ;Stick the bits together (no overlap)
     add rax, rdx    ;Add the start byte to the length to get first byte free
     dec rax         ;And now point rax to the last byte in the lock
-;rdx -> Start byte of lock
-;rax -> End byte of lock
-    mov rbp, qword [rdi + sft.pMFT] ;Get the mft ptr
+    xchg rdx, rax   ;And swap em
+;rax -> Start byte of lock
+;rdx -> End byte of lock
+    mov rbp, qword [rdi + sft.pMFT] ;Set rbp to the mft to inspect
     xor ecx, ecx
     inc ecx     ;Check all locks for overlap
-    call checkLockOverlap   ;Preserves everything
+    call checkLockOverlap   ;Preserves everything, except rbx and rdi
     return
 .badExit:
     mov eax, errLokVio
@@ -74,27 +79,31 @@ lockPreamble:
 checkLockOverlap:
 ;Input: rax = Start byte to check
 ;       rdx = End byte to check
-;       rbp -> MFT to start searching 
+;       rbp -> MFT to search on
 ;       ecx = 0: Do not check locks belonging to currentSFT, dMID, qPID
 ;           = 1: Check all locks
 ;Output: CF=NC: No overlap!
 ;           rbx = Trashed (Null)
+;           rdi = Trashed 
 ;        CF=CY: Overlap!
 ;           ZF=ZE: Lock region matched exactly
 ;           ZF=NZ: Lock region not matched exactly
 ;           rbx -> Lock we matched to
+;           rdi -> Lock pointing to rbx
+;All other regs preserved
     push rsi
     mov rbx, qword [rbp + mft.pLock]
+    lea rdi, qword [rbp + mft.pLock - fileLock.pNext]
 .lockLp:
     test rbx, rbx
     jz .exit
-    test ecx, ecx   ;Check if we may skip this lock?
+    test ecx, ecx   ;Check if we must do this lock?
     jnz .doLock
 ;Now we check that this lock isnt the same as the current SFT, qPID and dMID.
 ;If any are not equal, we do the lock. If they are all the same, skip.
 ;Check currentSFT
     mov rsi, qword [r8 + currentSFT]
-    cmp qword [rbx + fileLock.pSFT], rsi
+    cmp rsi, qword [rbx + fileLock.pSFT]
     jne .doLock
 ;Check qPID
     mov rsi, qword [rbx + fileLock.qPID]    
@@ -107,7 +116,8 @@ checkLockOverlap:
     jne .doLock
 ;If all three were equal, skip this lock!
 .nextLock:
-    mov rbx, qword [rbx + fileLock.pNext]  ;Go to next lock in chain
+    mov rdi, rbx    ;Save ptr to the trailing lock in rdi
+    mov rbx, qword [rdi + fileLock.pNext]  ;Go to next lock in chain
     jmp short .lockLp
 .doLock:
 ;Input: rbx -> filelock to check on
@@ -117,15 +127,10 @@ checkLockOverlap:
     ja .nextLock    ;If start is past the end, immediately check next!
     cmp rdx, qword [rbx + fileLock.qStart]
     jb .nextLock    ;If end is below the start, immediately check next!
-;Now we check that we are not overlapping
+;Thus there must be some overlap! Check if exact
     cmp rax, qword [rbx + fileLock.qStart]
-    jae .overlap
-    cmp rdx, qword [rbx + fileLock.qEnd]
-    ja .nextLock
-.overlap:
-;Here we have an overlap. Check if it is exact.
-    jnz .ovlpExit   ;This check had to have been equal to be exact
-    cmp rax, qword [rbx + fileLock.qStart]  ;Keeps ZF set if equal
+    jne .ovlpExit
+    cmp rdx, qword [rbx + fileLock.qEnd]    ;Keeps ZF set if equal  
 .ovlpExit:
     stc
 .exit:
@@ -139,8 +144,8 @@ getFreeLock:
     mov rsi, qword [pFreeLock]
     test rsi, rsi
     jz .noMoreLocks
-    mov rcx, qword [rsi + fileLock.pNext]   ;Move next entry to the head
-    mov qword [pFreeLock], rcx
+    push qword [rsi + fileLock.pNext]   ;Move next entry to the head
+    pop qword [pFreeLock]
     clc
     return
 .noMoreLocks:
@@ -160,7 +165,7 @@ closeByID:
     mov rsi, qword [pMftArena]
 .mftLp:
     mov eax, dword [rsi + mft.dLen]
-    lea rdi, qword [rsi + rsi]  ;Point rdi to the next MFT if one exists
+    lea rdi, qword [rsi + rax]  ;Point rdi to the next MFT if one exists
     cmp byte [rsi + mft.bSig], mftFree
     jb .exit
     jz .mftNext
@@ -172,25 +177,27 @@ closeByID:
     jz .mftNext
     cmp dword [rbx + sft.dMID], edx
     jne .sftNext
-    cmp rcx, -1
-    je .sftNext
-    cmp qword  [rbx + sft.qPID], rcx
+    cmp rcx, -1 ;If -1, then just equal dMID suffices. Close this SFT
+    je .sftGo
+    cmp qword [rbx + sft.qPID], rcx
     jne .sftNext
+.sftGo:
 ;Here we have an sft to close. The one in rsi. 
-    mov rbx, qword [rbx + sft.pNextSFT] ;Get ptr to next SFT in chain
-    push rbx
-    push rcx
-    push rdx
-    push rdi
-    mov qword [r8 + currentSFT], rsi
-    push rsi    ;Save current SFT we are closing 
+    mov qword [r8 + currentSFT], rbx    ;Set the current SFT as rbx
+    push qword [rbx + sft.pNextSFT] ;Save the ptr to next SFT in chain
+    push rcx    ;Save the qPID (or -1 signature) for checking
+    push rdx    ;Save the dMID for checking
+    push rsi    ;Save the current MFT we are processing
+    push rdi    ;Save the next MFT
+    push rbx    ;Save current SFT we are closing 
     call closeHandlesForSFT
-    pop rdi
-    call closeSFT   ;This wants the ptr in rdi
-    pop rdi
-    pop rdx
-    pop rcx
-    pop rbx
+    pop rdi     ;Get the current SFT we are closing into rdi for the close
+    call closeSFT   ;This might delete the current MFT...
+    pop rdi     ;Get the next MFT
+    pop rsi     ;Get the current MFT (might be invalid now)
+    pop rdx     ;Get the dMID
+    pop rcx     ;Get the qPID (or -1 signature)
+    pop rbx     ;Get the ptr to the next SFT in the chain (might be null)
     jmp short .sftLp
 .sftNext:
     mov rbx, qword [rbx + sft.pNextSFT]
@@ -199,6 +206,7 @@ closeByID:
     mov rsi, rdi    ;Move rsi to the next MFT
     jmp .mftLp
 .exit:
+    pop r8
     clc 
     return
 
@@ -213,6 +221,7 @@ closeHandlesForSFT:
 ;Closes all handles referencing the current SFT
 ;Input: r8 -> DOSSEG
 ;       qword [currentSFT] = SFT to close handles for
+;rdx, rbp and r8 saved. All other regs trashed.
     mov rsi, qword [r8 + currentSFT]
     xor ebx, ebx
 .sftIndxLp:
@@ -800,10 +809,9 @@ closeJFTEntries:
 
 ;Critical error handling
 errPrintAndHalt:
+;********************************************
 ;This function is called such that the return address points to the 
 ; null terminated string to print. We never return from this.
-;********************************************
-;Consider requesting all disk buffers flush before entering infinite loop.
 ;********************************************
 ;Input: TOS -> Ptr to string to print after header.
 ;Output: Never return.
