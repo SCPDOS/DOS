@@ -221,7 +221,8 @@ kernDrvInit:
 
 ;Initial PSP pointer fields
     lea rbx, qword [tempPSP]
-    mov qword fs:[currentPSP], rbx    ;Reset current PSP
+    mov qword fs:[currentPSP], rbx      ;Reset current PSP
+    mov qword fs:[dosPSP], rbx          ;Save the DOS PSP pointer
     push rbx
     add rbx, psp.dta
     mov qword fs:[currentDTA], rbx    ;Save current DTA

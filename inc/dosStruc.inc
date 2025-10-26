@@ -185,7 +185,9 @@ openNoInherit   equ 80h
 ;Can be set
 openFailOnI24   equ 2000h   ;If set, automatically FAIL all Int 24h
 openFlushWrites equ 4000h   ;If set, commit after each write call.
-;Once share is loaded, if a local FCB open occurs, mark the sft as so.
+;SFT-FCBs mark that the SFT is indeed an FCB on the System FCB chain.
+;These would only come into effect due to SHARE. We are yet to implement 
+; them
 openSFTFCB      equ 8000h   ;If set, file is SFT-FCB.
 
 ;Attribute Byte

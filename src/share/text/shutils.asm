@@ -1,7 +1,14 @@
-;All utility functions go here
+;-----------------------------------------------------------------------------
+;All utility functions go here, in order.
 ;-----------------------------------------------------------------------------
 ; critEnter -> Enters a DOS 1 critical section
 ; critExit -> Exits a DOS 1 critical section
+; lockPreamble -> Sets up the registers for set/clear flock
+; checkLockOverlap -> Checks if a lock with the given bounds exists
+; getFreeLock -> Removes a free lock from the free lock list
+; closeByID -> Closses all files according to IDs
+; closeSFT -> Wrapper for Close SFT
+; closeHandlesForSFT -> Closes handles referencing an SFT
 ; freeMFT -> Frees an MFT from the MFT arena
 ; removeSFTfromMFT -> Removes an SFT from an MFT's SFT chain
 ; freeLocks -> Frees all file locks associated to a SFT
@@ -10,6 +17,9 @@
 ; defragMFTArena -> Defragments the MFT arena
 ; findFreeMFT -> Finds a free MFT for a given size
 ; findMFT -> Find an MFT for a given filename
+; getNameMeta -> Computes the length and checksum of a filename
+; closeJFTentries -> Closes all JFT entries pointing to a 
+;                       particular SFT for a process.
 ; errPrintAndHalt -> Prints a formatted error message and halts the machine
 ;-----------------------------------------------------------------------------
 
@@ -27,26 +37,264 @@ critExit:
     pop rax
     return
 
+lockPreamble:
+;Sets up the regs for the lock/unlock operation
+;Input: rdi -> SFT for file
+;       ecx:edx = Start offset
+;       esi:eax = Length of region
+;Output:    CF=NC: Ok to proceed with locking
+;               rax = Start byte of lock
+;               rdx = End byte of lock
+;               rbp -> MFT we are adding the lock to
+;               rbx = rdi = Trashed
+;           CF=CY: Error!
+;               ZF=ZE: Lock equals a previous lock
+;               ZF=NZ: Lock partially overlaps or of 0 length
+;               rbx -> Lock that we overlap (if not length 0)
+;               rdi -> Lock pointing to rbx (if not length 0)
+;ecx and esi trashed. All other registers ok.
+    test edx, edx   ;Ensure the upper 32 bits of edx are zero
+    or esi, eax     ;Ditto rax but also check the length is not zero
+    jz .badExit
+    shl rcx, 32     ;Move the argument high
+    shl rsi, 32     ;Move the argument high
+    or rdx, rcx     ;Stick the bits together (no overlap)
+    or rax, rsi     ;Stick the bits together (no overlap)
+    add rax, rdx    ;Add the start byte to the length to get first byte free
+    dec rax         ;And now point rax to the last byte in the lock
+    xchg rdx, rax   ;And swap em
+;rax -> Start byte of lock
+;rdx -> End byte of lock
+    mov rbp, qword [rdi + sft.pMFT] ;Set rbp to the mft to inspect
+    xor ecx, ecx
+    inc ecx     ;Check all locks for overlap
+    call checkLockOverlap   ;Preserves everything, except rbx and rdi
+    return
+.badExit:
+    mov eax, errLokVio
+    test eax, eax   ;Clear the ZF flag
+    stc             ;And set CF
+    return
+
+checkLockOverlap:
+;Input: rax = Start byte to check
+;       rdx = End byte to check
+;       rbp -> MFT to search on
+;       ecx = 0: Do not check locks belonging to currentSFT, dMID, qPID
+;           = 1: Check all locks
+;Output: CF=NC: No overlap!
+;           rbx = Trashed (Null)
+;           rdi = Trashed 
+;        CF=CY: Overlap!
+;           ZF=ZE: Lock region matched exactly
+;           ZF=NZ: Lock region not matched exactly
+;           rbx -> Lock we matched to
+;           rdi -> Lock pointing to rbx
+;All other regs preserved
+    push rsi
+    mov rbx, qword [rbp + mft.pLock]
+    lea rdi, qword [rbp + mft.pLock - fileLock.pNext]
+.lockLp:
+    test rbx, rbx
+    jz .exit
+    test ecx, ecx   ;Check if we must do this lock?
+    jnz .doLock
+;Now we check that this lock isnt the same as the current SFT, qPID and dMID.
+;If any are not equal, we do the lock. If they are all the same, skip.
+;Check currentSFT
+    mov rsi, qword [r8 + currentSFT]
+    cmp rsi, qword [rbx + fileLock.pSFT]
+    jne .doLock
+;Check qPID
+    mov rsi, qword [rbx + fileLock.qPID]    
+    cmp rsi, qword [r8 + qPID]
+    jne .doLock
+;Check dMID
+    mov rsi, qword [rbx + fileLock.pSFT]
+    mov esi, dword [rsi + sft.dMID]
+    cmp esi, dword [r8 + dMID]
+    jne .doLock
+;If all three were equal, skip this lock!
+.nextLock:
+    mov rdi, rbx    ;Save ptr to the trailing lock in rdi
+    mov rbx, qword [rdi + fileLock.pNext]  ;Go to next lock in chain
+    jmp short .lockLp
+.doLock:
+;Input: rbx -> filelock to check on
+;       rax -> Start byte to check
+;       rdx -> End byte to check
+    cmp rax, qword [rbx + fileLock.qEnd]
+    ja .nextLock    ;If start is past the end, immediately check next!
+    cmp rdx, qword [rbx + fileLock.qStart]
+    jb .nextLock    ;If end is below the start, immediately check next!
+;Thus there must be some overlap! Check if exact
+    cmp rax, qword [rbx + fileLock.qStart]
+    jne .ovlpExit
+    cmp rdx, qword [rbx + fileLock.qEnd]    ;Keeps ZF set if equal  
+.ovlpExit:
+    stc
+.exit:
+    pop rsi
+    return
+
+getFreeLock:
+;Gets a free lock.
+;Output: CF=NC: rsi -> Lock
+;        CF=CY: No more locks
+    mov rsi, qword [pFreeLock]
+    test rsi, rsi
+    jz .noMoreLocks
+    push qword [rsi + fileLock.pNext]   ;Move next entry to the head
+    pop qword [pFreeLock]
+    clc
+    return
+.noMoreLocks:
+    mov eax, errShrFul
+    stc
+    return
+
+
+closeByID:
+;Closes all files by IDs.
+;Input: rcx = qPID (or -1 if we are not to use this)
+;       rdx = dMID
+;Searches through the MFT heap for allocated MFTs and within them,
+; frees each SFT which meets the ID requirements
+    push r8
+    mov r8, qword [pDosseg]
+    mov rdi, qword [pMftArena]
+    call .mftAdvNext    ;Start by skipping any leading free blocks
+.mftNext:
+    mov rsi, rdi    ;Set current MFT = Next MFT 
+    cmp byte [rdi + mft.bSig], mftEnd   ;Is this MFT an end MFT?
+    je .end
+;Here, we advance rdi before processing rsi. The advance must be done
+; before any possible close as the close might invalidate the pointer in rsi.
+;rsi will always be an allocated SFT as it isn't free or end
+    call .mftAdvNext ;Returns rdi -> Next Non-free MFT. rsi -> MFT to process.
+;Now we go down rsi's SFT chain freeing the SFTs as specified.
+    mov rbx, qword [rsi + mft.pSFT] ;Point rbx to the first SFT
+.sftLp:
+    test rbx, rbx   ;Once we are at the end of the sft chain, goto next MFT
+    jz .mftNext
+;Here we have an SFT for investigation. Set it to current and push the
+; next SFT on the stack
+    mov qword [r8 + currentSFT], rbx    ;Set the current SFT as rbx
+    push qword [rbx + sft.pNextSFT] ;Save the ptr to next SFT in chain
+;Now check do we need to close this SFT
+    cmp dword [rbx + sft.dMID], edx
+    jne .sftSkip
+    cmp rcx, -1 ;If -1, then just equal dMID suffices. Close this SFT
+    je .sftGo
+    cmp qword [rbx + sft.qPID], rcx
+    jne .sftSkip
+.sftGo:
+;Here we have an sft to close. The one in rsi. 
+    push rcx    ;Save the qPID (or -1 signature) for checking
+    push rdx    ;Save the dMID for checking
+    push rsi    ;Save the current MFT we are processing
+    push rdi    ;Save the next MFT
+;These two require currentSFT set
+    call closeHandlesForSFT
+    call closeSFT   ;This might delete the current MFT... 
+    pop rdi     ;Get the next MFT
+    pop rsi     ;Get the current MFT (might be invalid now)
+    pop rdx     ;Get the dMID
+    pop rcx     ;Get the qPID (or -1 signature)
+.sftSkip:
+    pop rbx     ;Get ptr to the next SFT in the chain (might be null)
+    jmp short .sftLp
+.end:
+;Else, the MFT was the end MFT so we are done! Exit!
+    pop r8
+    return
+.mftAdvNext:
+;Advances rdi to the next non-free MFT (stops at mftEnd).
+;Input: rdi -> MFT to start advancing from.
+    mov eax, dword [rdi + mft.dLen]
+    add rdi, rax  
+    cmp byte [rdi + mft.bSig], mftFree  ;Do we keep advancing?
+    je .mftAdvNext  ;If rdi points to a free MFT, yes!
+    return
+
+
+closeSFT:
+;Closes current SFT
+;Input: qword [currentSFT] = SFT to close
+    mov eax, 1201h ;Close the currentSFT
+    int 2Fh
+    return
+
+closeHandlesForSFT:
+;Closes all handles referencing the current SFT
+;Input: r8 -> DOSSEG
+;       qword [currentSFT] = SFT to close handles for
+;rdx, rbp and r8 saved. All other regs trashed.
+    mov rsi, qword [r8 + currentSFT]
+    xor ebx, ebx
+.sftIndxLp:
+    push rbx
+    mov eax, 1216h  ;Get SFT Ptr from SFT Index into rdi
+    int 2Fh
+    pop rbx
+    inc ebx
+    cmp rsi, rdi    ;Was this index correct?
+    jne .sftIndxLp
+    dec ebx         ;Decrement it back, we are looking for this number
+;Now we walk the Arena Chain to find every task ID and close the
+; JFT entry for this file if the SFTIndex exists in that task's JFT
+    xor eax, eax    ;Zero to give a PID that will not be at the start
+    mov rdi, qword [r8 + mcbChainPtr]   ;Get the MCB chain header in rdi
+    jmp short .checkMCB ;Make sure this MCB is a valid MCB
+.mcbLp:
+    cmp rax, qword [rdi + mcb.owner]    ;If new PID same as before, skip
+    je .getNextMCB
+    mov rax, qword [rdi + mcb.owner]    ;Else, get the new PID
+    call closeJFTEntries    ;Close all JFT entries for this process
+.getNextMCB:
+    cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we processed end block, exit
+    rete
+;Else, goto next block
+    mov ecx, dword [rdi + mcb.blockSize]    ;Get size of block in paras
+    shl rcx, 4      ;Turn into bytes
+    add rcx, mcb_size
+    add rdi, rcx    ;Go to next MCB
+.checkMCB:
+    mov cl, byte [rdi + mcb.marker] ;Now check the new MCB is valid
+    cmp cl, mcbMarkEnd
+    je .mcbLp
+    cmp cl, mcbMarkCtn
+    je .mcbLp
+    call errPrintAndHalt    ;Wasn't a end or cont block, error!
+    db "MCB CORRUPTION DETECTED",CR,LF,NUL
+
 freeMFT:
-;Frees the MFT if it is safe to do so. Crashes otherwise. Combines 
-; any adjacent free space too.
+;Frees the MFT if it is safe to do so. Crashes otherwise. Then combines
+; all fragmented free space in the MFT arena
 ;Input: rbx -> MFT to free
 ;Output: MFT freed. Any adjacent free space is absorbed by this MFT too.
+;Trashes rax, rbx and rsi
     mov rax, qword [rbx + mft.pSFT]
     or qword [rbx + mft.pLock], rax ;If pLock or pSFT is non-zero, hard error
     jnz .crash
     mov byte [rbx + mft.bSig], mftFree
+;Now start combining all fragmented free space in the MFT arena space
+    mov rbx, qword [pMftArena]
 .lp:
-;Checks the adjacent MFT. If it is free, we combine it to this free MFT.
-    mov rsi, rbx
-    mov eax, dword [rbx + mft.dLen]
-    add rsi, rax    ;Point to next MFT
-    cmp byte [rsi + mft.bSig], mftFree
-    retne   ;If not free, we exit
-    mov eax, dword [rsi + mft.dLen]
-    add dword [rbx + mft.dLen], eax ;Add this size to our MFT len
-    jmp short .lp       ;Now go again
+    mov esi, dword [rbx + mft.dLen] ;Get length of base MFT
+    cmp byte [rbx + mft.bSig], mftFree
+    retl            ;If end, finish combining
+    jne .gotoNext   ;If allocated, skip this MFT
+    cmp byte [rbx + rsi + mft.bSig], mftFree    ;Is the next MFT free?
+    jne .gotoNext   ;If not, leave this MFT block alone and goto next MFT
+    mov esi, dword [rbx + rsi + mft.dLen]   ;Else, get length of next MFT
+    add dword [rbx + mft.dLen], esi         ;And add to length of base MFT
+    jmp short .lp
+.gotoNext:
+    add rbx, rsi
+    jmp short .lp
 .crash:
+    call errPrintAndHalt
     db "SFT LCK fields not 0",CR,LF,NUL
 
 
@@ -77,7 +325,7 @@ removeSFTfromMFT:
     return
 .crash:
     call errPrintAndHalt
-    db "SFT not in SFT list",CR,LF,NUL
+    db "SFT NOT IN SFT LIST",CR,LF,NUL
 
 
 freeLocks:
@@ -340,19 +588,7 @@ getMFT:
 ;Output: CF=NC: rbx -> MFT for this file.
 ;        CF=CY: eax = Error code.
 ;Start by working out the string length and checksum values
-    push rsi
-    xor ecx, ecx    ;Use for string length (zero inclusive)
-    xor edx, edx    ;Use for checksum value (dl)
-.metalp:
-    lodsb
-    add dl, al
-    adc dl, 0       ;Add 1 if this rolls over
-    inc ecx
-    test al, al
-    jnz .metalp
-    pop rsi
-;Hereon: ecx = String length, dl = Checksum, rsi -> String 
-    call findMFT        ;Preserves dl and ecx
+    call findMFT        ;Sets dl for checksum and ecx for string length
     retnc
 ;We get here if this file has no MFT.
 ;Create an MFT entry. dl and ecx are always preserved in functions below
@@ -392,7 +628,7 @@ getMFT:
     mov qword [rbx + mft.pSFT], 0
     mov byte [rbx + mft.bCheckSum], dl  ;Set the checksum immediately.
     sub ecx, mft_size   ;Now get just the string length
-    lea rdi, qword [rbx + mft.name] 
+    lea rdi, qword [rbx + mft.sName] 
     rep movsb   ;Move the string over
     clc
     return
@@ -418,7 +654,7 @@ defragMFTArena:
 ; the read and write pointers. If we encounter a free mft, we add its
 ; size and move the read pointer.
     cmp byte [rsi + mft.bSig], mftFree
-    js .exit    ;At this point, all compression is done. Goto end
+    jl .exit    ;At this point, all compression is done. Goto end
     je .free
 ;Here we copy over. Before we do, we walk down the SFT chain
 ; updating the MFT pointer in each SFT.
@@ -473,7 +709,7 @@ findFreeMFT:
     mov rbx, qword [pMftArena]
 .lp:
     cmp byte [rbx + mft.bSig], mftFree
-    js findMFT.noMFT    ;If sign bit set, must be mftEnd. Exit error!
+    jl findMFT.noMFT    ;If below, must be mftEnd. Exit error!
     jne .next           ;If not equal, must be mftAlloc. Goto next MFT
     cmp dword [rbx + mft.dLen], ecx ;Is this MFT ok sizewise?
     retnc   ;Not carry means dLen is geq eax, as required
@@ -485,19 +721,22 @@ findFreeMFT:
 findMFT:
 ;Searches for an MFT for the filename in rsi 
 ;Input: rsi -> Filename to search for
-;       dl = Filename checksum
-;Output: CF=NC: rbx -> MFT for file
+;       
+;Output: ecx = String length
+;        dl = Filename checksum
+;        CF=NC: rbx -> MFT for file
 ;        CF=CY: No MFT found for this file. rbx -> End MFT
 ;Trashes rax. All other regs preserved.
+    call getNameMeta    ;Sets ecx and dl
     mov rbx, qword [pMftArena]
 .lp:
     cmp byte [rbx + mft.bSig], mftFree  
-    js .noMFT   ;If sign bit is set, bSig must be -1. End of arena!
+    jl .noMFT   ;If below, bSig must be -1. End of arena!
     je .next    ;If this MFT is free, goto next entry
     cmp byte [rbx + mft.bCheckSum], dl  ;Compare checksums
     jne .next   ;If not equal, skip entry
     push rdi
-    lea rdi, qword [rbx + mft.name] ;Point to mft filename
+    lea rdi, qword [rbx + mft.sName] ;Point to mft filename
     mov eax, 121Eh  ;Compare strings in rsi and rdi
     int 2Fh         ;Doesnt modify string pointers
     pop rdi
@@ -510,13 +749,83 @@ findMFT:
     stc
     return
 
+getNameMeta:
+;Gets the string length and checksum value
+;Input: rsi -> String to search on
+;Output: ecx = String length
+;        edx = Checksum value
+;Trashes eax.
+    push rsi
+    xor ecx, ecx    ;Use for string length (zero inclusive)
+    xor edx, edx    ;Use for checksum value (dl)
+.metalp:
+    lodsb
+    add dl, al
+    adc dl, 0       ;Add 1 if this rolls over
+    inc ecx
+    test al, al
+    jnz .metalp
+    pop rsi
+    return
+
+closeJFTEntries:
+;Closes all JFT entries pointing to a particular SFT for a process.
+;Input: bl = SFTIndex
+;       rax = PID
+;Output: Closes all JFT entries.
+;Preserves all registers
+    push rax
+    call .isPIDSpecial   ;If the PID is special, we just exit.
+    je .cjeExit2
+    push rcx
+    push rdi
+    mov rdi, rax
+    movzx ecx, word [rdi + psp.jftSize]   ;Get the size
+    lea rdi, qword [rdi + psp.jobFileTbl]   ;Point to JFT or JFTptr
+    cmp ecx, dfltJFTsize
+    cmova rdi, qword [rdi]  ;If above normal, pull the JFTPtr
+    mov eax, ebx    ;Get the SFTIndx to scan for
+.cjeLp:
+    repne scasb     ;DOS sets direction so we dont worry
+    jne .cjeExit
+    mov byte [rdi - 1], -1  ;Free the entry
+    test ecx, ecx  ;If we are out of entries, dont reenter loop
+    jnz .cjeLp
+.cjeExit:
+    clc
+    pop rdi
+    pop rcx
+.cjeExit2:
+    pop rax
+    return
+.isPIDSpecial:
+;Certain PIDs have special meaning and must be ignored.
+;If free or a hole, ignore.
+;If DOS or New DOS (should NEVER exist outside of a drivers init)
+; we get return the DOS PSP address in rax and pretend it is not 
+; special.
+;Input: rax = PID to check
+;Output: ZF=ZE: Special PID, don't operate on it
+;        ZF=NZ: Normal PID, proceed.
+    cmp rax, mcbOwnerFree   ;Bona-fide must be ignored
+    rete
+    cmp rax, mcbOwnerHole   ;Bona-fide must be ignored 
+    rete
+    cmp rax, mcbOwnerNewDOS ;None should ever exist from the POV of share.exe
+    je .ips1
+    cmp rax, mcbOwnerDOS
+    retne
+.ips1:
+    test eax, eax   ;eax = 8 or 9 so anding it with itself will clear ZF
+    mov rax, qword [r8 + dosPSP]    ;Get the actual DOS PSP value
+    return
+    
 
 ;Critical error handling
 errPrintAndHalt:
+;********************************************
 ;This function is called such that the return address points to the 
 ; null terminated string to print. We never return from this.
-;********************************************
-;Consider requesting all disk buffers flush before entering infinite loop.
 ;********************************************
 ;Input: TOS -> Ptr to string to print after header.
 ;Output: Never return.
@@ -537,6 +846,8 @@ errPrintAndHalt:
 ;Output: Hopefully, string printed.
     mov eax, 1212h  ;Do dos strlen
     int 2Fh         ;Get length of string pointed to by rdi in ecx
+    dec ecx ;Drop the terminating null from the count
+    retz    ;If this is zero, forget the error
 ;1) Build request packet
     mov rbx, qword [pPSP]   ;Get the ptr to our PSP
     mov byte [rbx + ioReqPkt.cmdcde], drvWRITE

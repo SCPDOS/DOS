@@ -609,8 +609,12 @@ lockUnlockFile:    ;ah = 5Ch
 ;       00h lock region of file
 ;       01h unlock region of file
 ;ebx = file handle
-;ecx = start offset of region within file
+;edx = start offset of region within file
 ;edi = length of region in bytes
+;ecx = esi = 0 (NOTE: MUST BE ZERO)
+;Formally speaking (important for redir files):
+;ecx:edx = Start offset
+;esi:edi = Length of region
     cmp al, 1
     ja .badFunction
     push rdi
@@ -631,6 +635,9 @@ lockUnlockFile:    ;ah = 5Ch
     pop rbx
     jmp short .exitSelect
 .unlockShare:
+;rdi -> SFT for file
+;ecx:edx = Start offset
+;esi:eax = Length of region
     call qword [unlockFileShare]    ;Call share hook
 .exitSelect:
     jc extErrExit
@@ -644,6 +651,9 @@ lockUnlockFile:    ;ah = 5Ch
     pop rbx
     jmp short .exitSelect
 .lockShare:
+;rdi -> SFT for file
+;ecx:edx = Start offset
+;esi:eax = Length of region
     call qword [lockFileShare]  ;Call share hook
     jmp short .exitSelect
 .badFunction:
@@ -1426,35 +1436,34 @@ checkExclusiveOwnFile:
 ; Rename or Delete.
 ;Input: SDA fname1Ptr -> Filename we want to consider
 ;       currDirCopy = Directory entry for the file
-;Output: Clobbers rcx, rdx.
+;Output: Clobbers rcx, rdx, qword [currentSFT]
     push rax
     push rbx
     push rsi
     push rdi
     push rbp
 
-    ;The below in DOS is passed in by the caller, here we preserve the 
-    ; caller's regs and proceed to set the ptrs ourselves.
+;The below in DOS is passed in by the caller, here we preserve the 
+; caller's regs and proceed to set the ptrs ourselves.
     lea rbx, curDirCopy
     lea rsi, qword [rbx + fatDirEntry.fstClusLo]
-    ;At this point, the filename is fully normalised due to the 
-    ; way we do path parsing. Thus, we can proceed safely.
-
-    ;The following closes most recent shared handles referencing it
-    ;Only if sharePSP, Requester NetID are equal and openMode not Compat
-    ; mode and if there is precisely 1  
+;At this point, the filename is fully normalised due to the 
+; way we do path parsing. Thus, we can proceed safely.
+;The following closes compat mode handles referencing file on this machine
     call qword [renDelCloseShare]    
-    ;The close of the handle will only happen if there is 1 file referring to it
+;The close of the handle will only happen if there is 1 file referring to it
     lea rdi, scratchSFT
     call setCurrentSFT
     mov eax, openRWAcc  ;Set open mode
     mov byte [openCreate], 0    ;We test by opening.
     push rdi    ;Save the scratch SFT ptr
-    call buildSFTEntry  ;This will never fail. If it does, share catches it.
+    call buildSFTEntry  ;This doesn't fail as we are opening it and it exists
     pop rdi
+;Now we share open exclusively. If any other non-compat mode handles are still
+; open, this will fail and we fail the action.
     mov word [rdi + sft.wNumHandles], 1   ;One "reference"
-    mov word [rdi + sft.wOpenMode], openDenRWShr ;Prevent everything temporarily
-    call shareFile  ;Possibly trashes rdi
+    mov word [rdi + sft.wOpenMode], openDenRWShr ;Open exclusively
+    call shareFile
     jc .exit
     call getCurrentSFT
     mov word [rdi + sft.wNumHandles], 0 ;Now free it and close it
@@ -1582,15 +1591,19 @@ deleteMain:
 
 openMain:
 ;Input: ax = Open mode
-;       [currentSFT] = SFT we are building
+;       [currentSFT] = SFT we are building with open Mode = 0.
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
 ;Ouput: CF=CY => Error, eax has error code
-    call setOpenMode    ;AX preserved
+    call checkOpenMode    ;AX preserved
     retc    ;Error Exit 
     call getCurrentSFT
-    mov byte [rdi + sft.wOpenMode], al  ;Set low byte, preserve high byte
+    mov byte [rdi + sft.wOpenMode], al  ;Set access and share modes 
     call setExtOpenMode ;Set high open mode bits too if an extended open call
+;The access and share modes set here are temporary. Below we may modify based
+; on the type of file we are. If we are a SFT-FCB then we need to do add some
+; bits. That is why we pass to the building function below the final set of 
+; bits to add.
     mov rsi, qword [workingCDS]
     xor ah, ah      ;al has the access and share modes
     cmp rsi, -1
@@ -1639,9 +1652,8 @@ openMain:
     mov word [rdi + sft.wOpenMode], cx
     mov eax, ecx    ;Move the modified open mode into eax for buildSFT
 .openFile:
-    mov byte [openCreate], 0   ;Opening file, set to 0
-    ;mov byte [delChar], 0E5h
-    call buildSFTEntry  ;ax must have the open mode
+    mov byte [openCreate], 0    ;Opening file, set to 0
+    call buildSFTEntry          ;al must have the open mode (ah = 0)
     jc .errorExit
 .shareLpRetry:
     movzx ecx, word [shareCount]  ;Get retry counter
@@ -1669,21 +1681,20 @@ openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
     call getCurrentSFT
     call openSFT    ;This takes input rdi-> currentSFT. Preserves it too
     test word [rdi + sft.wOpenMode], openSFTFCB
-    jnz .netOpen
-    return
-.netOpen:
+    retz    ;Only do this set if an SFTFCB
     mov rax, qword [currentPSP]
     mov qword [rdi + sft.qPID], rax
     return
 
-setOpenMode:
-;Checks that the open mode is ok for us viz. share bits
+checkOpenMode:
+;Checks that the open mode is ok for us. i.e. that we 
+; havent set bit 3 or bit 7 (or bit 6 if not a net invoke)
 ;Preserves al
 ;Input: al = Open mode for the file open.
     push rbx
 ;Check we are not opening a directory. This is to prevent disk io with a dir
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory
-    jnz .somBad    ;Directories are not allowed to be opened
+    jnz .comBad    ;Directories are not allowed to be opened
     mov bl, al
     and bl, 0F0h    ;Isolate upper nybble. Test share mode.
     cmp byte [dosInvoke], -1    
@@ -1692,16 +1703,16 @@ setOpenMode:
     je .s2
 .s1:
     cmp bl, openDenNoShr
-    ja .somBad
+    ja .comBad
 .s2:
     mov bl, al  ;Isolate lower nybble. Access mode.
     and bl, 0Fh
     cmp bl, openRWAcc
-    ja .somBad
+    ja .comBad
     pop rbx
     clc
     return
-.somBad:
+.comBad:
     pop rbx
     mov eax, errAccCde
     stc
@@ -1709,7 +1720,7 @@ setOpenMode:
 
 createNewMain:
 ;Input: ax (formally al) = File attributes
-;       [currentSFT] = SFT we are building
+;       [currentSFT] = SFT we are building with open Mode = 0
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
     movzx eax, al
@@ -1721,7 +1732,7 @@ createNewMain:
     return
 createMain:
 ;Input: ax (formally al) = File attributes
-;       [currentSFT] = SFT we are building
+;       [currentSFT] = SFT we are building with open Mode = 0
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
     movzx eax, al
@@ -1782,16 +1793,12 @@ createMain:
     mov byte [openCreate], -1   ;Creating file, set to FFh
     ;mov byte [delChar], 0E5h
     call dosCrit1Enter  ;Writing the SFT entry, must be in critical section
-    push rdi    ;Save the sft handle
     push rax    ;Save the file attributes on stack
-    mov eax, openRWAcc  ;Set open access mode
-    call buildSFTEntry
-    pop rcx ;Pop the file attribute off
-    pop rdi
+    mov eax, openRWAcc  ;Set default open access mode
+    call buildSFTEntry  ;Builds SFT in currentSFT
+    pop rbx     ;Pop the file attribute off
     jc .errorExit
-    call shareFile  ;Puts an sft handle in rdi. Preserves rcx
-    jc .errorExit
-    test cl, attrFileVolLbl    ;Was the attribute a volume label?
+    test bl, attrFileVolLbl    ;Was the attribute a volume label?
     jz .notVolLabel    ;If not vol label, skip.
 ; Treat volume label creation case here. Rebuild DPB and BPB.
     mov rdi, qword [workingCDS]    ;Get the CDS ptr for getDiskDPB
@@ -1815,13 +1822,19 @@ createMain:
     return
 buildSFTEntry:
 ;Called in a critical section.
-;Input: al = Open mode
+;Input: ax = Any additional open mode bits to add
 ;       STACK: File attributes if creating a file
 ;       [currentSFT] = SFT we are building
+;   Has the following setup:
+;           .wOpenMode: Set with ok defaults
+;           .qPID: Set to PID for call
+;           .dMID: Set to MID for call
+;           .pMFT: Set to 0
 ;       [workingCDS] = CDS of drive to access
 ;       [workingDPB] = DPB of drive to access
 ;     SDA curDirCopy = Copy of dir for file if found or parent dir if not.
 ;       If creating, delChar must be set to 0E5h. Not needed for opening!
+;       This is set by default by the entry to Disk ops routine into DOS.
 ;
 ;Output: If CF=NC: - CurrentSFT filled in except for wNumHandles and bFileAttrib
 ;                  - wDeviceInfo is set except for inherit bit
@@ -1833,41 +1846,34 @@ buildSFTEntry:
 ;Check if the device was a char device by checking curDirCopy.
 ;If disk, get dpb. We check if the parent dir was found.
 
-;First set the open mode, time and date, ownerPSP and file pointer
-; to start of file fields of the SFT
-    push rbp    ;file attribute is rbp + 10h
-    mov rbp, rsp
+;First set the additional open mode bits, time and date, ownerPSP and 
+; file pointer to start of file fields of the SFT
     mov rsi, qword [currentSFT]
-;Usually the lower byte of open mode is set. Here we add any more bits
-; and set the upper byte of the open mode bits too
     or word [rsi + sft.wOpenMode], ax
 ;Get current time
     call readDateTimeRecord ;Update DOS internal Time/Date variables
     call getDirDTwords  ;Get current D/T words packed in eax
-    mov dword [rsi + sft.wTime], eax    ;Store time and date together
+    mov dword [rsi + sft.dTimeDate], eax    ;Store time and date together
 ;Set current Owner
     mov rax, qword [currentPSP]
     mov qword [rsi + sft.qPID], rax ;Set who opened the file
 ;Set file pointer to first byte
     mov dword [rsi + sft.dCurntOff], 0  
-;Common fields set
+;Common fields set. Now check if creating or opening.
     test byte [openCreate], -1  ;Create = -1
     jz .openProc
-    ;Here if Creating a file.
-    ;First check if we are handling a volume label
-    test qword [rbp + 10h], attrFileVolLbl  ;Are we creating a volume label?
+;Here if Creating a file.
+;First pull the file attribute off the stack and put it in SFT
+    mov rax, qword [rsp + 8h]
+    mov byte [rsi + sft.bFileAttrib], al
+;Check if we are handling a volume label
+    test al, attrFileVolLbl  ;Are we creating a volume label?
     jz .notVolLbl   ;Bit not set? Jump!
 ;If we are, the previous search wouldn't have searched for all volids. Now
 ; check for any volids. 
-    push rsi
-    push rdi
-    push rbp
     mov byte [volIdFlag], -1    ;Set the volid search bit
-    call searchDir  ;Searches the root dir
+    call searchDir              ;Searches the root dir
     mov byte [volIdFlag], 0     ;We are done searching for volid
-    pop rbp
-    pop rdi
-    pop rsi
     jnc .badBuildSFTAccDen ;If CF=NC, then we have found a vollbl, fail.
     cmp al, errNoFil
     jne .badBuildSFTAccDen ;If not "no file found", error out
@@ -1878,26 +1884,21 @@ buildSFTEntry:
     jnz .charDev    ;If its valid, just reopens it!
     test byte [curDirCopy + fatDirEntry.attribute], dirDirectory | dirReadOnly
     jnz .badBuildSFTAccDen    ;Cant recreate a dir or ro file!
-    ;Here disk file exists, so recreating the file.
-    push rbp
-    push qword [currentSFT]
-    call deleteMain ;Returns rsi pointing to the directory entry in a dsk buffer
+;Here disk file exists, so recreating the file.
+    push qword [currentSFT] ;Calling delete modifies this because of xclusiv
+    call deleteMain ;Ret rsi pointing to deleted dir entry in the disk buffer
     pop qword [currentSFT]
-    pop rbp
-    jc .badBuildSFTAccDen
+    retc    ;Just bubble up the delete/share error code
     ;al has the char for the filename
     ;Sets vars for the sector/offset into the sector
-    call getCurrentSFT
+    call getCurrentSFT  ;Get SFT ptr in rdi
     mov byte [rsi], al  ;Replace the first char of the filename back
-    mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
-    ;al has file attributes.
-    mov byte [rsi + fatDirEntry.attribute], al
     xor eax, eax
     ;Clear all the fields south of ntRes (20 bytes)
     mov qword [rsi + fatDirEntry.ntRes], rax
     mov qword [rsi + fatDirEntry.fstClusHi], rax
     mov dword [rsi + fatDirEntry.fileSize], eax
-    mov eax, dword [rdi + sft.wTime]    ;Get the SFT time to set as crt and wrt
+    mov eax, dword [rdi + sft.dTimeDate]    ;Get SFT time to set crt and wrt
     mov dword [rsi + fatDirEntry.crtTime], eax
     mov dword [rsi + fatDirEntry.wrtTime], eax
     push rdi    ;Save SFT pointer
@@ -1905,6 +1906,7 @@ buildSFTEntry:
     mov ecx, fatDirEntry_size
     rep movsb
     call markBufferDirty ;We wrote to this buffer
+    call shareFile  ;And now share. This cannot fail because of delete above.
     pop rdi
 .createCommon:  ;rdi must point to the current SFT 
     ;Now populate the remaining SFT fields 
@@ -1955,8 +1957,11 @@ buildSFTEntry:
     jnz .createGo
 ;If we shouldnt create a file, fail, reporting file not found.
     mov eax, errFnf
-    jmp .badBuildSFTOwnErr
+    stc
+    return
 .createGo:
+    call shareFile  ;Now try and allocate share resources
+    retc            ;If the file can't be shared, exit.
 ;Create a dummy dir entry in the SDA to swap into the disk buffer
 ;rsi points to current sft entry
     lea rdi, curDirCopy
@@ -1975,10 +1980,9 @@ buildSFTEntry:
     pop rdi
     pop rsi
 
-    mov rax, qword [rbp + 10h]  ;Skip ptr to old rbp and return address
-    ;al has file attributes.
+    movzx eax, byte [rsi + sft.bFileAttrib] ;Get SFT attibutes
     mov byte [rdi + fatDirEntry.attribute], al
-    mov eax, dword [rsi + sft.wTime]    ;Get the SFT time to set as crt and wrt
+    mov eax, dword [rsi + sft.dTimeDate]    ;Get SFT time to set crt and wrt
     mov dword [rdi + fatDirEntry.crtTime], eax
     mov dword [rdi + fatDirEntry.wrtTime], eax
     mov eax, dword [dirClustPar]    ;Get the parent directory information
@@ -1995,7 +1999,7 @@ buildSFTEntry:
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
     je .badBuildSFTAccDen ;Set CF and exit
     call growDirectory  ;Increase directory size by 1 cluster
-    jc .badBuildSFTOwnErr
+    retc
     cmp eax, -1 ;Disk Full?
     je .badBuildSFTAccDen
     ;Else eax = Newly allocated cluster
@@ -2037,15 +2041,11 @@ buildSFTEntry:
     mov word [rsi + sft.sFileName + 8], ax
     mov byte [rsi + sft.sFileName + 10], al
 .exitBuildSFT:
-    call writeThroughBuffersForHandle
-    jc .badBuildSFTOwnErr
-    pop rbp
+    call writeThroughBuffersForHandle   ;If this errors, propagate CF
     return
 .badBuildSFTAccDen:   ;Set Access Denied
     mov eax, errAccDen
-.badBuildSFTOwnErr:  ;Error propagating error code
     stc
-    pop rbp
     return
 closeMain: ;Int 2Fh AX=1201h
 ;Gets the directory entry for a file
@@ -2116,6 +2116,12 @@ flushFile:  ;Make this non-local to be jumped to by commit too!
     mov word [rsi + fatDirEntry + fatDirEntry.fstClusLo], ax
     shr eax, 10h
     mov word [rsi + fatDirEntry + fatDirEntry.fstClusHi], ax
+;Make a copy of this updated directory for when truncate deletes the file
+    push rdi
+    lea rdi, curDirCopy
+    mov ecx, fatDirEntry_size
+    rep movsb
+    pop rdi
     call markBufferDirty
     movzx eax, byte [workingDrv]
     call flushAllBuffersForDrive
@@ -3161,7 +3167,7 @@ setExtOpenMode:
 ;Sets the open mode of the sft if this is an extended open call.
 ;Input: word [wEOFlags] set to indicate extended open call
 ;       word [wEOOpenMode] set with open flags
-;       rdi -> Current SFT
+;       rdi -> Current SFT. If create, openmode = 0. Else, low byte set.
 ;Output: CF=NC: No an extended open call. Nothing touched.
 ;        CF=CY: Extended open call. Setup SFT open mode bits
     test word [wEOFlags], eoInExtOpen
