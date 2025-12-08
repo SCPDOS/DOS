@@ -142,20 +142,20 @@
    113                              <1>     ; is a QWORD entry. Please adjust SHARE.EXE access as necessary.
    114                              <1> shareHooks:
    115 000000C7 ????????????????    <1>     markerShare         dq ?  ;Marker Share hook
-   116 000000CF ????????????????    <1>     openShare           dq ?  ;Share called on open. 
-   117 000000D7 ????????????????    <1>     closeShare          dq ?  ;Share called on close.
-   118 000000DF ????????????????    <1>     closeCompShare      dq ?  ;Share to close all files for a machine.
-   119 000000E7 ????????????????    <1>     closeTaskShare      dq ?  ;Share to close all files for a task.
-   120 000000EF ????????????????    <1>     closeNameShare      dq ?  ;Share to close file by name.
-   121 000000F7 ????????????????    <1>     lockFileShare       dq ?  ;Share to lock file region.
-   122 000000FF ????????????????    <1>     unlockFileShare     dq ?  ;Share to unlock file region.
-   123 00000107 ????????????????    <1>     checkFileLockShare  dq ?  ;Share to check file region locked.
-   124 0000010F ????????????????    <1>     openFileListShare   dq ?  ;Share to get open file list entry.
-   125 00000117 ????????????????    <1>     updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.    UNUSED
-   126 0000011F ????????????????    <1>     fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.   UNUSED
-   127 00000127 ????????????????    <1>     closeDupNetShare    dq ?  ;Share to close file if dup for proc.
-   128 0000012F ????????????????    <1>     renDelCloseShare    dq ?  ;Share to handle rename/delete correctly.
-   129 00000137 ????????????????    <1>     updateDirShare      dq ?  ;Share to update dir info in SFT. 
+   116 000000CF ????????????????    <1>     shOpen              dq ?  ;Share called on open. 
+   117 000000D7 ????????????????    <1>     shClose             dq ?  ;Share called on close.
+   118 000000DF ????????????????    <1>     shCloseAllByMID     dq ?  ;Share to close all files for a machine.
+   119 000000E7 ????????????????    <1>     shCloseAllByPID     dq ?  ;Share to close all files for a task.
+   120 000000EF ????????????????    <1>     shCloseAllByName    dq ?  ;Share to close file by name.
+   121 000000F7 ????????????????    <1>     shLockFile          dq ?  ;Share to lock file region.
+   122 000000FF ????????????????    <1>     shUnlockFile        dq ?  ;Share to unlock file region.
+   123 00000107 ????????????????    <1>     shCheckRegionLock   dq ?  ;Share to check file region locked.
+   124 0000010F ????????????????    <1>     shGetSFTShareInfo   dq ?  ;Share to get open file list entry.
+   125 00000117 ????????????????    <1>     shUpdateFCB         dq ?  ;Share to update FCB from the SFT.    UNUSED
+   126 0000011F ????????????????    <1>     shGetFirstClustFCB  dq ?  ;Share to get first cluster of FCB.   UNUSED
+   127 00000127 ????????????????    <1>     shCloseDupNetFCB    dq ?  ;Share to close file if dup for proc.
+   128 0000012F ????????????????    <1>     shCloseCompatHdls   dq ?  ;Share to handle rename/delete correctly.
+   129 00000137 ????????????????    <1>     shDirUpdate         dq ?  ;Share to update dir info in SFT. 
    130                              <1> 
    131                              <1> ;Create SFT header and corresponding array of five default sft entries
    132 0000013F <res Ah>            <1>     firstSftHeader  db sfth_size dup (?)
@@ -433,9 +433,9 @@
      4                              <1> ; Int 2Fh handler -> Handles share check calls.
      5                              <1> ; open -> Creates or assignes and MFT for a newly opened/created SFT.
      6                              <1> ; close -> Releases all share resources allocated to an SFT.
-     7                              <1> ; closeAllByMachine -> Releases all sharing resources for SFTs made 
+     7                              <1> ; closeAllByMID -> Releases all sharing resources for SFTs made 
      8                              <1> ;   by a particular machine.
-     9                              <1> ; closeAllByProcess -> Releases all sharing resources for SFTs made 
+     9                              <1> ; closeAllByPID -> Releases all sharing resources for SFTs made 
     10                              <1> ;   by a particular machine and process.
     11                              <1> ; closeAllByName -> Releases all sharing resources allocated to 
     12                              <1> ;   a particular MFT for a given FQ filename.
@@ -444,8 +444,8 @@
     15                              <1> ; checkRegionLock -> Checks that the region specified is not locked.
     16                              <1> ; getSFTShareInfo -> Gets sharing information about a particular SFT.
     17                              <1> ; updateFCB -> Unused and should not be touched.
-    18                              <1> ; getFirstClusterFCB -> Unused and should not be touched.
-    19                              <1> ; closeNetworkFiles -> Collapses duplicate Net SFT-FCBs into a single SFT.
+    18                              <1> ; getFirstClustFCB -> Unused and should not be touched.
+    19                              <1> ; closeDupNetFCB -> Collapses duplicate Net SFT-FCBs into a single SFT.
     20                              <1> ; closeCompatHdls -> Closes all compat mode and Net SFT-FCBs for a file.
     21                              <1> ; dirUpdate -> Updates directory information across all SFTs for a file.
     22                              <1> ;-------------------------------------------------------------------------
@@ -521,8 +521,8 @@
     14 00000072 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
     88                              <1> 
-    89                              <1> closeAllByMachine:
-    90                              <1> ;Close all files for a machine.
+    89                              <1> closeAllByMID:
+    90                              <1> ;Close all files by MID
     91                              <1> ;Input: SDA dMID
     92 00000073 E88D030000          <1>     call critEnter
     93 00000078 31C9                <1>     xor ecx, ecx
@@ -535,15 +535,15 @@
     14 00000087 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
     99                              <1> 
-   100                              <1> closeAllByProcess:      
-   101                              <1> ;Close all files for a single process. A process is identified by its 
-   102                              <1> ; PID and MID since there can be multiple process with the same PID 
-   103                              <1> ; across many machines.
+   100                              <1> closeAllByPID:      
+   101                              <1> ;Close all files for a single process by PID.
+   102                              <1> ;A process is identified by its PID and MID since there 
+   103                              <1> ; can be multiple process with the same PID across many machines.
    104                              <1> ;Input: SDA dMID
    105                              <1> ;       SDA qPID
    106 00000088 E878030000          <1>     call critEnter
    107 0000008D 31C9                <1>     xor ecx, ecx
-   108 0000008F EBEC                <1>     jmp short closeAllByMachine.go
+   108 0000008F EBEC                <1>     jmp short closeAllByMID.go
    109                              <1> 
    110                              <1> closeAllByName:      
    111                              <1> ;Close all files by name.
@@ -776,7 +776,7 @@
     13                              <2> %%_ret:
     14 00000240 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
-   326                              <1> getFirstClusterFCB:   
+   326                              <1> getFirstClustFCB:   
    327                              <1> ;UNUSED: Get first cluster of FCB
    328 00000241 F9                  <1>     stc
    329                              <1>     return
@@ -784,7 +784,7 @@
     14 00000242 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
    330                              <1> 
-   331                              <1> closeNetworkFiles:   
+   331                              <1> closeDupNetFCB:   
    332                              <1> ;Close a newly created SFT-FCB handle for a procedure.
    333                              <1> ;Network SFT-FCBs handles are all collapsed into one SFT.
    334                              <1> ;----------------------------------------------------------------------------
@@ -2817,16 +2817,16 @@
    283 00000317 0000000000000000    <1>     dq 0
    284 0000031F [1300000000000000]  <1>     dq open           
    285 00000327 [4300000000000000]  <1>     dq close          
-   286 0000032F [7300000000000000]  <1>     dq closeAllByMachine      
-   287 00000337 [8800000000000000]  <1>     dq closeAllByProcess      
+   286 0000032F [7300000000000000]  <1>     dq closeAllByMID      
+   287 00000337 [8800000000000000]  <1>     dq closeAllByPID      
    288 0000033F [9100000000000000]  <1>     dq closeAllByName    
    289 00000347 [DC00000000000000]  <1>     dq lockFile       
    290 0000034F [3601000000000000]  <1>     dq unlockFile     
    291 00000357 [8501000000000000]  <1>     dq checkRegionLock  
    292 0000035F [DB01000000000000]  <1>     dq getSFTShareInfo   
    293 00000367 [3F02000000000000]  <1>     dq updateFCB 
-   294 0000036F [4102000000000000]  <1>     dq getFirstClusterFCB   
-   295 00000377 [4302000000000000]  <1>     dq closeNetworkFiles   
+   294 0000036F [4102000000000000]  <1>     dq getFirstClustFCB   
+   295 00000377 [4302000000000000]  <1>     dq closeDupNetFCB   
    296 0000037F [E102000000000000]  <1>     dq closeCompatHdls
    297 00000387 [6603000000000000]  <1>     dq dirUpdate 
    298                              <1> shareTableL equ ($ - shareTable)/8

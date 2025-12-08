@@ -101,7 +101,7 @@ openFileHdl:       ;ah = 3Dh, handle function
     mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
     movzx eax, word [currentHdl]
-    call qword [closeDupNetShare]
+    call qword [shCloseDupNetFCB]
     mov word [currentNdx], -1   ;Now reset the index back to -1
     jmp extGoodExit             ;Save ax and return OK
 .errBadDeallocate:
@@ -508,7 +508,7 @@ getSetFileDateTime: ;ah = 57h
     mov word [rdi + sft.wTime], cx
     mov word [rdi + sft.wDate], dx
     xor eax, eax
-    call qword [updateDirShare]
+    call qword [shDirUpdate]
     ;Clear the flag to indicate that the dir needs to be updated and dont 
     ; further change the file time since we have manually overridden it 
     ; with the time specified
@@ -640,7 +640,7 @@ lockUnlockFile:    ;ah = 5Ch
 ;rdi -> SFT for file
 ;ecx:edx = Start offset
 ;esi:eax = Length of region
-    call qword [unlockFileShare]    ;Call share hook
+    call qword [shUnlockFile]    ;Call share hook
 .exitSelect:
     jc extErrExit
     jmp extGoodExit
@@ -656,7 +656,7 @@ lockUnlockFile:    ;ah = 5Ch
 ;rdi -> SFT for file
 ;ecx:edx = Start offset
 ;esi:eax = Length of region
-    call qword [lockFileShare]  ;Call share hook
+    call qword [shLockFile]  ;Call share hook
     jmp short .exitSelect
 .badFunction:
     mov eax, errInvFnc
@@ -1452,7 +1452,7 @@ checkExclusiveOwnFile:
 ;At this point, the filename is fully normalised due to the 
 ; way we do path parsing. Thus, we can proceed safely.
 ;The following closes compat mode handles referencing file on this machine
-    call qword [renDelCloseShare]    
+    call qword [shCloseCompatHdls]    
 ;The close of the handle will only happen if there is 1 file referring to it
     lea rdi, scratchSFT
     call setCurrentSFT
@@ -1676,7 +1676,7 @@ openMain:
 .fileSharedOk:
     mov eax, 3  ;Update date/time and everything in the share dir sync call
     call getCurrentSFT  ;Get SFT ptr in rdi
-    call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
+    call qword [shDirUpdate] ;Now call the dir sync, this default sets CF 
     call dosCrit1Exit
 openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
 ;CurrentSFT ***must*** be set before entering here
@@ -1816,7 +1816,7 @@ createMain:
 .notVolLabel:
     mov eax, 2  ;Needed for the SHARE call
     call getCurrentSFT  ;Get SFT ptr in rdi
-    call qword [updateDirShare]
+    call qword [shDirUpdate]
     call dosCrit1Exit
     jmp openDriverMux
 .errorExit:
@@ -2715,7 +2715,7 @@ writeDiskFile:
 ;writeExitNoByte
     call updateCurrentSFT   ;Update the cluster information in the SFT
     mov eax, 2  ;Update all SFTs with the shrinking of the file
-    call qword [updateDirShare] ;Remember, CF=CY by default!
+    call qword [shDirUpdate] ;Remember, CF=CY by default!
     jmp writeDoCommit   ;Now check if we should do a commit, or just return
 .walkFAT:
 ;Subroutine used by WRITE
@@ -2849,7 +2849,7 @@ writeExit:
     jae writeDoCommit   ;If past the end of the file, update the file size!
     mov dword [rdi + sft.dFileSize], eax
     mov eax, 1  ;Update all SFTs with the growth of the file!
-    call qword [updateDirShare] ;Remember, CF=CY by default!
+    call qword [shDirUpdate] ;Remember, CF=CY by default!
 writeDoCommit:
 ;Common good exit routine for write
     test word [rdi + sft.wOpenMode], openFlushWrites

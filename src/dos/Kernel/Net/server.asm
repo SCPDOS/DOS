@@ -88,23 +88,23 @@ commitAllFilesForProcess:   ;AX=5D01h
     jmp extGoodExit
 
 closeFilesByName:           ;AX=5D02h
-    call qword [closeNameShare]
+    call qword [shCloseAllByName]
 .shareExit: ;Use this symbol if we need a decision to be made
 .shareExitBad:  ;Use this symbol if we want to exit Error
     jc extErrExit
 .shareExitGood:
     jmp extGoodExit
 
-closeFilesByComputer:       ;AX=5D03h
-    call qword [closeCompShare]
+closeFilesByMachine:        ;AX=5D03h
+    call qword [shCloseAllByMID]
     jmp short closeFilesByName.shareExit
 
 closeFilesByProcess:        ;AX=5D04h
-    call qword [closeTaskShare]
+    call qword [shCloseAllByPID]
     jmp short closeFilesByName.shareExit
 
 getOpenFileListEntry:       ;AX=5D05h
-    call qword [openFileListShare]  ;Must zero extend all results to 8 bytes
+    call qword [shGetSFTShareInfo]  ;Must zero extend all results to 8 bytes
     jc closeFilesByName.shareExitBad
     call getUserRegs
     mov qword [rsi + callerFrame.rbx], rbx  ;Network machine number (0-ext)

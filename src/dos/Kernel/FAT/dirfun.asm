@@ -603,7 +603,7 @@ updateSFTDateTimeFields:
     shr eax, 16 ;Eject the time, get the date in eax
     mov word [rdi + sft.wDate], ax
     xor eax, eax
-    call qword [updateDirShare]
+    call qword [shDirUpdate]
     pop rbx
     pop rax
     return

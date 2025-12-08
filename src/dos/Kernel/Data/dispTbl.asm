@@ -170,7 +170,7 @@ serverDispTbl:  ;Server Dispatch functions
     dw serverDispatch - serverDispTbl           ;AX=5D00h
     dw commitAllFilesForProcess - serverDispTbl ;AX=5D01h
     dw closeFilesByName - serverDispTbl         ;AX=5D02h
-    dw closeFilesByComputer - serverDispTbl     ;AX=5D03h
+    dw closeFilesByMachine - serverDispTbl     ;AX=5D03h
     dw closeFilesByProcess - serverDispTbl      ;AX=5D04h
     dw getOpenFileListEntry - serverDispTbl     ;AX=5D05h
     dw getSDAData - serverDispTbl               ;AX=5D06h

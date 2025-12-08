@@ -256,7 +256,7 @@ kernDrvInit:
 ;------------------------------------------------;
 ;               Setup Share Hooks                ;
 ;------------------------------------------------;
-    lea rdi, qword [rbp + shareHooks + 8]   ;Start from openShare
+    lea rdi, qword [rbp + shareHooks + 8]   ;Start from shOpen
     lea rax, qword [rbp + goodDfltShareHook]
     lea rbx, qword [rbp + badDfltShareHook]
     stosq   ;Store good for open

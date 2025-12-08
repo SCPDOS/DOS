@@ -4,9 +4,9 @@
 ; Int 2Fh handler -> Handles share check calls.
 ; open -> Creates or assignes and MFT for a newly opened/created SFT.
 ; close -> Releases all share resources allocated to an SFT.
-; closeAllByMachine -> Releases all sharing resources for SFTs made 
+; closeAllByMID -> Releases all sharing resources for SFTs made 
 ;   by a particular machine.
-; closeAllByProcess -> Releases all sharing resources for SFTs made 
+; closeAllByPID -> Releases all sharing resources for SFTs made 
 ;   by a particular machine and process.
 ; closeAllByName -> Releases all sharing resources allocated to 
 ;   a particular MFT for a given FQ filename.
@@ -15,8 +15,8 @@
 ; checkRegionLock -> Checks that the region specified is not locked.
 ; getSFTShareInfo -> Gets sharing information about a particular SFT.
 ; updateFCB -> Unused and should not be touched.
-; getFirstClusterFCB -> Unused and should not be touched.
-; closeNetworkFiles -> Collapses duplicate Net SFT-FCBs into a single SFT.
+; getFirstClustFCB -> Unused and should not be touched.
+; closeDupNetFCB -> Collapses duplicate Net SFT-FCBs into a single SFT.
 ; closeCompatHdls -> Closes all compat mode and Net SFT-FCBs for a file.
 ; dirUpdate -> Updates directory information across all SFTs for a file.
 ;-------------------------------------------------------------------------
@@ -86,8 +86,8 @@ close:
     call critExit
     return
 
-closeAllByMachine:
-;Close all files for a machine.
+closeAllByMID:
+;Close all files by MID
 ;Input: SDA dMID
     call critEnter
     xor ecx, ecx
@@ -97,15 +97,15 @@ closeAllByMachine:
     call critExit
     return
 
-closeAllByProcess:      
-;Close all files for a single process. A process is identified by its 
-; PID and MID since there can be multiple process with the same PID 
-; across many machines.
+closeAllByPID:      
+;Close all files for a single process by PID.
+;A process is identified by its PID and MID since there 
+; can be multiple process with the same PID across many machines.
 ;Input: SDA dMID
 ;       SDA qPID
     call critEnter
     xor ecx, ecx
-    jmp short closeAllByMachine.go
+    jmp short closeAllByMID.go
 
 closeAllByName:      
 ;Close all files by name.
@@ -323,12 +323,12 @@ updateFCB:
 ;UNUSED: Update FCB from the SFT
     stc
     return
-getFirstClusterFCB:   
+getFirstClustFCB:   
 ;UNUSED: Get first cluster of FCB
     stc
     return
 
-closeNetworkFiles:   
+closeDupNetFCB:   
 ;Close a newly created SFT-FCB handle for a procedure.
 ;Network SFT-FCBs handles are all collapsed into one SFT.
 ;----------------------------------------------------------------------------

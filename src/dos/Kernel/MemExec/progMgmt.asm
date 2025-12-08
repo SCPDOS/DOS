@@ -198,7 +198,7 @@ terminateClean:    ;ah = 4Ch, EXIT
     mov eax, 111Dh  ;Signal termination of process! Kill all net files!
     int 2Fh
 ;Now free share resources for this process
-    call qword [closeTaskShare] ;Free all share resources for this process
+    call qword [shCloseAllByPID] ;Free all share resources for this process
 .hdlEnd:
 ;Now remove routines exported by this task from internal tables 
 ; (or pause exit until all programs referencing importing the routines

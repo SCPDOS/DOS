@@ -113,20 +113,20 @@ dllHooks:
     ; is a QWORD entry. Please adjust SHARE.EXE access as necessary.
 shareHooks:
     markerShare         dq ?  ;Marker Share hook
-    openShare           dq ?  ;Share called on open. 
-    closeShare          dq ?  ;Share called on close.
-    closeCompShare      dq ?  ;Share to close all files for a machine.
-    closeTaskShare      dq ?  ;Share to close all files for a task.
-    closeNameShare      dq ?  ;Share to close file by name.
-    lockFileShare       dq ?  ;Share to lock file region.
-    unlockFileShare     dq ?  ;Share to unlock file region.
-    checkFileLockShare  dq ?  ;Share to check file region locked.
-    openFileListShare   dq ?  ;Share to get open file list entry.
-    updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.    UNUSED
-    fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.   UNUSED
-    closeDupNetShare    dq ?  ;Share to close file if dup for proc.
-    renDelCloseShare    dq ?  ;Share to handle rename/delete correctly.
-    updateDirShare      dq ?  ;Share to update dir info in SFT. 
+    shOpen              dq ?  ;Share called on open. 
+    shClose             dq ?  ;Share called on close.
+    shCloseAllByMID     dq ?  ;Share to close all files for a machine.
+    shCloseAllByPID     dq ?  ;Share to close all files for a task.
+    shCloseAllByName    dq ?  ;Share to close file by name.
+    shLockFile          dq ?  ;Share to lock file region.
+    shUnlockFile        dq ?  ;Share to unlock file region.
+    shCheckRegionLock   dq ?  ;Share to check file region locked.
+    shGetSFTShareInfo   dq ?  ;Share to get open file list entry.
+    shUpdateFCB         dq ?  ;Share to update FCB from the SFT.    UNUSED
+    shGetFirstClustFCB  dq ?  ;Share to get first cluster of FCB.   UNUSED
+    shCloseDupNetFCB    dq ?  ;Share to close file if dup for proc.
+    shCloseCompatHdls   dq ?  ;Share to handle rename/delete correctly.
+    shDirUpdate         dq ?  ;Share to update dir info in SFT. 
 
 ;Create SFT header and corresponding array of five default sft entries
     firstSftHeader  db sfth_size dup (?)

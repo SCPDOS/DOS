@@ -15,10 +15,10 @@ goodDfltShareHook:
     clc
     return
 openShareCallWrapper:
-    call qword [openShare]
+    call qword [shOpen]
     return
 closeShareCallWrapper:
-    call qword [closeShare]
+    call qword [shClose]
     return
 
 retryShareIODelay:
@@ -31,7 +31,7 @@ retryShareIODelay:
     movzx ebx, word [shareCount]
 .mainLoop:      
     push rbx
-    call qword [checkFileLockShare]
+    call qword [shCheckRegionLock]
     pop rbx
     retnc   ;Return if CF=NC (i.e. region not locked [anymore])
     call shareRetryCountdown

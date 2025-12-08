@@ -1839,20 +1839,20 @@
    113                              <1>     ; is a QWORD entry. Please adjust SHARE.EXE access as necessary.
    114                              <1> shareHooks:
    115 000000C7 ????????????????    <1>     markerShare         dq ?  ;Marker Share hook
-   116 000000CF ????????????????    <1>     openShare           dq ?  ;Share called on open. 
-   117 000000D7 ????????????????    <1>     closeShare          dq ?  ;Share called on close.
-   118 000000DF ????????????????    <1>     closeCompShare      dq ?  ;Share to close all files for a machine.
-   119 000000E7 ????????????????    <1>     closeTaskShare      dq ?  ;Share to close all files for a task.
-   120 000000EF ????????????????    <1>     closeNameShare      dq ?  ;Share to close file by name.
-   121 000000F7 ????????????????    <1>     lockFileShare       dq ?  ;Share to lock file region.
-   122 000000FF ????????????????    <1>     unlockFileShare     dq ?  ;Share to unlock file region.
-   123 00000107 ????????????????    <1>     checkFileLockShare  dq ?  ;Share to check file region locked.
-   124 0000010F ????????????????    <1>     openFileListShare   dq ?  ;Share to get open file list entry.
-   125 00000117 ????????????????    <1>     updateFCBfromSFTShr dq ?  ;Share to update FCB from the SFT.    UNUSED
-   126 0000011F ????????????????    <1>     fstClstOfFCBShare   dq ?  ;Share to get first cluster of FCB.   UNUSED
-   127 00000127 ????????????????    <1>     closeDupNetShare    dq ?  ;Share to close file if dup for proc.
-   128 0000012F ????????????????    <1>     renDelCloseShare    dq ?  ;Share to handle rename/delete correctly.
-   129 00000137 ????????????????    <1>     updateDirShare      dq ?  ;Share to update dir info in SFT. 
+   116 000000CF ????????????????    <1>     shOpen              dq ?  ;Share called on open. 
+   117 000000D7 ????????????????    <1>     shClose             dq ?  ;Share called on close.
+   118 000000DF ????????????????    <1>     shCloseAllByMID     dq ?  ;Share to close all files for a machine.
+   119 000000E7 ????????????????    <1>     shCloseAllByPID     dq ?  ;Share to close all files for a task.
+   120 000000EF ????????????????    <1>     shCloseAllByName    dq ?  ;Share to close file by name.
+   121 000000F7 ????????????????    <1>     shLockFile          dq ?  ;Share to lock file region.
+   122 000000FF ????????????????    <1>     shUnlockFile        dq ?  ;Share to unlock file region.
+   123 00000107 ????????????????    <1>     shCheckRegionLock   dq ?  ;Share to check file region locked.
+   124 0000010F ????????????????    <1>     shGetSFTShareInfo   dq ?  ;Share to get open file list entry.
+   125 00000117 ????????????????    <1>     shUpdateFCB         dq ?  ;Share to update FCB from the SFT.    UNUSED
+   126 0000011F ????????????????    <1>     shGetFirstClustFCB  dq ?  ;Share to get first cluster of FCB.   UNUSED
+   127 00000127 ????????????????    <1>     shCloseDupNetFCB    dq ?  ;Share to close file if dup for proc.
+   128 0000012F ????????????????    <1>     shCloseCompatHdls   dq ?  ;Share to handle rename/delete correctly.
+   129 00000137 ????????????????    <1>     shDirUpdate         dq ?  ;Share to update dir info in SFT. 
    130                              <1> 
    131                              <1> ;Create SFT header and corresponding array of five default sft entries
    132 0000013F <res Ah>            <1>     firstSftHeader  db sfth_size dup (?)
@@ -2761,7 +2761,7 @@
    170 0000071A 417B                <1>     dw serverDispatch - serverDispTbl           ;AX=5D00h
    171 0000071C 937B                <1>     dw commitAllFilesForProcess - serverDispTbl ;AX=5D01h
    172 0000071E EA7B                <1>     dw closeFilesByName - serverDispTbl         ;AX=5D02h
-   173 00000720 FB7B                <1>     dw closeFilesByComputer - serverDispTbl     ;AX=5D03h
+   173 00000720 FB7B                <1>     dw closeFilesByMachine - serverDispTbl     ;AX=5D03h
    174 00000722 037C                <1>     dw closeFilesByProcess - serverDispTbl      ;AX=5D04h
    175 00000724 0B7C                <1>     dw getOpenFileListEntry - serverDispTbl     ;AX=5D05h
    176 00000726 267C                <1>     dw getSDAData - serverDispTbl               ;AX=5D06h
@@ -7425,7 +7425,7 @@
    603 000024D4 C1E810              <1>     shr eax, 16 ;Eject the time, get the date in eax
    604 000024D7 66894715            <1>     mov word [rdi + sft.wDate], ax
    605 000024DB 31C0                <1>     xor eax, eax
-   606 000024DD FF15(37010000)      <1>     call qword [updateDirShare]
+   606 000024DD FF15(37010000)      <1>     call qword [shDirUpdate]
    607 000024E3 5B                  <1>     pop rbx
    608 000024E4 58                  <1>     pop rax
    609                              <1>     return
@@ -10160,7 +10160,7 @@
    101 0000378E 66C7060100          <1>     mov word [rsi + sft.wNumHandles], 1 ;One handle will refer to this boyo
    102 00003793 66094E05            <1>     or word [rsi + sft.wDeviceInfo], cx ;Add the inheritance bit to dev info
    103 00003797 0FB705(6D070000)    <1>     movzx eax, word [currentHdl]
-   104 0000379E FF15(27010000)      <1>     call qword [closeDupNetShare]
+   104 0000379E FF15(27010000)      <1>     call qword [shCloseDupNetFCB]
    105 000037A4 66C705(6B070000)FF- <1>     mov word [currentNdx], -1   ;Now reset the index back to -1
    105 000037AC FF                  <1>
    106 000037AD E961450000          <1>     jmp extGoodExit             ;Save ax and return OK
@@ -10576,7 +10576,7 @@
    508 00003C25 66894F13            <1>     mov word [rdi + sft.wTime], cx
    509 00003C29 66895715            <1>     mov word [rdi + sft.wDate], dx
    510 00003C2D 31C0                <1>     xor eax, eax
-   511 00003C2F FF15(37010000)      <1>     call qword [updateDirShare]
+   511 00003C2F FF15(37010000)      <1>     call qword [shDirUpdate]
    512                              <1>     ;Clear the flag to indicate that the dir needs to be updated and dont 
    513                              <1>     ; further change the file time since we have manually overridden it 
    514                              <1>     ; with the time specified
@@ -10714,7 +10714,7 @@
    640                              <1> ;rdi -> SFT for file
    641                              <1> ;ecx:edx = Start offset
    642                              <1> ;esi:eax = Length of region
-   643 00003D58 FF15(FF000000)      <1>     call qword [unlockFileShare]    ;Call share hook
+   643 00003D58 FF15(FF000000)      <1>     call qword [shUnlockFile]    ;Call share hook
    644                              <1> .exitSelect:
    645 00003D5E 0F82BD3F0000        <1>     jc extErrExit
    646 00003D64 E9AA3F0000          <1>     jmp extGoodExit
@@ -10730,7 +10730,7 @@
    656                              <1> ;rdi -> SFT for file
    657                              <1> ;ecx:edx = Start offset
    658                              <1> ;esi:eax = Length of region
-   659 00003D7C FF15(F7000000)      <1>     call qword [lockFileShare]  ;Call share hook
+   659 00003D7C FF15(F7000000)      <1>     call qword [shLockFile]  ;Call share hook
    660 00003D82 EBDA                <1>     jmp short .exitSelect
    661                              <1> .badFunction:
    662 00003D84 B801000000          <1>     mov eax, errInvFnc
@@ -11782,7 +11782,7 @@
   1452                              <1> ;At this point, the filename is fully normalised due to the 
   1453                              <1> ; way we do path parsing. Thus, we can proceed safely.
   1454                              <1> ;The following closes compat mode handles referencing file on this machine
-  1455 000044E5 FF15(2F010000)      <1>     call qword [renDelCloseShare]    
+  1455 000044E5 FF15(2F010000)      <1>     call qword [shCloseCompatHdls]    
   1456                              <1> ;The close of the handle will only happen if there is 1 file referring to it
   1457 000044EB 488D3D(500D0000)    <1>     lea rdi, scratchSFT
   1458 000044F2 E8670E0000          <1>     call setCurrentSFT
@@ -12148,7 +12148,7 @@
   1676                              <1> .fileSharedOk:
   1677 000046FB B803000000          <1>     mov eax, 3  ;Update date/time and everything in the share dir sync call
   1678 00004700 E8610C0000          <1>     call getCurrentSFT  ;Get SFT ptr in rdi
-  1679 00004705 FF15(37010000)      <1>     call qword [updateDirShare] ;Now call the dir sync, this default sets CF 
+  1679 00004705 FF15(37010000)      <1>     call qword [shDirUpdate] ;Now call the dir sync, this default sets CF 
   1680 0000470B E8D0350000          <1>     call dosCrit1Exit
   1681                              <1> openDriverMux:  ;Int 2Fh, AX=120Ch, jumped to by Create
   1682                              <1> ;CurrentSFT ***must*** be set before entering here
@@ -12336,7 +12336,7 @@
   1816                              <1> .notVolLabel:
   1817 0000483C B802000000          <1>     mov eax, 2  ;Needed for the SHARE call
   1818 00004841 E8200B0000          <1>     call getCurrentSFT  ;Get SFT ptr in rdi
-  1819 00004846 FF15(37010000)      <1>     call qword [updateDirShare]
+  1819 00004846 FF15(37010000)      <1>     call qword [shDirUpdate]
   1820 0000484C E88F340000          <1>     call dosCrit1Exit
   1821 00004851 E9BAFEFFFF          <1>     jmp openDriverMux
   1822                              <1> .errorExit:
@@ -13375,7 +13375,7 @@
   2715                              <1> ;writeExitNoByte
   2716 000051A7 E8C2010000          <1>     call updateCurrentSFT   ;Update the cluster information in the SFT
   2717 000051AC B802000000          <1>     mov eax, 2  ;Update all SFTs with the shrinking of the file
-  2718 000051B1 FF15(37010000)      <1>     call qword [updateDirShare] ;Remember, CF=CY by default!
+  2718 000051B1 FF15(37010000)      <1>     call qword [shDirUpdate] ;Remember, CF=CY by default!
   2719 000051B7 E981010000          <1>     jmp writeDoCommit   ;Now check if we should do a commit, or just return
   2720                              <1> .walkFAT:
   2721                              <1> ;Subroutine used by WRITE
@@ -13564,7 +13564,7 @@
   2849 0000532D 730E                <1>     jae writeDoCommit   ;If past the end of the file, update the file size!
   2850 0000532F 894717              <1>     mov dword [rdi + sft.dFileSize], eax
   2851 00005332 B801000000          <1>     mov eax, 1  ;Update all SFTs with the growth of the file!
-  2852 00005337 FF15(37010000)      <1>     call qword [updateDirShare] ;Remember, CF=CY by default!
+  2852 00005337 FF15(37010000)      <1>     call qword [shDirUpdate] ;Remember, CF=CY by default!
   2853                              <1> writeDoCommit:
   2854                              <1> ;Common good exit routine for write
   2855 0000533D 66F747020040        <1>     test word [rdi + sft.wOpenMode], openFlushWrites
@@ -15384,7 +15384,7 @@
    198 00006283 B81D110000          <1>     mov eax, 111Dh  ;Signal termination of process! Kill all net files!
    199 00006288 CD2F                <1>     int 2Fh
    200                              <1> ;Now free share resources for this process
-   201 0000628A FF15(E7000000)      <1>     call qword [closeTaskShare] ;Free all share resources for this process
+   201 0000628A FF15(E7000000)      <1>     call qword [shCloseAllByPID] ;Free all share resources for this process
    202                              <1> .hdlEnd:
    203                              <1> ;Now remove routines exported by this task from internal tables 
    204                              <1> ; (or pause exit until all programs referencing importing the routines
@@ -19824,23 +19824,23 @@
     88 000082FE E910FAFFFF          <1>     jmp extGoodExit
     89                              <1> 
     90                              <1> closeFilesByName:           ;AX=5D02h
-    91 00008303 FF15(EF000000)      <1>     call qword [closeNameShare]
+    91 00008303 FF15(EF000000)      <1>     call qword [shCloseAllByName]
     92                              <1> .shareExit: ;Use this symbol if we need a decision to be made
     93                              <1> .shareExitBad:  ;Use this symbol if we want to exit Error
     94 00008309 0F8212FAFFFF        <1>     jc extErrExit
     95                              <1> .shareExitGood:
     96 0000830F E9FFF9FFFF          <1>     jmp extGoodExit
     97                              <1> 
-    98                              <1> closeFilesByComputer:       ;AX=5D03h
-    99 00008314 FF15(DF000000)      <1>     call qword [closeCompShare]
+    98                              <1> closeFilesByMachine:        ;AX=5D03h
+    99 00008314 FF15(DF000000)      <1>     call qword [shCloseAllByMID]
    100 0000831A EBED                <1>     jmp short closeFilesByName.shareExit
    101                              <1> 
    102                              <1> closeFilesByProcess:        ;AX=5D04h
-   103 0000831C FF15(E7000000)      <1>     call qword [closeTaskShare]
+   103 0000831C FF15(E7000000)      <1>     call qword [shCloseAllByPID]
    104 00008322 EBE5                <1>     jmp short closeFilesByName.shareExit
    105                              <1> 
    106                              <1> getOpenFileListEntry:       ;AX=5D05h
-   107 00008324 FF15(0F010000)      <1>     call qword [openFileListShare]  ;Must zero extend all results to 8 bytes
+   107 00008324 FF15(0F010000)      <1>     call qword [shGetSFTShareInfo]  ;Must zero extend all results to 8 bytes
    108 0000832A 72DD                <1>     jc closeFilesByName.shareExitBad
    109 0000832C E812F5FFFF          <1>     call getUserRegs
    110 00008331 48895E08            <1>     mov qword [rsi + callerFrame.rbx], rbx  ;Network machine number (0-ext)
@@ -20220,13 +20220,13 @@
     14 00008572 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
     17                              <1> openShareCallWrapper:
-    18 00008573 FF15(CF000000)      <1>     call qword [openShare]
+    18 00008573 FF15(CF000000)      <1>     call qword [shOpen]
     19                              <1>     return
     13                              <2> %%_ret:
     14 00008579 C3                  <2>  ret
     15                              <2> %assign retOff %%_ret-$$
     20                              <1> closeShareCallWrapper:
-    21 0000857A FF15(D7000000)      <1>     call qword [closeShare]
+    21 0000857A FF15(D7000000)      <1>     call qword [shClose]
     22                              <1>     return
     13                              <2> %%_ret:
     14 00008580 C3                  <2>  ret
@@ -20242,7 +20242,7 @@
     31 00008581 0FB71D(27000000)    <1>     movzx ebx, word [shareCount]
     32                              <1> .mainLoop:      
     33 00008588 53                  <1>     push rbx
-    34 00008589 FF15(07010000)      <1>     call qword [checkFileLockShare]
+    34 00008589 FF15(07010000)      <1>     call qword [shCheckRegionLock]
     35 0000858F 5B                  <1>     pop rbx
     36                              <1>     retnc   ;Return if CF=NC (i.e. region not locked [anymore])
     61                              <2> cret nc

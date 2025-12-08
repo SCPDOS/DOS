@@ -283,16 +283,16 @@ shareTable:
     dq 0
     dq open           
     dq close          
-    dq closeAllByMachine      
-    dq closeAllByProcess      
+    dq closeAllByMID      
+    dq closeAllByPID      
     dq closeAllByName    
     dq lockFile       
     dq unlockFile     
     dq checkRegionLock  
     dq getSFTShareInfo   
     dq updateFCB 
-    dq getFirstClusterFCB   
-    dq closeNetworkFiles   
+    dq getFirstClustFCB   
+    dq closeDupNetFCB   
     dq closeCompatHdls
     dq dirUpdate 
 shareTableL equ ($ - shareTable)/8
