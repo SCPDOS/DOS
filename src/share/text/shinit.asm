@@ -293,6 +293,6 @@ shareTable:
     dq updateFCB 
     dq getFirstClusterFCB   
     dq closeNetworkFiles   
-    dq closeRenDel
+    dq closeCompatHdls
     dq dirUpdate 
 shareTableL equ ($ - shareTable)/8

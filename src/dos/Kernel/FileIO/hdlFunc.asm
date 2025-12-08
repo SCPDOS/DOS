@@ -609,10 +609,12 @@ lockUnlockFile:    ;ah = 5Ch
 ;       00h lock region of file
 ;       01h unlock region of file
 ;ebx = file handle
-;edx = start offset of region within file
-;edi = length of region in bytes
-;ecx = esi = 0 (NOTE: MUST BE ZERO)
-;Formally speaking (important for redir files):
+;edx = low 32 bits of start offset of region within file
+;ecx = high 32 bits of start offset of region within file
+;edi = low 32 bits of length of region in bytes
+;esi = high 32 bits of length of region in bytes
+;ecx = esi = 0 for FAT12/16/32 based systems.  
+;Formally speaking:
 ;ecx:edx = Start offset
 ;esi:edi = Length of region
     cmp al, 1

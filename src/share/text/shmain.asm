@@ -17,7 +17,7 @@
 ; updateFCB -> Unused and should not be touched.
 ; getFirstClusterFCB -> Unused and should not be touched.
 ; closeNetworkFiles -> Collapses duplicate Net SFT-FCBs into a single SFT.
-; closeRenDel -> Closes all compat mode and Net SFT-FCBs for a file.
+; closeCompatHdls -> Closes all compat mode and Net SFT-FCBs for a file.
 ; dirUpdate -> Updates directory information across all SFTs for a file.
 ;-------------------------------------------------------------------------
 
@@ -65,13 +65,13 @@ open:
     return
 
 close:          
-;Called on file close. Frees all sharing information associated with
-; a file.
+;Called on file close. Frees all locks associated with file if the 
+; handle count is 0 or -1. If the last file on an MFT, frees the MFT too!
 ;Input: rdi -> SFT we are closing.
     call critEnter
     mov rbx, qword [rdi + sft.pMFT]
     test rbx, rbx   ;If this is an SFT from before Share loaded, do nothing!
-    jz .exit
+    jz .exit        ;All functions expect there to be a MFT for this file
     movsx eax, word [rdi + sft.wNumHandles] ;Get the count
     test eax, eax   ;If count is zero, free all sharing data
     jz .goClose
@@ -86,26 +86,26 @@ close:
     call critExit
     return
 
-closeAllByMachine:      
+closeAllByMachine:
 ;Close all files for a machine.
-;Input: rdx -> DPL (use dMID only)
+;Input: SDA dMID
     call critEnter
     xor ecx, ecx
-    dec rcx ;Get -1 into ecx to indicate not to use this
-    mov rdx, qword [rdx + dpl.rdx]  ;Get the MID
+    dec rcx ;Get -1 into ecx to not check PIDs
+.go:
     call closeByID
     call critExit
     return
 
 closeAllByProcess:      
-;Close all files for a task.
-;Input: rdx -> DPL (use dMID and qPID)
+;Close all files for a single process. A process is identified by its 
+; PID and MID since there can be multiple process with the same PID 
+; across many machines.
+;Input: SDA dMID
+;       SDA qPID
     call critEnter
-    mov rcx, qword [rdx + dpl.rdx]  ;Get the PID
-    mov rdx, qword [rdx + dpl.rdx]  ;Get the MID
-    call closeByID
-    call critExit
-    return
+    xor ecx, ecx
+    jmp short closeAllByMachine.go
 
 closeAllByName:      
 ;Close all files by name.
@@ -115,22 +115,29 @@ closeAllByName:
     mov r8, qword [pDosseg] ;Needed for the close handles call below
     mov rsi, qword [rdx + dpl.rdx]  ;Get the filename ptr in rsi
     call findMFT    ;Find the MFT for this file name
-    jc .exit
+    jc .exitBad
     mov rdi, qword [rbx + mft.pSFT] ;Get the ptr to the first SFT
 .lp:
-;We work by looking ahead an SFT in the chain. This is because closeSFT
-; might free the MFT so instead of having to search for it each time
-; we look for the condition on which it will be freed, i.e. the sft we are at
-; being the last SFT open on that MFT.
+;Since we close by name, and each name has exactly one MFT, all we need
+; to do is close all SFTs in the SFT chain of the MFT. We ensure we save
+; the next SFT ptr before each close so that if the MFT gets reclaimed
+; (which will happen during the close of the last SFT in the chain), 
+; the MFT pointer becomes invalid. Thus, we save the next SFT ptr
+; to detect when we closed all SFTs in the chain.
     test rdi, rdi   ;Is the SFT ptr null? Exit if so
     jz .exit
     mov qword [r8 + currentSFT], rdi    ;Else, set this SFT to be current
+;Set this SFT count to 1, to make closeSFT clean up properly as we will
+; close all jft entries across all processes
+    mov word [rdi + sft.wNumHandles], 1
     push qword [rdi + sft.pNextSFT]     ;Save next SFT
-;These two require currentSFT set
+;These two require currentSFT set.
     call closeHandlesForSFT ;Closes this SFT on all processes
     call closeSFT   ;Close this SFT
     pop rdi         ;Get the ptr to the next SFT in rdi
     jmp short .lp
+.exitBad:
+    mov eax, errPnf ;Set the error code
 .exit:
     pop r8
     call critExit
@@ -149,7 +156,7 @@ lockFile:
     push rdi    ;Save SFT ptr
     call lockPreamble   ;Trashes rbx and rdi
     pop rdi
-    jc .exit
+    jc .exitBad         ;if lock overlap error, doesnt set lock violation.
     call getFreeLock    ;Get a free lock in rsi
     jc .exit
 ;Here we have:
@@ -166,7 +173,7 @@ lockFile:
     mov qword [rsi + fileLock.qPID], rax
     mov rax, qword [rbp + mft.pLock]    ;Get the head of the list
     mov qword [rsi + fileLock.pNext], rax   ;Link to the new file lock
-    mov qword [rbx + mft.pLock], rsi    ;Add the lock to the head of the list
+    mov qword [rbp + mft.pLock], rsi    ;Add the lock to the head of the list
 .exit:    
     pop r8
     call critExit
@@ -189,12 +196,12 @@ unlockFile:
     push rdi    ;Save current SFT
     call lockPreamble   ;Get rbx -> Matched lock, rdi -> Lock pointing to rbx
     pop rsi     ;Get back current SFT in rsi
-    jnc lockFile.exitBad    ;If true, no match, rdi and rbx meaningless.
+    jnc lockFile.exitBad    ;If true, no match.
     jnz lockFile.exitBad    ;If true, not exact match.
 ;   rbp -> MFT to remove lock from
 ;   rsi -> SFT owning the lock
 ;   rbx -> Lock to free
-;   rdi -> Lock pointed to by rbx
+;   rdi -> Lock pointing to rbx
     cmp qword [rbx + fileLock.pSFT], rsi    ;Check we own this lock
     jne lockFile.exitBad
     mov rax, qword [r8 + currentPSP]
@@ -230,7 +237,8 @@ checkRegionLock:
     cmp qword [rbp + mft.pLock], 0  ;If we have no locks, exit immediately
     je .exit
     mov eax, dword [r8 + currByteF] ;Get the current byte count
-    dec ecx ;Reduce count by 1 to get last byte in range and clear upper dword
+;[DO SUB TO SET CF]
+    sub ecx, 1 ;dec count to get last byte in range and clear upper dword
     cmc     ;If carry clear here, exit (it means ecx was zero)
     jnc .exit
     lea rdx, qword [rax + rcx]  ;Add the read length to curroffset
@@ -324,9 +332,9 @@ closeNetworkFiles:
 ;Close a newly created SFT-FCB handle for a procedure.
 ;Network SFT-FCBs handles are all collapsed into one SFT.
 ;----------------------------------------------------------------------------
-;Input: rsi -> Newly created SFT
-;       ax = SFTNdx for this newly created file
-;Output: CF=NC: ax = SFTNdx for the SFT (Same as on input if not a SFT-FCB)
+;Input: rsi -> Newly created SFT.
+;       SDA curHdlPtr must point to JFN entry with the SFTNdx for SFT in rsi 
+;Output: CF=NC: eax = Handle to use
 ;        CF=CY: No SFT found
 ;----------------------------------------------------------------------------
 ;If
@@ -342,16 +350,17 @@ closeNetworkFiles:
     and eax, 0F0h    ;Save the share bits
     cmp eax, openNetFCBShr
     jne .exitNormal
-    xor ebx, ebx
+;Search for a NetFCB SFT open by this process/machine.
+    xor ebx, ebx    ;Search the SFT tables from index 0.
 .ptrLp:
-    push rbx
+    push rbx    ;Save the SFTNdx we are searching for
     mov eax, 1216h  ;getSFTPtrfromSFTNdx -> Get in rdi the SFT for index bx
     int 2Fh
     pop rbx
-    jc .exit
+    jc .exitNormal  ;If none found, return original handle
     cmp rdi, rsi    ;Skip ourselves
     je .ptrNext
-    cmp word [rdi + sft.wNumHandles], 0 ;Handle must have empty count
+    cmp word [rdi + sft.wNumHandles], 0 ;Skip if the handle is free
     je .ptrNext
     movzx eax, word [rsi + sft.wOpenMode]
     cmp ax, word [rdi + sft.wOpenMode]
@@ -364,47 +373,59 @@ closeNetworkFiles:
     jne .ptrNext
     mov rax, qword [rsi + sft.pMFT]
     cmp qword [rdi + sft.pMFT], rax
-    je .ptrFnd  ;If all this, then we have a duplicate net handle
+    je .ptrFnd  ;If all this holds, then we have a duplicate net handle
 .ptrNext:
     inc ebx
     jmp short .ptrLp
 .ptrFnd:
-;rsi is a duplicate of rdi for this process
-    mov word [rsi + sft.wNumHandles], 0 ;Free the handle we just allocated
-    push rdi    ;rdi is the master FCB SFT 
-    push rbx    ;Save the sftindex
-    mov rdi, rsi
-    call close  ;Close the current SFT now
-    pop rax     ;Get the sftindex into eax
-    pop rdi
-    inc word [rdi + sft.wNumHandles]    ;Add one now
-    xor ebx, ebx
+;Duplicate SFT found!
+;rsi, the newly created SFT, is a duplicate of rdi, for this process.
+;We will close rsi.
+;We will keep rdi.
+    push rdi        ;Save ptr to the SFT we will keep
+    mov eax, ebx    ;Save the SFTNdx of the SFT we will keep
+;Now get the handle for the SFT we will keep.
+    xor ebx, ebx    ;Start from handle 0
 .jftlp:
     push rax
     mov eax, 1220h  ;getJFTPtr -> Get ptr to this jft entry in psp in rdi
     int 2Fh
     pop rax
-    jc .exit
-    cmp byte [rdi], al
+    jc .exitNormal  ;This should never happen... not a problem now though.
+    cmp byte [rdi], al  ;Is this JFT entry pointing to the SFT we will keep?
     je .jftFnd
     inc ebx
     jmp short .jftlp
 .jftFnd:
-    mov byte [rdi], -1
-    mov eax, ebx
+;Since the duplicate SFT has a valid JFT entry, we can now close the newly 
+; created SFT and free its JFT entry too.
+    push rbx    ;Save the handle for the SFT we will keep
+    mov rdi, rsi    ;Set rdi to point to the copy SFT
+    mov word [rdi + sft.wNumHandles], 0 ;Free the handle we just allocated
+    call close  ;And close the newly created duplicate SFT
+    pop rax     ;Return the handle to the still open SFT now
+    pop rdi     ;Return the pointer to the still open SFT now
+    inc word [rdi + sft.wNumHandles]    ;Inc ref cnt of the still open SFT
+    
+    mov rsi, qword [r8 + curHdlPtr] ;Get ptr to JFT entry for closed SFT
+    mov byte [rsi], -1              ;Free the old JFT entry
     jmp short .exit
 .exitNormal:
-    movzx eax, word [r8 + currentHdl]   ;Get the handle value to return
+    movzx eax, word [r8 + currentHdl]   ;Return the original handle value
 .exit:
     pop r8
     return
 
-closeRenDel:
-;On rename/delete/setattr, this function is called to check we can proceed
-; with the operation.
-;Finds MFT based on the filename in fname1Ptr in the dosseg
+closeCompatHdls:
+;Checks if all the SFTs for a filename are in compatibility mode (or netFCB) 
+; for the current machine and process and closes them all if they are. 
+;This is done because in on rename/delete/setattr, we check if we can proceed
+; with the operation. These operations will fail if handles are open for this 
+; file, unless all the handles for this file are in compatibility mode, in 
+; which case we then allow for "shareless" DOS behaviour, i.e. the operation
+; proceeding.
 ;----------------------------------------------------------------------------
-;Input: fname1Ptr -> Filename to do check on
+;Input: fname1Ptr -> Filename to find MFT for for
 ;Output: Nothing
 ;----------------------------------------------------------------------------
 ;If 
@@ -417,7 +438,7 @@ closeRenDel:
     push r8
     mov r8, qword [pDosseg]
     call critEnter
-.again:
+;.again:
     mov rsi, qword [r8 + fname1Ptr] ;Get the filename pointer
     call findMFT    ;Looks for this file
     jc .exit    ;If the file doesn't exist, exit
@@ -425,7 +446,7 @@ closeRenDel:
 ; Now check that all the files on this chain have the mid and pid of 
 ; the requester and (are in compatibility mode or a net SFT).
     mov rsi, qword [rbx + mft.pSFT] ;This cant be empty so it must be an SFT
-    mov rdi, rsi    ;Save this SFT pointer in rdi
+    mov rdi, rsi    ;Save this pSFT for closing later (if we are closing)
 .scanLp:
     mov eax, dword [r8 + dMID]
     cmp eax, dword [rsi + sft.dMID]
@@ -448,13 +469,31 @@ closeRenDel:
     mov rsi, qword [rsi + sft.pNextSFT]
     test rsi, rsi
     jnz .scanLp
+.closeLp:
 ;Here we must close all the handles referring to this SFT
 ;rdi -> First SFT 
+;************************
+;LINES MARKED WITH *** ARE EXPERIMENTAL. THEY SHOULD SPEED UP THE CLOSE PROCESS
+;This algorithm is ok as we dont need to check every SFT on the MFT repeatedly
+; after closing one SFT as we already have checked that all SFTs on the MFT 
+; chain meet the criterion starting for closing. Since there is only one MFT
+; for the filename, we can therefore close each SFT on the chain by
+; simply following the SFT link pointers. This process ends when the link ptr
+; is a NULL pointer. Note, we can't trust the MFT ptr as in the last case
+; the MFT gets freed. Also, there exists at least one SFT on chain so we dont 
+; start by checking that rdi is null.
+;************************
     mov qword [r8 + currentSFT], rdi    ;Set this SFT as current SFT
+    mov word [rdi + sft.wNumHandles], 1 ;Set count to 1 for proper cleanup***
+    push qword [rdi + sft.pNextSFT]     ;Save next SFT on stack***
 ;These two require currentSFT set
     call closeHandlesForSFT
     call closeSFT
-    jmp .again  ;Now do this again until no more files
+    pop rdi             ;Get next file in chain back***
+    test rdi, rdi       ;Is this file null?***
+    jz .exit            ;Exit if so***
+    jmp short .closeLp  ;Else, keep closing***
+    ;jmp .again  ;Now do this again until no more files
 
 
 dirUpdate:      
@@ -550,7 +589,7 @@ dirUpdate:
 
 .open:
 ;Here we handle new file opens! Copies data from the 
-; topmost (earliest opened) SFT (rsi) of the SFT chain into 
+; topmost (last opened) SFT (rsi) of the SFT chain into 
 ; the newly opened SFT (rdi)
     mov eax, dword [rsi + sft.dTimeDate]
     mov dword [rdi + sft.dTimeDate], eax
