@@ -84,7 +84,7 @@ functionDispatch:   ;Int 21h Main function dispatcher
     ;Save rax on entry to a disk funciton
     mov qword [oldRAX], rax
     ;Clear up error info
-    mov byte [errorLocus], 1    ;Reset to generic, unknown locus
+    mov byte [errorLocus], eLocUnk    ;Reset to generic, unknown locus
     mov byte [critErrFlag], 0   ;Clear the Critical Error Flag
     mov byte [errorDrv], -1     ;Set the drive which caused the error to none
 ;Default delchar UNLESS a function changes it. Placed here since delete/rename
