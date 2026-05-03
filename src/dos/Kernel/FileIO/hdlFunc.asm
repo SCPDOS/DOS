@@ -1871,10 +1871,12 @@ buildSFTEntry:
 ;Check if we are handling a volume label
     test al, attrFileVolLbl  ;Are we creating a volume label?
     jz .notVolLbl   ;Bit not set? Jump!
-;If we are, the previous search wouldn't have searched for all volids. Now
-; check for any volids. 
+;If we are, the previous search wouldn't have searched for all volids. 
+; Now check for any volids. 
     mov byte [volIdFlag], -1    ;Set the volid search bit
+    push rsi                    ;Save the current SFT ptr in rsi
     call searchDir              ;Searches the root dir
+    pop rsi
     mov byte [volIdFlag], 0     ;We are done searching for volid
     jnc .badBuildSFTAccDen ;If CF=NC, then we have found a vollbl, fail.
     cmp al, errNoFil
@@ -1993,10 +1995,12 @@ buildSFTEntry:
     xor eax, eax    ;Reset the search to the start of the current directory
     mov word [dirSect], ax
     mov dword [dirEntry], eax
-    push rdi
 ;Needs delChar setup. We only come here for creates so already setup!
-    call findFreeDiskDirEntry   ;rsi = ptr to a dir entry in a disk buffer
-    pop rdi ;Preserve rdi = curDirCopy
+    push rdi    ;Preserve rdi (ptr to curDiskCopy)
+    push qword [fcbName]    ;Need to preserve first char for volID work
+    call findFreeDiskDirEntry   ;rsi -> dir entry in a disk buffer
+    pop qword [fcbName]
+    pop rdi
     jnc .dirEntryFnd
     cmp dword [dirClustPar], 0  ;If the parent = 0 => Root Dir Fat12/16
     je .badBuildSFTAccDen ;Set CF and exit
@@ -2007,6 +2011,8 @@ buildSFTEntry:
     ;Else eax = Newly allocated cluster
     jmp short .searchForDirSpace
 .dirEntryFnd:
+;rsi -> Empty dir entry to write to in disk buffer
+;rdi -> curDirCopy
     xchg rdi, rsi
     mov ecx, 4
     rep movsq   ;Copy over the buffered directory
