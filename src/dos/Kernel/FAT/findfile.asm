@@ -267,20 +267,16 @@ findInBuffer:
     return
 .notLookingForEmpty:
     mov ah, byte [rsi + fatDirEntry.attribute]  ;ah = File attributes
-    and ah, ~(dirReadOnly | dirArchive) ;Avoid these two bits in search
-    test byte [volIdFlag], -1   ;If this is set, intervene in search.
-    jz .notVolIdExclusive
-    test ah, dirVolumeID   ;If we are a volid, clear CF return
-    jz .nextEntry
-    return
-.notVolIdExclusive:
-;If any entry has the volid bit set, it is considered a VOL id only.
+    and ah, ~dirArchive ;Drop the archive bit
+;SKIP LONG NAMES HERE
+    cmp ah, dirLongName
+    je .nextEntry
+;SKIP LONG NAMES HERE
+    and ah, ~dirReadOnly ;Now drop read only bit from search too
     cmp byte [fileDirFlag], 0   ;Are we in dir only mode?
     je .exclusiveDir
-    cmp al, dirVolumeID ;Are WE searching for a volume label?
-    je .volFile ;If so, go here
-    test ah, dirVolumeID ;Is this file a vollbl that we are not looking for?
-    jnz .nextEntry
+    cmp al, dirVolumeID ;Are we searching for a volume label?
+    je .volFile         ;If so, go here
     test ah, ah ;Regular files are always accepted at this point!
     jz .scanName
     cmp al, dirInclusive    ;Is this an inclusive search?
@@ -312,9 +308,20 @@ findInBuffer:
     jmp short .nextEntry
 
 .volFile:
+;Entered only if we are searching for a VolID
+;Entered with:
+; al = dirVolumeID (Our search bits)
+; ah = Dir Entry bits
+    push rax
+    and ah, dirDirectory | dirVolumeID
     cmp ah, al  ;Is the file indeed a Volume ID?
-    je .scanName       ;If so, scan the name agrees
-    jmp short .nextEntry    ;Else, goto next entry
+    pop rax
+    jne .nextEntry  ;If not, skip this.
+;Now, either we wanted a volid or we found a volid
+;Check whether we should ignore the name in the search.
+    test byte [volIdFlag], -1   ;If this is set, ignore the name.
+    retnz
+    jmp short .scanName       ;Else, scan the name agrees for search
 
 .searchEntryFound:
 ;Here a good entry was found!

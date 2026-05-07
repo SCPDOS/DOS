@@ -1807,10 +1807,12 @@ createMain:
     mov al, byte [rdi]     ;Get the drive letter
     sub al, "A"            ;Convert to a 0 based number
     mov byte [rebuildDrv], al  ;Set the volid rebuild var
-;Do a Set Media ID call 
-    call makVolLabel    ;Enter with al = Drive to rebuild for!
-;to sync the bootsector label
+;Do a Set Media ID call to sync the bootsector label.
+;NOTE!!! DOS Multitasking bug accounted for here:
+;makVolLabel must be in a dosCrit1 since the DPB will become 
+; "invalid" until the buildBPB call is made.
     call dosCrit1Enter
+    call makVolLabel    ;Enter with al = Drive to rebuild for!
     call getDiskDPB        ;Rebuild DPB and clear var
     call dosCrit1Exit
 .notVolLabel:
@@ -3211,17 +3213,23 @@ syncVolLabel:
     push rdx
     push rsi
     push rdi
-
+    
+    movzx eax, al   ;Zero extend the rest code to rest of the register
+    inc eax     ;Convert the 0 based drive number to a 1 based number
+    push rax    ;Save the 1 based drive number on the stack
     push rbx    ;Save subfunction code
-    mov bl, al  ;Save drive number
-    inc ebx     ;Turn into a 1 based drive number
-    mov eax, 0Dh
-    mov ecx, 0866h   ;IOCTL GET LABEL PACKET
+
+    mov ebx, eax    ;Save this number into eax
+    mov eax, 0Dh    ;IOCTL Function code
+    mov ecx, 0866h  ;IOCTL GET LABEL PACKET
     lea rdx, labelPkt
+    push rdx    ;Save the ptr to the xfr packet
     call ioctrl ;This call sets the working drive again to drive in bx
-    pop rbx     ;Get subfunction back
+    pop rdx     ;Get xfr packet ptr back
+    pop rax     ;Get the subfunction code back in eax
+    pop rbx     ;Get the 1 based drive number back into bl (ebl)
     jc .exit
-    test ebx, ebx
+    test eax, eax   ;Check subfunction to do 
     jnz .defaultLbl
     lea rsi, fcbName
     jmp short .makePkt
@@ -3229,12 +3237,13 @@ syncVolLabel:
     lea rsi, dosDfltLbl
 .makePkt:
 ;rsi -> Source of 11 chars to copy over
+;bx = 1 based drive number to operate on
+;rdx -> Packet to work on
     lea rdi, qword [rdx + idParamBlk.volLab]    ;Point rdi here
     mov ecx, 11
     rep movsb
     mov ecx, 0846h  ;IOCTL SET LABEL PACKET
-    mov eax, 0Dh
-    xor ebx, ebx    ;Use default drive now (set in previous ioctl call)
+    mov eax, 0Dh    ;IOCTL Function code
     call ioctrl
 .exit:
     pop rdi
