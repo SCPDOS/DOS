@@ -427,7 +427,7 @@ sdlQuick:
 sdlServer:
 setDriverLookahead:
     mov byte [lookahead], al    
-    iretq
+    return
 
 ;========================================:
 ;            Kernel Functions            :
