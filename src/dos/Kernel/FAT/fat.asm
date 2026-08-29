@@ -310,13 +310,15 @@ findFreeClusterData:
     cmp eax, -1 ;First free cluster = -1 means disk full!
     je .exit
     ;Else, eax has the first free cluster. Keep reading FAT
-    call incrementFreeClusterCount  ;Increment the count for the first clust!
+    mov ebx, eax    ;Save the cluster number
+    jmp short .incGo
 .lp:
     mov ebx, eax    ;Save the cluster number
     call readFAT    ;Get dereferenced value in eax
     jc .exitFail
     test eax, eax
     jnz .notFree
+.incGo:
     call incrementFreeClusterCount  ;Increment the count!
 .notFree:
     lea eax, dword [ebx + 1]    ;Get the next consecutive cluster
@@ -748,18 +750,17 @@ writeFSInfoSector:
     push rdx
     push rsi
     push rdi
-
     xor eax, eax        ;Get sector 0
     call getBufForDOS   ;Get a buffer Sector 0 pointed to be rbx
     jc .exit
-    movzx eax, word [rbx + bufferHdr.dataarea + bpb32.FSinfo]
+    movzx eax, word [rbx + bufferHdr.dataarea + oemHeader_size + bpb32.FSinfo]
     test eax, eax
     jz .exit
     cmp eax, 0FFFFh ;If this is unknown, return
     je .exit
 ;First compute where the backup FSInfo is
     mov ecx, eax    ;(e)ax has FSInfo sector number
-    add cx, word [rbx + bufferHdr.dataarea + bpb32.BkBootSec]    
+    add cx, word [rbx + bufferHdr.dataarea + oemHeader_size + bpb32.BkBootSec]    
     ;cx now has the backup sector
 ;If they are equal, because backup boot sector is 0, set ecx to -1
     cmp ecx, eax
