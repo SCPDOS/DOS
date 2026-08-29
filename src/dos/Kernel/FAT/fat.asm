@@ -715,19 +715,24 @@ readFSInfoSector:
 ;We reset with some sane defaults in the event of bad data
     mov dword [rbp + dpb.dNextFreeClst], -1  ;Start is default (clust 2)
     mov dword [rbp + dpb.dFreeClustCnt], -1  ;Unknown
-    ;Start with next free check
+;Start with free count check. If anything fails, dont trust the data.
+    mov edx, dword [rbx + bufferHdr.dataarea + FSInfo.freeCount]
+    cmp edx, dword [rbp + dpb.dMaxClusterAddr]
+    ja .exit
+;Then do next free check.
     mov eax, dword [rbx + bufferHdr.dataarea + FSInfo.nextFree] 
     cmp eax, dword [rbp + dpb.dMaxClusterAddr]
-    ja .skipFirstFree
-    cmp eax, 2
-    jb .skipFirstFree
-    mov dword [rbp + dpb.dNextFreeClst], eax
-.skipFirstFree:
-    ;Now we do free count check
-    mov eax, dword [rbx + bufferHdr.dataarea + FSInfo.freeCount]
-    cmp eax, dword [rbp + dpb.dMaxClusterAddr]
     ja .exit
-    mov dword [rbp + dpb.dFreeClustCnt], eax
+    cmp eax, 2
+    jb .exit
+;Now verify that this cluster is actually free.
+    mov ebx, eax
+    call readFAT
+    test eax, eax   ;If not free, we can't trust this FSInfo. 
+    jnz .exit
+;If everything passes, we update both fields.
+    mov dword [rbp + dpb.dNextFreeClst], ebx
+    mov dword [rbp + dpb.dFreeClustCnt], edx
 .exit:
     clc
     return
