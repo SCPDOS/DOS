@@ -10,47 +10,47 @@ execOverlay equ 3
 execBkgrnd  equ 4
 
 struc execFrame
-    .oldRBP     resq 1  
-    .bSubFunc   resq 1  ;Subfunction number
-    .wProgHdl   resq 1  ;File handle number for executable file
-    .wNameLen   resq 1  ;Needs to be less than 64 but welp
-    .pParam     resq 1  ;Parameter list pointer
-    .pProgname  resq 1  ;Ptr to ASCIIZ program name
+    .oldRBP     dq ?  
+    .bSubFunc   dq ?  ;Subfunction number
+    .wProgHdl   dq ?  ;File handle number for executable file
+    .wNameLen   dq ?  ;Needs to be less than 64 but welp
+    .pParam     dq ?  ;Parameter list pointer
+    .pProgname  dq ?  ;Ptr to ASCIIZ program name
 
-    .pEnvBase   resq 1  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
-    .pPSPBase   resq 1  ;Ptr to new PSP base address
-    .pProgBase  resq 1  ;Ptr to Prog. Base addr., ALIGNED FOR FIRST EXE SECTION
-    .dProgSize  resq 1  ;Program size is saved here, PSP included.
-    .dCOFFhdr   resq 1  ;Offset in file to COFF header. Set to 0 for COM
-    .bSegCount  resq 1  ;Count of segments loaded into memory
-    .wCOFFChars resq 1  ;Save the COFF characteristics in here
+    .pEnvBase   dq ?  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
+    .pPSPBase   dq ?  ;Ptr to new PSP base address
+    .pProgBase  dq ?  ;Ptr to Prog. Base addr., ALIGNED FOR FIRST EXE SECTION
+    .dProgSize  dq ?  ;Program size is saved here, PSP included.
+    .dCOFFhdr   dq ?  ;Offset in file to COFF header. Set to 0 for COM
+    .bSegCount  dq ?  ;Count of segments loaded into memory
+    .wCOFFChars dq ?  ;Save the COFF characteristics in here
 .pProgEP:   ;Program EP, recycle this qword
-    .wNumSeg    resq 1  ;Number of segments, consider reusing NameLen
-    .dFilePtr   resq 1  ;Keep of track of where in file we are
-    .qRelocVal  resq 1  ;Used when computing relocations, Rebasing factor
+    .wNumSeg    dq ?  ;Number of segments, consider reusing NameLen
+    .dFilePtr   dq ?  ;Keep of track of where in file we are
+    .qRelocVal  dq ?  ;Used when computing relocations, Rebasing factor
 endstruc
 
 ;Possible blocks to be pointed to by rbx
 
 struc execProg 
-    .pEnv       resq 1  ;Ptr to environment block (or 0 => copy parent env)
-    .pCmdLine   resq 1  ;Ptr to the command line to be placed at PSP + 80h
-    .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
-    .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
+    .pEnv       dq ?  ;Ptr to environment block (or 0 => copy parent env)
+    .pCmdLine   dq ?  ;Ptr to the command line to be placed at PSP + 80h
+    .pfcb1      dq ?  ;Ptr to the first FCB (parsed argument 1)
+    .pfcb2      dq ?  ;Ptr to the second FCB  (parsed argument 2)
 endstruc
 
 struc loadProg
-    .pEnv       resq 1  ;Ptr to environment block (or 0 => copy parent env)
-    .pCmdLine   resq 1  ;Ptr to the command line to be placed at PSP + 80h
-    .pfcb1      resq 1  ;Ptr to the first FCB (parsed argument 1)
-    .pfcb2      resq 1  ;Ptr to the second FCB  (parsed argument 2)
-    .initRSP    resq 1  ;Return the start value for rsp
-    .initRIP    resq 1  ;Return the entry point for the task
+    .pEnv       dq ?  ;Ptr to environment block (or 0 => copy parent env)
+    .pCmdLine   dq ?  ;Ptr to the command line to be placed at PSP + 80h
+    .pfcb1      dq ?  ;Ptr to the first FCB (parsed argument 1)
+    .pfcb2      dq ?  ;Ptr to the second FCB  (parsed argument 2)
+    .initRSP    dq ?  ;Return the start value for rsp
+    .initRIP    dq ?  ;Return the entry point for the task
 endstruc
 
 struc loadOvly
-    .pLoadLoc   resq 1  ;Address in memory to load the overlay
-    .qRelocFct  resq 1  ;Relocation address for relocatable items (0 for COM files)
+    .pLoadLoc   dq ?  ;Address in memory to load the overlay
+    .qRelocFct  dq ?  ;Relocation address for relocatable items (0 for COM files)
 endstruc
 
 ;----------------------------
@@ -61,25 +61,25 @@ endstruc
 dosMagicSignature   equ "MZ"
 dosMagicSignature2  equ "ZM"
 struc imageDosHdr
-    .e_magic    resw 1  ;      // Magic number
-    .e_cblp     resw 1  ;      // Bytes on last page of file
-    .e_cp       resw 1  ;      // Pages in file
-    .e_crlc     resw 1  ;      // Relocations
-    .e_cparhdr  resw 1  ;      // Size of header in paragraphs
-    .e_minalloc resw 1  ;      // Minimum extra paragraphs needed
-    .e_maxalloc resw 1  ;      // Maximum extra paragraphs needed
-    .e_ss       resw 1  ;      // Initial (relative) SS value
-    .e_sp       resw 1  ;      // Initial SP value
-    .e_csum     resw 1  ;      // Checksum
-    .e_ip       resw 1  ;      // Initial IP value
-    .e_cs       resw 1  ;      // Initial (relative) CS value
-    .e_lfarlc   resw 1  ;      // File address of relocation table
-    .e_ovno     resw 1  ;      // Overlay number
-    .e_res      resw 4  ;      // Reserved words
-    .e_oemid    resw 1  ;      // OEM identifier (for e_oeminfo)
-    .e_oeminfo  resw 1  ;      // OEM information; e_oemid specific
-    .e_res2     resw 10 ;      // Reserved words
-    .e_lfanew   resd 1  ;      // File address of new exe header
+    .e_magic    dw ?  ;      // Magic number
+    .e_cblp     dw ?  ;      // Bytes on last page of file
+    .e_cp       dw ?  ;      // Pages in file
+    .e_crlc     dw ?  ;      // Relocations
+    .e_cparhdr  dw ?  ;      // Size of header in paragraphs
+    .e_minalloc dw ?  ;      // Minimum extra paragraphs needed
+    .e_maxalloc dw ?  ;      // Maximum extra paragraphs needed
+    .e_ss       dw ?  ;      // Initial (relative) SS value
+    .e_sp       dw ?  ;      // Initial SP value
+    .e_csum     dw ?  ;      // Checksum
+    .e_ip       dw ?  ;      // Initial IP value
+    .e_cs       dw ?  ;      // Initial (relative) CS value
+    .e_lfarlc   dw ?  ;      // File address of relocation table
+    .e_ovno     dw ?  ;      // Overlay number
+    .e_res      dw 4 dup (?)    ;      // Reserved words
+    .e_oemid    dw ?  ;      // OEM identifier (for e_oeminfo)
+    .e_oeminfo  dw ?  ;      // OEM information; e_oemid specific
+    .e_res2     dw 10 dup (?)   ;      // Reserved words
+    .e_lfanew   dd ?  ;      // File address of new exe header
 endstruc
 
 ;Pssobile signatures pointed to by e_lfanew
@@ -91,14 +91,14 @@ imagePESignature    equ 00004550h   ; PE00, ACCEPT
 ;COFF File header @ [e_lfanew]
 
 struc imageFileHeader
-    .dPESignature        resd 1  ;PESignature, must be PE00
-    .wMachineType        resw 1  ;Machine Type, must be imageFileMachineAMD64
-    .wNumberOfSections   resw 1  ;Number of sections in file
-    .dTimeDateStamp      resd 1  ;Unix datestamp
-    .dPtrToSymbolTbl     resd 1  ;Pointer to the symbol table,      NOT USED
-    .dNumberOfSymbols    resd 1  ;Number of symbols in the table,   NOT USED
-    .wSizeOfOptionalHdr  resw 1  ;Size of the optional header
-    .wCharacteristics    resw 1  ;Bitfield characteristics
+    .dPESignature        dd ?  ;PESignature, must be PE00
+    .wMachineType        dw ?  ;Machine Type, must be imageFileMachineAMD64
+    .wNumberOfSections   dw ?  ;Number of sections in file
+    .dTimeDateStamp      dd ?  ;Unix datestamp
+    .dPtrToSymbolTbl     dd ?  ;Pointer to the symbol table,      NOT USED
+    .dNumberOfSymbols    dd ?  ;Number of symbols in the table,   NOT USED
+    .wSizeOfOptionalHdr  dw ?  ;Size of the optional header
+    .wCharacteristics    dw ?  ;Bitfield characteristics
 endstruc
 
 ;The only valid values in the .machineType field
@@ -113,35 +113,35 @@ imageFileExecutable     equ 0002h   ;Must always be set else badfmterr
 ;Optional header, immediately follows COFF header
 
 struc imageFileOptionalHeader
-	.wMagic                     resw 1 ;0x010b - PE32, 0x020b - PE32+ (64 bit)
-	.bMajorLinkerVersion        resb 1
-	.bMinorLinkerVersion        resb 1
-	.dSizeOfCode                resd 1
-	.dSizeOfInitializedData     resd 1
-	.dSizeOfUninitializedData   resd 1
-	.dAddressOfEntryPoint       resd 1  ;RVA of the EP for program
-	.dBaseOfCode                resd 1
-    .qImageBase                 resq 1  ;Preferred load address  
-	.dSectionAlignment          resd 1
-	.dFileAlignment             resd 1
-	.wMajOSVer                  resw 1
-	.wMinOSVer                  resw 1
-	.wMajorImageVersion         resw 1
-	.wMinorImageVersion         resw 1
-	.wMajorSubsystemVersion     resw 1
-	.wMinorSubsystemVersion     resw 1
-	.dWin32VersionValue         resd 1
-	.dSizeOfImage               resd 1  ;Size of ctg mem to hold program
-	.dSizeOfHeaders             resd 1
-	.dCheckSum                  resd 1
-	.wSubsystem                 resw 1
-	.wDllCharacteristics        resw 1
-	.qSizeOfStackReserve        resq 1
-	.qSizeOfStackCommit         resq 1  ;Default stack allocation is 256Kb
-	.qSizeOfHeapReserve         resq 1
-	.qSizeOfHeapCommit          resq 1
-	.dLoaderFlags               resd 1
-	.dNumberOfRvaAndSizes       resd 1  ;Number of data dirs entries in header
+	.wMagic                     dw ? ;0x010b - PE32, 0x020b - PE32+ (64 bit)
+	.bMajorLinkerVersion        db ?
+	.bMinorLinkerVersion        db ?
+	.dSizeOfCode                dd ?
+	.dSizeOfInitializedData     dd ?
+	.dSizeOfUninitializedData   dd ?
+	.dAddressOfEntryPoint       dd ?  ;RVA of the EP for program
+	.dBaseOfCode                dd ?
+    .qImageBase                 dq ?  ;Preferred load address  
+	.dSectionAlignment          dd ?
+	.dFileAlignment             dd ?
+	.wMajOSVer                  dw ?
+	.wMinOSVer                  dw ?
+	.wMajorImageVersion         dw ?
+	.wMinorImageVersion         dw ?
+	.wMajorSubsystemVersion     dw ?
+	.wMinorSubsystemVersion     dw ?
+	.dWin32VersionValue         dd ?
+	.dSizeOfImage               dd ?  ;Size of ctg mem to hold program
+	.dSizeOfHeaders             dd ?
+	.dCheckSum                  dd ?
+	.wSubsystem                 dw ?
+	.wDllCharacteristics        dw ?
+	.qSizeOfStackReserve        dq ?
+	.qSizeOfStackCommit         dq ?  ;Default stack allocation is 256Kb
+	.qSizeOfHeapReserve         dq ?
+	.qSizeOfHeapCommit          dq ?
+	.dLoaderFlags               dd ?
+	.dNumberOfRvaAndSizes       dd ?  ;Number of data dirs entries in header
 endstruc
 
 romMagicNum     equ 0107h
@@ -151,13 +151,13 @@ pe64MagicNum    equ 020Bh
 ;Data directory header structure
 
 struc imageDataDirectory
-    .virtualAddress  resd 1
-    .size    resd 1
+    .virtualAddress  dd ?
+    .size    dd ?
 endstruc
 
 struc baseRelocBlock
-    .pageRVA    resd 1  ;Offset from the load address
-    .size       resd 1  ;Number of bytes in this block
+    .pageRVA    dd ?  ;Offset from the load address
+    .size       dd ?  ;Number of bytes in this block
     ;Each entry is a word. High 4 bits are type of reloc (all must be 0Ah)
 endstruc
 ;Section headers that form the Section Table.
@@ -165,16 +165,16 @@ endstruc
 ;Each entry is one imageSectionHdr
 
 struc imageSectionHdr       ;size 40 bytes
-    .qName                  resb 8
-	.dVirtualSize           resd 1  ;If this is bigger than RawData, 0 pad
-	.dVirtualAddress        resd 1  ;Offset from ImageBase
-	.dSizeOfRawData         resd 1
-	.dPointerToRawData      resd 1  ;File pointer location
-	.dPointerToRelocations  resd 1
-	.dPointerToLinenumbers  resd 1
-	.wNumberOfRelocations   resw 1
-	.wNumberOfLinenumbers   resw 1
-	.dCharacteristics       resd 1
+    .qName                  db 8 dup (?)
+	.dVirtualSize           dd ?  ;If this is bigger than RawData, 0 pad
+	.dVirtualAddress        dd ?  ;Offset from ImageBase
+	.dSizeOfRawData         dd ?
+	.dPointerToRawData      dd ?  ;File pointer location
+	.dPointerToRelocations  dd ?
+	.dPointerToLinenumbers  dd ?
+	.wNumberOfRelocations   dw ?
+	.wNumberOfLinenumbers   dw ?
+	.dCharacteristics       dd ?
 endstruc
 
 ;Section Hdr characteristics flags 
