@@ -725,11 +725,6 @@ readFSInfoSector:
     ja .exit
     cmp eax, 2
     jb .exit
-;Now verify that this cluster is actually free.
-    mov ebx, eax
-    call readFAT
-    test eax, eax   ;If not free, we can't trust this FSInfo. 
-    jnz .exit
 ;If everything passes, we update both fields.
     mov dword [rbp + dpb.dNextFreeClst], ebx
     mov dword [rbp + dpb.dFreeClustCnt], edx
