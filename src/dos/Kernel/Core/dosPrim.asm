@@ -168,11 +168,13 @@ absDiskDriverCall:
 ;       eax = Status word from request
 ;       ecx = Number of sectors transferred
     push rsi
+    push rbp
     ;Get number of sectors to transfer in ecx (if not in ecx already)
     mov ecx, dword [primReqPkt + ioReqPkt.tfrlen]
     ;Prepare for goDriver now
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Point to device driver
     call goDriver   ;Make request
+    pop rbp
     pop rsi
     mov eax, dword [primReqPkt + ioReqPkt.tfrlen]   ;Get actual num tfrd
     sub ecx, eax    ;Get positive difference of the two 

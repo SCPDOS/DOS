@@ -290,6 +290,7 @@ dataBuffer  equ 8h  ;File Data sector in buffer
 refBuffer   equ 20h ;Data in buffer has been referenced by an application
 dirtyBuffer equ 40h ;Data in buffer modified by an application
 freeBuffer  equ 00FFh   ;A word which goes into the drive number to clear both fields
+freeDrv     equ 0FFh    ;Same as above, just without modifying flags
 ;Note! A buffer is marked as referenced when the buffer is "obtained" by a syscall
 ;------------------------------------------------------------------------;
 ; Memory control block for each memory arena

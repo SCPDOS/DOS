@@ -5,6 +5,9 @@ diskIOError:
 ;       eax = Status word
 ;       rdi -> buffer pointer
 ;       rbp -> DPB ptr
+;       cl = Data type (buffer type, i.e. DOS, FAT, Dir, Data)
+;Output: al = Action Code
+;   Preserves rbx-rbp
     cmp al, drvBadDskChnge
     jne .doReq
     push rax    ;If a bad disk change, drop the volume label ptr here
@@ -13,7 +16,16 @@ diskIOError:
     ;Later versions will include a serial number after the lbl too
     pop rax
 .doReq:
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    mov byte [rdi + bufferHdr.bufferFlags], cl  ;Put here as bufferHdr free
     call diskDevErr ;Preserves rdi on stack and rbp in tmpDPBPtr
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
     return
 xlatHardError:
 ;Translates a hard error code to a generic DOS error
@@ -58,7 +70,7 @@ diskDevErr:
 ;       rbp = Disk DPB pointer
 ; [Int24hbitfld] = Specific bitflags (r/w AND potential extra ok responses)
 ;Output: al = Int 24h response (0-3)
-; All other registers preserved
+; All other registers destroyed
     mov bl, dataBuffer  ;Set dflt flags for invoke
     test rdi, rdi       ;Is this a share invokation?
     je .skipbufferread  ;Jump if so, since share lock issues occur on data io
