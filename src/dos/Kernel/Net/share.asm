@@ -134,20 +134,20 @@ shareCheckReadLockViolation:
 
 shareLockViolationCriticalError:
 ;This does NOT force rwFlag to 0 and signals a lock violation
-    push rdi
+    push rcx
     mov eax, errLokVio
     jmp short shareCriticalError.common
 shareCriticalError: ;Int 2Fh AX=120Ah
 ;Used for share Read requests
 ;Input: eax = Error code
-    push rdi
+    push rcx
     mov byte [rwFlag], 0    ;Default to read
 .common:
     mov byte [Int24bitfld], critRetryOK | critFailOK
     mov rbp, qword [workingDPB] 
-    xor edi, edi   ;Indicate that this was due to share
+    mov ecx, dataBuffer   ;Share violations happen on data buffers.
     call diskDevErr
-    pop rdi
+    pop rcx
     cmp al, critRetry   ;If we returned retry, return plainly, else set CF
     rete
     stc

@@ -317,7 +317,7 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     wEOAttribs  dw ?  ;Symbol to the next two bytes (USER CX)
     pszEOfile   dq ?  ;Ptr to null terminated string to file name (USER RSI)
 ;Error DPB 
-    tmpDPBPtr   dq ?  ;A DPB for error/temporary situations
+    errRbp      dq ?  ;A var for rbp for error/temporary situations
 ;No clash recycling below var as the vars in SDA are invalid if in CPU 
 ; exception hdlr. This var gets cleared on entry to the exception handler. 
 ;If it remains clear, the task will Abort. If it gets set, DOS or COMMAND.COM 

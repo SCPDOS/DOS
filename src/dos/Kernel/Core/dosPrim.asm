@@ -326,15 +326,12 @@ ensureDiskValid:
     return
 .diskDrvCritErr:
 ;Critical Errors fall through here
-    ;rbp has dpb ptr, di has status word, rsi points to the driver
+;rbp has dpb ptr, edi has status word, rsi points to the driver
     mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset freecluster count
-    mov qword [tmpDPBPtr], rbp  ;Save current DPB ptr here
-    ;mov ah, critRead | critFAT | critFailOK | critRetryOK
-    mov ah, critRead | critDOS | critFailOK | critRetryOK
-    mov byte [Int24bitfld], ah  ;Save the permissions in var
-    movzx edi, dil  ;Clear the upper bytes, save only error code
-    call diskDevErrBitfield ;Goto disk crit error, but with bitfield set
-    mov rbp, qword [tmpDPBPtr]
+    mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
+    mov eax, edi        ;Get the status word in eax
+    mov ecx, dosBuffer
+    call diskIOError    ;Goto disk crit error, but with bitfield set
     cmp al, critRetry
     je ensureDiskValid
 .errorExitBad:
@@ -349,19 +346,11 @@ ensureDiskValid:
     test word [rbp + drvHdr.attrib], devDrvOpClRem
     pop rbp
     jz .dbeExit     ;Just return Invalid Disk Swap if bit not set
-;rbp points to the dpb still
-    push rdi
-    mov rdi, qword [primReqPkt + mediaCheckReqPkt.desptr]   ;Get the pointer into rdi
-    mov qword [errorVolLbl], rdi    ;Save the erroring volume label pointer
-    pop rdi ;Get back the buffer pointer
+;Setup the pseudo driver error
     mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
-;Do not touch the read/write flag as this is set by the read/write operation.
-;It is meaningless in the error here, but may affect the message
-; that comes up on the handler (not a big deal). Since we report a bad
-; media change here, it should be obvious not to include the read/write 
-; string.
+    mov ecx, dosBuffer       ;Report a dos buffer here
     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
-    call diskDevErr
+    call diskIOError
     cmp al, critFail    ;Did the user select fail?
     jne ensureDiskValid  ;If not, try again!
 .dbeExit:

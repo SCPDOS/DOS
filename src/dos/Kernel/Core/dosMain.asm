@@ -241,6 +241,27 @@ extErrExit:
     or byte [rsi + callerFrame.flags], 1    ;Set error flag
     stc ;Set carry flag for if this function is called deep inside DOS
     return
+xlatHardError:
+;Translates a hard error code to a generic DOS error
+;Input: edi = Hard Error Code
+;       ah = Bitfield
+;       al = Failing drive number
+    push rax    ;Wanna preserve ax
+    cmp di, hardXlatTblL    ;If errorcode > 15, do not adjust!!
+    movzx eax, di
+    jae .skipXlat   ;Skip xlat if above 15, for IOCTL return errors
+    push rbx
+    lea rbx, hardXlatTbl
+    xlatb    ;Get translated byte from the table in al
+    pop rbx
+.skipXlat:
+    mov word [errorExCde], ax   ;Store this error code here
+    pop rax
+    push rsi
+    lea rsi, hardErrTbl
+    call setErrorVars
+    pop rsi
+    return
 xLatError:
 ;Translates the error code given in ax and sets error code in the var
 ; Input: ax = Extended Error Code

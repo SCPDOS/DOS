@@ -159,6 +159,7 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     push rcx
     push rdx
     push rsi
+    push rdi
     push rbp
 ;If the buffer is freed, empty or on an erroring disk, skip flushing
     mov eax, freeBuffer
@@ -171,18 +172,15 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     cmp al, byte [errorDrv] ;Was this drive the error drive?
     je .fbExit  ;Skip write if this disk has caused an in-process error
 ;Now setup the error bitfields for this request.
-    mov byte [Int24bitfld], critWrite | critRetryOK | critFailOK
-    test ah, dataBuffer
-    jz .fbWriteSetup
-    or byte [Int24bitfld], critIgnorOK
-.fbWriteSetup:
     movzx ecx, ah   ;Get the buffer flags here
-    movzx ebx, byte [rdi + bufferHdr.bufFATcopy]
+    lea rbx, qword [rdi + bufferHdr.dataarea]
+    movzx esi, byte [rdi + bufferHdr.bufFATcopy]
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
     call writeSectorBuffer
 .fbExit:
     pop rbp
+    pop rdi
     pop rsi
     pop rdx
     pop rcx
@@ -190,46 +188,57 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
     pop rax
     return
 
-writeSectorBuffer:
-;Writes a sector from a built and freed sector buffer
+writeSectorBuffer:  ;Internal Linkage
+;Writes a sector from a buffer.
 ;Input: 
-; rbx = byte: Number of copies to write.
-; rcx = byte: Original buffer flags
+; rbx = qword ptr: Buffer area to write from.
+; rcx = byte: Buffer flags
 ; rdx = qword: Sector to write
-; rdi = qword ptr: Free buffer header.
+; rsi = byte: Number of copies to write.
 ; rbp = qword ptr: DPB pointer
-    xor esi, esi
-.wsbWriteDisk:
+;Exit:  CF=NC : Success (at least one write succeeded)
+;               rdx = Sector actually read in.
+;       CF=CY : Fail, all writes failed. Terminate the request
+;               rdi = Nmuber of successful writes.
+;       All other regs except rax, rsi and rdi preserved.
+    mov byte [Int24bitfld], critWrite | critRetryOK | critFailOK
+    test cl, dataBuffer
+    jz .wsWriteSetup
+    or byte [Int24bitfld], critIgnorOK
+.wsWriteSetup:
+    xor edi, edi    ;Successful write count
+.wsWriteDisk:
     push rbx    ;# copies to write
     push rcx    ;Buffer flags
     push rdx    ;The LBA of the buffer that we are writing
-    mov ecx, 1  ;One sector to copy
-    lea rbx, qword [rdi + bufferHdr.dataarea]
+    mov ecx, 1  ;One sector to write
     call primReqWriteSetup      ;Setup request (preserves setup registers)
     call absDiskDriverCall      ;Make Driver Request. Always returns CF=NC.
     pop rdx
     pop rcx
     pop rbx
-    jnz .wsbHardError
-    inc esi         ;One successful write!
-    dec ebx         ;Drop the count
-    jz .wsbExit     ;Once this goes to 0, stop writing FAT copies
-    mov eax, dword [rdi + bufferHdr.bufFATsize]
-    add rdx, rax ;Add the FAT size to the LBA (rdx has LBA number)
-    jmp short .wsbWriteDisk ;Make another request for the other FAT copy
-.wsbExit:
-    test esi, esi   ;If no successful writes, fail!
+    jnz .wsHardError
+    inc edi         ;One successful write!
+.wsCheckNext:
+    mov eax, dword [rbp + dpb.dFATlength]
+    add rdx, rax    ;Add offset to the next copy to write (FAT only) 
+    dec esi         ;One less copy to write
+    jnz .wsWriteDisk ;Jump if we gotta write another copy!
+    test edi, edi   ;Return CF=NC if we had any successful writes.
     retnz
-.wsbFail:
-    stc
+    stc             ;Return CF=CY if all writes failed.
     return
-.wsbHardError:
+.wsHardError:
 ;Request failed, call hard error handler. If the user aborts, data NOT lost.
 ;At this point, ax = Error code, rbp -> DPB, cl = Buffer flags
-    call diskIOError ;Call with rdi -> Buffer header and eax = Status Word
+    call diskIOError ;Returns al = Action code. Other regs preserved.
     cmp al, critRetry
-    je writeSectorBuffer    ;Needed regs are preserved so go.
-    jmp short .wsbFail      ;Everything else sets CF
+    je writeSectorBuffer    ;Needed regs are preserved so go again.
+;Else, check if we have to write any more sectors. In all cases, except FAT
+; this propagates FAIL. In the case of a first FAT, this will force an attempt
+; at writing the subsequent FATs. If even one of them passes, then we convert
+; the fail into a success.
+    jmp short .wsCheckNext  
 
 testDirtyBufferForDrive:    ;External linkage
 ;Searches the buffer chain for a dirty buffer for a given drive letter.
@@ -317,45 +326,42 @@ getBuffer: ;Internal Linkage ONLY
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
 ;At this point, qword [currBuff] has the same pointer as rdi.
-    call flushAndFreeBuffer
-    retc    ;Return without marking this buffer as referenced
+    call flushAndFreeBuffer ;Preserves all DOS regs.
+    jc .rbExit
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
 ;Thus we have a free buffer to work with.
-    mov rdx, rax
-    cmp cl, fatBuffer
-    mov ebx, 1  ;Default count of sector reads
-    movzx esi, byte [rbp + dpb.bNumberOfFATs]  ;Get FAT count if FAT sector
-    cmovne esi, ebx  ;If fatBuffer, use bNumberOfFATs, else use 1
+    mov rdx, rax    ;Move the sector number into rdx
     lea rbx, qword [rdi + bufferHdr.dataarea]
 ;Here, regs are setup for the function we call below.
     call readSectorBuffer ;Carry the flag from the request
-    retc    ;Return without marking this buffer as referenced
-    ;Need to write the correct data into the buffer header if OK read.
+    jc .rbExit
+;Need to write the correct data into the buffer header if OK read.
+    mov rdi, qword [currBuff]   ;Get current buffer
     mov qword [rdi + bufferHdr.driveDPBPtr], rbp
     mov qword [rdi + bufferHdr.bufferLBA], rdx
     mov byte [rdi + bufferHdr.bufferFlags], cl
     movzx eax, byte [rbp + dpb.bDriveNumber]
     mov byte [rdi + bufferHdr.driveNumber], al
-    mov dword [rdi + bufferHdr.bufFATsize], 0
+;Now we do the FAT specific adjustments.
+    xor edx, edx    ;FAT size
+    mov ebx, edx    
+    inc ebx         ;FAT copies
     movzx eax, byte [rbp + dpb.bNumberOfFATs]
-    mov byte [rdi + bufferHdr.bufFATcopy], 1
     test cl, fatBuffer
-    jz .rbExit
-;Here we do the FAT specific adjustments.
+    cmovz eax, ebx  ;If not fat buffer, set number of FATs to 1
+    mov dword [rdi + bufferHdr.bufFATcopy], eax
     mov eax, dword [rbp + dpb.dFATlength]
+    cmovz eax, edx  ;If not FAT, store zero.
     mov dword [rdi + bufferHdr.bufFATsize], eax
-    movzx eax, byte [rbp + dpb.bNumberOfFATs]
-    mov byte [rdi + bufferHdr.bufFATcopy], al
     jmp short .rbExit   ;Jump preserving the carry flag
 
 readSectorBuffer:   ;Internal Linkage
-;Reads a sector into a built sector buffer
+;Reads a sector into a buffer. 
 ;Entry: 
 ; rbx = qword ptr: Buffer area to read into.
 ; rcx = byte: Buffer flags.
 ; rdx = qword: Sector to read
 ; rsi = byte: Number of read attempts. (multiple on FAT sectors)
-; rdi = qword ptr: Free buffer header for buffer.
 ; rbp = qword ptr: DPB pointer
 ;Exit:  CF=NC : Success
 ;               rdx = Sector actually read in.
@@ -381,8 +387,8 @@ readSectorBuffer:   ;Internal Linkage
     jmp short .rsDoReq
 .rsHardErr:
 ;Driver reported error.
-;At this point, ax = Error code, rdi -> buffer header.
-    call diskIOError    ;Returns al = Action code
+;At this point, ax = Error code, rbp -> DPB, cl = Buffer flags
+    call diskIOError    ;Returns al = Action code. Other regs preserved.
     cmp al, critRetry
     je short .rsDoReq
     stc ;Set error flag to indicate fail

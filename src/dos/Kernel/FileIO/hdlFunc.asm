@@ -2816,7 +2816,7 @@ hardEOFexit:
     mov byte [errorLocus], eLocUnk
     mov byte [errorAction], eActAbt
     mov byte [errorClass], eClsOoR
-    mov qword [tmpDPBPtr], rbp  ;Save the DPB pointer here (if a disk file)
+    mov qword [errRbp], rbp  ;Save the DPB pointer here (if a disk file)
     test word [rdi + sft.wDeviceInfo], devCharDev
     jnz .i24CharDev
     mov rsi, qword [rdi + sft.qPtr] ;Get the DPB pointer from the SFT
