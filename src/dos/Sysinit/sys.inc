@@ -72,7 +72,7 @@ EXTERN errorDrv
 EXTERN currentNdx
 EXTERN switchChar
 EXTERN ctryTbl
-EXTERN serverDispTblPtr
+EXTERN pServerDispTbl
 EXTERN currentDTA
 EXTERN cdsHeadPtr
 EXTERN dpbHeadPtr

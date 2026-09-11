@@ -313,25 +313,25 @@ ensureDiskValid:
     jnz .diskDrvCritErr
     ;Now rebuild the dpb fields for this drive
     mov rsi, qword [rbx + bpbBuildReqPkt.bpbptr]    ;Get ptr to BPB
-    push rbx
     call createDPB  ;Modifies rbx and clears the free cluster count
-    pop rbx
     ;Adjust the buffer header information
+    mov rbx, qword [pCurrBuff]
     mov eax, dword [rbp + dpb.dFATlength]
     mov dword [rbx + bufferHdr.bufFATsize], eax
     mov al, byte [rbp + dpb.bNumberOfFATs]
     mov byte [rbx + bufferHdr.bufFATcopy], al
-    xor ah, ah    ;Set ZF and clear CF
+    xor ah, ah    ;Set ZF and clear CF (med changed, no error)
     mov byte [rbp + dpb.bAccessFlag], ah ;DPB now ready to be used
     return
 .diskDrvCritErr:
-;Critical Errors fall through here
+;Critical read errors come through here.
 ;rbp has dpb ptr, edi has status word, rsi points to the driver
+    mov byte [bRwFlag], 0    ;Error reading the data from the disk!
     mov dword [rbp + dpb.dFreeClustCnt], -1 ;Reset freecluster count
-    mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
+    mov byte [bI24OkBtfld], critRetryOK | critFailOK
     mov eax, edi        ;Get the status word in eax
     mov ecx, dosBuffer
-    call diskIOError    ;Goto disk crit error, but with bitfield set
+    call diskIOError
     cmp al, critRetry
     je ensureDiskValid
 .errorExitBad:
@@ -341,21 +341,26 @@ ensureDiskValid:
 .dirtyBufferError:
 ;We can only enter this error if we returned media changed.
 ;We will never enter here if we returned media unknown.
-    push rbp
-    mov rbp, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
-    test word [rbp + drvHdr.attrib], devDrvOpClRem
-    pop rbp
+    push rsi
+    mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;Get the ptr to the driver
+    test word [rsi + drvHdr.attrib], devDrvOpClRem
+    pop rsi
     jz .dbeExit     ;Just return Invalid Disk Swap if bit not set
-;Setup the pseudo driver error
-    mov byte [Int24bitfld], critRead | critDOS | critRetryOK | critFailOK
-    mov ecx, dosBuffer       ;Report a dos buffer here
+;Setup the pseudo hard error
+    mov byte [bRwFlag], 1    ;Error writing the data back to disk!
+    mov byte [bI24OkBtfld], critRetryOK | critFailOK
+;The med req pkt gives a ptr to the volume label to use in exterr reporting.
+    mov rax, qword [primReqPkt + mediaCheckReqPkt.desptr]
+    mov qword [errorVolLbl], rax    ;Save it!
+;Setup extrenuous vars
+    mov ecx, dosBuffer      ;Report a dos buffer here
     mov eax, drvBadDskChnge ;Set the driver error code to bad disk change
-    call diskIOError
+    call diskDevErr
     cmp al, critFail    ;Did the user select fail?
-    jne ensureDiskValid  ;If not, try again!
+    jne ensureDiskValid ;If not, try again!
 .dbeExit:
     mov eax, errIDC     ;Else, report an invalid disk swap error!
-    jmp .errorExitBad    ;and exit with CF set (often gets xlat to accden)
+    jmp short .errorExitBad    ;and exit with CF set (often gets xlat to accden)
 ;+++++++++++++++++++++++++++++++++++++++++++++++++
 ;           Primitive Driver Requests
 ;+++++++++++++++++++++++++++++++++++++++++++++++++

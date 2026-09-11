@@ -2355,7 +2355,7 @@ readDiskFile:
 ;rbp -> WorkingDPB
 ;ecx = Bytes to transfer
     mov byte [errorLocus], eLocDsk  ;Error is with a disk device operation
-    mov byte [rwFlag], 0    ;Read operation
+    mov byte [bRwFlag], 0    ;Read operation
 ;Checks to make sure we dont start reading past the end of the file. 
 ;Check the starting position isn't equal to or past the filesize.
     mov eax, dword [rdi + sft.dFileSize]
@@ -2642,7 +2642,7 @@ writeDiskFile:
     ;rdi has SFT ptr
     mov ecx, dword [tfrLen] ;Get the transfer length 
     mov byte [errorLocus], eLocDsk 
-    mov byte [rwFlag], 1    ;Write operation
+    mov byte [bRwFlag], 1   ;Write operation
     test word [rdi + sft.wOpenMode], 08h    ;Bit 3 is a reserved field
     jnz writeBadExit
     test ecx, ecx
@@ -2809,14 +2809,14 @@ writeDiskFullExit:
 hardEOFexit:
 ;Jumped to from read file! rdi -> SFT
     mov word [errorExCde], errHdlEOF    ;Mark EOF for file
-    mov ah, critRead | critData | critFailOK    ;Move to ah
+    mov ah, critData | critFailOK       ;Move to ah
 .cmn:
-    mov byte [Int24bitfld], ah  ;Store the bitfield var
+    mov byte [bI24OkBtfld], ah  ;Store the bitfield var
     mov al, byte [workingDrv]   ;Get drive number in al
     mov byte [errorLocus], eLocUnk
     mov byte [errorAction], eActAbt
     mov byte [errorClass], eClsOoR
-    mov qword [errRbp], rbp  ;Save the DPB pointer here (if a disk file)
+    mov qword [qErrRbp], rbp  ;Save the DPB pointer here (if a disk file)
     test word [rdi + sft.wDeviceInfo], devCharDev
     jnz .i24CharDev
     mov rsi, qword [rdi + sft.qPtr] ;Get the DPB pointer from the SFT

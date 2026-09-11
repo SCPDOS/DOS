@@ -5,8 +5,8 @@ charDevErr:
 ;edi = error code in low byte
 ;rbp -> Not accessed but preserved
     or ah, critIgnorOK | critRetryOK | critFailOK   ;Set the always bits
-    mov byte [Int24bitfld], ah
-    mov qword [errRbp], rbp
+    mov byte [bI24OkBtfld], ah
+    mov qword [qErrRbp], rbp
     push rsi
     movzx edi, dil    ;Zero extend the error code up
     call hardErrorCommon
@@ -15,11 +15,12 @@ charDevErr:
 
 diskIOError:
 ;Called in Binary Disk Read/Write if getting access to shared resource fails
-;Input: rwFlag = 0 or 1 for read/write
+;Input: bRwFlag = 0 or 1 for read/write
 ;       eax = Status word
 ;       rbp -> DPB ptr
 ;       cl = Data type (buffer type, i.e. DOS, FAT, Dir, Data)
-; [Int24hbitfld] = Specific bitflags (r/w AND potential extra ok responses)
+; [bI24OkBtfld] = Set with OK responses
+; [bRwFlag] = Set or cleared as required.
 ;Output: al = Action Code
 ;   Preserves rbx-rbp
     cmp al, drvBadDskChnge
@@ -30,15 +31,16 @@ diskIOError:
     ;Later versions will include a serial number after the lbl too
     pop rax
 .doReq:
-    call diskDevErr ;Preserves rdi and rbp (in errRbp)
+    call diskDevErr ;Preserves rdi and rbp (in qErrRbp)
     return
 
 diskDevErr:
 ;Called, NOT Jumped to. 
 ;Input: eax = Driver status word (Error code in al)
-;       cl = Buffer flags (Did we error on a DOS, FAT, DIR or DATA xaction?)
+;       ecx = byte: Buffer flag; error on DOS, FAT, DIR or DATA xaction?
 ;       rbp = Disk DPB pointer
-; [Int24hbitfld] = Specific bitflags (r/w AND potential extra ok responses)
+; [bI24OkBtfld] = Set with OK responses
+; [bRwFlag] = Set or cleared as required.
 ;Output: al = Int 24h response (0-3)
 ; Preserves rbx, rcx, rdx, rsi, rdi, rbp. 
 ;NOTE: DOS requires bx-si be preserved by i24h for ignore/retry. 
@@ -55,39 +57,38 @@ diskDevErr:
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get drive number
     mov byte [errorDrv], al ;Store this value
 .notReset:
-    mov ah, byte [Int24bitfld]  ;Get the permissions in var
-    or ah, critFailOK | critRetryOK ;Set the always bits
-    ;Test for correct buffer data type
-    test cl, dosBuffer
-    jnz .df0
-    or ah, critDOS  ;Add DOS data type bit
-    jmp short .df3
-.df0:
-    test cl, fatBuffer
-    jnz .df1
-    or ah, critFAT  ;Add FAT data type bit
-    mov dword [rbp + dpb.dFreeClustCnt], -1 ;Invalidate the count!
-    jmp short .df3
-.df1:
-    test cl, dirBuffer
-    jnz .df2
-    or ah, critDir  ;Add Directory data type bit
-    jmp short .df3
-.df2:
-    or ah, critData ;Here it must be a data buffer
-.df3:
-    and byte [rwFlag], 1    ;Save only the bottom bit
-    or ah, byte [rwFlag]    ;And set the low bit here
-    or ah, byte [Int24bitfld]
+;Now we build the reported bitfield. We build it in al and then shift it up.
+;Assertain correct buffer type
+    xor eax, eax    ;Set for critDOS (0h -> 0h)
+    test ecx, dosBuffer
+    jnz .goXlat
+    inc eax         ;Set for critFAT (1h -> 200h)
+    test ecx, fatBuffer
+    jz .getNonFatType
+    mov dword [rbp + dpb.dFreeClustCnt], -1 ;Invalidate the count for FAT err!
+    jmp short .goXlat
+.getNonFatType:
+    inc eax         ;Set for critDir (2h -> 400h)
+    test ecx, dirBuffer
+    jnz .goXlat
+    inc eax         ;Set for critData (3h -> 600h)
+.goXlat:
+;Now al has or 0h, 1h, 2h or 3h
+    shl eax, 1  ;Turn into 0h, 2h, 4h or 6h
+;Now set the rw bit and the ok response bits
+    or al, byte [bI24OkBtfld]       ;Set the OK bits now
+    and byte [bRwFlag], 1           ;Save only the bottom bit
+    or al, byte [bRwFlag]           ;And get the read/write bit
+    shl eax, 8                      ;And put this byte into eax
 ;Now get the drive we failed on from the dpb 
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get the drive number
-    mov qword [errRbp], rbp  ;Save the DPB 
+    mov qword [qErrRbp], rbp  ;Save the DPB 
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;And get the driver ptr in rsi
     xor ebp, ebp    ;Finally, set ebp to 0 to simulate the segment
     call hardErrorCommon
-    pop rdi ;Pop back the disk buffer pointer
-    pop rsi
     pop rdi
+    pop rsi
+    pop rdx
     pop rcx
     pop rbx
     return   
@@ -96,7 +97,7 @@ hardErrorCommon:
 ;Ensure we dont have a crazy error code.
 ;Entered with: ah = bitfield, al = Fail drive (0 based) if not char
 ; dil = Driver error code, rsi -> Driver header
-;tmpDBPPtr = Fail DPB if not char, rwFlag set/clear
+;qErrRbp = rbp copied in, bRwFlag set/clear
     call xlatHardError
     push rax
     mov eax, errGF - drvErrShft
@@ -154,7 +155,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov rsp, qword [xInt24hRSP] ;Ret to DOS stack for failing device
     mov byte [critErrFlag], 0   ;Clear critical error flag
     inc byte [inDOS]            ;Reenter DOS
-    mov rbp, qword [errRbp]
+    mov rbp, qword [qErrRbp]
     sti                         
     ;Now we check that the response given was allowed, and translate if needed
     cmp al, critIgnore
@@ -169,7 +170,7 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     jnz .skipFailInc
     inc byte [Int24Fail]        ;Inc the fail counter!
 .skipFailInc:
-    test byte [Int24bitfld], critFailOK
+    test byte [bI24OkBtfld], critFailOK
     jz .abort  ;If bit not set, fail not permitted, abort
 .exit:
     mov byte [errorDrv], -1 ;Unknown drive (to be set)
@@ -185,11 +186,11 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     pop rax
     return
 .checkIgnore:
-    test byte [Int24bitfld], critIgnorOK
+    test byte [bI24OkBtfld], critIgnorOK
     jnz .exit
     jmp short .setFail  ;If ignore not permitted, return Fail
 .checkRetry:
-    test byte [Int24bitfld], critRetryOK
+    test byte [bI24OkBtfld], critRetryOK
     jnz .exit   
     jmp short .setFail  ;If retry not permitted, return Fail
 .abort:

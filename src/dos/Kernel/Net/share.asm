@@ -109,10 +109,10 @@ shareFile:
     return
 
 shareCheckWriteLockViolation:
-    mov byte [rwFlag], 1    ;Called in write, might not be set so set it
+    mov byte [bRwFlag], 1    ;Called in write, might not be set so set it
     jmp short shareCheckReadLockViolation.common
 shareCheckReadLockViolation:
-    mov byte [rwFlag], 0    ;Called in read, might not be set so set it
+    mov byte [bRwFlag], 0    ;Called in read, might not be set so set it
 .common:
 ;Input:
 ;rdi -> SFT for the file we are reading
@@ -133,7 +133,7 @@ shareCheckReadLockViolation:
     return
 
 shareLockViolationCriticalError:
-;This does NOT force rwFlag to 0 and signals a lock violation
+;This does NOT force bRwFlag to 0 and signals a lock violation
     push rcx
     mov eax, errLokVio
     jmp short shareCriticalError.common
@@ -141,11 +141,11 @@ shareCriticalError: ;Int 2Fh AX=120Ah
 ;Used for share Read requests
 ;Input: eax = Error code
     push rcx
-    mov byte [rwFlag], 0    ;Default to read
+    mov byte [bRwFlag], 0   ;Default to read
 .common:
-    mov byte [Int24bitfld], critRetryOK | critFailOK
+    mov byte [bI24OkBtfld], critRetryOK | critFailOK
     mov rbp, qword [workingDPB] 
-    mov ecx, dataBuffer   ;Share violations happen on data buffers.
+    mov ecx, dataBuffer     ;Share violations happen on data buffers.
     call diskDevErr
     pop rcx
     cmp al, critRetry   ;If we returned retry, return plainly, else set CF

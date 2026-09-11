@@ -106,48 +106,50 @@ getLastClusterInChain:
     pop rbx
     return
 
-getNumberOfClustersInChain:
-;Given a cluster value in eax, returns in eax the number of clusters in chain
-;Input: eax = Cluster to start searching at
-;Output: eax = Number of clusters in the chain
-;If input eax = 0, output eax = 0
-    test eax, eax   ;If eax = 0, then just exit
-    retz
-    push rcx
-    xor ecx, ecx
-.lp:
-    inc ecx
-    call readFAT
-    jc .exit
-    cmp eax, -1 ;Once this is EOC, we add a new cluster.
-    jne .lp
-    mov eax, ecx    ;Get the count
-.exit: 
-    pop rcx
-    return
+;FUNCTION NEVER USED
+;getNumberOfClustersInChain:
+;;Given a cluster value in eax, returns in eax the number of clusters in chain
+;;Input: eax = Cluster to start searching at
+;;Output: eax = Number of clusters in the chain
+;;If input eax = 0, output eax = 0
+;    test eax, eax   ;If eax = 0, then just exit
+;    retz
+;    push rcx
+;    xor ecx, ecx
+;.lp:
+;    inc ecx
+;    call readFAT
+;    jc .exit
+;    cmp eax, -1 ;Once this is EOC, we add a new cluster.
+;    jne .lp
+;    mov eax, ecx    ;Get the count
+;.exit: 
+;    pop rcx
+;    return
 
-getClusterInChain:
-;Given a starting cluster, walk forwards by a number of clusters.
-;If an EOC is encountered, then ecx will not be 
-;Input: eax = Start Cluster to start searching from
-;       ecx = Number of clusters to go forwards by;
-;Ouput: eax = Value of the cluster ecx number of clusters forwards
-;       ecx = # of clusters left to walk forwards by (0 EOC was not encountered)
-;Also usual CF babble.
-    test eax, eax   ;If eax = 0, then just exit
-    retz
-    push rbx
-    jecxz .exit
-.lp:
-    mov ebx, eax
-    call readFAT
-    jc .exit
-    dec ecx
-    jnz .lp
-    mov eax, ebx    ;Get the value of the cluster in eax
-.exit:
-    pop rbx
-    return
+;FUNCTION NEVER USED
+;getClusterInChain:
+;;Given a starting cluster, walk forwards by a number of clusters.
+;;If an EOC is encountered, then ecx will not be 
+;;Input: eax = Start Cluster to start searching from
+;;       ecx = Number of clusters to go forwards by;
+;;Ouput: eax = Value of the cluster ecx number of clusters forwards
+;;       ecx = # of clusters left to walk forwards by (0 EOC was not encountered)
+;;Also usual CF babble.
+;    test eax, eax   ;If eax = 0, then just exit
+;    retz
+;    push rbx
+;    jecxz .exit
+;.lp:
+;    mov ebx, eax
+;    call readFAT
+;    jc .exit
+;    dec ecx
+;    jnz .lp
+;    mov eax, ebx    ;Get the value of the cluster in eax
+;.exit:
+;    pop rbx
+;    return
 
 startNewChain:
 ;Working dpb must be set
@@ -466,16 +468,22 @@ readFAT:
     push rdx
     push rdi
     push rbp
+;Do a sanity check on the input cluster. 
+    call checkClusterValid
+    jnz .eocExit
+    jz .clusterOK   ;No issues!
+    jc .exitFail    ;If the cluster requested was past last, exit error
+    jnc .eocExit    ;If the cluster requested was 0 or 1, exit EOC
+.clusterOK:
     mov edi, eax    ;Save cluster number in edi
     call clust2FATEntry ;Returns sector in FAT in eax, offset in sector in edx
     ;and FAT type in ecx
     call getBufForFat ;Buffer Header in ebx, first buffer being requested
     jc .exitFail
     ;Check if FAT 12, 16, 32
-    test ecx, ecx
-    jz .gotoNextClusterFat12    ;Handle FAT 12 separately
-    test ecx, 1
-    jz .goToNextClusterFat32
+    cmp ecx, 1
+    jb .gotoNextClusterFat12
+    ja .goToNextClusterFat32
     ;Here we handle FAT16
     movzx eax, word [rbx + bufferHdr.dataarea + rdx]
     cmp eax, 0FFF7h  ;Valid cluster number?
@@ -665,20 +673,21 @@ decrementFreeClusterCount:
     popfq
     return
 
-getBytesPerCluster:
-;Gets the bytes per cluster
-;Input: rbp -> Current DPB
-;Output: ecx = Total bytes per cluster
-    push rax
-    push rdx
-    movzx eax, word [rbp + dpb.wBytesPerSector]
-    movzx ecx, byte [rbp + dpb.bMaxSectorInCluster]
-    inc ecx
-    mul ecx
-    mov ecx, eax
-    pop rdx
-    pop rax
-    return
+;FUNCTION NEVER USED
+;getBytesPerCluster:
+;;Gets the bytes per cluster
+;;Input: rbp -> Current DPB
+;;Output: ecx = Total bytes per cluster
+;    push rax
+;    push rdx
+;    movzx eax, word [rbp + dpb.wBytesPerSector]
+;    movzx ecx, byte [rbp + dpb.bMaxSectorInCluster]
+;    inc ecx
+;    mul ecx
+;    mov ecx, eax
+;    pop rdx
+;    pop rax
+;    return
 
 readFSInfoSector:
 ;Given a DPB, will attempt to read the FS Info sector. Destroys all regs.
@@ -809,4 +818,43 @@ writeFSInfoSector:
     pop rcx
     pop rbx
     pop rax
+    return
+
+checkClusterValid:
+;Checks the cluster number is valid. This should help prevent infinite loops
+; when reading bad directory entries from corrupted disks.
+;Input: eax = Cluster number to analyse (32 bits zero extended)
+;       rbp -> DPB for the drive we are analysing.
+;Output: ZF=ZE: Cluster number ok!
+;        ZF=NZ: Cluster number not good.
+;               CF=CY: If eax was 0 or 1, likely disk corruption.
+;               CF=NC: If eax was past end of disk or max cluster (return EOC).
+    push rcx
+    cmp eax, 2
+    jb .exit
+    call getFATtype
+    cmp ecx, 1
+    ja .fat32Check
+    jb .fat12Check
+;fat16Check 
+    cmp eax, fat16MaxClustCnt
+    jb .chkMax
+    jmp short .exitBad    
+.fat32Check:
+    cmp eax, 0FFFFFF8h
+    jb .chkMax
+    jmp short .exitBad
+.fat12Check:
+    cmp eax, fat12MaxClustCnt
+    ja .exitBad
+.chkMax:
+    cmp eax, dword [rbp + dpb.dMaxClusterAddr]
+    jbe .exitOk
+.exitBad:
+    test eax, eax   ;Clear ZF since eax > 1 here. Clear CF since test.
+    jmp short .exit
+.exitOk:
+    cmp eax, eax    ;Set ZF and clear CF
+.exit:
+    pop rcx
     return

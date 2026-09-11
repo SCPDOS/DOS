@@ -174,7 +174,6 @@ flushAndFreeBuffer:    ;Int 2Fh AX=1209h
 ;Now setup the error bitfields for this request.
     movzx ecx, ah   ;Get the buffer flags here
     lea rbx, qword [rdi + bufferHdr.dataarea]
-    movzx esi, byte [rdi + bufferHdr.bufFATcopy]
     mov rdx, qword [rdi + bufferHdr.bufferLBA]
     mov rbp, qword [rdi + bufferHdr.driveDPBPtr]
     call writeSectorBuffer
@@ -194,17 +193,18 @@ writeSectorBuffer:  ;Internal Linkage
 ; rbx = qword ptr: Buffer area to write from.
 ; rcx = byte: Buffer flags
 ; rdx = qword: Sector to write
-; rsi = byte: Number of copies to write.
 ; rbp = qword ptr: DPB pointer
 ;Exit:  CF=NC : Success (at least one write succeeded)
 ;               rdx = Sector actually read in.
 ;       CF=CY : Fail, all writes failed. Terminate the request
 ;               rdi = Nmuber of successful writes.
 ;       All other regs except rax, rsi and rdi preserved.
-    mov byte [Int24bitfld], critWrite | critRetryOK | critFailOK
+    mov rsi, qword [pCurrBuff]
+    movzx esi, byte [rsi + bufferHdr.bufFATcopy]
+    mov byte [bI24OkBtfld], critRetryOK | critFailOK
     test cl, dataBuffer
     jz .wsWriteSetup
-    or byte [Int24bitfld], critIgnorOK
+    or byte [bI24OkBtfld], critIgnorOK
 .wsWriteSetup:
     xor edi, edi    ;Successful write count
 .wsWriteDisk:
@@ -220,8 +220,11 @@ writeSectorBuffer:  ;Internal Linkage
     jnz .wsHardError
     inc edi         ;One successful write!
 .wsCheckNext:
-    mov eax, dword [rbp + dpb.dFATlength]
+    push rsi
+    mov rsi, qword [pCurrBuff]
+    mov eax, dword [rsi + bufferHdr.bufFATsize]
     add rdx, rax    ;Add offset to the next copy to write (FAT only) 
+    pop rsi
     dec esi         ;One less copy to write
     jnz .wsWriteDisk ;Jump if we gotta write another copy!
     test edi, edi   ;Return CF=NC if we had any successful writes.
@@ -284,12 +287,12 @@ freeBuffersForDrive:  ;External Linkage (Before Get BPB in medchk)
     return
 
 markBufferDirty:
-    push rbp
+    push rdi
     pushfq
-    mov rbp, qword [currBuff]
-    or byte [rbp + bufferHdr.bufferFlags], dirtyBuffer
+    mov rdi, qword [pCurrBuff]
+    or byte [rdi + bufferHdr.bufferFlags], dirtyBuffer
     popfq
-    pop rbp
+    pop rdi
     return
 
 getBuffer: ;Internal Linkage ONLY
@@ -314,18 +317,18 @@ getBuffer: ;Internal Linkage ONLY
     call findSectorInBuffer ;rax = sector to read, dl = drive number
     cmp rdi, -1 ;Get in rdi the buffer ptr
     je .rbReadNewSector
-    mov qword [currBuff], rdi   ;Save the found buffer ptr in the variable
+    mov qword [pCurrBuff], rdi   ;Save the found buffer ptr in the variable
     call makeBufferMostRecentlyUsed
     clc
 .rbExit:
     pushfq
-    mov rbx, qword [currBuff]   ;Get current buffer
+    mov rbx, qword [pCurrBuff]   ;Get current buffer
     or byte [rbx + bufferHdr.bufferFlags], refBuffer    ;Mark as referenced!
     popfq
     return
 .rbReadNewSector:
     call findLRUBuffer  ;Get the LRU or first free buffer entry in rdi
-;At this point, qword [currBuff] has the same pointer as rdi.
+;At this point, qword [pCurrBuff] has the same pointer as rdi.
     call flushAndFreeBuffer ;Preserves all DOS regs.
     jc .rbExit
 ;rdi points to bufferHdr that has been appropriately linked to the head of chain
@@ -336,7 +339,7 @@ getBuffer: ;Internal Linkage ONLY
     call readSectorBuffer ;Carry the flag from the request
     jc .rbExit
 ;Need to write the correct data into the buffer header if OK read.
-    mov rdi, qword [currBuff]   ;Get current buffer
+    mov rdi, qword [pCurrBuff]   ;Get current buffer
     mov qword [rdi + bufferHdr.driveDPBPtr], rbp
     mov qword [rdi + bufferHdr.bufferLBA], rdx
     mov byte [rdi + bufferHdr.bufferFlags], cl
@@ -361,20 +364,24 @@ readSectorBuffer:   ;Internal Linkage
 ; rbx = qword ptr: Buffer area to read into.
 ; rcx = byte: Buffer flags.
 ; rdx = qword: Sector to read
-; rsi = byte: Number of read attempts. (multiple on FAT sectors)
 ; rbp = qword ptr: DPB pointer
 ;Exit:  CF=NC : Success
 ;               rdx = Sector actually read in.
 ;       CF=CY : Fail, terminate the request
 ;       All other regs except rax preserved.
-    mov byte [Int24bitfld], critRead | critFailOK | critRetryOK
+    mov byte [bI24OkBtfld], critFailOK | critRetryOK
+    mov rsi, qword [pCurrBuff]
+    mov edi, dword [rsi + bufferHdr.bufFATsize]
+    movzx esi, byte [rsi + bufferHdr.bufFATcopy]
 .rsDoReq:
     push rbx
     push rcx
     push rdx
+    push rdi
     mov ecx, 1              ;One sector to read
     call primReqReadSetup   ;Setup request (preserves setup registers)
     call absDiskDriverCall  ;Make Driver Request (rsi preserved)
+    pop rdi
     pop rdx
     pop rcx
     pop rbx
@@ -382,24 +389,23 @@ readSectorBuffer:   ;Internal Linkage
 ;Enter here only if the request failed. al has driver error code.
     dec esi         ;Dec FAT counter (is 1 if not a FAT)
     jz .rsHardErr   ;If no more FAT's, fail. Else, add to the buffer LBA
-    mov eax, dword [rbp + dpb.dFATlength]
-    add rdx, rax    ;Move rdx to the sector we now want to try and read.
+    add rdx, rdi    ;Add to rdx the sector we now want to try and read.
     jmp short .rsDoReq
 .rsHardErr:
 ;Driver reported error.
 ;At this point, ax = Error code, rbp -> DPB, cl = Buffer flags
     call diskIOError    ;Returns al = Action code. Other regs preserved.
     cmp al, critRetry
-    je short .rsDoReq
+    je readSectorBuffer
     stc ;Set error flag to indicate fail
     return
     
 findLRUBuffer: ;Internal Linkage
 ;Finds first free or least recently used buffer, links it and returns ptr to it 
-; in rdi and the currBuff variable
+; in rdi and the pCurrBuff variable
 ;Input: Nothing
 ;Output: rdi = Pointer to the buffer hdr to use
-;       [currBuff] = Pointer to the buffer hdr to use
+;       [pCurrBuff] = Pointer to the buffer hdr to use
     push rdx
     mov rdi, qword [bufHeadPtr]
     cmp byte [rdi + bufferHdr.driveNumber], -1  ;Check if 1st entry is free
@@ -420,7 +426,7 @@ findLRUBuffer: ;Internal Linkage
     mov qword [rdi + bufferHdr.nextBufPtr], rdx
 .flbExit:
     pop rdx
-    mov qword [currBuff], rdi   ;Save in variable too
+    mov qword [pCurrBuff], rdi   ;Save in variable too
     return
 .flbFreeLink:
     push rcx

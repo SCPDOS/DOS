@@ -100,7 +100,7 @@ makeDIR:           ;ah = 39h
 ;rdi points to current directory copy
 ;rsi now points to offset in the buffer to write the entry to
 ;Convert rsi into a byte offset into the buffer and save the sector number
-    mov rbx, qword [currBuff]
+    mov rbx, qword [pCurrBuff]
     mov rax, qword [rbx + bufferHdr.bufferLBA]
      
     mov qword [tempSect], rax   ;Save in temp sector variable
@@ -569,7 +569,7 @@ getDiskDirectoryEntry:
     pop rbx
     retc
     push rbx
-    mov rbx, qword [currBuff]
+    mov rbx, qword [pCurrBuff]
     call prepSectorSearch
     ;Above function gets data buffer ptr in rsi
     xor edx, edx
@@ -617,7 +617,7 @@ getAndUpdateDirSectorForFile:
     retc
     mov rax, qword [rdi + sft.qDirSect] ;Get the directory sector for this file
     mov byte [errorLocus], eLocDsk
-    mov byte [Int24bitfld], critFailOK | critRetryOK
+    mov byte [bI24OkBtfld], critFailOK | critRetryOK
     call getBufForDir  ;Returns buffer pointer in rbx for sector in rax
     retc    ;If an error is to be returned from, we skip the rest of this
     call getCurrentSFT ;Reobtain the SFT ptr in rdi

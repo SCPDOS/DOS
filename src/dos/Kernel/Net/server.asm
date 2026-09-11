@@ -17,7 +17,7 @@ dosServer:  ;ah = 5Dh
 .skip2:
     lea rbx, noOp   ;Push the ok function return address
     push rbx
-    mov rbx, qword [serverDispTblPtr]   ;Get the qword
+    mov rbx, qword [pServerDispTbl]   ;Get the qword
     push rbx    ;Push the table ptr on the stack
     push rax    ;Push al onto stack as a qword
     call serverFunctionSelect

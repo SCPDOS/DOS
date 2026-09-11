@@ -14,6 +14,7 @@ i33Next dq 0    ;Current disk driver to call.
 ;DEBUG COMMON ROUTINES!
 drvDbg equ 0
 i33Dbg equ 0
+wpDbg  equ 0
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
 %if drvDbg
 dbgPrintString:
@@ -242,7 +243,7 @@ dosInt33h:
 %if drvDbg
 .i33dbgStr1     db "[BIOS] Entering BIOS function ",0
 .i33dbgStr11    db "h on drive ",0
-.i33dbgStr db "[BIOS] Int 33h Error detected: ",0
+.i33dbgStr      db "[BIOS] Int 33h Error detected: ",0
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -506,8 +507,8 @@ errTblLen equ $ - .biosErrTbl
 %endif
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ;Here if are checking the volume for its ID.
-    call .updateBpb ;If this fails, change!
-    jc .mmcChange
+    call .updateBpb ;This should practically never return BIOS error 06h
+    jc .ioDoErr ;Translates BIOS to DOS if needed. Else, bubbles DOS error.
     call .checkVolumeSame
     test eax, eax
     jz .mmcUnsure
@@ -965,7 +966,7 @@ errTblLen equ $ - .biosErrTbl
 %endif
 ;Here if an error. AH has the BIOS error code. Return with
 ; ZF=ZE to indicate we are returning a BIOS code!
-;Reset the drive. WARNING: CRASHES BOCHS
+;Reset the drive.
     call .bioReset  ;Resets .bLastDsk to -1
     dec esi
     jnz .bbpbReadLp
@@ -1013,6 +1014,12 @@ errTblLen equ $ - .biosErrTbl
 
 .write:             ;Function 8/9
 ;Will write and optionally verify one sector at a time.
+;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
+%if wpDbg
+    mov eax, drvWPErr
+    jmp .errorExit
+%endif
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     call .ioSetVolLbl
     call .setDrvOwner
     call .checkSwap 
@@ -1165,9 +1172,9 @@ errTblLen equ $ - .biosErrTbl
 .bioReset:
 ;Resets the drive system for the drive in dl
     push rax
-    in al, 0E9h
-    cmp al, 0E9h
-    je .bioResetSkip
+    ;in al, 0E9h ;Catches if we are in BOCHS and avoids issuing a buggy reset
+    ;cmp al, 0E9h
+    ;je .bioResetSkip
     xor eax, eax    ;Do reset
     call .callI33h  ;Ignore any errors
 .bioResetSkip:
@@ -2343,7 +2350,7 @@ ioctlQTblL equ $ - .ioctlQTbl
 .fat12Str   db "FAT12   ",0
 .fat16Str   db "FAT16   ",0
 .fat32Str   db "FAT32   ",0
-.defLbl     db "NO NAME ",0 ;Default volume label
+.defLbl     db "NO NAME    ",0 ;Default volume label
 
 .bAccCnt    db 0    ;Counter of 0 time difference media checks
 .bLastDsk   db -1   ;Last disk to be checked for media check/IO.

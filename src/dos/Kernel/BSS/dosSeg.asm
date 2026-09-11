@@ -168,7 +168,7 @@ sda:    ;Start of Swappable Data Area, this bit can remain static
     errorExCde  dw ?  ;Extended Error Code
     errorAction db ?  ;Suggested action for error  
     errorClass  db ?  ;Error Class
-    errorVolLbl dq ?    ;Sets a ptr to the volume label of the error disk
+    errorVolLbl dq ?  ;Sets a ptr to the volume label of the error disk
     currentDTA  dq ?  ;Address of the current DTA x
     currentPSP  dq ?  ;Address of current PSP x
 
@@ -191,7 +191,7 @@ sdaDOSSwap:
     dirEntryNum dw ?  ;Offset into directory of entry we are looking for
     volIdFlag   db ?  ;If set, we are searching for a volume ID
     xInt24hRSP  dq ?  ;RSP across an Int 24h call
-    Int24bitfld db ?  ;Copies the bit field given to the Int 24h handler
+    bI24OkBtfld db ?  ;Holds the OK responses for the operation
     fileDirFlag db ?  ;File/Directory flag. 0 = Dir, ¬0 = File
     Int24Fail   db ?  ;Set if Int 24h returned fail
 
@@ -255,7 +255,7 @@ sectHdr:        ;This needs 20 bytes in EXEC only
 ;    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
     renFlags    db ?  ;01h = Rename in same dir, 02h = Wildcard in destination
     badNameRen  db ?  ;Device name or File not found for rename
-    rwFlag      db ?  ;00h=Read, 1=Write, read/write/share error reporting
+    bRwFlag     db ?  ;00h=Read, 1=Write, read/write/share error reporting
     spliceFlag  db ?  ;00 = Relative path, !0 = Full path
     dosInvoke   db ?  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
 
@@ -280,7 +280,7 @@ vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
     currentSFT  dq ?  ;Ptr to the SFT of the file being accessed
     currentNdx  dw ?  ;Used to access the current SFTNdx being opened/created
     currentHdl  dw ?  ;The current file handle is saved here
-    currBuff    dq ?  ;Ptr to the Current Buffer (hdr) being accessed
+    pCurrBuff   dq ?  ;Ptr to the Current Buffer (hdr) being accessed
 ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
 ; and 32 byte offset into the sector for directory
     tempSect    dq ?  ;A scratch sector number
@@ -317,7 +317,7 @@ pathLen:    ;Used to store the length of a path string for removal strcmp
     wEOAttribs  dw ?  ;Symbol to the next two bytes (USER CX)
     pszEOfile   dq ?  ;Ptr to null terminated string to file name (USER RSI)
 ;Error DPB 
-    errRbp      dq ?  ;A var for rbp for error/temporary situations
+    qErrRbp     dq ?  ;A var for rbp for error/temporary situations
 ;No clash recycling below var as the vars in SDA are invalid if in CPU 
 ; exception hdlr. This var gets cleared on entry to the exception handler. 
 ;If it remains clear, the task will Abort. If it gets set, DOS or COMMAND.COM 
@@ -348,10 +348,10 @@ haltDOS:
     sdaDOSLen   equ     $ - sdaDOSSwap
 
 ;Additional variables NOT in the SDA
-    serverDispTblPtr    dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
+    pServerDispTbl  dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
 ;A backup header to allow copying to for saving the current header when 
 ; quickly doing a second request
-    bkupReqHdr          db ioReqPkt_size dup (?)  
+    bkupReqHdr      db ioReqPkt_size dup (?)  
 ;Prevent toggling print if in the middle of reading an extended ASCII char
 inExtASCII:
     noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle

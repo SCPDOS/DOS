@@ -200,7 +200,7 @@ kernDrvInit:
 
 ;Server Table setup
     lea rdi, qword [rbp + serverDispTbl]  ;Get pointer to table
-    mov qword fs:[serverDispTblPtr], rdi   ;Store to use
+    mov qword fs:[pServerDispTbl], rdi   ;Store to use
 
 ;Set network machine name to... nothing!
     lea rdi, qword [rbp + machineName]

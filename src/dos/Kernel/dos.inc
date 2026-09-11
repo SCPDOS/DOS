@@ -48,7 +48,7 @@ GLOBAL errorDrv
 GLOBAL currentNdx
 GLOBAL switchChar
 GLOBAL ctryTbl
-GLOBAL serverDispTblPtr
+GLOBAL pServerDispTbl
 GLOBAL currentDTA
 GLOBAL cdsHeadPtr
 GLOBAL dosPSP

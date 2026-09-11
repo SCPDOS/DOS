@@ -129,7 +129,6 @@ ioctrl:            ;ah = 44h, handle function
     movzx esi, bl
     lea rbx, primReqPkt
     mov byte [errorLocus], eLocUnk
-    mov byte [Int24bitfld], 0
 ;Get in rdi the ptr to the SFT for the handle we are looking at
 ;Setup the common ioReqPkt fields and the read/write 
     mov byte [rbx + ioReqPkt.hdrlen], ioReqPkt_size
@@ -141,9 +140,6 @@ ioctrl:            ;ah = 44h, handle function
     mov edx, drvIOCTLWRITE
     test al, 1  ;If set, this is a write operation
     cmovnz ecx, edx ;Move write command into ecx
-    jnz .notWrite
-    or byte [Int24bitfld], critWrite
-.notWrite:
     pop rdx
     pop rcx
     mov byte [rbx + ioReqPkt.cmdcde], cl
@@ -158,7 +154,6 @@ ioctrl:            ;ah = 44h, handle function
     jz .invalidFunction
 
     mov rbx, qword [rdi + sft.qPtr] ;Get ptr to device driver
-    or byte [Int24bitfld], critCharDev
     xchg rbx, rsi   ;Swap back
     xor eax, eax
     jmp short .ioctlStringCommon
@@ -210,7 +205,6 @@ ioctrl:            ;ah = 44h, handle function
     mov byte [errorLocus], eLocUnk
     test word [rdi + sft.wDeviceInfo], devRedir  ;File cannot be redir!
     jnz .invalidFunction
-    mov byte [Int24bitfld], 0
     mov ecx, drvINSTATUS
     mov edx, drvOUTSTATUS
     test al, al
@@ -219,7 +213,6 @@ ioctrl:            ;ah = 44h, handle function
     test word [rdi + sft.wDeviceInfo], devCharDev
     jz .ioStatDisk
     mov byte [errorLocus], eLocChr
-    or byte [Int24bitfld], critCharDev
     mov rsi, qword [rdi + sft.qPtr]
     xor al, al
     jmp short .ioStatCommon
