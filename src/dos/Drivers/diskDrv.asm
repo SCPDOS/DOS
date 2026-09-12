@@ -12,11 +12,14 @@ i33Next dq 0    ;Current disk driver to call.
 
 
 ;DEBUG COMMON ROUTINES!
-drvDbg equ 0
-i33Dbg equ 0
-wpDbg  equ 0
+dbgFnc equ 0    ;Enable debug output functions
+errDbg equ 0    ;Enable error recieving debug output
+drvDbg equ 0    ;Enable driver debug outputs
+i33Dbg equ 0    ;Enable i33h debug outputs
+wpDbg  equ 0    ;Mimic WP errors on writes
+e1Dbg  equ 0    ;Force 01h errors on all i33h calls
 ;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
-%if drvDbg
+%if dbgFnc
 dbgPrintString:
 ;Pass in rsi the string we wanna print and its length in ecx.
 ;Preserves all registers
@@ -115,7 +118,15 @@ dosInt33h:
 ; already has the lock so this simply incs the count. If a process attempts 
 ; to bypass DOS and we are already processing a request it gets put on ice.
 ;--------------------------------------------------------------------------
-%if drvDbg && i33Dbg
+%if e1Dbg
+    cmp byte [0700h], -1
+    jne .e1skip
+    mov eax, 0100h
+    or byte [rsp + 2*8h], 1 ;Set CF
+    iretq
+.e1skip:
+%endif
+%if i33Dbg
     call .dbgFun
 %endif
 ;Start by clearing the CF on entry
@@ -205,7 +216,7 @@ dosInt33h:
     pop rax
 ;And finally go back to the caller :)
     return
-%if drvDbg && i33Dbg
+%if i33Dbg
 .dbgFun:
     cmp byte [0700h], -1
     retne
@@ -379,7 +390,8 @@ msdDriver:
     repne scasb
     jne .exNotFnd
     mov al, byte [rdi + errTblLen - 1] ;Get entry in DOS table now
-    jmp short .errorExit
+    ;jmp short .errorExit
+    jmp .errorExit
 .exNotFnd:
 ;Come here if the BIOS supplied code was not mapped to anything.
 ; We now get the SCSI code. Only a few cases make sense so
@@ -387,6 +399,44 @@ msdDriver:
     movzx edx, byte [rbp + drvBlk.bBIOSNum]
     mov eax, 0100h
     int 33h     ;No need to preserve regs across this call 
+;~~~~~~~~~~~~~~~~DEBUG~~~~~~~~~~~~~~~~
+;%if drvDbg
+%if errDbg
+    push rax
+    lea rsi, .errStr1
+    call dbgPrintString
+    push rax
+    mov al, dl
+    call dbgPrintHexByte
+    pop rax
+    call dbgCrlf
+    lea rsi, .errStrAL
+    call dbgPrintString
+    call dbgPrintHexByte
+    lea rsi, .errStrAH
+    call dbgPrintString
+    mov al, ah
+    call dbgPrintHexByte
+    lea rsi, .errStrCL
+    call dbgPrintString
+    mov al, cl
+    call dbgPrintHexByte
+    lea rsi, .errStrCH
+    call dbgPrintString
+    mov al, ch
+    call dbgPrintHexByte
+    call dbgCrlf
+    pop rax
+    jmp short .genDbgExit   ;Skip strings
+.errStr1    db "[DRIVER] Unknown Error. BIOS error codes reported for drive ",0
+.errStrAL   db "AL: ",0
+.errStrAH   db " | AH: ",0
+.errStrCL   db " | CL: ",0
+.errStrCH   db " | CH: ",0
+.genDbgExit:
+%endif
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 ;Device Not Ready
     mov eax, drvNotReady  ;Device not ready code
     cmp r8b, al  ;SCSI Not ready commands start with 2

@@ -84,7 +84,6 @@ diskDevErr:
     mov al, byte [rbp + dpb.bDriveNumber]   ;Get the drive number
     mov qword [qErrRbp], rbp  ;Save the DPB 
     mov rsi, qword [rbp + dpb.qDriverHeaderPtr] ;And get the driver ptr in rsi
-    xor ebp, ebp    ;Finally, set ebp to 0 to simulate the segment
     call hardErrorCommon
     pop rdi
     pop rsi
@@ -151,7 +150,35 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     mov rsp, qword [oldRSP]     ;Get the stack ptr after regs were pushed
     xor ebp, ebp                ;Always zeroed for DOS portability!
     int 24h                     ;Call crit. err. hdlr. Ints reset on
-    mov qword [oldRSP], rsp     ;Allows user to change reg vals on fail!
+;Now we do self-parent stablity handling. Do it here as interrupts are off
+; and rsp is guaranteed to have the right value, thanks to int preserving 
+; the stack pointer too. 
+;If the process isn't its own parent we ignore it.
+;Else, we have a self-parent process. This is undocumented and thus we can
+; assume it is one of our DOS kernel extensions or something. 
+; If the Int 24h handler didnt access int 21h then this is functionally a nop.
+; Else, we modified the stack pointer in the psp and as a result, since we are 
+;  our own parent, modified our parent's stack pointer in the psp. 
+;  Consequently, our parent's psp stack pointer is no longer are pointing 
+;  at a correct stack frame. This WILL lead to a GP fault if attempting to 
+;  ABORT a self-parent process. 
+;What we do here points the parent's psp stack pointer back to the stack 
+; frame that was originally set upon entering the Int 21h call that caused the
+; hard error. Since this code is within the main parent process space, which
+; won't get deallocated, then the stack frame points safely to a known good 
+; stack previously used by the parent process, within a memory block owned by
+; the parent process.
+;Since this code is not hit once inside Int 24h, it is safe wrt reentrancy 
+; issues. Thus, the PSP is reset after all the Int 21h calls the Int 24h 
+; handler may have made.
+    mov rbp, qword [currentPSP]
+    cmp rbp, qword [rbp + psp.parentPtr]    ;Are we our own parent?
+    jne .notOwnParent
+;Now we ensure that any self-parent applications that have gone through Int 24h
+; have their PSP rsp returned to the rsp that they entered Int 21h with.
+    mov qword [rbp + psp.rspPtr], rsp
+.notOwnParent:
+    mov qword [oldRSP], rsp     ;Ensure OG stack is put back in place
     mov rsp, qword [xInt24hRSP] ;Ret to DOS stack for failing device
     mov byte [critErrFlag], 0   ;Clear critical error flag
     inc byte [inDOS]            ;Reenter DOS
@@ -205,21 +232,4 @@ criticalDOSError:   ;Int 2Fh, AX=1206h, Invoke Critical Error Function
     xor eax, eax    ;Default return code to 0. Abort flag will be set later
     mov byte [exitType], 2      ;We are returning from Abort, ret type 2!
     mov byte [volIdFlag], al     ;Clear special vol search byte if set
-    ;Before returning, we need to set the aborting psp.rspPtr back to 
-    ; the oldRSP as a syscall during Int 24h would change this value.
-    ;This only affects programs which are their own parents as when aborting
-    ; we swap to the parentPSP. This prevents a bug from arising as the 
-    ; stack ptr in psp.rspPtr may have changed since initially entering DOS
-    ; as the Int 24h handler may have made an Int 21h call, meaning if 
-    ; the Int 24h handler plays with the stack too much, the value in 
-    ; psp.rspPtr is no longer pointing at a "valid" stack frame (i.e. 
-    ; with valid SS:RSP). The only sane thing to do is to reset this 
-    ; pointer to the value it had on entry to the initial DOS call which
-    ; triggered the Int 24h (or the equivalent stack frame that was 
-    ; replaced by the Int 24h handler). If the task being aborted is not 
-    ; its own parent the following is a NOP. If it is its own parent, we
-    ; the following prevents a GP. Fault.
-    mov rdi, qword [currentPSP]
-    mov rbx, qword [oldRSP]
-    mov qword [rdi + psp.rspPtr], rbx
     jmp terminateClean.altEP
