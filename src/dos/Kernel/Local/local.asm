@@ -324,7 +324,7 @@ getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage
 .setCodepage:
     cmp al, 2
     jne .exitBadFunc
-    movzx edx, word [defltCtry] ;Get the country ID
+    movzx edx, word [extCtryTbl.countryCode] ;Get the country ID
     mov eax, 1400h
     int 2Fh
     cmp al, -1
