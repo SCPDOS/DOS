@@ -346,6 +346,7 @@ fcbInitName2:
     push rbp
     mov rbp, rsp
     sub rsp, 15
+;   enter 15, 0
     push rdi
     lea rdi, qword [rbp - 15]
     mov rsi, rdx
@@ -363,6 +364,7 @@ fcbInitRoutine:
     push rbp
     mov rbp, rsp
     sub rsp, 15    ;Make 16 char space on stack
+;   enter 15, 0
     ;This space is used to store X:FILENAME.EXT,0
     push rdi    ;Save the internal destination pathname buffer 
     lea rdi, qword [rbp - 15]
@@ -409,6 +411,7 @@ fcbInitRoutine:
 .jiggleStack:
     mov rsp, rbp
     pop rbp
+;   leave
 .exit:
     return
 

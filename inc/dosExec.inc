@@ -1,36 +1,14 @@
-;This include file contains structures related to the EXE format
-; and the exec frame used when setting up the EXE in memory by 21h/4Bh
+;This include file contains structures related to the EXE format and the 
+; structures related to the EXEC (21h/4Bh) system call.
 
-;Int 21h/4Bh stack frame, used to store values whilst processing a EXE or COM
-; file.
+;EXEC valid subfunctions
 execLoadGo  equ 0
 execLoad    equ 1
 execInvld   equ 2
 execOverlay equ 3
 execBkgrnd  equ 4
 
-struc execFrame
-    .oldRBP     dq ?  
-    .bSubFunc   dq ?  ;Subfunction number
-    .wProgHdl   dq ?  ;File handle number for executable file
-    .wNameLen   dq ?  ;Needs to be less than 64 but welp
-    .pParam     dq ?  ;Parameter list pointer
-    .pProgname  dq ?  ;Ptr to ASCIIZ program name
-
-    .pEnvBase   dq ?  ;Ptr to new Environment block, NOT THE MCB FOR ENV BLK
-    .pPSPBase   dq ?  ;Ptr to new PSP base address
-    .pProgBase  dq ?  ;Ptr to Prog. Base addr., ALIGNED FOR FIRST EXE SECTION
-    .dProgSize  dq ?  ;Program size is saved here, PSP included.
-    .dCOFFhdr   dq ?  ;Offset in file to COFF header. Set to 0 for COM
-    .bSegCount  dq ?  ;Count of segments loaded into memory
-    .wCOFFChars dq ?  ;Save the COFF characteristics in here
-.pProgEP:   ;Program EP, recycle this qword
-    .wNumSeg    dq ?  ;Number of segments, consider reusing NameLen
-    .dFilePtr   dq ?  ;Keep of track of where in file we are
-    .qRelocVal  dq ?  ;Used when computing relocations, Rebasing factor
-endstruc
-
-;Possible blocks to be pointed to by rbx
+;Possible blocks to be pointed to by rbx on entry to EXEC system call.
 
 struc execProg 
     .pEnv       dq ?  ;Ptr to environment block (or 0 => copy parent env)
