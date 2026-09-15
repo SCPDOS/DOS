@@ -343,12 +343,9 @@ fcbInitName2:
 ;Input: rdi -> Buffer to use to build the X:FILENAME.EXT,0 pathspec
 ;       rdx -> UserFCB
 ;       eax[0] = Drive number (0 based)
-    push rbp
-    mov rbp, rsp
-    sub rsp, 15
-;   enter 15, 0
+    enter 16, 0
     push rdi
-    lea rdi, qword [rbp - 15]
+    lea rdi, qword [rbp - 16]
     mov rsi, rdx
     test byte [extFCBFlag], -1
     jz .notExtended
@@ -361,13 +358,10 @@ fcbInitRoutine:
 ;Checks if the FCB is extended or normal, and fills the initial variables
 ;Input: rdx -> User FCB
 ;       rdi -> Buffer to use to build the X:FILENAME.EXT,0 pathspec
-    push rbp
-    mov rbp, rsp
-    sub rsp, 15    ;Make 16 char space on stack
-;   enter 15, 0
+    enter 16, 0     ;Make 16 char space on stack
     ;This space is used to store X:FILENAME.EXT,0
     push rdi    ;Save the internal destination pathname buffer 
-    lea rdi, qword [rbp - 15]
+    lea rdi, qword [rbp - 16]
     mov byte [extFCBFlag], 0    ;Assume normal FCB initially
     mov byte [searchAttr], 0    ;Default search attributes
     call isFCBExtended  ;Sets rsi to point to the drive letter (if extended)
@@ -398,7 +392,7 @@ fcbInitRoutine:
     pop rdi ;Get back the ptr the SDA buffer to store the full pathname into
     cmp byte [rbx], 0   ;Is our path X:,0 (or X:\,0)?
     je .badDisk
-    lea rsi, qword [rbp - 15]   ;Point rsi to the stack string
+    lea rsi, qword [rbp - 16]   ;Point rsi to the stack string
     push rbp
     call canonicaliseFileName   ;Canonicalise filename (add curr dir if X:)
     pop rbp
@@ -409,9 +403,7 @@ fcbInitRoutine:
     mov al, errPnf  ;DOS does this... so will I
     stc
 .jiggleStack:
-    mov rsp, rbp
-    pop rbp
-;   leave
+    leave
 .exit:
     return
 
