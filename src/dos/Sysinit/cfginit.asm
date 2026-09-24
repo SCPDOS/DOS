@@ -413,8 +413,9 @@ configParse:
     and ecx, ~0Fh   ;Clear lower byte
     shr ecx, 4      ;Convert to paragraphs
     inc ecx         ;... and round up!
-    cmp ecx, 1000h ;Is it geq 64k (in paragraphs)?
+    cmp ecx, 1000h  ;Is it geq 64k (in paragraphs)?
     jae .drvFreeMemAndHdl
+    xor edx, edx    ;Indicate a COM driver!
     jmp .loadCont
 .exeDrivers:
     ;Get the file pointer for file header
@@ -455,6 +456,7 @@ configParse:
     shr ecx, 4      ;Convert to number of paragraphs.
     cmp ecx, 2000000h  ;Drivers cannot be more than 2Gb in size.
     jae .drvFreeMemAndHdl
+    mov edx, ecx    ;Indicate PE driver (ecx != 0)
 .loadCont:
     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
     int 21h ;r8 has the pointer to the block for freeing
@@ -468,6 +470,18 @@ configParse:
     ;Now set the subsystem marker and the owner to DOS
     mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
     mov qword [rax - mcb_size + mcb.owner], mcbOwnerDOS
+    test edx, edx   ;Are we loading a .COM driver?
+    jz .loadDrvr    ;Skip this if so :)
+    ;Align the pointer to the section alignment boundary
+    ;esi = Alignment requirement, rax -> Program block
+    mov edx, esi    ;Put alignment requirement into edx
+    dec edx         ;Convert edx into an alignment mask
+    test rax, rdx   ;If no common bits are set, we are section aligned!
+    jz .loadDrvr
+    not edx         ;Swap set bits in the alignment mask
+    and rax, rdx    ;Round ptr down to previous section alignment
+    add rax, rsi    ;Add 1 unit of section alignment to go into memory block
+.loadDrvr:
     ;Build the overlay command block
     lea rbx, cmdBlock
     mov qword [rbx + loadOvly.pLoadLoc], rax

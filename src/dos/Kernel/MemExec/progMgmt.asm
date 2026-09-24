@@ -20,7 +20,7 @@ createPSP:         ;ah = 55h, creates a PSP for a program
 ;rdx = Pointer to new PSP in memory.
 ;   Will be rounded up to next paragraph if not paragraph aligned.
 ;   Officially document that this MUST be paragraph aligned.
-;rsi = alloc size for new psp block
+;rsi = alloc size for new psp block in paragraphs
 ;
 ;----------------!!!! HANDLE COPY CAVEAT !!!!----------------
 ; Note, only the first 20 handles will be copied 

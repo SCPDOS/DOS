@@ -234,7 +234,6 @@ altRet: ;Accessed as a qword
 extErrByteBuf:  ;Used by DOS execpt hdlr to build strings. Immediate abort!
 exeHdrSpace:    ;This needs 112 bytes in EXEC only, buffer is free for use!
     buffer1     db 2*MAX_FSPEC dup (?)  ;Space for max expanded MAX_FSPEC
-sectHdr:        ;This needs 20 bytes in EXEC only
     buffer2     db 2*MAX_FSPEC dup (?) ;Space for a second path
     fname1Ptr   dq ?  ;Ptr to first filename argument
     fname2Ptr   dq ?  ;Ptr to second filename argument

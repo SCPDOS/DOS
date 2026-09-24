@@ -263,146 +263,145 @@
    234                              <1> extErrByteBuf:  ;Used by DOS execpt hdlr to build strings. Immediate abort!
    235                              <1> exeHdrSpace:    ;This needs 112 bytes in EXEC only, buffer is free for use!
    236 00000550 <res 80h>           <1>     buffer1     db 2*MAX_FSPEC dup (?)  ;Space for max expanded MAX_FSPEC
-   237                              <1> sectHdr:        ;This needs 20 bytes in EXEC only
-   238 000005D0 <res 80h>           <1>     buffer2     db 2*MAX_FSPEC dup (?) ;Space for a second path
-   239 00000650 ????????????????    <1>     fname1Ptr   dq ?  ;Ptr to first filename argument
-   240 00000658 ????????????????    <1>     fname2Ptr   dq ?  ;Ptr to second filename argument
-   241 00000660 ??                  <1>     skipDisk    db ?  ;Set => Read Disk, Clear => Skip checking on disk
-   242                              <1> ;Misc bookkeeping flags and vars
-   243 00000661 <res 2Bh>           <1>     dosffblock  db ffBlock_size dup (?)  ;FF block (fullsize unlike DOS)
-   244 0000068C <res 20h>           <1>     curDirCopy  db fatDirEntry_size dup (?)  ;Dir copy
-   245 000006AC <res 5Fh>           <1>     tmpCDS      db cds_size dup (?)  ;For server calls that need a tmp CDS
-   246                              <1> ;These two are used to expand filenames into FCB format. The extra char 
-   247                              <1> ; is used to store the terminator of the portion (either a pathsep or null)
-   248 0000070B <res Ch>            <1>     fcbName     db MAX_NAME_FCBZ dup (?)
-   249 00000717 <res Ch>            <1>     wcdFcbName  db MAX_NAME_FCBZ dup (?)  ;Expands wildcards for rename
-   250 00000723 ????????????????    <1>     fileDirSect dq ?  ;File/Directory starting sector, for each level
-   251 0000072B ??                  <1>     volIncmpFCB db ?  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
-   252 0000072C ??                  <1>     extFCBAttr  db ?  ;Extended FCB file attribute
-   253 0000072D ??                  <1>     extFCBFlag  db ?  ;Set to -1 if Extended FCB
-   254 0000072E ??                  <1>     searchAttr  db ?  ;Directory Search attributes
-   255                              <1> ;    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
-   256 0000072F ??                  <1>     renFlags    db ?  ;01h = Rename in same dir, 02h = Wildcard in destination
-   257 00000730 ??                  <1>     badNameRen  db ?  ;Device name or File not found for rename
-   258 00000731 ??                  <1>     bRwFlag     db ?  ;00h=Read, 1=Write, read/write/share error reporting
-   259 00000732 ??                  <1>     spliceFlag  db ?  ;00 = Relative path, !0 = Full path
-   260 00000733 ??                  <1>     dosInvoke   db ?  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
-   261                              <1> 
-   262 00000734 ??                  <1>     vConInsert  db ?  ;Insert mode on 21/0ah (0 = not insert, !0 = insert)
-   263 00000735 ??                  <1>     fileExist   db ?  ;-1 if file in pathspec exists (create/open)
-   264 00000736 ??                  <1>     parDirExist db ?  ;-1 if parent directory for file exists (create/open)
-   265 00000737 ??                  <1>     exitType    db ?  ;Forms the upper byte of the errorlvl
-   266 00000738 ??                  <1>     openCreate  db ?  ;If open, set to 0, if Create set to -1
-   267                              <1> ;Set to E5h for renaming and deletion. Can be set to 0 if *.* chosen
-   268                              <1> ; to speed up the deletion but we don't use this (yet).
-   269 00000739 ??                  <1>     delChar     db ?
-   270 0000073A ??                  <1>     workingDrv  db ?  ;Working drive number, 0 based, from DPB
-   271                              <1> qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
-   272                              <1> workingDD:  ;Create a symbol for the working device driver too
-   273 0000073B ????????????????    <1>     workingDPB  dq ?  ;Ptr to the DPB of the drive being accessed
-   274 00000743 ????????????????    <1>     workingCDS  dq ?  ;Ptr to the CDS of the drive being accessed
-   275 0000074B ????????????????    <1>     workingFCB  dq ?  ;Ptr to the caller FCB for FCB function
-   276                              <1> ;Below is the symbol for saving the oldSFTptr during a char func
-   277                              <1> vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
-   278 00000753 ????????????????    <1>     workingSFT  dq ?  ;Temporary SFT (may not be not current) ptr being used
-   279 0000075B ????????????????    <1>     curHdlPtr   dq ?  ;Ptr to JFT handle entry in current PSP
-   280 00000763 ????????????????    <1>     currentSFT  dq ?  ;Ptr to the SFT of the file being accessed
-   281 0000076B ????                <1>     currentNdx  dw ?  ;Used to access the current SFTNdx being opened/created
-   282 0000076D ????                <1>     currentHdl  dw ?  ;The current file handle is saved here
-   283 0000076F ????????????????    <1>     pCurrBuff   dq ?  ;Ptr to the Current Buffer (hdr) being accessed
-   284                              <1> ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
-   285                              <1> ; and 32 byte offset into the sector for directory
-   286 00000777 ????????????????    <1>     tempSect    dq ?  ;A scratch sector number
-   287                              <1> pathLen:    ;Used to store the length of a path string for removal strcmp
-   288 0000077F ????                <1>     entry       dw ?  ;32 byte offset into a sector or #fats sectors/fat
-   289                              <1> ;***************************************************|
-   290                              <1> ; Needs to be set up before any file access         |
-   291                              <1> ; These vars keep track of file access properties   |
-   292                              <1> ;   and must be used only for such purposes.        |
-   293                              <1> ;***************************************************|
-   294 00000781 ????????            <1>     currClustF  dd ?  ;Relative cluster in file being r/w to/from
-   295 00000785 ????????            <1>     currClustD  dd ?  ;Current Disk Cluster being r/w to/from
-   296                              <1> 
-   297 00000789 ????????            <1>     currSectF   dd ?  ;Current Sector in File being r/w to/from
-   298 0000078D ??                  <1>     currSectC   db ?  ;Current Sector in Cluster being r/w to/from
-   299 0000078E ????????????????    <1>     currSectD   dq ?  ;Current absolute Sector number on Disk
-   300                              <1> 
-   301 00000796 ????                <1>     currByteS   dw ?  ;Current Byte in sector being r/w to/from
-   302 00000798 ????????            <1>     currByteF   dd ?  ;Current Byte in file being r/w to/from
-   303                              <1> ;***************************************************|
-   304 0000079C ????????            <1>     lastClust   dd ?  ;Number of the last (rel) cluster of the file
-   305 000007A0 ????????            <1>     lastClustA  dd ?  ;Number of the last (abs) cluster of file on disk
-   306 000007A4 ????????            <1>     tfrLen      dd ?  ;Number of bytes to transfer
-   307 000007A8 ????????            <1>     tfrCntr     dd ?  ;Number of bytes left to transfer
-   308                              <1> ;Directory stuff
-   309 000007AC ????????            <1>     dirClustPar dd ?  ;Absolute disk cluster of the start of the parent dir
-   310 000007B0 ????????            <1>     dirClustA   dd ?  ;Absolute cluster number of current directory
-   311 000007B4 ????                <1>     dirSect     dw ?  ;Sector of current directory cluster
-   312 000007B6 ????????            <1>     dirEntry    dd ?  ;32 byte offset in dir for file being searched for
-   313                              <1> ;Extended Open vars
-   314 000007BA ????                <1>     wEOFlags    dw ?  ;Set if we are doing an extended open with various flags
-   315 000007BC ????                <1>     wEOActions  dw ?  ;Extended open actions (user DX)
-   316 000007BE ????                <1>     wEOOpenMode dw ?  ;Symbol to the next two bytes. (USER BX)
-   317 000007C0 ????                <1>     wEOAttribs  dw ?  ;Symbol to the next two bytes (USER CX)
-   318 000007C2 ????????????????    <1>     pszEOfile   dq ?  ;Ptr to null terminated string to file name (USER RSI)
-   319                              <1> ;Error DPB 
-   320 000007CA ????????????????    <1>     qErrRbp     dq ?  ;A var for rbp for error/temporary situations
-   321                              <1> ;No clash recycling below var as the vars in SDA are invalid if in CPU 
-   322                              <1> ; exception hdlr. This var gets cleared on entry to the exception handler. 
-   323                              <1> ;If it remains clear, the task will Abort. If it gets set, DOS or COMMAND.COM 
-   324                              <1> ; caused CPU exception or we have an NMI. Then we freeze as we cant guarantee 
-   325                              <1> ; anything anymore.
-   326                              <1> haltDOS:
-   327 000007D2 ??                  <1>     mediaByte   db ?  ;Calls 1Bh and 1Ch return ptr to here
-   328                              <1>     
-   329 000007D3 <res 2Bh>           <1>     renameFFBlk db ffBlock_size dup (?)  ;Source file "find first" block
-   330 000007FE <res 20h>           <1>     renameDir   db fatDirEntry_size dup (?)  ;Build new file dir entry here
-   331                              <1> ;Stacks and scratch SFT
-   332 0000081E ????                <1>     alignb  8
-   333 00000820 <res 528h>          <1>     critStack   dq 165 dup (?)
-   334 00000D48 ????????????????    <1>     critStakTop dq ?
-   335                              <1> 
-   336 00000D50 <res 57h>           <1>     scratchSFT  db sft_size dup (?)  ;Used in FCB calls to emulate a SFT
-   337                              <1>     
-   338 00000DA7 ??                  <1>     alignb  8
-   339 00000DA8 <res 638h>          <1>     AuxStack    dq 199 dup (?)
-   340 000013E0 ????????????????    <1>     AuxStakTop  dq ?  ;Auxilliary stack (Char IO, Int 25h/46h etc)
-   341 000013E8 <res 638h>          <1>     DiskStack   dq 199 dup (?)
-   342 00001A20 ????????????????    <1>     DiskStakTop dq ?
-   343                              <1> 
-   344 00001A28 ??                  <1>     lookahead   db ?  ;-1 => Lookahead on select Char function calls!
-   345                              <1> ;Below is used in create and delete for vol lbl only. Else is -1.
-   346 00001A29 ??                  <1>     rebuildDrv  db ?  ;Stores the drive letter of the dpb to reset.
-   347                              <1>     sdaLen      equ     $ - sda 
-   348                              <1>     sdaDOSLen   equ     $ - sdaDOSSwap
-   349                              <1> 
-   350                              <1> ;Additional variables NOT in the SDA
-   351 00001A2A ????????????????    <1>     pServerDispTbl  dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
-   352                              <1> ;A backup header to allow copying to for saving the current header when 
-   353                              <1> ; quickly doing a second request
-   354 00001A32 <res 2Ah>           <1>     bkupReqHdr      db ioReqPkt_size dup (?)  
-   355                              <1> ;Prevent toggling print if in the middle of reading an extended ASCII char
-   356                              <1> inExtASCII:
-   357 00001A5C ??                  <1>     noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle
-   358 00001A5D ????                <1>     keybTicks   dw ?  ;Counts the number of cycles spent in a kb loop.
-   359                              <1> ;Every time this overflows, we read the clock and update the DOS internal
-   360                              <1> ; copy of the date/time record
-   361                              <1> ;The idt doesnt need to be in the SDA as we will halt interrupts
-   362                              <1> ; until we get/set the address. Thus the IDT entry returned is the 
-   363                              <1> ; correct one AT the time of calling up to "the time it takes to get
-   364                              <1> ; to the read IDT routine".
-   365                              <1> dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
-   366 00001A5F ????                <1>     .limit  dw ?    ;Overlap this with stack below as no call overlap
-   367 00001A61 ????????????????    <1>     .base   dq ?
-   368                              <1> ;Lseek and IOCTL return data in registers as well as on the caller's 
-   369                              <1> ; stack. In Int 2Fh, this could overwrite user data if the functions
-   370                              <1> ; were allowed to write to original callers register stack. 
-   371                              <1> ; So we have this structure below that is used by these functions to 
-   372                              <1> ; write their "return" data onto a "stack", even though when accessed 
-   373                              <1> ; through the multiplexer we never will read this structure. 
-   374                              <1> ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
-   375                              <1> labelPkt:   ;Whilst this is here, keep the thing below kinda big :)
-   376 00001A69 <res 60h>           <1>     mplxRegStack    db callerFrame_size dup (?) 
+   237 000005D0 <res 80h>           <1>     buffer2     db 2*MAX_FSPEC dup (?) ;Space for a second path
+   238 00000650 ????????????????    <1>     fname1Ptr   dq ?  ;Ptr to first filename argument
+   239 00000658 ????????????????    <1>     fname2Ptr   dq ?  ;Ptr to second filename argument
+   240 00000660 ??                  <1>     skipDisk    db ?  ;Set => Read Disk, Clear => Skip checking on disk
+   241                              <1> ;Misc bookkeeping flags and vars
+   242 00000661 <res 2Bh>           <1>     dosffblock  db ffBlock_size dup (?)  ;FF block (fullsize unlike DOS)
+   243 0000068C <res 20h>           <1>     curDirCopy  db fatDirEntry_size dup (?)  ;Dir copy
+   244 000006AC <res 5Fh>           <1>     tmpCDS      db cds_size dup (?)  ;For server calls that need a tmp CDS
+   245                              <1> ;These two are used to expand filenames into FCB format. The extra char 
+   246                              <1> ; is used to store the terminator of the portion (either a pathsep or null)
+   247 0000070B <res Ch>            <1>     fcbName     db MAX_NAME_FCBZ dup (?)
+   248 00000717 <res Ch>            <1>     wcdFcbName  db MAX_NAME_FCBZ dup (?)  ;Expands wildcards for rename
+   249 00000723 ????????????????    <1>     fileDirSect dq ?  ;File/Directory starting sector, for each level
+   250 0000072B ??                  <1>     volIncmpFCB db ?  ;Set to -1 if the volume uses FAT32 (or all incompat FS)
+   251 0000072C ??                  <1>     extFCBAttr  db ?  ;Extended FCB file attribute
+   252 0000072D ??                  <1>     extFCBFlag  db ?  ;Set to -1 if Extended FCB
+   253 0000072E ??                  <1>     searchAttr  db ?  ;Directory Search attributes
+   254                              <1> ;    fileOpenMd  db ?  ;Open mode (compat, r/w/rw?) 
+   255 0000072F ??                  <1>     renFlags    db ?  ;01h = Rename in same dir, 02h = Wildcard in destination
+   256 00000730 ??                  <1>     badNameRen  db ?  ;Device name or File not found for rename
+   257 00000731 ??                  <1>     bRwFlag     db ?  ;00h=Read, 1=Write, read/write/share error reporting
+   258 00000732 ??                  <1>     spliceFlag  db ?  ;00 = Relative path, !0 = Full path
+   259 00000733 ??                  <1>     dosInvoke   db ?  ;0 = Invoked via Int 21h, -1 = Invoked via 21h/5D01h
+   260                              <1> 
+   261 00000734 ??                  <1>     vConInsert  db ?  ;Insert mode on 21/0ah (0 = not insert, !0 = insert)
+   262 00000735 ??                  <1>     fileExist   db ?  ;-1 if file in pathspec exists (create/open)
+   263 00000736 ??                  <1>     parDirExist db ?  ;-1 if parent directory for file exists (create/open)
+   264 00000737 ??                  <1>     exitType    db ?  ;Forms the upper byte of the errorlvl
+   265 00000738 ??                  <1>     openCreate  db ?  ;If open, set to 0, if Create set to -1
+   266                              <1> ;Set to E5h for renaming and deletion. Can be set to 0 if *.* chosen
+   267                              <1> ; to speed up the deletion but we don't use this (yet).
+   268 00000739 ??                  <1>     delChar     db ?
+   269 0000073A ??                  <1>     workingDrv  db ?  ;Working drive number, 0 based, from DPB
+   270                              <1> qPtr:       ;Stores working DPB and/or device driver (if r/w a char device)
+   271                              <1> workingDD:  ;Create a symbol for the working device driver too
+   272 0000073B ????????????????    <1>     workingDPB  dq ?  ;Ptr to the DPB of the drive being accessed
+   273 00000743 ????????????????    <1>     workingCDS  dq ?  ;Ptr to the CDS of the drive being accessed
+   274 0000074B ????????????????    <1>     workingFCB  dq ?  ;Ptr to the caller FCB for FCB function
+   275                              <1> ;Below is the symbol for saving the oldSFTptr during a char func
+   276                              <1> vConAltSFTPtr: ;Alternate symbol for working SFT (used when CON is swapped)
+   277 00000753 ????????????????    <1>     workingSFT  dq ?  ;Temporary SFT (may not be not current) ptr being used
+   278 0000075B ????????????????    <1>     curHdlPtr   dq ?  ;Ptr to JFT handle entry in current PSP
+   279 00000763 ????????????????    <1>     currentSFT  dq ?  ;Ptr to the SFT of the file being accessed
+   280 0000076B ????                <1>     currentNdx  dw ?  ;Used to access the current SFTNdx being opened/created
+   281 0000076D ????                <1>     currentHdl  dw ?  ;The current file handle is saved here
+   282 0000076F ????????????????    <1>     pCurrBuff   dq ?  ;Ptr to the Current Buffer (hdr) being accessed
+   283                              <1> ;Temp vars, used when walking FAT or changing sectors, or reporting sector num
+   284                              <1> ; and 32 byte offset into the sector for directory
+   285 00000777 ????????????????    <1>     tempSect    dq ?  ;A scratch sector number
+   286                              <1> pathLen:    ;Used to store the length of a path string for removal strcmp
+   287 0000077F ????                <1>     entry       dw ?  ;32 byte offset into a sector or #fats sectors/fat
+   288                              <1> ;***************************************************|
+   289                              <1> ; Needs to be set up before any file access         |
+   290                              <1> ; These vars keep track of file access properties   |
+   291                              <1> ;   and must be used only for such purposes.        |
+   292                              <1> ;***************************************************|
+   293 00000781 ????????            <1>     currClustF  dd ?  ;Relative cluster in file being r/w to/from
+   294 00000785 ????????            <1>     currClustD  dd ?  ;Current Disk Cluster being r/w to/from
+   295                              <1> 
+   296 00000789 ????????            <1>     currSectF   dd ?  ;Current Sector in File being r/w to/from
+   297 0000078D ??                  <1>     currSectC   db ?  ;Current Sector in Cluster being r/w to/from
+   298 0000078E ????????????????    <1>     currSectD   dq ?  ;Current absolute Sector number on Disk
+   299                              <1> 
+   300 00000796 ????                <1>     currByteS   dw ?  ;Current Byte in sector being r/w to/from
+   301 00000798 ????????            <1>     currByteF   dd ?  ;Current Byte in file being r/w to/from
+   302                              <1> ;***************************************************|
+   303 0000079C ????????            <1>     lastClust   dd ?  ;Number of the last (rel) cluster of the file
+   304 000007A0 ????????            <1>     lastClustA  dd ?  ;Number of the last (abs) cluster of file on disk
+   305 000007A4 ????????            <1>     tfrLen      dd ?  ;Number of bytes to transfer
+   306 000007A8 ????????            <1>     tfrCntr     dd ?  ;Number of bytes left to transfer
+   307                              <1> ;Directory stuff
+   308 000007AC ????????            <1>     dirClustPar dd ?  ;Absolute disk cluster of the start of the parent dir
+   309 000007B0 ????????            <1>     dirClustA   dd ?  ;Absolute cluster number of current directory
+   310 000007B4 ????                <1>     dirSect     dw ?  ;Sector of current directory cluster
+   311 000007B6 ????????            <1>     dirEntry    dd ?  ;32 byte offset in dir for file being searched for
+   312                              <1> ;Extended Open vars
+   313 000007BA ????                <1>     wEOFlags    dw ?  ;Set if we are doing an extended open with various flags
+   314 000007BC ????                <1>     wEOActions  dw ?  ;Extended open actions (user DX)
+   315 000007BE ????                <1>     wEOOpenMode dw ?  ;Symbol to the next two bytes. (USER BX)
+   316 000007C0 ????                <1>     wEOAttribs  dw ?  ;Symbol to the next two bytes (USER CX)
+   317 000007C2 ????????????????    <1>     pszEOfile   dq ?  ;Ptr to null terminated string to file name (USER RSI)
+   318                              <1> ;Error DPB 
+   319 000007CA ????????????????    <1>     qErrRbp     dq ?  ;A var for rbp for error/temporary situations
+   320                              <1> ;No clash recycling below var as the vars in SDA are invalid if in CPU 
+   321                              <1> ; exception hdlr. This var gets cleared on entry to the exception handler. 
+   322                              <1> ;If it remains clear, the task will Abort. If it gets set, DOS or COMMAND.COM 
+   323                              <1> ; caused CPU exception or we have an NMI. Then we freeze as we cant guarantee 
+   324                              <1> ; anything anymore.
+   325                              <1> haltDOS:
+   326 000007D2 ??                  <1>     mediaByte   db ?  ;Calls 1Bh and 1Ch return ptr to here
+   327                              <1>     
+   328 000007D3 <res 2Bh>           <1>     renameFFBlk db ffBlock_size dup (?)  ;Source file "find first" block
+   329 000007FE <res 20h>           <1>     renameDir   db fatDirEntry_size dup (?)  ;Build new file dir entry here
+   330                              <1> ;Stacks and scratch SFT
+   331 0000081E ????                <1>     alignb  8
+   332 00000820 <res 528h>          <1>     critStack   dq 165 dup (?)
+   333 00000D48 ????????????????    <1>     critStakTop dq ?
+   334                              <1> 
+   335 00000D50 <res 57h>           <1>     scratchSFT  db sft_size dup (?)  ;Used in FCB calls to emulate a SFT
+   336                              <1>     
+   337 00000DA7 ??                  <1>     alignb  8
+   338 00000DA8 <res 638h>          <1>     AuxStack    dq 199 dup (?)
+   339 000013E0 ????????????????    <1>     AuxStakTop  dq ?  ;Auxilliary stack (Char IO, Int 25h/46h etc)
+   340 000013E8 <res 638h>          <1>     DiskStack   dq 199 dup (?)
+   341 00001A20 ????????????????    <1>     DiskStakTop dq ?
+   342                              <1> 
+   343 00001A28 ??                  <1>     lookahead   db ?  ;-1 => Lookahead on select Char function calls!
+   344                              <1> ;Below is used in create and delete for vol lbl only. Else is -1.
+   345 00001A29 ??                  <1>     rebuildDrv  db ?  ;Stores the drive letter of the dpb to reset.
+   346                              <1>     sdaLen      equ     $ - sda 
+   347                              <1>     sdaDOSLen   equ     $ - sdaDOSSwap
+   348                              <1> 
+   349                              <1> ;Additional variables NOT in the SDA
+   350 00001A2A ????????????????    <1>     pServerDispTbl  dq ?  ;DO NOT MOVE! Used to find server dispatch tbl
+   351                              <1> ;A backup header to allow copying to for saving the current header when 
+   352                              <1> ; quickly doing a second request
+   353 00001A32 <res 2Ah>           <1>     bkupReqHdr      db ioReqPkt_size dup (?)  
+   354                              <1> ;Prevent toggling print if in the middle of reading an extended ASCII char
+   355                              <1> inExtASCII:
+   356 00001A5C ??                  <1>     noPrintTog  db ?  ;00 = Toggle as usual, 01 = Prevent toggle
+   357 00001A5D ????                <1>     keybTicks   dw ?  ;Counts the number of cycles spent in a kb loop.
+   358                              <1> ;Every time this overflows, we read the clock and update the DOS internal
+   359                              <1> ; copy of the date/time record
+   360                              <1> ;The idt doesnt need to be in the SDA as we will halt interrupts
+   361                              <1> ; until we get/set the address. Thus the IDT entry returned is the 
+   362                              <1> ; correct one AT the time of calling up to "the time it takes to get
+   363                              <1> ; to the read IDT routine".
+   364                              <1> dosIdtPtr:          ;21h/25h will always read a new copy of IDT here
+   365 00001A5F ????                <1>     .limit  dw ?    ;Overlap this with stack below as no call overlap
+   366 00001A61 ????????????????    <1>     .base   dq ?
+   367                              <1> ;Lseek and IOCTL return data in registers as well as on the caller's 
+   368                              <1> ; stack. In Int 2Fh, this could overwrite user data if the functions
+   369                              <1> ; were allowed to write to original callers register stack. 
+   370                              <1> ; So we have this structure below that is used by these functions to 
+   371                              <1> ; write their "return" data onto a "stack", even though when accessed 
+   372                              <1> ; through the multiplexer we never will read this structure. 
+   373                              <1> ; Really only 4 qwords are needed (rax-rdx) but yaknow... safety
+   374                              <1> labelPkt:   ;Whilst this is here, keep the thing below kinda big :)
+   375 00001A69 <res 60h>           <1>     mplxRegStack    db callerFrame_size dup (?) 
     38                                  
     39                                  ;---------------------------
     40                                  ;       Share data seg
