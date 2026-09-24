@@ -334,9 +334,7 @@ configParse:
 ;   Device Driver Loader here  :
 ;===============================
 .drvLoader:
-    mov rsi, qword [rbp - cfgFrame.linePtr]
-    add rsi, 6  ;Go past DEVICE= to the pathname
-    call .skipSeparators
+    call .drvGetDrvFilename ;Get ptr to driver name in rsi
     mov rdi, rsi
     mov rdx, rdi    ;Prepare rdx for the open
 ;Now search for the first char after pathname. 
@@ -367,8 +365,9 @@ configParse:
     mov eax, 3D00h  ;Read only file
     int 21h
     jc .drvBad
-    movzx ebx, ax   ;Get the handle in ebx
+    mov ebx, eax    ;Get the handle in ebx
     xor edx, edx    ;Move the handle to the end of the file
+    xor ecx, ecx    
     mov eax, 4202h  ;LSEEK to SEEK_END
     int 21h
     mov esi, eax    ;Save the file size in esi
@@ -386,21 +385,22 @@ configParse:
     mov eax, 3F00h  ;READ
     int 21h
     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
-    mov rdi, rdx    ;Get pointer to the EXE header
+    mov rdi, rdx    ;Get pointer to the PE header
     jnc short .headerReadOK
 .drvFreeMemAndHdl: ;Frees the block and then handle
-    ;r8 must point to the block to free
+;r8 must point to the block to free
     mov eax, 4900h  ;Free the block first!
     int 21h
     jmp .drvBadClose
 .headerReadOK:
-;Use register r10 as the indicator for .COM or .EXE. Set if COM.
+;Use register r15 as the indicator for .COM or PE. Clear if COM.
+    xor r15, r15    ;Clear the marker for executable type
     mov rdi, rdx    ;Save the pointer in rdi
     ;First check this file is MZ/ZM. If this is not, we assume its a .COM driver
     cmp word [rdi], dosMagicSignature
-    je short .exeDrivers
+    je short .peDrivers
     cmp word [rdi], dosMagicSignature2
-    je short .exeDrivers
+    je short .peDrivers
 ;.COM drivers come down here
     ;Get File Image Allocation Size in ecx here.
     ;Must be leq than 64Kb, rounded to nearest paragraph if .COM
@@ -415,9 +415,8 @@ configParse:
     inc ecx         ;... and round up!
     cmp ecx, 1000h  ;Is it geq 64k (in paragraphs)?
     jae .drvFreeMemAndHdl
-    xor edx, edx    ;Indicate a COM driver!
     jmp .loadCont
-.exeDrivers:
+.peDrivers:
     ;Get the file pointer for file header
     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
     xor ecx, ecx
@@ -436,65 +435,75 @@ configParse:
     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
     jne .drvFreeMemAndHdl
     cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 60
-    jb .drvFreeMemAndHdl ;We need section alignment info if a .EXE!
-    ;Now read the first 60 bytes of the optional header here. rdx points to buffer
+    jb .drvFreeMemAndHdl ;We need section alignment info if a PE!
+;Now read the first 60 bytes of the optional header here. rdx points to buffer
     mov ecx, 60     ;Read only 60 bytes
     mov eax, 3F00h  ;READ
     int 21h
     jc .drvFreeMemAndHdl   ;If something goes wrong, skip
-    cmp eax, 56
+    cmp eax, ecx
     jb .drvFreeMemAndHdl   ;If fewer than 60 bytes read, skip
-    ;Round up size requirement.
-    ;If .EXE, round up to nearest section alignment
+;Round up size requirement.
+;If PE, round up to nearest section alignment
     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
     mov eax, dword [rdi + imageFileOptionalHeader.dSectionAlignment]
     mov esi, eax    ;Save in esi the alignment requirement
     dec eax         ;Set bits to strip, clear all other bits
+    test ecx, eax   ;Is this already aligned?
+    jz .peSkipAlign ;If so, skip this!
     not eax         ;Flip the set and clear bits
     and ecx, eax    ;Now clear the bits to clear from size, aligning downwards
     add ecx, esi    ;Now round upwards!
+.peSkipAlign:
     shr ecx, 4      ;Convert to number of paragraphs.
-    cmp ecx, 2000000h  ;Drivers cannot be more than 2Gb in size.
+    cmp ecx, 2000000h   ;Drivers cannot be more than 2Gb in size.
     jae .drvFreeMemAndHdl
-    mov edx, ecx    ;Indicate PE driver (ecx != 0)
+    call .drvPeDoChksum ;Now verify the driver checksum! Preserves rbx-r9.
+    jc .drvFreeMemAndHdl
+    dec r15         ;Reg is zero. Now just set it just to indicate PE driver.
 .loadCont:
     mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
     int 21h ;r8 has the pointer to the block for freeing
-    ;Now close the file
+;Now close the file
     mov eax, 3E00h  ;Close handle in ebx
     int 21h
     mov ebx, ecx    ;Put the number of paragraphs in ebx
     mov eax, 4800h  ;Allocate this block of memory
     int 21h         ;rax gets the pointer to load the program into
     jc .drvMemClose
-    ;Now set the subsystem marker and the owner to DOS
-    mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Mark as occupied by driver
+;Now set the subsystem marker and the owner to DOS
+    mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Occupied by drv
     mov qword [rax - mcb_size + mcb.owner], mcbOwnerDOS
-    test edx, edx   ;Are we loading a .COM driver?
+    mov r8, rax     ;Move the memory block ptr to r8
+    test r15, r15   ;Are we loading a .COM driver?
     jz .loadDrvr    ;Skip this if so :)
-    ;Align the pointer to the section alignment boundary
-    ;esi = Alignment requirement, rax -> Program block
+;Align the pointer to the section alignment boundary
+;esi = Alignment requirement, rax -> Program block
     mov edx, esi    ;Put alignment requirement into edx
     dec edx         ;Convert edx into an alignment mask
     test rax, rdx   ;If no common bits are set, we are section aligned!
-    jz .loadDrvr
+    jz .savHdrPtr
     not edx         ;Swap set bits in the alignment mask
     and rax, rdx    ;Round ptr down to previous section alignment
     add rax, rsi    ;Add 1 unit of section alignment to go into memory block
+.savHdrPtr:
+    mov r15, rax    ;This is where the PE hdr will be loaded.
 .loadDrvr:
-    ;Build the overlay command block
+;Build the overlay command block.
+;r8 -> MCB block
+;rax -> Where to load the driver. 
+;   For .COM, rax = r8
+;   For PE, rax could be below r8 according to section alignment requirements
     lea rbx, cmdBlock
     mov qword [rbx + loadOvly.pLoadLoc], rax
     mov qword [rbx + loadOvly.qRelocFct], rax
-    mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
-    add rsi, 6  ;Go past DEVICE= to the null terminated pathname
-    call .skipSeparators
+    call .drvGetDrvFilename ;Get ptr to driver name in rsi
     mov rdx, rsi
     mov eax, 4B03h  ;Load overlay!
     int 21h
     jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
 .badDriverLoad:
-    mov r8, qword [cmdBlock + loadOvly.pLoadLoc] ;Get the address of this 
+;r8 -> Memory block!
     mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
     int 21h
     lea rdx, .drvMemMsg
@@ -503,59 +512,83 @@ configParse:
     return
 .drvMemMsg: db CR,LF,"Not enough memory for driver",CR,LF,"$" 
 .loadOk:
-    ;Use driver load routines. Get the first byte of the MCB (where prog is loaded).
-    mov rsi, qword [rbx + loadOvly.pLoadLoc]
-    mov r8, rsi  ;Get the pointer to the MCB arena in r8 for later!
-    ;Reset the command line to have a space at the null terminator
-    mov rax, qword [rbp - cfgFrame.driverBreak]
-    push rbx
+;Now reset the command line to have a space at the null terminator
+    mov rdi, qword [rbp - cfgFrame.driverBreak]
     mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
-    mov byte [rax], bl  ;and replace the null terminator
-    pop rbx
-    ;Remember, the first byte of the overlay is the driver header. 
-    ;Hence, rsi points to that byte!
-    ;Pointers of each header need adjustment relative to their load address,
-    ; and linking into the main driver chain after NUL.
-    ;r11 = Local var, if no drivers in file passed init, free allocation.
-    ;                 Else, free using kernel eject routine.
+    mov byte [rdi], bl  ;and replace the null terminator
+;Here we have the following important registers:
+;   r8 -> MCB with the loaded driver now!
+;If .COM, rsi -> header of the first driver loaded
+;Else, rsi -> MZ header of the PE containing the drivers loaded
+    test r15, r15   ;Recall, 0 if .COM driver
+    jz .comDrv
+;Now, we want to find the first driver header in memory.
+    mov rsi, r15    ;Get PE header ptr back
+    movzx eax, word [rsi + imageDosHdr.e_lfanew]
+    lea rsi, qword [rsi + rax + coffHdr_size] ;Point to opt header
+    mov eax, dword [rsi + imageFileOptionalHeader.dSizeOfHeaders]
+    mov edx, dword [rsi + imageFileOptionalHeader.dSectionAlignment]
+    dec edx
+    test eax, edx   ;Is the size of headers also section aligned?
+    jz .peDrvNoAdj  ;Yes, so dont adjust
+    not edx
+    and eax, edx    ;Round down
+    add eax, dword [rsi + imageFileOptionalHeader.dSectionAlignment]
+.peDrvNoAdj:
+;eax has the section aligned offset from the load address to start of prog
+    lea rsi, qword [r15 + rax]  ;Point rsi to the first driver header
+;Now we do a simple driver sanity check. 
+; rsi should be pointing to a QWORD -1, the start of the driver header.
+;If not, abort the load.
+    xor eax, eax
+    dec rax
+    cmp qword [rsi], rax
+    je .peDrvEnd  ;PE loader resolves header pointers
+    mov eax, 4900h  ;Free the driver
+    int 21h
+    jmp .drvBad 
+.comDrv:
+;.COM driver are loaded such that the first byte in the MCB is 
+; their first byte. 
+    mov rsi, r8 ;Get ptr to the load block as first byte is first drv hdr.
+;Now we need to adjust the pointers of each header, to relocating them
+; relative to their load address.
     push rsi    ;Save the pointer to the first pointer to adjust
-.driverPtrAdjustment:
+.comDrvReloc:
     add qword [rsi + drvHdr.strPtr], rsi
     add qword [rsi + drvHdr.intPtr], rsi
     cmp qword [rsi + drvHdr.nxtPtr], -1
-    je short .driverPtrAdjustmentDone
+    je short .comDrvEnd
     add qword [rsi + drvHdr.nxtPtr], rsi
     mov rsi, qword [rsi + drvHdr.nxtPtr]
-    jmp short .driverPtrAdjustment
-.driverPtrAdjustmentDone:
+    jmp short .comDrvReloc
+.comDrvEnd:
     pop rsi     ;Get back the pointer to the first driver header
-    ;Prepare for initialising the drivers in the arena
-    ;EXPERIMENT: USING R9 and R12 UNTIL THE END OF THE FUNCTION
+.peDrvEnd:
+;Prepare for initialising the drivers
+;Here, rsi -> header of the first driver in the file we just loaded
     mov r9, rsi     ;Save a copy of the driver pointer in r9
     lea rbx, initDrvBlk
-    push rsi
-    mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the line pointer
-    add rsi, 6  ;Go past DEVICE
-    call .skipSeparators    ;Go past equals and any following spaces
+    call .drvGetDrvFilename ;Get ptr to driver name in rsi
     mov qword [rbx + initReqPkt.optptr], rsi ;and pass to driver!
-    pop rsi
+    mov rsi, r9     ;Get rsi back to the driver header
     mov r12, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG in r12
 .driverInit:
-    xchg r12, rbp
+    xchg r12, rbp   ;Swap rbp to point back to DOSSEG
 ;----------------------------------------------------------------
 ;In this region, rbp points back to dosseg
-;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-    call initDriver
-    jc short .driverBadRbpAdjust
 ;If we swap drivers to be their own tasks (i.e. with 4B01h)
 ; this routine will still work like so!
+;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    call initDriver
+    jc .driverBadRbpAdjust
     call addDriverMarkers
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    xchg r12, rbp
+    xchg r12, rbp   ;Get the config stack ptr back
     test word [rsi + drvHdr.attrib], devDrvChar
     jnz short .driverInitialised
-    call buildDPBs          ;Preserves rbp, rsi and rbx
-    jc short .driverBad
+    call buildDPBs          ;Preserves rbp, rsi and rbx and rbp and r8
+    jc .driverBad
 .driverInitialised:
     cmp qword [rsi + drvHdr.nxtPtr], -1     ;We at the end of the chain?
     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
@@ -565,12 +598,58 @@ configParse:
     xor ebx, ebx
     mov ebx, dword [r8 - mcb_size + mcb.blockSize] ;Get the size of the arena in paragraphs
     shl rbx, 4  ;Turn into number of bytes
-    sub r8, mcb_size    ;Point to the mcb header proper
-    lea rbx, qword [r8 + rbx + mcb.program] ;Get pointer to the end of the arena
-    call ejectKernelInit    ;Ignore any errors in ejection.
-    ;Link into main driver chain, 
-    ;r9 points to first driver in block
-    ;rsi points to last driver in block
+    lea rbx, qword [r8 + rbx] ;Get pointer to the end of the arena
+    call ejectKernelInit        ;Ignore any errors in ejection.
+    test r15, r15   ;Are we loading a .COM driver?
+    jz .drvAddToDrvLst
+;If the driver file we loaded was a PE, it can indicate to us in the 
+; header that some sections can be ejected. 
+;Here we eject all trailing discardable sections.
+    push rsi    ;Points to last driver header in block so save it.
+    movzx eax, word [r15 + imageDosHdr.e_lfanew]
+    lea rsi, qword [r15 + rax]  ;Point rsi to the COFF header
+    movzx ecx, word [rsi + imageFileHeader.wNumberOfSections]
+    mov edx, dword [rsi + coffHdr_size + imageFileOptionalHeader.dNumberOfRvaAndSizes]
+    lea rdi, qword [rsi + 8*rdx + coffHdrs_size]    ;Point past data dirs
+;Important registers now:
+; r8 -> MCB block
+; r15 -> MZ portion of PE header
+; rdi -> Section table. 
+; ecx = number of sections
+    breakpoint
+    lea edx, dword [ecx - 1]    ;Get offset to the last entry in the section tbl
+    mov eax, imageSectionHdr_size   ;One off multiplication
+    mul edx                     ;Get solution in eax (zero edx)
+    lea rsi, dword [rdi + rax]  ;Point to the last entry in the section table
+.peDiscardLp:
+    cmp rdi, rsi    ;If all sections are discardable, we load it silently.
+    je .peDiscardEnd
+    test dword [rsi + imageSectionHdr.dCharacteristics], imgScnMemDiscrd
+    jz .peDiscard
+    inc edx ;Inc the count of discardable sections
+    sub rsi, imageSectionHdr_size   ;Go back a secion
+    jmp short .peDiscardLp
+.peDiscard:
+    test edx, edx
+    jz .peDiscardEnd
+;Go to the section header of first discardable section
+    add rsi, imageSectionHdr_size
+    mov eax, dword [rsi + imageSectionHdr.dVirtualAddress]
+;Point rbx to start of discardable section plus 0Fh so that if we need to
+; add an extra paragraph, it gets added
+    lea rbx, qword [r15 + rax + 0Fh]
+    neg rbx         ;Multiply by -1
+    lea rbx, qword [r15 + rbx]  ;Get in bytes size of alloc after realloc
+    neg rbx
+    shr rbx, 4      ;Turn to paras
+    mov eax, 4A00h  ;REALLOC
+    int 21h ;If this works, great. If not, oh well (it really should work...)
+.peDiscardEnd:
+    pop rsi
+.drvAddToDrvLst:
+;Finally links the driver into main driver chain.
+;r9 points to first driver in block
+;rsi points to last driver in block
     mov rdi, qword [rbp - cfgFrame.oldRBP]  ;Get DOSSEG ptr
     lea rdi, qword [rdi + nulDevHdr] ;Get ptr to first driver
     mov rax, qword [rdi + drvHdr.nxtPtr]    ;Get the link
@@ -579,12 +658,15 @@ configParse:
 .driverExit:
 ;Exit the init routine if it all works out, WOO!
 ;Return values to original registers/memory locations
-;    mov qword fs:[currentPSP], r11
     clc
     return
+;------------------
+;Bad exit cases
+;------------------
 .driverBadRbpAdjust:
     mov rbp, r12
 .driverBad:
+;r8 -> MCB of driver
     ;Form the string to print
     lea rdi, .driverBad2    ;Store the name here
     test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
@@ -605,9 +687,6 @@ configParse:
     jmp short .driverExit
 .driverBad1 db CR,LF,"Error initialising driver: "
 .driverBad2 db "        ",CR,LF,"$"
-;------------------
-;Bad exit cases
-;------------------
 .drvBadClose:
     mov eax, 3E00h  ;Close handle in ebx
     int 21h
@@ -623,8 +702,119 @@ configParse:
     int 21h
     lea rdx, .drvMemMsg
     jmp short .drvBad2
-
 .drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
+;------------------------------------
+;          Driver subroutines
+;------------------------------------
+.drvGetDrvFilename:
+;Gets a ptr to the driver filename string. May not be null terminated.
+;This is the ``first'' character past the ``='' sign in CONFIG.SYS
+;Input: rbp -> cfgFrame
+;Output: rsi -> Filename
+    mov rsi, qword [rbp - cfgFrame.linePtr] ;Get the pointer to the 
+    add rsi, 6  ;Go past DEVICE= to the null terminated pathname
+    jmp .skipSeparators ;Return through this function.
+.drvPeDoChksum:
+;Compute PE checksum of the file before loading and compare 
+; against checksum in header. If not equal, skip loading it.
+;Input: ebx = File handle to read
+;       ecx = Size of allocation for executable file
+;       esi = Section alignment 
+;       rdi -> Ptr to memory block with imageFileOptionalHeader
+;       rbp -> Cfg frame
+;       r8 -> Memory block ptr
+;Output: CF=NC: Checksum ok
+;        CF=CY: Checksum not ok or hard error.
+    push rbx    ;File handle
+    push rcx    ;Size of file allocation
+    push rsi    ;Section alignement requirement
+    push rdi    ;Ptr to memory block with imageFileOptionalHeader
+;Get the filesize and return the fileptr back to the the start of the file
+    xor ecx, ecx    ;Go to end of file (preserved across these calls)
+    xor edx, edx
+    mov eax, 4202h  ;LSEEK from end of file to get the size
+    int 21h
+    jc .dpdcBad
+    push rax        ;Only saving eax as this contains the file size.
+    xor edx, edx
+    mov eax, 4200h  ;Move file pointer back to the start of the file
+    int 21h
+    jc .dpdcBad
+    pop rcx         ;Get the file size in ecx
+    xchg ebx, ecx   ;Swap the handle in rbx with the filesize
+    add ebx, 0Fh    ;Ensure ebx is paragraph aligned
+    shr ebx, 4      ;Get number of paragraphs to now be 
+    mov eax, 4A00h  ;Now we reallocate the block to contain the whole file.
+    int 21h
+    jc .dpdcBad
+    shl ebx, 4      ;Turn back into bytes
+    xchg ebx, ecx   ;Swap back the file handle and file size
+    mov eax, 3F00h  ;Read
+    mov rdx, rdi    ;Point to the buffer in rdi (same as r8)
+    int 21h
+    jc .dpdcBad
+    cmp eax, ecx    ;Was the count the same?
+    jne .dpdcBad
+;Now point rdi to to the checksum variable in the header space
+    mov rsi, rdi    ;Point rsi as the source of bytes
+    movzx eax, word [rdi + imageDosHdr.e_lfanew]
+    lea rdi, qword [rdi + rax + coffHdr_size + imageFileOptionalHeader.dCheckSum]
+;Now we do the computation sequentially. Use edx as the accumulator.
+    push rcx    ;Save the filesize count. 
+    xor edx, edx    ;Clear the accumulator
+.dpdcLp:
+    cmp rsi, rdi    ;Are we at the checksum in the header?
+    jne .dpdcNotEq
+;Here we do the checksum adjustment.
+    add rsi, 4
+    sub ecx, 4
+    jmp short .dpdcOvflowChk
+.dpdcNotEq:
+    cmp ecx, 1
+    jne .dpdcNot1
+;Here ecx = 1 so we read a byte and are done!
+    lodsb
+    dec ecx
+    add edx, eax
+    jmp short .dpdcOvflowChk
+.dpdcNot1:
+    lodsw
+    sub ecx, 2
+    add edx, eax
+.dpdcOvflowChk:
+;Here we check the accumulated overflow condition.
+    cmp edx, 0FFFFh
+    jbe .dpdcCheckEnd
+    mov eax, edx
+    and eax, 0FFFFh ;Save low word here
+    shr edx, 16     ;Shift high word low here
+    add edx, eax    ;Add them
+.dpdcCheckEnd:
+    test ecx, ecx
+    jnz .dpdcLp
+.dpdcDone:
+    pop rcx
+    add edx, ecx
+    cmp dword [rdi], edx
+    jne .dpdcBadCsum
+.dpdcExit:
+    pop rdi
+    pop rsi
+    pop rcx
+    pop rbx
+    return
+.dpdcBad:
+    lea rdx, .dpdcStr2
+    jmp short .dpdcBCmn
+.dpdcStr2   db "Driver hard error in checksum calculation",CR,LF,"$"
+.dpdcBadCsum:
+    lea rdx, .dpdcStr1
+.dpdcBCmn:
+    mov eax, 0900h
+    int 21h
+    stc
+    jmp short .dpdcExit
+.dpdcStr1   db "Invalid driver checksum",CR,LF,"$"
 
 
 .sftHandler:

@@ -121,7 +121,7 @@ struc imageFileOptionalHeader
 	.dWin32VersionValue         dd ?    ;Not used.
 	.dSizeOfImage               dd ?    ;Total aligned in memory alloc size.
 	.dSizeOfHeaders             dd ?    ;Rounded to file alignment.
-	.dCheckSum                  dd ?    ;Not used.
+	.dCheckSum                  dd ?    ;Checked on PE driver loads.
 	.wSubsystem                 dw ?    ;Not used. For VMEMD.
 	.wDllCharacteristics        dw ?
 	.qSizeOfStackReserve        dq ?    ;Not used by default. For VMEMD.
@@ -177,6 +177,7 @@ struc imageSectionHdr       ;size 40 bytes
 endstruc
 
 ;Section Hdr characteristics flags 
-imgScnCntCode   equ 20h   ; The section contains executable code.
-imgScnCntData   equ 40h   ; The section contains initialized data.
-imgScnCntBSS    equ 80h   ; The section contains uninitialized data. 
+imgScnCntCode   equ 20h     ;The section contains executable code.
+imgScnCntData   equ 40h     ;The section contains initialized data.
+imgScnCntBSS    equ 80h     ;The section contains uninitialized data.
+imgScnMemDiscrd equ 2000000h    ;Section marked discardable

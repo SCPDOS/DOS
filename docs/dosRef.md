@@ -13,7 +13,8 @@ Note that installable drivers may NOT allocate additional memory during system r
 
 Additionally, installable device drivers may be either flat binaries or PE format files.
 
-*-* If a driver is in PE format, the first segment in the PE executable must be a data segment, with the device driver header placed at the start of the segment. A driver may have arbitrary code/data/bss segments in the executable. If BSS segments are present, they are not initialised to 0. If necessary, this must be done by the driver's init routine.
+*-* If a driver is in PE format, the first segment in the PE executable must be a data segment, with the device driver header placed at the start of the segment. A driver may have arbitrary code/data/bss and any other segments in the executable. If BSS segments are present, they are initialised to 0. Since no DLL manager is loaded
+at boot time in SCP/DOS Version 1, all PE drivers must be statically linked; they cannot dynamically link to other DLLs.
 
 *-* If a driver is a flat binary, the binary must start with the device driver header.
 
