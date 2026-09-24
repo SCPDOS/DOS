@@ -616,7 +616,6 @@ configParse:
 ; r15 -> MZ portion of PE header
 ; rdi -> Section table. 
 ; ecx = number of sections
-    breakpoint
     lea edx, dword [ecx - 1]    ;Get offset to the last entry in the section tbl
     mov eax, imageSectionHdr_size   ;One off multiplication
     mul edx                     ;Get solution in eax (zero edx)
