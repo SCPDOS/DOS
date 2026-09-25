@@ -364,7 +364,7 @@ configParse:
     ; file table... maybe try it after getting 4B03h load to work first!
     mov eax, 3D00h  ;Read only file
     int 21h
-    jc .drvBad
+    jc .drvErrFnf
     mov ebx, eax    ;Get the handle in ebx
     xor edx, edx    ;Move the handle to the end of the file
     xor ecx, ecx    
@@ -375,24 +375,18 @@ configParse:
     mov eax, 4200h  ;LSEEK to SEEK_SET (start of the file)
     int 21h
     push rbx        ;Push the file handle on the stack
-    mov ebx, 6      ;6 paragraphs (96 bytes)
+    mov ebx, (optCoffHdr_size >> 4) ;Space for the largest header we will read
     mov eax, 4800h  ;Allocate this block of memory
     int 21h
     pop rbx         ;Get the handle back in rbx
-    jc .drvMemClose
+    jc .drvErrMemFree
     mov rdx, rax    ;Get pointer to memory in rdx
     mov ecx, imageDosHdr_size
     mov eax, 3F00h  ;READ
     int 21h
     mov r8, rdx     ;Store the pointer to the memory block in r8 if need to free
     mov rdi, rdx    ;Get pointer to the PE header
-    jnc short .headerReadOK
-.drvFreeMemAndHdl: ;Frees the block and then handle
-;r8 must point to the block to free
-    mov eax, 4900h  ;Free the block first!
-    int 21h
-    jmp .drvBadClose
-.headerReadOK:
+    jc .drvErrBadRead
 ;Use register r15 as the indicator for .COM or PE. Clear if COM.
     xor r15, r15    ;Clear the marker for executable type
     mov rdi, rdx    ;Save the pointer in rdi
@@ -414,10 +408,10 @@ configParse:
     shr ecx, 4      ;Convert to paragraphs
     inc ecx         ;... and round up!
     cmp ecx, 1000h  ;Is it geq 64k (in paragraphs)?
-    jae .drvFreeMemAndHdl
+    jae .drvErrTooBig
     jmp .loadCont
 .peDrivers:
-    ;Get the file pointer for file header
+;Get the file pointer for file header. Here we ARE a PE file.
     mov edx, dword [rdi + imageDosHdr.e_lfanew] ;Get this file offset
     xor ecx, ecx
     mov eax, 4200h  ;LSEEK from the start of the file
@@ -427,22 +421,22 @@ configParse:
     mov ecx, imageFileHeader_size   ;Read the header
     mov eax, 3F00h  ;READ
     int 21h
-    jc short .drvFreeMemAndHdl
-    cmp eax, imageFileHeader_size   ;If fewer bytes were read, fail
-    jb short .drvFreeMemAndHdl
+    jc .drvErrBadRead
+    cmp eax, ecx    ;If fewer bytes were read, fail
+    jne .drvErrBadRead
     cmp dword [rdi + imageFileHeader.dPESignature], imagePESignature
-    jne .drvFreeMemAndHdl
+    jne .drvErrBadPEHeader
     cmp word [rdi + imageFileHeader.wMachineType], imageFileMachineAMD64
-    jne .drvFreeMemAndHdl
-    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], 60
-    jb .drvFreeMemAndHdl ;We need section alignment info if a PE!
-;Now read the first 60 bytes of the optional header here. rdx points to buffer
-    mov ecx, 60     ;Read only 60 bytes
+    jne .drvErrBadPEHeader
+    cmp word [rdi + imageFileHeader.wSizeOfOptionalHdr], optCoffHdr_size
+    jb .drvErrBadPEHeader ;We need section alignment info if a PE!
+;Now read the optional header here. rdx points to buffer
+    mov ecx, optCoffHdr_size    ;Read only 60 bytes
     mov eax, 3F00h  ;READ
     int 21h
-    jc .drvFreeMemAndHdl   ;If something goes wrong, skip
+    jc .drvErrBadRead   ;If something goes wrong, skip
     cmp eax, ecx
-    jb .drvFreeMemAndHdl   ;If fewer than 60 bytes read, skip
+    jb .drvErrBadRead   ;If fewer than 60 bytes read, skip
 ;Round up size requirement.
 ;If PE, round up to nearest section alignment
     mov ecx, dword [rdi + imageFileOptionalHeader.dSizeOfImage] ;Get mem alloc size
@@ -457,20 +451,23 @@ configParse:
 .peSkipAlign:
     shr ecx, 4      ;Convert to number of paragraphs.
     cmp ecx, 2000000h   ;Drivers cannot be more than 2Gb in size.
-    jae .drvFreeMemAndHdl
+    jae .drvErrTooBig
     call .drvPeDoChksum ;Now verify the driver checksum! Preserves rbx-r9.
-    jc .drvFreeMemAndHdl
+    jc .drvErrFreeClose ;Don't print any further error messages!
     dec r15         ;Reg is zero. Now just set it just to indicate PE driver.
 .loadCont:
-    mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
-    int 21h ;r8 has the pointer to the block for freeing
-;Now close the file
+;Now close the file and free and then allocate as the allocation 
+; will likely grow and realloc may not have enough so avoid this 
+; issue all together and free + alloc.
     mov eax, 3E00h  ;Close handle in ebx
     int 21h
+    mov eax, 4900h  ;FREE -> Free the 6 paragraph header buffer.
+    int 21h ;r8 has the pointer to the block for freeing
+;Now prep for alloc.
     mov ebx, ecx    ;Put the number of paragraphs in ebx
     mov eax, 4800h  ;Allocate this block of memory
     int 21h         ;rax gets the pointer to load the program into
-    jc .drvMemClose
+    jc .drvErrMem
 ;Now set the subsystem marker and the owner to DOS
     mov byte [rax - mcb_size + mcb.subSysMark], mcbSubDriver  ;Occupied by drv
     mov qword [rax - mcb_size + mcb.owner], mcbOwnerDOS
@@ -501,17 +498,7 @@ configParse:
     mov rdx, rsi
     mov eax, 4B03h  ;Load overlay!
     int 21h
-    jnc short .loadOk   ;Driver loaded and unpacked. Now we get going...
-.badDriverLoad:
-;r8 -> Memory block!
-    mov eax, 4900h  ;FREE -> Free the space where the program shouldve gone
-    int 21h
-    lea rdx, .drvMemMsg
-    mov eax, 0900h
-    int 21h
-    return
-.drvMemMsg: db CR,LF,"Not enough memory for driver",CR,LF,"$" 
-.loadOk:
+    jc .drvErrNoLoad
 ;Now reset the command line to have a space at the null terminator
     mov rdi, qword [rbp - cfgFrame.driverBreak]
     mov bl, byte [rbp - cfgFrame.breakChar] ;Get the original breakchar
@@ -537,20 +524,13 @@ configParse:
 .peDrvNoAdj:
 ;eax has the section aligned offset from the load address to start of prog
     lea rsi, qword [r15 + rax]  ;Point rsi to the first driver header
-;Now we do a simple driver sanity check. 
-; rsi should be pointing to a QWORD -1, the start of the driver header.
-;If not, abort the load.
-    xor eax, eax
-    dec rax
-    cmp qword [rsi], rax
-    je .peDrvEnd  ;PE loader resolves header pointers
-    mov eax, 4900h  ;Free the driver
-    int 21h
-    jmp .drvBad 
+    call .chkDrvTbl ;Do a driver header sanity check
+    jmp short .peDrvEnd    ;Ok, skip reloc as PE loader resolves header ptrs
 .comDrv:
 ;.COM driver are loaded such that the first byte in the MCB is 
 ; their first byte. 
     mov rsi, r8 ;Get ptr to the load block as first byte is first drv hdr.
+    call .chkDrvTbl ;Do a driver header sanity check
 ;Now we need to adjust the pointers of each header, to relocating them
 ; relative to their load address.
     push rsi    ;Save the pointer to the first pointer to adjust
@@ -564,6 +544,17 @@ configParse:
     jmp short .comDrvReloc
 .comDrvEnd:
     pop rsi     ;Get back the pointer to the first driver header
+    jmp short .peDrvEnd
+.chkDrvTbl:
+;Does a simple driver sanity check.
+;rsi should be pointing to a QWORD -1, the start of the driver header.
+;If not, returns internally and aborts the load.
+    xor eax, eax
+    dec rax
+    cmp qword [rsi], rax
+    rete
+    pop rax
+    jmp .drvErrBadDrvHeader 
 .peDrvEnd:
 ;Prepare for initialising the drivers
 ;Here, rsi -> header of the first driver in the file we just loaded
@@ -581,14 +572,14 @@ configParse:
 ; this routine will still work like so!
 ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
     call initDriver
-    jc .driverBadRbpAdjust
+    jc .drvBadInitRbpAdjust
     call addDriverMarkers
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     xchg r12, rbp   ;Get the config stack ptr back
     test word [rsi + drvHdr.attrib], devDrvChar
     jnz short .driverInitialised
     call buildDPBs          ;Preserves rbp, rsi and rbx and rbp and r8
-    jc .driverBad
+    jc .drvBadInit
 .driverInitialised:
     cmp qword [rsi + drvHdr.nxtPtr], -1     ;We at the end of the chain?
     cmovne rsi, qword [rsi + drvHdr.nxtPtr]    ;Walk rsi if not
@@ -662,46 +653,90 @@ configParse:
 ;------------------
 ;Bad exit cases
 ;------------------
-.driverBadRbpAdjust:
+.drvBadInitRbpAdjust:
     mov rbp, r12
-.driverBad:
+.drvBadInit:
 ;r8 -> MCB of driver
     ;Form the string to print
-    lea rdi, .driverBad2    ;Store the name here
+    lea rdi, .sDrvErr2    ;Store the name here
     test word [rsi + drvHdr.attrib], devDrvChar ;Are we a char dev?
-    jnz short .driverCharBad    ;If not, exit
+    jnz short .dbiCharDev    ;If not, exit
     ;MSD devices need to have something placed in there
     mov rax, "MSD dev "
     stosq   ;Store the 8 chars here
-    jmp short .driverBadPrint
-.driverCharBad:
+    jmp short .drvBadInitExit
+.dbiCharDev:
     lea rsi, qword [rsi + drvHdr.drvNam]    ;Copy the device driver name over
     movsq   ;Move all 8 chars over from device driver name
-.driverBadPrint:
-    lea rdx, .driverBad1
-    mov eax, 0900h  ;Print the string!
-    int 21h
+.drvBadInitExit:
     mov eax, 4900h  ;Attempt to deallocate the driver now
     int 21h
-    jmp short .driverExit
-.driverBad1 db CR,LF,"Error initialising driver: "
-.driverBad2 db "        ",CR,LF,"$"
-.drvBadClose:
-    mov eax, 3E00h  ;Close handle in ebx
-    int 21h
-.drvBad:
-    lea rdx, .drvBadMsg
-.drvBad2:
+    lea rdx, .sDrvErr1
+    jmp short .drvErrWrite
+
+
+.drvErrTooBig:
+;Free's memory and closes handle. 
+; Print error message not enough memory.
+    call .drvErrFree
+.drvErrMemFree:
+;Closes handle.
+; Print error message not enough memory.
+    call .drvErrClose
+.drvErrMem:
+;Print error message not enough memory.
+    lea rdx, .sDrvNoMem
+    jmp short .drvErrWrite
+
+.drvErrBadDrvHeader:
+;Free's memory.
+; Print error mesasge bad format.
+    call .drvErrFree
+    lea rdx, .sDrvHdr
+    jmp short .drvErrWrite
+.drvErrBadPEHeader:
+;Free's memory and closes handle. 
+; Print error message bad PE header.
+    call .drvErrFreeClose
+    lea rdx, .sDrvHdr2
+    jmp short .drvErrWrite
+.drvErrBadRead:
+;Free's memory and closes handle. 
+; Print error message bad read.
+    call .drvErrFreeClose
+    lea rdx, .sDrvRead
+    jmp short .drvErrWrite
+.drvErrNoLoad:
+;Free memory.
+; Print FNF message to mimic command.com on bad PE launch
+    call .drvErrFree
+.drvErrFnf:
+;Print FNF message.
+    lea rdx, .sDrvFNF
+.drvErrWrite:
     mov eax, 0900h
     int 21h
-    clc ;Never return with CF=CY
     return
-.drvMemClose:
+.drvErrFreeClose:
+;Frees and closes the block. 
+; No message printed.
+    call .drvErrFree
+.drvErrClose:
     mov eax, 3E00h  ;Close handle in ebx
     int 21h
-    lea rdx, .drvMemMsg
-    jmp short .drvBad2
-.drvBadMsg: db CR,LF,"Bad or missing filename",CR,LF,"$"
+    return
+.drvErrFree:
+    mov eax, 4900h  ;Free the driver
+    int 21h
+    return
+
+.sDrvFNF    db CR,LF,"Bad or missing filename",CR,LF,"$"
+.sDrvNoMem  db CR,LF,"Not enough memory to load driver",CR,LF,"$" 
+.sDrvHdr    db CR,LF,"Invalid driver header",CR,LF,"$"
+.sDrvHdr2   db CR,LF,"Invalid driver PE header",CR,LF,"$"
+.sDrvErr1   db CR,LF,"Error initialising driver: "
+.sDrvErr2   db "        ",CR,LF,"$"
+.sDrvRead   db CR,LF,"Error reading driver file",CR,LF,"$"
 ;------------------------------------
 ;          Driver subroutines
 ;------------------------------------
@@ -728,6 +763,7 @@ configParse:
     push rcx    ;Size of file allocation
     push rsi    ;Section alignement requirement
     push rdi    ;Ptr to memory block with imageFileOptionalHeader
+    push r8     ;Save the input memory block ptr
 ;Get the filesize and return the fileptr back to the the start of the file
     xor ecx, ecx    ;Go to end of file (preserved across these calls)
     xor edx, edx
@@ -743,21 +779,22 @@ configParse:
     xchg ebx, ecx   ;Swap the handle in rbx with the filesize
     add ebx, 0Fh    ;Ensure ebx is paragraph aligned
     shr ebx, 4      ;Get number of paragraphs to now be 
-    mov eax, 4A00h  ;Now we reallocate the block to contain the whole file.
-    int 21h
+    mov eax, 4800h  ;Now we allocate a new block to contain the whole file.
+    int 21h         ;Allocate as realloc might not have enough space...
     jc .dpdcBad
+    mov r8, rax
     shl ebx, 4      ;Turn back into bytes
     xchg ebx, ecx   ;Swap back the file handle and file size
     mov eax, 3F00h  ;Read
-    mov rdx, rdi    ;Point to the buffer in rdi (same as r8)
+    mov rdx, r8     ;Point to the buffer in rdi (same as r8)
     int 21h
-    jc .dpdcBad
+    jc .dpdcBadFree
     cmp eax, ecx    ;Was the count the same?
-    jne .dpdcBad
+    jne .dpdcBadFree
 ;Now point rdi to to the checksum variable in the header space
-    mov rsi, rdi    ;Point rsi as the source of bytes
-    movzx eax, word [rdi + imageDosHdr.e_lfanew]
-    lea rdi, qword [rdi + rax + coffHdr_size + imageFileOptionalHeader.dCheckSum]
+    mov rsi, r8    ;Point rsi as the source of bytes
+    movzx eax, word [r8 + imageDosHdr.e_lfanew]
+    lea rdi, qword [r8 + rax + coffHdr_size + imageFileOptionalHeader.dCheckSum]
 ;Now we do the computation sequentially. Use edx as the accumulator.
     push rcx    ;Save the filesize count. 
     xor edx, edx    ;Clear the accumulator
@@ -793,19 +830,28 @@ configParse:
     jnz .dpdcLp
 .dpdcDone:
     pop rcx
-    add edx, ecx
-    cmp dword [rdi], edx
+    add edx, ecx            ;And add the filesize to edx
+    mov ecx, dword [rdi]    ;Finally, read the checksum byte into ecx
+    mov eax, 4900h          ;And free the memory block in r8
+    int 21h
+    cmp ecx, edx            ;If checksum bad, fail...
     jne .dpdcBadCsum
 .dpdcExit:
+    pop r8
     pop rdi
     pop rsi
     pop rcx
     pop rbx
     return
+.dpdcBadFree:
+;If the read fails for whatever reason, we have to release the 
+; read buffer too!
+    mov eax, 4900h
+    int 21h
 .dpdcBad:
     lea rdx, .dpdcStr2
     jmp short .dpdcBCmn
-.dpdcStr2   db "Driver hard error in checksum calculation",CR,LF,"$"
+.dpdcStr2   db CR,LF,"DOS error in driver checksum calculation",CR,LF,"$"
 .dpdcBadCsum:
     lea rdx, .dpdcStr1
 .dpdcBCmn:
@@ -813,9 +859,11 @@ configParse:
     int 21h
     stc
     jmp short .dpdcExit
-.dpdcStr1   db "Invalid driver checksum",CR,LF,"$"
+.dpdcStr1   db CR,LF,"Invalid driver checksum",CR,LF,"$"
 
-
+;---------------
+; SFT handler
+;---------------
 .sftHandler:
 ;This reads the line to set the number of FILE to between 1 and 254
     mov rsi, qword [rbp - cfgFrame.linePtr]
