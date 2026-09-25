@@ -594,7 +594,21 @@ l1:
     mov eax, 4900h  ;Free the memory block
     int 21h
 l2:
-;Load Shell now
+;Before loading shell, sanitise registers.
+;This is to prevent any undesired values from passing to processes.
+    xor eax, eax    ;Set a value of 0 in edx:eax
+    mov edx, eax
+    mov ecx, 0C0000100h ;Write FS MSR
+    wrmsr               ;Clear FS MSR to 0
+    inc ecx             ;Write GS MSR
+    wrmsr               ;Clear GS MSR to 0
+    xor r15, r15
+    xor r14, r14
+    xor r13, r13
+    xor r12, r12
+    xor r11, r11
+    xor r10, r10
+;Load Shell now.
     lea rdx, initBadRet
     mov eax, 2522h  ;Setup the return address if the top level process dies
     int 21h
