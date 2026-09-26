@@ -446,7 +446,7 @@ parseNameToFCB:
     mov byte [fcbSpaceOk], 0    ;Don't allow spaces in filename
     xor edx, edx    ;Use dl to keep drive name/state of operation
     test al, 2  ;Set drive letter
-    jz .skipDriveLetter
+    jnz .skipDriveLetter
     mov byte [rdi + fcb.driveNum], dl   ;Clear this for usage
 .skipDriveLetter:
     inc rdi ;Go past the drive letter field in the FCB
