@@ -147,8 +147,10 @@ errXlatTbl:
     db 67h, 03h, errNhl, errNoMem, errInvFnc            ;Set Handle Count
     db 68h, 01h, errBadHdl                              ;Commit File
     db 69h, 04h, errBadDrv, errInvDat, errInvFnc, errAccDen ;Get/Set Disk Serial
+    db 6Ah, 06h, errInvFnc, errMCBbad, errMemAddr, errNoMem, errBadFmt
+    db errBadParam, errEnvVarNotFnd, errAccDen   ;System (environment) services
     db 6Ch, 0Ah, errPnf, errFnf, errAccCde, errNhl, errFilExist, errNoMem
-    db errUnkMed, errInvDat, errInvFnc, errAccDen       ;Extended Open/Create
+    db errUnkMed, errInvDat, errInvFnc, errBadParam, errAccDen  ;Extended Open/Create
     db -1   ;End Of Table marker
 
 
@@ -210,7 +212,7 @@ extErrTbl:
 ;Error 52h: Directory already exists
     db errDirExist, eClsOoR, eActAbt, eLocDsk
 ;Error 32h: Network request not supported by DOS
-    db errNoNet, eClsBadFmt, eActUsr, eLocNet
+    db errNetGeneric, eClsBadFmt, eActUsr, eLocNet
 ;Error 55h: Trying to duplicate a redirection for a resource
     db errDupRedir, eClsClash, eActUsr, eLocNet
 ;Error 57h: Bad parameter in request
@@ -223,6 +225,8 @@ extErrTbl:
     db errHdlEOF, eClsOoR, eActAbt, eLocUnk
 ;Error 27h: Handle reached a full disk condition and asked to report this
     db errDskFul, eClsOoR, eActAbt, eLocUnk
+;Error CBh: Environment variable not found
+    db errEnvVarNotFnd, eClsBadFmt, eActUsr, eLocMem
 ;Error XXh: Catch all case
     dd -1
 
@@ -265,7 +269,7 @@ hardErrTbl:
 ;DOS Error 33: File Lock Violation
     db errLokVio, eClsLocked, eActDRet, eLocDsk
 ;DOS Error 50: Network request not supported
-    db errNoNet, eClsBadFmt, eActUsr, eLocNet
+    db errNetGeneric, eClsBadFmt, eActUsr, eLocNet
 ;DOS Error 35: FCB Unavailable
     db errNoFCB, eClsAppFlt, eActAbt, eLocUnk
 ;DOS Error 36: Sharing buffer full, Can't share more files!

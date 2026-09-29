@@ -46,7 +46,7 @@ setupPhysicalDiskRequest:
     call setWorkingDPB ;Save the DPB as the working DPB
     return
 .netError:
-    mov word [errorExCde], errNoNet ;Network request not supported
+    mov word [errorExCde], errNetGeneric ;Network request not supported
     jmp short .error
 .diskError:
     mov word [errorExCde], errBadDrv

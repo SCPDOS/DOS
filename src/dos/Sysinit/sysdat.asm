@@ -6,7 +6,9 @@ badCom  db 0Ah,0Dh,"Bad or missing Command interpreter",0Ah,0Dh,"$"
 conName db "CON",0
 auxName db "AUX",0
 prnName db "PRN",0
-
+;dfltEnv dw 0                ;Default zero word indicator of end of environment
+;        dw 1
+;        db "INITPROC",0,0
 cfgspec db "CONFIG.SYS",0   ;ASCIIZ for CONFIG
 cmdSpec db "COMMAND.COM",0  ;ASCIIZ FOR COMMAND.COM. Overwrite in SHELL
 exceptData:

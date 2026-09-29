@@ -621,6 +621,8 @@ l2:
     lea rax, qword [rsi + psp.dta]  ;Get the dummy command line ptr
     mov qword [rbx + execProg.pCmdLine], rax    ;Store dummy command line here
     mov qword [rbx + execProg.pEnv], 0  ;Pass a zero to indicate initial load!
+    ;lea rax, dfltEnv
+    ;mov qword [rbx + execProg.pEnv], rax    ;Pass the default empty environment
     lea rdx, cmdSpec
     mov eax, 4B00h  ;Exec Prog
     int 21h

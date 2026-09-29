@@ -321,8 +321,8 @@ strlen:     ;Int 2Fh, AX=1212h
     push rax
     push rdi
     xor al, al
-    xor ecx, ecx    ;ONLY USE ECX!!!
-    dec ecx ;rcx = -1
+    xor ecx, ecx
+    dec ecx     ;Set to DWORD -1
     repne scasb
     not ecx
     pop rdi

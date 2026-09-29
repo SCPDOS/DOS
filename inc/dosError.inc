@@ -1,6 +1,8 @@
 ;DOS Error codes
-
-;Extended Error Codes
+;Where new codes are needed, we base them on Windows error codes
+;----------------------------------------------
+;             Extended Error Codes
+;----------------------------------------------
 errInvFnc   equ 1   ;Invalid function number
 errFnf      equ 2   ;File not found
 errPnf      equ 3   ;Path not found
@@ -12,7 +14,7 @@ errNoMem    equ 8   ;Insufficient memory
 errMemAddr  equ 9   ;Invalid Memory Block Address
 errBadEnv   equ 10  ;Invalid environment
 errBadFmt   equ 11  ;Invalid format (path etc)
-errAccCde   equ 12  ;Invalid Access Code    ?
+errAccCde   equ 12  ;Invalid Access Code (bad file share mode or attribute)
 errInvDat   equ 13  ;Invalid data
 ;           equ 14  ;Reserved
 errBadDrv   equ 15  ;Invalid drive specified
@@ -34,11 +36,11 @@ errNoPap    equ 28  ;Printer out of paper
 errWF       equ 29  ;Write fault
 errRF       equ 30  ;Read fault
 errGF       equ 31  ;General fault
-;----------------------------------------------
-;The following two go inbetween the Disk errors
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;The following two go inbetween the reserved disk errors
 errShrVio   equ 32  ;Sharing violations
 errLokVio   equ 33  ;File Lock violation
-;----------------------------------------------
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 errIDC      equ 34  ;Driver code, Invalid Disk Change, settable by share
 errNoFCB    equ 35  ;FCB unavailable
 errShrFul   equ 36  ;Sharing buffer full
@@ -49,10 +51,35 @@ errShrFul   equ 36  ;Sharing buffer full
 ; any pre-allocated clusters.
 errHdlEOF   equ 38  ;Handle will EOF if read proceeds or at EOF. 
 errDskFul   equ 39  ;Disk will fill up if write proceeds or full. 
-
-errNoNet    equ 50  ;Network request not supported, generic net fail
-errNLSAcDen equ 65  ;Network Access denied (NLS usage)
-
+;----------------------------------------------
+;             Network error codes
+;----------------------------------------------
+errNetGeneric       equ 50  ;Network request not supported, generic net fail
+errNetRemNotList    equ 51  ;Cannot find the network path
+errNetDupName       equ 52  ;Duplicate name exists on the network
+errNetBadNetpath    equ 53  ;Network path not found
+errNetBusy          equ 54  ;Network is busy
+errNetDevNoExist    equ 55  ;Specified net resource or dev not available
+errNetBIOSCmdLimit  equ 56  ;Net BIOS command limit reached
+errNetAdapHdwErr    equ 57  ;Network adapter hardware error
+errNetBadResp       equ 58  ;Server cannot perform requested operation
+errNetUnexp         equ 59  ;Unexpected Network error
+errNetBadAdap       equ 60  ;Bad remote network adapter
+errPrintQueueFull   equ 61  ;Printer queue is full
+errNoSpool          equ 62  ;No space to store file to be printed on print srv
+errPrintAbort       equ 63  ;File waiting to be printed was deleted
+errNetNameDel       equ 64  ;Network name is no longer available
+errNetAccDen        equ 65  ;Network Access denied
+errNetBadDevType    equ 66  ;Network resource type is not correct
+errNetBadNetName    equ 67  ;The network name cannot be found
+errNetTooManyNames  equ 68  ;Name limit for local network card exceeded 
+errNetTooManySess   equ 69  ;The Network (NETBIOS) session limit was exceeded
+errNetSharingPaused equ 70  ;Remote server is paused
+errNetReqNotAccep   equ 71  ;Remote computer too busy to accept connections
+errNetRedirPaused   equ 72  ;Specified redir device has been paused
+;----------------------------------------------
+;         Extended error codes level 2
+;----------------------------------------------
 errFilExist equ 80  ;File already exists
 errDirExist equ 82  ;Directory already exists
 errFI24     equ 83  ;Fail on Int 24h
@@ -61,6 +88,7 @@ errDupRedir equ 85  ;Trying to redirect a redirection
 errBadPass  equ 86  ;Bad password
 errBadParam equ 87  ;Bad parameter passed to request
 errNetWrite equ 88  ;Network Write Fault
+errEnvVarNotFnd equ 203 ;Environment variable doesn't exist
 ;-----------------------------------------------------------------------------
 ;Error Loci
 eLocUnk     equ 1   ;Unknown locus, nonspecific or not appropriate

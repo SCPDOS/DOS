@@ -334,7 +334,7 @@ getsetGlobalCP:    ;ah = 66h, Get/Set Global Codepage
     int 2Fh
     test al, al
     jz extGoodExit
-    cmp al, errNLSAcDen
+    cmp al, errNetAccDen
     jne extErrExit
     cbw     ;Zero extend al into ax (as we know al = 41h)
     mov word [errorExCde], ax

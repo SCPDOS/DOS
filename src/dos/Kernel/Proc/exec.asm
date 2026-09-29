@@ -186,7 +186,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
 .copyEnvironmentBlock:
     mov rdi, rax    ;Point rdi to the source of the environment
 ;Get the length of the environment
-    mov ecx, 7fffh  ;32kb limit for env size
+    mov ecx, ENV_MAX  ;32kb limit for env size
     xor eax, eax
     mov rbx, rdi    ;Use rbx as the base ptr of the scan
 .envVerifyLp:
@@ -197,12 +197,10 @@ loadExecChild:     ;ah = 4Bh, EXEC
     scasb   ;Check if we have a second byte of 00 (i.e. end of environment)
     jnz short .envVerifyLp
 
-    sub rdi, rbx ;Get offset into block, gives a result less than 7FFFh
+    sub rdi, rbx ;Get offset into block, gives a result less than ENV_MAX
     push rdi     ;Save the length of the environment block
-    add edi, 11h    ;Add 11 to round up when converting to paragraphs
     movzx ebx, word [wNameLen]  ;Get name length
-    add edi, ebx    ;edi has number of bytes to allocate for environment blk
-    mov ebx, edi
+    lea ebx, dword [edi + ebx + 11h]    ;2 for argc and 0Fh for para alignment.
     shr ebx, 4  ;Turn bytes needed into paragrapsh
     call .execAlloc
     pop rcx ;Pop the length of the environment block into rcx
@@ -222,11 +220,13 @@ loadExecChild:     ;ah = 4Bh, EXEC
     mov rsi, qword [pParam]
     mov rsi, qword [rsi + execProg.pEnv]    ;Get in rsi the src of the env
     rep movsb   ;Copy from rsi to rdi
-    mov eax, 1  ;One additional string and a second null char!
+    mov eax, 1  ;Set argc count!
     stosw       ;Away you go!
     mov rsi, qword [pProgname]  ;Get ASCIIZ string for filespec
     movzx ecx, word [wNameLen]
     rep movsb   ;Move the bytes to rdi
+    xor eax, eax
+    stosb   ;Store the final terminating null
 ;Done with the environment... more or less
 .loadProgram:
     mov ecx, imageDosHdr_size   ;Read the DOS header for the exe file
@@ -535,7 +535,7 @@ loadExecChild:     ;ah = 4Bh, EXEC
     add rax, qword [pLoadAddr]  ;EP is rel load address!
     mov qword [pProgEP], rax
     call qword [registerDLL]    ;Now we register the DLL and any import/exports
-    jc .badFmtErr   ;If this errors out for some reason, quit loading PE
+    jc .cleanAndFail   ;If this errors out for some reason, quit loading PE
     jmp .buildChildPSP
 .loadCom:
 ;File is open here, so just read the file into memory. 

@@ -21,6 +21,10 @@ MAX_PSPEC   equ MAX_PATH - MAX_FILE - 1 ;54 bytes
 ;Remember, filenames for us are just a string of, at most, 13 characters,
 ; which we always resolve into FCB format. Buffers need to make space for
 ; both the dot and terminating null
+
+;Environment maximum
+ENV_MAX equ 7fffh
+
 ;------------------------------------------------------------------------;
 ; Each mass storage device up to LASTDRIVE gets a DPB, describing 
 ; its file system structure. This is used to locate files and structures
@@ -322,6 +326,7 @@ mcbSubFCBS      equ "X" ;Unused for now
 mcbSubBuffers   equ "B" ;Any memory allocated for Buffers.
 mcbSubCDS       equ "L" ;Any memory allocated to store a CDS.
 mcbSubStacks    equ "S" ;Unused for now
+mcbSubEnv       equ "E" ;Denotes an opaque environment copy produced by DOS
 
 
 memFirstFit     equ 0   ;First free block goes to application
@@ -428,11 +433,19 @@ struc psp
                 db ?  ;Reserved byte
 ;The below are in the same place as in DOS.
     .cmdLineArgPtr: ;Symbol for future use
-    .fcb1       db 16 dup (?)  ;First FCB,    argument 1 
-    .fcb2       db 20 dup (?)  ;Second FCB,   argument 2
+    .fcb1       db 16 dup (?)  ;First FCB 
+    .fcb2       db 20 dup (?)  ;Second FCB
     .dta:   ;Pointer to the default DTA in the PSP
     .parmList   db ?   ;Number of characters in command tail
     .progTail   db 127 dup (?) ;Default DTA/Program tail
+endstruc
+
+struc launchParams
+;Similar to 21h/6101h but instead copied into the user's space.
+    .sFcb1      db 16 dup (?)  ;First FCB
+    .sFcb2      db 20 dup (?)  ;Second FCB
+    .bLen       db ?    ;Length of string below
+    .sCmdLine:          ;Pointer to the CR terminated command line
 endstruc
 
 struc clkStruc
