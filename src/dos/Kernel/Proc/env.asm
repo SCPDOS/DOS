@@ -19,7 +19,9 @@
 ; <stringN>,<NUL> (argv[N-1])
 ; <NUL>
 ;
-; where wArgc is a binary value between 0 and 7FFFh.
+; where wArgc has a maximum value of (ENV_MAX-2)/2
+; Subtract 2 for the mandatory argc count and divide by 2 as the minimum
+; non-empty string length is 2.
 ;An empty string in ARGS is given by the string <NUL>.
 ;The end of the ARGS block is denoted by a <NUL>.
 ;Both ENV and ARGS have a maximum size defined by ENV_MAX.
@@ -152,6 +154,7 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 ;
 ;Output: CF=NC: rdx -> Environment pointer
 ;        CF=CY: eax = Error code (errMCBbad, errNoMem)
+    call dosCrit1Enter
     mov rsi, qword [r8 + psp.envPtr]    ;Get the raw ptr!
     call checkEnvGood
     jz .gesDefault
@@ -160,18 +163,22 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     push rcx
     add ecx, 0Fh
     shr ecx, 4      ;Turn into paragraphs to allocate
-    call allocEnv   ;Get the block ptr in rax (preserve rsi, rdi)
+    call allocEnvSig   ;Get the block ptr in rax (preserve rsi, rdi)
     pop rcx         ;Get the byte count back
-    jc .exitBad
+    jc .gesExitBad
 ;rsi -> Raw environment
     mov rdi, rax
     rep movsb
+    call dosCrit1Exit
     jmp short .exitOk
 .gesDefault:
     mov ebx, 6
-    call allocEnv   ;Get in rax the allocated pointer
-    jc .exitBad
+    call allocEnvSig   ;Get in rax the allocated pointer
+    jc .gesExitBad
     jmp short .exitOk
+.gesExitBad:
+    call dosCrit1Exit
+    jmp .exitBad
 ;----------------------
 ; Set Env String Block
 ;----------------------
@@ -185,22 +192,24 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 ;Input: rdx -> Environment block to set
 ;Output: CF=NC: Environment updated with new set of strings
 ;        CF=CY: Error in update (errMCBbad, errMemAddr, errNoMem, errBadFmt)
+    call dosCrit1Enter
     mov rsi, rdx
     call checkEnvGood   ;This needs input in rsi and preserves it
-    jc .exitBadEnv
+    jz .sesExitBadEnv
     call getSzOfEnv ;Get in ecx the length of the env. Preserves rsi
     push rcx        ;Save the env size
     mov eax, ecx    ;Tmp save count in eax
     call getSzOfStrings ;Get raw block strings size. 
+    test ecx, ecx
+    jz .sesExitBadEnv  ;If the strings have length 0, there was a booboo. Fail!
     push rcx        ;Save the strings size
     add ecx, eax    ;Sum them for the full size to allocate
-    add ecx, 0Fh    
+    add ecx, 0Fh   
     shr ecx, 4      ;Turn into paragraphs to allocate
     call allocEnv   ;Get the block ptr in rax (preserve rsi, rdi)
     pop rbx         ;Get the strings size back
     pop rcx         ;Get the env size back
-    jc .exitBad
-    mov byte [rax + mcb.subSysMark], SPC    ;Clear the dflt signature.
+    jc .gesExitBad
     mov rdi, rax    ;Write to the newly allocated block 
     rep movsb       ;Copy the environment over
 ;rdi points to the destination for the strings copy now
@@ -218,12 +227,18 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     call freeMemory ;Free the raw environment block, whoever owns it
     pop r8
     pop rbx         ;Put the new block ptr in rbx to preserve error code
-    jnc extGoodExit
+    jc .sesBadFree
+    call dosCrit1Exit
+    jmp extGoodExit
+.sesBadFree:
     push rax        ;Save the originally returned error code
     mov r8, rbx     ;Try and free the newly allocated block. This should be ok.
     call freeMemory
     pop rax
-    jmp .exitBad    ;Exit, bubbling the old error code.
+    jmp .gesExitBad    ;Exit, bubbling the old error code.
+.sesExitBadEnv:
+    call dosCrit1Exit
+    jmp .exitBadEnv
 ;-----------------------
 ; Free Env String Block
 ;-----------------------
@@ -273,10 +288,17 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     %assign %$localsize 0
     %local lpBuffer:qword, dSize:dword, dLenVal:dword
 
+    call dosCrit1Enter
     enter %$localsize, 0
     mov qword [lpBuffer], rdi
     mov dword [dSize], ecx
     mov dword [dLenVal], 0   ;Length of the value of the envvar
+;First check the environment we are working on is good
+    call checkPSPEnvGood
+    jnz .gevEnvOk
+    mov word [errorExCde], errBadEnv
+    jmp short .gevExitBad
+.gevEnvOk:
 ;Start by just making sure the input pointer is not bad.
     test rsi, rsi   ;Is this null input string?
     jz .getVarExitNoEnv
@@ -295,12 +317,14 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 .getVarExit:
     mov eax, dword [dLenVal]  ;Set this as the copy count
     leave
+    call dosCrit1Exit
     jmp extGoodExit2
 .getVarExitNoEnv:
 ;Exit through here if desired environment variable is not found.
 ;We setup the extended error codes explicitly as we are returning through ok
 ; to report the buffer size!
     mov word [errorExCde], errEnvVarNotFnd
+.gevExitBad:
     call checkFail.skipFail ;Setup the other extended error vars
     jmp short .getVarExit
     %pop
@@ -316,24 +340,39 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 ;lpValue = The contents of the environment variable. If the pointer
 ; is null or the string is empty, we delete the variable.
 ;
-;Output: CF=NC: Success!
-;        CF=CY: Fail!
-
-    test rsi, rsi
-    jnz .sevGo
-.sevBadParam:
-    mov eax, errBadParam
-    jmp extErrExit
-.sevGo:
-    cmp byte [rsi], 0   ;Can't create/delete a null string var!
-    je .sevBadParam
+;Output: CF=NC: eax = Number of chars written to environment. 
+;               If eax = 0, error, no chars written. Get error code.
 
     %push
     %stacksize flat64
     %assign %$localsize 0
-    %local lpName:qword, lpValue:qword, bAction:byte
-    
+    %local lpName:qword, lpValue:qword, bAction:byte, dVarLen:dword
+;Get the PSP lock. No other threads of this process 
+; can enter this critical section.
+    call dosCrit1Enter
     enter %$localsize, 0
+;First check the default environment is good
+    call checkPSPEnvGood
+    jnz .sevEnvOk
+    mov eax, errBadEnv
+    jmp .sevBadExit
+.sevEnvOk:
+;Start by verifying the input args are good!
+    test rsi, rsi
+    jnz .sevGo
+.sevBadParam:
+    mov eax, errBadParam
+    jmp .sevBadExit
+.sevGo:
+    cmp byte [rsi], 0       ;Can't create/delete a null string var!
+    je .sevBadParam
+;Name cannot contain the equals sign unless it is the first character
+    lea rdi, qword [rsi + 1]    ;This char is part of the string
+    call strlen
+    mov al, "="
+    repne scasb
+    je .sevBadParam ;If we find an = in the name, fail!
+;Now figure out what the user wanted to do with this variable
     xor eax, eax    ;0 means Update
     mov ebx, eax
     inc ebx         ;1 means Delete
@@ -346,24 +385,105 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     mov byte [bAction], al  ;Save the action flag
     mov qword [lpName], rsi
     mov qword [lpValue], rdx
+;Now we get the full length of the string we're gonna write into the env
+    call strlen2    ;Get the length of the name portion
+    mov dword [dVarLen], ecx   ;Setup the return value size
+    mov rdi, rdx
+    call strlen     ;Get the length of the value portion
+    add dword [dVarLen], ecx
     call searchForEnvVar    ;Search for var pointed to by rsi
-    jnc .sevProceed
-;Here the var doesn't exist. If we are to delete, then we return 
-; error envvar not found.
-    test byte [bAction], -1
-    jz .sevCreate  ;Jump if we are creating a new variable :)
-    mov eax, errEnvVarNotFnd
-    jmp extErrExit
-.sevCreate:
-
-.sevProceed:
+    jc .sevVarNotFnd
 ;Here, rsi -> Env var that we are to update or delete
     call freeEnvVar ;Start by freeing this variable
     test byte [bAction], -1 ;Now check if we need to recreate this var.
-    jz .sevCreate   ;Jump if so.
-.sevExit:
+    jnz .sevExitOk  ;Exit if not!
+    jmp short .sevCreate    ;Else, lets build it afresh!
+.sevVarNotFnd:
+;Here the var doesn't exist. If we are to delete, then we return 
+; error envvar not found. Else, we create!
+    mov eax, errEnvVarNotFnd
+    test byte [bAction], -1 ;Couldn't find the var to delete!
+    jnz .sevBadExit
+.sevCreate:  
+    call getFreeSpaceInEnvBlk
+    mov eax, dword [dVarLen]
+    cmp eax, ecx ;Do we need to reallocate?
+    ja .sevGetMoreMem
+;No need, we have enough space in the current memory block. We shift
+; the strings down far enough to make space for the var.
+.sevDoMake:
+;Here we create the environment variable. We start by moving the 
+; args block down by one dVarLen amount. We know we have this space
+; free to us.
+    call getPtrToEndOfEnvBlk    ;Get in rdi the ptr to the end of env block! 
+    mov rsi, rdi
+    mov rdx, rdi
+    mov ecx, dword [dVarLen]
+    add rdi, rcx    ;Make space here
+    rep movsb   ;Move the string down
+    mov rdi, rdx
+    mov rsi, qword [lpName]
+    call normaliseFileName  ;Copies and UC's the var name
+    dec rdi
+    mov al, "="
+    stosb
+    mov rsi, qword [lpValue]
+    call strcpy
+    jmp .sevExitOk
+.sevGetMoreMem:
+;Try reallocating, see if that works
+    lea ebx, dword [eax + 0Fh]
+    shr ebx, 4  ;Turn into paragraphs
+    add ebx, dword [r8 - mcb_size + mcb.blockSize]
+    push rbx    ;Save the number of paragraphs we are allocating
+    push r8
+    call reallocMemory
+    pop r8
+    pop rbx
+    jc .sevGetNewBlk
+;Now we have reallocated our block! We need to null the end portion.
+    call getSzOfEnvAndStrings   ;Get the size of the env in ecx
+    mov rdi, qword [r8 + psp.envPtr]
+    add rdi, rcx    ;Move rdi to the end of the blocks.
+    shl ebx, 4  ;Turn into bytes
+    sub ebx, dword [r8 - mcb_size + mcb.blockSize]  ;Get sz of new part
+    mov ecx, ebx
     xor eax, eax
+    rep stosb   ;Zero the newly allocated stuff
+    jmp .sevDoMake
+.sevGetNewBlk:
+    cmp eax, errNoMem   ;We had no memory to grow?
+    jne .sevBadMem      ;No? Must've been something more sinister.
+;Now we allocate and free instead.
+    call allocEnv   ;Zeros the block for us so all is good
+    jc .sevBadMem
+;rax -> new env block
+    push rax    ;Save the new psp
+    mov rsi, qword [r8 + psp.envPtr]
+    mov rdi, rax    ;This is where we will write to
+    call getSzOfEnvAndStrings   ;Get the size of everything from psp block
+    rep movsb       ;And move it over :)
+    push r8         ;Save ptr to the psp on the stack
+    mov r8, qword [r8 + psp.envPtr]
+    call freeMemory ;Now we free r8.  
+    pop r8
+    pop qword [r8 + psp.envPtr] ;Get the new environment pointer in its place
+    jmp .sevDoMake
+.sevBadMem:
+    xor eax, eax    ;The error code has been set so we return 0 bytes
+    jmp short .sevExit
+.sevExitOk:
+    mov eax, dword [dVarLen] ;Get the length we wrote/freed
+.sevExit:
+    leave
+    call dosCrit1Exit
     jmp extGoodExit2
+.sevBadExit:
+;Input: ax = Error code to report
+    mov word [errorExCde], ax
+    call checkFail.skipFail
+    xor eax, eax
+    jmp short .sevExit
     %pop
 ;-------------------
 ; Get Launch Params
@@ -416,38 +536,24 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     mov eax, errInvFnc
     jmp extErrExit
 
-;--------------------------------------
+;----------------------------------------------------------------------------
 ;     Environment local functions
-;--------------------------------------
+;----------------------------------------------------------------------------
 ;List of functions:
-; getFreeSpace -> Gets the number of bytes free in the environment block
 ; freeEnvVar -> Deletes an environment variable and compactifies
 ;               the environment.
 ; searchForEnvVar -> Looks in the raw environment for a variable
+; allocEnvSig -> Same as below but adds a signature to the block
 ; allocEnv -> Returns an allocation 
+; checkPSPEnvGood -> Check if the env in the psp is good.
 ; checkEnvGood -> Check if an env is good.
 ; getPtrToEndOfEnvBlk -> Returns in rdi ptr to second null
 ; getSzOfEnv     -> Return in ecx the number of bytes used in the environment
 ; getSzOfStrings -> Return in ecx the number of bytes used in the optional 
 ;                   strings after the environment, if present
-
-getFreeSpace:
-;Output: ecx = Number of free bytes in the environment block
-    push rbx
-    push rsi
-    push rdi
-    call getPtrToEndOfEnvBlk   ;Get ptr in rdi to end of alloc 
-    mov rsi, qword [r8 + psp.envPtr]
-    sub rdi, rsi    ;This gets number of bytes allocated
-    call getEnvSize ;Get total block size
-    mov rbx, qword [r8 + psp.envPtr]
-    mov ecx, dword [rbx - mcb_size + mcb.blockSize]
-    shl ecx, 4  ;Get number of bytes in the environment
-    sub ecx, edi    ;Get difference!
-    pop rdi
-    pop rsi
-    pop rbx
-    return
+; getSzOfEnvAndStrings -> Sums the output of both
+; getFreeSpaceInEnvBlk -> Gets the number of bytes free in the environment block
+;----------------------------------------------------------------------------
 
 freeEnvVar:
 ;Frees a variable from the environment, pulls the strings behind it up
@@ -470,7 +576,7 @@ freeEnvVar:
     cmp word [rsi], 0   ;If we are already at the terminating null, dont advance!
     jne .prepPullup
     xor eax, eax
-    jmp short .cleanEnv
+    jmp short .pullStrings
 .prepPullup:
     inc rsi         ;Go past the terminating null!
 .pullUp:
@@ -481,10 +587,18 @@ freeEnvVar:
     cmp byte [rsi], 0   ;Is this the famous second byte?
     jne .pullUp
 ;We are at the end of the copy!
-.cleanEnv:
-    stosb   ;Store the famous second null
-    dec rdi ;without incrementing it!!
-    call getFreeSpace
+.pullStrings:
+    stosb   ;Store the second null, incrementing rdi
+;Now we pull the strings, if there are any
+    cmp word [rsi], 0
+    je .goClean
+    call getSzOfStrings
+    test ecx, ecx
+    jz .goClean
+    rep movsb
+.goClean:
+    dec rdi ;Point back to the second null!
+    call getFreeSpaceInEnvBlk
     xor eax, eax
     push rcx
     rep stosb       ;Now zero the remaining space of the env!
@@ -545,6 +659,12 @@ searchForEnvVar:
     pop rsi
     return
 
+allocEnvSig:
+    call allocEnv
+    retc
+;Set the marker to allow us to manage this block
+    mov byte [rax + mcb.subSysMark], mcbSubEnv
+    return
 
 allocEnv:
 ;Wraps the allocation call, preserving registers and rax on caller stack.
@@ -561,8 +681,6 @@ allocEnv:
     push rsi    ;Save pointer to the frame
     call allocateMemory
     jc .exit
-;Set the marker to allow us to manage this block
-    mov byte [rax + mcb.subSysMark], mcbSubEnv
 ;Zero the newly allocate memory block.
     push rax
     mov rdi, rax    ;Point to the block
@@ -577,6 +695,25 @@ allocEnv:
     pop rdi
     pop rsi
     pop rcx
+    return
+
+checkPSPEnvGood:
+;Checks the PSP environment is good.
+;Input: Nothing.
+;Output: CF=NC: Ok!
+;        CF=CY: Either missing strings block or 
+    push rsi
+    mov rsi, qword [r8 + psp.envPtr]
+    call checkEnvGood   ;Check's double null termination
+    jz .exitBad
+    call getSzOfStrings ;Checks existence of strings block
+    test ecx, ecx
+    jz .exitBad
+    pop rsi
+    return
+.exitBad:
+    stc
+    pop rsi
     return
 
 checkEnvGood:
@@ -636,28 +773,60 @@ getSzOfStrings:
 ;Gets the number of bytes of all strings optional strings 
 ; after the raw environment.
 ;Output: ecx = Number of bytes of strings only.
+;        If ecx is zero it means there is no strings block!
     push rdx
     push rsi
     push rdi
     mov rsi, qword [r8 + psp.envPtr]
     call getPtrToEndOfEnvBlk   ;Move rdi past the end of the environment
-    xor esi, esi            ;Clear the counter
+    mov esi, 2              ;Set the counter to the argc default value
     movzx edx, word [rdi]   ;Get the number of additional strings to copy 
     test edx, edx
+    cmovz ecx, esi          ;Set ecx with the return value and exit 
     jz .exit
+    cmp edx, (ENV_MAX-2)/2  
+    ja .err
+    add rdi, rsi            ;Move rdi past the argc count
 .lp:
     call strlen     ;Get the length of the string in ecx
     add esi, ecx    ;Add this string to the sum too
+    cmp esi, ENV_MAX    ;The sum cannot grow so large
+    ja .err
+    add rdi, rcx    ;And move rdi to the next string
     dec edx         ;Drop one from count
     jnz .lp         ;Go again if still have strings to handle
-.exit:
     mov ecx, esi    ;Return value in ecx
-    xor esi, 2      ;Setup a default 0 value
-;Now we ensure that we are double null terminated. If not, we just
-; computed the size of garbage :)
-    test word [rdi + rcx - 1], -1   ;Should be double zero
-    cmovnz ecx, esi ;Set value to 0, if 
+    test word [rdi - 1], -1 ;Check if the final word is zero...
+    jnz .err        ;Set value to 0, if not (i.e. we have garbage)
+.exit:
     pop rdi
     pop rsi
     pop rdx
+    return
+.err:
+    xor ecx, ecx
+    jmp short .exit
+
+getSzOfEnvAndStrings:
+;Gets the combined size of the environment and the strings.
+;Output: ecx = Number of bytes allocated in the environment block
+    push rax
+    call getSzOfEnv
+    push rcx
+    call getSzOfStrings
+    pop rax
+    add ecx, eax
+    pop rax
+    return
+
+getFreeSpaceInEnvBlk:
+;Output: ecx = Number of free bytes in the environment memory block
+    push rbx
+    call getSzOfEnvAndStrings   ;Get in ecx the size allocated.
+    mov rbx, qword [r8 + psp.envPtr]
+    mov ebx, dword [rbx - mcb_size + mcb.blockSize]
+    shl ebx, 4  ;Get total number of bytes in the environment
+    sub ebx, ecx    ;Get difference!
+    mov ecx, ebx
+    pop rbx
     return
