@@ -9,6 +9,7 @@ prnName db "PRN",0
 ;dfltEnv dw 0                ;Default zero word indicator of end of environment
 ;        dw 1
 ;        db "INITPROC",0,0
+;dfltEnv_size equ $ - dfltEnv
 cfgspec db "CONFIG.SYS",0   ;ASCIIZ for CONFIG
 cmdSpec db "COMMAND.COM",0  ;ASCIIZ FOR COMMAND.COM. Overwrite in SHELL
 exceptData:
@@ -78,8 +79,8 @@ OEMVERSION  dd 0    ;BIOS number, to be used by drivers for id-ing
 initDrvBlk  db initReqPkt_size dup (0)  ;Used for making driver init reqs
 cmdBlock:   ;Used also for overlay block for driver loads
     istruc execProg
-    at execProg.pEnv,       dq 0    ;Is set to point at the above line
-    at execProg.pCmdLine,   dq 0    ;Points to just a 0Dh
+    at execProg.pEnv,       dq 0    ;Defaults to an empty env.
+    at execProg.pCmdLine,   dq 0
     at execProg.pfcb1,      dq 0    ;Set to DOS's fcb 1 and 2
     at execProg.pfcb2,      dq 0
     iend

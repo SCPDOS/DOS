@@ -404,7 +404,7 @@ defaultFileHandles:
     mov word [rdx + sfth.wNumFiles], 5  ;This SFTH has space for 5 SFTs
 ;Select default drive here so openStreams doesnt fail!
     movzx edx, byte [rbp + bootDrive]    ;Get the default drive
-    mov ah, 0Eh ;Select drive
+    mov eax, 0E00h ;Select drive
     int 21h
 
     call openStreams

@@ -140,6 +140,9 @@ allocateMemory:    ;ah = 48h
     ;Now set the current PSP as the owner of this new MCB
     mov rdx, qword [currentPSP]
     mov qword [rsi + mcb.owner], rdx    ;Set owner to calling application
+;Now clean the marker and reserved fields for better bookkeeping.
+    mov byte [rsi + mcb.subSysMark], 0
+    mov word [rsi + mcb.reserved], 0
     mov rdx, qword [oldRSP]
     lea rax, qword [rsi + mcb.program]  ;Point return ptr to program area
     mov qword [rdx + callerFrame.rax], rax  ;Save new block pointer in rax

@@ -8,7 +8,7 @@
 dosMajor equ 0  ;Version 0
 dosMinor equ 99 ;.99
 ;Revision and version flags are a Byte at most.
-dosRev   equ 9
+dosRev   equ 10
 dosVerFlags equ 1   ;First proper testing of kernel
 dosVerMac equ (dosMinor << 8) | dosMajor    ;DOS version macro
 
