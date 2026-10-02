@@ -432,8 +432,7 @@ defaultFileHandles:
     mov qword [rbp - cfgFrame.newLastdrive], rax
 
     lea rdx, cfgspec    ;CONFIG.SYS, must be on bootdrive for now
-    mov ah, 3Dh ;Open file for reading
-    mov al, openRdAcc
+    mov eax, 3D00h | openRdAcc  ;Open file for reading
     int 21h
     jc noCfg  ;If no CONFIG.SYS found, just use defaults that are already setup
     call configParse ;Else, parse the config file

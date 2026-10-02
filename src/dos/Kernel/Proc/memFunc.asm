@@ -38,7 +38,6 @@ allocateMemory:    ;ah = 48h
     ;End consolidation at first non free block or at last block in chain
     cmp byte [rdi + mcb.marker], mcbMarkEnd ;If we at the end
     je .det0    ;Determine if this block is useful
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     add rsi, mcb.program
 .cons0:
@@ -52,7 +51,6 @@ allocateMemory:    ;ah = 48h
     cmp qword [rsi + mcb.owner], mcbOwnerFree
     jne .det0   ;No more free blocks, now determine if rdi useful
     ;Here rsi, points to a free block, add it to rdi
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     add ecx, (mcb.program >> 4) ;Absorb old mcb into allocation space
     add dword [rdi + mcb.blockSize], ecx    ;Add total block size + old mcb
@@ -85,7 +83,6 @@ allocateMemory:    ;ah = 48h
 .walk2:
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     je .allocate    ;Dont walk any more if rsi is at the end
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     shl rcx, 4
     add rsi, mcb.program
@@ -101,7 +98,6 @@ allocateMemory:    ;ah = 48h
     jz .allocFail
     mov al, byte [rsi + mcb.marker] ;Get marker
     mov byte [rsi + mcb.marker], mcbMarkCtn ;This is no longer the end if it was
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     sub ecx, ebx
     sub ecx, (mcb.program >> 4) ;Make space for new MCB too
@@ -119,7 +115,6 @@ allocateMemory:    ;ah = 48h
     test rsi, rsi   ;Check if null pointer
     jz .allocFail
     ;Now check if we need to make a "spill over" free MCB
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]  ;Get current whole block size
     sub ecx, ebx    ;Take away the allocation
     jz short .bfPerfectFit
@@ -160,7 +155,6 @@ allocateMemory:    ;ah = 48h
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     jne badMCBChain
 .af1:
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]    ;Get blocksize
     cmp qword [rsi + mcb.owner], mcbOwnerFree
     jne .af2
@@ -217,7 +211,6 @@ freeMemory:        ;ah = 49h
     cmp qword [rdi + mcb.owner], mcbOwnerFree   ;Is the previous block free?
     jne .blockFoundCheckFollowing   ;No, check if block following is free
     ;It is, let it absorb this space
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
     add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
@@ -240,7 +233,6 @@ freeMemory:        ;ah = 49h
     cmp qword [rsi + mcb.owner], mcbOwnerFree
     jne .blockFoundExit ;If not free, exit
     ;If free, absorb into block pointed to by rdi
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     add ecx, (mcb.program >> 4) ;Add 1 for the mcb itself
     add dword [rdi + mcb.blockSize], ecx    ;Add to previous entry
@@ -285,7 +277,6 @@ reallocMemory:     ;ah = 4Ah
     cmp qword [rsi + mcb.owner], mcbOwnerHole
     je freeMemory.blockError
     mov rdi, rsi    ;Point rdi to same block MCB
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     cmp ebx, ecx    ;If ebx is bigger than ecx, we have growth
     ja .growth
@@ -336,7 +327,6 @@ reallocMemory:     ;ah = 4Ah
     cmp byte [rsi + mcb.marker], mcbMarkEnd
     je .notEnuffMem
 ;Now check the following space is free. If not, not enuff mem err
-    xor ecx, ecx
     mov ecx, dword [rsi + mcb.blockSize]
     shl rcx, 4
     mov rdi, rsi    
