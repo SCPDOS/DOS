@@ -74,21 +74,21 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     cmp al, 02h ;Get RAW env pointer (al=0 and al=2)
     jbe .getPSPEnvPtr
 ;Functions below this are documented for users.
-    cmp al, 03h ;GetEnvironmentStrings
+    cmp al, 03h     ;GetEnvironmentStrings
     je .getEnvStrings
-    cmp al, 04h ;GetEnvironmentVariable
+    cmp al, 04h     ;GetEnvironmentVariable
     je .getEnvVar
-    cmp al, 05h ;SetEnvironmentStrings
+    cmp al, 05h     ;SetEnvironmentStrings
     je .setEnvStrings
-    cmp al, 06h ;SetEnvironmentVariable
+    cmp al, 06h     ;SetEnvironmentVariable
     je .setEnvVar
-    cmp al, 07h ;FreeEnvironmentStrings
+    cmp al, 07h     ;FreeEnvironmentStrings
     je .freeEnvStrings
-    cmp al, 08h ;ExpandEnvironmentStrings
+    cmp al, 08h     ;ExpandEnvironmentStrings
     je .expEnvVar
-    cmp al, 09h ;GetCommandLine
+    cmp al, 09h     ;GetCommandLine
     je .getCmdLine
-    cmp al, 0Ah ;GetLaunchParameters
+    cmp al, 0Ah     ;GetLaunchParameters
     je .getLaunchParams
 .exitBadFunc:
     mov byte [errorLocus], eLocUnk  
@@ -150,6 +150,7 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 ;----------------------
 .getEnvStrings:
 ;Returns a valid, opaque copy of the environment.
+;If the PSP environment is bad or NULL, we return an empty environment.
 ;
 ;Output: CF=NC: rdx -> Environment pointer
 ;        CF=CY: eax = Error code (errMCBbad, errNoMem)
@@ -191,17 +192,19 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 ;
 ;Input: rdx -> Environment block to set
 ;Output: CF=NC: Environment updated with new set of strings
-;        CF=CY: Error in update (errMCBbad, errMemAddr, errNoMem, errBadFmt)
+;        CF=CY: Error in update 
+;           (errMCBbad, errMemAddr, errNoMem, errBadFmt, errBadParam)
     call dosCrit1Enter
     mov rsi, rdx
-    call checkEnvGood   ;This needs input in rsi and preserves it
-    jz .sesExitBadEnv
+    call checkEnvGood       ;Check new env is ok.
+    jz .sesExitBadParam     ;If not, bad parameter set.
+    call checkPSPEnvGood    ;Checks the PSP env + args is ok.
+    jz .sesExitBadEnv       ;If not, we can't adjust the PSP env.
+;Now we can trust the environment, we proceed with replacement.
     call getSzOfEnv ;Get in ecx the length of the env. Preserves rsi
     push rcx        ;Save the new env block size
     mov ebx, ecx    ;Tmp save count in eax
-    call getSzOfStrings ;Get old block args size. 
-    test ecx, ecx
-    jz .sesExitBadEnv  ;If the strings have length 0, there was a booboo. Fail!
+    call getSzOfArgs ;Get old block args size. 
     push rcx        ;Save the args size
     add ebx, ecx    ;Sum them for the full size to allocate
     add ebx, 0Fh    ;Round and turn to paras
@@ -240,6 +243,9 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     call freeMemory
     pop rax
     jmp .gesExitBad    ;Exit, bubbling the old error code.
+.sesExitBadParam:
+    call dosCrit1Exit
+    jmp .exitBadParam
 .sesExitBadEnv:
     call dosCrit1Exit
     jmp .exitBadEnv
@@ -427,7 +433,7 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     mov rdi, qword [r8 + psp.envPtr]
     push rdi
     call getPtrToEndOfEnvBlk    ;Get in rdi the ptr to the end of env block!
-    call getSzOfStrings ;Get the size of the strings block plus terminating 0
+    call getSzOfArgs ;Get the size of the strings block plus terminating 0
     pop rax
     mov rsi, rdi    ;Make the source the end byte of the env
     sub rax, rdi    ;Get the difference from the start of the environment
@@ -759,13 +765,16 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
 ; searchForEnvVar -> Looks in the raw environment for a variable
 ; allocEnvSig -> Same as below but adds a signature to the block
 ; allocEnv -> Returns an allocation 
+;============================================================================
+;======== IMPORTANT! MUST BE CALLED BEFORE PROCESSING AN ENVIRONMENT ========
 ; checkPSPEnvGood -> Check if the env in the psp is good.
 ; checkEnvGood -> Check if an env is good.
+;============================================================================
 ; getPtrToEndOfEnvBlk -> Returns in rdi ptr to second null
 ; getSzOfEnv     -> Return in ecx the number of bytes used in the environment
-; getSzOfStrings -> Return in ecx the number of bytes used in the optional 
+; getSzOfArgs -> Return in ecx the number of bytes used in the optional 
 ;                   strings after the environment, if present
-; getSzOfEnvAndStrings -> Sums the output of both
+; getSzOfEnvAndArgs -> Sums the output of both
 ; getFreeSpaceInEnvBlk -> Gets the number of bytes free in the environment block
 ;----------------------------------------------------------------------------
 
@@ -777,7 +786,7 @@ growEnvBlk:
 ;Output: CF=NC: All ok!
 ;        CF=CY: Error code in eax. Something went wrong!
 ;               Error code set in DOS vars.
-    call getSzOfEnvAndStrings   ;Get the current size of strings and args
+    call getSzOfEnvAndArgs   ;Get the current size of strings and args
     lea ebx, dword [eax + ecx + 0Fh]  ;Get the amount of space we need
     shr ebx, 4  ;Turn into paragraphs
     push rbx    ;Save count of paras needed to store all strings + new string
@@ -833,7 +842,7 @@ freeEnvVar:
 ; zeros the rest of the environment, and returns a pointer to the first
 ; free byte of the environment!
 ;Input: rsi -> Variable to free in the environment.
-    call getSzOfStrings ;Get the size of the strings
+    call getSzOfArgs ;Get the size of the strings
     test ecx, ecx
     retz
     mov rdi, qword [r8 + psp.envPtr]
@@ -982,20 +991,18 @@ allocEnv:
 checkPSPEnvGood:
 ;Checks the PSP environment is good.
 ;Input: Nothing.
-;Output: CF=NC: Ok!
-;        CF=CY: Either missing strings block or 
+;Output: ZF=NZ: Ok!
+;        ZF=ZE: Either missing strings block or psp environment bad
+    push rcx
     push rsi
     mov rsi, qword [r8 + psp.envPtr]
-    call checkEnvGood   ;Check's double null termination
+    call checkEnvGood   ;Checks double null termination
     jz .exitBad
-    call getSzOfStrings ;Checks existence of strings block
-    test ecx, ecx
-    jz .exitBad
-    pop rsi
-    return
+    call getSzOfArgs ;Checks existence of strings block
+    test ecx, ecx   ;Checks the count of strings. 0 means bad block!
 .exitBad:
-    stc
     pop rsi
+    pop rcx
     return
 
 checkEnvGood:
@@ -1052,7 +1059,7 @@ getSzOfEnv:
     pop rsi
     return
 
-getSzOfStrings:
+getSzOfArgs:
 ;Gets the number of bytes of all strings optional strings 
 ; after the raw environment.
 ;Output: ecx = Number of bytes of strings plus 2 bytes for argc count.
@@ -1091,7 +1098,7 @@ getSzOfStrings:
     xor ecx, ecx
     jmp short .exit
 
-getSzOfEnvAndStrings:
+getSzOfEnvAndArgs:
 ;Gets the combined size of the environment and the strings.
 ;Output: ecx = Number of bytes allocated in the environment block
     push rax
@@ -1099,7 +1106,7 @@ getSzOfEnvAndStrings:
     mov rsi, qword [r8 + psp.envPtr]
     call getSzOfEnv
     push rcx
-    call getSzOfStrings
+    call getSzOfArgs
     pop rax
     add ecx, eax
     pop rsi
@@ -1109,7 +1116,7 @@ getSzOfEnvAndStrings:
 getFreeSpaceInEnvBlk:
 ;Output: ecx = Number of free bytes in the environment memory block
     push rbx
-    call getSzOfEnvAndStrings   ;Get in ecx the size allocated.
+    call getSzOfEnvAndArgs   ;Get in ecx the size allocated.
     mov rbx, qword [r8 + psp.envPtr]
     mov ebx, dword [rbx - mcb_size + mcb.blockSize]
     shl ebx, 4  ;Get total number of bytes in the environment
