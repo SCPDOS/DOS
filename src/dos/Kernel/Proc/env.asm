@@ -111,35 +111,13 @@ systemServices: ;ah = 61h, this is so named as it forms the core of
     lea rdx, qword [r8 + psp.cmdLineArgPtr]   ;Get the cmdArgs pointer
     jmp short .exitOk
 .getPSPEnvPtr:
-;Gets the environment pointer in rdx
-    mov rdx, qword [r8 + psp.envPtr]   ;Get the environment pointer
-    test al, al     ;Was al=0?
-    jz .exitOk   ;Exit if al = 0 since we have the pointer we need!
-    test rdx, rdx   ;Check if the env pointer is ok to use
+;Gets the environment pointer in rdx. CF=CY if al = 0 here
+    mov rdx, qword [r8 + psp.envPtr]    ;Get the environment pointer
+    jb .exitOk                          ;Exit if al = 0.
+    call checkPSPEnvGood    ;If the env isn't good, access denied!
     jz .exitAccDen
-    cmp rdx, -1
-    je .exitAccDen
-;Here we search for the double 00 and then check if it is 0001 and
-; pass the ptr to the word after.
-    push rcx
-    xor ecx, ecx
-    mov ecx, ENV_MAX  ;Max environment size
-.gep0:
-    cmp word [rdx], 0   ;Zero word?
-    je short .gep1
-    inc rdx         ;Go to the next byte
-    dec ecx
-    jnz short .gep0
-.gep00:
-;Failure here if we haven't hit the double null by the end of 32Kb
-    pop rcx
-    jmp short .exitAccDen
-.gep1:
-    add rdx, 2          ;Skip the double null
-    cmp word [rdx], 1   ;Check the count. Must be 1 for argv[0].
-    jb .gep00
-    add rdx, 2          ;Skip the argc count.
-    pop rcx
+    call getSzOfEnv         ;Get env size in ecx
+    lea rdx, qword [rdx + rcx + 2]  ;Go past the word
 .exitOk:
     call getUserRegs
     mov qword [rsi + callerFrame.rdx], rdx
@@ -1013,6 +991,8 @@ checkEnvGood:
 ;   ZF=NZ: Environment is good. Is double null terminated.
     test rsi, rsi   ;Null envs are possible. If it happens, just fail!
     retz
+    cmp rdi, -1
+    rete
     push rdi
     mov rdi, rsi
     call getPtrToEndOfEnvBlk   ;Get the ptr to the end.

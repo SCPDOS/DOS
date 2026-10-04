@@ -1836,72 +1836,25 @@ ioctlQTblL equ $ - .ioctlQTbl
     return
 
 .ioTrackTbl:
+;Table. First entry is just a word with the number of entries
+; following. Then each row of the table is as defined below.
+;Only needed for removable devices. Currently set to 63 but in principle, 
+; allow, eventually, up to 255.
     dw maxTrackTblSz    ;Have a maximum of 63 sectors per track
-;Each row is a pair of words:
-;   dw Sector number, Sector size
-    dw 1, 200h
-    dw 2, 200h
-    dw 3, 200h
-    dw 4, 200h
-    dw 5, 200h
-    dw 6, 200h
-    dw 7, 200h
-    dw 8, 200h
-    dw 9, 200h
-    dw 10, 200h
-    dw 11, 200h
-    dw 12, 200h
-    dw 13, 200h
-    dw 14, 200h
-    dw 15, 200h
-    dw 16, 200h
-    dw 17, 200h
-    dw 18, 200h
-    dw 19, 200h
-    dw 20, 200h
-    dw 21, 200h
-    dw 22, 200h
-    dw 23, 200h
-    dw 24, 200h
-    dw 25, 200h
-    dw 26, 200h
-    dw 27, 200h
-    dw 28, 200h
-    dw 29, 200h
-    dw 30, 200h
-    dw 31, 200h
-    dw 32, 200h
-    dw 33, 200h
-    dw 34, 200h
-    dw 35, 200h
-    dw 36, 200h
-    dw 37, 200h
-    dw 38, 200h
-    dw 39, 200h
-    dw 40, 200h
-    dw 41, 200h
-    dw 42, 200h
-    dw 43, 200h
-    dw 44, 200h
-    dw 45, 200h
-    dw 46, 200h
-    dw 47, 200h
-    dw 48, 200h
-    dw 49, 200h
-    dw 50, 200h
-    dw 51, 200h
-    dw 52, 200h
-    dw 53, 200h
-    dw 54, 200h
-    dw 55, 200h
-    dw 56, 200h
-    dw 57, 200h
-    dw 58, 200h
-    dw 59, 200h
-    dw 60, 200h
-    dw 61, 200h
-    dw 62, 200h
-    dw 63, 200h
+;Each row is four bytes:
+;Track number, Head number (0 based), Sector number, Sector size
+; Sector size is a code 0-3 defined as
+; 0 =  128 bytes
+; 1 =  256 bytes
+; 2 =  512 bytes
+; 3 = 1024 bytes
+    %push
+    %assign i 1
+        %rep (maxTrackTblSz + 1)
+        db 0, 0, i, 2
+            %assign i i+1
+        %endrep
+    %pop
 
 .getLogicalDev:   ;Function 23
 ;Returns 0 if device not multi. Else 1 based number of current drive
@@ -2534,6 +2487,7 @@ ioctlQTblL equ $ - .ioctlQTbl
 ;All drives start with dAccTime at -1 to force "uncertain" read for remdevs
 ;All drives present 63 Cylinders (only valid as a field on fixed disks)
 ;All drives have as an alt BPB, a 1.44Mb 3.5" Floppy.
+    %push
     %assign i 0
     %rep drvBlkTblL
     istruc drvBlk
@@ -2594,3 +2548,4 @@ ioctlQTblL equ $ - .ioctlQTbl
     iend
         %assign i i+1
     %endrep
+    %pop
