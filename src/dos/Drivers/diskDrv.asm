@@ -1353,6 +1353,7 @@ ioctlQTblL equ $ - .ioctlQTbl
 ;               Set Device parameters in CHS and LBA here
 ;---------------------------------------------------------------------------
 .ioSetDevParams:
+    ;breakpoint
     pushfq
 ;If the parameters are swapped, set the flags and indicate the media 
 ; was swapped (even if not).
@@ -1362,50 +1363,53 @@ ioctlQTblL equ $ - .ioctlQTbl
 ;Here we set CHS params. 
 ;Before we trust the table, we check that indeed
 ; no sector index is past the max sector count and that if the caller
-; claimed that all the sectors are of the same size, they really are.    
-    lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
-    mov rdi, rsi    ;Save the pointer in rdi
-    lodsw           ;Get the lead word and adv rsi by 2
-    movzx ecx, ax   ;Get the lead table entry into ax
-    cmp ecx, maxTrackTblSz
-    jz .iosdpNoTrack   ;Don't touch the tracks bit in this case!
-    ja .genErrExit
-    cmp word [rsi], maxTrackTblSz   ;Check the first entry is ok!
-    ja .genErrExit
-.iosdpTblCheckLp:
-    lodsd   ;Go to next entry
-    dec ecx ;And remove from the count
-    jz .iosdpTblCheckEnd
-    cmp word [rsi], maxTrackTblSz   ;Ensure no entry above the max entry value
-    ja .genErrExit
-    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec ;All same size?
-    jz .iosdpTblCheckLp ;If not, skip this check (always check 1=<i<=n)
-    mov ax, word [rsi + 2]  ;Else get sector size
-    cmp word [rsi - 2], ax  ;And compare with the previous sector size
-    jne .genErrExit
-    jmp short .iosdpTblCheckLp
-.iosdpTblCheckEnd:
-;Now we set the sector size bit if all tracks same size check was passed.
-;If all sectors have the same size but the caller didn't specify this
-; bit, we also don't specify this bit.
+; claimed that all the sectors are of the same size, they really are.   
+
+;TEMP: IF THE INCOMING PACKET DOES NOT REPORT ALL SECTORS OF A TRACK 
+;      AS BEING OF THE SAME SIZE, WE FAIL THE REQUEST!
+    test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec
+    jz .genErrExit
+;END TEMP 
+;Now we set the sector size bit.
     and word [rbp + drvBlk.wDevFlgs], ~devSameSec    ;Clear bit first
     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncSec
     jz .iosdpNoSetTrackBit
-;The only way we got here if the bit was set is that the check passed.
-; Set the bit in the device block.
     or word [rbp + drvBlk.wDevFlgs], devSameSec
 .iosdpNoSetTrackBit:
-;Now we copy the table directly as sector numbers may be purposefully
-; interleaved. NO SORTING!!
-    mov rsi, rdi    ;Get back the track layout pointer 
-    lea rdi, .ioTrackTbl    ;We overwrite our internal track table
-    lodsw   ;Get the table length
-    movzx ecx, ax   ;This many entries
-    stosw
-    rep movsd       ;Move the dword entries over
+;Start by copying the table directly as sector numbers may be purposefully
+; interleaved. NO SORTING!! 
+;------------------------- NOTE -------------------------
+;For now we don't use the track table for anything as our 
+; removable devices MUST all have all sectors on a 
+; ``track'' with the same size. This information is 
+; superfluous and effectively undocumented to keep it 
+; just to us. We will likely remove this logic.
+;--------------------------------------------------------
+    lea rsi, qword [rdx + chsParamsBlock.TrackLayout]
+    xor eax, eax
+    lodsw           ;Get the new table length word and adv rsi to table itsef
+    movzx ecx, ax
+    jecxz .iosdpTrkDone ;If ecx is zero, there is no table and we ignore it!
+    cmp ecx, maxTrackTblSz
+    ja .genErrExit
+    lea rdi, .ioTrackTbl    
+    xor eax, eax
+.iosdpTrkLp:
+    inc rdi ;Go past "track" number
+    inc rdi ;Go past "head" number
+    lodsw   ;Get the sector number (a byte)
+    push rax
+    lodsw   ;Get the sector size
+    call .iosdpSetTblEntry  ;Return in al the sector code
+    pop rbx
+    shl ebx, 8  ;Move low byte high
+    or eax, ebx
+    stosw   ;Store this packed word
+    dec ecx
+    jnz .iosdpTrkLp
+.iosdpTrkDone:
     test byte [rdx + chsParamsBlock.bSpecFuncs], specFuncTrk    ;Just tracks?
     retnz   ;Return if bit set!
-.iosdpNoTrack:
 ;Now we update the rest of the disk metadata.
 ;Now copy the rest of the bytes and return
     movzx eax, word [rdx + chsParamsBlock.wDevFlgs]
@@ -1453,7 +1457,24 @@ ioctlQTblL equ $ - .ioctlQTbl
     lea rsi, qword [rdx + chsParamsBlock.deviceBPB]
     rep movsb
     return
-
+.iosdpSetTblEntry:
+;Input: eax = A number between 128 and 4096. If not, adjusted to.
+; 128  = 0080h -> 0
+; 256  = 0100h -> 1
+; 512  = 0200h -> 2
+; 1024 = 0400h -> 3
+; 4096 = 1000h -> 5
+;Output: eax = Code [0 = 128 ... 5 = 4096]
+    shr eax, 8  ;Shift the upper word down
+    cmp eax, 2  
+    retb
+    push rbx
+    cmp eax, 4  ;Was this 1024?
+    mov eax, 3  ;Set to index if so
+    mov ebx, 5  ;Default to 4096 if not
+    cmovne eax, ebx
+    pop rbx
+    return
 .lbaSetParams:
 ;This only sets the sector size and number of sectors in drvBlk.bpb.
     ;Set start sector of partition
@@ -1621,6 +1642,7 @@ ioctlQTblL equ $ - .ioctlQTbl
     call .ioChsToLba    ;Get the LBA of the first sector of the track in ecx
     movzx esi, word [rbp + drvBlk.wSecPerTrk]   ;Fmt/Verify this many sectors
     mov eax, ebx    ;Move the function number to eax
+    lea rbx, .ioTrackTbl    ;rbx is meaningless for verify so its ok.
     jmp .ioEp
 .ioVerify:
     jnz .lbaVerify
@@ -1834,27 +1856,6 @@ ioctlQTblL equ $ - .ioctlQTbl
     retnz
     inc byte [rdx + accFlgBlk.bAccMode] ;If bit clear, set mode to access ok!
     return
-
-.ioTrackTbl:
-;Table. First entry is just a word with the number of entries
-; following. Then each row of the table is as defined below.
-;Only needed for removable devices. Currently set to 63 but in principle, 
-; allow, eventually, up to 255.
-    dw maxTrackTblSz    ;Have a maximum of 63 sectors per track
-;Each row is four bytes:
-;Track number, Head number (0 based), Sector number, Sector size
-; Sector size is a code 0-3 defined as
-; 0 =  128 bytes
-; 1 =  256 bytes
-; 2 =  512 bytes
-; 3 = 1024 bytes
-    %push
-    %assign i 1
-        %rep (maxTrackTblSz + 1)
-        db 0, 0, i, 2
-            %assign i i+1
-        %endrep
-    %pop
 
 .getLogicalDev:   ;Function 23
 ;Returns 0 if device not multi. Else 1 based number of current drive
@@ -2358,8 +2359,36 @@ ioctlQTblL equ $ - .ioctlQTbl
 .bAccCnt    db 0    ;Counter of 0 time difference media checks
 .bLastDsk   db -1   ;Last disk to be checked for media check/IO.
 
-;Keep this @ 4096 for hotplugging a 4096 dev that needs 512 byte pseudo
-; access. 
+.ioTrackTbl:
+;Track table. In theory, used for formatting only.
+; In practise, we dont use it at all as we only allow for media where all 
+; sectors on a ``track'' have the same size. Find me a memory stick
+; with variable sector sizes...
+;
+;First entry is just a word with the number of entries
+; following. Then each row of the table is as defined below.
+;Only needed for removable devices with sectors on a track are of different size. 
+;We dont support these so this logic might just be eliminated.
+    dw maxTrackTblSz    ;Have a maximum of 63 sectors per track
+;Each row is four bytes:
+;Track number, Head number (0 based), Sector number, Sector size
+; Sector size is a code 0-5 defined as
+; 0 =  128 bytes
+; 1 =  256 bytes
+; 2 =  512 bytes
+; 3 = 1024 bytes
+; 4 = 2048 bytes (invalid)
+; 5 = 4096 bytes 
+    %push
+    %assign i 1
+        %rep (maxTrackTblSz + 1)
+        db 0, 0, i, 2
+            %assign i i+1
+        %endrep
+    %pop
+
+
+;Keep this @ 4096 for hotplugging a 4096 byte sector device
 ;Access to this buffer should be mediated through a critical section... 
 ; but this driver doesnt need to be reentrant yet.
 .inBuffer   db 4096 dup (0)  

@@ -252,9 +252,11 @@ endstruc
 
 ;Used for get and set params. Refer to DOS docs for meaning of bit.
 specFuncBPB equ 1<<0    ;Does BPB stuff
-;Only used in setparams requests. Ignored for getparams 
+;The below two are only used in setparams requests. Ignored for getparams.
 specFuncTrk equ 1<<1    ;Set if just track layout cpy. Clear if set all.
-specFuncSec equ 1<<2    ;Set if all sectors samze size. Clear if not.
+;Note, if specFuncSec is not set, we fail the request. We also verify
+; that all entries are the same and update the drvBlk wBpS field accordingly.
+specFuncSec equ 1<<2    ;Set if all sectors same size. Clear if not. 
 
 
 struc chsIOBlock
